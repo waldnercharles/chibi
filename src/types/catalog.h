@@ -19,6 +19,8 @@ type_catalog_pack type_catalog_pack_at(int index);
  * owner sets the slot while no project is loaded and clears it (NULL) before
  * its descriptors are freed. */
 void type_catalog_set_project(const type_catalog_pack *);
+/* Borrowed slot, NULL when absent; copy before changing the slot. */
+const type_catalog_pack *type_catalog_project();
 
 int type_catalog_count();
 const type_desc *type_catalog_at(int index);

@@ -775,7 +775,9 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 MATH_BINARY(HYPOT, Length, hypot)
                 MATH_BINARY(RANDOM_RANGE, RandomRange, behavior_random_range)
 #undef MATH_BINARY
-            case BF_RANDOM: fprintf(out, "v%d=rand();\n", i->output); break;
+            case BF_RANDOM:
+                fprintf(out, "v%d=behavior_random_int();\n", i->output);
+                break;
             case BF_CONSTANT: {
                 fprintf(out, "v%d=", i->output);
                 constant(out, i->type, i->value);
@@ -1073,13 +1075,13 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         "<math.h>\n#include "
         "<string.h>\n#include \"support/cos_sin.h\"\n#include "
         "\"ecs/execution.h\"\n%sint %s",
-        local ? "static inline " : "",
+        "static ",
         name
     );
     if (index) {
         fprintf(out, "_callee_%d", index);
     }
-    fputs("(behavior_function_context *c) {\n", out);
+    fputs("_random_body(behavior_function_context *c) {\n", out);
     if (f->fast) {
         fprintf(
             out,
@@ -1113,7 +1115,16 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "}\n");
     }
     body(f, out, 'L', true);
-    fprintf(out, "}\n");
+    fprintf(out, "}\n%sint %s", local ? "static inline " : "", name);
+    if (index) {
+        fprintf(out, "_callee_%d", index);
+    }
+    fputs("(behavior_function_context *c) {\nbehavior_random *previous=behavior_random_enter(behavior_random_context(c));\nint result=", out);
+    fputs(name, out);
+    if (index) {
+        fprintf(out, "_callee_%d", index);
+    }
+    fputs("_random_body(c);\nbehavior_random_leave(previous);\nreturn result;\n}\n", out);
 }
 
 void behavior_function_write_c(const behavior_function *f, FILE *out, const char *name)

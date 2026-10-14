@@ -17,29 +17,34 @@
 #include "ui/rml_backend.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct resource_generation
+struct render_resource_context
 {
     shader_asset *assets;
     shader_values *values;
+    shader_catalog_state *state;
     render_parts_table *parts;
     render_image_table *images;
     render_mesh_table *meshes;
     render_sky_table *skies;
     ui_documents *documents;
-    render_parts_table *empty_parts;
-    render_image_table *empty_images;
-    render_mesh_table *empty_meshes;
-    render_sky_table *empty_skies;
-    ui_documents *empty_documents;
     ui_font *fonts;
     size_t font_storage;
-    bool installed;
-} resource_generation;
-static resource_generation *current;
+    bool installed, prepared, caller_owned;
+    world *owner;
+    unsigned scope_refs;
+    render_image_loader image_loader;
+    rml_image_provider image_provider;
+    void *image_provider_user;
+    struct render_resource_context *next;
+};
+typedef render_resource_context resource_generation;
+static resource_generation *current, *ambient, *generations;
+static unsigned scope_depth;
 static bool fail(char *error, size_t size, const char *message)
 {
     if (size) {
@@ -75,16 +80,13 @@ static void discard(void *, void *generation)
     assert(g && !g->installed);
     free_assets(g->assets);
     shader_values_release(g->values);
+    shader_catalog_state_free(g->state);
     render_parts_free(g->parts);
     render_image_table_free(g->images);
+    render_image_loader_release(&g->image_loader);
     render_mesh_table_free(g->meshes);
     render_sky_table_free(g->skies);
     ui_documents_free(g->documents);
-    render_parts_free(g->empty_parts);
-    render_image_table_free(g->empty_images);
-    render_mesh_table_free(g->empty_meshes);
-    render_sky_table_free(g->empty_skies);
-    ui_documents_free(g->empty_documents);
     for (int i = 0; i < acount(g->fonts); i++) {
         ui_font_free(&g->fonts[i]);
     }
@@ -344,9 +346,9 @@ static void *stage_decoded(const player_asset *records, int count, size_t *remai
                                    sizeof(dyna_hdr)
                              : 0;
     size_t headers = font_rows + sizeof(resource_generation) +
-                     2 * (render_image_table_header_bytes() +
-                          render_parts_header_bytes() +
-                          render_sky_table_header_bytes()) +
+                     shader_catalog_state_bytes() +
+                     (render_image_table_header_bytes() +
+                      render_parts_header_bytes() + render_sky_table_header_bytes()) +
                      (shaders ? (size_t)(shaders < 16 ? 16 : shaders) *
                                         sizeof(shader_asset) +
                                     sizeof(dyna_hdr)
@@ -356,6 +358,8 @@ static void *stage_decoded(const player_asset *records, int count, size_t *remai
         return NULL;
     }
     resource_generation *g = xcalloc(1, sizeof *g);
+    g->state = shader_catalog_state_new();
+    g->prepared = true;
     if (shaders) {
         asetcap(g->assets, shaders);
     }
@@ -367,15 +371,10 @@ static void *stage_decoded(const player_asset *records, int count, size_t *remai
     shader_error diagnostic = { 0 };
     g->images = render_image_table_new();
     g->parts = render_parts_new();
-    g->empty_parts = render_parts_new();
-    g->empty_images = render_image_table_new();
     g->meshes = render_mesh_table_new_budget(&budget);
-    g->empty_meshes = render_mesh_table_new_budget(&budget);
     g->skies = render_sky_table_new();
-    g->empty_skies = render_sky_table_new();
     g->documents = ui_documents_new_budget(&budget, true);
-    g->empty_documents = ui_documents_new_budget(&budget, false);
-    if (!g->meshes || !g->empty_meshes || !g->documents || !g->empty_documents) {
+    if (!g->meshes || !g->documents) {
         snprintf(diagnostic.message, sizeof diagnostic.message, "Prepared resource table budget exceeded");
         goto reject;
     }
@@ -751,78 +750,174 @@ static void exchange(resource_generation *g)
     shader_catalog_assets = g->assets;
     g->assets = old;
     shader_values_exchange(&g->values);
+    shader_catalog_state_exchange(g->state);
     render_parts_exchange(g->parts);
     render_image_table_exchange(g->images);
     render_mesh_table_exchange(g->meshes);
     render_sky_table_exchange(g->skies);
     ui_documents_exchange(g->documents);
+    render_image_loader loader = render_images_loader();
+    render_images_set_loader(g->image_loader);
+    g->image_loader = loader;
+    rml_image_provider provider;
+    void *user;
+    rml_backend_get_image_provider(&provider, &user);
+    rml_backend_set_image_provider(g->image_provider, g->image_provider_user);
+    g->image_provider = provider;
+    g->image_provider_user = user;
 }
-static void commit(void *, void *generation, world *)
+static resource_generation *empty_context(bool caller_owned)
+{
+    resource_generation *g = xcalloc(1, sizeof *g);
+    g->state = shader_catalog_state_new();
+    g->parts = render_parts_new();
+    g->images = render_image_table_new();
+    g->meshes = render_mesh_table_new();
+    g->skies = render_sky_table_new();
+    size_t remaining = SIZE_MAX;
+    g->documents = ui_documents_new_budget(&remaining, false);
+    g->caller_owned = caller_owned;
+    g->image_provider = ui_image;
+    return g;
+}
+/* Contexts keep their complete collection while detached and empty ownership
+ * shells while active. No resources are moved into another world's owner. */
+static void activate(resource_generation *target)
+{
+    if (current == target) {
+        return;
+    }
+    resource_generation *old = current;
+    if (!old && !ambient) {
+        ambient = empty_context(false);
+    }
+    resource_generation *previous = old ? old : ambient;
+    exchange(previous);
+    if (old) {
+        old->installed = false;
+    }
+    resource_generation *next = target ? target : ambient;
+    exchange(next);
+    shader_catalog_publication_exchange(
+        old && old->prepared ? old : NULL,
+        target && target->prepared ? target : NULL
+    );
+    current = target;
+    if (target) {
+        target->installed = true;
+    }
+    if (!target) {
+        resource_generation *empty = ambient;
+        ambient = NULL;
+        discard(NULL, empty);
+    }
+}
+static void remember(resource_generation *g, world *owner)
+{
+    g->owner = owner;
+    g->image_provider = ui_image;
+    g->next = generations;
+    generations = g;
+}
+static void commit(void *, void *generation, world *owner)
+{
+    resource_generation *g = generation;
+    assert(g && !g->installed && !scope_depth);
+    remember(g, owner);
+    activate(g);
+}
+static void commit_detached(void *, void *generation, world *owner)
 {
     resource_generation *g = generation;
     assert(g && !g->installed);
-    exchange(g);
-    if (current) {
-        assert(current->installed && !current->assets && !current->values);
-        current->assets = g->assets;
-        g->assets = NULL;
-        current->values = g->values;
-        g->values = NULL;
-        render_parts_table *parts = current->parts;
-        current->parts = g->parts;
-        g->parts = parts;
-        render_image_table *images = current->images;
-        current->images = g->images;
-        g->images = images;
-        render_mesh_table *meshes = current->meshes;
-        current->meshes = g->meshes;
-        g->meshes = meshes;
-        render_sky_table *skies = current->skies;
-        current->skies = g->skies;
-        g->skies = skies;
-        ui_documents *documents = current->documents;
-        current->documents = g->documents;
-        g->documents = documents;
-        current->installed = false;
-    } else {
-        free_assets(g->assets);
-        g->assets = NULL;
-        shader_values_release(g->values);
-        g->values = NULL;
-        render_parts_free(g->parts);
-        g->parts = g->empty_parts;
-        g->empty_parts = NULL;
-        render_image_table_free(g->images);
-        g->images = g->empty_images;
-        g->empty_images = NULL;
-        render_mesh_table_free(g->meshes);
-        g->meshes = g->empty_meshes;
-        g->empty_meshes = NULL;
-        render_sky_table_free(g->skies);
-        g->skies = g->empty_skies;
-        g->empty_skies = NULL;
-        ui_documents_free(g->documents);
-        g->documents = g->empty_documents;
-        g->empty_documents = NULL;
-    }
-    shader_catalog_publication_exchange(current, g);
-    g->installed = true;
-    current = g;
-    rml_backend_set_image_provider(ui_image, NULL);
-    shader_catalog_resources_changed();
+    remember(g, owner);
 }
 static void retire(void *context, void *generation)
 {
     resource_generation *g = generation;
+    assert(g && !g->scope_refs);
     if (g->installed) {
-        assert(current == g);
-        exchange(g);
-        shader_catalog_publication_exchange(g, NULL);
-        g->installed = false;
-        current = NULL;
-        shader_catalog_resources_changed();
+        activate(NULL);
     }
+    resource_generation **link = &generations;
+    while (*link && *link != g) {
+        link = &(*link)->next;
+    }
+    assert(*link == g);
+    *link = g->next;
     discard(context, g);
+}
+render_resource_context *render_resource_context_new()
+{
+    return empty_context(true);
+}
+bool render_resource_context_free(render_resource_context *context, char *error, size_t size)
+{
+    if (!context) {
+        return true;
+    }
+    if (!context->caller_owned) {
+        return fail(error, size, "Prepared resource context belongs to its player");
+    }
+    if (context->scope_refs || context->installed) {
+        return fail(error, size, "Resource context is pinned by an active scope");
+    }
+    discard(NULL, context);
+    return true;
+}
+bool render_resource_scope_enter(
+    render_resource_context *context,
+    render_resource_scope *scope,
+    char *error,
+    size_t size
+)
+{
+    if (!context || !scope || scope->active || scope_depth == UINT_MAX) {
+        return fail(error, size, "Invalid resource scope entry");
+    }
+    if (context->scope_refs > UINT_MAX - (context == current ? 2u : 1u) ||
+        (current && current->scope_refs == UINT_MAX)) {
+        return fail(error, size, "Resource scope reference limit exceeded");
+    }
+    resource_generation *previous = current;
+    context->scope_refs++;
+    if (previous) {
+        previous->scope_refs++;
+    }
+    activate(context);
+    *scope = (render_resource_scope){ .previous = previous,
+                                      .entered = context,
+                                      .depth = ++scope_depth,
+                                      .active = true };
+    return true;
+}
+bool render_resource_scope_leave(render_resource_scope *scope, char *error, size_t size)
+{
+    if (!scope || !scope->active || scope->depth != scope_depth ||
+        scope->entered != current) {
+        return fail(error, size, "Resource scopes must leave in reverse entry order");
+    }
+    resource_generation *entered = scope->entered, *previous = scope->previous;
+    activate(previous);
+    entered->scope_refs--;
+    if (previous) {
+        previous->scope_refs--;
+    }
+    scope_depth--;
+    *scope = (render_resource_scope){ 0 };
+    return true;
+}
+render_resource_context *render_resource_context_for_world(const world *owner)
+{
+    if (!owner) {
+        return NULL;
+    }
+    for (resource_generation *g = generations; g; g = g->next) {
+        if (g->owner == owner) {
+            return g;
+        }
+    }
+    return NULL;
 }
 player_resource_host render_prepared_resources(const char *root)
 {
@@ -832,4 +927,10 @@ player_resource_host render_prepared_resources(const char *root)
                                    .commit = commit,
                                    .discard = discard,
                                    .retire = retire };
+}
+player_resource_host render_prepared_resources_detached(const char *root)
+{
+    player_resource_host host = render_prepared_resources(root);
+    host.commit = commit_detached;
+    return host;
 }

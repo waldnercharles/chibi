@@ -57,7 +57,7 @@ jobs:
           release = next((r for r in releases
                           if r['tag_name'] == os.environ['ENGINE_TAG']), None)
           required = {'chibi-export-linux-x64.tar.gz', 'chibi-web-sdk.tar.gz',
-                      'chibi-sdk-linux-x64.tar.gz',
+                      'chibi-sdk-linux-x64.tar.gz', 'chibi-web-author.tar.gz',
                       'build.json', 'SHA256SUMS'}
           complete = False
           if release and not release['draft']:
@@ -100,7 +100,7 @@ jobs:
         if: steps.release.outputs.complete != 'true'
         run: |
           test -z "$(git status --porcelain --untracked-files=normal)"
-          make package-sdk package-web-sdk package-web-player \
+          make package-sdk package-web-sdk package-web-player package-web-author \
             SDK_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_CCACHE=ON' \
             WEB_SDK_CMAKE_FLAGS='-DCHIBI_ENABLE_CCACHE=ON' WEB_THREADS=0 JOBS=4
       - name: Assemble release archives
@@ -117,16 +117,24 @@ jobs:
               source = json.loads(Path(f'dist/{sdk}/share/chibi/package.json').read_text())['source']
               if source['dirty'] or source['revision'] != os.environ['GITHUB_SHA']:
                   raise SystemExit(f'{sdk} package does not identify the clean candidate')
+          import sys
+          sys.path.insert(0, 'tools')
+          from package_web_author import match_sdk
+          author = match_sdk(Path('dist/web-author'), Path('dist/web-sdk/share/chibi/package.json'))
+          if author['source']['dirty'] or author['source']['revision'] != os.environ['GITHUB_SHA']:
+              raise SystemExit('Browser authoring host does not identify the clean candidate')
           record = {'format': 1, 'engine_sha': os.environ['GITHUB_SHA'],
                     'emsdk_version': os.environ['EMSDK_VERSION'],
-                    'platform': 'ubuntu-24.04-x64', 'web_threads': False}
+                    'platform': 'ubuntu-24.04-x64', 'web_threads': False,
+                    'web_author_build_id': author['build_id']}
           (Path(os.environ['RELEASE_DIR']) / 'build.json').write_text(json.dumps(record, indent=2) + '\n')
           PY
           tar -czf "$RELEASE_DIR/chibi-export-linux-x64.tar.gz" -C dist sdk/bin/chibi sdk/share/chibi web-player
           tar -czf "$RELEASE_DIR/chibi-sdk-linux-x64.tar.gz" -C dist/sdk .
           tar -czf "$RELEASE_DIR/chibi-web-sdk.tar.gz" -C dist/web-sdk .
+          tar -czf "$RELEASE_DIR/chibi-web-author.tar.gz" -C dist/web-author .
           cd "$RELEASE_DIR"
-          sha256sum chibi-export-linux-x64.tar.gz chibi-sdk-linux-x64.tar.gz chibi-web-sdk.tar.gz build.json > SHA256SUMS
+          sha256sum chibi-export-linux-x64.tar.gz chibi-sdk-linux-x64.tar.gz chibi-web-sdk.tar.gz chibi-web-author.tar.gz build.json > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Publish complete release
         if: steps.release.outputs.complete != 'true'

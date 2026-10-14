@@ -45,9 +45,9 @@ static void setup()
     static const char *const texts[SOURCE_COUNT] = {
         ORIGINAL,
         "library Middle { Value :: () -> u { return Leaf.Value() + 1; } }",
-        "behavior Caller { state value: number = 0; on Tick() { value = "
+        "behavior Caller { value: number = 0; on Tick() { value = "
         "Middle.Value(); } }",
-        "behavior Independent { state value: number = 0; on Tick() { value = "
+        "behavior Independent { value: number = 0; on Tick() { value = "
         "7; } }"
     };
     for (int i = 0; i < SOURCE_COUNT; i++) {

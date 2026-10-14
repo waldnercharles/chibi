@@ -56,7 +56,13 @@ drivers under one 60-second deadline each; `tools/test_policy.py` lists them in
 `GROUPS`. Under Debug ASan and UBSan on a 4-core Linux container the native group
 took 4.7 seconds and the language group 5.3 seconds (2026-10-09). The selectors
 of the retired `test_suite` (Studio, iframe, material and Arena tuples) are gone
-with it; Studio's checks belong to `chibi-studio`.
+with it. Studio's authored replay fixtures belong to `chibi-studio` and run
+through the installed SDK's generic author host. The former native
+`--studio-*` and `studio-panel-idle` routes are retired, not admitted or passed.
+Their recorded admissions and pure parser oracles remain historical evidence;
+existing holds are unchanged. The separately reviewed `studio-authored-home`
+route remains bounded to its pinned Home replay and does not certify the former
+interaction suite.
 
 The planner accepts `--tools` or `--tool=native-tools` for `make test-tools`.
 Other former tool choices are retired. The plan records unavailable coverage

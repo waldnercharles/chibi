@@ -1,7 +1,7 @@
 #ifndef CHIBI_UI_DOCUMENT_H
 #define CHIBI_UI_DOCUMENT_H
-
 #include "support/rcss.h"
+#include "ui/activation.h"
 #include "ui/document.h"
 
 #include <stdbool.h>
@@ -66,11 +66,48 @@ bool ui_document_expand(
     char *error,
     size_t error_size
 );
+/* Explicit read callbacks resolve markup, optional styles, nested widgets and
+ * RCSS imports, including unsaved in-memory source. No global overlay mutation.
+ * Reader and outputs obey the same ownership as the default-read variants.
+ * Explicit reader expansion caps cumulative markup writes at 16 MiB. */
+bool ui_document_read_reader(
+    const char *rml,
+    const char *rcss,
+    const char *directory,
+    char ***imports,
+    ui_document *,
+    char *error,
+    size_t error_size,
+    const text_reader *
+);
+bool ui_document_load_reader(
+    const char *ui_root,
+    const char *name,
+    char ***imports,
+    ui_document *,
+    char *error,
+    size_t error_size,
+    const text_reader *
+);
+bool ui_document_expand_reader(
+    ui_document *,
+    const char *name,
+    const char *ui_root,
+    bool sources,
+    char ***uses,
+    char *error,
+    size_t error_size,
+    const text_reader *
+);
 /* Owned markup with data-src="<asset>:<line>" first in each element's start
  * tag but <slot>'s, where `line` is the 1-based line of the asset's .rml file
  * the tag starts on, and `rml` starts on line `first`. Studio's Inspector
  * reads it to show where an element was written; data-src is reserved. */
 char *ui_document_sources(const char *rml, const char *asset, int first);
+/* Adds the same line origin plus reserved data-source-start="<byte offset>".
+ * `offset` is the original source byte where `rml` starts, before body splitting.
+ * Explicit-reader expansion uses these exact origins; no normalization occurs. */
+char *ui_document_sources_at(const char *rml, const char *asset, int first, size_t offset);
 /* Owned RCSS whose rules only match inside elements with data-ui="name":
  * `body` in a selector names that element, and other selectors match within
  * it. The classes right after `body` name the document's body as well:
@@ -109,6 +146,14 @@ typedef struct
 /* Exact name bytes in emit calls and data-keys/data-area-keys bindings.
  * Appends ranges to a support/array.h array; the caller owns the array. */
 void ui_document_event_ranges(const char *rml, ui_document_event_range **ranges);
+typedef struct
+{
+    int start, end, arguments;
+} ui_document_event_call;
+/* Explicit payload argument count after emit's event name, using the same
+ * parsed handlers as event discovery. Caller owns the support/array vector. */
+void ui_document_event_calls(const char *rml, ui_document_event_call **calls);
+bool ui_document_validate_events(const char *rml, char *error, size_t error_size);
 
 /* A value markup binds under self, which behaviors give its entity with Set
  * UI Data: its name, whether data-for repeats it, and for a list the fields

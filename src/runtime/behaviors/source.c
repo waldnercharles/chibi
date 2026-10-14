@@ -213,6 +213,15 @@ bool source_paused(const source_registry *r)
     }
     return false;
 }
+int source_program_count(const source_registry *r)
+{
+    return acount(r->records);
+}
+const char *source_program_name_at(const source_registry *r, int index)
+{
+    assert(index >= 0 && index < acount(r->records));
+    return r->records[index].name;
+}
 execution_program *source_program(source_registry *r, const char *name)
 {
     int i = record_index(r, name);

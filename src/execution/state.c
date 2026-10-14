@@ -1,5 +1,7 @@
 #include "execution/state.h"
 
+#include "execution/random.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -32,7 +34,7 @@ int behavior_state_select(char *used, int count, int start, int flags)
     bool valid = start >= 0 && start < count;
     int output = valid ? start : 0;
     int choice = flags & BEHAVIOR_STATE_RANDOM
-                   ? (int)((double)rand() / ((double)RAND_MAX + 1) * remaining)
+                   ? (int)(behavior_random_unit() * remaining)
                    : 0;
     /* Preserve the random draw even when the first output is forced. */
     if (remaining == count && valid) {

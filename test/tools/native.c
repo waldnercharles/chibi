@@ -1283,6 +1283,172 @@ static bool resolve_player_host(void *, uint64_t id, execution_prepared_host *ou
     *out = (execution_prepared_host){ .call = &call, .access = &access, .abi = 991 };
     return true;
 }
+typedef struct
+{
+    int bindings, begins;
+    bool refuse;
+} player_binding_probe;
+static const char *bound_player_begin(void *context, const pin_value *, pin_value *)
+{
+    player_binding_probe *probe = context;
+    probe->begins++;
+    return NULL;
+}
+static const node_host_call required_player_call = {
+    .service = "test.player.binding",
+    .invoke = bound_player_begin
+};
+static const node_access required_player_access = { .flags = NODE_EFFECT_HOST_SINK };
+static bool resolve_bound_player_host(void *, uint64_t id, execution_prepared_host *out)
+{
+    if (id != 980) {
+        return false;
+    }
+    *out = (execution_prepared_host){ .call = &required_player_call,
+                                      .access = &required_player_access,
+                                      .abi = 981 };
+    return true;
+}
+static bool bind_player_probe(void *context, world *world, char *error, size_t size)
+{
+    player_binding_probe *probe = context;
+    probe->bindings++;
+    if (source_program_count(world_sources(world)) ||
+        source_bind_service(world_sources(world), "test.player.binding", probe)) {
+        snprintf(error, size, "Host binding must precede source publication");
+        return false;
+    }
+    if (probe->refuse) {
+        snprintf(error, size, "Host refused its new world");
+        return false;
+    }
+    return true;
+}
+TEST_CASE(native_player_binds_required_services_before_package_validation)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        char error[192];
+        behavior_function *
+            body = host_body(&required_player_call, &required_player_access, NULL, 0, 980);
+        REQUIRE(body);
+        execution_module_plan *plan = execution_module_plan_new();
+        plan->id = 982;
+        plan->valid = true;
+        apush(
+            plan->events,
+            ((execution_module_event_declaration){ .id = 983, .abi = 984, .name = "Begin" })
+        );
+        plan->event_count = 1;
+        apush(
+            plan->functions,
+            ((execution_module_function){ .id = 985,
+                                          .kind = EXECUTION_FUNCTION_HANDLER,
+                                          .event = 983,
+                                          .event_abi = 984,
+                                          .body = body })
+        );
+        plan->function_count = 1;
+        module = execution_module_finish(&plan, backends[b], error, sizeof error);
+        execution_module_plan_free(plan);
+        REQUIRE(module);
+        size_t length;
+        REQUIRE(execution_prepared_write(module, &module_bytes, &length, error, sizeof error));
+        const char *behavior = "Bound";
+        scene_object object = { .name = "Bound",
+                                .behaviors = &behavior,
+                                .behavior_count = 1 };
+        scene_spec scene_spec = { .name = "Bound",
+                                  .physics = physics_defaults(),
+                                  .objects = &object,
+                                  .object_count = 1 };
+        test_scene = scene_prepare(&scene_spec, error, sizeof error);
+        REQUIRE(test_scene);
+        package_module record = { .name = "Bound",
+                                  .id = 982,
+                                  .data = module_bytes,
+                                  .length = length };
+        const execution_prepared_linker linker = { .host = resolve_bound_player_host };
+        player_spec spec = { .modules = &record,
+                             .module_count = 1,
+                             .linker = &linker,
+                             .backend = backends[b],
+                             .scene = test_scene };
+        REQUIRE(!player_new(&spec, error, sizeof error));
+        REQUIRE(strstr(error, "test.player.binding"));
+        player_binding_probe probe = { .refuse = true };
+        spec.services = (player_service_host){ &probe, bind_player_probe };
+        size_t budget = PLAYER_MAX_ASSET_BYTES;
+        spec.decoded_remaining = &budget;
+        REQUIRE(!player_new(&spec, error, sizeof error));
+        REQUIRE(probe.bindings == 1 && probe.begins == 0 && budget == PLAYER_MAX_ASSET_BYTES);
+        REQUIRE(!strcmp(error, "Host refused its new world"));
+        probe.refuse = false;
+        test_player = player_new(&spec, error, sizeof error);
+        REQUIRE(test_player && probe.bindings == 2 && probe.begins == 0);
+        REQUIRE(engine_frame(world_engine(player_world(test_player)), 0) == FLOW_OK);
+        REQUIRE(probe.begins == 0);
+        REQUIRE(
+            engine_frame(world_engine(player_world(test_player)), ENGINE_FIXED_SECONDS) == FLOW_OK
+        );
+        REQUIRE(probe.begins == 1);
+        REQUIRE(player_load_scene(test_player, "Bound", error, sizeof error));
+        REQUIRE(probe.bindings == 2 && probe.begins == 2);
+        bool admitted = false;
+        REQUIRE(player_restart_scene(
+            test_player,
+            "Bound",
+            &(player_restart_input){ .seed = 7 },
+            &admitted,
+            error,
+            sizeof error
+        ));
+        REQUIRE(admitted && probe.bindings == 2 && probe.begins == 3);
+        player_free(test_player);
+        test_player = NULL;
+
+        player_application application = { 0 };
+        size_t player_length;
+        REQUIRE(
+            player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
+        );
+        player_host base = { .linker = &linker };
+        REQUIRE(
+            !player_prepared_read(player_bytes, player_length, &base, backends[b], error, sizeof error)
+        );
+        REQUIRE(probe.bindings == 2 && probe.begins == 3);
+        player_host application_host = base;
+        application_host.services = (player_service_host){ &probe, bind_player_probe };
+        probe.refuse = true;
+        REQUIRE(
+            !player_prepared_read(player_bytes, player_length, &application_host, backends[b], error, sizeof error)
+        );
+        REQUIRE(probe.bindings == 3 && probe.begins == 3);
+        player_binding_probe candidate = { 0 };
+        application_host.services = (player_service_host){ &candidate,
+                                                           bind_player_probe };
+        test_player = player_prepared_read(
+            player_bytes,
+            player_length,
+            &application_host,
+            backends[b],
+            error,
+            sizeof error
+        );
+        REQUIRE(test_player && candidate.bindings == 1 && candidate.begins == 0);
+        REQUIRE(probe.bindings == 3 && probe.begins == 3);
+        REQUIRE(!base.services.bind && !base.services.context);
+        REQUIRE(engine_frame(world_engine(player_world(test_player)), 0) == FLOW_OK);
+        REQUIRE(candidate.begins == 0);
+        REQUIRE(
+            engine_frame(world_engine(player_world(test_player)), ENGINE_FIXED_SECONDS) == FLOW_OK
+        );
+        REQUIRE(candidate.begins == 1 && probe.begins == 3);
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(native_player_loads_package_and_retires_producers)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -2115,6 +2281,7 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_spawn_whole_tree);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
+    RUN_TEST_CASE(native_player_binds_required_services_before_package_validation);
     RUN_TEST_CASE(native_player_loads_named_scenes);
     RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);

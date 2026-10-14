@@ -2,6 +2,7 @@
 """Temporary command-level test quarantine; remove only after timing review."""
 import argparse
 import ctypes
+import hashlib
 import json
 import math
 import os
@@ -18,9 +19,48 @@ LIMIT = 60
 DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
-NATIVE = {
-    ('--gpu-capabilities',): 'Independently reviewed three C-owned discovery cases, eleven injected Python OS profiles, each child<=5s, no actual GPU/process profiler/network; first measurement under shared60s',
+RETIRED_STUDIO_ADMISSIONS = {
     ('--studio-material-authoring',): 'Independently reviewed one Studio host run, pinned three-file210-byte fixture, one generated material, two tiny in-memory material-history documents, one auxiliary library-backed material plus one shader-library KDL definition <=16KiB each (two registrations, one library-only preview_update, two removals), current Studio CPU Height .25->.75 with unchanged material editor revision and original-document restoration, pending-gesture document switch/local-call navigation/undo/redo/cancel preservation, SDL typed edit/scrub Escape/undo-before-release/new-edit/undo/redo/save, four native scrollbar reveals with<=64hit-tests each/one SDLthumb-drag batch each/save-toast swipe dismissal and diagnostics/CPU sample/evidence export/duplicate refusal;60fixed1/60hidden1920x1080frames, retained320x200preview<=60draws, one async320x200readback, optional3existing-frame screenshots<=10s each and exclusive six-file review bundle copy<=1MiB/file with16KiBbuffer/partial cleanup; no network/children/sleeps, shared60s',
+    ('--studio-scene-collider3d',): 'First supervised measurement: independently reviewed three in-memory prototypes/actors, queued SDL scaled-box face, sphere radius and capsule height edits, typed undo/redo, parallel-axis/nonfinite refusal and move-face Escape/history restoration, hidden-handle refusal and H-during-drag cancellation; twenty-six hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
+    ('--studio-scene-gizmo3d',): 'First supervised measurement: independently reviewed six in-memory prototypes/eight actors, queued SDL world/local movement and snapping, orientation and mirrored-child rotation, local scaling, undo/redo, Escape/focus-loss/hidden-panel cancellation, shear/singular-parent refusal; forty-two hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
+    ('--studio-scene-camera',): 'First supervised measurement: independently reviewed one in-memory cube, SDL orbit/pan/anchored dolly, same-frame RMB+W flight, fractional diagonal wheel pan, above-horizon press and checkpoint lens retention, focus-loss cleanup; thirty hidden1920x1080frames, disposable3file fixture, shared60s',
+    ('--studio-scene-move',): 'Reviewed installed SDK hierarchy move integration: bounded 2D picking and two-object 3D model/checkpoint cases, atomic moves, history and collaboration; two hidden frames, shared60s',
+    ('--studio-outliner-move',): 'Reviewed installed Studio pointer and keyboard hierarchy moves: one three-object 2D scene, before/inside/after/root, grouped selection and rejection; twenty-one hidden frames, shared60s',
+    ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
+    ('--studio-graph-pointer',): 'First supervised measurement: independently reviewed Counter node pointer selection, wire keys, Find result keys/click/focus, nineteen hidden1920x1080frames, disposable3file fixture, shared60s',
+    ('--studio-asset-pointer',): 'First supervised measurement: independently reviewed four tiny prototypes, SDL filtered list/grid selection and modifiers, twenty hidden1920x1080frames, disposable3file fixture, shared60s',
+    ('--studio-debugger-source-history',): 'First supervised measurement: independently reviewed one in-memory Counter actor, SDL breakpoint/play/invalid text/undo/redo/step/stop, retained cursor and runtime value assertions, forty-seven hidden1920x1080frames, at most ten source-level steps, shared60s',
+    ('--studio-source-edit',): 'Independently reviewed installed Studio source edit/undo/redo on one tiny Counter draft with leading authored comment: fused calls and editable folded Double(3) Value without Target, actual Value pin menu open-function/back and checked inline transaction, two state Get/Set palette creations with exact catalog freshness after inline/undo, Members declaration/Initial rendering and rename, actual Members Rml Variables+ click and queued activation twice with64dp overflowing list, eight finite first-frame panel compositions including post-layout reveal retries and selected-row containment, filtered Add auto-selection/clear, graph/frame and Members-list reveal queued for bool/entity plus Properties rename and Entity type picker callback with no synthetic Initial, selected Entity actual Add/filter clear/selection and undo, Properties Member retention after cached-node invalidation and explicit different-node switch, undo-all current presentation contains only original integer Count, two ed_connect flow gestures (reorder and move into branch); each edit undone to exact draft before baseline literal edit/undo/redo; one crossframe FrameProbe declaration append/reveal/deselect/undo in Both checks visible card then its removal and graph texture revision change within same four frames; disposable three-file fixture and isolated prefs, four hidden1920x1080frames, shared60s',
+}
+RETIRED_STUDIO_TOOLS = ('studio-material-authoring', 'studio-panel-idle', 'studio-scene-collider3d', 'studio-scene-gizmo3d', 'studio-scene-camera', 'studio-scene-move', 'studio-outliner-move', 'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-source-edit')
+RETIRED_STUDIO_REASON = 'Studio native controllers and studio-acceptance were retired; use the authored Studio application with an installed SDK. Historical oracles are not current coverage.'
+
+
+def retired_studio(arguments):
+    if not arguments:
+        return False
+    name = arguments[0]
+    return name in RETIRED_STUDIO_TOOLS or (name,) in RETIRED_STUDIO_ADMISSIONS
+
+
+def report_retired_studio(arguments):
+    print(json.dumps(dict(status="retired", reason="native_studio_oracle_retired",
+                          detail=RETIRED_STUDIO_REASON, arguments=arguments,
+                          next_command="make studio-build STUDIO_SDK_PREFIX=/installed/sdk")))
+    return 2
+
+
+NATIVE = {
+    ('--random-isolation',): 'Reviewed four bounded CPU PCG cases:128golden/range samples,16VM/JITcalls perbackend, three16-step empty-registry engine comparisons, onecandidate fork/free/commit; no renderer/physics/assets/files/process/network/GPU/sleeps; shared60s',
+    ('--workspace-services',): 'Reviewed bounded CPU graph/selection/model/observations/JSON/text/browser/debugger/projectsemantics/workspaceinfo/scaffold/replay cases plus2 source inventory and1 port schema cases, bounded optional-service NULL dispatch audits, exact source occurrence mapping and two-row retained debugger activity snapshots: tiny source+sidecar atomic history and three-node pure selection/clipboard/layout candidates, fixed sphere model bake, frozen tiny PNG evidence publication/refusal, bytecode inspector/error snapshots, two-file rename, <=128-file/16KiB exclusive scaffolds and rollback, bounded replay parser <=256KiB/256records/60frames; no window/GPU/network/sleeps/children; shared60s',
+    ('--host-services',): 'Reviewed CPU host service cases:four CPU simulation/input codec and NULL service cases plus runtime NULL dispatch audit, UI/resource-preview NULL binding cases;3 chart parses, borrowed128x128Rml context/no-op renderer, platform injected adapters/fixed import ticks,5 package identity cases incl1million-byte SHA, detached prepared scene/runtime with2D pick/bounds/paused fields and frozen tiny PNG evidence refusal,6 visual generation/root-loader/inspection cases,2 UI preview constructor/lifetime/refusal cases withoutdraw; tiny local files, two fixed local compiler-argv shell children with at most2000polls/1ms sleep each; no window/GPU/network; shared60s',
+
+    ('--workspace-authoring',): 'Reviewed bounded CPU documents/resources/semantics/visual/assets/value JSON/UI source/rooted files/bundle cases plus2 migration-copy cases (<=2 authored inputs,3 copies,<4KiB generated),2 imports NULL cases and owning optional-service audits: isolated tiny fixtures, 16MiB document and32MiB history bounds, <=136 edits, source+draft grouped history, pure prototype candidates, <=256 selected fields, exact64-bit scalar JSON and source-local shader diagnostic identity refusals,3 portable rooted file contracts,3 exclusive bundle contracts,3 source provider snapshots including16MiB expansion refusal,4 UI source reader cases including4097element structural refusal; no window/GPU/process/sleeps/network; shared60s',
+    ('--event-payload',): 'Reviewed three CPU typed event ownership cases: one target, nested record-array copy/requeue and malformed/task refusal,65536 empty queued events then overflow/reset and65 deliveries; no frames/window/GPU/files/process/sleeps/network; first supervised60s measurement',
+    ('--code-control',): 'Reviewed thirteen bounded cases: three UTF8 edit/navigation helpers and ten native Rml cases in one 640x480 CPU context per case with a no-op renderer, fixed key/text events and updates; teardown case performs eight remove/recreate cycles with live parent and external listeners; indexed-reference case uses two rows/three nested items, fixed reorder/write/invalid-index/retirement updates; no app/window/GPU/files/process/sleeps/network, shared supervised 60s ceiling',
+    ('--authored-surface',): 'Reviewed nine bounded CPU cases: existing seven scalar/Unicode/texture/geometry/chord/mock-Rml/queue cases unchanged; two production render_ui prepared-backend cases with bundled fonts, 320x720 CPU contexts with14fixed layout updates each, three hidden Ui owners/two Counter panes/two nested Leaf panes, actual pointer down/up and text/focus/width/selector isolation, read-only pending effects, unmount/remount/retiring-owner queued-input/page refs and geometry cleanup; one Cycle and ten Depth documents capped at eight nested mounts, invalid owner and replacement empty/live ECS world identity with equal numeric handles and distinct model data; no composite/render/app/window/GPU/files/process/sleeps/network; shared supervised60s ceiling',
+
+    ('--gpu-capabilities',): 'Independently reviewed three C-owned discovery cases, eleven injected Python OS profiles, each child<=5s, no actual GPU/process profiler/network; first measurement under shared60s',
     ('--asset-schema',): 'Independently reviewed seven tiny in-memory KDL/schema/reflection cases plus eleven canonical asset examples; no file/process/window/GPU/network; first measurement under shared60s',
     ('--resource-catalog',): 'Independently reviewed eight bounded inventory cases, about thirteen tiny scans, two sparse16MiB+1 pre-read refusals, skipped symlink and C cleanup; no process/window/GPU/network; first measurement under shared60s',
     ('--shader-authoring',): 'Independently reviewed ten bounded shader authoring cases plus one pure camera-math case: presets, scalar/vector/bool/integer defaults, exact mutation refusal, unresolved libraries, serialization/CPU sampling and8camera plans; tiny files and one sparse16MiB+1 metadata refusal, no app/window/GPU/process/network; shared60s',
@@ -33,21 +73,11 @@ NATIVE = {
     ('--player-url',): 'Reviewed nine C-owned gesture lifecycle cases through nine short Node invocations of the production EM_JS bridge; trusted keyboard/pointer gestures, copied URL ownership, cancellation/expiry/restart and one-open limits; fake browser APIs, no browser/network/GPU; measured9cases/67asserts2.278s/shared60s; docs/testing.md',
     ('--audio-analysis',): 'Reviewed twelve fixed CPU cases: PCM bands/levels/onset, chunk/format/channel/source state, snapshot bindings and dummy-SDL mixer lifetime with a shared two-second callback limit; no GPU or real recording; combined measurement12cases/298asserts1.238s/shared60s; docs/testing.md',
     ('--shader-webgpu',): 'Reviewed three CPU Cute compiler cases: noise fragment WGSL plus indexed/unindexed particle vertex WGSL/MSL; one checked-in vertex source<64KiB, no app/window/GPU; combined measurement3cases/32asserts0.770s/shared60s; docs/testing.md',
-    ('--studio-scene-collider3d',): 'First supervised measurement: independently reviewed three in-memory prototypes/actors, queued SDL scaled-box face, sphere radius and capsule height edits, typed undo/redo, parallel-axis/nonfinite refusal and move-face Escape/history restoration, hidden-handle refusal and H-during-drag cancellation; twenty-six hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
-    ('--studio-scene-gizmo3d',): 'First supervised measurement: independently reviewed six in-memory prototypes/eight actors, queued SDL world/local movement and snapping, orientation and mirrored-child rotation, local scaling, undo/redo, Escape/focus-loss/hidden-panel cancellation, shear/singular-parent refusal; forty-two hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
-    ('--studio-scene-camera',): 'First supervised measurement: independently reviewed one in-memory cube, SDL orbit/pan/anchored dolly, same-frame RMB+W flight, fractional diagonal wheel pan, above-horizon press and checkpoint lens retention, focus-loss cleanup; thirty hidden1920x1080frames, disposable3file fixture, shared60s',
     ('--preview-components',): 'Independently reviewed first CPU measurement: four tiny project files, one declared float component and entity, two previews with two steps each, missing-scene and invalid-declaration cleanup, no GPU/process/network; shared60s',
-    ('--studio-scene-move',): 'Reviewed installed SDK hierarchy move integration: bounded 2D picking and two-object 3D model/checkpoint cases, atomic moves, history and collaboration; two hidden frames, shared60s',
-    ('--studio-outliner-move',): 'Reviewed installed Studio pointer and keyboard hierarchy moves: one three-object 2D scene, before/inside/after/root, grouped selection and rejection; twenty-one hidden frames, shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed eight fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, two <=4KiB KDL texts, three 64x16 PNG preparations and one rejected 128x128 map, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
-    ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
-    ('--studio-graph-pointer',): 'First supervised measurement: independently reviewed Counter node pointer selection, wire keys, Find result keys/click/focus, nineteen hidden1920x1080frames, disposable3file fixture, shared60s',
-    ('--studio-asset-pointer',): 'First supervised measurement: independently reviewed four tiny prototypes, SDL filtered list/grid selection and modifiers, twenty hidden1920x1080frames, disposable3file fixture, shared60s',
-    ('--studio-debugger-source-history',): 'First supervised measurement: independently reviewed one in-memory Counter actor, SDL breakpoint/play/invalid text/undo/redo/step/stop, retained cursor and runtime value assertions, forty-seven hidden1920x1080frames, at most ten source-level steps, shared60s',
-    ('--studio-source-edit',): 'Independently reviewed installed Studio source edit/undo/redo on one tiny Counter draft with leading authored comment: fused calls and editable folded Double(3) Value without Target, actual Value pin menu open-function/back and checked inline transaction, two state Get/Set palette creations with exact catalog freshness after inline/undo, Members declaration/Initial rendering and rename, actual Members Rml Variables+ click and queued activation twice with64dp overflowing list, eight finite first-frame panel compositions including post-layout reveal retries and selected-row containment, filtered Add auto-selection/clear, graph/frame and Members-list reveal queued for bool/entity plus Properties rename and Entity type picker callback with no synthetic Initial, selected Entity actual Add/filter clear/selection and undo, Properties Member retention after cached-node invalidation and explicit different-node switch, undo-all current presentation contains only original integer Count, two ed_connect flow gestures (reorder and move into branch); each edit undone to exact draft before baseline literal edit/undo/redo; one crossframe FrameProbe declaration append/reveal/deselect/undo in Both checks visible card then its removal and graph texture revision change within same four frames; disposable three-file fixture and isolated prefs, four hidden1920x1080frames, shared60s',
     ('--examples-projects',): 'Reviewed external CHIBI_EXAMPLES_ROOT/projects/{atrium,tetris} required: one Atrium validation, two CoW Tetris fixtures, one Tetris validation, two170-frame and one22-frame CPU runtime snapshots, at most three reported entities/one behavior; no GPU, shared60s; docs/testing.md',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -129,8 +159,17 @@ for lab in EXAMPLE_LABS:
         'verified installed package pins, one compile<=20s, source removal/relocation, '
         'four hidden320x180frames/readback<=25s; sampled box also missing-input compile<=10s and two CLI rejections<=5s each; C PNG landmarks, shared60s')
 TOOLS = {
+    # Four existing host C cases: tiny export/state fixtures and fixed /bin/sh
+    # argument/cancel/capture children; <=256KiB output, bounded 5s polling,
+    # no engine/window/GPU/network. One shared production 60s deadline.
+    'host-core': [str(ROOT / os.environ.get('CHIBI_BUILD_DIR', 'build') / 'test_host')],
+    # Pinned Home24 and Material60 ordinary-input authored replays: at most60
+    # frames,23inputs,11assertions,640x360,onePNG; fresh fixtures, installed
+    # identity checks, launch and evidence share run_commands'60s deadline.
+    # Build Studio explicitly first. The runner never builds or retries.
+    'studio-authored-home': [sys.executable, str(ROOT / 'tools/studio_replay.py'), 'home'],
+    'studio-authored-material': [sys.executable, str(ROOT / 'tools/studio_replay.py'), 'material'],
     'gpu-capabilities': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--gpu-capabilities'],
-    'studio-material-authoring': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-material-authoring'],
     'asset-schema': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-schema'],
     'resource-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--resource-catalog'],
     'shader-authoring': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-authoring'],
@@ -145,22 +184,8 @@ TOOLS = {
     # Recording also prunes regular chibi-recording-* files older than24h in /tmp.
     'controller': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--controller',
                    str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
-    # Independently reviewed ten hidden Studio frames, two actors, 225 panel syncs.
-    # CHIBI_STUDIO_IDLE_PROJECT must be a disposable acceptance/project clone.
-    'studio-panel-idle': [str(Path(os.environ.get('CHIBI_STUDIO_BUILD', 'build-studio')) / 'bin/studio-acceptance'),
-                          '--panel-idle', '--project-root', os.environ.get('CHIBI_STUDIO_IDLE_PROJECT', '')],
-    'studio-scene-collider3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-collider3d'],
-    'studio-scene-gizmo3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-gizmo3d'],
-    'studio-scene-camera': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-camera'],
-    'studio-scene-move': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-move'],
-    'studio-outliner-move': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-outliner-move'],
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
     'tilemap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap'],
-    'studio-graph-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-visibility'],
-    'studio-graph-pointer': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-pointer'],
-    'studio-asset-pointer': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-asset-pointer'],
-    'studio-debugger-source-history': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-debugger-source-history'],
-    'studio-source-edit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-source-edit'],
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
@@ -382,7 +407,7 @@ TOOLS = {
     # Fifteen reviewed shader graph evaluation cases: mappings, bump and normal frames, triplanar and
     # decal detail, effects, ramps, images and authored roundtrips; no files, window or GPU.
     'shader-graphs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-graphs'],
-    # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
+    # Nineteen reviewed native cases: prior runtime cases plus required host-service binding before package validation on bytecode/SLJIT: tiny one-object Begin, missing/rejected binder, decoded-budget rollback, scene load/restart, prepared propagation and distinct candidate/base contexts; no GPU/window/process/network/sleep/files, shared60s.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics'],
@@ -398,6 +423,9 @@ TOOLS = {
     'language-navigation': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--navigation'],
     'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--publication'],
     # Two reviewed scene lifecycle cases, isolated public SDK consumer, no GPU.
+    # Three bounded CPU scene cases; authored-path case uses four objects in
+    # two instances (eight live entities), one retired-slot replacement, fixed
+    # valid/invalid lookups; no GPU, files, children or network; shared60s.
     'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene'],
     # KDL asset text and native value trees: typed scalars, exact reals, ownership, errors.
     'asset-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-values'],
@@ -431,7 +459,11 @@ TOOLS = {
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',
                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
-    # Reviewed finite producer process and runtime-only consumer with one shared deadline.
+    # Reviewed finite producer and runtime-only consumer with one shared deadline.
+    # Profile regression: 2 generated modules x 768 functions x 256 scalar ops,
+    # 64 slots, each module <64MiB and aggregate >64/<256MiB; default refusal,
+    # authored acceptance and exact-budget rollback. Producer freed before decode;
+    # no window/GPU/network/sleeps; existing wrapper owns its two processes.
     'language-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                           '--prepared',
                           str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language')],
@@ -773,6 +805,10 @@ def main():
         return supervise(json.loads(arguments[0]))
     print(NOTICE, flush=True)
     if args.action == 'inventory':
+        for command in RETIRED_STUDIO_ADMISSIONS:
+            print('RETIRED:', ' '.join(command), '-', RETIRED_STUDIO_REASON)
+        for name in RETIRED_STUDIO_TOOLS:
+            print('RETIRED: tool', name, '-', RETIRED_STUDIO_REASON)
         for command, evidence in NATIVE.items():
             print('ADMITTED (60s ceiling):', ' '.join(command), '-', evidence)
         for name in TOOLS:
@@ -798,10 +834,12 @@ def main():
             parser.error('unknown test group')
         return run_commands([TOOLS[name] for name in GROUPS[arguments[0]]])
     if args.action == 'tool':
+        if retired_studio(arguments):
+            return report_retired_studio(arguments)
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
-                            'studio-material-authoring', 'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'studio-scene-gizmo3d', 'studio-scene-collider3d', 'interior-border', 'viewport-resize', 'sdf-visibility',
+        if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit',
+                            'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
                             'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
@@ -817,6 +855,8 @@ def main():
             parser.error('invalid environment-selector invocation')
         name = 'AGENT_SELECTOR' if args.action == 'agent-env' else arguments[0]
         selectors = selector_arguments(name)
+        if retired_studio(selectors):
+            return report_retired_studio(selectors)
         if not admitted(selectors):
             print('DISABLED: unadmitted native invocation: ' + ' '.join(selectors), file=sys.stderr)
             return 2
@@ -829,6 +869,8 @@ def main():
                                   '--build-dir', arguments[0], arguments[1], '--', *selectors]])
         return run_commands([[arguments[1], *selectors]])
     selectors = arguments[1:] if args.action == 'native' else arguments
+    if retired_studio(selectors):
+        return report_retired_studio(selectors)
     if not admitted(selectors):
         print('DISABLED: unadmitted native invocation: ' + ' '.join(selectors), file=sys.stderr)
         return 2

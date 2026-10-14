@@ -5,8 +5,6 @@ import argparse
 import json
 import os
 from pathlib import Path
-import shlex
-import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -15,8 +13,8 @@ import sys
 sys.dont_write_bytecode = True
 
 from package_player import ENGINE, MANIFEST, verify_files
-from package_sdk import (cache_values, canonical_digest, digest,
-                         executable_identity, package_files, package_identity, staging_directory)
+from package_sdk import (cache_values, digest,
+                         package_files, package_identity, staging_directory)
 
 
 def sdk_package(sdk):
@@ -26,7 +24,7 @@ def sdk_package(sdk):
     verify_files(sdk, source.get('files'))
     if source.get('build_id') != package_identity(source):
         raise ValueError('SDK package identity mismatch')
-    required = {'Chibi::graph_catalog', 'Chibi::project_preparation', 'Chibi::ui', 'Chibi::render'}
+    required = {'Chibi::authoring_host', 'Chibi::workspace_catalog', 'Chibi::ui', 'Chibi::render'}
     if not required.issubset(source.get('targets', [])):
         raise ValueError('SDK is missing Studio authoring/desktop targets')
     engine = json.loads((sdk / ENGINE).read_text())
@@ -45,100 +43,132 @@ def validate_package(package):
     verify_files(package, record.get('files'))
     if record.get('build_id') != package_identity(record):
         raise ValueError('Studio package identity mismatch')
-    products = record.get('products')
-    if products not in ({'chibi-studio': 'bin/chibi-dev'}, {'chibi-studio': 'bin/chibi-dev.exe'}):
-        raise ValueError('Studio package must contain exactly the Studio product')
-    binary = package / products['chibi-studio']
-    if not binary.stat().st_size or not os.access(binary, os.X_OK):
-        raise ValueError('Studio executable is empty or not executable')
-    with binary.open('rb') as executable:
-        if executable.read(4) == b'\0asm':
-            raise ValueError('Expected a native Studio executable')
-    if {path.name for path in (package / 'bin').iterdir()} != {binary.name}:
-        raise ValueError('Studio package contains another executable')
-    allowed = ('share/chibi/shaders/', 'share/chibi/licenses/', 'share/chibi/ui/', 'share/chibi/studio/')
-    if any(name not in (binary.relative_to(package).as_posix(), ENGINE.as_posix())
-           and not name.startswith(allowed) for name in record['files']):
-        raise ValueError('Studio package contains undeclared SDK/compiler/player content')
+    products = record.get('products', {})
+    launcher = products.get('chibi-studio')
+    if launcher not in ('bin/chibi-dev', 'bin/chibi-dev.cmd'):
+        raise ValueError('Studio package must contain an authored application launcher')
+    suffix = '.exe' if launcher.endswith('.cmd') else ''
+    expected = {'chibi-studio': launcher, **{
+        name: f'bin/{name}{suffix}' for name in ('chibi-author', 'chibi-compile', 'chibi-player', 'chibi')}}
+    if products != expected:
+        raise ValueError('Studio package products differ from its generic SDK hosts')
+    if {path.name for path in (package / 'bin').iterdir()} != {Path(path).name for path in products.values()}:
+        raise ValueError('Studio package contains undeclared executables')
+    for name, path in products.items():
+        binary = package / path
+        if not binary.stat().st_size or (suffix == '' and not os.access(binary, os.X_OK)):
+            raise ValueError(f'Studio product is empty or not executable: {name}')
+    allowed = ('bin/', 'share/chibi/sdk/', 'share/chibi/studio/',
+               'share/chibi/shaders/', 'share/chibi/licenses/')
+    if any(name != ENGINE.as_posix() and not name.startswith(allowed) for name in record['files']):
+        raise ValueError('Studio package contains undeclared content')
+    artifact = package / 'share/chibi/studio/game.chibip'
+    if not artifact.is_file() or not artifact.stat().st_size:
+        raise ValueError('Studio authored artifact is missing')
+    nested_path = package / 'share/chibi/sdk/package.json'
+    nested = json.loads(nested_path.read_text())
     pin = record.get('sdk', {})
-    engine = json.loads((package / ENGINE).read_text())
-    if (not pin.get('build_id') or not pin.get('package_version')
-            or pin.get('engine_build_id') != engine.get('build_id')
-            or record.get('engine') != {'manifest': ENGINE.as_posix(), 'build_id': engine.get('build_id')}
+    if (nested.get('kind') != 'sdk' or nested.get('build_id') != package_identity(nested)
+            or pin.get('build_id') != nested.get('build_id')
+            or pin.get('manifest_sha256') != digest(nested_path)
+            or pin.get('manifest') != 'share/chibi/sdk/package.json'
+            or pin.get('package_version') != nested.get('package_version')):
+        raise ValueError('Studio exact SDK manifest pin mismatch')
+    engine = json.loads((package / 'share/chibi/sdk/engine.json').read_text())
+    if (pin.get('engine_build_id') != engine.get('build_id')
+            or record.get('engine') != {'manifest': 'share/chibi/sdk/engine.json', 'build_id': engine.get('build_id')}
             or record.get('requirements', {}).get('project_format') != engine.get('project_version')):
-        raise ValueError('Studio engine/SDK pin mismatch')
+        raise ValueError('Studio engine pin mismatch')
+    for name in ('chibi-author', 'chibi-compile', 'chibi-player', 'chibi'):
+        original = nested.get('files', {}).get(nested.get('products', {}).get(name), {})
+        if original.get('sha256') != digest(package / products[name]):
+            raise ValueError(f'Studio generic host differs from the pinned SDK: {name}')
     return record
+
+
+def authored_build_identity(build, source_root=None, sdk=None):
+    """Verify the actual authored build inputs and copies, without invoking a build."""
+    build = Path(build).resolve()
+    cache = cache_values(build)
+    if cache.get('CHIBI_STUDIO_AUTHORED') != 'ON':
+        raise ValueError('Expected an authored Studio build')
+    root = Path(cache['chibi_studio_SOURCE_DIR']).resolve()
+    if source_root is not None and root != Path(source_root).resolve():
+        raise ValueError('Studio source differs from its configured build')
+    configured_sdk = Path(cache['Chibi_DIR']).resolve().parents[2]
+    sdk = configured_sdk if sdk is None else Path(sdk).resolve()
+    if sdk != configured_sdk:
+        raise ValueError('Configured Studio SDK differs from supplied package')
+    manifest_path = sdk / MANIFEST
+    source = json.loads(manifest_path.read_text())
+    if (source.get('manifest_format') != 1 or source.get('kind') != 'sdk'
+            or source.get('build_id') != package_identity(source)
+            or cache.get('CHIBI_STUDIO_SDK_BUILD_ID') != source['build_id']
+            or cache.get('CHIBI_STUDIO_SDK_MANIFEST_SHA256') != digest(manifest_path)):
+        raise ValueError('Configured Studio SDK pin changed; reconfigure/rebuild')
+    compiler_key = source['products']['chibi-compile']
+    compiler = sdk / compiler_key
+    if digest(compiler) != source['files'][compiler_key]['sha256']:
+        raise ValueError('SDK compiler differs from its package identity')
+    artifact = Path(cache['CHIBI_STUDIO_ARTIFACT']).resolve()
+    launcher = Path(cache['CHIBI_STUDIO_LAUNCHER']).resolve()
+    if not artifact.is_relative_to(build) or not launcher.is_relative_to(build):
+        raise ValueError('Studio authored outputs must belong to its build directory')
+    outputs = (artifact, Path(str(artifact) + '.resources.json'), launcher)
+    if any(not path.is_file() or not path.stat().st_size for path in outputs):
+        raise ValueError('Build the Studio authored artifact and launcher first')
+    project = root / 'projects/studio'
+    copied = build / 'share/chibi/studio'
+    def files(directory):
+        result = {}
+        for path in sorted(directory.rglob('*')):
+            if path.is_symlink() or not (path.is_file() or path.is_dir()):
+                raise ValueError(f'Studio inputs must be regular files: {path}')
+            if path.is_file():
+                result[path.relative_to(directory).as_posix()] = digest(path)
+        return result
+    inputs = files(project)
+    installed = files(copied)
+    for name, original in zip(('game.chibip', 'game.chibip.resources.json'), outputs[:2]):
+        if installed.pop(name, None) != digest(original):
+            raise ValueError('Studio artifact or resource manifest copy differs; rebuild')
+    if not inputs or inputs != installed:
+        raise ValueError('Studio source membership or bytes differ from built resources; rebuild')
+    if digest(build / 'share/chibi/sdk/package.json') != digest(manifest_path):
+        raise ValueError('Copied Studio SDK manifest differs from configured package; rebuild')
+    source_inventory = build / 'studio-inputs.txt'
+    entries = source_inventory.read_text().strip().split(';')
+    if any(not Path(entry).is_absolute() for entry in entries):
+        raise ValueError('Configured Studio source inventory must use absolute paths')
+    members = [Path(entry).resolve(strict=True) for entry in entries]
+    expected = {project / name for name in inputs}
+    if len(members) != len(set(members)) or set(members) != expected:
+        raise ValueError('Configured Studio source membership changed; reconfigure/rebuild')
+    dependencies = [project / name for name in inputs]
+    dependencies += [root / 'CMakeLists.txt', source_inventory, manifest_path, compiler]
+    for path in dependencies:
+        if not path.is_file() or path.stat().st_mtime_ns > artifact.stat().st_mtime_ns:
+            raise ValueError(f'Studio authored input changed; rebuild: {path}')
+    return {'kind': 'authored-application',
+            'inputs': {'projects/studio/' + name: value for name, value in inputs.items()},
+            'artifact': {'path': artifact.relative_to(build).as_posix(), 'sha256': digest(artifact)},
+            'resource_manifest_sha256': digest(outputs[1]),
+            'launcher': {'path': launcher.relative_to(build).as_posix(), 'sha256': digest(launcher)},
+            'source_root': str(root), 'build_type': cache['CMAKE_BUILD_TYPE']}
 
 
 def build_identity(build, sdk, source):
     cache = cache_values(build)
-    if (cache.get('CHIBI_STUDIO_DISTRIBUTION') != 'ON'
+    if (cache.get('CHIBI_STUDIO_AUTHORED') != 'ON'
+            or cache.get('CHIBI_STUDIO_DISTRIBUTION') != 'ON'
             or cache.get('CMAKE_BUILD_TYPE') not in ('Release', 'RelWithDebInfo')
             or cache.get('CMAKE_GENERATOR') != 'Ninja'):
-        raise ValueError('Studio packaging requires a native Ninja distribution Release/RelWithDebInfo build')
+        raise ValueError('Studio packaging requires a source-only Ninja distribution Release/RelWithDebInfo build')
     if (Path(cache['Chibi_DIR']).resolve() != sdk / 'lib/cmake/Chibi'
             or cache.get('CHIBI_STUDIO_SDK_BUILD_ID') != source['build_id']
             or cache.get('CHIBI_STUDIO_SDK_MANIFEST_SHA256') != digest(sdk / MANIFEST)):
         raise ValueError('Configured Studio SDK pin differs from the supplied package; reconfigure/rebuild')
-    binaries = [build / 'bin' / name for name in ('chibi-dev', 'chibi-dev.exe')]
-    binaries = [path for path in binaries if path.is_file()]
-    if len(binaries) != 1:
-        raise ValueError('Missing or ambiguous Studio executable')
-    binary = binaries[0]
-    current = subprocess.check_output(['ninja', '-C', str(build), '-n', binary.relative_to(build).as_posix()], text=True)
-    if not current.rstrip().endswith('ninja: no work to do.'):
-        raise ValueError('Studio build is not current; build it before packaging')
-    dependency_text = subprocess.check_output(['ninja', '-C', str(build), '-t', 'deps'], text=True)
-    dependencies = {}
-    object_name = None
-    for line in dependency_text.splitlines():
-        if line and not line.startswith(' '):
-            object_name = line.split(': #deps ', 1)[0]
-            dependencies[object_name] = []
-        elif object_name and line.startswith('    '):
-            dependencies[object_name].append(line.strip())
-    inputs = {}
-    objects = {}
-    commands = json.loads((build / 'compile_commands.json').read_text())
-    for entry in commands:
-        directory = Path(entry['directory'])
-        arguments = entry.get('arguments') or shlex.split(entry['command'])
-        if any('sanitize=' in argument for argument in arguments):
-            raise ValueError('Studio distribution must not contain sanitizer instrumentation')
-        try:
-            object_path = (directory / arguments[arguments.index('-o') + 1]).resolve()
-        except (ValueError, IndexError):
-            raise ValueError('Studio compile command has no object output') from None
-        relative = object_path.relative_to(build).as_posix()
-        if not object_path.is_file() or object_path.stat().st_mtime_ns > binary.stat().st_mtime_ns:
-            raise ValueError(f'Missing or stale linked object: {relative}')
-        names = dependencies.get(relative)
-        if not names:
-            raise ValueError(f'Missing compiled dependency evidence: {relative}')
-        for name in set(names) | {entry['file']}:
-            path = (directory / name).resolve()
-            if not path.is_file() or path.stat().st_mtime_ns > object_path.stat().st_mtime_ns:
-                raise ValueError(f'Compiled dependency changed: {path}')
-            inputs[str(path)] = digest(path)
-        objects[relative] = digest(object_path)
-    if not objects:
-        raise ValueError('Studio compile input inventory is empty')
-    executable = executable_identity(build, cache, 'chibi-studio',
-                                     build / 'CMakeFiles/chibi-studio.dir', binary,
-                                     source_root=Path(cache['chibi_studio_SOURCE_DIR']).resolve())
-    return {'objects': objects, 'inputs': inputs, 'executable': executable,
-            'source_root': cache['chibi_studio_SOURCE_DIR'],
-            'build_type': cache['CMAKE_BUILD_TYPE']}
-
-
-def copy_notices(stage, build):
-    for source in (build / '_deps').glob('*-src'):
-        for path in source.rglob('*'):
-            if (path.is_file() and '.git' not in path.relative_to(source).parts
-                    and path.name.lower().startswith(('license', 'copying', 'notice', 'ofl'))):
-                target = stage / 'share/chibi/licenses' / source.name / path.relative_to(source)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, target)
+    return authored_build_identity(build, sdk=sdk)
 
 
 def assemble(build, sdk, output):
@@ -155,15 +185,22 @@ def assemble(build, sdk, output):
         subprocess.run(['cmake', '--install', str(build), '--prefix', str(stage)], check=True)
         # SDK install metadata describes the SDK, not this Studio product.
         (stage / MANIFEST).unlink(missing_ok=True)
-        copy_notices(stage, build)
-        product = compiled['executable']['path']
-        if digest(stage / product) != compiled['executable']['sha256']:
-            raise ValueError('Installed Studio binary differs from the inspected build')
+        product = compiled['launcher']['path']
+        if digest(stage / product) != compiled['launcher']['sha256']:
+            raise ValueError('Installed Studio launcher differs from the inspected build')
+        if digest(stage / 'share/chibi/studio/game.chibip') != compiled['artifact']['sha256']:
+            raise ValueError('Installed Studio authored artifact differs from the inspected build')
+        if digest(stage / 'share/chibi/sdk/package.json') != digest(sdk / MANIFEST):
+            raise ValueError('Installed Studio SDK identity differs from the inspected package')
         manifest = {'manifest_format': 1, 'kind': 'studio', 'package_version': source['package_version'],
-                    'engine': source['engine'], 'requirements': source['requirements'],
+                    'engine': {'manifest': 'share/chibi/sdk/engine.json', 'build_id': source['engine']['build_id']},
+                    'requirements': source['requirements'],
                     'sdk': {'build_id': source['build_id'], 'engine_build_id': source['engine']['build_id'],
-                            'package_version': source['package_version']},
-                    'products': {'chibi-studio': product}, 'build': compiled,
+                            'package_version': source['package_version'],
+                            'manifest': 'share/chibi/sdk/package.json',
+                            'manifest_sha256': digest(sdk / MANIFEST),
+                            'identity_scope': 'Exact installed SDK manifest bytes; this distribution contains selected SDK products and resources, not the complete SDK'},
+                    'products': {'chibi-studio': product, **source['products']}, 'build': compiled,
                     'files': package_files(stage)}
         manifest['build_id'] = package_identity(manifest)
         (stage / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')

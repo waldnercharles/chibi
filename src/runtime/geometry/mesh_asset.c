@@ -20,16 +20,17 @@ typedef struct
 struct render_mesh_table
 {
     mesh_source **items;
+    uint64_t generation;
 };
 static render_mesh_table resident;
 
 static uint64_t next_identity = 1;
-static uint64_t generation;
+static uint64_t next_generation;
 
 /* The resident catalog changed, so a mesh may be gone or replaced. */
 static void changed()
 {
-    generation++;
+    resident.generation = ++next_generation;
     render_mesh_picks_clear();
 }
 
@@ -209,7 +210,7 @@ void render_mesh_assets_clear()
 
 uint64_t render_mesh_assets_generation()
 {
-    return generation;
+    return resident.generation;
 }
 
 render_mesh_table *render_mesh_table_new_budget(size_t *remaining)
@@ -219,7 +220,9 @@ render_mesh_table *render_mesh_table_new_budget(size_t *remaining)
         return NULL;
     }
     *remaining -= sizeof(render_mesh_table);
-    return xcalloc(1, sizeof(render_mesh_table));
+    render_mesh_table *table = xcalloc(1, sizeof *table);
+    table->generation = ++next_generation;
+    return table;
 }
 render_mesh_table *render_mesh_table_new()
 {
@@ -263,6 +266,7 @@ bool render_mesh_table_add_owned_budget(
     item->asset.identity = next_identity++;
     *asset = (render_mesh_asset){ 0 };
     apush(table->items, item);
+    table->generation = ++next_generation;
     return true;
 }
 bool render_mesh_table_add_owned(render_mesh_table *table, const char *source, render_mesh_asset *asset)
@@ -273,10 +277,9 @@ bool render_mesh_table_add_owned(render_mesh_table *table, const char *source, r
 void render_mesh_table_exchange(render_mesh_table *table)
 {
     assert(table && table != &resident);
-    mesh_source **old = resident.items;
-    resident.items = table->items;
-    table->items = old;
-    changed();
+    render_mesh_table old = resident;
+    resident = *table;
+    *table = old;
 }
 void render_mesh_table_free(render_mesh_table *table)
 {
@@ -284,6 +287,9 @@ void render_mesh_table_free(render_mesh_table *table)
         return;
     }
     assert(table != &resident);
+    if (acount(table->items)) {
+        render_mesh_picks_clear();
+    }
     for (int i = 0; i < acount(table->items); i++) {
         free(table->items[i]->source);
         render_mesh_asset_free(&table->items[i]->asset);

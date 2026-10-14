@@ -17,9 +17,11 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
+#include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -82,7 +84,30 @@ static const type_desc velocity_type = {
     .fields = &velocity_field,
     .field_count = 1,
 };
-static const type_desc *const reflected_types[] = { &position_type, &velocity_type };
+typedef struct
+{
+    const char *id;
+    bool available;
+} program_command_row;
+static const type_field command_row_fields[] = {
+    { .name = "id",
+      .type = PIN_STR,
+      .type_name = "string",
+      .offset = offsetof(program_command_row, id),
+      .size = sizeof(const char *) },
+    { .name = "available",
+      .type = PIN_BOOL,
+      .type_name = "bool",
+      .offset = offsetof(program_command_row, available),
+      .size = sizeof(bool) },
+};
+static const type_desc command_row_type = { .name = "ProgramCommandRow",
+                                            .size = sizeof(program_command_row),
+                                            .fields = command_row_fields,
+                                            .field_count = 2 };
+static const type_desc *const reflected_types[] = { &position_type,
+                                                    &velocity_type,
+                                                    &command_row_type };
 /* A few controls, as the input map names them. */
 static const enum_value_desc control_values[] = {
     { 3, "CONTROL_SPACE", "Space" },
@@ -99,7 +124,7 @@ static const enum_desc *const program_enums[] = { &control_type, &pad_type };
 type_catalog_pack test_program_types()
 {
     return (type_catalog_pack){ .types = reflected_types,
-                                .type_count = 2,
+                                .type_count = 3,
                                 .enums = program_enums,
                                 .enum_count = 2 };
 }
@@ -508,12 +533,30 @@ static bool compile(const char *source, behavior_backend backend)
     program = execution_program_new(module, world, NULL);
     return program != NULL;
 }
+/* Keep old-step goldens separate from sources compared with today's project migration. */
+static int migrate_current(const char *source, char **out, char *error, size_t size)
+{
+    char *declarations = NULL, *fields = NULL;
+    if (chibi_migrate_declarations(source, &declarations, error, size)) {
+        return -1;
+    }
+    if (chibi_migrate_fields(declarations ? declarations : source, &fields, error, size)) {
+        free(declarations);
+        return -1;
+    }
+    if (fields) {
+        free(declarations);
+        declarations = fields;
+    }
+    *out = declarations;
+    return 0;
+}
 /* Historical migration cases assert their intermediate spelling, then run
  * it through the current declaration migration before exercising execution. */
 static bool compile_migrated(const char *source, behavior_backend backend)
 {
     char error[192], *current = NULL;
-    if (chibi_migrate_declarations(source, &current, error, sizeof error)) {
+    if (migrate_current(source, &current, error, sizeof error)) {
         fprintf(stderr, "migration: %s\n", error);
         return false;
     }
@@ -524,7 +567,7 @@ static bool compile_migrated(const char *source, behavior_backend backend)
 static bool declarations_equal(const char *actual, const char *historical)
 {
     char error[192], *current = NULL;
-    if (chibi_migrate_declarations(historical, &current, error, sizeof error)) {
+    if (migrate_current(historical, &current, error, sizeof error)) {
         fprintf(stderr, "migration: %s\n", error);
         return false;
     }
@@ -1037,7 +1080,7 @@ TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple)
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         REQUIRE(compile_catalog(
             "system Rows query p:Position join target in self.Targets "
-            "join aim:Position from target { state starts:double=0; "
+            "join aim:Position from target { starts:double=0; "
             "starts+=1; await Delay(1); p.y+=aim.x; }",
             backends[backend],
             &active
@@ -1076,6 +1119,54 @@ TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple)
     }
     return true;
 }
+TEST_CASE(program_query_restart_readmits_live_rows_and_runs_begin_once)
+{
+    script_catalog_capability events[sizeof capabilities / sizeof *capabilities + 1];
+    memcpy(events, capabilities, sizeof capabilities);
+    events[sizeof capabilities / sizeof *capabilities] = (script_catalog_capability){
+        .id = 12,
+        .name = "Begin",
+        .kind = SCRIPT_CAPABILITY_EVENT
+    };
+    script_catalog active = catalog;
+    active.capabilities = events;
+    active.capability_count = sizeof events / sizeof *events;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity survivor = positioned(0, false), removed = positioned(0, false);
+        REQUIRE(compile_catalog(
+            "system RestartRows query p:Position { ticks:double=0; "
+            "on Begin { p.y+=1; } ticks+=1; p.x=ticks; }",
+            backends[backend],
+            &active
+        ));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, survivor, 501);
+        REQUIRE(position && position->x == 1 && position->y == 1);
+        REQUIRE(execution_program_memory_usage(program).instance_count == 2);
+
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        position = ecs_component_data_const(world, survivor, 501);
+        REQUIRE(position && position->x == 2 && position->y == 1);
+
+        REQUIRE(ecs_world_destroy_entity(world, removed) == ECS_OK);
+        REQUIRE(execution_program_replace(program, module, true) == FLOW_OK);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        position = ecs_component_data_const(world, survivor, 501);
+        REQUIRE(position && position->x == 1 && position->y == 2);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(removed)));
+        REQUIRE(execution_program_memory_usage(program).instance_count == 1);
+
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        position = ecs_component_data_const(world, survivor, 501);
+        REQUIRE(position && position->x == 2 && position->y == 2);
+    }
+    return true;
+}
 TEST_CASE(program_query_changed_preserves_busy_published_writes)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -1086,7 +1177,7 @@ TEST_CASE(program_query_changed_preserves_busy_published_writes)
             "system Changed query p:Position where changed(p) and Accept(p.x) "
             "{ "
             "Accept :: (value:double)->bool { return value>=0; } "
-            "state calls:double=0; calls+=1; await Delay(1); }",
+            "calls:double=0; calls+=1; await Delay(1); }",
             backends[backend]
         ));
         unsigned char *bytes = NULL;
@@ -1289,11 +1380,12 @@ TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
 
 TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace)
 {
-    const char *library_source = "library Store { count: double = 10;"
-                                 "Work :: fn() -> (local_count: double, "
-                                 "position_x: double) {"
-                                 "count += 1; await Delay(1); return(count, "
-                                 "self.Position.x); } }";
+    const char
+        *library_source = "library Store { count: double = 10;"
+                          "Work :: fn() -> (local_count: double, "
+                          "position_x: double) {"
+                          "self.count += 1; await Delay(1); return(self.count, "
+                          "self.Position.x); } }";
     const char
         *owner_source = "behavior Owner { count: double = 0; local_count: "
                         "double = 0; position_x: double = 0;"
@@ -1381,11 +1473,71 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
     }
     return true;
 }
+TEST_CASE(program_self_fields_and_callable_storage_persist_across_events)
+{
+    const char
+        *source = "behavior Fields { amount: double = 0; state: double "
+                  "= 0; total: double = 0; "
+                  "Next :: fn() -> double { self.calls: double = 0; "
+                  "self.calls += 1; return self.calls; } "
+                  "on Impulse(amount, enabled) { self.amount += amount; "
+                  "if enabled { amount: double = 100; self.amount += amount; } "
+                  "total = Next() + Next(); self.state += 1; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64, .d = 3 },
+                                   { .type = PIN_BOOL, .b = true } };
+        for (int event = 0; event < 2; event++) {
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, event, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "amount", 103 * (event + 1)));
+            REQUIRE(number_state(instance, "state", event + 1));
+            REQUIRE(number_state(instance, "total", 3 + 4 * event));
+            REQUIRE(number_state(instance, "calls", 2 * (event + 1)));
+        }
+    }
+    return true;
+}
+
+TEST_CASE(program_self_fields_do_not_replace_entity_aliases_or_self_parameters)
+{
+    const char *source = "behavior Fields { Position: struct<\"Position\"> = "
+                         "{x: 4, y: 5}; observed: double = 0; "
+                         "Other :: fn(self: entity) { self.Position.y += 1; } "
+                         "on Tick(dt) { self.Position.x += 1; other := self; "
+                         "other.Position.x += 10; Other(self); observed = "
+                         "self.Position.x; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(2, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        for (int tick = 0; tick < 2; tick++) {
+            REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, tick, 0, 1000) == FLOW_OK);
+            const program_position *position = ecs_component_data_const(world, owner, 501);
+            REQUIRE(position && position->x == 2 + 10 * (tick + 1));
+            REQUIRE(position->y == tick + 1);
+            REQUIRE(number_state(instance, "observed", 5 + tick));
+        }
+    }
+    return true;
+}
+
 TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned)
 {
-    const char *source = "system Shared(position: Position) { shared total: "
-                         "double = 0; state local_count: double = 0;"
-                         "total += 1; local_count += 1; position.y = total; }";
+    const char
+        *source = "system Shared(position: Position) { shared total: "
+                  "double = 0; local_count: double = 0;"
+                  "total += 1; self.local_count += 1; position.y = total; }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -5254,10 +5406,12 @@ TEST_CASE(program_version_19_components_move_to_chibi)
     remove(path);
     snprintf(path, sizeof path, "%s/content/components/Bad.kdl", root);
     remove(path);
-    REQUIRE(
-        !chibi_migrate_component("name \"Cell\"\n(array)fields {\n    - name=\"state\" type=\"int\"\n}\n", error, sizeof error)
-    );
-    REQUIRE(strstr(error, "'state: int' is not valid .chibi"));
+    REQUIRE(!chibi_migrate_component(
+        "name \"Cell\"\n(array)fields {\n    - name=\"on\" type=\"int\"\n}\n",
+        error,
+        sizeof error
+    ));
+    REQUIRE(strstr(error, "'on: int' is not valid .chibi"));
     snprintf(path, sizeof path, "%s/content/components/Cell.kdl", root);
     write_whole(path, "name \"Cell\"\n(array)fields {\n    - name=\"x\" type=\"int\"\n}\n");
     snprintf(path, sizeof path, "%s/content/components/Cell.chibi", root);
@@ -5642,7 +5796,7 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     REQUIRE(!chibi_migrate_prefixes(collision, false, error, sizeof error) && error[0]);
 
     char *current_expected = NULL;
-    REQUIRE(!chibi_migrate_declarations(expected, &current_expected, error, sizeof error));
+    REQUIRE(!migrate_current(expected, &current_expected, error, sizeof error));
     REQUIRE(current_expected);
     char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
@@ -5758,8 +5912,8 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
                    "}\n";
     char root[] = "/tmp/chibi-prefix-helpers-XXXXXX", path[256], error[256];
     char *current_expected = NULL, *current_library = NULL;
-    REQUIRE(!chibi_migrate_declarations(expected, &current_expected, error, sizeof error));
-    REQUIRE(!chibi_migrate_declarations(library, &current_library, error, sizeof error));
+    REQUIRE(!migrate_current(expected, &current_expected, error, sizeof error));
+    REQUIRE(!migrate_current(library, &current_library, error, sizeof error));
     REQUIRE(current_expected && current_library);
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
@@ -5931,6 +6085,17 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
         snprintf(path, sizeof path, "%s/%s", root, files[i]);
         REQUIRE(!unlink(path));
     }
+    snprintf(path, sizeof path, "%s/Broken.chibi", root);
+    file = fopen(path, "wb");
+    REQUIRE(file);
+    REQUIRE(fputs("library Bad { function", file) >= 0);
+    REQUIRE(!fclose(file));
+    REQUIRE(chibi_project_migrate_content(root, NULL, 23, error, sizeof error) < 0);
+    REQUIRE(
+        strstr(error, "Broken.chibi") &&
+        strstr(error, "Cannot migrate invalid version 23 source")
+    );
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     REQUIRE(
@@ -6293,7 +6458,7 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                      "on Impulse(amount, enabled) { Start(amount); "
                      "answer := await pulse; if answer is double value { power "
                      "= value } }"
-                     "Start :: fn(time: double) { state.pulse = "
+                     "Start :: fn(time: double) { self.pulse = "
                      "Charge(time) }"
                      "Charge :: fn(time: double) -> (power: double) { "
                      "yield; return(time * 2); } }";
@@ -6876,8 +7041,8 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                 source,
                 sizeof source,
                 "system Ordered(p:Position,v:Velocity) { "
-                "state resumed:double=0; state event_clock:double=0; "
-                "state queued_value:double=0; state finished:double=0; "
+                "resumed:double=0; event_clock:double=0; "
+                "queued_value:double=0; finished:double=0; "
                 "on Impulse(amount,enabled) { "
                 "if enabled { await Delay(1); resumed=InstanceClock(); v.x=7; "
                 "} "
@@ -6996,6 +7161,310 @@ TEST_CASE(program_reduction_query_rows_count_filtered_candidates)
     }
     return true;
 }
+TEST_CASE(program_foreach_registry_preserves_parallel_boolean_availability)
+{
+    const script_catalog_field row_fields[] = {
+        { .id = 9001,
+          .name = "id",
+          .type = { .storage = PIN_STR },
+          .offset = offsetof(program_command_row, id),
+          .writable = true },
+        { .id = 9002,
+          .name = "available",
+          .type = { .storage = PIN_BOOL },
+          .offset = offsetof(program_command_row, available),
+          .writable = true },
+    };
+    script_catalog_type types[3] = { script_types[0],
+                                     script_types[1],
+                                     { .id = 9000,
+                                       .name = "ProgramCommandRow",
+                                       .type = { .storage = PIN_STRUCT, .nominal = 9000 },
+                                       .fields = row_fields,
+                                       .field_count = 2,
+                                       .size = sizeof(program_command_row) } };
+    const script_catalog_parameter parameters[] = {
+        { .name = "Id", .type = { .storage = PIN_STR } },
+        { .name = "Enabled", .type = { .storage = PIN_BOOL } },
+    };
+    script_catalog_capability events[sizeof capabilities / sizeof *capabilities + 1];
+    memcpy(events, capabilities, sizeof capabilities);
+    events[sizeof capabilities / sizeof *capabilities] = (script_catalog_capability){
+        .id = 9003,
+        .name = "Availability",
+        .kind = SCRIPT_CAPABILITY_EVENT,
+        .parameters = parameters,
+        .parameter_count = 2
+    };
+    script_catalog active = catalog;
+    active.types = types;
+    active.type_count = 3;
+    active.capabilities = events;
+    active.capability_count = sizeof events / sizeof *events;
+    const char *source =
+        "behavior Registry { "
+        "Rows:struct<\"ProgramCommandRow\">[]=["
+        "{id:\"search\",available:true},{id:\"save\",available:false},"
+        "{id:\"settings\",available:true}];"
+        "Enabled:bool[]=[]; Ready:bool=false;"
+        "Visits:int=0; IndexSum:int=0; Changed:int=-1;"
+        "First:string=\"\"; Last:string=\"\";"
+        "Search:bool=false; Save:bool=false; "
+        "Settings:bool=false;"
+        "CommandContext:string=\"Global\"; "
+        "Denied:bool=false; SearchDenied:bool=false; "
+        "SaveDenied:bool=false; SettingsDenied:bool=false;"
+        "eligible :: fn(CommandContext:string) -> bool { "
+        "if text_equal(CommandContext,\"Global\") { return true; } return "
+        "false; }"
+        "command :: fn(Id:string) -> bool { Denied=false; i:int=0; "
+        "for row in Rows { if text_equal(row.id,Id) { "
+        "if !eligible(CommandContext) { Denied=true; } "
+        "if !Enabled[i] { Denied=true; } return Denied; } i+=1; } "
+        "return true; }"
+        "ensure_registry :: fn() { if Ready { return; } "
+        "for row in Rows { Enabled=array_add(Enabled,row.available); } "
+        "Ready=true; }"
+        "publish :: fn() { ensure_registry(); Visits=0; IndexSum=0; i:int=0; "
+        "for row in Rows { Visits+=1; IndexSum+=i; "
+        "if i==0 { First=row.id; } if i==2 { Last=row.id; } i+=1; }"
+        "Search=Enabled[0]; Save=Enabled[1]; Settings=Enabled[2]; "
+        "SearchDenied=command(\"search\"); SaveDenied=command(\"save\"); "
+        "SettingsDenied=command(\"settings\"); }"
+        "on Tick(dt) { ensure_registry(); publish(); }"
+        "on Availability { ensure_registry(); Changed=-1; i:int=0; "
+        "for row in Rows { if text_equal(row.id,event.Id) { "
+        "self.Enabled[i]=event.Enabled; Changed=i; } i+=1; } "
+        "publish(); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    const char *ids[] = { "settings", "save", "missing", "search" };
+    const bool values[] = { false, true, false, false };
+    const bool expected[][3] = { { true, false, true },
+                                 { true, false, false },
+                                 { true, true, false },
+                                 { true, true, false },
+                                 { false, true, false } };
+    const int changed[] = { 2, 1, -1, 0 };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        const native_capability_pack base = { .catalog = &active,
+                                              .layouts = reflected_types,
+                                              .layout_count = 3 };
+        const native_definition_pack packs[] = { NATIVE_ARRAY_DEFINITION_PACK,
+                                                 CORE_DEFINITION_PACK,
+                                                 NATIVE_TEXT_DEFINITION_PACK };
+        char error[256];
+        state_native = native_capabilities_from_definition_packs(&base, 1, packs, 3, error, sizeof error);
+        REQUIRE(state_native);
+        REQUIRE(
+            compile_catalog(source, backends[backend], native_capabilities_catalog(state_native))
+        );
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 10000) == FLOW_OK);
+        for (int step = 0; step < 5; step++) {
+            if (step) {
+                pin_value args[] = { { .type = PIN_STR, .str = ids[step - 1] },
+                                     { .type = PIN_BOOL, .b = values[step - 1] } };
+                REQUIRE(
+                    execution_instance_dispatch(instance, 9003, args, 2, step, 0, 10000) == FLOW_OK
+                );
+                REQUIRE(
+                    execution_instance_state(instance, state_id("Changed"))->i ==
+                    changed[step - 1]
+                );
+            }
+            REQUIRE(execution_instance_state(instance, state_id("Visits"))->i == 3);
+            REQUIRE(execution_instance_state(instance, state_id("IndexSum"))->i == 3);
+            REQUIRE(
+                string_state(instance, "First", "search") &&
+                string_state(instance, "Last", "settings")
+            );
+            REQUIRE(bool_state(instance, "Search", expected[step][0]));
+            REQUIRE(bool_state(instance, "Save", expected[step][1]));
+            REQUIRE(bool_state(instance, "Settings", expected[step][2]));
+            REQUIRE(bool_state(instance, "SearchDenied", !expected[step][0]));
+            REQUIRE(bool_state(instance, "SaveDenied", !expected[step][1]));
+            REQUIRE(bool_state(instance, "SettingsDenied", !expected[step][2]));
+            const pin_array *enabled = execution_instance_state(instance, state_id("Enabled"))
+                                           ->ptr;
+            const pin_array *rows = execution_instance_state(instance, state_id("Rows"))
+                                        ->ptr;
+            REQUIRE(enabled && enabled->count == 3 && rows && rows->count == 3);
+            const char *names[] = { "search", "save", "settings" };
+            for (int i = 0; i < 3; i++) {
+                REQUIRE(
+                    enabled->items[i].type == PIN_BOOL &&
+                    enabled->items[i].b == expected[step][i]
+                );
+                const program_command_row *row = rows->items[i].ptr;
+                REQUIRE(row && !strcmp(row->id, names[i]) && row->available == (i != 1));
+            }
+        }
+    }
+    return true;
+}
+
+TEST_CASE(program_provider_events_preserve_scope_overrides)
+{
+    const script_catalog_field row_fields[] = {
+        { .id = 9001,
+          .name = "id",
+          .type = { .storage = PIN_STR },
+          .offset = offsetof(program_command_row, id),
+          .writable = true },
+        { .id = 9002,
+          .name = "available",
+          .type = { .storage = PIN_BOOL },
+          .offset = offsetof(program_command_row, available),
+          .writable = true },
+    };
+    script_catalog_type types[3] = { script_types[0],
+                                     script_types[1],
+                                     { .id = 9000,
+                                       .name = "ProgramCommandRow",
+                                       .type = { .storage = PIN_STRUCT, .nominal = 9000 },
+                                       .fields = row_fields,
+                                       .field_count = 2,
+                                       .size = sizeof(program_command_row) } };
+    const script_catalog_parameter parameters[] = {
+        { .name = "Id", .type = { .storage = PIN_STR } },
+        { .name = "Enabled", .type = { .storage = PIN_BOOL } },
+    };
+    const script_catalog_parameter scope_parameters[] = {
+        { .name = "Scoped", .type = { .storage = PIN_BOOL } },
+    };
+    script_catalog_capability events[sizeof capabilities / sizeof *capabilities + 2];
+    memcpy(events, capabilities, sizeof capabilities);
+    size_t first_event = sizeof capabilities / sizeof *capabilities;
+    events[first_event] = (script_catalog_capability){ .id = 9003,
+                                                       .name = "Availability",
+                                                       .kind = SCRIPT_CAPABILITY_EVENT,
+                                                       .parameters = parameters,
+                                                       .parameter_count = 2 };
+    events[first_event + 1] = (script_catalog_capability){ .id = 9004,
+                                                           .name = "Scope",
+                                                           .kind = SCRIPT_CAPABILITY_EVENT,
+                                                           .parameters = scope_parameters,
+                                                           .parameter_count = 1 };
+    script_catalog active = catalog;
+    active.types = types;
+    active.type_count = 3;
+    active.capabilities = events;
+    active.capability_count = sizeof events / sizeof *events;
+    /* Publication counters observe real typed event handlers, without a renderer or wall clock. */
+    const char *source =
+        "behavior Registry { "
+        "Rows:struct<\"ProgramCommandRow\">[]=["
+        "{id:\"first\",available:true},{id:\"edit\",available:false},"
+        "{id:\"last\",available:true}];"
+        "Ids:string[]=[]; Available:bool[]=[]; "
+        "Enabled:bool[]=[]; "
+        "Initialized:=false;"
+        "Scoped:=false; Publications:double=0;"
+        "publish :: fn() { i:int=0; for row in Rows { Enabled[i]=Available[i];"
+        "if Scoped && row.id==\"edit\" { Enabled[i]=true; } i+=1; } "
+        "Publications+=1; }"
+        "on Tick(dt) { if Initialized { return; } for row in Rows { "
+        "Ids=array_add(Ids,row.id);"
+        "Available=array_add(Available,row.available); "
+        "Enabled=array_add(Enabled,row.available); }"
+        "Initialized=true; publish(); }"
+        "on Availability { i:int=0; for id in Ids { if id==event.Id {"
+        "if Available[i]==event.Enabled { return; } Available[i]=event.Enabled;"
+        "publish(); return; } i+=1; } }"
+        "on Scope { if self.Scoped==event.Scoped { return; } "
+        "self.Scoped=event.Scoped; "
+        "publish(); }"
+        "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    const struct
+    {
+        const char *id;
+        bool value;
+        double publications;
+        bool provider;
+        bool effective;
+    } availability_steps[] = {
+        { "edit", false, 2, false, true }, { "missing", true, 2, false, true },
+        { "edit", true, 3, true, true },   { "edit", true, 3, true, true },
+        { "edit", false, 4, false, true }, { "edit", false, 4, false, true },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        const native_capability_pack base = { .catalog = &active,
+                                              .layouts = reflected_types,
+                                              .layout_count = 3 };
+        const native_definition_pack packs[] = { NATIVE_ARRAY_DEFINITION_PACK,
+                                                 CORE_DEFINITION_PACK,
+                                                 NATIVE_TEXT_DEFINITION_PACK };
+        char error[256];
+        state_native = native_capabilities_from_definition_packs(&base, 1, packs, 3, error, sizeof error);
+        REQUIRE(state_native);
+        REQUIRE(
+            compile_catalog(source, backends[backend], native_capabilities_catalog(state_native))
+        );
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        REQUIRE(instance);
+        const pin_value dt = { .type = PIN_F64 };
+        for (int tick = 0; tick < 4; tick++) {
+            REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, tick, 0, 10000) == FLOW_OK);
+            REQUIRE(number_state(instance, "Publications", 1));
+        }
+        pin_value scope = { .type = PIN_BOOL, .b = true };
+        REQUIRE(execution_instance_dispatch(instance, 9004, &scope, 1, 4, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "Publications", 2));
+        for (size_t step = 0;
+             step < sizeof availability_steps / sizeof *availability_steps;
+             step++) {
+            pin_value args[] = {
+                { .type = PIN_STR, .str = availability_steps[step].id },
+                { .type = PIN_BOOL, .b = availability_steps[step].value }
+            };
+            REQUIRE(
+                execution_instance_dispatch(instance, 9003, args, 2, 5 + step, 0, 10000) == FLOW_OK
+            );
+            REQUIRE(
+                number_state(instance, "Publications", availability_steps[step].publications)
+            );
+            const pin_array *available = execution_instance_state(instance, state_id("Available"))
+                                             ->ptr;
+            const pin_array *enabled = execution_instance_state(instance, state_id("Enabled"))
+                                           ->ptr;
+            REQUIRE(available && available->count == 3 && enabled && enabled->count == 3);
+            REQUIRE(
+                available->items[1].type == PIN_BOOL &&
+                available->items[1].b == availability_steps[step].provider
+            );
+            REQUIRE(
+                enabled->items[1].type == PIN_BOOL &&
+                enabled->items[1].b == availability_steps[step].effective
+            );
+            REQUIRE(enabled->items[0].b && enabled->items[2].b);
+        }
+        scope.b = false;
+        REQUIRE(execution_instance_dispatch(instance, 9004, &scope, 1, 12, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "Publications", 5));
+        const pin_array
+            *enabled = execution_instance_state(instance, state_id("Enabled"))->ptr;
+        REQUIRE(enabled && enabled->count == 3 && !enabled->items[1].b);
+        REQUIRE(execution_instance_dispatch(instance, 9004, &scope, 1, 13, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "Publications", 5));
+    }
+    return true;
+}
+
 void test_language_query_program()
 {
     pu_setup(NULL, cleanup);
@@ -7007,6 +7476,7 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
+    RUN_TEST_CASE(program_query_restart_readmits_live_rows_and_runs_begin_once);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
@@ -7017,6 +7487,8 @@ void test_language_query_program()
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_foreach_registry_preserves_parallel_boolean_availability);
+    RUN_TEST_CASE(program_provider_events_preserve_scope_overrides);
     RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
     RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
     RUN_TEST_CASE(program_pattern_bindings_share_and_spellings);
@@ -7035,11 +7507,14 @@ void test_language_program()
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
+    RUN_TEST_CASE(program_query_restart_readmits_live_rows_and_runs_begin_once);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
     RUN_TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);
+    RUN_TEST_CASE(program_self_fields_and_callable_storage_persist_across_events);
+    RUN_TEST_CASE(program_self_fields_do_not_replace_entity_aliases_or_self_parameters);
     RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);
     RUN_TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes);
     RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);

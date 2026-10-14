@@ -187,7 +187,7 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(
-            "behavior Cache { state total:double=0; "
+            "behavior Cache { total:double=0; "
             "Work :: (value:double) { total+=value; if value<0 { await "
             "Delay(1); } } "
             "Leaf :: fn(value:double)->double { return value; } "
@@ -247,12 +247,13 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
 }
 TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 {
-    const char *source =
-        "behavior Cache { state total:double=0; state kept:string=\"\"; "
-        "Echo :: (value:string)->string { return value; } "
-        "on Text(value:string) { kept=Echo(value); } "
-        "on Run(amount:double) { if amount<0 { values:=[10,20]; "
-        "total=values[cast<int>(-amount)]; } else { total+=amount; } } }";
+    const char
+        *source = "behavior Cache { total:double=0; kept:string=\"\"; "
+                  "Echo :: (value:string)->string { return value; } "
+                  "on Text(value:string) { kept=Echo(value); } "
+                  "on Run(amount:double) { if amount<0 { values:=[10,20]; "
+                  "total=values[cast<int>(-amount)]; } else { total+=amount; } "
+                  "} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
@@ -296,7 +297,7 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 }
 TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
 {
-    const char *source = "behavior Cache { state total:double=0; "
+    const char *source = "behavior Cache { total:double=0; "
                          "on Run(amount:double) { values:=[amount,amount+1]; "
                          "values[0]+=2; "
                          "total+=values[0]+values[1]; } "
@@ -344,7 +345,7 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
 }
 TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
 {
-    const char *source = "behavior Cache { state total:double=0; "
+    const char *source = "behavior Cache { total:double=0; "
                          "on Run(amount:double) { total+=amount; } "
                          "on Wait(amount:double) { total+=amount; await "
                          "Delay(1); total+=amount; } }";

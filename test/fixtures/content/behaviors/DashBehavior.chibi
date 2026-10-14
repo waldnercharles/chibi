@@ -1,6 +1,6 @@
 behavior "DashBehavior" {
-    state "Just Started" := false
-    state "Struck Entities": handle<"ecs.entity">[] = []
+    self."Just Started" := false
+    "Struck Entities": handle<"ecs.entity">[] = []
     on Dash {
         if delta_time() >= self.Dash.cooldown_remaining {
             if 0.0 >= self.Dash.remaining {
@@ -65,8 +65,8 @@ behavior "DashBehavior" {
     }
     "Advance Dash Timers" :: fn() {
         after entry {
-            if state."Just Started" {
-                state."Just Started" = false
+            if self."Just Started" {
+                self."Just Started" = false
                 return
             } else {
                 self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - delta_time(), B: float = 0.0)
@@ -85,10 +85,10 @@ behavior "DashBehavior" {
                 if entry.Other.Health {
                     if entry.Other.Collider {
                         if has_any_flags(entry.Other.Collider.category, 2) {
-                            if contains(state."Struck Entities", entry.Other) {
+                            if contains(self."Struck Entities", entry.Other) {
                                 return
                             } else {
-                                state."Struck Entities" = array_add(state."Struck Entities", entry.Other)
+                                self."Struck Entities" = array_add(self."Struck Entities", entry.Other)
                                 await send_event<"Damage">(entry.Other, self.Dash.damage, self)
                                 return
                             }
@@ -120,8 +120,8 @@ behavior "DashBehavior" {
                 await "Capture Dash Direction"()
                 self.Dash.remaining = self.Dash.duration
                 self.Dash.cooldown_remaining = self.Dash.cooldown
-                state."Just Started" = true
-                state."Struck Entities" = []
+                self."Just Started" = true
+                self."Struck Entities" = []
                 await "Strike Current Contacts"()
                 return
             } else {

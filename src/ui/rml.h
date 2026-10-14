@@ -3,7 +3,7 @@
 
 /* A C binding for RmlUi 6.3. It is pure pass-through: rml.cpp only converts
  * types and forwards calls to RmlUi. Keep editor logic, state machines and
- * policy out of it; they belong in C on top of it.
+ * policy in authored application behaviors above the shared engine controls.
  *
  * Handles are the RmlUi objects themselves, and a document is an rml_element.
  * Enum values match RmlUi's, which rml.cpp checks. A string RmlUi returns by
@@ -386,7 +386,10 @@ extern "C"
         rml_element *drag_element;
         float mouse_x;
         float mouse_y;
-        int button;
+        float wheel_x, wheel_y;
+        bool canceled;  /* Native control change/input rollback. */
+        bool has_value; /* The control supplied value, including empty text. */
+        int button;     /* Left 0, right 1, middle 2; -1 when absent. */
         rml_key key;
         unsigned modifiers; /* rml_key_modifier bits */
         void *native;       /* the Rml::Event */
@@ -524,12 +527,14 @@ extern "C"
     void rml_element_set_inner_rml(rml_element *element, const char *rml);
     size_t rml_element_inner_rml(const rml_element *element, char *buffer, size_t size);
 
-    /* Form controls. Select and the selection range need an <input>. */
+    /* Form controls. Select and selection ranges accept <input> or <textarea>. */
     size_t rml_element_value(const rml_element *element, char *buffer, size_t size);
     void rml_element_set_value(rml_element *element, const char *value);
     void rml_element_select(rml_element *element);
     void rml_element_set_selection_range(rml_element *element, int start, int end);
     void rml_element_selection_range(rml_element *element, int *start, int *end);
+    /* Active textarea caret as a UTF-8 byte offset, preserving backwards selections. */
+    int rml_element_textarea_caret(const rml_element *element);
 
     bool rml_element_focus(rml_element *element, bool focus_visible);
     /* Simulates a click, as a pointer press and release on the element do. */
@@ -551,6 +556,24 @@ extern "C"
     rml_vec2 rml_element_absolute_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_relative_offset(rml_element *element, rml_box_area area);
     rml_vec2 rml_element_box_size(rml_element *element, rml_box_area area);
+    typedef enum
+    {
+        RML_LENGTH_PX,
+        RML_LENGTH_DP,
+        RML_LENGTH_EM,
+        RML_LENGTH_REM,
+        RML_LENGTH_VW,
+        RML_LENGTH_VH,
+        RML_LENGTH_IN,
+        RML_LENGTH_CM,
+        RML_LENGTH_MM,
+        RML_LENGTH_PT,
+        RML_LENGTH_PC
+    } rml_length_unit;
+    /* Resolves one authored unit into physical context pixels. */
+    float rml_element_unit_pixels(rml_element *, rml_length_unit);
+    rml_vec2 rml_element_containing_block(rml_element *);
+
     bool rml_element_is_visible(const rml_element *element, bool include_ancestors);
 
     /* ---------- Events ---------- */
@@ -772,6 +795,8 @@ extern "C"
     size_t rml_event_text(const rml_event *event, char *buffer, size_t size);
     /* A mousescroll event's wheel delta; positive y scrolls down. */
     rml_vec2 rml_event_wheel(const rml_event *event);
+    /* A native control/custom event's value parameter, copied like snprintf. */
+    size_t rml_event_value(const rml_event *event, char *buffer, size_t size);
 
     /* ---------- Code intelligence (workstream I) ---------- */
 

@@ -114,7 +114,9 @@ static int read_ui(void *state, double time, ui_document *out, char *error, size
     *out = next;
     return 1;
 }
-const render_ui_loader AUTHORING_UI_LOADER = { open_ui, read_ui, close_ui };
+const render_ui_loader AUTHORING_UI_LOADER = { .open = open_ui,
+                                               .read = read_ui,
+                                               .close = close_ui };
 ui_mount *authoring_ui_mount_new(const char *root, const char *name)
 {
     ui_mount *mount = ui_mount_new(root, name);

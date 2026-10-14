@@ -4769,11 +4769,11 @@
         "required": false,
         "types": [
           {
-            "type": "shared",
+            "type": "self",
             "named": false
           },
           {
-            "type": "state",
+            "type": "shared",
             "named": false
           }
         ]
@@ -6558,10 +6558,6 @@
   },
   {
     "type": "split",
-    "named": false
-  },
-  {
-    "type": "state",
     "named": false
   },
   {

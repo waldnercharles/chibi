@@ -1,6 +1,7 @@
 #ifndef CHIBI_EXECUTION_PROGRAM_INSPECTION_H
 #define CHIBI_EXECUTION_PROGRAM_INSPECTION_H
 #include "execution/program_internal.h"
+void program_inspection_failure(execution_program *, const execution_program_failure *);
 void program_inspection_bind(execution_activation *);
 void program_inspection_finish(execution_activation *);
 void program_inspection_retire(execution_program *);

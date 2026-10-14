@@ -50,7 +50,8 @@ const render_mesh_asset *render_mesh_asset_load(const char *source, char *error,
 /* Transfers an already validated owned snapshot into the resident catalog. */
 void render_mesh_asset_publish(const char *source, render_mesh_asset *asset);
 void render_mesh_assets_clear();
-/* Changes whenever the resident catalog does: a publish, a clear or an exchange. */
+/* Identity of the resident catalog contents. Mutation assigns a fresh token;
+ * exchanging away and restoring a catalog preserves its token. */
 uint64_t render_mesh_assets_generation();
 /* Detached resident catalog generation. Successful insertion consumes asset;
  * rejection leaves it owned by the caller. Exchange cannot fail and transfers

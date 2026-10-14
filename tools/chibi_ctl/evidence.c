@@ -384,14 +384,16 @@ bool chibi_ctl_evidence_response(chibi_ctl_evidence *e, const char *request, con
     const char *mime = av_get_str(av_obj_get(preview, "mime_type"));
     const char *data = av_get_str(av_obj_get(preview, "data"));
     if (e->render && ok && operation &&
-        (!strcmp(operation, "preview_shader") || !strcmp(operation, "preview_scene")) &&
+        (!strcmp(operation, "preview_shader") || !strcmp(operation, "preview_scene") ||
+         !strcmp(operation, "preview_model")) &&
         backend && *backend && mime && !strcmp(mime, "image/png") && data &&
         *data && export_preview(e, entry, preview)) {
         coverage = "gpu_rendered";
         e->gpu_rendered = true;
         av_value *metadata = av_obj_add_obj(e->doc, entry, "preview_metadata");
-        const char *fields[] = { "backend", "video_driver", "performance" };
-        for (int i = 0; i < 3; i++) {
+        const char *fields[] = { "backend", "video_driver", "performance",
+                                 "view",    "inspection",   "time" };
+        for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
             av_value *value = av_obj_get(result, fields[i]);
             if (value) {
                 av_obj_set(e->doc, metadata, fields[i], av_clone(e->doc, value));

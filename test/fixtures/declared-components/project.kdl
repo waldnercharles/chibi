@@ -1,4 +1,4 @@
-version 24
+version 25
 name "Declared components"
 content "content"
 start_scene "scenes/Start.kdl"

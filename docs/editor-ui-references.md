@@ -1,73 +1,79 @@
 # Editor UI references
 
-Studio source and shell assets are owned by the extracted `chibi-studio`
-repository. Paths under `src/editor/` and `projects/studio/` in this guide are
-relative to that repository. The engine supplies the shared SDK interfaces.
+SDK5 packaging and bounded CPU validation now pass. Installed build
+`cef077585ca28f1edfb80ccc00d6344026bec1bf347104974b1303d08d210a21`
+has manifest SHA256
+`4aab3609c818da3813741e160ab972068e9540e0206a3773af8253921c230baa`
+and engine source snapshot
+`5cb31f58592436059bd0ed49e44013551d2063eb045e6f17bf3128b0f0346ba9`.
+All five required groups passed, along with owning workspace-authoring,
+workspace-services, host-services, authored-surface, code-control, event-payload
+and random-isolation selectors. Strict installed-SDK packaging also passed.
+Whole-application SDK5 compilation and Home startup remain pending at this
+update. Future SDK6 work is staged and unvalidated. These CPU/package results do
+not establish rendered interaction or browser acceptance.
 
-The editor UI is RmlUi driven from C through the Studio kit (`src/editor/ui/kit.h`,
-`src/editor/rmlui/kit*.c`). None of the libraries below can be linked into it: they
-are React/DOM code. Each one solves a problem the editor has too, so the kit carries
-a native version that follows the library's contract: its states, timings,
-thresholds and keyboard model. Before building a UI mechanism inside a panel, find
-the problem here and use, or extend, the kit primitive. Node editors (xyflow,
-imgui-node-editor, Blender, Unreal, ComfyUI and others) have their own map in
-[Node editor references](editor-graph-references.md).
 
-Contracts were read from each project's README, docs and source on 2026-09-23. Where
-the docs and source disagree, the source value is recorded. All are MIT licensed
-except cva (Apache-2.0); no source is copied. This supersedes the "skip" verdicts in
-the earlier library catalog from the Codex RmlUi branch.
+## Current ownership
 
-## Porting React and Tailwind references
+Studio is an authored application in `chibi-studio`. Its RML defines structure,
+RCSS defines appearance, and `.chibi` behaviors own editor state, commands and
+workflows. Paths under `projects/studio/` below are relative to that repository.
+Engine paths under `src/ui/` and `src/authoring/` provide reusable capabilities
+through an installed SDK. The native Studio kit and Zep bridge were retired from
+the migration candidate on 2026-10-14. Studio's `NATIVE_RETIREMENT.json` records
+original paths and blobs at baseline `34f13325c3fb4e1888dbd64bf45d809e07c782d3`.
 
-Use the library's primary docs and source as the contract for component anatomy,
-size and style variants, state attributes, motion, and keyboard behavior. Recreate
-that contract as a reusable native kit primitive with RML and RCSS; React components
-cannot run in this C/RmlUi runtime. Tailwind's [CLI](https://tailwindcss.com/docs/installation/tailwind-cli)
-can scan templates and emit static CSS, and its [Preflight can be omitted](https://tailwindcss.com/docs/preflight#disabling-preflight)
-by importing only theme and utilities. This helps inspect utility output, but the
-generated stylesheet is not RCSS: a Tailwind v4.1.13 fixture produced `@layer`,
-`@property`, `@supports`, CSS nesting, logical padding, custom-property `calc()`, and
-`:root, :host`; RmlUi logged parse/property errors, and the fixture stayed at its
-default color even though adding the stylesheet returned success. The RCSS expander
-handles the documented subset in `src/support/rcss.h`, not general CSS. Keep authored
-RML/RCSS as the runtime assets; do not treat stylesheet-load success as proof that a
-ported style applied.
+Use the shared authored controls before creating a panel-specific equivalent.
+The [authoring guide](studio-ui-authoring.md) describes the current composition
+and event model. [Graph references](editor-graph-references.md) cover graph
+interaction design. [Retirement maps](native-retirement/graph.md) distinguish
+source replacements from outstanding acceptance work.
 
-For each port, record the source's sizes, variants, state and keyboard contract,
-then implement those states in the reusable kit primitive and its authored markup.
-Check the RCSS through the native RmlUi parser and verify the actual rendered states,
-keyboard interactions, and cropped screenshots in `make web`; compare against the
-reference for spacing, alignment, and motion as well as appearance.
+## Current implementation map
 
-## Map
+| Concern | Authored owner in `projects/studio/content/` | Reusable engine capability |
+| --- | --- | --- |
+| Fields and choices | `ui/NumberField`, `VectorField`, `ColorField`, `Checkbox`, `EnumField`, `AssetField`, `ChoiceList`, `Select` | `src/ui/controls` numeric, color and choice mechanics |
+| Menus and dialogs | `ui/Menu*`, `Dialog`, `StudioMenu`, `StudioSubmenu`; authored command handlers | `src/ui/popover.c` focus, dismissal and stacking |
+| Layout and styling | `ui/Panel`, `Splitter`, `PropertyRow`, `StudioShell`, `StudioWorkspace`; `ui/theme/tokens.rcss` | RmlUi layout, measurement and data binding |
+| Palette and resource pickers | `behaviors/StudioCommands.chibi`, `AssetBrowser.chibi`, shared choice controls | Bounded resource/catalog queries and ranking |
+| Notices | `behaviors/StudioNotices.chibi`, `ui/StudioNotices.rml/.rcss` | Generic event delivery and UI rendering |
+| Text and navigation | `behaviors/StudioText.chibi`, `StudioDocuments.chibi`, `ui/StudioTextEditor` | Generic code control, UTF8 editing, document and semantic services |
+| Designer and DOM inspection | `behaviors/StudioUIDesigner.chibi`, `StudioUICanvas.chibi`, `StudioDOMInspector.chibi` | Rooted source candidates, static UI preview, layout and style inspection |
+| Material, model and scene views | `StudioVisual.chibi`, `StudioModel.chibi`, `StudioScene.chibi` and corresponding RML | Visual authoring, managed texture views, detached runtime, geometry and evidence services |
+| Preferences and workspace state | `behaviors/StudioPreferences.chibi`, `StudioShell.chibi` | Platform preference storage |
+| Drag/drop, lists and motion | Shared authored controls and behavior policy | `src/ui/drag.c`, `list.c`, `motion.c`, `text_motion.c` |
 
-| Library | Problem | Kit equivalent | State |
-| --- | --- | --- | --- |
-| [Base UI](https://base-ui.com) | Behavior contracts for fields, menus, popovers, dialogs, tooltips | Controls in `kit_controls.c` (toggle groups: `kit_toggle_group`; anchored searchable choices: `kit_select`'s dropdown, with `kit_picker` as the canvas literals' trigger for Studio's picker) and the native `<number-field>` and `<color-field>` (`src/ui/controls`, which `kit_number` and `kit_color` emit); popups and menus on `src/ui/popover.c`, the HTML popover attribute with one stack for authored popovers and the kit's (`kit_popup.c` emits the kit's: color swatches `kit_menu_item_desc.swatch`, a panel header's menu `kit_panel_menu`), and tooltips (a picture above the text: `kit_tip_image`) in `kit_popup.c`. Authored UI, the editor's and games', uses the widgets in `projects/studio/content/ui`: Switch, Select, Slider, Segmented, SidebarNav, SettingRow, Dialog, KeyHint; Menu, MenuItem, MenuCommand, MenuGroup, MenuSeparator, Submenu, MenuCheck and MenuOption over popover.c; ChoiceList over the native `<choice-list>`, with EnumField and AssetField; and over the native controls NumberField, VectorField, ColorField, Checkbox, PropertyRow, Panel and Splitter | Done |
-| [shadcn/ui](https://ui.shadcn.com) | Semantic tokens, variant discipline, control anatomy | Tokens in the Studio theme (`projects/studio/content/ui/theme/tokens.rcss`, imported by the `StudioShell` root document); Textarea as `kit_text_area` | Done |
-| [cmdk](https://github.com/dip/cmdk), [VS Code Quick Open](https://code.visualstudio.com/docs/getstarted/userinterface#_quick-open) | Command palette: ranking, groups, keyboard; prefixes and recent items | `Palette.rml` and `Picker.rml` over `<choice-list virtualized>` and the `palette` source (`studio_palette_view.c`; clients `studio_palette.c`, `studio_pick.c`), ranked by `support/text_rank.h`, which the kit's dropdowns share | Done; pages and group jumps open |
-| [DialKit](https://github.com/joshpuckett/dialkit) | Live tuning of values, scrub feel, spring and easing controls | The native `<number-field>` (`src/ui/controls/number_field.c`; scrub, fine/coarse/snap, Escape cancels a scrub), which `kit_number` emits and authored UI uses as NumberField | Partial; rubber-band and spring controls open |
-| [Motion](https://github.com/motiondivision/motion) | Springs, enter/exit presence, layout (FLIP) animation | `kit_presence`, `kit_layout` (`kit_motion.c`); springs in `src/ui/motion.c`. Authored UI, the editor's and games': `presence` on a `data-if` element | Done |
-| [NumberFlow](https://github.com/barvian/number-flow) | Number changes as spinning digit wheels | The native `<number-flow>` element (`src/ui/text_motion.c`), which `kit_number_flow` emits | Done |
-| [Torph](https://github.com/lochie/torph) | Text continuity when a label changes | The native `<morph-text>` element (`src/ui/text_motion.c`), which `kit_morph` and `kit_button_desc.morph` emit | Done; place-value numbers open |
-| [Sonner](https://github.com/emilkowalski/sonner) | Toast notifications | `kit_toast` (`kit_toast.c`) | Done; Alt+T focus open |
-| [Virtuoso](https://github.com/petyosi/react-virtuoso) | Lists with thousands of rows, follow-output logs, grids | `ui_list_window` (`src/ui/list.c`) on any scroller, fixed row height, a window that keeps its length; authored UI's `List` widget, and `kit_list`, a wrapper over it; a grid (VirtuosoGrid) is a list of rows of tiles, as Assets' | Done; measured heights open |
-| [dnd-kit](https://github.com/clauderic/dnd-kit) | Accessible drag and drop | One drag for every document (`src/ui/drag.c`): `data-drag` sources, `data-drop` targets of one or several types with tree or list zones, `data-drop-accept`/`-over`/`-zone` marks, a bubbling `drop` event, `ui_drag_over` (dnd-kit's `over`), `ui_drag_hint` and `ui_drag_dropped` for C surfaces. `kit_drag_source`, `kit_drop_target`, `kit_drop_hover` and `kit_drag_hint` wrap it; the Hierarchy's keyboard sensor over the sortable tree's slots (`ui_design_slots`) | Done; a keyboard sensor for other lists and auto-scroll open |
-| [Shiki](https://github.com/shikijs/shiki) | Syntax highlighting as styled token runs | `highlight_runs` / `highlight_markup` (`editor/ui/highlight.c`), `kit_markup` | Done: log, code assets, expressions |
-| [Liveline](https://github.com/benjitaylor/liveline) | Streaming line chart that feels alive | The native `<line-chart>` (`src/ui/controls/line_chart.c`) over series C publishes by name (`line_chart_publish`) | Done |
-| [Recharts](https://github.com/recharts/recharts) | Axes, ticks, tooltips for static charts | `<line-chart>` ticks, badge and scrub value; Performance's legend (`Performance.rml`) | Partial; bars open |
-| [zustand](https://github.com/pmndrs/zustand) | One store, selective updates, persistence | `studio_prefs`, whose preferences are rows of `studio_settings[]` | Done |
-| [Blender Workspaces](https://docs.blender.org/manual/en/latest/interface/window_system/workspaces.html), [Godot main screens](https://docs.godotengine.org/en/stable/getting_started/introduction/first_look_at_the_editor.html) | Named arrangements of areas for a task, switched without touching documents | `studio_prefs.layouts` per `studio_workspace`; explicit Horizontal Split and Vertical Split commands in the top bar | Done; two fixed split modes |
-| [next-themes](https://github.com/pacocoursey/next-themes) | Theme preference: system, no flash, no mixed transitions | Theme in `studio_prefs` | Done |
-| [clsx](https://github.com/lukeed/clsx) | Conditional class lists | `KIT_CX` | Done |
-| [cva](https://github.com/joe-bell/cva) | Variants mapped to classes in one table | `kit_variant`, `kit_size` | Done |
-| [Chrome DevTools](https://developer.chrome.com/docs/devtools/css), [Unity UI Toolkit Debugger](https://docs.unity3d.com/Manual/UIE-ui-debugger.html) | Pick any element; see its box, the rules that style it and where they were written | `kit_inspect_begin`, `kit_highlight`, `kit_element_path` (`kit_inspect.c`); the authored Inspector panel (`studio_inspect.c`) | Done; overridden declarations and tree keys open |
-| [Unity IMGUIContainer](https://docs.unity3d.com/ScriptReference/UIElements.IMGUIContainer.html) | Native, immediate-mode content inside an authored layout | `kit_slot_begin`, `kit_slot_end` (`kit_slot.c`): each area's content in its place in the Workspace; each area header's editor controls | Done |
-| [Unity UI Builder](https://docs.unity3d.com/Manual/UIB-getting-started.html), [UMG Designer](https://dev.epicgames.com/documentation/en-us/unreal-engine/umg-ui-designer-quick-start-guide-in-unreal-engine) | Visual editing of a UI document: hierarchy, canvas, details and a library of elements | The designer (`studio_designer*.c`) over `ui_design.h`'s text edits; its Hierarchy, Details and Library are authored (D1), the tree a List of TreeRows whose `data-drop-zones` give before, inside and after, the Library's tiles `data-drag="ui"` sources; `kit_highlight` for the Canvas outlines, `kit_item_pressed` for its resize handles | Done |
-| [Zep](https://github.com/Rezonality/zep) (linked, C++) | Code editing: Vim and standard keys, undo, diagnostics, completion, hover | `kit_code` (`kit_code.c`) over `editor/text/zep_bridge.h`; the Text Editor's language glue in `editor/documents/ui_code.h` and `asset_code.h`; shared code intelligence in `assets/asset_source.h` | Done; highlighting, diagnostics, completion items and hover text come from the caller |
+This map records source ownership. A control's presence does not certify its
+rendered appearance or interaction parity. The installed SDK4 whole-application
+compile passed, but its bounded Home startup failed before UI because an
+inactive project required `workspace_resources`. SDK5 corrects the service
+contract; runtime validation remains pending at this update.
 
-## Contracts
+## Using external references
+
+The contracts below were read from primary documentation and source on
+2026-09-23. They preserve useful interaction targets and historical measurements.
+They are not fresh checks of those projects or acceptance results for Studio.
+React/DOM components cannot run directly in this RmlUi application. Implement
+component anatomy and workflow in shared RML, RCSS and `.chibi`; extend an engine
+control only for a reusable input or rendering capability.
+
+Tailwind output is not RCSS. A historical v4.1.13 fixture emitted unsupported
+`@layer`, `@property`, `@supports`, nesting and custom-property expressions.
+Stylesheet-load success did not mean those styles applied. Use the supported
+subset in `src/support/rcss.h`, inspect parser diagnostics and capture rendered
+states with the installed SDK's bounded replay tooling.
+
+The remaining contract notes retain former `kit_*`, Zep and `src/editor/` names
+as historical reference identifiers. Recover those implementations from the
+Studio baseline above. They describe prior behavior and design targets, not
+current dependencies or instructions to restore native controllers. Any stated
+"done" or numeric behavior below belongs to that recorded implementation until
+fresh authored acceptance establishes it.
+
+## Historical reference contracts
 
 ### Base UI
 
@@ -330,18 +336,20 @@ Zep is the one library here that is linked: `zep_bridge.cpp` only forwards, and
 - Highlighting spans carry classes, as Shiki's tokens do: a span draws in the color the theme gives its `tok-*` classes, so a refining class such as `tok-tag` can override its base (`tok-keyword`). The Text Editor takes its spans from `ui_source`.
 - The browser hands pasted text only to a `paste` event, which a Command+V the canvas lets through raises; the web build keeps it for the paste a frame later.
 
-## Common mismatches to catch
+## Checks for new authored UI
 
-- **Toasts built by hand, or a modal used for a notice.** Use `kit_toast`. The status-bar report is for the last operation; toasts are for results the user might act on, such as Undo after Delete, or must not miss, such as a failed save.
-- **A plain container with hand-written open, close, focus or outside-press logic.** Use kit popups, menus and the command (Base UI): they handle focus return, Escape and outside dismissal, typeahead and stacking.
-- **A number animated by rewriting its text every frame.** Use `kit_number_flow` for discrete changes. Continuous values stay static.
-- **1,000 or more rows emitted directly.** Use the `List` widget or `kit_list` over `ui_list_window` (Virtuoso) before capping or paging results.
-- **A tangle of parameters or duplicated statics for shared state.** Authoring state stays in the C model. View settings and layout go in `studio_prefs` (zustand). Transient widget state lives in the kit node.
-- **Class strings built with ternaries or `snprintf`.** Use `KIT_CX` (clsx) for conditions and `kit_variant`/`kit_size` (cva) for variants. State goes in `data-*` attributes.
-- **Instant show and hide, or animation interpolated by hand in C.** Use `kit_presence` with RCSS starting and ending styles, and `kit_layout` for moves (Motion).
-- **A label swapped instantly where continuity matters.** Use `kit_morph` (Torph).
-- **A drag state machine written inside a panel.** Use `data-drag` and `data-drop` (`src/ui/drag.h`) or the kit's wrappers (dnd-kit) for their activation constraint, marks, zones and Escape.
-- **A theme, density or motion toggle that flashes or animates.** Apply preferences before the first frame and suspend transitions for the switch (next-themes).
-- **A chart built from many elements.** Use the chart element (Liveline, Recharts).
-- **Colors matched with regular expressions at the call site.** Use the shared token-run highlighter (Shiki).
-- **Source text edited in a text area.** Use `kit_code` (Zep) for anything longer than a note: it keeps undo, Vim and the standard keys, and takes edits as `text_edit`s.
+- Reuse shared notices for operation results and recovery actions. Keep detailed
+  diagnostics behind an explicit action rather than filling the main panel.
+- Use authored menus and dialogs over generic popover focus and dismissal.
+- Match controls to reflected types and ranges. Keep choices searchable or
+  scrollable with at most seven visible rows.
+- Keep canonical source and grouped undo in document services. Authored behaviors
+  own temporary drafts, gesture policy and correlated completion.
+- Put interaction state in `data-*` attributes and appearance in shared RCSS.
+- Use list windowing for large inventories, generic chart elements for plots and
+  managed texture views for rendered previews.
+- Keep continuously changing numbers static. Respect reduced motion and verify
+  focus, disabled, error and cancellation states in actual rendered replay.
+- Report compilation, CPU service checks, startup, rendered interaction and
+  browser acceptance separately. Historical kit screenshots do not validate an
+  authored replacement.

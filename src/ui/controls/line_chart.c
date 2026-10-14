@@ -17,6 +17,7 @@
 #include "support/math.h"
 #include "support/xalloc.h"
 #include "ui/controls/controls_internal.h"
+#include "ui/controls/line_chart_data.h"
 #include "ui/motion.h"
 
 #include <assert.h>
@@ -57,7 +58,9 @@ typedef struct line_chart
     char unit[UNIT_TEXT];
     int precision;
     double window, reference, min, max;
-    bool fill, live, dirty;
+    bool fill, live, dirty, data_dirty, inline_active;
+    published inline_series[SERIES_MAX];
+    int inline_count;
     /* What the last update showed. */
     uint64_t revision; /* the sum of its series' revisions */
     double *values;    /* tick values, top to bottom */
@@ -92,6 +95,10 @@ static published *find_series(const char *name)
     return NULL;
 }
 
+static const published *chart_series(const line_chart *c, int index)
+{
+    return c->inline_active ? &c->inline_series[index] : find_series(c->names[index]);
+}
 static bool same_samples(const published *p, const line_chart_series *s)
 {
     return p->color == s->color && p->now == s->now && acount(p->times) == s->count &&
@@ -111,6 +118,9 @@ static void copy_floats(float **out, const float *in, int count)
 
 static bool names_series(const line_chart *c, const char *name)
 {
+    if (c->inline_active) {
+        return false;
+    }
     for (int i = 0; i < c->count; i++) {
         if (!strcmp(c->names[i], name)) {
             return true;
@@ -338,7 +348,7 @@ static void pulse(mesh *m, const line_chart *c, vec2 end, uint32_t color)
 
 static void draw_series(mesh *m, const line_chart *c, int si, vec2 size, uint32_t line)
 {
-    const published *series = find_series(c->names[si]);
+    const published *series = chart_series(c, si);
     float s = c->dp;
     if (!series) {
         return;
@@ -497,7 +507,7 @@ static uint64_t gather(line_chart *c, double *lo, double *hi)
     uint64_t revision = 0;
     c->now = 0;
     for (int i = 0; i < c->count; i++) {
-        const published *p = find_series(c->names[i]);
+        const published *p = chart_series(c, i);
         if (p) {
             revision += p->revision;
             c->now = math_max(p->now, c->now);
@@ -506,7 +516,7 @@ static uint64_t gather(line_chart *c, double *lo, double *hi)
     *lo = INFINITY;
     *hi = -INFINITY;
     for (int i = 0; i < c->count; i++) {
-        const published *p = find_series(c->names[i]);
+        const published *p = chart_series(c, i);
         for (int j = 0; p && j < acount(p->times); j++) {
             if (p->times[j] >= c->now - c->window) {
                 *lo = math_min((double)p->values[j], *lo);
@@ -583,7 +593,7 @@ static void label_ticks(line_chart *c, float height, double step)
 /* The first series when it has values, or NULL. */
 static const published *first_series(const line_chart *c)
 {
-    const published *first = c->count ? find_series(c->names[0]) : NULL;
+    const published *first = c->count ? chart_series(c, 0) : NULL;
     return first && acount(first->values) ? first : NULL;
 }
 
@@ -666,9 +676,69 @@ static void scrub(line_chart *c, float width)
 
 /* ---------- The element ---------- */
 
+static void clear_inline(line_chart *c)
+{
+    for (int i = 0; i < c->inline_count; i++) {
+        afree(c->inline_series[i].times);
+        afree(c->inline_series[i].values);
+    }
+    c->inline_count = 0;
+}
+static void read_data(line_chart *c)
+{
+    c->data_dirty = false;
+    if (!rml_element_has_attribute(c->el, "data-series")) {
+        clear_inline(c);
+        c->inline_active = false;
+        rml_element_remove_attribute(c->el, "data-invalid");
+        rml_element_remove_attribute(c->el, "data-error");
+        return;
+    }
+    size_t bytes = rml_element_attribute(c->el, "data-series", NULL, 0);
+    char error[192];
+    line_chart_series *data = NULL;
+    int count = 0;
+    bool ok = bytes <= 262144;
+    if (ok) {
+        char *json = xmalloc(bytes + 1);
+        rml_element_attribute(c->el, "data-series", json, bytes + 1);
+        ok = line_chart_data_parse(json, &data, &count, error, sizeof error);
+        free(json);
+    } else {
+        snprintf(error, sizeof error, "Chart data exceeds 256 KiB");
+    }
+    if (!ok) {
+        rml_element_set_attribute(c->el, "data-invalid", "");
+        rml_element_set_attribute(c->el, "data-error", error);
+        return;
+    }
+    for (int i = count; i < c->inline_count; i++) {
+        afree(c->inline_series[i].times);
+        afree(c->inline_series[i].values);
+    }
+    for (int i = 0; i < count; i++) {
+        published *p = &c->inline_series[i];
+        if (!same_samples(p, &data[i])) {
+            copy_floats(&p->times, data[i].times, data[i].count);
+            copy_floats(&p->values, data[i].values, data[i].count);
+            p->color = data[i].color;
+            p->now = data[i].now;
+            p->revision = ++revisions;
+        }
+    }
+    c->inline_count = count;
+    c->inline_active = true;
+    line_chart_data_free(data, count);
+    rml_element_remove_attribute(c->el, "data-invalid");
+    rml_element_remove_attribute(c->el, "data-error");
+}
 /* The names `series` lists, separated by spaces. */
 static void read_names(line_chart *c)
 {
+    if (c->inline_active) {
+        c->count = c->inline_count;
+        return;
+    }
     char names[SERIES_MAX * NAME_TEXT];
     control_string(c->el, "series", names, sizeof names);
     c->count = 0;
@@ -683,6 +753,9 @@ static void read_names(line_chart *c)
 
 static void read_attributes(line_chart *c)
 {
+    if (c->data_dirty) {
+        read_data(c);
+    }
     read_names(c);
     control_string(c->el, "unit", c->unit, sizeof c->unit);
     c->precision = (int)control_number(c->el, "precision", 0);
@@ -719,7 +792,12 @@ static void on_event(void *, const rml_event *e)
 static line_chart *chart_new(rml_element *el)
 {
     line_chart *c = xcalloc(1, sizeof *c);
-    *c = (line_chart){ .el = el, .hi = 1, .dirty = true, .pointer = -1, .hover_x = -1 };
+    *c = (line_chart){ .el = el,
+                       .hi = 1,
+                       .dirty = true,
+                       .data_dirty = true,
+                       .pointer = -1,
+                       .hover_x = -1 };
     c->hover_value = NAN;
     rml_element_set_user(el, c);
     c->badge = control_part(el, "span", "chart-badge");
@@ -775,6 +853,10 @@ static void chart_update(rml_element *el, void *user)
 static void chart_attribute(rml_element *, void *user, const char *name)
 {
     line_chart *c = user;
+    if (c && !strcmp(name, "data-series")) {
+        c->data_dirty = true;
+        c->dirty = true;
+    }
     static const char *const NAMES[] = { "series",    "unit", "precision",
                                          "window",    "min",  "max",
                                          "reference", "fill", "live" };
@@ -798,6 +880,7 @@ static void chart_release(void *user)
     if (!acount(charts)) {
         afree(charts);
     }
+    clear_inline(c);
     afree(c->ticks);
     afree(c->values);
     rml_geometry_destroy(c->geometry);

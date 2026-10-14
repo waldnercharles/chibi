@@ -1,0 +1,5 @@
+#ifndef CHIBI_BROWSER_MESSAGES_DEFINITION_H
+#define CHIBI_BROWSER_MESSAGES_DEFINITION_H
+#include "runtime/native_definitions.h"
+extern const native_definition_pack BROWSER_MESSAGES_DEFINITION_PACK;
+#endif

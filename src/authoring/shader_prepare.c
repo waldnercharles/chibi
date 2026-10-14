@@ -36,7 +36,6 @@ typedef struct
     behavior_asset *model;
     char *library;
 } shader_source;
-static shader_source *source_records;
 static void source_free(shader_source *source)
 {
     av_value_free(source->value);
@@ -44,13 +43,21 @@ static void source_free(shader_source *source)
     free(source->library);
     *source = (shader_source){ 0 };
 }
+static void source_destroy(void *record)
+{
+    source_free(record);
+    free(record);
+}
 static shader_source *source_at(int index)
 {
     assert(index >= 0 && index < acount(shader_catalog_assets));
-    while (acount(source_records) < acount(shader_catalog_assets)) {
-        apush(source_records, ((shader_source){ 0 }));
+    shader_asset *asset = &shader_catalog_assets[index];
+    if (!asset->authoring) {
+        asset->authoring = xcalloc(1, sizeof(shader_source));
+        asset->authoring_free = source_destroy;
     }
-    return &source_records[index];
+    assert(asset->authoring_free == source_destroy);
+    return asset->authoring;
 }
 static void source_set(int index, shader_source source)
 {
@@ -60,10 +67,6 @@ static void source_set(int index, shader_source source)
 }
 void authoring_shader_catalog_clear()
 {
-    for (int i = 0; i < acount(source_records); i++) {
-        source_free(&source_records[i]);
-    }
-    afree(source_records);
     render_shader_catalog_clear();
 }
 
@@ -215,9 +218,8 @@ static bool library_prepare(const behavior_asset *source, bool publish, shader_e
         source_set(ids[i] - 1, (shader_source){ .library = xstrdup(source->name) });
     }
     bool removed = false;
-    for (int i = 0; i < acount(source_records); i++) {
-        if (!source_records[i].library ||
-            strcmp(source_records[i].library, source->name)) {
+    for (int i = 0; i < acount(shader_catalog_assets); i++) {
+        if (!source_at(i)->library || strcmp(source_at(i)->library, source->name)) {
             continue;
         }
         bool retained = false;
@@ -227,7 +229,6 @@ static bool library_prepare(const behavior_asset *source, bool publish, shader_e
         if (!retained) {
             shader_catalog_free_asset(&shader_catalog_assets[i]);
             shader_catalog_assets[i] = (shader_asset){ .name = xstrdup("") };
-            source_free(&source_records[i]);
             removed = true;
         }
     }
@@ -255,13 +256,12 @@ bool render_shader_library_upsert(const behavior_asset *source, shader_error *er
 void render_shader_library_remove(const char *name)
 {
     bool removed = false;
-    for (int i = 0; i < acount(source_records); i++) {
-        if (!source_records[i].library || strcmp(source_records[i].library, name)) {
+    for (int i = 0; i < acount(shader_catalog_assets); i++) {
+        if (!source_at(i)->library || strcmp(source_at(i)->library, name)) {
             continue;
         }
         shader_catalog_free_asset(&shader_catalog_assets[i]);
         shader_catalog_assets[i] = (shader_asset){ .name = xstrdup("") };
-        source_free(&source_records[i]);
         removed = true;
     }
     if (removed) {
@@ -681,7 +681,6 @@ static bool model_generation_publish(
         source_set(pending->id - 1, pending->source);
     }
     if (removed) {
-        source_free(source_at(removed - 1));
         shader_catalog_free_asset(&shader_catalog_assets[removed - 1]);
         shader_catalog_assets[removed - 1] = (shader_asset){ .name = xstrdup("") };
     }
@@ -868,7 +867,6 @@ bool render_shader_material_remove(const char *name, shader_error *error)
             }
         }
     }
-    source_free(source_at(id - 1));
     shader_catalog_free_asset(&shader_catalog_assets[id - 1]);
     shader_catalog_assets[id - 1] = (shader_asset){ .name = xstrdup("") };
     shader_catalog_revision++;

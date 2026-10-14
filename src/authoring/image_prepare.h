@@ -2,7 +2,15 @@
 #define CHIBI_IMAGE_PREPARE_H
 #include "runtime/images/catalog.h"
 #include "runtime/images/sky.h"
-/* Owns copied content roots and supplies the CPU PNG/JPEG decoder. */
+/* Owned single-root decoder. Descendants are opened relative to a retained
+ * directory descriptor, refusing symlinks, traversal and nonregular files.
+ * The returned loader has one reference; copy/release use the catalog helpers. */
+/* Owned encoded bytes from the same retained root as this decoder. Only this
+ * module's rooted loader supports the operation; no process path fallback. */
+void *image_prepare_loader_bytes(render_image_loader, const char *key, int *length, char *error, size_t);
+bool image_prepare_loader_new(const char *content_root, render_image_loader *out, char *error, size_t);
+/* Replaces the current decoder with one owned root, without cross-project
+ * fallback. Resident images remain unchanged until explicitly reloaded. */
 bool render_image_mount_content(const char *root, char *error, size_t size);
 /* The bytes of the file at `path` when they decode as a PNG, owned by the
  * caller, with their count in `length`; NULL with `error` saying why not. */

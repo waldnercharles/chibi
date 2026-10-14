@@ -658,7 +658,7 @@ int execution_machine_step(execution_machine *m, int pc)
         case BF_MOD_F64: out->d = fmod(a.d, b.d); break;
         case BF_HYPOT: out->d = hypot(a.d, b.d); break;
         case BF_FMA: out->d = fma(a.d, b.d, slots[i->target].d); break;
-        case BF_RANDOM: out->i = rand(); break;
+        case BF_RANDOM: out->i = behavior_random_int(); break;
         case BF_RANDOM_RANGE: out->d = behavior_random_range(a.d, b.d); break;
         case BF_CONSTANT: *out = i->value; break;
         case BF_VARIABLE: *out = ctx->variables[i->left]; break;

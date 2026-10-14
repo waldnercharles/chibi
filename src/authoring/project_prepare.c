@@ -451,6 +451,7 @@ bool authoring_project_prepare(
         error[0] = 0;
     }
     if (!options->project || !options->native ||
+        !execution_preparation_budget(options->profile) ||
         options->components.component_count < 0 ||
         (options->components.component_count && !options->components.components) ||
         (options->modules & ~WORLD_MODULES_ALL)) {
@@ -613,7 +614,7 @@ bool authoring_project_prepare(
     execution_prepared_linker native_linker = native_capabilities_prepared_linker(&context);
     declared_components_linking linking = { declared, &native_linker };
     execution_prepared_linker linker = declared_components_linker(&linking);
-    size_t remaining = PACKAGE_MAX_BYTES;
+    size_t remaining = execution_preparation_budget(options->profile);
     collection = package_read_budget(
         modules,
         acount(modules),

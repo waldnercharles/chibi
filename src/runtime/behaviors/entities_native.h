@@ -12,6 +12,7 @@ typedef struct scene scene;
 extern const node_command ENTITY_SPAWN_COMMAND;
 extern const node_command ENTITY_DESTROY_COMMAND;
 extern const node_command ENTITY_SEND_COMMAND;
+extern const node_host_call ENTITY_NAME_CALL;
 extern const node_host_call ENTITY_NEAREST_CALL;
 extern const node_host_call ENTITY_GET_GLOBAL_CALL;
 extern const node_host_call ENTITY_SET_GLOBAL_CALL;

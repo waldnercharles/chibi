@@ -84,6 +84,10 @@ scene_instance *scene_instantiate_components(scene *, ecs_world *, char *error, 
 ecs_entity *scene_instance_take_entities(scene_instance *);
 void scene_instance_free(scene_instance *);
 ecs_entity scene_instance_entity(const scene_instance *, int);
+/* Resolve a dot-separated authored object path within this instance. Names and
+ * parent paths come from its immutable scene, without adding ECS.Name rows.
+ * Returns zero for absent/ambiguous paths or retired entity generations. */
+ecs_entity scene_instance_lookup(const scene_instance *, const char *path);
 /* Borrowed immutable scene retained by the instance. */
 const scene *scene_instance_scene(const scene_instance *);
 

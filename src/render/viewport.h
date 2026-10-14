@@ -59,6 +59,9 @@ typedef struct engine_viewport_host_input
 void engine_viewport_set_host_input(engine_viewport *viewport, const engine_viewport_host_input *input);
 /* CF texture id of the current canvas target; changes when the canvas resizes. */
 uint64_t engine_viewport_texture(const engine_viewport *viewport);
+/* Transfers the current CF_Canvas handle to a capture job. The caller destroys
+ * it after readback; the next render creates an independent target. */
+uint64_t engine_viewport_take_canvas(engine_viewport *);
 typedef struct engine_viewport_pointer
 {
     float world_x;

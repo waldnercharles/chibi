@@ -46,6 +46,57 @@ void test_tool_publish();
 void test_tool_web_storage();
 void test_tool_player_url();
 void test_tool_gpu_capabilities();
+#ifdef CHIBI_TEST_WORKSPACE_AUTHORING
+void test_workspace_documents();
+void test_tool_workspace_resources();
+void test_document_semantics();
+void test_tool_visual_authoring();
+void test_tool_ui_authoring();
+void test_tool_css_values();
+void test_tool_resource_preview_data();
+void test_tool_ui_source_provider();
+void test_workspace_assets();
+void test_workspace_file_history();
+void test_event_payload();
+void test_value_json();
+void test_document_graph();
+void test_tool_document_graph_selection();
+void test_model_export_artifacts();
+void test_model_reference();
+void test_document_members();
+void test_tool_visual_model();
+void test_authoring_observations();
+void test_json_query();
+void test_text_editing();
+void test_browser_messages();
+void test_tool_workspace_debug();
+void test_project_semantics();
+void test_workspace_info();
+void test_workspace_file();
+void test_rooted_files();
+void test_ui_replay();
+void test_workspace_scaffold();
+void test_tool_project_migration();
+void test_document_source_inventory();
+void test_document_port_schema();
+#ifdef CHIBI_TEST_WORKSPACE_IMPORTS
+void test_tool_workspace_imports();
+#endif
+#endif
+#ifdef CHIBI_TEST_CODE_UI
+void test_random_isolation();
+void test_code_control();
+void test_authored_surface();
+void test_tool_line_chart_data();
+void test_tool_ui_dom();
+void test_tool_workspace_tools();
+void test_tool_ui_source_preview();
+void test_tool_authoring_platform();
+void test_package_identity();
+void test_workspace_runtime();
+void test_workspace_simulation();
+void test_tool_visual_previews();
+#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
 void test_tool_audio_analysis();
 #endif
@@ -280,18 +331,22 @@ void test_field_library();
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--player-url",       "--audio-analysis",
-    "--audio-browser",    "--shader-webgpu",
-    "--asset-values",     "--ui-document",
-    "--text-files",       "--fmt",
-    "--particles",        "--png-encoding",
-    "--project-document", "--prototype-documents",
-    "--reference-index",  "--asset-source",
-    "--behavior-loader",  "--engine-clock",
-    "--preview-layout",   "--fields",
-    "--player-clock",     "--asset-schema",
-    "--resource-catalog", "--shader-authoring",
-    "--cli-authoring",    "--gpu-capabilities",
+    "--player-url",          "--audio-analysis",
+    "--audio-browser",       "--shader-webgpu",
+    "--asset-values",        "--ui-document",
+    "--text-files",          "--fmt",
+    "--particles",           "--png-encoding",
+    "--project-document",    "--prototype-documents",
+    "--reference-index",     "--asset-source",
+    "--behavior-loader",     "--engine-clock",
+    "--preview-layout",      "--fields",
+    "--player-clock",        "--asset-schema",
+    "--resource-catalog",    "--shader-authoring",
+    "--cli-authoring",       "--gpu-capabilities",
+    "--workspace-authoring", "--code-control",
+    "--authored-surface",    "--event-payload",
+    "--workspace-services",  "--host-services",
+    "--random-isolation",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -312,6 +367,83 @@ static bool document_selector(int argc, char **argv)
 /* Runs the suites of a document selector; false when none is built. */
 static bool run_document_suites(int argc, char **argv)
 {
+#ifdef CHIBI_TEST_WORKSPACE_AUTHORING
+    if (selected(argc, argv, "--workspace-authoring")) {
+        test_tool_project_migration();
+#ifdef CHIBI_TEST_WORKSPACE_IMPORTS
+        test_tool_workspace_imports();
+#endif
+        test_workspace_file();
+        test_rooted_files();
+        source_runtime_active = true;
+        test_workspace_documents();
+        test_tool_workspace_resources();
+        test_document_semantics();
+        test_tool_visual_authoring();
+        test_workspace_assets();
+        test_workspace_file_history();
+        test_value_json();
+        test_tool_ui_authoring();
+        test_tool_css_values();
+        test_tool_resource_preview_data();
+        test_tool_ui_source_provider();
+        return true;
+    }
+    if (selected(argc, argv, "--workspace-services")) {
+        source_runtime_active = true;
+        test_document_source_inventory();
+        test_document_port_schema();
+        test_document_graph();
+        test_tool_document_graph_selection();
+        test_document_members();
+        test_model_export_artifacts();
+        test_model_reference();
+        test_tool_visual_model();
+        test_authoring_observations();
+        test_json_query();
+        test_text_editing();
+        test_browser_messages();
+        test_tool_workspace_debug();
+        test_project_semantics();
+        test_workspace_info();
+        test_workspace_scaffold();
+        test_ui_replay();
+        return true;
+    }
+    if (selected(argc, argv, "--event-payload")) {
+        source_runtime_active = true;
+        test_event_payload();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_CODE_UI
+    if (selected(argc, argv, "--random-isolation")) {
+        source_runtime_active = true;
+        test_random_isolation();
+        return true;
+    }
+    if (selected(argc, argv, "--host-services")) {
+        source_runtime_active = true;
+        test_tool_line_chart_data();
+        test_tool_ui_dom();
+        test_tool_workspace_tools();
+        test_tool_ui_source_preview();
+        test_tool_authoring_platform();
+        test_package_identity();
+        test_workspace_runtime();
+        test_workspace_simulation();
+        test_tool_visual_previews();
+        return true;
+    }
+    if (selected(argc, argv, "--code-control")) {
+        test_code_control();
+        return true;
+    }
+    if (selected(argc, argv, "--authored-surface")) {
+        test_authored_surface();
+        return true;
+    }
+#endif
     if (selected(argc, argv, "--gpu-capabilities")) {
         test_tool_gpu_capabilities();
         return true;

@@ -36,7 +36,9 @@ const char *chibi_render_policy(yyjson_val *root)
     }
     const char *op = yyjson_get_str(yyjson_obj_get(root, "operation"));
     bool scene = op && !strcmp(op, "preview_scene");
-    if (!scene && (!op || strcmp(op, "preview_shader") || capture)) {
+    bool asset = op &&
+                 (!strcmp(op, "preview_shader") || !strcmp(op, "preview_model"));
+    if (!scene && (!asset || capture)) {
         return "operation_not_a_bounded_preview";
     }
     int width, height, frames, warmup, simulation;

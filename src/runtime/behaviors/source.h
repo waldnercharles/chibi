@@ -147,6 +147,10 @@ int source_maintain(source_registry *, double now, double delta);
 int source_step(source_registry *, double now, double delta);
 int source_pump(source_registry *, double now, double delta);
 execution_program *source_program(source_registry *, const char *);
+/* Borrowed registration names include systems and unattached behaviors; names
+ * expire at publication/removal. Concrete owners are enumerated on programs. */
+int source_program_count(const source_registry *);
+const char *source_program_name_at(const source_registry *, int index);
 /* Name is consumed during the call; host values remain borrowed. Active
  * callbacks keep the old value until each program reaches its safe boundary.
  * This mutation is serial; it cannot run from a parallel-safe system cohort. */

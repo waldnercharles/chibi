@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_GEOMETRY_2D_H
 
 #include "ecs/ecs.h"
+#include "render/skip.h"
 #include "runtime/components.h"
 
 #include <stdbool.h>
@@ -28,5 +29,16 @@ bool render_geometry_2d_mesh_bounds(
     char *error,
     size_t size
 );
+
+/* Gameplay-space body bounds at exact hierarchical placement. Excludes glow;
+ * outputs remain unchanged for missing/invalid geometry. */
+bool render_geometry_2d_bounds(const ecs_world *world, ecs_entity entity, CF_V2 *min, CF_V2 *max);
+
+/* Pick visible 2D body geometry at a gameplay (Y-down) point. Border/glow are
+ * excluded; tilemaps use occupied rectangular extents, mesh/SDF surfaces use
+ * their projected triangles, and custom shapes use their CPU sampler. Highest
+ * authored layer wins, then stable entity slot order. skip is sorted/borrowed.
+ * Call within the owning resource and declared-component scopes. */
+ecs_entity render_geometry_2d_pick(ecs_world *world, CF_V2 point, float time, render_skip skip);
 
 #endif

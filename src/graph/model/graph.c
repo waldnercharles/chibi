@@ -1336,3 +1336,12 @@ const char *graph_node_name_literal(const graph *g, const node *n)
     }
     return NULL;
 }
+
+bool graph_output_default_editable(const node *n, int pin)
+{
+    if (!n || pin < 0 || pin >= n->output_count || n->output_pins[pin].kind != PIN_DATA || n->output_pins[pin].field_source) return false;
+    if (n->desc->category && !strncmp(n->desc->category, "Shader", 6)) {
+        return !strcmp(n->desc->name, "Shader Constant") || !strcmp(n->desc->name, "Shader Parameter");
+    }
+    return n->desc->pure_kind == NODE_PURE_CONST && n->desc->display_class == NODE_DISPLAY_LITERAL;
+}

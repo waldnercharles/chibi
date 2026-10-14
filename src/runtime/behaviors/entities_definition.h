@@ -3,6 +3,7 @@
 
 #include "runtime/native_definitions.h"
 
+#define ENTITY_NAME_NAME "Get Entity Name"
 #define ENTITY_GET_GLOBAL_NAME "Get Global Variable"
 #define ENTITY_SET_GLOBAL_NAME "Set Global Variable"
 #define ENTITY_HAS_NAME "Has Entities With Component"

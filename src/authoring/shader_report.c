@@ -5,6 +5,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <float.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -130,10 +131,10 @@ static int parameter_width(const pin_spec *pin)
     return !strcmp(pin->type_name, "ShaderVec4") ? 4 : 0;
 }
 
-bool shader_authoring_set_default(
+bool shader_authoring_set_default_exact(
     behavior_asset *asset,
     int slot,
-    const float *values,
+    const double *values,
     int width,
     shader_error *error
 )
@@ -171,13 +172,22 @@ bool shader_authoring_set_default(
     if (parameter_width(pin) != width) {
         return edit_error(error, id, "Parameter default width differs from its source declaration.");
     }
+    float vector[4] = { 0 };
+    if (pin->type == PIN_F32 || pin->type == PIN_STRUCT) {
+        for (int i = 0; i < width; i++) {
+            if (fabs(values[i]) > FLT_MAX) {
+                return edit_error(error, id, "Parameter default exceeds finite float storage.");
+            }
+            vector[i] = (float)values[i];
+        }
+    }
     pin_value value = { .type = pin->type, .type_name = pin->type_name };
     switch (pin->type) {
-        case PIN_F32: value.f = values[0]; break;
+        case PIN_F32: value.f = vector[0]; break;
         case PIN_F64: value.d = values[0]; break;
         case PIN_I32:
-            if ((double)values[0] < INT32_MIN || (double)values[0] > INT32_MAX ||
-                truncf(values[0]) != values[0]) {
+            if ((double)values[0] < INT32_MIN ||
+                (double)values[0] > INT32_MAX || trunc(values[0]) != values[0]) {
                 return edit_error(error, id, "Integer parameter default must be a representable whole number.");
             }
             value.i = (int32_t)values[0];
@@ -188,7 +198,7 @@ bool shader_authoring_set_default(
             }
             value.b = values[0] != 0;
             break;
-        case PIN_STRUCT: value.ptr = (void *)values; break;
+        case PIN_STRUCT: value.ptr = vector; break;
         default:
             return edit_error(error, id, "Parameter declaration has an unsupported default type.");
     }
@@ -196,6 +206,24 @@ bool shader_authoring_set_default(
         return edit_error(error, id, "Parameter declaration is not editable.");
     }
     return true;
+}
+
+bool shader_authoring_set_default(
+    behavior_asset *asset,
+    int slot,
+    const float *values,
+    int width,
+    shader_error *error
+)
+{
+    if (!values || width < 1 || width > 4) {
+        return edit_error(error, 0, "Invalid parameter default width or values.");
+    }
+    double exact[4] = { 0 };
+    for (int i = 0; i < width; i++) {
+        exact[i] = values[i];
+    }
+    return shader_authoring_set_default_exact(asset, slot, exact, width, error);
 }
 
 shader_sample_context shader_authoring_center_context(const behavior_asset *asset)

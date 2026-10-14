@@ -44,6 +44,8 @@ typedef enum
 } component_icon;
 
 extern const char *const COMPONENT_TAB_NAMES[COMPONENT_TAB_COUNT];
+const char *component_presentation_category(component_tab);
+const char *component_presentation_icon_name(component_icon);
 
 /* The engine's own document, in editor/Components.kdl's format: the tabs and
  * icons of its components. Owned by the caller. */

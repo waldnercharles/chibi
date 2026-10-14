@@ -8,6 +8,7 @@
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@
 struct declared_components
 {
     int references;
+    bool authoring;
     arena storage;
     int count;
     type_desc *types;
@@ -35,6 +37,8 @@ struct declared_components
 };
 /* Sets alive now, oldest first; the newest one is the project's. */
 static const declared_components **alive;
+static const declared_components *reflection_owner;
+static bool reflection_scoped;
 static void publish(const declared_components *c)
 {
     type_catalog_set_project(
@@ -144,7 +148,20 @@ static bool build(declared_components *c, int index, const declared_component *i
     if (!identifier(name)) {
         return fail(error, size, name, "name must be an identifier");
     }
-    if (type_catalog_find(name)) {
+    bool existing = false;
+    if (c->authoring) {
+        for (int p = 0; p < type_catalog_pack_count(); p++) {
+            type_catalog_pack pack = type_catalog_pack_at(p);
+            for (int t = 0; t < pack.type_count; t++) {
+                if (!strcmp(pack.types[t]->name, name)) {
+                    existing = true;
+                }
+            }
+        }
+    } else {
+        existing = type_catalog_find(name) != NULL;
+    }
+    if (existing) {
         return fail(error, size, name, "name is already an engine type");
     }
     if (!(script_builtin_type(name).flags & SCRIPT_TYPE_ERROR)) {
@@ -243,7 +260,8 @@ static bool build(declared_components *c, int index, const declared_component *i
     c->desc_list[index] = &c->descs[index];
     return true;
 }
-declared_components *declared_components_new(
+static declared_components *new_components(
+    bool authoring,
     const declared_component *components,
     int count,
     char *error,
@@ -257,6 +275,7 @@ declared_components *declared_components_new(
     }
     declared_components *c = xcalloc(1, sizeof *c);
     c->references = 1;
+    c->authoring = authoring;
     c->count = count;
     c->types = xcalloc((size_t)count + 1, sizeof *c->types);
     c->type_list = xcalloc((size_t)count + 1, sizeof *c->type_list);
@@ -265,12 +284,12 @@ declared_components *declared_components_new(
     c->script_types = xcalloc((size_t)count + 1, sizeof *c->script_types);
     c->spellings = xcalloc((size_t)count + 1, sizeof *c->spellings);
     /* A new set replaces the newest one, so it may reuse that set's names. */
-    if (acount(alive)) {
+    if (!authoring && acount(alive)) {
         publish(NULL);
     }
     for (int i = 0; i < count; i++) {
         if (!build(c, i, &components[i], error, size)) {
-            if (acount(alive)) {
+            if (!authoring && acount(alive)) {
                 publish(alast(alive));
             }
             c->count = 0;
@@ -285,9 +304,29 @@ declared_components *declared_components_new(
     for (int i = 0; i < count; i++) {
         apush(c->project, c->desc_list[i]);
     }
-    apush(alive, c);
-    publish(c);
+    if (!authoring) {
+        apush(alive, c);
+        publish(c);
+    }
     return c;
+}
+declared_components *declared_components_new(
+    const declared_component *rows,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    return new_components(false, rows, count, error, size);
+}
+declared_components *declared_components_authoring(
+    const declared_component *rows,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    return new_components(true, rows, count, error, size);
 }
 declared_components *declared_components_retain(declared_components *c)
 {
@@ -340,13 +379,15 @@ const script_catalog *declared_components_catalog(const declared_components *c)
 }
 ecs_component_catalog project_components()
 {
-    if (!acount(alive)) {
+    const declared_components *c = reflection_scoped ? reflection_owner
+                                 : acount(alive)     ? alast(alive)
+                                                     : NULL;
+    if (!c) {
         return (ecs_component_catalog){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     }
-    const declared_components *c = alast(alive);
     return (ecs_component_catalog){ c->project, acount(c->project) };
 }
-void declared_components_wire(execution_wire *wire, declared_components **out)
+static void components_wire(execution_wire *wire, declared_components **out, bool detached)
 {
     int count = wire->reading || !*out ? 0 : (*out)->count;
     execution_wire_count(wire, &count, 2);
@@ -396,7 +437,9 @@ void declared_components_wire(execution_wire *wire, declared_components **out)
     /* An empty set still replaces the sets of other projects. */
     if (wire->reading && !wire->error) {
         char message[256];
-        *out = declared_components_new(components, count, message, sizeof message);
+        *out = detached
+                 ? declared_components_authoring(components, count, message, sizeof message)
+                 : declared_components_new(components, count, message, sizeof message);
         if (!*out) {
             wire->error = "invalid declared component schema";
         }
@@ -406,6 +449,68 @@ void declared_components_wire(execution_wire *wire, declared_components **out)
     }
     free(fields);
     free(components);
+}
+void declared_components_wire(execution_wire *wire, declared_components **out)
+{
+    components_wire(wire, out, false);
+}
+void declared_components_wire_detached(execution_wire *wire, declared_components **out)
+{
+    components_wire(wire, out, true);
+}
+static unsigned reflection_depth;
+bool declared_components_scope_enter(declared_components *components, declared_components_scope *scope)
+{
+    if (!scope || scope->active || reflection_depth == UINT_MAX) {
+        return false;
+    }
+    const type_catalog_pack *previous = type_catalog_project();
+    *scope = (declared_components_scope){
+        .previous = previous ? *previous : (type_catalog_pack){ 0 },
+        .script = script_catalog_project(),
+        .entered = components ? declared_components_retain(components) : NULL,
+        .previous_owner = reflection_owner,
+        .previous_scoped = reflection_scoped,
+        .depth = ++reflection_depth,
+        .had_previous = previous != NULL,
+        .active = true
+    };
+    if (previous) {
+        type_catalog_set_project(NULL);
+    }
+    if (scope->script) {
+        script_catalog_set_project(NULL);
+    }
+    if (components) {
+        publish(components);
+    }
+    reflection_owner = components;
+    reflection_scoped = true;
+    return true;
+}
+bool declared_components_scope_leave(declared_components_scope *scope)
+{
+    if (!scope || !scope->active || scope->depth != reflection_depth) {
+        return false;
+    }
+    if (type_catalog_project()) {
+        type_catalog_set_project(NULL);
+    }
+    if (script_catalog_project()) {
+        script_catalog_set_project(NULL);
+    }
+    if (scope->had_previous) {
+        type_catalog_set_project(&scope->previous);
+    }
+    if (scope->script) {
+        script_catalog_set_project(scope->script);
+    }
+    reflection_owner = scope->previous_owner;
+    reflection_scoped = scope->previous_scoped;
+    declared_components_free(scope->entered);
+    reflection_depth--;
+    *scope = (declared_components_scope){ 0 };
+    return true;
 }
 static int find(const declared_components *c, uint64_t id)
 {

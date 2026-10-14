@@ -59,9 +59,11 @@ function(chibi_rmlui_dependencies)
     # data-template keeps an element's content unbuilt, its markup in
     # rmlui-inner-rml, for native code to mount while it shows (a popover's).
     set(patches "")
-    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data data-template)
+    foreach(name color-mix radio-groups data-bindings flex-text same-style data-if-handler variable-source suppressed-text-font-layout variable-unit-invalidation box-shadow-blur input-events data-when event-propagation variable-line-height move-keeps-data data-template code-text code-caret)
         list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-${name}.patch")
     endforeach()
+    # Reference-valued bracket indices retain alias scope, dynamic dependencies and write targets.
+    list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-indexed-address.patch")
     # Optional Context::Update boundary timings; the default null output does no timing.
     list(APPEND patches "${CHIBI_DEPENDENCY_SOURCE_ROOT}/cmake/patches/rmlui-context-update-profile.patch")
     # Empty authored containers keep relative URLs without updating unrelated models.

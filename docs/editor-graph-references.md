@@ -1,8 +1,35 @@
 # Node editor references
 
-Studio source and shell assets are owned by the extracted `chibi-studio`
-repository. Paths under `src/editor/` and `projects/studio/` in this guide are
-relative to that repository. The engine supplies the shared SDK interfaces.
+SDK5 packaging and bounded CPU validation now pass. Installed build
+`cef077585ca28f1edfb80ccc00d6344026bec1bf347104974b1303d08d210a21`
+has manifest SHA256
+`4aab3609c818da3813741e160ab972068e9540e0206a3773af8253921c230baa`
+and engine source snapshot
+`5cb31f58592436059bd0ed49e44013551d2063eb045e6f17bf3128b0f0346ba9`.
+All five required groups passed, along with owning workspace-authoring,
+workspace-services, host-services, authored-surface, code-control, event-payload
+and random-isolation selectors. Strict installed-SDK packaging also passed.
+Whole-application SDK5 compilation and Home startup remain pending at this
+update. Future SDK6 work is staged and unvalidated. These CPU/package results do
+not establish rendered interaction or browser acceptance.
+
+
+## Current authored implementation
+
+Studio's graph controller is `projects/studio/content/behaviors/StudioGraph.chibi`
+in `chibi-studio`, with `ui/StudioGraphCanvas.rml/.rcss` and shared authored field,
+picker and menu components. `.chibi` owns selection, gestures, viewport state,
+commands and canonical proposal policy. The engine supplies generic document
+semantics, graph candidates, layout, selection and retained debug inspection.
+Studio's native graph controllers were removed from the migration candidate on
+2026-10-14. `NATIVE_RETIREMENT.json` identifies their recoverable Git baseline.
+
+Use [the graph retirement map](native-retirement/graph.md) for implemented source
+and remaining parity work. SDK4 compiled the whole authored application. Its Home
+startup failed before UI on a missing inactive workspace service; SDK5 package and CPU checks pass; application validation
+is pending. This document does not claim rendered graph acceptance.
+
+## Prior art and interaction targets
 
 This document is the node-graph counterpart of [Editor UI references](editor-ui-references.md). It covers the libraries and editors whose interaction contracts the RmlUi behavior graph editor ports. We port behavior, not code. Numbers were read from source or official docs on 2026-09-23; **(unverified)** marks the few that weren't.
 
@@ -28,9 +55,17 @@ What the graphs themselves should offer (nodes, conversions, compiler safety and
 | Unity Shader Graph / Visual Scripting, Godot, Houdini, TouchDesigner | Engine graph editors | Fuzzy add with synonyms and Tab completion, dimming unused nodes, last value on connections, Tab search at cursor, node info on middle-click, animated live wires |
 | [ELK Layered](https://eclipse.dev/elk/reference/algorithms/org-eclipse-elk-layered.html), Godot's arranger, dagre, d3-dag, libavoid | Automatic layout and routing | Layered layout with fixed port order as the spec for arrange; libavoid only for an optional orthogonal mode |
 
-## Contract for the Studio graph editor
+## Historical interaction contract
 
-These are our decisions, drawing on the references above. Distances are screen dp unless stated; world units are graph coordinates.
+These decisions and implementation names describe the native editor reference
+as recorded on 2026-09-23. Preserve useful interaction targets in the authored
+replacement, and establish each through current acceptance. Names such as
+`kit_dot`, `kit_command`, `editor_open_graph_call` and paths under `src/editor/`
+identify retired source, not current extension points. A statement below that a
+feature exists or is missing is historical; consult the retirement map for the
+current migration scope.
+
+The decisions draw on the references above. Distances are screen dp unless stated; world units are graph coordinates.
 
 ### Camera
 
@@ -223,7 +258,7 @@ Arrange follows ELK Layered's phases, with Godot's MIT arranger as a size refere
 - `nodePlacement=BRANDES_KOEPF`, with `priority.straightness=10` on exec wires only
 - `spacing.nodeNodeBetweenLayers=80` and `spacing.nodeNode=30`
 
-## Canvas architecture
+## Historical native canvas architecture
 
 The canvas is a separately scaled RmlUi context, not a transformed element: RmlUi can't clip transformed content, and scaling would blur text. The implementation has four parts:
 
@@ -232,7 +267,7 @@ The canvas is a separately scaled RmlUi context, not a transformed element: RmlU
 - **Wires.** `kit_wires` draws the grid and wires. Its ends anchor to socket elements and resolve after layout, so a wire follows its node in the frame the node moves.
 - **Menus and search.** These live in the Studio document, so they stay unscaled.
 
-## Parity with the removed ImGui graph editor
+## Historical native parity with ImGui
 
 The ImGui graph canvas and panels were removed on September 25, 2026. Studio's graph editor keeps, or must restore, their capabilities:
 

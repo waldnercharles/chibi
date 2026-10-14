@@ -1,0 +1,15 @@
+behavior UiSourceProbe {
+    owner "ecs.entity"
+    on Begin {
+        document := await workspace_document_memory(Text: "<div><button>Ready</button></div>")
+        if document.Ok {
+            queried := await query_ui_source(Document: document.Document, Revision: document.Revision, Language: "rml", Kind: "element", First: 0, Count: 64)
+            if queried.Status.Ok {
+                changed := await edit_ui_source(Document: document.Document, Revision: document.Revision, Operation: "attribute", Element: 1, Name: "aria-label", Value: "Run utility")
+                await set_ui_data(Name: "uiSource.Valid", Value: changed.Status.Valid)
+                await set_ui_data(Name: "uiSource.Rows", Value: queried.Rows)
+            }
+            workspace_document_close(Document: document.Document)
+        }
+    }
+}

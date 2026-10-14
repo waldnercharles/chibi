@@ -2,6 +2,7 @@
 #define CHIBI_ENGINE_H
 
 #include "ecs/ecs.h"
+#include "execution/random.h"
 #include "runtime/audio.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/source.h"
@@ -83,6 +84,10 @@ typedef struct
 } engine_input_failure;
 engine *engine_new(ecs_world *world, const engine_modules *);
 void engine_free(engine *engine);
+/* One serial random stream per engine; independent of all other worlds.
+ * Recording/replay seed this same stream. Scene/time resets preserve it. */
+void engine_seed_random(engine *, unsigned seed);
+const behavior_random *engine_random_stream(const engine *);
 /* Reset time and input before recreating authored entities and their Begin runs. */
 void engine_reset(engine *engine);
 /* Reset per-scene state for a scene change; time, input, recordings and
@@ -93,6 +98,11 @@ const schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);
+/* Explicit host focus cancellation, distinct from transport pause. Ends an
+ * active recording at its last completed tick, drops unstepped transitions,
+ * clears held keyboard/controllers/movement/aim/ray and dispatches no gameplay.
+ * Completed recording keys and an existing replay remain retained. */
+void engine_cancel_input(engine *);
 int engine_set_playing(engine *engine, bool playing);
 bool engine_is_playing(const engine *engine);
 int engine_step(engine *engine);
@@ -116,6 +126,8 @@ void engine_set_input_actions(engine *engine, const input_action *actions, int c
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
 /* Atomically samples keyboard and all controller slots. Disconnected slots
  * hold no buttons. Slots are zero-based and retain the host's device assignment. */
+/* Preflight schemas and optional queued-transition budget without dispatch. */
+bool engine_devices_admissible(const engine *, uint64_t, const input_controller_state[INPUT_CONTROLLER_MAX]);
 int engine_sample_devices(
     engine *engine,
     uint64_t controls,
@@ -127,9 +139,16 @@ int engine_sample_controller(engine *engine, int controller, input_controller_st
  * so both follow a scene from its start. Recording keeps a key wherever held
  * input changes, plus one per control change between two steps, in order and
  * at the same step. Replay samples each key at its step and holds the last one
- * from then on in place of live samples. Both seed the shared random stream,
+ * from then on in place of live samples. Both seed this engine's random stream,
  * so a replay draws what its recording did. */
 void engine_record_input(engine *engine, unsigned seed);
+/* Optional bounded recording. Requires input and 1..4096 keys. When a step
+ * would exceed the budget, recording stops before adding any of that step's
+ * keys and reports truncation; held gameplay input is still admitted normally. */
+bool engine_record_input_bounded(engine *, unsigned seed, int maximum_keys);
+bool engine_recording_input(const engine *);
+bool engine_recorded_input_truncated(const engine *);
+bool engine_has_input(const engine *);
 void engine_stop_recording(engine *engine);
 /* Borrowed until the next recording or reset. */
 const input_keyframe *engine_recorded_input(const engine *engine, int *count);

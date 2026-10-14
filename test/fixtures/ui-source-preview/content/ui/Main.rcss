@@ -1,0 +1,2 @@
+@import "shared.rcss";
+body { padding: 12dp; }

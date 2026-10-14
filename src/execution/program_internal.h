@@ -156,6 +156,8 @@ struct execution_program
     void *observer_context;
     char *name;
     ecs_world *world;
+    behavior_random *random, *replacement_random;
+    behavior_random replacement_random_before;
     service_binding *services;
     service_binding *pending_services;
     arena service_names;

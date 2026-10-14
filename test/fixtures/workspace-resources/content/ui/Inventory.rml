@@ -1,0 +1,4 @@
+<div>
+  <p>Resource inventory utility</p>
+  <p data-for="row : resources.Rows">{{ row.Name }} — {{ row.Kind }} — {{ row.Status }}</p>
+</div>

@@ -1,17 +1,36 @@
 # Studio: design direction for the RmlUi editor
 
+## Current ownership, 2026-10-14
+
+The design guidance and prior-art contracts below remain references for Studio.
+The migration candidate implements editor structure in RML, appearance in RCSS
+and state, commands and workflows in `.chibi`. Generic engine controls and typed
+services are consumed through an installed SDK. Studio's native kit controllers,
+Zep bridge and native build targets have been removed; their recoverable baseline
+is recorded in Studio's `NATIVE_RETIREMENT.json`.
+
+Native implementation details, the migration phases, September progress and
+numbered decisions below describe the earlier editor. They are historical
+records, including native slots, C-owned models, four-argument emission and kit
+API names. Use the [current authored guide](../../studio-ui-authoring.md) and
+[UI references](../../editor-ui-references.md) for implementation ownership.
+SDK5 package and bounded CPU checks pass; application startup, rendered parity
+and browser acceptance remain separate checks. Historical prototype screenshots
+and results do not establish those checks.
+
+
 This study refines the approved **A · Studio** layout from the `cwaldner/editor-design-prototype` branch. It uses real Neon Swarm content: `fixture.js` is a snapshot of `projects/arena2d` (the Sandbox scene, 24 prototypes and 14 behaviors). The [component kit](kit.html) is the specification for the RmlUi port. Each control there lists its behavior contract, states and keys.
 
 ## Visual language
 
-Studio is a daily desktop authoring tool. Its design dials are **variance 2, motion 2, density 6**. The foundation is the existing RmlUi kit and authored Studio assets. Marketing layouts, cinematic scroll effects, decorative glass and randomized compositions do not fit this workspace.
+Studio is a daily desktop authoring tool. Its design dials are **variance 2, motion 2, density 6**. The foundation is shared authored Studio components over generic RmlUi controls. Marketing layouts, cinematic scroll effects, decorative glass and randomized compositions do not fit this workspace.
 
 - **Typography:** embedded Geist at 13 dp with 18 dp leading, 500-weight control labels and 600-weight titles. GeistNumeric supplies tabular numerals. JetBrains Mono is reserved for source, paths and expressions. The font and its measurements are identical on desktop and web.
 - **Color:** the default light and dark palettes use cool neutrals with blue for selection, focus and primary actions. Named palettes keep their base, text and accent colors while sharing the same component roles. Status, overrides, axes, syntax and graph categories use semantic colors where those colors carry meaning. Helper text uses the same readable contrast floor as secondary labels.
 - **Structure:** quiet chrome, clear content, solid fields and overlays. A global toolbar sits above a document tab row, with an underline identifying the active document. Secondary toolbar labels collapse to icons at narrow widths; their tooltips keep names and shortcuts available. Separate areas with a soft line, and use a bordered group only for related editable fields. Overlays (menus, popovers, the command palette, toasts and dialogs) float on the `--shadow-overlay` elevation, a soft drop with a tight contact shadow, and tooltips on the lighter `--shadow-tooltip`; areas stay flat. Controls have 4 dp corners; panels and overlays have 6 dp corners, and a rounded area clips its content, the scene view included, at its corners.
-- **Density:** compact controls and virtualized rows are 26 dp; comfortable controls and rows are 30 dp. Headers and the document tab row are 32/36 dp, the toolbar is 40/44 dp and the status bar is 28/30 dp. The defaults live in `theme/roles.rcss`; font preferences scale the shell metrics proportionally, and native lists read `--row` through `kit_metric`, and authored Lists through `ui_list_window`, so changing an authored metric also changes their virtualization geometry. The graph retains its fixed 22 dp socket pitch in its own context.
+- **Density:** compact controls and virtualized rows are 26 dp; comfortable controls and rows are 30 dp. Headers and the document tab row are 32/36 dp, the toolbar is 40/44 dp and the status bar is 28/30 dp. The defaults live in `theme/roles.rcss`; font preferences scale the shell metrics proportionally, and authored Lists use `ui_list_window`, so changing an authored metric also changes their virtualization geometry. The graph retains its fixed 22 dp socket pitch in its own context.
 - **Feedback:** pointer press is immediate. Focus is visible, text and icons align at the control center, and selected controls share a soft accent fill. Search appears immediately. Occasional popovers fade for 140 ms in and 100 ms out without shifting their anchor. Dragged controls track the pointer directly and hand release velocity to an existing spring. Reduce Motion makes changes immediate.
-- **Ownership:** RML owns component anatomy, RCSS owns visual choices and layout, and authored behaviors own local interaction that the behavior system can express. C owns authoring data, reflection, virtualized native content and transport glue. New UI must reuse an authored component or a kit primitive before introducing a new presentation path.
+- **Ownership:** RML owns component anatomy, RCSS owns visual choices and layout, and `.chibi` behaviors own editor state, interaction and workflow policy. Reusable native engine services supply document, reflection, rendering, input and platform operations. New UI reuses shared authored components and generic controls.
 
 | Before | After | Why |
 | --- | --- | --- |
@@ -89,20 +108,18 @@ The CSS uses only what RmlUi 6.3 supports: flexbox, `gap`, absolute positioning,
 - Reduced motion becomes `@media (theme: reduced-motion)`.
 - `font-variant-numeric` becomes the embedded GeistNumeric face.
 
-The [authored editor target](../../studio-ui-authoring.md#authored-editor-target)
-defines the current architecture goal: editor structure, style and behavior live
-in RML, RCSS and `.chibi`. The native implementation below describes the existing
-foundation and migration debt. Reusable runtime capabilities remain native;
-editor controllers and workflow policy become authored.
+The [authored editor guide](../../studio-ui-authoring.md) defines current
+ownership. The native implementation below is preserved as a historical parity
+reference; its controller and workflow paths have been retired.
 
-Existing native foundation:
+Historical native foundation:
 
 1. **Host.** One RmlUi context per window, with no ImGui container windows. RmlUi lays out a whole document whenever anything in it changes, so Studio is several documents in that context, as a page shows `<iframe>`s (`src/ui/iframe.h`): the shell (`studio.rml`) lays out the places of the top bar, the workspace and the status bar, each a document of its own over its place (`kit_document_begin`); the workspace (projects/studio's `Workspace`) lays out the areas' places and the splitters between them, and each area is a document of its own over its place, so a change inside one lays out only that one. The workspace's document lies over the areas and passes the pointer through but at its splitters, whose hit areas reach 2 dp past their 6 dp gutters (10 dp in all); and the overlay layer, a document above them all, holds popups, menus, tooltips, toasts, the palette, dialogs and the drag overlay, which `src/ui/drag.c` puts in the topmost document. Focus, keys, hover, data models and textures cross between them. The backend needs `SetMouseCursor` for scrubbing and splitters, relative-mouse mode for pointer lock, and the Symbols font loaded as a fallback face.
 2. **Controllers.** C controllers implement the kit contracts: Layers/Positioner, Menu/Menubar/ContextMenu, Tooltip, NumberField, Select, ToggleGroup, Checkbox, Collapsible, Command (a `command-score` port), Splitter and Tree. They mutate only view state and emit C actions. Menus and popovers are Base UI's: one stack for authored popovers and the kit's popups, and a popover marked `data-template` (the Menu and Submenu widgets) is mounted only while it is open, so a closed menu holds no elements and binds no data.
 3. **Custom elements.** `<viewport>` shows the scene render target as a callback texture. `<graph-wires>` emits Bezier geometry. The color plane uses the vertex-gradient decorators, which need no shaders. `<number-flow>` and `<morph-text>`, with `presence` on `data-if` elements, carry NumberFlow, Torph and Motion's presence into authored UI, the editor's and games' (`src/ui/motion.h`). The native controls `<number-field>`, `<color-field>`, `<splitter>` and `<live-text>` (`src/ui/controls/controls.h`) are the kit's number fields, color pickers, splitters and live labels too, so native and authored panels share one implementation; their values repaint without laying out the document. `<line-chart>` draws the series C publishes by name (`line_chart_publish`), as Performance's charts do.
 4. **Transitional model boundary.** Selection, values, overrides, history, dirty state and playback currently live in the C authoring layer. The authored target moves editor state and workflow policy into `.chibi`, backed by reusable engine document, rendering and execution capabilities.
 
-## Migration plan
+## Historical migration plan
 
 Studio is the only editor, on desktop and in the web build; the ImGui workspace is gone.
 
@@ -190,7 +207,7 @@ Behavior changed from the ImGui editor:
 - While a scene is edited, the Scene shows what its game's first frame would, as Unity's Scene view effects and Unreal's Show flags choose: View › Show toggles Generated World (terrain, clouds and liquids generated from the scene's fields and sources, without Begin, behaviors or a step), Lighting (off draws material colors unlit), Fog of War (the fog as the game starts; off by default) and Camera Frames (each Camera's span outlined and labeled, the game's camera brighter, disabled ones dashed, a selected one bright with the world outside it dimmed). Each is a command over a preference in Settings › Scene, and none writes history. Generated objects live in the runtime's materials, never in the scene; an edit to what generation reads regenerates it 150 ms after the last change, terrain streams into the view as it moves with a Generating world badge while it fills, and Play discards the preview so the game generates its own. A selected Fog's grid shows its extent.
 - View Through Camera (<kbd>⇧C</kbd>, or Numpad 0 as in Blender) frames the Scene exactly on the selected camera, else the game's first enabled one, dims the world outside it and follows the camera; <kbd>Esc</kbd> or the command again returns to the earlier view, and panning or zooming stays where it is.
 
-## Decisions
+## Historical implementation decisions
 
 1. Density is an editor setting. Compact is the default. UI Scale (50–200%) sizes the whole editor, as Blender's Resolution Scale and Unreal's Application Scale do; games' UI keeps its own scale, in the Scene view and in Play. It steps as browsers and VS Code zoom (<kbd>⌘=</kbd>, <kbd>⌘-</kbd>, <kbd>⌘0</kbd>, View › UI Scale) and its percentage stays in the status bar, as Office keeps its zoom there. The Scene zooms only its camera, through the world; magnifying a rendered document with its UI, as Unity's Game view Scale does, is the UI Canvas's View Zoom. An idle editor draws at most four frames a second, as Blender redraws only on events: input, a running scene, a frame that draws anything the frame before it did not (so animations need no registration), or RmlUi's next update (a caret blink) bring back full rate, and a write that leaves a style unchanged lays nothing out.
 2. Areas (Blender splits) replace floating docking.

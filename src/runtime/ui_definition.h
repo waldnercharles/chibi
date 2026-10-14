@@ -78,6 +78,12 @@
 #define UI_VALUE_OUTPUTS(X)                                                    \
     UI_DATA(X, "Value", PIN_F32, "float")                                      \
     UI_DATA(X, "Known", PIN_BOOL, "bool")
+#define UI_CHORD_INPUTS(X) UI_DATA(X, "Chord", PIN_STR, "const char *")
+#define UI_CHORD_OUTPUTS(X) UI_DATA(X, "Valid", PIN_BOOL, "bool")
+#define UI_WIDTH_OUTPUTS(X)                                                    \
+    UI_DATA(X, "View Width", PIN_F32, "float")                                 \
+    UI_DATA(X, "Known", PIN_BOOL, "bool")                                      \
+    UI_DATA(X, "PixelRatio", PIN_F32, "float")
 #define UI_SCROLL_OUTPUTS(X)                                                   \
     UI_DATA(X, "Scroll Top", PIN_F32, "float")                                 \
     UI_DATA(X, "View Height", PIN_F32, "float")                                \
@@ -109,6 +115,10 @@
 #define UI_GET_VALUE_SOURCE "get_ui_value"
 #define UI_GET_SCROLL_NAME "Get UI Scroll"
 #define UI_GET_SCROLL_SOURCE "get_ui_scroll"
+#define UI_GET_VIEW_WIDTH_NAME "Get UI View Width"
+#define UI_GET_VIEW_WIDTH_SOURCE "get_ui_view_width"
+#define UI_VALIDATE_CHORD_NAME "Validate UI Chord"
+#define UI_VALIDATE_CHORD_SOURCE "validate_ui_chord"
 #define UI_OPERATIONS(X)                                                                                 \
     X(SET_TEXT, UI_SET_TEXT_NAME, UI_SET_TEXT_SOURCE, UI_TEXT_INPUTS, UI_THEN_OUTPUTS, true)             \
     X(SET_CLASS, UI_SET_CLASS_NAME, UI_SET_CLASS_SOURCE, UI_CLASS_INPUTS, UI_THEN_OUTPUTS, true)         \
@@ -127,7 +137,19 @@
     X(REVEAL_ROW, UI_REVEAL_ROW_NAME, UI_REVEAL_ROW_SOURCE, UI_REVEAL_INPUTS, UI_THEN_OUTPUTS, true)     \
     X(SET_DATA, UI_SET_DATA_NAME, UI_SET_DATA_SOURCE, UI_DATA_INPUTS, UI_THEN_OUTPUTS, true)             \
     X(GET_VALUE, UI_GET_VALUE_NAME, UI_GET_VALUE_SOURCE, UI_GET_INPUTS, UI_VALUE_OUTPUTS, false)         \
-    X(GET_SCROLL, UI_GET_SCROLL_NAME, UI_GET_SCROLL_SOURCE, UI_GET_INPUTS, UI_SCROLL_OUTPUTS, false)
+    X(GET_SCROLL, UI_GET_SCROLL_NAME, UI_GET_SCROLL_SOURCE, UI_GET_INPUTS, UI_SCROLL_OUTPUTS, false)     \
+    X(VALIDATE_CHORD,                                                                                    \
+      UI_VALIDATE_CHORD_NAME,                                                                            \
+      UI_VALIDATE_CHORD_SOURCE,                                                                          \
+      UI_CHORD_INPUTS,                                                                                   \
+      UI_CHORD_OUTPUTS,                                                                                  \
+      false)                                                                                             \
+    X(GET_VIEW_WIDTH,                                                                                    \
+      UI_GET_VIEW_WIDTH_NAME,                                                                            \
+      UI_GET_VIEW_WIDTH_SOURCE,                                                                          \
+      UI_GET_INPUTS,                                                                                     \
+      UI_WIDTH_OUTPUTS,                                                                                  \
+      false)
 extern const native_definition_pack UI_DEFINITION_PACK;
 
 #define UI_SET_TEXT_PRESENTATION                                               \
@@ -213,6 +235,9 @@ extern const native_definition_pack UI_DEFINITION_PACK;
                    "data-for repeats; a path such as items.2.name sets one "   \
                    "row's field."
 
+#define UI_GET_VIEW_WIDTH_PRESENTATION                                         \
+    .category = "UI", .keywords = "width geometry viewport layout measure element selector pixel ratio", .description = "Reads the presenter's current client width in dp for an element with an id and data-measure or data-event-scroll. PixelRatio is the actual owning context's physical pixels per dp, zero when unavailable. Divide physical Pointer/LocalPointer/Delta by this ratio before comparing with dp measurements. Known is false until width is measured or after unmount."
+
 #define UI_GET_SCROLL_PRESENTATION                                             \
     .category = "UI",                                                          \
     .keywords = "scroll position offset list virtual window height view "      \
@@ -230,5 +255,8 @@ extern const native_definition_pack UI_DEFINITION_PACK;
                    "a player's input under #id; Known is false until there "   \
                    "is "                                                       \
                    "one."
+
+#define UI_VALIDATE_CHORD_PRESENTATION                                         \
+    .category = "UI", .keywords = "shortcut keyboard chord", .description = "Checks one canonical keyboard chord, with optional Mod, Ctrl, Meta, Alt and Shift prefixes. Rejects malformed keys, whitespace and event separators."
 
 #endif

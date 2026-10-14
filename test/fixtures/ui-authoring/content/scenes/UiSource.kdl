@@ -1,0 +1,5 @@
+version 1
+name "UiSource"
+(array)entities {
+    - name="UiSourceProbe" prototype="UiSourceProbe"
+}

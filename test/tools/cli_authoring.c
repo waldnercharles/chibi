@@ -4,6 +4,7 @@
 #include "authoring/material_create.h"
 #include "authoring/shader_evidence.h"
 #include "automation/controller.h"
+#include "automation/render_preview.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
@@ -212,7 +213,7 @@ TEST_CASE(cli_preview_evidence_requires_success_image_and_backend_metadata)
     );
     REQUIRE(chibi_ctl_evidence_response(e, request, response, 0));
     snprintf(response, sizeof response, "{\"ok\":true,\"result\":{\"backend\":\"Metal\",\"video_driver\":\"cocoa\",\"preview\":{\"mime_type\":\"image/png\",\"width\":1,\"height\":1,\"data\":\"%s\"}}}", png);
-    REQUIRE(chibi_ctl_evidence_response(e, request, response, 0));
+    REQUIRE(chibi_ctl_evidence_response(e, "{\"operation\":\"preview_model\"}", response, 0));
     REQUIRE(chibi_ctl_evidence_finish(e, 5));
     char manifest[1024];
     snprintf(manifest, sizeof manifest, "%s/manifest.json", path);
@@ -229,6 +230,7 @@ TEST_CASE(cli_preview_evidence_requires_success_image_and_backend_metadata)
     REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(operations, 2), "coverage")), "operation_only"));
     REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(operations, 3), "coverage")), "operation_only"));
     REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(operations, 4), "coverage")), "gpu_rendered"));
+    REQUIRE(!strcmp(av_get_str(av_obj_get(av_arr_get(operations, 4), "operation")), "preview_model"));
     av_value *artifact = av_obj_get(av_arr_get(operations, 4), "preview_artifact");
     REQUIRE(av_get_bool(av_obj_get(artifact, "available")));
     REQUIRE(!strcmp(av_get_str(av_obj_get(artifact, "file")), "preview-000005.png"));
@@ -280,6 +282,45 @@ TEST_CASE(cli_preview_evidence_requires_success_image_and_backend_metadata)
     return true;
 }
 
+TEST_CASE(cli_model_preview_rejects_malformed_controls_before_file_or_gpu_work)
+{
+    const char *requests[] = {
+        "{\"operation\":\"preview_model\",\"inspection\":false}",
+        "{\"operation\":\"preview_model\",\"inspection\":{\"part\":1.5}}",
+        "{\"operation\":\"preview_model\",\"inspection\":{\"part\":-2}}",
+        "{\"operation\":\"preview_model\",\"inspection\":{\"section_axis\":4}}",
+        "{\"operation\":\"preview_model\",\"inspection\":{\"section_offset\":"
+        "\"1\"}}",
+        "{\"operation\":\"preview_model\",\"inspection\":{\"unknown\":0}}",
+        "{\"operation\":\"preview_model\",\"time\":-1}",
+        "{\"operation\":\"preview_model\",\"sample_grid\":{}}"
+    };
+    for (size_t i = 0; i < sizeof requests / sizeof *requests; i++) {
+        int status = 0;
+        char *text = chibi_render_preview_handle(requests[i], "/unavailable/workspace", &status);
+        REQUIRE(text && status == CHIBI_AUTOMATION_INVALID_REQUEST);
+        av_doc *doc = av_json_read(text);
+        av_value *value = av_doc_root(doc);
+        REQUIRE(av_get_int(av_obj_get(value, "contract")) == CHIBI_AUTOMATION_CONTRACT);
+        REQUIRE(!av_get_bool(av_obj_get(value, "ok")));
+        REQUIRE(!strcmp(av_get_str(av_obj_get(value, "operation")), "preview_model"));
+        REQUIRE(!av_obj_get(value, "status"));
+        const char *message = av_get_str(av_obj_get(av_obj_get(value, "error"), "message"));
+        REQUIRE(
+            message && strstr(
+                           message,
+                           i < 6    ? "inspection"
+                           : i == 6 ? "nonnegative"
+                                    : "shader-only"
+                       )
+        );
+        REQUIRE(!av_obj_get(av_obj_get(value, "result"), "backend"));
+        av_doc_free(doc);
+        free(text);
+    }
+    return true;
+}
+
 static const registry_pack **evidence_packs;
 static char shader_evidence_root[128];
 static void evidence_setup()
@@ -324,7 +365,8 @@ static shader_authoring_evidence evidence_input(behavior_asset *asset, void *png
         .backend = "synthetic CPU fixture; no GPU rendered",
         .engine_version = "fixture",
         .engine_build_id = "fixture",
-        .engine_manifest_hash = "fixture"
+        .engine_manifest_hash = "0123456789abcdef0123456789abcdef0123456789abcd"
+                                "ef0123456789abcdef"
     };
 }
 
@@ -357,6 +399,12 @@ TEST_CASE(shader_evidence_snapshot_reloads_and_existing_destination_survives)
     memcpy(parameters, report.defaults, sizeof parameters);
     input.parameters = parameters;
     char error[512];
+    const char *manifest_identity = input.engine_manifest_hash;
+    input.engine_manifest_hash = NULL;
+    REQUIRE(!shader_authoring_evidence_prepare(&input, error, sizeof error));
+    input.engine_manifest_hash = "invalid";
+    REQUIRE(!shader_authoring_evidence_prepare(&input, error, sizeof error));
+    input.engine_manifest_hash = manifest_identity;
     shader_authoring_evidence_plan
         *prepared = shader_authoring_evidence_prepare(&input, error, sizeof error);
     REQUIRE(prepared);
@@ -569,6 +617,7 @@ void test_cli_authoring()
     RUN_TEST_CASE(cli_rejects_ambiguous_or_nonfinite_arguments);
     RUN_TEST_CASE(cli_evidence_preserves_failed_response_without_claiming_validation);
     RUN_TEST_CASE(cli_preview_evidence_requires_success_image_and_backend_metadata);
+    RUN_TEST_CASE(cli_model_preview_rejects_malformed_controls_before_file_or_gpu_work);
     pu_setup(evidence_setup, evidence_cleanup);
     RUN_TEST_CASE(shader_evidence_snapshot_reloads_and_existing_destination_survives);
     RUN_TEST_CASE(shader_evidence_copies_image_bytes_and_rejects_symlinks_before_writing);

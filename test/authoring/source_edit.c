@@ -255,23 +255,23 @@ TEST_CASE(source_variable_get_set_creation_uses_declared_state_and_checked_value
     r.symbol = id;
     REQUIRE(edit(r));
     REQUIRE(
-        strstr(result.text, "countValue2 := state.\"count\";") &&
+        strstr(result.text, "countValue2 := self.\"count\";") &&
         !strstr(result.text, "get_variable")
     );
     REQUIRE(inspect_result());
     authoring_edit_result_free(&result);
     r.previous = target->identity;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "count = state.\"count\";") && !strstr(result.text, "countValue2"));
+    REQUIRE(strstr(result.text, "count = self.\"count\";") && !strstr(result.text, "countValue2"));
     authoring_edit_result_free(&result);
     r = request(AUTHORING_EDIT_CREATE_VARIABLE_SET, handler);
     r.symbol = id;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "state.\"count\" = 0;") && !strstr(result.text, "set_variable"));
+    REQUIRE(strstr(result.text, "self.\"count\" = 0;") && !strstr(result.text, "set_variable"));
     authoring_edit_result_free(&result);
     r.producer = target->identity;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "state.\"count\" = (7);"));
+    REQUIRE(strstr(result.text, "self.\"count\" = (7);"));
     authoring_edit_result_free(&result);
     const source_presentation_origin *wrong = find(SOURCE_PRESENTATION_SYMBOL, "text: string");
     REQUIRE(wrong);
@@ -285,7 +285,7 @@ TEST_CASE(source_variable_get_set_creation_uses_declared_state_and_checked_value
     r = request(AUTHORING_EDIT_CREATE_VARIABLE_GET, shadow);
     r.symbol = id;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "countValue2 := state.\"count\";"));
+    REQUIRE(strstr(result.text, "countValue2 := self.\"count\";"));
     return true;
 }
 TEST_CASE(source_variable_creation_quotes_names_and_keeps_nonliteral_defaults_editable)
@@ -297,20 +297,20 @@ TEST_CASE(source_variable_creation_quotes_names_and_keeps_nonliteral_defaults_ed
     authoring_edit_request r = request(AUTHORING_EDIT_CREATE_VARIABLE_GET, handler);
     r.symbol = analysis->symbols[state->record].id;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "PlayerNameValue := state.\"Player Name\";"));
+    REQUIRE(strstr(result.text, "PlayerNameValue := self.\"Player Name\";"));
     authoring_edit_result_free(&result);
     r.kind = AUTHORING_EDIT_CREATE_VARIABLE_SET;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "state.\"Player Name\" = 0;"));
+    REQUIRE(strstr(result.text, "self.\"Player Name\" = 0;"));
     authoring_edit_result_free(&result);
     r.producer = state->identity;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "state.\"Player Name\" = state.\"Player Name\";"));
+    REQUIRE(strstr(result.text, "self.\"Player Name\" = self.\"Player Name\";"));
     cleanup();
     REQUIRE(project(
         "behavior Variables { \"Player Name\": double = 1; other: double = 0;"
-        " on Tick { state.\"Player Name\" = state.\"Player Name\" + 1;"
-        " other = state.\"Player Name\"; } }"
+        " on Tick { self.\"Player Name\" = self.\"Player Name\" + 1;"
+        " other = self.\"Player Name\"; } }"
     ));
     state = find(SOURCE_PRESENTATION_SYMBOL, "\"Player Name\": double");
     REQUIRE(state);
@@ -318,8 +318,8 @@ TEST_CASE(source_variable_creation_quotes_names_and_keeps_nonliteral_defaults_ed
     r.name = "playerSpeed";
     REQUIRE(edit(r));
     REQUIRE(strstr(result.text, "playerSpeed: double = 1;"));
-    REQUIRE(strstr(result.text, "state.playerSpeed = state.playerSpeed + 1;"));
-    REQUIRE(strstr(result.text, "other = state.playerSpeed;"));
+    REQUIRE(strstr(result.text, "self.playerSpeed = self.playerSpeed + 1;"));
+    REQUIRE(strstr(result.text, "other = self.playerSpeed;"));
     REQUIRE(!strstr(result.text, "Player Name"));
     REQUIRE(inspect_result());
     cleanup();
@@ -343,7 +343,7 @@ TEST_CASE(source_variable_creation_quotes_names_and_keeps_nonliteral_defaults_ed
     r = request(AUTHORING_EDIT_CREATE_VARIABLE_SET, handler);
     r.symbol = analysis->symbols[state->record].id;
     REQUIRE(authoring_source_edit(analysis, &declarations, view, &r, &result, error, sizeof error));
-    REQUIRE(strstr(result.text, "state.\"player\" = state.\"player\";"));
+    REQUIRE(strstr(result.text, "self.\"player\" = self.\"player\";"));
     candidate_syntax = script_parse(result.text);
     candidate_analysis = script_analyze_document(
         candidate_syntax,

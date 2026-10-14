@@ -1,0 +1,4 @@
+version 25
+name "UI source authoring utility"
+content "content"
+start_scene "scenes/UiSource.kdl"

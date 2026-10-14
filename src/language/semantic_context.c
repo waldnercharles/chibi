@@ -113,6 +113,29 @@ int script_analyzer_lookup_storage(analyzer *a, TSNode node, script_symbol_kind 
     free(name);
     return found;
 }
+/* Only canonical self qualifies owned fields. A shadowing local/parameter
+ * remains an ordinary receiver; libraries may expose fields without an entity. */
+int script_analyzer_self_field(analyzer *a, TSNode object, TSNode member)
+{
+    while (script_analyzer_is(object, "parenthesized_expression")) {
+        object = script_analyzer_field(object, "expression");
+    }
+    if (!script_analyzer_is(object, "identifier") ||
+        !script_analyzer_text_is(a, object, "self")) {
+        return -1;
+    }
+    int receiver = script_analyzer_lookup(a, object);
+    if (receiver >= 0) {
+        const script_symbol *self = &a->out->symbols[receiver];
+        if (self->kind != SCRIPT_GLOBAL ||
+            (receiver != a->out->owner_symbol &&
+             (a->out->kind != SCRIPT_PROGRAM_LIBRARY || self->type.storage != PIN_HANDLE ||
+              self->type.nominal != a->out->owner_type))) {
+            return -1;
+        }
+    }
+    return script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
+}
 static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind, script_type type, bool writable)
 {
     if (!strcmp(name, "Cancelled")) {

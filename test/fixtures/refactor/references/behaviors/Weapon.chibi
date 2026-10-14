@@ -2,7 +2,7 @@ behavior "Weapon" {
     macro AdvanceElapsed(elapsed: ref float, dt: double) {
         elapsed = cast<float>(cast<double>(elapsed) + dt)
     }
-    state elapsed: float = 0.125
+    elapsed: float = 0.125
     action elapsed_dt = AdvanceElapsed(elapsed, delta)
     on Tick {
         if self.Aim.Manual {

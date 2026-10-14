@@ -3,6 +3,9 @@
 #include "authoring/graph_catalog.h"
 #include "authoring/project_prepare.h"
 #include "authoring/renderer_catalog.h"
+#include "authoring/visual_authoring_preview_definition.h"
+#include "authoring/workspace_catalog.h"
+#include "host/authoring_platform_definition.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
@@ -143,10 +146,14 @@ static bool write_artifact(
     free(manifest);
     return valid;
 }
-int authoring_project_compile(const char *project, const char *scene, const char *output)
+int authoring_project_compile(const char *project, const char *scene, const char *output, bool workspace)
 {
     char error[512] = { 0 };
-    native_capabilities *native = authoring_renderer_catalog_new(error, sizeof error);
+    const native_definition_pack extras[] = { VISUAL_PREVIEW_DECLARATION_PACK,
+                                              AUTHORING_PLATFORM_DECLARATION_PACK };
+    native_capabilities *native = workspace
+                                    ? authoring_workspace_catalog_new(extras, 2, error, sizeof error)
+                                    : authoring_renderer_catalog_new(error, sizeof error);
     if (!native) {
         fprintf(stderr, "Project preparation failed: %s\n", error);
         return 1;
@@ -166,12 +173,14 @@ int authoring_project_compile(const char *project, const char *scene, const char
     const registry_pack *const *packs = authoring_graph_catalog_packs(graphs, &pack_count);
     registry_set_packs(packs, pack_count);
     authoring_project_artifact artifact = { 0 };
-    authoring_project_options options = { .project = project,
-                                          .scene = scene,
-                                          .native = native,
-                                          .components = { REGISTRY_COMPONENTS,
-                                                          REGISTRY_COMPONENT_COUNT },
-                                          .modules = WORLD_MODULES_ALL };
+    authoring_project_options options = {
+        .project = project,
+        .scene = scene,
+        .native = native,
+        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+        .modules = WORLD_MODULES_ALL,
+        .profile = workspace ? EXECUTION_PREPARATION_AUTHORED_TOOL : EXECUTION_PREPARATION_GAME
+    };
     bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
     registry_set_packs(NULL, 0);
     authoring_graph_catalog_free(graphs);

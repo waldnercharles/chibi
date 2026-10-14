@@ -4,13 +4,16 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #define CUTE_PNG_IMPLEMENTATION
 #include "vendor/image_png.h"
 #define CUTE_JPG_IMPLEMENTATION
@@ -22,13 +25,25 @@
 #define SKY_SIDES_MESSAGE                                                      \
     "Sky must be twice as wide as tall and 2 to 4096 texels wide"
 #define SKY_TEXELS_MESSAGE "Sky texels are truncated or malformed"
-static char **roots;
-static void clear(void *)
+typedef struct
 {
-    for (int i = 0; i < acount(roots); i++) {
-        free(roots[i]);
+    int directory, references;
+} image_root;
+static void clear(void *context)
+{
+    image_root *root = context;
+    assert(root && root->references > 0);
+    if (--root->references) {
+        return;
     }
-    afree(roots);
+    close(root->directory);
+    free(root);
+}
+static void retain(void *context)
+{
+    image_root *root = context;
+    assert(root && root->references > 0 && root->references < INT_MAX);
+    root->references++;
 }
 static bool failure(char *error, size_t size, const char *message)
 {
@@ -64,25 +79,66 @@ static bool sides_valid(int width, int height)
 }
 static bool content_key(const char *key)
 {
-    return key && !strncmp(key, "content/", 8) && !strstr(key, "..") &&
-           !strchr(key, '\\');
-}
-static void *read_bytes(const char *key, int *length)
-{
-    if (!content_key(key)) {
-        return NULL;
+    if (!key || strncmp(key, "content/", 8) || !key[8] || strlen(key) > 1024 ||
+        strchr(key, '\\')) {
+        return false;
     }
-    for (int i = acount(roots) - 1; i >= 0; i--) {
-        size_t size = strlen(roots[i]) + strlen(key + 8) + 2;
-        char *path = xmalloc(size);
-        snprintf(path, size, "%s/%s", roots[i], key + 8);
-        FILE *file = fopen(path, "rb");
-        free(path);
-        if (file) {
-            return read_file(file, length);
+    for (const char *at = key + 8; *at;) {
+        const char *slash = strchr(at, '/');
+        size_t length = slash ? (size_t)(slash - at) : strlen(at);
+        if (!length || (length == 1 && *at == '.') ||
+            (length == 2 && !strncmp(at, "..", 2))) {
+            return false;
+        }
+        if (!slash) {
+            return true;
+        }
+        at = slash + 1;
+        if (!*at) {
+            return false;
         }
     }
-    return NULL;
+    return false;
+}
+static void *read_bytes(image_root *root, const char *key, int *length)
+{
+    if (!root || !content_key(key)) {
+        return NULL;
+    }
+    char path[1025];
+    snprintf(path, sizeof path, "%s", key + 8);
+    int parent = dup(root->directory);
+    if (parent < 0) {
+        return NULL;
+    }
+    char *at = path, *slash;
+    while ((slash = strchr(at, '/'))) {
+        *slash = 0;
+        int next = openat(parent, at, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        close(parent);
+        if (next < 0) {
+            return NULL;
+        }
+        parent = next;
+        at = slash + 1;
+    }
+    int fd = openat(parent, at, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    close(parent);
+    struct stat info;
+    if (fd < 0) {
+        return NULL;
+    }
+    if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size <= 0 ||
+        info.st_size > IMAGE_BYTES_MAX) {
+        close(fd);
+        return NULL;
+    }
+    FILE *file = fdopen(fd, "rb");
+    if (!file) {
+        close(fd);
+        return NULL;
+    }
+    return read_file(file, length);
 }
 /* Decodes `length` bytes of a PNG, or else a JPEG, within the resident side
  * limit. */
@@ -115,8 +171,12 @@ static bool decode_bytes(const void *bytes, int length, bool png, shader_image_v
     *out = (shader_image_view){ pixels, width, height };
     return true;
 }
-static bool decode(void *, const char *key, shader_image_view *out, char *error, size_t size)
+static bool decode(void *context, const char *key, shader_image_view *out, char *error, size_t size)
 {
+    *out = (shader_image_view){ 0 };
+    if (!key) {
+        return failure(error, size, "Image key is required");
+    }
     const char *extension = strrchr(key, '.');
     bool png = extension && !strcasecmp(extension, ".png");
     bool jpg = extension &&
@@ -125,7 +185,7 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
         return failure(error, size, "Expected a PNG, JPG or JPEG image");
     }
     int length = 0;
-    void *bytes = read_bytes(key, &length);
+    void *bytes = read_bytes(context, key, &length);
     if (!bytes) {
         return failure(error, size, "Cannot read bounded image file");
     }
@@ -310,7 +370,9 @@ bool image_prepare_sky(const char *key, char *error, size_t size)
         return false;
     }
     int length = 0;
-    void *bytes = read_bytes(key, &length);
+    render_image_loader loader = render_images_loader();
+    void *bytes = loader.read == decode ? read_bytes(loader.context, key, &length)
+                                        : NULL;
     if (!bytes) {
         return failure(error, size, "Cannot read the sky file, or it is over 64 MiB");
     }
@@ -414,21 +476,56 @@ char *image_prepare_sky_import(const char *root, const char *path, const char *k
     }
     return owned;
 }
-bool render_image_mount_content(const char *root, char *error, size_t size)
+void *image_prepare_loader_bytes(
+    render_image_loader loader,
+    const char *key,
+    int *length,
+    char *error,
+    size_t size
+)
 {
-    struct stat info;
-    if (!root || stat(root, &info) || !S_ISDIR(info.st_mode)) {
-        return failure(error, size, "Image content root is not a directory");
+    *length = 0;
+    if (loader.read != decode) {
+        failure(error, size, "Encoded dependency reads require an owned rooted image decoder");
+        return NULL;
     }
-    render_images_set_loader((render_image_loader){ .read = decode, .clear = clear });
-    for (int i = 0; i < acount(roots); i++) {
-        if (!strcmp(roots[i], root)) {
-            return true;
-        }
+    void *bytes = read_bytes(loader.context, key, length);
+    if (!bytes) {
+        failure(error, size, "Cannot read bounded regular image dependency without symlinks");
+        return NULL;
     }
-    apush(roots, xstrdup(root));
     if (size) {
         error[0] = 0;
     }
+    return bytes;
+}
+bool image_prepare_loader_new(const char *root, render_image_loader *out, char *error, size_t size)
+{
+    *out = (render_image_loader){ 0 };
+    int directory = root ? open(root, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+                         : -1;
+    if (directory < 0) {
+        return failure(error, size, "Image content root must be an existing directory without a symlink leaf");
+    }
+    image_root *context = xmalloc(sizeof *context);
+    *context = (image_root){ directory, 1 };
+    *out = (render_image_loader){ .context = context,
+                                  .read = decode,
+                                  .clear = clear,
+                                  .retain = retain };
+    if (size) {
+        error[0] = 0;
+    }
+    return true;
+}
+bool render_image_mount_content(const char *root, char *error, size_t size)
+{
+    render_image_loader next;
+    if (!image_prepare_loader_new(root, &next, error, size)) {
+        return false;
+    }
+    render_image_loader previous = render_images_loader();
+    render_images_set_loader(next);
+    render_image_loader_release(&previous);
     return true;
 }

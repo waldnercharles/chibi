@@ -294,7 +294,31 @@ The existing development SpaceCadet routes remain available. New installed-route
 execution evidence is pending independent admission and a supervised run.
 
 
-### Studio interaction checks
+### Authored Studio checks
+
+Studio is authored RML, RCSS and `.chibi` loaded by the generic author host
+from an installed SDK. Build the current application with
+`make studio-build STUDIO_SDK_PREFIX=/installed/sdk`, then run the generated
+`build-studio/bin/chibi-dev` launcher with `--workspace-root /game` (or omit the
+workspace to open Home).
+
+`python3 tools/test_policy.py tool studio-authored-home` is the separately
+admitted, pinned 24-frame Home replay. It establishes only the assertions in
+that fixture on the exact artifact and SDK it runs; it does not replace the
+historical interactions below. Compilation, CPU service checks, rendered
+interactions and browser acceptance remain distinct evidence.
+
+The eleven former `--studio-*` agent selectors and twelve legacy tool names
+(including `studio-panel-idle`) are retired. They return a structured retirement
+reason before hardware discovery or process launch. They are absent from active
+admissions and executable routes. Past admission descriptions and CPU parser
+oracles remain as historical evidence, with existing holds unchanged.
+
+### Historical native Studio interaction checks
+
+The following describes the retired native implementation. These commands are
+not runnable coverage for the authored editor.
+
 
 The `--studio-source-edit` GPU route accepts explicit absolute
 `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and

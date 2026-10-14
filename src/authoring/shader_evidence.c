@@ -196,8 +196,38 @@ static bool image_file(evidence_file **files, const char *content, const char *k
     }
     return valid;
 }
+bool shader_authoring_evidence_identity_valid(
+    const char *version,
+    const char *build,
+    const char *manifest,
+    char *error,
+    size_t size
+)
+{
+    if (!version || !*version || !build || !*build || !manifest ||
+        strnlen(manifest, 65) != 64) {
+        return fail(error, size, "Evidence export requires a verified SDK version, build ID and SHA-256 manifest identity");
+    }
+    for (int i = 0; i < 64; i++) {
+        if (!((manifest[i] >= '0' && manifest[i] <= '9') ||
+              (manifest[i] >= 'a' && manifest[i] <= 'f') ||
+              (manifest[i] >= 'A' && manifest[i] <= 'F'))) {
+            return fail(error, size, "SDK manifest identity must contain 64 hexadecimal SHA-256 digits");
+        }
+    }
+    return true;
+}
 static bool settings_valid(const shader_authoring_evidence *in, bool check_png, char *error, size_t size)
 {
+    if (!shader_authoring_evidence_identity_valid(
+            in->engine_version,
+            in->engine_build_id,
+            in->engine_manifest_hash,
+            error,
+            size
+        )) {
+        return false;
+    }
     if (!in->snapshot || !in->content_root || !in->destination ||
         !*in->destination || !in->backend || !*in->backend ||
         (check_png && (!in->png || !in->png_size || in->png_size > FILE_BYTES_MAX)) ||

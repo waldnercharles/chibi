@@ -1,0 +1,11 @@
+#ifndef CHIBI_WORKSPACE_SIMULATION_DEFINITION_H
+#define CHIBI_WORKSPACE_SIMULATION_DEFINITION_H
+#include "runtime/native_definitions.h"
+enum
+{
+    WORKSPACE_SIMULATION_OPERATION_COUNT = 6
+};
+extern const native_capability_definition WORKSPACE_SIMULATION_DEFINITIONS[WORKSPACE_SIMULATION_OPERATION_COUNT];
+extern const native_definition_pack WORKSPACE_SIMULATION_DECLARATION_PACK;
+extern const native_definition_pack WORKSPACE_SIMULATION_DEFINITION_PACK;
+#endif

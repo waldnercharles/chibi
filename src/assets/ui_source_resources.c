@@ -1,4 +1,5 @@
 #include "assets/ui_source_internal.h"
+#include "assets/ui_texture.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -282,7 +283,13 @@ bool ui_source_resources(
             c.error = "Prepared UI has an unexpanded widget";
             break;
         }
-        if (!strcmp(e->tag, "img")) {
+        if (!strcmp(e->tag, "texture-view")) {
+            char *src = ui_source_attribute_value(c.source, i, "src");
+            if (src && *src && !ui_texture_source_valid(src)) {
+                c.error = "Managed texture source must be a bounded kit: key";
+            }
+            free(src);
+        } else if (!strcmp(e->tag, "img")) {
             char *dynamic = ui_source_attribute_value(c.source, i, "data-attr-src");
             if (dynamic) {
                 free(dynamic);

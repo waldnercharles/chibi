@@ -30,6 +30,7 @@ option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
+option(CHIBI_WEB_AUTHOR "Build the browser host for authored tools" OFF)
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
 if(CHIBI_WEB_THREADS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -89,6 +90,7 @@ endfunction()
 add_library(chibi_support STATIC
     "${CHIBI_SDK_ROOT}/src/support/arena.c"
     "${CHIBI_SDK_ROOT}/src/support/file_io.c"
+    "${CHIBI_SDK_ROOT}/src/support/sha256.c"
     "${CHIBI_SDK_ROOT}/src/support/xalloc.c"
     "${CHIBI_SDK_ROOT}/src/support/rcss_map.c")
 add_library(Chibi::support ALIAS chibi_support)
@@ -102,7 +104,7 @@ if(CHIBI_WEB_THREADS)
         -sALLOW_MEMORY_GROWTH=1)
 endif()
 set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h
-    support/enum.h support/cos_sin.h support/file_io.h support/math.h)
+    support/enum.h support/cos_sin.h support/file_io.h support/math.h support/sha256.h)
 if(WIN32)
     # C sources that use the SDK get the POSIX calls the Microsoft runtime lacks.
     target_sources(chibi_support PRIVATE "${CHIBI_SDK_ROOT}/src/support/win32/posix.c")
@@ -166,7 +168,7 @@ set_target_properties(chibi_execution_contract PROPERTIES EXPORT_NAME execution_
 chibi_sdk_headers(chibi_execution_contract INTERFACE execution/host.h execution/status.h
     execution/service.h execution/log.h execution/instruction.h execution/state.h execution/function.h
     execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h execution/borrow.h
-    execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h)
+    execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h execution/preparation_profile.h)
 target_link_libraries(chibi_execution_contract INTERFACE chibi_types)
 
 add_library(chibi_native_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/native_capabilities.c"
@@ -261,10 +263,13 @@ set_target_properties(chibi_conversion_capabilities PROPERTIES EXPORT_NAME conve
 chibi_sdk_headers(chibi_conversion_capabilities PUBLIC runtime/conversions.h runtime/conversion_definition.h)
 target_link_libraries(chibi_conversion_capabilities PUBLIC chibi_native_capabilities)
 add_library(chibi_text_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/text_format.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/text_search.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/text_editing.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/text_editing_native.c"
     "${CHIBI_SDK_ROOT}/src/runtime/text_definition.c")
 add_library(Chibi::text_capabilities ALIAS chibi_text_capabilities)
 set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabilities)
-chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
+chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h runtime/text_search.h runtime/text_editing.h runtime/text_editing_native.h)
 target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
@@ -326,6 +331,30 @@ set(CHIBI_SDK_TARGETS chibi_support chibi_types chibi_execution_contract chibi_e
     chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks chibi_input_action)
 list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_native_prepared
     chibi_comparison_capabilities chibi_conversion_capabilities chibi_text_capabilities chibi_fmt)
+add_library(chibi_utf8 STATIC "${CHIBI_SDK_ROOT}/src/support/utf8.c")
+add_library(Chibi::utf8 ALIAS chibi_utf8)
+set_target_properties(chibi_utf8 PROPERTIES EXPORT_NAME utf8)
+chibi_sdk_headers(chibi_utf8 PUBLIC support/utf8.h)
+if(WIN32)
+    set(rooted_backend rooted_files_windows.c)
+else()
+    set(rooted_backend rooted_files_posix.c)
+endif()
+add_library(chibi_rooted_files STATIC "${CHIBI_SDK_ROOT}/src/support/rooted_files.c" "${CHIBI_SDK_ROOT}/src/support/${rooted_backend}")
+add_library(Chibi::rooted_files ALIAS chibi_rooted_files)
+set_target_properties(chibi_rooted_files PROPERTIES EXPORT_NAME rooted_files)
+chibi_sdk_headers(chibi_rooted_files PUBLIC support/rooted_files.h)
+set(rooted_private "${CMAKE_CURRENT_BINARY_DIR}/private/rooted_files")
+configure_file("${CHIBI_SDK_ROOT}/src/support/rooted_files_internal.h" "${rooted_private}/support/rooted_files_internal.h" COPYONLY)
+target_include_directories(chibi_rooted_files PRIVATE "${rooted_private}")
+target_link_libraries(chibi_rooted_files PUBLIC chibi_utf8 PRIVATE chibi_support)
+if(APPLE)
+    target_link_libraries(chibi_rooted_files PRIVATE "-framework CoreFoundation")
+endif()
+if(WIN32)
+    target_link_libraries(chibi_rooted_files PRIVATE ntdll)
+endif()
+list(APPEND CHIBI_SDK_TARGETS chibi_utf8 chibi_rooted_files)
 add_library(chibi_ui_documents STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui/documents.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui/font.c")
 add_library(Chibi::ui_documents ALIAS chibi_ui_documents)
@@ -336,7 +365,7 @@ list(APPEND CHIBI_SDK_TARGETS chibi_ui_documents)
 add_library(chibi_ui_document_values STATIC "${CHIBI_SDK_ROOT}/src/ui/document.c")
 add_library(Chibi::ui_document_values ALIAS chibi_ui_document_values)
 set_target_properties(chibi_ui_document_values PROPERTIES EXPORT_NAME ui_document_values)
-chibi_sdk_headers(chibi_ui_document_values PUBLIC ui/document.h)
+chibi_sdk_headers(chibi_ui_document_values PUBLIC ui/document.h ui/activation.h assets/ui_texture.h)
 target_link_libraries(chibi_ui_document_values PUBLIC chibi_support)
 add_library(chibi_text_search STATIC "${CHIBI_SDK_ROOT}/src/support/text_search.c"
     "${CHIBI_SDK_ROOT}/src/support/text_rank.c")
@@ -345,6 +374,20 @@ set_target_properties(chibi_text_search PROPERTIES EXPORT_NAME text_search)
 chibi_sdk_headers(chibi_text_search PUBLIC support/text_search.h support/text_rank.h)
 target_link_libraries(chibi_text_search PUBLIC chibi_support)
 list(APPEND CHIBI_SDK_TARGETS chibi_ui_document_values chibi_text_search)
+
+# CPU stylesheet origins and the source-loader contract are reusable without GPU.
+add_library(chibi_ui_style STATIC "${CHIBI_SDK_ROOT}/src/support/ui_style.c")
+add_library(Chibi::ui_style ALIAS chibi_ui_style)
+set_target_properties(chibi_ui_style PROPERTIES EXPORT_NAME ui_style)
+chibi_sdk_headers(chibi_ui_style PUBLIC support/ui_style.h)
+target_link_libraries(chibi_ui_style PUBLIC chibi_support)
+add_library(chibi_ui_loader INTERFACE)
+add_library(Chibi::ui_loader ALIAS chibi_ui_loader)
+set_target_properties(chibi_ui_loader PROPERTIES EXPORT_NAME ui_loader)
+chibi_sdk_headers(chibi_ui_loader INTERFACE render/ui_loader.h)
+target_link_libraries(chibi_ui_loader INTERFACE chibi_ui_document_values)
+list(APPEND CHIBI_SDK_TARGETS chibi_ui_style chibi_ui_loader)
+
 
 if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_DESKTOP)
     include(fonts.cmake)
@@ -365,6 +408,14 @@ if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_NATIVE)
     list(APPEND CHIBI_SDK_TARGETS chibi_json)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_NATIVE)
+    add_library(chibi_asset_json STATIC "${CHIBI_SDK_ROOT}/src/support/asset_json.c")
+    add_library(Chibi::asset_json ALIAS chibi_asset_json)
+    set_target_properties(chibi_asset_json PROPERTIES EXPORT_NAME asset_json)
+    chibi_sdk_headers(chibi_asset_json PUBLIC support/asset_json.h)
+    target_link_libraries(chibi_asset_json PUBLIC chibi_asset_values chibi_json)
+    list(APPEND CHIBI_SDK_TARGETS chibi_asset_json)
+endif()
+if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_NATIVE)
     include(values.cmake)
 endif()
 if(CHIBI_SDK_BUILD_NATIVE)
@@ -381,41 +432,11 @@ endif()
 if(CHIBI_SDK_BUILD_COMPILER)
     install(PROGRAMS "${CHIBI_SDK_ROOT}/tools/package_sdk.py" "${CHIBI_SDK_ROOT}/tools/package_player.py"
         "${CHIBI_SDK_ROOT}/tools/package_studio.py"
+        "${CHIBI_SDK_ROOT}/tools/package_web_author.py"
         "${CHIBI_SDK_ROOT}/tools/install_game_runtime.py" DESTINATION share/chibi/tools)
     install(FILES "${CHIBI_SDK_ROOT}/tools/kdl_asset.py" DESTINATION share/chibi/tools)
-    add_library(chibi_asset_json STATIC "${CHIBI_SDK_ROOT}/src/support/asset_json.c")
-    add_library(Chibi::asset_json ALIAS chibi_asset_json)
-    set_target_properties(chibi_asset_json PROPERTIES EXPORT_NAME asset_json)
-    chibi_sdk_headers(chibi_asset_json PUBLIC support/asset_json.h)
-    target_link_libraries(chibi_asset_json PUBLIC chibi_asset_values chibi_json)
-    list(APPEND CHIBI_SDK_TARGETS chibi_asset_json)
     include(asset_text.cmake)
     include(graph.cmake)
-    add_library(chibi_studio_capabilities STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_native.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c")
-    add_library(Chibi::studio_capabilities ALIAS chibi_studio_capabilities)
-    set_target_properties(chibi_studio_capabilities PROPERTIES EXPORT_NAME studio_capabilities)
-    chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h)
-    target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution)
-    list(APPEND CHIBI_SDK_TARGETS chibi_studio_capabilities)
-    add_library(chibi_studio_graph STATIC "${CHIBI_SDK_ROOT}/src/graph/nodes/studio_nodes.c")
-    add_library(Chibi::studio_graph ALIAS chibi_studio_graph)
-    set_target_properties(chibi_studio_graph PROPERTIES EXPORT_NAME studio_graph)
-    chibi_sdk_headers(chibi_studio_graph PUBLIC graph/nodes/studio_nodes.h)
-    configure_file("${CHIBI_SDK_ROOT}/src/graph/model/native_definition.h"
-        "${CMAKE_CURRENT_BINARY_DIR}/private/studio_graph/graph/model/native_definition.h" COPYONLY)
-    target_include_directories(chibi_studio_graph PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/studio_graph")
-    target_link_libraries(chibi_studio_graph PUBLIC chibi_graph_compilation chibi_studio_capabilities)
-    list(APPEND CHIBI_SDK_TARGETS chibi_studio_graph)
-    if(CHIBI_SDK_BUILD_NATIVE)
-        add_library(chibi_studio_catalog STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_catalog.c")
-        add_library(Chibi::studio_catalog ALIAS chibi_studio_catalog)
-        set_target_properties(chibi_studio_catalog PROPERTIES EXPORT_NAME studio_catalog)
-        chibi_sdk_headers(chibi_studio_catalog PUBLIC authoring/studio_catalog.h)
-        target_link_libraries(chibi_studio_catalog PUBLIC chibi_native_capabilities
-            PRIVATE chibi_studio_capabilities chibi_host_native_default)
-        list(APPEND CHIBI_SDK_TARGETS chibi_studio_catalog)
-    endif()
     set(engine_components "${CMAKE_CURRENT_BINARY_DIR}/generated/authoring/engine_components.c")
     add_custom_command(OUTPUT "${engine_components}"
         COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
@@ -438,17 +459,19 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_link_libraries(chibi_input_map PUBLIC chibi_input_action
         PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
-    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
+    add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/authoring/project_migration.c" "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
-    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
+    chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h authoring/project_migration.h)
     target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
-        chibi_language_syntax chibi_json chibi_support)
+        chibi_language_syntax chibi_json chibi_support chibi_rooted_files chibi_asset_json)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)
@@ -528,8 +551,10 @@ if(CHIBI_SDK_BUILD_COMPILER)
     if(CHIBI_SDK_BUILD_NATIVE)
         include(project_preparation.cmake)
         include(asset_authoring.cmake)
+        include(workspace.cmake)
         if(CHIBI_SDK_BUILD_DESKTOP)
             include(preview.cmake)
+            include(workspace_host.cmake)
         endif()
     endif()
 endif()
@@ -550,6 +575,10 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     install(TARGETS chibi RUNTIME DESTINATION bin)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
+    get_target_property(sdk_target_type ${target} TYPE)
+    if(sdk_target_type STREQUAL "INTERFACE_LIBRARY")
+        continue()
+    endif()
     if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

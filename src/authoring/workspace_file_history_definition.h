@@ -1,0 +1,6 @@
+#ifndef CHIBI_WORKSPACE_FILE_HISTORY_DEFINITION_H
+#define CHIBI_WORKSPACE_FILE_HISTORY_DEFINITION_H
+#include "authoring/workspace_file_history.h"
+#include "runtime/native_definitions.h"
+extern const native_definition_pack WORKSPACE_FILE_HISTORY_DEFINITION_PACK;
+#endif

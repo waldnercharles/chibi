@@ -50,6 +50,16 @@ target_link_libraries(chibi_material_authoring PUBLIC chibi_graph_model chibi_sh
     PRIVATE chibi_asset_authoring chibi_graph_authoring chibi_graph_compilation chibi_asset_text
     chibi_image_preparation chibi_project_document chibi_asset_json chibi_support)
 
+add_library(chibi_model_export_artifacts STATIC
+    "${CHIBI_SDK_ROOT}/src/assets/model_export_artifacts.c")
+add_library(Chibi::model_export_artifacts ALIAS chibi_model_export_artifacts)
+set_target_properties(chibi_model_export_artifacts PROPERTIES EXPORT_NAME model_export_artifacts)
+chibi_sdk_headers(chibi_model_export_artifacts PUBLIC assets/model_export_artifacts.h assets/model_export.h)
+target_include_directories(chibi_model_export_artifacts PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
+target_link_libraries(chibi_model_export_artifacts PUBLIC chibi_model_bake chibi_model_runtime
+    PRIVATE chibi_mesh_runtime chibi_json chibi_support chibi_types)
+list(APPEND CHIBI_SDK_TARGETS chibi_model_export_artifacts)
+
 add_library(chibi_model_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/model_source.c"
     "${CHIBI_SDK_ROOT}/src/assets/model_validation.c"
@@ -60,7 +70,7 @@ chibi_sdk_headers(chibi_model_authoring PUBLIC
     assets/model_source.h assets/model_validation.h assets/model_export.h)
 target_include_directories(chibi_model_authoring PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
 target_link_libraries(chibi_model_authoring PUBLIC chibi_graph_model chibi_model_bake
-    PRIVATE chibi_image_preparation chibi_shader_preparation chibi_graph_authoring chibi_graph_compilation
+    PRIVATE chibi_model_export_artifacts chibi_image_preparation chibi_shader_preparation chibi_graph_authoring chibi_graph_compilation
     chibi_visual_catalog chibi_asset_text chibi_json chibi_support)
 
 # glTF import reads models through Cute's loader, which only the desktop

@@ -25,6 +25,10 @@ typedef struct
     model_program model;
     model_inspection inspection;
     shader_inspection material_inspection;
+    /* Optional CPU authoring snapshot follows this catalog owner through
+     * generation exchange. Prepared runtime records leave both fields NULL. */
+    void *authoring;
+    void (*authoring_free)(void *);
     struct shader_asset_runtime *runtime; /* Private CPU cache; never persisted. */
 } shader_asset;
 typedef struct

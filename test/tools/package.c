@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <utime.h>
 
 static char directory[1024], build[1024], output[1024], log_path[1024];
 
@@ -524,6 +525,169 @@ TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints)
     return true;
 }
 
+/* C owns fixture mutations and exit-status assertions. The Python child only
+ * invokes the production packaging identity helper; it contains no oracle. */
+static int authored_identity(const char *fixture)
+{
+    char script[1024];
+    path(script, tool_root(), "tools");
+    const char *argv[] = { "python3",
+                           "-B",
+                           "-c",
+                           "import sys;sys.path.insert(0,sys.argv[1]);"
+                           "from package_studio import authored_build_identity;"
+                           "authored_build_identity(sys.argv[2])",
+                           script,
+                           fixture,
+                           NULL };
+    return tool_run(argv, directory, log_path);
+}
+
+TEST_CASE(authored_build_identity_accepts_current_globs_and_rejects_stale_resources)
+{
+    char root[1024], filename[1024], source_file[1024], copied_file[1024],
+        artifact[1024];
+    path(root, directory, "authored-currentness");
+    REQUIRE(!mkdir(root, 0700));
+    const char *folders[] = { "source",
+                              "source/projects",
+                              "source/projects/studio",
+                              "build",
+                              "build/bin",
+                              "build/studio",
+                              "build/share",
+                              "build/share/chibi",
+                              "build/share/chibi/studio",
+                              "build/share/chibi/sdk",
+                              "sdk",
+                              "sdk/bin",
+                              "sdk/share",
+                              "sdk/share/chibi" };
+    for (size_t i = 0; i < sizeof folders / sizeof *folders; i++) {
+        path(filename, root, folders[i]);
+        REQUIRE(!mkdir(filename, 0700));
+    }
+    path(source_file, root, "source/projects/studio/project.kdl");
+    path(copied_file, root, "build/share/chibi/studio/project.kdl");
+    tool_write(source_file, "name \"Current\"\n");
+    tool_write(copied_file, "name \"Current\"\n");
+    path(filename, root, "source/CMakeLists.txt");
+    tool_write(filename, "file(GLOB_RECURSE sources CONFIGURE_DEPENDS projects/studio/*)\n");
+    path(filename, root, "sdk/bin/chibi-compile");
+    tool_write(filename, "fixture compiler\n");
+    char compiler_hash[65], identity_hash[65], manifest_hash[65];
+    REQUIRE(checksum(filename, compiler_hash));
+    char canonical[1024], manifest[1200];
+    snprintf(
+        canonical,
+        sizeof canonical,
+        "{\"files\":{\"bin/"
+        "chibi-compile\":{\"sha256\":\"%s\"}},\"kind\":\"sdk\","
+        "\"manifest_format\":1,\"products\":{\"chibi-compile\":\"bin/"
+        "chibi-compile\"}}",
+        compiler_hash
+    );
+    path(filename, root, "canonical.json");
+    tool_write(filename, canonical);
+    REQUIRE(checksum(filename, identity_hash));
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "{\"build_id\":\"%s\",\"files\":{\"bin/"
+        "chibi-compile\":{\"sha256\":\"%s\"}},"
+        "\"kind\":\"sdk\",\"manifest_format\":1,\"products\":{\"chibi-"
+        "compile\":\"bin/chibi-compile\"}}",
+        identity_hash,
+        compiler_hash
+    );
+    path(filename, root, "sdk/share/chibi/package.json");
+    tool_write(filename, manifest);
+    REQUIRE(checksum(filename, manifest_hash));
+    path(filename, root, "build/share/chibi/sdk/package.json");
+    tool_write(filename, manifest);
+    char cache[8192];
+    snprintf(
+        cache,
+        sizeof cache,
+        "CHIBI_STUDIO_AUTHORED:INTERNAL=ON\nCMAKE_BUILD_TYPE:STRING=Debug\n"
+        "chibi_studio_SOURCE_DIR:STATIC=%s/source\nChibi_DIR:PATH=%s/sdk/lib/"
+        "cmake/Chibi\n"
+        "CHIBI_STUDIO_SDK_BUILD_ID:INTERNAL=%s\nCHIBI_STUDIO_SDK_MANIFEST_"
+        "SHA256:INTERNAL=%s\n"
+        "CHIBI_STUDIO_ARTIFACT:INTERNAL=%s/build/studio/game.chibip\n"
+        "CHIBI_STUDIO_LAUNCHER:INTERNAL=%s/build/bin/chibi-dev\n",
+        root,
+        root,
+        identity_hash,
+        manifest_hash,
+        root,
+        root
+    );
+    path(filename, root, "build/CMakeCache.txt");
+    tool_write(filename, cache);
+    path(filename, root, "build/bin/chibi-dev");
+    tool_write(filename, "fixture launcher\n");
+    path(filename, root, "build/studio-inputs.txt");
+    tool_write(filename, source_file);
+    path(filename, root, "build/studio/game.chibip.resources.json");
+    tool_write(filename, "{}\n");
+    path(filename, root, "build/share/chibi/studio/game.chibip.resources.json");
+    tool_write(filename, "{}\n");
+    path(artifact, root, "build/studio/game.chibip");
+    tool_write(artifact, "compiled fixture\n");
+    path(filename, root, "build/share/chibi/studio/game.chibip");
+    tool_write(filename, "compiled fixture\n");
+    char fixture[1024];
+    path(fixture, root, "build");
+    REQUIRE(authored_identity(fixture) == 0);
+    /* Configured inventory paths can retain a lexical alias of the source
+     * root (for example /tmp versus /private/tmp on macOS). */
+    char alias[1024], alias_file[1024], inventory[1024];
+    path(alias, root, "source-alias");
+    REQUIRE(!symlink("source", alias));
+    path(alias_file, alias, "projects/studio/project.kdl");
+    path(inventory, root, "build/studio-inputs.txt");
+    tool_write(inventory, alias_file);
+    tool_write(artifact, "compiled fixture\n");
+    REQUIRE(authored_identity(fixture) == 0);
+    char duplicate[2200];
+    snprintf(duplicate, sizeof duplicate, "%s;%s", source_file, alias_file);
+    tool_write(inventory, duplicate);
+    tool_write(artifact, "compiled fixture\n");
+    REQUIRE(authored_identity(fixture) == 1);
+    tool_write(inventory, source_file);
+    tool_write(artifact, "compiled fixture\n");
+    REQUIRE(authored_identity(fixture) == 0);
+    tool_write(source_file, "name \"Changed\"\n");
+    REQUIRE(authored_identity(fixture) == 1);
+    tool_write(source_file, "name \"Current\"\n");
+    REQUIRE(!unlink(source_file));
+    REQUIRE(authored_identity(fixture) == 1);
+    tool_write(source_file, "name \"Current\"\n");
+    path(filename, root, "source/projects/studio/new.kdl");
+    tool_write(filename, "name \"Added\"\n");
+    REQUIRE(authored_identity(fixture) == 1);
+    REQUIRE(!unlink(filename));
+    tool_write(copied_file, "name \"Wrong copy\"\n");
+    REQUIRE(authored_identity(fixture) == 1);
+    tool_write(copied_file, "name \"Current\"\n");
+    tool_write(artifact, "compiled fixture\n");
+    REQUIRE(authored_identity(fixture) == 0);
+    path(filename, root, "build/share/chibi/studio/game.chibip");
+    tool_write(filename, "wrong artifact\n");
+    REQUIRE(authored_identity(fixture) == 1);
+    tool_write(filename, "compiled fixture\n");
+    path(filename, root, "source/CMakeLists.txt");
+    tool_write(filename, "# newer configuration\n");
+    struct stat stamp;
+    REQUIRE(!stat(artifact, &stamp));
+    const struct utimbuf newer = { .actime = stamp.st_mtime + 1,
+                                   .modtime = stamp.st_mtime + 1 };
+    REQUIRE(!utime(filename, &newer));
+    REQUIRE(authored_identity(fixture) == 1);
+    return true;
+}
+
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -553,6 +717,7 @@ void test_tool_package()
     snprintf(engine, sizeof engine, "{\"manifest_format\":1,\"build_id\":\"fixture-engine\",\"project_version\":%d}\n", CHIBI_PROJECT_VERSION);
     tool_write(filename, engine);
     write_profile(-1);
+    RUN_TEST_CASE(authored_build_identity_accepts_current_globs_and_rejects_stale_resources);
     RUN_TEST_CASE(native_exports_have_package_owners);
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);

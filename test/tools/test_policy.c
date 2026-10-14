@@ -57,6 +57,19 @@ static const char driver_setup
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
 static const char driver_routes[] =
+    "if sys.argv[2] in ('retired-agent', 'retired-tool'):\n"
+    "    def unexpected(*args, **kwargs):\n"
+    "        raise RuntimeError('retired route attempted execution')\n"
+    "    selector = sys.argv[5]\n"
+    "    policy.run_commands = unexpected\n"
+    "    if sys.argv[2] == 'retired-agent':\n"
+    "        import agent\n"
+    "        agent.startup_health = unexpected\n"
+    "        agent.run_commands = unexpected\n"
+    "        sys.argv = ['agent', 'gpu-test', '--', selector]\n"
+    "        sys.exit(agent.main())\n"
+    "    sys.argv = ['test_policy', 'tool', selector]\n"
+    "    sys.exit(policy.main())\n"
     "if sys.argv[2] == 'cpu-route':\n"
     "    import agent\n"
     "    selector = sys.argv[5]\n"
@@ -310,6 +323,37 @@ TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
     return true;
 }
 
+TEST_CASE(retired_studio_routes_refuse_before_execution)
+{
+    const char *selectors[] = {
+        "--studio-material-authoring", "--studio-scene-collider3d",
+        "--studio-scene-gizmo3d",      "--studio-scene-camera",
+        "--studio-scene-move",         "--studio-outliner-move",
+        "--studio-graph-visibility",   "--studio-graph-pointer",
+        "--studio-asset-pointer",      "--studio-debugger-source-history",
+        "--studio-source-edit"
+    };
+    for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
+        REQUIRE(run("retired-agent", selectors[i]) == 2);
+        char *output = tool_read(logpath);
+        bool retired = output && strstr(output, "native_studio_oracle_retired") &&
+                       strstr(output, "make studio-build") &&
+                       !strstr(output, "retired route attempted execution");
+        free(output);
+        REQUIRE(retired);
+    }
+    REQUIRE(run("retired-tool", "studio-panel-idle") == 2);
+    char *output = tool_read(logpath);
+    bool retired = output && strstr(output, "native_studio_oracle_retired") &&
+                   strstr(output, "\"status\": \"retired\"") &&
+                   !strstr(output, "retired route attempted execution");
+    free(output);
+    REQUIRE(retired);
+    return true;
+}
+
+/* Historical parser oracles remain CPU-only. They do not run Studio or
+ * establish acceptance of its authored replacement. */
 TEST_CASE(studio_acceptance_requires_exact_completion)
 {
     char filename[PATH_MAX];
@@ -742,6 +786,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
+    RUN_TEST_CASE(retired_studio_routes_refuse_before_execution);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_gizmo_requires_forty_two_clean_frames);

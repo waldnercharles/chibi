@@ -15,6 +15,7 @@
 
 #include <assert.h>
 #include <float.h>
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdatomic.h>
@@ -395,6 +396,9 @@ unsigned render_shader_ramp_revision()
 }
 void shader_catalog_free_asset(shader_asset *asset)
 {
+    if (asset->authoring_free) {
+        asset->authoring_free(asset->authoring);
+    }
     free(asset->name);
     free(asset->glsl);
     afree(asset->images);
@@ -816,6 +820,67 @@ struct render_shader_parameter_cache
     float values[SHADER_PARAMETER_MAX][4];
 };
 static render_shader_parameter_cache *serial_parameters;
+struct shader_catalog_state
+{
+    shader_override *overrides;
+    render_shader_parameter_cache *parameters;
+    unsigned revision, ramp_revision, parameter_revision;
+    render_model_stats model_stats;
+    int validations;
+};
+static unsigned next_catalog_revision = 1;
+unsigned shader_catalog_next_revision()
+{
+    assert(next_catalog_revision < UINT_MAX);
+    return ++next_catalog_revision;
+}
+size_t shader_catalog_state_bytes()
+{
+    return sizeof(shader_catalog_state);
+}
+shader_catalog_state *shader_catalog_state_new()
+{
+    shader_catalog_state *state = xcalloc(1, sizeof *state);
+    state->revision = state->ramp_revision = state->parameter_revision = shader_catalog_next_revision();
+    return state;
+}
+void shader_catalog_state_exchange(shader_catalog_state *state)
+{
+    assert(state);
+    bool locked = atomic_flag_test_and_set_explicit(&shader_catalog_override_lock, memory_order_acquire);
+    assert(!locked);
+    (void)locked;
+    shader_catalog_state current = {
+        .overrides = shader_catalog_overrides,
+        .parameters = serial_parameters,
+        .revision = shader_catalog_revision,
+        .ramp_revision = shader_catalog_ramp_revision,
+        .parameter_revision = shader_catalog_parameter_revision,
+        .model_stats = shader_catalog_model_stats,
+        .validations = atomic_load_explicit(&model_setter_validations, memory_order_relaxed)
+    };
+    shader_catalog_overrides = state->overrides;
+    serial_parameters = state->parameters;
+    shader_catalog_revision = state->revision;
+    shader_catalog_ramp_revision = state->ramp_revision;
+    shader_catalog_parameter_revision = state->parameter_revision;
+    shader_catalog_model_stats = state->model_stats;
+    atomic_store_explicit(&model_setter_validations, state->validations, memory_order_relaxed);
+    *state = current;
+    atomic_flag_clear_explicit(&shader_catalog_override_lock, memory_order_release);
+}
+void shader_catalog_state_free(shader_catalog_state *state)
+{
+    if (!state) {
+        return;
+    }
+    for (int i = 0; i < acount(state->overrides); i++) {
+        free(state->overrides[i].name);
+    }
+    afree(state->overrides);
+    render_shader_parameter_cache_free(state->parameters);
+    free(state);
+}
 void render_shader_parameter_cache_free(render_shader_parameter_cache *cache)
 {
     for (int i = 0; i < acount(cache); i++) {
@@ -1678,9 +1743,9 @@ void shader_catalog_resources_changed()
         free(shader_catalog_overrides[i].name);
     }
     afree(shader_catalog_overrides);
-    shader_catalog_revision++;
-    shader_catalog_ramp_revision++;
-    shader_catalog_parameter_revision++;
+    shader_catalog_revision = shader_catalog_next_revision();
+    shader_catalog_ramp_revision = shader_catalog_next_revision();
+    shader_catalog_parameter_revision = shader_catalog_next_revision();
     shader_catalog_model_stats = (render_model_stats){ 0 };
     atomic_store_explicit(&model_setter_validations, 0, memory_order_relaxed);
 }

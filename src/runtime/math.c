@@ -51,7 +51,7 @@ pin_value native_math_RandomReal(const pin_value *, int count, arena *)
 {
     assert(count == 0);
     (void)count;
-    return (pin_value){ .type = PIN_F64, .d = (double)rand() / ((double)RAND_MAX + 1) };
+    return (pin_value){ .type = PIN_F64, .d = behavior_random_unit() };
 }
 
 pin_value native_math_RandomRangeReal(const pin_value *inputs, int count, arena *)

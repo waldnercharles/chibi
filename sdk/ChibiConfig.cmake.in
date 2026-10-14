@@ -1,4 +1,30 @@
 @PACKAGE_INIT@
+# Authored applications need installed tools and resources, without a C/C++
+# compiler or imported SDK archives. Keep this path usable with LANGUAGES NONE.
+set(Chibi_RESOURCE_DIR "${PACKAGE_PREFIX_DIR}/share/chibi")
+set(Chibi_PRODUCT_DIR "${PACKAGE_PREFIX_DIR}/bin")
+foreach(product AUTHOR COMPILE PLAYER)
+    string(TOLOWER "${product}" name)
+    set(Chibi_${product}_EXECUTABLE "")
+    foreach(suffix "" ".exe")
+        if(EXISTS "${Chibi_PRODUCT_DIR}/chibi-${name}${suffix}")
+            set(Chibi_${product}_EXECUTABLE "${Chibi_PRODUCT_DIR}/chibi-${name}${suffix}")
+        endif()
+    endforeach()
+endforeach()
+set(Chibi_WEB_THREADS @CHIBI_WEB_THREADS@)
+set(Chibi_WEB_WORKERS @CHIBI_WEB_WORKERS@)
+get_property(_chibi_languages GLOBAL PROPERTY ENABLED_LANGUAGES)
+if(NOT "C" IN_LIST _chibi_languages AND NOT "CXX" IN_LIST _chibi_languages)
+    foreach(component IN LISTS Chibi_FIND_COMPONENTS)
+        set(Chibi_${component}_FOUND FALSE)
+        if(component STREQUAL "products" AND Chibi_COMPILE_EXECUTABLE AND Chibi_AUTHOR_EXECUTABLE)
+            set(Chibi_${component}_FOUND TRUE)
+        endif()
+    endforeach()
+    check_required_components(Chibi)
+    return()
+endif()
 # The SDK links the C runtime statically on Windows; consumers must match.
 if(WIN32)
     if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY AND
@@ -8,8 +34,6 @@ if(WIN32)
     endif()
     set(CMAKE_MSVC_RUNTIME_LIBRARY "@CHIBI_MSVC_RUNTIME@")
 endif()
-set(Chibi_WEB_THREADS @CHIBI_WEB_THREADS@)
-set(Chibi_WEB_WORKERS @CHIBI_WEB_WORKERS@)
 if(@CHIBI_SDK_NEEDS_THREADS@)
     include(CMakeFindDependencyMacro)
     find_dependency(Threads)
@@ -18,11 +42,10 @@ if(@CHIBI_SDK_BUILD_DESKTOP@)
     include("${CMAKE_CURRENT_LIST_DIR}/ChibiDesktopDependencies.cmake")
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/ChibiTargets.cmake")
-set(Chibi_RESOURCE_DIR "${PACKAGE_PREFIX_DIR}/share/chibi")
-foreach(component support types ecs events execution_contract execution behavior_runtime
-    asset_values value_document capabilities native_capabilities native_prepared core_capabilities array_capabilities field_capabilities state_capabilities selection_capabilities set_capabilities comparison_capabilities conversion_capabilities text_capabilities fmt host_native_catalog scene_runtime scheduling fields field_catalog tasks math native_types native_bindings tilemap_runtime spatial_runtime entity_runtime audio_runtime url_runtime rhythm_runtime vector_capabilities math_capabilities arithmetic_capabilities particle_runtime save_runtime ui_runtime input_action input_runtime host_native_default studio_catalog visibility_runtime engine player visual_motion_runtime material_runtime physics_runtime physics3d_runtime declared_components task_pool_runtime box2d box3d task_scheduler
-    shader_runtime model_runtime mesh_runtime model_bake platform ui render ui_documents ui_document_values text_search image_catalog image_preparation builtin_fonts asset_json studio_graph graph_catalog
-    scene_authoring asset_authoring material_authoring resource_catalog model_authoring model_import scenario_document source_catalog source_presentation visual_catalog shader_preparation project_compilation project_preparation graph_compilation graph_model graph_authoring language_syntax language compiler authoring studio_capabilities component_presentation input_map project_document prototype_document scene_document reference_index asset_text asset_kdl syntax_runtime json text_source ui_document ui_authoring ui_syntax)
+foreach(component support css_values workspace_tools_declarations workspace_tools resource_preview_data ui_style ui_loader ui_source_provider ui_source_preview_declarations ui_source_preview utf8 rooted_files types ecs events execution_contract execution behavior_runtime
+    asset_values value_document value_json authoring_platform_declarations capabilities native_capabilities native_prepared core_capabilities array_capabilities field_capabilities state_capabilities selection_capabilities set_capabilities comparison_capabilities conversion_capabilities text_capabilities fmt host_native_catalog scene_runtime scheduling fields field_catalog tasks math native_types native_bindings tilemap_runtime spatial_runtime entity_runtime audio_runtime url_runtime rhythm_runtime vector_capabilities math_capabilities arithmetic_capabilities particle_runtime save_runtime ui_runtime input_action input_runtime host_native_default visibility_runtime engine player visual_motion_runtime material_runtime physics_runtime physics3d_runtime declared_components task_pool_runtime box2d box3d task_scheduler
+    shader_runtime model_runtime mesh_runtime model_bake platform ui render ui_documents ui_document_values text_search image_catalog image_preparation builtin_fonts asset_json graph_catalog
+    scene_authoring asset_authoring material_authoring resource_catalog model_export_artifacts model_authoring model_import scenario_document source_catalog source_presentation visual_catalog shader_preparation project_compilation project_preparation graph_compilation graph_model graph_authoring language_syntax language compiler authoring component_presentation input_map project_document prototype_document scene_document reference_index asset_text asset_kdl syntax_runtime json text_source ui_document ui_authoring ui_syntax workspace_documents workspace_presentation workspace_resources document_semantics visual_authoring workspace_catalog workspace_assets ui_source_sessions visual_previews authoring_host json_query color_value document_graph visual_model ui_dom_declarations observations runtime_properties workspace_runtime_declarations workspace_simulation_declarations workspace_simulation ui_dom authoring_platform workspace_runtime browser_messages workspace_debug project_semantics resource_previews_declarations resource_previews browser_compiler ui_replay workspace_info workspace_imports workspace_file_history workspace_scaffold)
     set(Chibi_${component}_FOUND FALSE)
     if(TARGET Chibi::${component})
         set(Chibi_${component}_FOUND TRUE)

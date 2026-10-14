@@ -95,23 +95,19 @@ static const char *lexical(TSNode n, const char *text)
     }
     return NULL;
 }
-authoring_highlight *authoring_source_highlights(const authoring_navigation *index, int document, int *count)
+authoring_highlight *authoring_syntax_highlights(const script_syntax *syntax, int *count)
 {
-    assert(index && count);
-    const authoring_document *doc = authoring_navigation_document_at(index, document);
+    assert(syntax && count);
     *count = 0;
-    if (!doc->syntax) {
-        return NULL;
-    }
     authoring_highlight *items = NULL;
-    TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(doc->syntax->tree));
+    TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(syntax->tree));
     for (;;) {
         if (ts_tree_cursor_goto_first_child(&cursor)) {
             continue;
         }
         TSNode n = ts_tree_cursor_current_node(&cursor);
         if (ts_node_end_byte(n) > ts_node_start_byte(n)) {
-            const char *cls = lexical(n, doc->syntax->text);
+            const char *cls = lexical(n, syntax->text);
             if (cls) {
                 apush(items, ((authoring_highlight){ script_node_range(n), cls }));
             }
@@ -124,19 +120,6 @@ authoring_highlight *authoring_source_highlights(const authoring_navigation *ind
     }
 scanned:
     ts_tree_cursor_delete(&cursor);
-    for (int r = 0; r < authoring_navigation_reference_count(index); r++) {
-        const authoring_reference *ref = authoring_navigation_reference_at(index, r);
-        if (ref->location.document != document) {
-            continue;
-        }
-        script_range range = ref->location.range;
-        for (int i = 0; i < acount(items); i++) {
-            if (items[i].range.start >= range.start &&
-                items[i].range.end <= range.end) {
-                items[i].cls = highlight(index, ref->target);
-            }
-        }
-    }
     *count = acount(items);
     authoring_highlight *out = xmalloc((size_t)(*count + 1) * sizeof *out);
     if (*count) {
@@ -145,6 +128,31 @@ scanned:
     afree(items);
     return out;
 }
+authoring_highlight *authoring_source_highlights(const authoring_navigation *index, int document, int *count)
+{
+    assert(index && count);
+    const authoring_document *doc = authoring_navigation_document_at(index, document);
+    *count = 0;
+    if (!doc->syntax) {
+        return NULL;
+    }
+    authoring_highlight *items = authoring_syntax_highlights(doc->syntax, count);
+    for (int r = 0; r < authoring_navigation_reference_count(index); r++) {
+        const authoring_reference *ref = authoring_navigation_reference_at(index, r);
+        if (ref->location.document != document) {
+            continue;
+        }
+        script_range range = ref->location.range;
+        for (int i = 0; i < *count; i++) {
+            if (items[i].range.start >= range.start &&
+                items[i].range.end <= range.end) {
+                items[i].cls = highlight(index, ref->target);
+            }
+        }
+    }
+    return items;
+}
+
 static void append(char **out, const char *text)
 {
     int old = acount(*out);
@@ -187,6 +195,12 @@ static char *finish_text(char *text)
     char *out = xstrdup(text);
     afree(text);
     return out;
+}
+char *authoring_type_label(const script_catalog *catalog, script_type type)
+{
+    char *text = NULL;
+    type_text(&text, catalog, type);
+    return finish_text(text);
 }
 static char *declaration(const script_catalog *catalog, const char *name, script_type type, const char *unit)
 {
@@ -501,7 +515,7 @@ static int scope_at(const script_analysis *a, int offset)
     }
     return scope;
 }
-static const script_symbol *visible_symbol(const script_analysis *a, int offset, const char *name)
+const script_symbol *authoring_visible_symbol(const script_analysis *a, int offset, const char *name)
 {
     if (!a->scope_count) {
         return NULL;
@@ -516,6 +530,40 @@ static const script_symbol *visible_symbol(const script_analysis *a, int offset,
         }
     }
     return NULL;
+}
+const script_symbol **authoring_visible_symbols(const script_analysis *a, int offset, int *count)
+{
+    *count = 0;
+    if (!a->scope_count) {
+        return NULL;
+    }
+    size_t capacity = 16;
+    while (capacity < (size_t)a->symbol_count * 2) {
+        capacity *= 2;
+    }
+    const char **names = xcalloc(capacity, sizeof *names);
+    const script_symbol **rows = xmalloc(((size_t)a->symbol_count + 1) * sizeof *rows);
+    for (int scope = scope_at(a, offset); scope >= 0; scope = a->scopes[scope].parent) {
+        for (int i = 0; i < a->symbol_count; i++) {
+            const script_symbol *s = &a->symbols[i];
+            if (s->scope != scope || !s->name ||
+                (s->kind == SCRIPT_LOCAL && s->declaration.start >= offset)) {
+                continue;
+            }
+            size_t slot = (size_t)script_catalog_id("visible-symbol", s->name) &
+                          (capacity - 1);
+            while (names[slot] && strcmp(names[slot], s->name)) {
+                slot = (slot + 1) & (capacity - 1);
+            }
+            if (names[slot]) {
+                continue;
+            }
+            names[slot] = s->name;
+            rows[(*count)++] = s;
+        }
+    }
+    free(names);
+    return rows;
 }
 static bool compatible(const script_catalog *catalog, script_type expected, script_type actual)
 {
@@ -723,7 +771,7 @@ static bool library_members(
     char *receiver = xmalloc((size_t)(range.end - range.start) + 1);
     memcpy(receiver, doc->syntax->text + range.start, (size_t)(range.end - range.start));
     receiver[range.end - range.start] = 0;
-    if (visible_symbol(doc->analysis, offset, receiver)) {
+    if (authoring_visible_symbol(doc->analysis, offset, receiver)) {
         free(receiver);
         return false;
     }
@@ -944,7 +992,8 @@ void authoring_source_complete(
              scope = a->scopes[scope].parent) {
             for (int i = 0; i < a->symbol_count; i++) {
                 const script_symbol *s = &a->symbols[i];
-                if (s->scope != scope || visible_symbol(a, offset, s->name) != s) {
+                if (s->scope != scope ||
+                    authoring_visible_symbol(a, offset, s->name) != s) {
                     continue;
                 }
                 if (s->kind == SCRIPT_LOCAL && s->declaration.start >= offset) {
@@ -1022,7 +1071,7 @@ void authoring_source_complete(
                 continue;
             }
             const char *name = c->qualified_name ? c->qualified_name : c->name;
-            const script_symbol *visible = visible_symbol(a, offset, name);
+            const script_symbol *visible = authoring_visible_symbol(a, offset, name);
             if (visible && visible->kind != SCRIPT_FUNCTION &&
                 visible->kind != SCRIPT_MACRO) {
                 continue;

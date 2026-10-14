@@ -1,5 +1,42 @@
 # Studio in RML and RCSS
 
+## Current candidate evidence, 2026-10-14
+
+Studio owns its editor structure, styling and workflow behavior in RML, RCSS and
+`.chibi`. The candidate retires 347 files, including 318 C/C++ source/header
+files; no tracked C/C++ sources remain in Studio. `NATIVE_RETIREMENT.json`
+records baseline `34f13325c3fb4e1888dbd64bf45d809e07c782d3` and original identities.
+Generic native engine services are consumed through the installed SDK.
+
+Immutable native SDK13 build
+`311211a3b32f78fa53039b41b0bc111f8e8166088c5fe6b3945562d0ae4b3c06`
+identifies compiled engine source
+`40a8f6d4df6c681a91e625f6cd87933cfc68011cdf10df18a2155ab822835bd2`.
+All five required CPU groups, owning checks, strict native SDK packaging, matching
+Web SDK and all three web-author products passed. Package checks establish
+product identity and closure; they do not establish browser interaction.
+
+| Scope | Recorded result |
+| --- | --- |
+| Authored ownership | Complete source retirement; historical native tests remain reference oracles. |
+| Canonical formatting | PASS for current 809-file Studio source v6, `c85eec1c45c4630295bf86753b2e309d28f0f91eab2928b61a68c97bf0a304cd`. |
+| Whole application and Home24 | Source v2 passed compilation and Home24; its corrected full-width screenshot was inspected. Current v6 compilation/Home checks are pending final review. |
+| Combined native/browser build and install | PASS for source v5. This does not validate subsequent source revisions. |
+| Browser interaction | Source v5 New Project create/open was observed partially; a command-palette closure bug prevented complete acceptance. |
+| Material40 | UNPASSED; requires a fresh bounded run and inspection of canonical source and rendered capture. |
+| Other workflows | Full interaction parity, room recovery, Keep Changes and browser workflows require their own acceptance. |
+
+The evidence directory is
+`.chibi/studio-authored-migration/validation/integration_checks/` in the engine
+candidate. SDK identity and CPU receipts are `sdk13-identity.json`,
+`sdk13-required-checks.json`, `sdk13-owning-checks.json`,
+`sdk13-web-sdk-identity.json` and `sdk13-web-author-identity.json`.
+Application receipts and captures carry their source revision (`sdk13-v2-*`,
+`sdk13-v5-*`, `sdk13-v6-*`); match their recorded source, artifact and SDK identities
+before comparing results. Historical checkpoints below are not current results.
+This is candidate evidence, not a merge, release or deployment claim.
+
+
 > Historical implementation record. Commands, MCP recipes, helper scripts and
 > validation results below describe the recorded revision. The MCP product and
 > its authoring helpers are retired. Current authoring uses saved `.chibi`/KDL
@@ -10,28 +47,44 @@
 > are historical records, not current workflows. Measurements and source hashes
 > describe the recorded revisions; see [testing](testing.md) for current C tooling.
 
-## Current scope, 2026-10-11
+## Current candidate scope, 2026-10-14
 
-[Current status](status.md) owns the active backlog and parallel task boundaries.
-Studio code and acceptance cases now live in
-[chibi-studio](https://github.com/waldnercharles/chibi-studio).
-Nested scenes, parent-relative transforms, picking and hierarchy undo are
-implemented. Interactive Outliner reparenting/reordering now uses the shared
-[scene-move contract](scene-authoring.md), with grouped history, persistence and
-collaboration coverage. Studio #54's authored parent/path preservation is included
-through merged #60. The combined candidate's final execution evidence belongs in
-the integration PR.
+The user authorized the full authored migration, including every remaining native
+Studio component. That authorization supersedes the former panel-conversion hold
+recorded below. Studio now owns its interface in RML, RCSS and `.chibi` and builds
+with `project(chibi_studio LANGUAGES NONE)`. Generic engine services remain native
+and are consumed through an installed SDK. Moving a Studio controller into the
+engine does not satisfy authored ownership.
 
-The hold on converting the other panels to behaviors remains in force. Approval
-of Outliner hierarchy editing or visible-panel performance work does not release
-that hold. The October 5 checklist below is a historical audit, including its
-retired MCP operations and former source paths. Use
-[Studio's acceptance inventory](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/README.md)
-for current undo, dirty-prompt, selection, keyboard and viewport cases; their
-existence is not a fresh execution result. Other old bug reports need reproduction
-before they become current work.
+The candidate removed 347 obsolete native implementation, test and build files,
+including 318 C/C++ source/header files. Studio's `NATIVE_RETIREMENT.json` preserves
+path, blob and content identity at baseline
+`34f13325c3fb4e1888dbd64bf45d809e07c782d3`. Removed native tests are historical
+oracles, not current authored acceptance. This records candidate source removal;
+it does not claim a merge, release or deployment.
 
-## Migration record
+Earlier SDK4 whole-application compilation passed, then Home startup failed
+before UI because AssetBrowser required `workspace_resources` without an open
+project. SDK5 added explicit unavailable-project contracts. Those dated results
+are superseded by the [current candidate evidence](#current-candidate-evidence-2026-10-14). Compilation,
+CPU checks, startup, rendered interaction and browser acceptance remain separate
+claims.
+
+Current implementation and acceptance gaps are recorded in
+[native retirement maps](native-retirement/graph.md),
+[the authored UI guide](studio-ui-authoring.md) and Studio's authored acceptance
+fixtures. The dated sections below preserve the migration history, former holds,
+retired commands and old source paths. They are not current instructions or fresh
+validation of this candidate.
+
+## Historical scope, 2026-10-11
+
+The Outliner work and prior integration evidence recorded below belong to their
+original revisions. Subsequent whole-editor migration replaced the native
+controllers and the original Outliner behavior spike. Historical acceptance cases
+remain useful references; their existence does not establish execution today.
+
+## Historical migration record
 
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
@@ -2714,3 +2767,22 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
    `projects/studio`)?
 7. May one editor type show in two areas at once, or do the fixed layout
    modes rule that out and simplify per-view state?
+
+## Historical SDK5 validation record, 2026-10-14
+
+The following records the earlier package before later source promotions and
+the current candidate evidence above. Pending/staged statements here describe
+that checkpoint only.
+
+SDK5 packaging and bounded CPU validation now pass. Installed build
+`cef077585ca28f1edfb80ccc00d6344026bec1bf347104974b1303d08d210a21`
+has manifest SHA256
+`4aab3609c818da3813741e160ab972068e9540e0206a3773af8253921c230baa`
+and engine source snapshot
+`5cb31f58592436059bd0ed49e44013551d2063eb045e6f17bf3128b0f0346ba9`.
+All five required groups passed, along with owning workspace-authoring,
+workspace-services, host-services, authored-surface, code-control, event-payload
+and random-isolation selectors. Strict installed-SDK packaging also passed.
+Whole-application SDK5 compilation and Home startup remain pending at this
+update. Future SDK6 work is staged and unvalidated. These CPU/package results do
+not establish rendered interaction or browser acceptance.

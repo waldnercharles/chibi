@@ -1,5 +1,6 @@
 #include "runtime/vectors.h"
 
+#include "execution/random.h"
 #include "support/arena.h"
 #include "support/cos_sin.h"
 #include "types/array.h"
@@ -111,9 +112,9 @@ pin_value native_random_range_vector(const pin_value *inputs, int count, arena *
         min.z = max.z;
         max.z = swap;
     }
-    double x = (double)rand() / ((double)RAND_MAX + 1);
-    double y = (double)rand() / ((double)RAND_MAX + 1);
-    double z = (double)rand() / ((double)RAND_MAX + 1);
+    double x = behavior_random_unit();
+    double y = behavior_random_unit();
+    double z = behavior_random_unit();
     CF_V3 *result = arena_alloc(memory, sizeof *result);
     *result = (CF_V3){
         (float)fma((double)min.x, 1 - x, (double)max.x * x),

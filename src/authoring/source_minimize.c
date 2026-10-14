@@ -322,7 +322,7 @@ static bool same_effects(unsigned x, unsigned y)
 {
     return !((x ^ y) & ~(unsigned)SCRIPT_EFFECT_READ);
 }
-/* `set_variable<"x">(v)` assigns `state.x = v`, `set_dash(v)` assigns
+/* `set_variable<"x">(v)` assigns `self.x = v`, `set_dash(v)` assigns
  * `self.Dash = v` and `set_dash_remaining(v)` assigns
  * `self.Dash.remaining = v`. A partial struct merges into the old value,
  * which an assignment does not. */
@@ -574,9 +574,81 @@ static TSNode argument_value(TSNode argument)
     TSNode value = field(argument, "value");
     return ts_node_is_null(value) ? argument : value;
 }
+static const script_expression *expression_at(const collector *, TSNode, script_expression_kind);
+
+/* Use the resolved binding, including event sender payload offsets. A
+ * configured action inherits arguments before formal defaults, so its omission
+ * policy is deliberately left untouched here. */
+static bool matches_default(const collector *c, const script_expression *call, TSNode argument)
+{
+    if (!call || call->instance || call->entry >= 0) {
+        return false;
+    }
+    const script_argument *binding = NULL;
+    for (int i = 0; i < call->argument_count; i++) {
+        const script_argument *candidate = &call->arguments[i];
+        if (candidate->range.start == start(argument) &&
+            candidate->range.end == end(argument) && !candidate->member) {
+            binding = candidate;
+            break;
+        }
+    }
+    if (!binding || binding->parameter < 0 || binding->value < 0) {
+        return false;
+    }
+    const script_expression *value = &c->analysis->expressions[binding->value];
+    const script_catalog_capability
+        *native = script_catalog_capability_by_id(c->catalog, call->capability);
+    if (native) {
+        int parameter = binding->parameter;
+        if (native->event_sender && parameter >= native->parameter_count) {
+            parameter -= native->parameter_count;
+            native = script_catalog_capability_by_id(c->catalog, call->member);
+            if (!native || native->kind != SCRIPT_CAPABILITY_EVENT) {
+                return false;
+            }
+        }
+        if (parameter >= native->parameter_count) {
+            return false; /* Variadic tail has no formal default. */
+        }
+        const script_catalog_parameter *formal = &native->parameters[parameter];
+        if (!formal->has_default) {
+            return false;
+        }
+        if (formal->default_owner) {
+            return value->kind == SCRIPT_EXPR_SYMBOL &&
+                   value->symbol == c->analysis->owner_symbol;
+        }
+        return value->kind == SCRIPT_EXPR_CONSTANT && !value->effects &&
+               pin_value_equal(&value->constant, &formal->default_value);
+    }
+    if (call->right < 0 || call->right >= c->analysis->function_count ||
+        value->kind != SCRIPT_EXPR_CONSTANT || value->effects) {
+        return false;
+    }
+    const script_function *function = &c->analysis->functions[call->right];
+    if (binding->parameter >= function->parameter_count) {
+        return false;
+    }
+    int initializer = c->analysis
+                          ->symbols[function->parameters[binding->parameter]]
+                          .initializer;
+    if (initializer < 0) {
+        return false;
+    }
+    const script_expression *fallback = &c->analysis->expressions[initializer];
+    return fallback->kind == SCRIPT_EXPR_CONSTANT && !fallback->effects &&
+           same_value_type(value->type, fallback->type) &&
+           pin_value_equal(&value->constant, &fallback->constant);
+}
+
 /* Arguments equal to their parameter's default; later ones keep labels. */
 static void default_arguments(collector *c, TSNode list)
 {
+    const script_expression *call = expression_at(c, ts_node_parent(list), SCRIPT_EXPR_CALL);
+    if (!call) {
+        return;
+    }
     uint32_t count = ts_node_named_child_count(list);
     TSNode *arguments = NULL;
     for (uint32_t i = 0; i < count; i++) {
@@ -587,7 +659,8 @@ static void default_arguments(collector *c, TSNode list)
     }
     for (int i = 0; i < acount(arguments); i++) {
         if (!literal(argument_value(arguments[i])) ||
-            !ts_node_is_null(field(arguments[i], "source"))) {
+            !ts_node_is_null(field(arguments[i], "source")) ||
+            !matches_default(c, call, arguments[i])) {
             continue;
         }
         int from = start(arguments[i]), to = end(arguments[i]);
@@ -602,11 +675,55 @@ static void default_arguments(collector *c, TSNode list)
 }
 static void labels(collector *c, TSNode list)
 {
+    const script_expression *call = expression_at(c, ts_node_parent(list), SCRIPT_EXPR_CALL);
+    if (!call || call->instance || call->entry >= 0) {
+        return;
+    }
+    const script_catalog_capability
+        *native = script_catalog_capability_by_id(c->catalog, call->capability);
+    int parameters = 0;
+    if (native) {
+        parameters = native->parameter_count;
+        if (native->event_sender) {
+            const script_catalog_capability
+                *event = script_catalog_capability_by_id(c->catalog, call->member);
+            if (!event || event->kind != SCRIPT_CAPABILITY_EVENT) {
+                return;
+            }
+            parameters += event->parameter_count;
+        }
+    } else if (call->right >= 0 && call->right < c->analysis->function_count) {
+        parameters = c->analysis->functions[call->right].parameter_count;
+    } else {
+        return;
+    }
+    /* Native receiver calls occupy formal zero without spelling it in this
+     * argument list. Other receiver forms are unproved and retain labels. */
+    if (call->left >= 0 && (!native || !parameters)) {
+        return;
+    }
+    int ordinal = call->left >= 0 ? 1 : 0;
     for (uint32_t i = 0; i < ts_node_named_child_count(list); i++) {
         TSNode argument = ts_node_named_child(list, i);
+        if (ts_node_is_extra(argument)) {
+            continue;
+        }
+        int positional = ordinal++;
         TSNode name = field(argument, "name");
-        if (is(argument, "named_argument") && ts_node_named_child_count(name) == 1) {
-            add(c, start(argument), start(field(argument, "value")), "");
+        TSNode value = field(argument, "value");
+        if (!is(argument, "named_argument") ||
+            ts_node_named_child_count(name) != 1 || ts_node_is_null(value) ||
+            !ts_node_is_null(field(argument, "source")) || positional >= parameters) {
+            continue;
+        }
+        for (int j = 0; j < call->argument_count; j++) {
+            const script_argument *binding = &call->arguments[j];
+            if (binding->range.start == start(argument) &&
+                binding->range.end == end(argument) && !binding->member &&
+                binding->parameter == positional) {
+                add(c, start(argument), start(value), "");
+                break;
+            }
         }
     }
 }
@@ -667,12 +784,49 @@ static void handler(collector *c, TSNode node)
         }
     }
 }
+/* Direct literals have a known unconstrained type. Do not propose dropping a
+ * declaration type when that would necessarily fail the existing equivalence
+ * oracle. Other expressions still require complete candidate analysis. */
+static bool literal_inference_changes(const collector *c, TSNode name, TSNode value)
+{
+    if (!is(value, "string") && !is(value, "number") && !is(value, "boolean")) {
+        return false;
+    }
+    int index = symbol_declared_at(c->analysis, name);
+    if (index < 0 || c->analysis->symbols[index].initializer < 0) {
+        return false;
+    }
+    const script_symbol *symbol = &c->analysis->symbols[index];
+    const script_expression *initializer = &c->analysis->expressions[symbol->initializer];
+    if (initializer->kind != SCRIPT_EXPR_CONSTANT) {
+        return false;
+    }
+    script_type inferred;
+    if (is(value, "string")) {
+        inferred = (script_type){ .storage = PIN_STR,
+                                  .parameter = script_catalog_id(
+                                      "union-literal",
+                                      initializer->constant.str
+                                  ),
+                                  .flags = SCRIPT_TYPE_LITERAL };
+    } else if (is(value, "number")) {
+        inferred = (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+    } else {
+        inferred = (script_type){ .storage = PIN_BOOL };
+    }
+    script_type declared = inferred;
+    declared.flags &= ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL);
+    return !same_type(symbol->type, declared) ||
+           !same_value_type(initializer->type, inferred);
+}
+
 /* `name: type = value` and `type name = value` become `name := value`. */
 static void inferred_declaration(collector *c, TSNode node)
 {
     TSNode name = field(node, "name"), type = field(node, "type"),
            value = field(node, "value");
-    if (ts_node_is_null(type) || ts_node_is_null(value)) {
+    if (ts_node_is_null(type) || ts_node_is_null(value) ||
+        literal_inference_changes(c, name, value)) {
         return;
     }
     if (start(type) > start(name)) {
@@ -984,7 +1138,7 @@ static void operator_rewrite(collector *c, TSNode node, const script_expression 
     free(between);
     apush(c->rewrites, r);
 }
-/* `get_variable<"Lift">()` reads `state."Lift"`; a statement
+/* `get_variable<"Lift">()` reads `self."Lift"`; a statement
  * `set_variable<"Lift">(v)` assigns it. */
 static void state_rewrite(collector *c, TSNode node)
 {
@@ -997,7 +1151,7 @@ static void state_rewrite(collector *c, TSNode node)
         return;
     }
     char *path = NULL;
-    append_text(&path, "state.", 6);
+    append_text(&path, "self.", 5);
     append_text(&path, c->text + start(name), end(name) - start(name));
     const script_expression *store = expression_at(c, node, SCRIPT_EXPR_STORE);
     TSNode statement = ts_node_parent(node);
@@ -1039,12 +1193,13 @@ static void call_rewrites(collector *c, TSNode node)
         operator_rewrite(c, node, call);
     }
 }
-/* `state.x` names its symbol directly. */
+/* `self.x` names its owned symbol directly. */
 static void storage_path(collector *c, TSNode node)
 {
-    TSNode object = field(node, "object");
-    if (is(object, "builtin_reference") &&
-        !strncmp(c->text + start(object), "state", 5)) {
+    const script_expression *value = expression_at(c, node, SCRIPT_EXPR_SYMBOL);
+    if (value && value->symbol >= 0 &&
+        (c->analysis->symbols[value->symbol].kind == SCRIPT_STATE ||
+         c->analysis->symbols[value->symbol].kind == SCRIPT_SHARED_STATE)) {
         unwrap_node(c, node, field(node, "member"));
     }
 }
@@ -1131,12 +1286,12 @@ typedef struct
     const script_analysis *original;
 } oracle;
 
-/* Text with the accepted rewrites and one more applied, or NULL on overlap. */
-static char *apply(const char *text, const rewrite *rewrites, const bool *accepted, int extra)
+/* Text with the selected rewrites applied, or NULL on overlap. */
+static char *apply(const char *text, const rewrite *rewrites, const bool *accepted)
 {
     text_edit *edits = NULL;
     for (int i = 0; i < acount(rewrites); i++) {
-        if (!accepted[i] && i != extra) {
+        if (!accepted[i]) {
             continue;
         }
         for (int e = 0; e < acount(rewrites[i].edits); e++) {
@@ -1174,6 +1329,39 @@ static bool accepts(const oracle *o, const char *text)
     script_syntax_free(syntax);
     return same;
 }
+/* Try a contiguous batch against all earlier accepted edits. A rejected batch
+ * is split left to right, preserving deterministic source traversal order.
+ * Every accepted combined candidate still passes the complete semantic oracle.
+ * Recursion depth is logarithmic in the candidate count. */
+static int accept_batch(
+    const oracle *o,
+    const char *text,
+    const rewrite *rewrites,
+    bool *accepted,
+    int first,
+    int end
+)
+{
+    for (int i = first; i < end; i++) {
+        accepted[i] = true;
+    }
+    char *trial = apply(text, rewrites, accepted);
+    bool same = trial && accepts(o, trial);
+    free(trial);
+    if (same) {
+        return end - first;
+    }
+    for (int i = first; i < end; i++) {
+        accepted[i] = false;
+    }
+    if (end - first == 1) {
+        return 0;
+    }
+    int middle = first + (end - first) / 2;
+    int kept = accept_batch(o, text, rewrites, accepted, first, middle);
+    return kept + accept_batch(o, text, rewrites, accepted, middle, end);
+}
+
 /* One round of a pass; returns the new text, or NULL when nothing applied. */
 static char *round_text(const oracle *o, const char *text, pass phase)
 {
@@ -1186,35 +1374,12 @@ static char *round_text(const oracle *o, const char *text, pass phase)
     collect(&c, ts_tree_root_node(syntax->tree), phase);
     int count = acount(c.rewrites);
     bool *accepted = xcalloc((size_t)(count ? count : 1), sizeof *accepted);
-    char *result = NULL;
-    /* Most rewrites are independent: try them together first. */
-    bool *all = xcalloc((size_t)(count ? count : 1), sizeof *all);
-    for (int i = 0; i < count; i++) {
-        char *trial = apply(text, c.rewrites, all, i);
-        all[i] = trial != NULL;
-        free(trial);
-    }
-    char *together = count ? apply(text, c.rewrites, all, -1) : NULL;
-    if (together && accepts(o, together)) {
-        result = together;
-    } else {
-        free(together);
-        int kept = 0;
-        for (int i = 0; i < count; i++) {
-            char *trial = apply(text, c.rewrites, accepted, i);
-            if (trial && accepts(o, trial)) {
-                accepted[i] = true;
-                kept++;
-            }
-            free(trial);
-        }
-        result = kept ? apply(text, c.rewrites, accepted, -1) : NULL;
-    }
+    int kept = count ? accept_batch(o, text, c.rewrites, accepted, 0, count) : 0;
+    char *result = kept ? apply(text, c.rewrites, accepted) : NULL;
     for (int i = 0; i < count; i++) {
         rewrite_free(&c.rewrites[i]);
     }
     afree(c.rewrites);
-    free(all);
     free(accepted);
     script_analysis_free(analysis);
     script_syntax_free(syntax);

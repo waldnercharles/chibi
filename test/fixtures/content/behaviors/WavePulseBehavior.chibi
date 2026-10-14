@@ -1,6 +1,6 @@
 behavior "WavePulseBehavior" {
-    state Age: float = 0.0
-    action age_2 = set_variable<"Age">(state."Age" + delta_time())
+    self.Age: float = 0.0
+    action age_2 = set_variable<"Age">(self."Age" + delta_time())
     on Tick {
         age_2()
     }

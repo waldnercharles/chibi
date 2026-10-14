@@ -34,9 +34,9 @@ static void setup()
     static const char *const texts[] = {
         "library Leaf { Value :: () -> number { return 2; } }",
         "library Middle { Value :: () -> number { return Leaf.Value() + 1; } }",
-        "behavior Caller { state value: number = 0; on Tick() { value = "
+        "behavior Caller { value: number = 0; on Tick() { value = "
         "Middle.Value(); } }",
-        "behavior Independent { state value: number = 0; on Tick() { value = "
+        "behavior Independent { value: number = 0; on Tick() { value = "
         "7; } }"
     };
     for (int i = 0; i < 4; i++) {
@@ -229,7 +229,7 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
         /* Current generations keep no chain of old collections. */
         for (int edit = 0; edit < 12; edit++) {
             char text[160];
-            snprintf(text, sizeof text, "behavior Independent { state value: number = 0; on Tick() { value = %d; } }", edit);
+            snprintf(text, sizeof text, "behavior Independent { value: number = 0; on Tick() { value = %d; } }", edit);
             edits[3].text = text;
             generations[2] = prepare(1, backends[b]);
             REQUIRE(valid(2) && authoring_sources_reused(generations[2]) == 3);
@@ -238,7 +238,7 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
             generations[2] = NULL;
             REQUIRE(source(1, "Caller")->references == 1);
             REQUIRE(value_is(1, "Independent", edit));
-            edits[3].text = "behavior Independent { state value: number = 0; "
+            edits[3].text = "behavior Independent { value: number = 0; "
                             "on Tick() { value = 7; } }";
         }
         discard(1);

@@ -48,6 +48,7 @@ typedef enum
 struct engine
 {
     ecs_world *world;
+    behavior_random random;
     engine_modules modules;
     source_input source_input;
     particle_emitters *emitters;
@@ -58,7 +59,7 @@ struct engine
     engine_render_fn render;
     void *render_user;
     engine_focus focus;
-    bool playing;
+    bool playing, random_bound;
     bool step_requested;
     engine_input *input;
     step_phase phase;
@@ -69,7 +70,8 @@ struct engine
     double time_scale;
     bool has_time;
     bool debug_paused;
-    bool recording_input;
+    bool recording_input, recorded_truncated;
+    int recorded_limit;
     input_keyframe *recorded; /* keys where held input changed, since the last reset */
     input_keyframe *replay; /* keys held in place of live samples; NULL when live */
     char error[256];
@@ -220,6 +222,7 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
     }
     engine *result = (engine *)xcalloc(1, sizeof *result);
     result->world = world;
+    behavior_random_seed(&result->random, 1);
     result->pool = task_pool_acquire();
     result->tasks = (task_system){ task_pool_tasks(result->pool)->workers,
                                    result,
@@ -231,6 +234,15 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
     }
     assert(!result->modules.sources || source_world(result->modules.sources) == world);
     assert(!result->modules.entities || entities_world(result->modules.entities) == world);
+    if (result->modules.sources && source_bind_service(
+                                       result->modules.sources,
+                                       BEHAVIOR_RANDOM_SERVICE,
+                                       &result->random
+                                   ) < 0) {
+        engine_free(result);
+        return NULL;
+    }
+    result->random_bound = result->modules.sources != NULL;
     result->source_input.sources = result->modules.sources;
     if (result->modules.particles) {
         result->emitters = particle_emitters_new(result->modules.particles);
@@ -260,6 +272,11 @@ void engine_free(engine *engine)
     }
     if (engine->modules.sources) {
         source_cancel_systems(engine->modules.sources);
+        if (engine->random_bound) {
+            int status = source_bind_service(engine->modules.sources, BEHAVIOR_RANDOM_SERVICE, NULL);
+            assert(status >= 0);
+            (void)status;
+        }
     }
     if (engine->emitters) {
         particle_emitters_free(engine->emitters);
@@ -620,6 +637,7 @@ void engine_reset(engine *engine)
     engine->step_requested = false;
     /* Recording and replay follow a scene from its start. */
     aclear(engine->recorded);
+    engine->recorded_truncated = false;
     if (engine->input) {
         engine_input_reset(engine->input);
     }
@@ -684,6 +702,18 @@ int engine_set_focus(engine *engine, engine_focus focus)
     return 0;
 }
 
+void engine_cancel_input(engine *engine)
+{
+    if (!engine) {
+        return;
+    }
+    engine_stop_recording(engine);
+    if (engine->input) {
+        engine_input_reset(engine->input);
+    }
+    engine->focus = ENGINE_FOCUS_NONE;
+}
+
 engine_focus engine_get_focus(const engine *engine)
 {
     return engine ? engine->focus : ENGINE_FOCUS_NONE;
@@ -708,6 +738,16 @@ int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
         return FLOW_OK;
     }
     return engine_input_controls(engine->input, controls, firing);
+}
+
+bool engine_devices_admissible(
+    const engine *engine,
+    uint64_t controls,
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX]
+)
+{
+    return engine && engine->input && controllers &&
+           engine_input_devices_admissible(engine->input, controls, controllers);
 }
 
 int engine_sample_devices(
@@ -739,12 +779,56 @@ int engine_sample_controller(engine *engine, int controller, input_controller_st
     return engine_input_controller(engine->input, controller, state, firing);
 }
 
+void engine_seed_random(engine *engine, unsigned seed)
+{
+    assert(engine);
+    behavior_random_seed(&engine->random, seed);
+}
+const behavior_random *engine_random_stream(const engine *engine)
+{
+    return engine ? &engine->random : NULL;
+}
+
 void engine_record_input(engine *engine, unsigned seed)
 {
     assert(engine->input);
-    srand(seed);
+    engine_seed_random(engine, seed);
     aclear(engine->recorded);
     engine->recording_input = true;
+    engine->recorded_limit = 0;
+    engine->recorded_truncated = false;
+    bool ok = engine_input_limit_trail(engine->input, 0);
+    assert(ok);
+    (void)ok;
+}
+
+bool engine_record_input_bounded(engine *engine, unsigned seed, int maximum)
+{
+    if (!engine || !engine->input || maximum < 1 || maximum > 4096) {
+        return false;
+    }
+    const input_keyframe *trail;
+    if (engine_input_trail(engine->input, &trail) > maximum) {
+        return false;
+    }
+    engine_record_input(engine, seed);
+    bool ok = engine_input_limit_trail(engine->input, maximum);
+    assert(ok);
+    (void)ok;
+    engine->recorded_limit = maximum;
+    return true;
+}
+bool engine_recording_input(const engine *engine)
+{
+    return engine && engine->recording_input;
+}
+bool engine_recorded_input_truncated(const engine *engine)
+{
+    return engine && engine->recorded_truncated;
+}
+bool engine_has_input(const engine *engine)
+{
+    return engine && engine->input;
 }
 
 void engine_stop_recording(engine *engine)
@@ -762,7 +846,7 @@ void engine_replay_input(engine *engine, const input_keyframe *keys, int count, 
 {
     assert(engine->input);
     assert(count > 0 && keys[0].step == 0);
-    srand(seed);
+    engine_seed_random(engine, seed);
     aclear(engine->replay);
     for (int i = 0; i < count; i++) {
         assert(!i || keys[i].step >= keys[i - 1].step);
@@ -820,15 +904,22 @@ static void record_step(engine *engine, int step)
     held.step = step;
     const input_keyframe *trail;
     int changes = engine_input_trail(engine->input, &trail);
+    int count = acount(engine->recorded);
+    bool held_changes = changes > 1 || !count ||
+                        !input_keyframe_same(&engine->recorded[count - 1], &held);
+    int needed = (changes > 0 ? changes - 1 : 0) + (held_changes ? 1 : 0);
+    if (engine->recorded_limit && needed > engine->recorded_limit - count) {
+        engine->recorded_truncated = true;
+        engine->recording_input = false;
+        return;
+    }
     for (int i = 0; i + 1 < changes; i++) {
         input_keyframe key = held;
         key.controls = trail[i].controls;
         memcpy(key.controllers, trail[i].controllers, sizeof key.controllers);
         apush(engine->recorded, key);
     }
-    int count = acount(engine->recorded);
-    if (changes > 1 || !count ||
-        !input_keyframe_same(&engine->recorded[count - 1], &held)) {
+    if (held_changes) {
         apush(engine->recorded, held);
     }
 }
@@ -1207,7 +1298,7 @@ static int finish_step(engine *engine)
     return result;
 }
 
-static int continue_step(engine *engine)
+static int continue_step_body(engine *engine)
 {
     engine_modules *live = &engine->modules;
     if (!has_simulation(engine) || system_stage(engine)) {
@@ -1313,6 +1404,14 @@ static int continue_step(engine *engine)
         return result;
     }
     return finish_step(engine);
+}
+
+static int continue_step(engine *engine)
+{
+    behavior_random *previous = behavior_random_enter(&engine->random);
+    int result = continue_step_body(engine);
+    behavior_random_leave(previous);
+    return result;
 }
 
 static int fixed_step(engine *engine)

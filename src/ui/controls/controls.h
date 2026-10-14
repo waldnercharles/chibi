@@ -11,6 +11,14 @@
  * attributes the theme styles (data-editing, data-scrubbing, data-dragging,
  * data-mixed, data-readonly, data-disabled, data-invalid, data-open).
  *
+ * - <vector-path path="M x y L x y C ax ay bx by x y" stroke="#rrggbbaa"
+ *   stroke-width="1.5"/>: absolute dp paths, at most 256 uppercase M/L/C
+ *   commands and 16383 bytes. Cubics use 24 samples; strokes have a one-pixel
+ *   feather. RCSS owns its box and clipping. Invalid paths draw nothing and
+ *   set data-invalid. Stroke width is dp; coordinates are relative to content.
+ * - <shape-glyph shape="circle|square|arrow" fill="#rrggbbaa"
+ *   stroke="#rrggbbaa" stroke-width="0"/>: small feathered vector marks.
+ *   RCSS sets the box; stroke-width is dp. Six-digit colors imply opaque alpha.
  * - <number-field value min max step precision integer float slider unit
  *   addon mixed readonly disabled invalid/>: Base UI's NumberField and
  *   Blender's. Drag past FEEL_DRAG_DP to scrub (Alt fine, Shift coarse,
@@ -57,7 +65,12 @@
  *   .chart-hover (the value under the pointer). Publishing redraws the
  *   charts that name the series and lays out nothing.
  *
- * C owners (the kit) read a control's state instead of listening. */
+ * - <texture-view src="kit:key"/>: an owned host texture bound in the current
+ *   render context. Dynamic data-attr-src is permitted; resident, disk and
+ *   network URLs are refused with data-invalid. Empty sources show nothing.
+ *   Keys are bounded to 256 ASCII bytes and contexts to 4096 distinct keys.
+ *
+ * Native owners may read a control's state instead of listening. */
 
 #include "ui/rml.h"
 

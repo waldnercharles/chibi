@@ -1,0 +1,27 @@
+// Pure SDK functions exercised through the ordinary authored runtime.
+behavior UtilityProbe {
+    self.Values: int[] = [1, 2, 3]
+    on Begin {
+        contains := text_contains(Query: "WÖRLD", Text: "Hello WÖRLD", IgnoreCase: true)
+        absent := text_contains(Query: "planet", Text: "Hello world", IgnoreCase: true)
+        exact := text_rank(Query: "metal", Text: "METAL", IgnoreCase: true)
+        prefix := text_rank(Query: "metal", Text: "metal surface", IgnoreCase: true)
+        substring := text_rank(Query: "metal", Text: "polished metal surface", IgnoreCase: true)
+        subsequence := text_rank(Query: "mtl", Text: "metal", IgnoreCase: true)
+        missing := text_rank(Query: "xyz", Text: "metal", IgnoreCase: true)
+        text_ok := contains && !absent && exact > prefix && prefix > substring && substring > subsequence && subsequence > 0 && missing == 0
+        if text_ok { await set_ui_text(Element: "#text-result", Text: "passed") } else { await set_ui_text(Element: "#text-result", Text: "failed") }
+        json := value_to_json(Value: self.Values)
+        await set_ui_text(Element: "#json-result", Text: json.Text)
+        queried := query_json(Text: json.Text, Pointer: "/1")
+        missing_value := query_json(Text: json.Text, Pointer: "/3")
+        duplicate := query_json(Text: "{\"a\":1,\"a\":2}", Pointer: "")
+        if json.Ok && text_equal(json.Error, "") && queried.Ok && queried.Found && text_equal(queried.Kind, "integer") && queried.Number == 2 && missing_value.Ok && !missing_value.Found && !duplicate.Ok { await set_ui_text(Element: "#json-status", Text: "passed") } else { await set_ui_text(Element: "#json-status", Text: "failed") }
+        valid := validate_ui_chord(Chord: "Mod+Shift+P")
+        invalid := validate_ui_chord(Chord: "Mod+DefinitelyNotAKey")
+        if valid && !invalid { await set_ui_text(Element: "#chord-result", Text: "passed") } else { await set_ui_text(Element: "#chord-result", Text: "failed") }
+        // CPU simulation has no presenter measurement; it must say unknown.
+        width := get_ui_view_width(Element: "#utility-panel")
+        if !width.Known { await set_ui_text(Element: "#width-result", Text: "unknown") } else { await set_ui_text(Element: "#width-result", Text: "measured") }
+    }
+}

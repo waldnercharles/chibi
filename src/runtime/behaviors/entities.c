@@ -12,6 +12,7 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <math.h>
@@ -28,6 +29,7 @@ enum
 typedef struct
 {
     scene *prototype;
+    char *prototype_identity;
     flow_host_request *wait;
     ecs_entity entity;
     ecs_entity *tree; /* the entity of each prototype object, the first being entity */
@@ -39,6 +41,7 @@ typedef struct
     char *name;
     pin_value *values;
     arena storage;
+    size_t bytes;
 } event_request;
 
 enum
@@ -73,12 +76,18 @@ struct entities
 {
     ecs_world *world;
     entity_host host;
+    void *name_context;
+    const char *(*name_lookup)(void *, ecs_entity);
     materials *materials;
     prototypes *prototypes;
     ecs_entity *owned;
+    struct entity_origin_entry *origins;
+    uint64_t creation_sequence;
     spawn_request *spawns;
     ecs_entity *destroy;
     event_request *events;
+    int event_count;
+    size_t event_bytes;
     nearest_candidates nearest[NEAREST_CACHE_MAX];
     int nearest_count;
     nearest_target *parallel_candidates[32];
@@ -89,6 +98,48 @@ struct entities
     entity_query_profile query_profile;
     struct tilemap_entry *tilemaps;
 };
+
+typedef struct entity_origin_entry
+{
+    ecs_entity entity;
+    char *prototype;
+    int object;
+    uint64_t creation;
+} entity_origin_entry;
+
+static void prune_origins(entities *service)
+{
+    int live = 0;
+    for (int i = 0; i < acount(service->origins); i++) {
+        entity_origin_entry entry = service->origins[i];
+        if (ecs_entity_is_alive(service->world, entry.entity) &&
+            !entities_is_retiring(service, entry.entity)) {
+            service->origins[live++] = entry;
+        } else {
+            free(entry.prototype);
+        }
+    }
+    if (service->origins) {
+        asetlen(service->origins, live);
+    }
+}
+
+bool entities_origin(const entities *service, ecs_entity entity, entity_origin *out)
+{
+    *out = (entity_origin){ 0 };
+    if (!service || !ecs_entity_is_alive(service->world, entity) ||
+        entities_is_retiring(service, entity)) {
+        return false;
+    }
+    for (int i = 0; i < acount(service->origins); i++) {
+        const entity_origin_entry *entry = &service->origins[i];
+        if (ecs_entity_to_u64(entry->entity) == ecs_entity_to_u64(entity)) {
+            *out = (entity_origin){ entry->prototype, entry->object, entry->creation };
+            return true;
+        }
+    }
+    return false;
+}
 
 typedef struct tilemap_entry
 {
@@ -240,6 +291,7 @@ static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
     scene_free(request->prototype);
+    free(request->prototype_identity);
     afree(request->tree);
 }
 
@@ -267,6 +319,41 @@ bool entities_owns(const entities *entities, ecs_entity entity)
     return false;
 }
 
+int entities_prototype_count(const entities *s)
+{
+    return s ? prototypes_count(s->prototypes) : 0;
+}
+const char *entities_prototype_name_at(const entities *s, int i)
+{
+    return s && i >= 0 && i < prototypes_count(s->prototypes)
+             ? prototypes_name(s->prototypes, i)
+             : NULL;
+}
+const scene *entities_prototype_scene_at(const entities *s, int i)
+{
+    const char *key = entities_prototype_name_at(s, i);
+    return key ? prototypes_find(s->prototypes, key) : NULL;
+}
+int entities_origin_count(const entities *s)
+{
+    return s ? acount(s->origins) : 0;
+}
+bool entities_origin_at(const entities *s, int i, ecs_entity *entity, entity_origin *out)
+{
+    *entity = (ecs_entity){ 0 };
+    *out = (entity_origin){ 0 };
+    if (!s || i < 0 || i >= acount(s->origins)) {
+        return false;
+    }
+    const entity_origin_entry *entry = &s->origins[i];
+    if (!ecs_entity_is_alive(s->world, entry->entity) ||
+        entities_is_retiring(s, entry->entity)) {
+        return false;
+    }
+    *entity = entry->entity;
+    *out = (entity_origin){ entry->prototype, entry->object, entry->creation };
+    return true;
+}
 static void clear_global_bindings(entities *entities)
 {
     for (int i = 0; i < acount(entities->global_bindings); i++) {
@@ -538,6 +625,8 @@ void entities_reset(entities *entities)
         release_event(&entities->events[i]);
     }
     aclear(entities->events);
+    entities->event_count = 0;
+    entities->event_bytes = 0;
     for (int i = 0; i < acount(entities->spawns); i++) {
         spawn_request *request = &entities->spawns[i];
         flow_host_cancel(request->wait);
@@ -555,6 +644,10 @@ void entities_reset(entities *entities)
         (void)result;
     }
     aclear(entities->owned);
+    for (int i = 0; i < acount(entities->origins); i++) {
+        free(entities->origins[i].prototype);
+    }
+    aclear(entities->origins);
     aclear(entities->destroy);
 }
 
@@ -564,6 +657,7 @@ void entities_free(entities *entities)
     prototypes_free(entities->prototypes);
     afree(entities->spawns);
     afree(entities->owned);
+    afree(entities->origins);
     afree(entities->destroy);
     afree(entities->global_bindings);
     afree(entities->global_values);
@@ -623,17 +717,183 @@ int entities_pending_events(const entities *entities)
     return acount(entities->events);
 }
 
+enum
+{
+    EVENT_PAYLOAD_DEPTH_MAX = 16,
+    EVENT_PAYLOAD_VALUES_MAX = 4096,
+    EVENT_PAYLOAD_BYTES_MAX = 1024 * 1024,
+    EVENT_QUEUE_BYTES_MAX = 16 * 1024 * 1024,
+    EVENT_NAME_BYTES_MAX = 1024
+};
+typedef struct
+{
+    size_t bytes;
+    int values;
+} event_budget;
+static bool event_bytes(event_budget *budget, size_t bytes)
+{
+    if (bytes > EVENT_PAYLOAD_BYTES_MAX - budget->bytes) {
+        return false;
+    }
+    budget->bytes += bytes;
+    return true;
+}
+static bool event_string(event_budget *budget, const char *text)
+{
+    if (!text) {
+        return true;
+    }
+    size_t remaining = EVENT_PAYLOAD_BYTES_MAX - budget->bytes;
+    size_t bytes = 0;
+    while (bytes < remaining && text[bytes]) {
+        bytes++;
+    }
+    return bytes < remaining && event_bytes(budget, bytes + 1);
+}
+static bool event_value(event_budget *, const pin_value *, int);
+static bool event_struct(event_budget *budget, const type_desc *type, const void *data, int depth)
+{
+    if (!type || !type->size || !data || depth >= EVENT_PAYLOAD_DEPTH_MAX ||
+        !event_bytes(budget, type->size)) {
+        return false;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->offset > type->size || field->size > type->size - field->offset) {
+            return false;
+        }
+        const unsigned char *member = (const unsigned char *)data + field->offset;
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = type_catalog_find(field->type_name);
+            if (!nested || nested->size != field->size ||
+                !event_struct(budget, nested, member, depth + 1)) {
+                return false;
+            }
+            continue;
+        }
+        if (field->type == PIN_STR || field->type == PIN_NAME) {
+            if (field->size != sizeof(const char *) ||
+                !event_string(budget, *(const char *const *)member)) {
+                return false;
+            }
+            continue;
+        }
+        if (field->type == PIN_UNION) {
+            if (field->size != sizeof(void *)) {
+                return false;
+            }
+            pin_value value = { .type = PIN_UNION, .ptr = *(void *const *)member };
+            if (!event_value(budget, &value, depth + 1)) {
+                return false;
+            }
+            continue;
+        }
+        if (field->type <= PIN_FLOW || field->type >= PIN_TASK) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool event_value(event_budget *budget, const pin_value *value, int depth)
+{
+    if (depth >= EVENT_PAYLOAD_DEPTH_MAX || ++budget->values > EVENT_PAYLOAD_VALUES_MAX ||
+        !event_bytes(budget, sizeof *value) ||
+        !event_string(budget, value->type_name)) {
+        return false;
+    }
+    if (value->type <= PIN_FLOW || value->type > PIN_UNION || value->type == PIN_TASK) {
+        return false;
+    }
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        if (value->container != PIN_CONTAINER_ARRAY &&
+            value->container != PIN_CONTAINER_SET) {
+            return false;
+        }
+        const pin_array *array = value->ptr;
+        if (!array) {
+            return true;
+        }
+        if (array->count < 0 || array->count > EVENT_PAYLOAD_VALUES_MAX - budget->values ||
+            array->count > array->capacity || (array->count && !array->items) ||
+            array->element_type != value->type || !event_bytes(budget, sizeof *array) ||
+            !event_string(budget, array->type_name)) {
+            return false;
+        }
+        if (value->type >= PIN_HANDLE && (value->type_name || array->type_name) &&
+            (!value->type_name || !array->type_name ||
+             strcmp(value->type_name, array->type_name))) {
+            return false;
+        }
+        for (int i = 0; i < array->count; i++) {
+            const pin_value *item = &array->items[i];
+            if (item->container != PIN_CONTAINER_SINGLE ||
+                item->type != array->element_type ||
+                (value->type >= PIN_HANDLE && (array->type_name || item->type_name) &&
+                 (!array->type_name || !item->type_name ||
+                  strcmp(array->type_name, item->type_name))) ||
+                !event_value(budget, item, depth + 1)) {
+                return false;
+            }
+        }
+        /* A set snapshot allocates its hash index, bounded by this allowance. */
+        if (value->container == PIN_CONTAINER_SET &&
+            !event_bytes(budget, (size_t)array->count * 4 * sizeof(int))) {
+            return false;
+        }
+        return true;
+    }
+    if (value->type == PIN_STR || value->type == PIN_NAME) {
+        return event_string(budget, value->str);
+    }
+    if (value->type == PIN_STRUCT) {
+        return event_struct(budget, type_catalog_find(value->type_name), value->ptr, depth + 1);
+    }
+    if (value->type == PIN_UNION && value->ptr) {
+        const pin_union *tagged = value->ptr;
+        if (tagged->count < 0 ||
+            tagged->count > EVENT_PAYLOAD_VALUES_MAX - budget->values ||
+            !event_bytes(budget, sizeof *tagged)) {
+            return false;
+        }
+        for (int i = 0; i < tagged->count; i++) {
+            if (!event_value(budget, &tagged->values[i], depth + 1)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 int entities_request_event(entities *entities, ecs_entity target, const char *name, execution_arguments inputs)
 {
-    if (!name || !name[0] || inputs.count < 0 || (inputs.count && !inputs.values)) {
+    size_t name_bytes = 0;
+    if (name) {
+        while (name_bytes < EVENT_NAME_BYTES_MAX && name[name_bytes]) {
+            name_bytes++;
+        }
+    }
+    if (!name || !name[0] || name_bytes == EVENT_NAME_BYTES_MAX ||
+        inputs.count < 0 || inputs.count > EVENT_PAYLOAD_VALUES_MAX ||
+        (inputs.count && !inputs.values)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (entities->event_count >= ENTITIES_EVENT_QUEUE_COUNT_MAX) {
+        return FLOW_ERR_STEP_BUDGET;
+    }
+    event_budget budget = { 0 };
+    if (!event_string(&budget, name)) {
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = 0; i < inputs.count; i++) {
-        if (inputs.values[i].container != PIN_CONTAINER_SINGLE) {
+        if (!event_value(&budget, &inputs.values[i], 0)) {
             return FLOW_ERR_ARGUMENT;
         }
     }
-    event_request event = { .target = target, .name = xstrdup(name) };
+    if (budget.bytes > EVENT_QUEUE_BYTES_MAX - entities->event_bytes) {
+        return FLOW_ERR_STEP_BUDGET;
+    }
+    event_request event = { .target = target,
+                            .name = xstrdup(name),
+                            .bytes = budget.bytes };
     for (int i = 0; i < inputs.count; i++) {
         pin_value copy;
         if (pin_value_snapshot_to_arena(&event.storage, &copy, &inputs.values[i]) != 0) {
@@ -643,6 +903,8 @@ int entities_request_event(entities *entities, ecs_entity target, const char *na
         apush(event.values, copy);
     }
     apush(entities->events, event);
+    entities->event_count++;
+    entities->event_bytes += event.bytes;
     return FLOW_OK;
 }
 
@@ -675,6 +937,8 @@ int entities_dispatch_events(entities *entities)
                 error = result;
             }
         }
+        entities->event_count--;
+        entities->event_bytes -= event->bytes;
         release_event(event);
     }
     afree(batch);
@@ -750,6 +1014,16 @@ static int finish_spawn(entities *entities, spawn_request *request)
             flow_host_cancel(request->wait);
             return -1;
         }
+        prune_origins(entities);
+        int objects = scene_object_count(request->prototype);
+        const char *prototype_identity = request->prototype_identity;
+        if (objects < 1 ||
+            (prototype_identity &&
+             (objects > 65536 - acount(entities->origins) ||
+              (uint64_t)objects > UINT64_MAX - entities->creation_sequence))) {
+            flow_host_cancel(request->wait);
+            return -1;
+        }
         scene_instance *instance = scene_instantiate_components(
             request->prototype,
             entities->world,
@@ -762,6 +1036,15 @@ static int finish_spawn(entities *entities, spawn_request *request)
         }
         request->tree = scene_instance_take_entities(instance);
         request->entity = request->tree[0];
+        for (int object = 0; prototype_identity && object < objects; object++) {
+            apush(
+                entities->origins,
+                ((entity_origin_entry){ request->tree[object],
+                                        xstrdup(prototype_identity),
+                                        object,
+                                        ++entities->creation_sequence })
+            );
+        }
         apush(entities->owned, request->entity);
         if (entities_rebuild_global_bindings(entities) != 0) {
             flow_host_cancel(request->wait);
@@ -1180,6 +1463,42 @@ const node_host_call ENTITY_SET_GLOBAL_CALL = {
     .missing_service = "Set Global Variable requires a game world",
 };
 
+void entities_bind_names(entities *owner, void *context, const char *(*lookup)(void *, ecs_entity))
+{
+    assert(owner);
+    owner->name_context = context;
+    owner->name_lookup = lookup;
+}
+
+static const char *entity_name_host(
+    const behavior_function_context *context,
+    void *service,
+    const pin_value *arguments,
+    pin_value *out
+)
+{
+    entities *owner = service;
+    ecs_entity entity = ecs_entity_from_u64(arguments[0].u64);
+    const char *name = NULL;
+    if (owner && !entities_is_retiring(owner, entity) && ecs_entity_is_alive(owner->world, entity)) {
+        name = owner->name_lookup ? owner->name_lookup(owner->name_context, entity) : NULL;
+        if (!name) name = ecs_entity_name(owner->world, entity);
+    }
+    name = name ? name : "";
+    if (!context->value_storage) return "Get Entity Name requires result storage";
+    size_t size = strlen(name) + 1;
+    char *copy = arena_alloc(context->value_storage, size);
+    if (!copy) return "Get Entity Name could not allocate result text";
+    memcpy(copy, name, size);
+    out->str = copy;
+    return NULL;
+}
+
+const node_host_call ENTITY_NAME_CALL = {
+    .service = "game.entities", .context = entity_name_host,
+    .missing_service = "Get Entity Name requires a game world", .reusable = true,
+};
+
 const node_access ENTITY_GLOBAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 const node_access ENTITY_GLOBAL_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 static const ecs_component_desc *query_component(entities *entities, const char *key)
@@ -1258,5 +1577,16 @@ const node_access ENTITY_STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL }
 void entities_submit_spawn(entities *entities, scene *prototype, flow_host_request *request)
 {
     assert(prototype && request && entities->host.attach && entities->host.destroy);
-    apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = request }));
+    char *identity = NULL;
+    for (int i = 0; i < prototypes_count(entities->prototypes); i++) {
+        const char *key = prototypes_name(entities->prototypes, i);
+        if (prototypes_find(entities->prototypes, key) == prototype) {
+            identity = xstrdup(key);
+            break;
+        }
+    }
+    apush(
+        entities->spawns,
+        ((spawn_request){ .prototype = prototype, .prototype_identity = identity, .wait = request })
+    );
 }

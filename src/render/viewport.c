@@ -127,6 +127,17 @@ uint64_t engine_viewport_texture(const engine_viewport *viewport)
              : 0;
 }
 
+uint64_t engine_viewport_take_canvas(engine_viewport *viewport)
+{
+    uint64_t canvas = viewport->canvas.id;
+    viewport->canvas = (CF_Canvas){ 0 };
+    viewport->width = viewport->height = 0;
+    viewport->sized = false;
+    viewport->resize_pending = true;
+    viewport->stable_resize_frames = 0;
+    return canvas;
+}
+
 void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime)
 {
     viewport->runtime = runtime;
@@ -250,7 +261,9 @@ static int settle_resize(engine_viewport *viewport)
     if (!replacement.id) {
         return -1;
     }
-    cf_destroy_canvas(viewport->canvas);
+    if (viewport->canvas.id) {
+        cf_destroy_canvas(viewport->canvas);
+    }
     viewport->canvas = replacement;
     viewport->width = viewport->requested_width;
     viewport->height = viewport->requested_height;

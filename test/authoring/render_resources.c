@@ -1,8 +1,10 @@
+#include "render/catalog_publication.h"
 #include "render/gpu_timing.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
 #include "render/shader_publish.h"
 #include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_asset.h"
 #include "runtime/images/sky.h"
 #include "runtime/scenes/scene.h"
 #include "runtime/shaders/prepared.h"
@@ -10,6 +12,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "ui/rml_backend.h"
 
 #include <assert.h>
 #include <math.h>
@@ -24,9 +27,23 @@ static prepared_ui_document document;
 static unsigned char *bytes[3];
 static size_t lengths[3];
 static void *pending, *old_generation, *current_generation;
+static render_resource_context *mutable_context;
+static render_resource_scope scopes[3];
 static const char *const pixel_key = "content/textures/pixel.png";
 static void cleanup()
 {
+    char scope_error[128];
+    for (int i = 2; i >= 0; i--) {
+        if (scopes[i].active) {
+            bool left = render_resource_scope_leave(&scopes[i], scope_error, sizeof scope_error);
+            assert(left);
+            (void)left;
+        }
+    }
+    bool freed = render_resource_context_free(mutable_context, scope_error, sizeof scope_error);
+    assert(freed);
+    (void)freed;
+    mutable_context = NULL;
     if (pending) {
         host.discard(host.context, pending);
     }
@@ -202,6 +219,85 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     current_generation = NULL;
     REQUIRE(!render_shader_find("OwnedShader") && !render_image_source_count());
     REQUIRE(!ui_documents_active() && !ui_documents_count(ui_documents_current()));
+    return true;
+}
+/* A detached preview may publish and mutate its own collection while the
+ * app collection stays address-stable. Enter/leave must not invalidate either. */
+TEST_CASE(resource_scopes_restore_app_and_preview_generations)
+{
+    host = render_prepared_resources(NULL);
+    shader_prepared_asset_init(&producer);
+    player_asset records[3];
+    char error[128] = { 0 };
+    size_t remaining = 2 * 1024 * 1024;
+    REQUIRE(inputs(false, records));
+    pending = host.stage(host.context, records, 3, &remaining, error, sizeof error);
+    REQUIRE(pending);
+    host.commit(host.context, pending, NULL);
+    current_generation = pending;
+    pending = NULL;
+    const prepared_ui_document *app_page = ui_documents_find(ui_documents_current(), "OwnedPage");
+    unsigned app_revision = render_shader_revision();
+    uint64_t app_ui = ui_documents_revision(),
+             app_mesh = render_mesh_assets_generation();
+    render_image_loader app_loader = render_images_loader();
+    rml_image_provider app_provider;
+    void *app_user;
+    rml_backend_get_image_provider(&app_provider, &app_user);
+    player_resource_host detached = render_prepared_resources_detached(NULL);
+    REQUIRE(inputs(true, records));
+    remaining = 2 * 1024 * 1024;
+    pending = detached.stage(detached.context, records, 3, &remaining, error, sizeof error);
+    REQUIRE(pending);
+    detached.commit(detached.context, pending, NULL);
+    old_generation = pending;
+    pending = NULL;
+    REQUIRE(sample(false) && render_shader_revision() == app_revision);
+    REQUIRE(render_resource_scope_enter(old_generation, &scopes[0], error, sizeof error));
+    REQUIRE(sample(true));
+    unsigned preview_revision = render_shader_revision();
+    uint64_t preview_ui = ui_documents_revision(),
+             preview_mesh = render_mesh_assets_generation();
+    REQUIRE(preview_revision != app_revision && preview_ui != app_ui && preview_mesh != app_mesh);
+    REQUIRE(!render_resource_context_free(old_generation, error, sizeof error));
+    mutable_context = render_resource_context_new();
+    REQUIRE(mutable_context);
+    REQUIRE(render_resource_scope_enter(mutable_context, &scopes[1], error, sizeof error));
+    REQUIRE(!render_shader_find("OwnedShader") && !ui_documents_active());
+    REQUIRE(!render_resource_context_free(mutable_context, error, sizeof error));
+    REQUIRE(!render_resource_scope_leave(&scopes[0], error, sizeof error));
+    /* Nested entry of the same context is valid and still pins its owner. */
+    REQUIRE(render_resource_scope_enter(mutable_context, &scopes[2], error, sizeof error));
+    render_shader_catalog_clear();
+    unsigned mutable_revision = render_shader_revision();
+    REQUIRE(mutable_revision != preview_revision && mutable_revision != app_revision);
+    REQUIRE(render_resource_scope_leave(&scopes[2], error, sizeof error));
+    REQUIRE(render_shader_revision() == mutable_revision);
+    REQUIRE(render_resource_scope_leave(&scopes[1], error, sizeof error));
+    REQUIRE(sample(true) && render_shader_revision() == preview_revision);
+    REQUIRE(
+        ui_documents_revision() == preview_ui && render_mesh_assets_generation() == preview_mesh
+    );
+    REQUIRE(render_resource_scope_leave(&scopes[0], error, sizeof error));
+    REQUIRE(sample(false) && render_shader_revision() == app_revision);
+    REQUIRE(ui_documents_revision() == app_ui && render_mesh_assets_generation() == app_mesh);
+    REQUIRE(ui_documents_find(ui_documents_current(), "OwnedPage") == app_page);
+    rml_image_provider restored_provider;
+    void *restored_user;
+    rml_backend_get_image_provider(&restored_provider, &restored_user);
+    REQUIRE(restored_provider == app_provider && restored_user == app_user);
+    render_image_loader restored_loader = render_images_loader();
+    REQUIRE(
+        restored_loader.context == app_loader.context &&
+        restored_loader.read == app_loader.read
+    );
+    REQUIRE(!render_resource_scope_leave(&scopes[0], error, sizeof error));
+    REQUIRE(render_resource_context_free(mutable_context, error, sizeof error));
+    mutable_context = NULL;
+    /* Retiring the detached player must not disturb the app's active records. */
+    detached.retire(detached.context, old_generation);
+    old_generation = NULL;
+    REQUIRE(sample(false) && render_shader_revision() == app_revision);
     return true;
 }
 /* A sprite's image variant joins a program's sorted image set, and the
@@ -620,6 +716,7 @@ void test_render_resources()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_tokens);
+    RUN_TEST_CASE(resource_scopes_restore_app_and_preview_generations);
     RUN_TEST_CASE(sprite_images_join_the_program_set_and_sample_by_variant);
     RUN_TEST_CASE(sky_faces_follow_the_gpu_cube_map_layout);
     RUN_TEST_CASE(sky_faces_hold_texels_as_halves);

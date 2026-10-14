@@ -276,10 +276,71 @@ TEST_CASE(scene_failure_preflight_and_pending_begin_cancellation)
     );
     return true;
 }
+TEST_CASE(scene_authored_paths_resolve_live_instance_handles_without_ecs_names)
+{
+    world = ecs_world_new();
+    scene_object objects[] = {
+        { .name = "Application" },
+        { .name = "Detail" },
+        { .name = "Other" },
+        { .name = "Detail" },
+    };
+    int parents[] = { -1, 0, -1, 2 };
+    scene_spec spec = { .name = "AuthoredPaths",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 4,
+                        .parents = parents };
+    char error[192];
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    for (int i = 0; i < 2; i++) {
+        instances[i] = scene_instantiate_components(document, world, error, sizeof error);
+        REQUIRE(instances[i]);
+    }
+    REQUIRE(!ecs_lookup(world, (ecs_entity){ 0 }, "Application").slot);
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(
+            ecs_entity_to_u64(scene_instance_lookup(instances[i], "Application")) ==
+            ecs_entity_to_u64(scene_instance_entity(instances[i], 0))
+        );
+        REQUIRE(
+            ecs_entity_to_u64(scene_instance_lookup(instances[i], "Application.Detail")) ==
+            ecs_entity_to_u64(scene_instance_entity(instances[i], 1))
+        );
+        REQUIRE(
+            ecs_entity_to_u64(scene_instance_lookup(instances[i], "Other.Detail")) ==
+            ecs_entity_to_u64(scene_instance_entity(instances[i], 3))
+        );
+        static const char *const invalid[] = { "",
+                                               ".Application",
+                                               "Application.",
+                                               "Application..Detail",
+                                               "Detail",
+                                               "Missing",
+                                               "Application.Missing",
+                                               "Application.Detail.Missing" };
+        for (size_t j = 0; j < sizeof invalid / sizeof *invalid; j++) {
+            REQUIRE(!scene_instance_lookup(instances[i], invalid[j]).slot);
+        }
+    }
+    ecs_entity retired = scene_instance_entity(instances[0], 1);
+    REQUIRE(ecs_world_destroy_entity(world, retired) == ECS_OK);
+    ecs_entity replacement = ecs_world_create_entity(world);
+    REQUIRE(ecs_entity_is_alive(world, replacement));
+    REQUIRE(
+        replacement.slot == retired.slot && replacement.generation != retired.generation
+    );
+    REQUIRE(!scene_instance_lookup(instances[0], "Application.Detail").slot);
+    REQUIRE(scene_instance_lookup(instances[1], "Application.Detail").slot);
+    REQUIRE(!ecs_lookup(world, (ecs_entity){ 0 }, "Application").slot);
+    return true;
+}
 void test_tool_scene()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scene_snapshot_and_complete_deferred_begin);
     RUN_TEST_CASE(scene_failure_preflight_and_pending_begin_cancellation);
+    RUN_TEST_CASE(scene_authored_paths_resolve_live_instance_handles_without_ecs_names);
     pu_clear_setup();
 }

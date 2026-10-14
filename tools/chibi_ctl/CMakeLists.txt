@@ -14,9 +14,9 @@ set(packages asset_authoring asset_json asset_text authoring behavior_runtime
     graph_compilation graph_model graph_catalog host_native_default image_preparation input_map json
     material_authoring model_authoring model_import model_runtime native_capabilities native_types platform project_document
     project_preparation project_compilation prototype_document reference_index render
-    resource_catalog scenario_document scene_document shader_preparation source_catalog source_presentation
-    studio_capabilities studio_graph support text_search text_source types ui ui_authoring
-    ui_document ui_runtime visual_catalog)
+    resource_catalog rooted_files scenario_document scene_document shader_preparation source_catalog source_presentation
+    workspace_catalog support text_search text_source types ui ui_authoring
+    ui_document ui_runtime visual_catalog visual_previews workspace_resources)
 foreach(package IN LISTS packages)
     if(NOT TARGET Chibi::${package})
         message(FATAL_ERROR "chibi_ctl requires installed Chibi::${package}")

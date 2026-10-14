@@ -136,6 +136,9 @@ int graph_remove_node(graph *g, node *n);
 
 int graph_remove_edge(graph *g, node *from, int from_pin, node *to, int to_pin);
 
+/* Declared constant/parameter output defaults; computed outputs are read-only. */
+bool graph_output_default_editable(const node *n, int pin);
+
 int graph_input_source(const graph *g, const node *n, int pin, node **src, int *src_pin);
 
 /* Whether the editor folds n into its single downstream data consumer's pin

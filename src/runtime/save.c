@@ -11,7 +11,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include "support/rooted_files.h"
+#endif
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -268,6 +272,27 @@ bool save_open(save *save, const char *path)
     if (!json) {
         return fail(save, "Browser save storage is unavailable");
     }
+#elif defined(_WIN32)
+    char *leaf = NULL;
+    rooted_files *files = rooted_files_open_parent(path, &leaf);
+    unsigned char *bytes = NULL;
+    size_t count = 0;
+    bool read = files &&
+                rooted_files_read(files, leaf, SAVE_BYTES_MAX * 6, &bytes, &count);
+    int error = errno;
+    if (files) {
+        rooted_files_close(files);
+    }
+    free(leaf);
+    char *json = (char *)bytes;
+    if (!read && error != ENOENT) {
+        free(json);
+        return fail(save, "Could not read save storage");
+    }
+    if (read && memchr(json, 0, count)) {
+        free(json);
+        return fail(save, "Save storage contains embedded zero bytes");
+    }
 #else
     errno = 0;
     char *json = file_read_text(path);
@@ -323,6 +348,21 @@ static bool write_storage(save *save, const char *json)
     }
 #ifdef __EMSCRIPTEN__
     return save_write_browser(save->path, json);
+#elif defined(_WIN32)
+    char *leaf = NULL;
+    rooted_files *files = rooted_files_open_parent(save->path, &leaf);
+    if (!files) {
+        return false;
+    }
+    unsigned char *before = NULL;
+    size_t bytes = 0;
+    bool existed = rooted_files_read(files, leaf, SAVE_BYTES_MAX * 6, &before, &bytes);
+    bool ok = (existed || errno == ENOENT) &&
+              rooted_files_write(files, leaf, json, strlen(json), SAVE_BYTES_MAX * 6, existed, before, bytes);
+    free(before);
+    free(leaf);
+    rooted_files_close(files);
+    return ok;
 #else
     size_t size = strlen(save->path) + 16;
     char *temporary = xmalloc(size);

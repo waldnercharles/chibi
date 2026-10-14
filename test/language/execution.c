@@ -13,6 +13,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/union.h"
+#include "types/value_document.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -35,13 +36,17 @@ type_catalog_pack test_program_types();
 type_catalog_pack test_reductions_types();
 type_catalog_pack test_graph_model_types();
 
+static int catalog_count_calls, catalog_pack_calls;
+
 int type_catalog_pack_count()
 {
+    catalog_count_calls++;
     return 5;
 }
 
 type_catalog_pack type_catalog_pack_at(int index)
 {
+    catalog_pack_calls++;
     assert(index >= 0 && index < 5);
     if (index == 4) {
         return test_reductions_types();
@@ -1416,9 +1421,102 @@ TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)
     return true;
 }
 
+TEST_CASE(execution_catalog_traversal_is_bounded_and_project_types_are_borrowed)
+{
+    catalog_count_calls = catalog_pack_calls = 0;
+    int native_types = type_catalog_count();
+    REQUIRE(native_types > 0);
+    REQUIRE(catalog_count_calls == 1);
+    REQUIRE(catalog_pack_calls == 5);
+    catalog_count_calls = catalog_pack_calls = 0;
+    REQUIRE(!type_catalog_find("fixture.catalog.missing"));
+    REQUIRE(catalog_count_calls == 1);
+    REQUIRE(catalog_pack_calls == 5);
+
+    catalog_count_calls = catalog_pack_calls = 0;
+    int native_enums = type_catalog_enum_count();
+    REQUIRE(native_enums >= 0);
+    REQUIRE(catalog_count_calls == 1);
+    REQUIRE(catalog_pack_calls == 5);
+    catalog_count_calls = catalog_pack_calls = 0;
+    REQUIRE(!type_catalog_enum_find("fixture.catalog.missing"));
+    REQUIRE(catalog_count_calls == 1);
+    REQUIRE(catalog_pack_calls == 5);
+
+    enum
+    {
+        ITEMS = 32
+    };
+    fixture_box payloads[ITEMS];
+    pin_value values[ITEMS];
+    for (int i = 0; i < ITEMS; i++) {
+        payloads[i].value = i + 10;
+        values[i] = (pin_value){ .type = PIN_STRUCT,
+                                 .type_name = box_type.name,
+                                 .ptr = &payloads[i] };
+    }
+    pin_array array = { .element_type = PIN_STRUCT,
+                        .type_name = box_type.name,
+                        .count = ITEMS,
+                        .capacity = ITEMS,
+                        .items = values };
+    pin_value input = { .type = PIN_STRUCT,
+                        .type_name = box_type.name,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = &array },
+              copy;
+    catalog_count_calls = catalog_pack_calls = 0;
+    REQUIRE(!pin_value_snapshot_to_arena(&managed, &copy, &input));
+    REQUIRE(catalog_count_calls == ITEMS);
+    REQUIRE(catalog_pack_calls == ITEMS);
+    pin_array *snapshot = copy.ptr;
+    payloads[0].value = -1;
+    REQUIRE(((fixture_box *)snapshot->items[0].ptr)->value == 10);
+    av_doc *doc = av_doc_new();
+    catalog_count_calls = catalog_pack_calls = 0;
+    av_value *published = pin_value_to_document(doc, &copy);
+    bool valid = published && av_arr_size(published) == ITEMS &&
+                 av_get_sint(av_obj_get(av_arr_get(published, 0), "value")) == 10 &&
+                 av_get_sint(av_obj_get(av_arr_get(published, ITEMS - 1), "value")) ==
+                     ITEMS + 9;
+    bool bounded = catalog_count_calls == ITEMS && catalog_pack_calls == ITEMS;
+    av_doc_free(doc);
+    REQUIRE(valid);
+    REQUIRE(bounded);
+
+    type_desc declared = { .name = "fixture.catalog.project",
+                           .size = sizeof(fixture_box),
+                           .fields = &box_field,
+                           .field_count = 1 };
+    type_desc collision = { .name = box_type.name, .size = sizeof(double) };
+    const type_desc *project_types[] = { &declared, &collision };
+    type_catalog_pack project = { .types = project_types, .type_count = 2 };
+    type_catalog_set_project(&project);
+    bool attached = type_catalog_find(declared.name) == &declared &&
+                    type_catalog_find(box_type.name) == &box_type &&
+                    type_catalog_at(native_types) == &declared &&
+                    type_catalog_count() == native_types + 2;
+    type_catalog_set_project(NULL);
+    bool detached = !type_catalog_find(declared.name) &&
+                    !type_catalog_at(native_types);
+    REQUIRE(attached);
+    REQUIRE(detached);
+    type_desc replacement = declared;
+    project_types[0] = &replacement;
+    type_catalog_set_project(&project);
+    bool replaced = type_catalog_find(declared.name) == &replacement;
+    type_catalog_set_project(NULL);
+    REQUIRE(replaced);
+    REQUIRE(!type_catalog_find(declared.name));
+    REQUIRE(type_catalog_find(TYPE_MARKER.name) == &TYPE_MARKER);
+    REQUIRE(!type_catalog_find(NULL));
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_catalog_traversal_is_bounded_and_project_types_are_borrowed);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);

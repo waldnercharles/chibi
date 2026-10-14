@@ -2,6 +2,7 @@
 #define CHIBI_EXECUTION_FUNCTION_H
 #include "execution/diagnostic.h"
 #include "execution/host.h"
+#include "execution/random.h"
 #include "execution/source_debug.h"
 #include "execution/state.h"
 #include "execution/value_kind.h"
@@ -301,6 +302,8 @@ typedef struct behavior_function_context
     void *watch_storage;
     /* Keep optional state callbacks after the frequently read context fields. */
     int (*select_state)(void *owner, const behavior_state_selection *selection, int start, int flags);
+    /* Direct standalone execution fallback; nested calls share their root. */
+    behavior_random random;
 } behavior_function_context;
 /* Deepest retained invocation, including a suspended or failed callee. */
 /* Visits the root and retained outlined contexts without changing their frames.

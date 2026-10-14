@@ -1,5 +1,8 @@
+#include "execution/function_builder.h"
 #include "execution/inspection.h"
 #include "execution/log.h"
+#include "execution/module_builder.h"
+#include "execution/preparation_profile.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "runtime/behaviors/package.h"
@@ -34,6 +37,12 @@ static execution_program *program;
 static execution_inspector *debugger;
 static source_registry *registry;
 static ecs_world *world;
+static execution_module_plan *profile_plan;
+static behavior_function_builder *profile_builder;
+static execution_module *profile_source;
+static package_collection *profile_collection;
+static unsigned char *profile_wire[2];
+
 static struct
 {
     unsigned char *data;
@@ -46,6 +55,23 @@ static uint64_t declared_event_ids[3], declared_event_abis[3];
 
 static void cleanup()
 {
+    if (profile_collection) {
+        package_collection_free(profile_collection);
+    }
+    profile_collection = NULL;
+    execution_module_free(profile_source);
+    profile_source = NULL;
+    execution_module_plan_free(profile_plan);
+    profile_plan = NULL;
+    if (profile_builder) {
+        behavior_function_builder_free(profile_builder);
+    }
+    profile_builder = NULL;
+    for (int i = 0; i < 2; i++) {
+        free(profile_wire[i]);
+        profile_wire[i] = NULL;
+    }
+
     if (registry) {
         source_registry_free(registry);
     }
@@ -904,10 +930,129 @@ TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler)
     return true;
 }
 
+TEST_CASE(prepared_authored_profile_accepts_large_unique_closure_and_game_refuses_atomically)
+{
+    enum
+    {
+        MODULES = 2,
+        FUNCTIONS = 768,
+        SLOTS = 64,
+        INSTRUCTIONS = 256
+    };
+    package_module records[MODULES] = { 0 };
+    const char *names[] = { "LargeToolFirst", "LargeToolSecond" };
+    char error[256] = "";
+    for (int m = 0; m < MODULES; m++) {
+        profile_plan = execution_module_plan_new();
+        profile_plan->id = 88000 + m;
+        profile_plan->valid = true;
+        for (int f = 0; f < FUNCTIONS; f++) {
+            profile_builder = behavior_function_builder_new();
+            for (int slot = 0; slot < SLOTS; slot++) {
+                REQUIRE(behavior_function_builder_slot(profile_builder, PIN_I32) == slot);
+            }
+            for (int pc = 0; pc < INSTRUCTIONS; pc++) {
+                behavior_function_builder_emit(
+                    profile_builder,
+                    (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                     .type = PIN_I32,
+                                                     .output = pc % SLOTS,
+                                                     .value = { .type = PIN_I32, .i = pc } }
+                );
+            }
+            behavior_function_builder_emit(
+                profile_builder,
+                (behavior_function_instruction){ .op = BF_RETURN }
+            );
+            behavior_function_builder_emit(
+                profile_builder,
+                (behavior_function_instruction){ .op = BF_END }
+            );
+            behavior_function *body = behavior_function_builder_finish(profile_builder, error, sizeof error);
+            behavior_function_builder_free(profile_builder);
+            profile_builder = NULL;
+            REQUIRE(body);
+            apush(
+                profile_plan->functions,
+                ((execution_module_function){ .id = 89000 + m * FUNCTIONS + f,
+                                              .kind = EXECUTION_FUNCTION_AUTHORED,
+                                              .body = body })
+            );
+        }
+        profile_plan->function_count = FUNCTIONS;
+        profile_source = execution_module_finish(&profile_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(profile_source);
+        size_t size = 0;
+        REQUIRE(
+            execution_prepared_write(profile_source, &profile_wire[m], &size, error, sizeof error)
+        );
+        records[m] = (package_module){ names[m],
+                                       execution_module_id(profile_source),
+                                       profile_wire[m],
+                                       size };
+        execution_module_free(profile_source);
+        profile_source = NULL;
+    }
+    size_t game = execution_preparation_budget(EXECUTION_PREPARATION_GAME);
+    size_t remaining = game;
+    profile_collection = package_read_budget(
+        records,
+        MODULES,
+        NULL,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(!profile_collection && error[0] && remaining == game);
+    size_t authored = execution_preparation_budget(EXECUTION_PREPARATION_AUTHORED_TOOL);
+    remaining = authored;
+    profile_collection = package_read_budget(
+        records,
+        MODULES,
+        NULL,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    if (!profile_collection) {
+        fprintf(stderr, "authored profile: %s\n", error);
+    }
+    REQUIRE(profile_collection && package_collection_count(profile_collection) == MODULES);
+    size_t retained = authored - remaining;
+    REQUIRE(retained > game && retained < authored);
+    fprintf(
+        stderr,
+        "authored profile retained=%zu encoded=%zu\n",
+        retained,
+        records[0].length + records[1].length
+    );
+    package_collection_free(profile_collection);
+    profile_collection = NULL;
+    remaining = retained - 1;
+    size_t refused = remaining;
+    profile_collection = package_read_budget(
+        records,
+        MODULES,
+        NULL,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(!profile_collection && error[0] && remaining == refused);
+    return true;
+}
+
 void test_tool_prepared_runtime(const char *path)
 {
     directory = path;
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(prepared_authored_profile_accepts_large_unique_closure_and_game_refuses_atomically);
     RUN_TEST_CASE(prepared_runtime_state_events_bindings_and_imports);
     RUN_TEST_CASE(prepared_runtime_rejects_missing_or_incompatible_linkage);
     RUN_TEST_CASE(prepared_runtime_rejects_malformed_wire);

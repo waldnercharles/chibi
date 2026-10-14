@@ -1,5 +1,6 @@
 #include "render/shader_values.h"
 
+#include "render/catalog_publication.h"
 #include "render/shader_catalog_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -164,12 +165,12 @@ bool shader_values_publish(const shader_values *v, shader_error *e)
             free((void *)r->key);
             free((void *)r->scope);
             *r = copy;
-            shader_catalog_parameter_revision++;
+            shader_catalog_parameter_revision = shader_catalog_next_revision();
             return true;
         }
     }
     apush(records, copy);
-    shader_catalog_parameter_revision++;
+    shader_catalog_parameter_revision = shader_catalog_next_revision();
     return true;
 }
 static const shader_values *find(int shape, int material, const char *key, const char *scope, bool plain, bool scoped)
@@ -230,7 +231,7 @@ void shader_values_clear()
         free((void *)records[i].scope);
     }
     afree(records);
-    shader_catalog_parameter_revision++;
+    shader_catalog_parameter_revision = shader_catalog_next_revision();
 }
 
 typedef struct
@@ -506,7 +507,7 @@ void shader_values_exchange(shader_values **pending)
     shader_values *previous = records;
     records = *pending;
     *pending = previous;
-    shader_catalog_parameter_revision++;
+    shader_catalog_parameter_revision = shader_catalog_next_revision();
 }
 void shader_values_release(shader_values *pending)
 {

@@ -204,8 +204,8 @@ static int pump(double now, double delta, unsigned budget)
 TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 {
     const char *format =
-        "behavior Reaction { owner \"ecs.entity\"; state done:bool=false; "
-        "state rotation:struct<\"CF_V3\">={x:-1.0,y:2.0,z:3.0}; state "
+        "behavior Reaction { owner \"ecs.entity\"; done:bool=false; "
+        "rotation:struct<\"CF_V3\">={x:-1.0,y:2.0,z:3.0}; "
         "target:handle<\"ecs.entity\">=0; "
         "Apply :: fn"
         "(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
@@ -283,8 +283,8 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
 TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 {
     const char
-        *text = "behavior Rhythm { state phase:double=0; state pulse:double=0; "
-                "state period:double=0; state duration:double=0; "
+        *text = "behavior Rhythm { phase:double=0; pulse:double=0; "
+                "period:double=0; duration:double=0; "
                 "Read :: fn"
                 "()->(Phase:double,Pulse:double,Period:double,Duration:"
                 "double){ r:=scene_rhythm(); "
@@ -325,7 +325,7 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 }
 TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 {
-    const char *text = "behavior Particles { state done:bool=false; Emit :: fn"
+    const char *text = "behavior Particles { done:bool=false; Emit :: fn"
                        "()->(){ "
                        "await "
                        "emit_particles(Position:{x:1.0,y:-2.0},Color:"
@@ -380,10 +380,10 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 TEST_CASE(source_native_motion_retains_numeric_outputs)
 {
     const char *
-        text = "behavior Motion { state input:double=0; state angle:double=0; "
-               "state smooth:double=0; state root:double=0; state "
-               "low:double=0; state high:double=0; state nearest:double=0; "
-               "state position:float=0; state velocity:float=0; "
+        text = "behavior Motion { input:double=0; angle:double=0; "
+               "smooth:double=0; root:double=0; "
+               "low:double=0; high:double=0; nearest:double=0; "
+               "position:float=0; velocity:float=0; "
                "Calculate :: fn"
                "(Value:double)->(Angle:double,Smooth:double,Root:"
                "double,Low:double,High:double,Nearest:double){ "
@@ -477,7 +477,7 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
 }
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
-    const char *text = "behavior Query { state visits:int=0; state "
+    const char *text = "behavior Query { visits:int=0; "
                        "last:handle<\"ecs.entity\">=0; "
                        "Count :: fn()->(){ foreach (outer in "
                        "find_entities_with_component(Component:\"Health\")) { "
@@ -548,10 +548,10 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 TEST_CASE(source_native_query_matches_authored_rectangles)
 {
     const char *text =
-        "behavior Query { state members:entity[]; state boxes:int=0; "
-        "state left:number=0; state top:number=0; state right:number=8; "
-        "state bottom:number=8; state x:number=8; state y:number=4; "
-        "state points:int=0; on Begin { "
+        "behavior Query { members:entity[]; boxes:int=0; "
+        "left:number=0; top:number=0; right:number=8; "
+        "bottom:number=8; x:number=8; y:number=4; "
+        "points:int=0; on Begin { "
         "members=find_entities_with_component(\"SolidTile\"); } "
         "on Tick { boxes=count_matching_entities(members,["
         "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
@@ -666,24 +666,24 @@ static ecs_entity place_collider(CF_V3 position, Collider3D collider)
  * units, 32 per meter, so a cast stops Box3D's linear slop of .16 short. */
 TEST_CASE(source_native_physics3d_queries_read_colliders)
 {
-    const char *
-        text = "behavior Probe { owner \"ecs.entity\"; "
-               "state start:struct<\"CF_V3\">={x:0.0,y:320.0,z:0.0}; "
-               "state finish:struct<\"CF_V3\">={x:0.0,y:-32.0,z:0.0}; "
-               "state push:struct<\"CF_V3\">={x:320.0,y:0.0,z:0.0}; "
-               "state found:bool=false; state target:handle<\"ecs.entity\">=0; "
-               "state distance:float=0.0; state "
-               "normal:struct<\"CF_V3\">={x:0.0,y:0.0,z:0.0}; "
-               "state blocked:handle<\"ecs.entity\">=0; state "
-               "travel:float=0.0; "
-               "state touching:int=0; "
-               "on Tick { found=raycast_3d(start,finish,1,0,false).Found; "
-               "target=raycast_3d(start,finish,1,0,false).Entity; "
-               "distance=raycast_3d(start,finish,1,0,false).Distance; "
-               "normal=raycast_3d(start,finish,1,0,false).Normal; "
-               "blocked=shape_cast_3d(self,push,1,false).Entity; "
-               "travel=shape_cast_3d(self,push,1,false).Distance; "
-               "touching=length(contact_entities_3d(self,2)); } }";
+    const char
+        *text = "behavior Probe { owner \"ecs.entity\"; "
+                "start:struct<\"CF_V3\">={x:0.0,y:320.0,z:0.0}; "
+                "finish:struct<\"CF_V3\">={x:0.0,y:-32.0,z:0.0}; "
+                "push:struct<\"CF_V3\">={x:320.0,y:0.0,z:0.0}; "
+                "found:bool=false; target:handle<\"ecs.entity\">=0; "
+                "distance:float=0.0; "
+                "normal:struct<\"CF_V3\">={x:0.0,y:0.0,z:0.0}; "
+                "blocked:handle<\"ecs.entity\">=0; "
+                "travel:float=0.0; "
+                "touching:int=0; "
+                "on Tick { found=raycast_3d(start,finish,1,0,false).Found; "
+                "target=raycast_3d(start,finish,1,0,false).Entity; "
+                "distance=raycast_3d(start,finish,1,0,false).Distance; "
+                "normal=raycast_3d(start,finish,1,0,false).Normal; "
+                "blocked=shape_cast_3d(self,push,1,false).Entity; "
+                "travel=shape_cast_3d(self,push,1,false).Distance; "
+                "touching=length(contact_entities_3d(self,2)); } }";
     for (int backend = 0; backend < 2; backend++) {
         test_world = ecs_world_new();
         REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform3D, NULL) == 0);
@@ -790,8 +790,8 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
             snprintf(
                 text,
                 sizeof text,
-                "behavior Material { owner \"ecs.entity\"; state "
-                "done:bool=false; state payload:%s; "
+                "behavior Material { owner \"ecs.entity\"; "
+                "done:bool=false; payload:%s; "
                 "Apply :: fn(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
                 "await delay(Duration:0.125); "
                 "await "
@@ -843,10 +843,10 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
 TEST_CASE(source_tilemap_queries_use_live_authored_cells)
 {
     const char
-        *text = "behavior Grid { state frame:int=-1; state count:int=0; "
-                "state point:struct<\"CF_V2\">={x:11,y:-4}; "
-                "state minimum:struct<\"CF_V2\">={x:10,y:-5}; "
-                "state maximum:struct<\"CF_V2\">={x:13,y:0}; "
+        *text = "behavior Grid { frame:int=-1; count:int=0; "
+                "point:struct<\"CF_V2\">={x:11,y:-4}; "
+                "minimum:struct<\"CF_V2\">={x:10,y:-5}; "
+                "maximum:struct<\"CF_V2\">={x:13,y:0}; "
                 "on Tick { frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
@@ -949,13 +949,12 @@ TEST_CASE(url_requests_validate_copy_replace_and_cancel)
 
 TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
 {
-    const char
-        *text = "behavior Links { state done:bool=true; state mode:int=0; "
-                "on Tick { if mode==0 { result := await "
-                "open_url(Url:\"https://example.org/help\"); "
-                "done=result.Accepted; } "
-                "if mode==1 { open_url(\"http://localhost/help\"); } "
-                "if mode==2 { cancel_open_url(); } } }";
+    const char *text = "behavior Links { done:bool=true; mode:int=0; "
+                       "on Tick { if mode==0 { result := await "
+                       "open_url(Url:\"https://example.org/help\"); "
+                       "done=result.Accepted; } "
+                       "if mode==1 { open_url(\"http://localhost/help\"); } "
+                       "if mode==2 { cancel_open_url(); } } }";
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick"),
@@ -991,8 +990,8 @@ TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
 
 TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 {
-    const char *text = "behavior Pointer { state active:bool=true; "
-                       "state origin:struct<\"CF_V3\">={}; state "
+    const char *text = "behavior Pointer { active:bool=true; "
+                       "origin:struct<\"CF_V3\">={}; "
                        "direction:struct<\"CF_V3\">={}; "
                        "on Tick { ray:=get_pointer_ray(); active=ray.Active; "
                        "origin=ray.Origin; direction=ray.Direction; } }";
@@ -1044,9 +1043,9 @@ void test_source_native_features()
 TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
 {
     const char *source =
-        "behavior Ranges { state input:number=0; state observed:number=0; "
-        "state steps:number=0; state converted:int=0; state "
-        "constructed:number=0; state fresh:Bounded={}; state "
+        "behavior Ranges { input:number=0; observed:number=0; "
+        "steps:number=0; converted:int=0; "
+        "constructed:number=0; fresh:Bounded={}; "
         "defaulted:number=0; "
         "on Tick { self.Bounded.value=input; observed=self.Bounded.value; "
         "self.Bounded.value+=100; self.Bounded.value-=1; "
@@ -1138,7 +1137,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         authoring_source *replacement = authoring_source_prepare_document(
             "features.chibi",
             "test/native-features",
-            "behavior Ranges { state input:number=0; on Tick { "
+            "behavior Ranges { input:number=0; on Tick { "
             "self.Bounded.value=input*input; } }",
             authoring_language_catalog_view(catalog),
             &bindings,

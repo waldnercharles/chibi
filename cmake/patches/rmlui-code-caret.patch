@@ -1,0 +1,39 @@
+diff --git a/Source/Core/Elements/WidgetTextInput.h b/Source/Core/Elements/WidgetTextInput.h
+--- a/Source/Core/Elements/WidgetTextInput.h
++++ b/Source/Core/Elements/WidgetTextInput.h
+@@ -56,6 +56,8 @@
+ 	/// @param[out] selection_end The first character *after* the selection.
+ 	/// @param[out] selected_text The selected text.
+ 	void GetSelection(int* selection_start, int* selection_end, String* selected_text) const;
++	/// Active caret byte offset, independent of the ordered selection range.
++	int GetCursorByteOffset() const { return absolute_cursor_index; }
+ 
+ 	/// Sets visual feedback used for the IME composition in the range.
+ 	/// @param[in] range_start The first character to be selected.
+diff --git a/Include/RmlUi/Core/Elements/ElementFormControlTextArea.h b/Include/RmlUi/Core/Elements/ElementFormControlTextArea.h
+--- a/Include/RmlUi/Core/Elements/ElementFormControlTextArea.h
++++ b/Include/RmlUi/Core/Elements/ElementFormControlTextArea.h
+@@ -70,6 +70,8 @@
+ 	/// @param[out] selection_end The first character *after* the selection.
+ 	/// @param[out] selected_text The selected text.
+ 	void GetSelection(int* selection_start, int* selection_end, String* selected_text) const;
++	/// Active caret UTF-8 byte offset in the textarea value.
++	int GetCursorByteOffset() const;
+ 
+ 	/// Sets visual feedback used for the IME composition in the range.
+ 	/// @param[in] range_start The first character to be selected.
+diff --git a/Source/Core/Elements/ElementFormControlTextArea.cpp b/Source/Core/Elements/ElementFormControlTextArea.cpp
+--- a/Source/Core/Elements/ElementFormControlTextArea.cpp
++++ b/Source/Core/Elements/ElementFormControlTextArea.cpp
+@@ -90,6 +90,11 @@
+ 	widget->GetSelection(selection_start, selection_end, selected_text);
+ }
+ 
++int ElementFormControlTextArea::GetCursorByteOffset() const
++{
++	return widget->GetCursorByteOffset();
++}
++
+ void ElementFormControlTextArea::SetCompositionRange(int range_start, int range_end)
+ {
+ 	widget->SetCompositionRange(range_start, range_end);

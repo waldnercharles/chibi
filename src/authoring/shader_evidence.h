@@ -29,6 +29,14 @@ typedef struct
 } shader_authoring_evidence;
 
 typedef struct shader_authoring_evidence_plan shader_authoring_evidence_plan;
+/* Evidence attribution requires a verified installed SDK identity. */
+bool shader_authoring_evidence_identity_valid(
+    const char *version,
+    const char *build,
+    const char *manifest_sha256,
+    char *error,
+    size_t
+);
 /* Freeze synchronously before GPU readback. Owns source, settings, parameter
  * values, CPU data, identity strings and raw dependency bytes. Ignores png fields.
  * If resolve_image is provided, decoded disk pixels must match each current

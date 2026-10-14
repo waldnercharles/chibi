@@ -1,6 +1,8 @@
 #include "execution/prepared.h"
 
+#include "execution/function_builder.h"
 #include "execution/log.h"
+#include "execution/module_builder.h"
 #include "language/lower.h"
 #include "runtime/state_definition.h"
 #include "support/array.h"
@@ -14,7 +16,9 @@
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
-static execution_module *module, *library, *dependency;
+static execution_module *module, *library, *dependency, *budget_source;
+static execution_module_plan *budget_plan;
+static behavior_function_builder *budget_builder;
 static unsigned char *bytes, *again;
 static const char *directory;
 static uint64_t state_id, target_id;
@@ -66,6 +70,15 @@ static script_catalog_type type;
 static script_catalog catalog;
 static void cleanup()
 {
+    execution_module_free(budget_source);
+    budget_source = NULL;
+    execution_module_plan_free(budget_plan);
+    budget_plan = NULL;
+    if (budget_builder) {
+        behavior_function_builder_free(budget_builder);
+    }
+    budget_builder = NULL;
+
     free(bytes);
     free(again);
     execution_module_plan_free(plan);
@@ -440,6 +453,72 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
     return true;
 }
 
+TEST_CASE(prepared_runtime_sequential_function_scratch_is_reusable)
+{
+    enum
+    {
+        FUNCTIONS = 32,
+        SLOTS = 1024,
+        INSTRUCTIONS = 256
+    };
+    char error[192] = "";
+    budget_plan = execution_module_plan_new();
+    budget_plan->id = 9091;
+    budget_plan->valid = true;
+    for (int i = 0; i < FUNCTIONS; i++) {
+        budget_builder = behavior_function_builder_new();
+        for (int slot = 0; slot < SLOTS; slot++) {
+            REQUIRE(behavior_function_builder_slot(budget_builder, PIN_I32) == slot);
+        }
+        for (int pc = 0; pc < INSTRUCTIONS; pc++) {
+            behavior_function_builder_emit(
+                budget_builder,
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = PIN_I32,
+                                                 .output = pc % SLOTS,
+                                                 .value = { .type = PIN_I32, .i = pc } }
+            );
+        }
+        behavior_function_builder_emit(budget_builder, (behavior_function_instruction){ .op = BF_RETURN });
+        behavior_function_builder_emit(budget_builder, (behavior_function_instruction){ .op = BF_END });
+        behavior_function *body = behavior_function_builder_finish(budget_builder, error, sizeof error);
+        behavior_function_builder_free(budget_builder);
+        budget_builder = NULL;
+        REQUIRE(body);
+        apush(
+            budget_plan->functions,
+            ((execution_module_function){ .id = 10000 + (uint64_t)i,
+                                          .kind = EXECUTION_FUNCTION_AUTHORED,
+                                          .body = body })
+        );
+    }
+    budget_plan->function_count = FUNCTIONS;
+    budget_source = execution_module_finish(&budget_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(budget_source);
+    size_t length = 0;
+    REQUIRE(execution_prepared_write(budget_source, &bytes, &length, error, sizeof error));
+    execution_module_free(budget_source);
+    budget_source = NULL;
+    const size_t budget = 5 * 1024 * 1024;
+    size_t remaining = budget;
+    module = execution_prepared_read_budget(bytes, length, NULL, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "sequential prepared budget: %s\n", error);
+    }
+    REQUIRE(module);
+    REQUIRE(execution_module_function_count(module) == FUNCTIONS);
+    size_t retained = execution_module_storage_bytes(module);
+
+    REQUIRE(retained > 0 && retained < budget && remaining == budget - retained);
+    execution_module_free(module);
+    module = NULL;
+    remaining = retained - 1;
+    size_t refused = remaining;
+    module = execution_prepared_read_budget(bytes, length, NULL, BEHAVIOR_BYTECODE, &remaining, error, sizeof error);
+    REQUIRE(!module && error[0] && remaining == refused);
+    return true;
+}
+
 void test_language_prepared_write(const char *path)
 {
     directory = path;
@@ -449,5 +528,6 @@ void test_language_prepared_write(const char *path)
     RUN_TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema);
     RUN_TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement);
+    RUN_TEST_CASE(prepared_runtime_sequential_function_scratch_is_reusable);
     pu_clear_setup();
 }

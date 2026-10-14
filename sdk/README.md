@@ -79,9 +79,8 @@ validated before calling printf. `Chibi::types` supplies shared value display.
 topology and value ownership. It owns an opaque compiled artifact through an
 explicit destructor and has no compiler or graph executor dependency. Descriptor
 editing belongs to the separate graph authoring package.
-`Chibi::studio_capabilities` is an optional compiler-enabled package for Studio's
-typed service calls. Studio supplies the service implementation; the package
-contains no editor UI or graph objects.
+`Chibi::workspace_catalog` composes generic authoring service declarations for
+compiler-enabled consumers. The authored Studio app consumes these same services.
 `Chibi::asset_text` parses and writes KDL documents during asset preparation and
 authoring. Its parser implementation and headers are private. This target is
 included only in the compiler-enabled SDK.
@@ -229,3 +228,20 @@ The loader regenerates backend code and retains imported immutable modules.
 Opaque host handles and unreflected struct payloads cannot be persisted; such
 values need an explicit portable capability contract. Runtime type descriptor
 packs remain part of the final application and must outlive their values.
+
+
+Prepared games retain a 64 MiB decoded canonical-storage budget. The explicit
+`chibi-compile --authoring` mode and `chibi_ctl` project validation with
+`authoring: true` select the authored-tool profile, capped at 256 MiB. The
+`chibi-author` executable selects the same profile; `chibi-player` keeps the game
+default. This policy comes from trusted caller configuration and is never read
+from an artifact. Encoded artifacts and individual modules still cap at 64 MiB;
+record counts and import/depth limits are unchanged. These bounds cover retained
+canonical storage, rather than process RSS: preparation scratch, generated backend
+code, mutable simulation state and GPU allocations are accounted separately.
+
+The authored Studio migration measured 139,993,314 bytes across its independently
+decoded modules. Source-built modules retained 162,072,442 bytes, including larger
+builder capacities. A pointer inventory found 718 unique owned functions and no
+shared owned-function aliases. The two measurements describe different phases;
+neither is a process peak measurement.

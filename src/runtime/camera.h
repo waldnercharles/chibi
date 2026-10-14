@@ -9,4 +9,8 @@
  * It propagates transforms first, so the camera frames current placements. */
 int camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out);
 
+/* Read one camera independently of active/disabled selection. Exact shared
+ * lens validation, no query/UI policy. Caller propagates transforms once before
+ * a batch, as camera_view does. */
+bool camera_entity_view(ecs_world *, const engine *, ecs_entity, engine_viewport_view *);
 #endif

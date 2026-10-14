@@ -32,7 +32,7 @@ WEB_PORT ?= 8099
 CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
-BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
+BUILD_TARGET ?= chibi chibi-compile chibi-player chibi-author chibi_ctl
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
@@ -64,7 +64,7 @@ all: build
 
 help:
 	@printf '%s\n' \
-		'make build          Build compiler, player, and controller products' \
+		'make build          Build compiler, player, authoring host, and controller products' \
 		'make build-debug    Build products in plain Debug' \
 		'make build-release  Build products in Release' \
 		'make package-sdk    Package native compiler and desktop authoring SDK' \
@@ -73,7 +73,7 @@ help:
 		'make player-run ARTIFACT=/output/game.chibip [RESOURCE_ROOT=/resources]' \
 		'make studio-build STUDIO_SOURCE=/studio STUDIO_SDK_PREFIX=/installed/sdk' \
 		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
-		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
+		'make studio-dev PROJECT_ROOT=/game  Run the authored Studio application' \
 		'make package-studio Package the external Studio distribution' \
 		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
@@ -96,6 +96,7 @@ help:
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
 		'make package-web-player  Build the browser player for chibi export --web' \
+		'make package-web-author  Build the generic browser authoring host and compiler' \
 		'make publish-web    Disabled: extracted browser publishing is not integrated' \
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
@@ -167,18 +168,18 @@ player-run:
 studio-build:
 	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@test -f "$(STUDIO_SDK_PREFIX)/share/chibi/package.json" || { printf '%s\n' 'Set STUDIO_SDK_PREFIX to a packaged compiler/desktop SDK' >&2; exit 2; }
-	@$(QUIET) configure-studio -- cmake -S "$(STUDIO_SOURCE)" -B "$(STUDIO_BUILD_DIR)" -G Ninja $(NATIVE_TOOLCHAIN_FLAGS) $(STUDIO_CMAKE_FLAGS) -DChibi_DIR="$(abspath $(STUDIO_SDK_PREFIX))/lib/cmake/Chibi"
+	@$(QUIET) configure-studio -- cmake -S "$(STUDIO_SOURCE)" -B "$(STUDIO_BUILD_DIR)" -G Ninja $(STUDIO_CMAKE_FLAGS) -DChibi_DIR="$(abspath $(STUDIO_SDK_PREFIX))/lib/cmake/Chibi"
 	@$(QUIET) build-studio -- cmake --build "$(STUDIO_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)
 
 studio-run:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
 	@$(MAKE) studio-build
-	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --workspace-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
 
 studio-dev:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
 	@$(MAKE) studio-build
-	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --checkpoint "$(abspath $(STUDIO_CHECKPOINT))" --project-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
+	env $(NATIVE_RUNTIME_ENV) "$(STUDIO_BUILD_DIR)/bin/chibi-dev" --workspace-root "$(abspath $(PROJECT_ROOT))" $(SCENE_ARG) $(ARGS)
 
 package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
@@ -190,8 +191,7 @@ package-studio:
 # against PREFIX.
 install:
 	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
-	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
-	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
+	@cmake -E copy_directory "$(abspath $(INSTALL_SDK_PREFIX))" "$(abspath $(PREFIX))"
 
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
@@ -232,10 +232,21 @@ package-web-player: sdk-reflect-build
 	@rm -rf "$(WEB_PLAYER_OUTPUT)"
 	@cmake --install "$(WEB_PLAYER_BUILD_DIR)" --component web_player --prefix "$(abspath $(WEB_PLAYER_OUTPUT))"
 
+# Authoring applications use the same prepared target ABI as the host. This
+# separate distribution includes the Emscripten compiler for execution by Node.
+WEB_AUTHOR_BUILD_DIR ?= build-web-author$(WEB_SUFFIX)
+WEB_AUTHOR_OUTPUT ?= dist/web-author$(WEB_SUFFIX)
+.PHONY: package-web-author
+package-web-author: sdk-reflect-build
+	@$(QUIET) configure-web-author -- env CMAKE_GENERATOR=Ninja sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_AUTHOR_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_WEB_AUTHOR=ON -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) build-web-author -- cmake --build "$(WEB_AUTHOR_BUILD_DIR)" --target chibi-author chibi-compile chibi-compile-worker --parallel $(JOBS)
+	@$(QUIET) package-web-author -- python3 tools/package_web_author.py --build "$(WEB_AUTHOR_BUILD_DIR)" --output "$(WEB_AUTHOR_OUTPUT)"
+
 web-configure:
 	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@$(MAKE) package-web-sdk
-	@$(QUIET) configure-web-studio -- sh tools/web_env.sh emcmake cmake -S "$(STUDIO_SOURCE)" -B "$(WEB_BUILD_DIR)" -G Ninja $(WEB_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DChibi_DIR="$(abspath $(WEB_SDK_PREFIX))/lib/cmake/Chibi" -DCHIBI_STUDIO_WEB_PROJECTS="$(WEB_PROJECTS)" -DCHIBI_STUDIO_COLLAB_URL="$(CHIBI_COLLAB_URL)"
+	@$(MAKE) package-web-author
+	@$(QUIET) configure-web-studio -- sh tools/web_env.sh emcmake cmake -S "$(STUDIO_SOURCE)" -B "$(WEB_BUILD_DIR)" -G Ninja $(WEB_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DChibi_DIR="$(abspath $(WEB_SDK_PREFIX))/lib/cmake/Chibi" -DCHIBI_AUTHOR_WEB_DIR="$(abspath $(WEB_AUTHOR_OUTPUT))" -DCHIBI_STUDIO_COLLAB_URL="$(CHIBI_COLLAB_URL)" $(if $(strip $(PROJECT_ROOT)),-DCHIBI_STUDIO_WORKSPACE_ROOT="$(abspath $(PROJECT_ROOT))",)
 
 web: web-configure
 	@$(QUIET) build-web-studio -- cmake --build "$(WEB_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)

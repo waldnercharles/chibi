@@ -202,7 +202,7 @@ static bool persistent_wait_membership(behavior_backend backend)
     ecs_entity a = health(&f), b = health(&f);
     REQUIRE(prepare(
         &f,
-        "system Counters(health:Health) { state count:double=0; shared "
+        "system Counters(health:Health) { count:double=0; shared "
         "total:double=0; "
         "count+=1; total+=1; await delay(Duration:1); count+=10; total+=10; }",
         backend
@@ -272,7 +272,7 @@ static bool host_spawn_resume(behavior_backend backend)
     ecs_entity owner = health(&f);
     REQUIRE(prepare(
         &f,
-        "system Spawner(health:Health) { state completed:double=0; shared "
+        "system Spawner(health:Health) { completed:double=0; shared "
         "total:double=0; "
         "await spawn(Prototype:\"Child\"); completed+=1; total+=1; }",
         backend
@@ -284,6 +284,31 @@ static bool host_spawn_resume(behavior_backend backend)
     REQUIRE(entities_flush_initializers(f.live->entities, 0) >= 0);
     REQUIRE(execution_program_pump(f.program, .1, .1, 10000) >= 0);
     REQUIRE(state(&f, owner, "completed") == 1 && state(&f, owner, "total") == 1);
+    ecs_entity *children = NULL;
+    entities_copy_live(f.live->entities, &children);
+    REQUIRE(acount(children) == 1);
+    entity_origin provenance;
+    REQUIRE(entities_origin(f.live->entities, children[0], &provenance));
+    REQUIRE(
+        !strcmp(provenance.prototype, "Child") && provenance.object == 0 &&
+        provenance.creation > 0
+    );
+    REQUIRE(entities_prototype_count(f.live->entities) == 1);
+    REQUIRE(!strcmp(entities_prototype_name_at(f.live->entities, 0), "Child"));
+    REQUIRE(entities_prototype_scene_at(f.live->entities, 0));
+    REQUIRE(entities_origin_count(f.live->entities) == 1);
+    ecs_entity observed;
+    entity_origin observed_origin;
+    REQUIRE(entities_origin_at(f.live->entities, 0, &observed, &observed_origin));
+    REQUIRE(
+        ecs_entity_to_u64(observed) == ecs_entity_to_u64(children[0]) &&
+        observed_origin.creation == provenance.creation &&
+        !strcmp(observed_origin.prototype, "Child")
+    );
+    uint64_t creation = provenance.creation;
+    ecs_entity first_child = children[0];
+    REQUIRE(!entities_origin(f.live->entities, owner, &provenance));
+    afree(children);
     REQUIRE(tick(&f, .2));
     REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
     REQUIRE(!Health_remove(f.world, owner, 0));
@@ -292,6 +317,11 @@ static bool host_spawn_resume(behavior_backend backend)
     REQUIRE(!instance(&f, owner));
     REQUIRE(entities_flush(f.live->entities) >= 0);
     REQUIRE(live_children(&f) == 1);
+    entities_request_destroy(f.live->entities, first_child);
+    REQUIRE(!entities_origin(f.live->entities, first_child, &provenance));
+    REQUIRE(entities_flush(f.live->entities) >= 0);
+    REQUIRE(!entities_origin(f.live->entities, first_child, &provenance));
+    REQUIRE(creation > 0);
     fixture_free(&f);
     return true;
 }
@@ -334,7 +364,7 @@ static bool live_component_resume(behavior_backend backend)
     Health_get(f.world, owner)->current = 2;
     REQUIRE(prepare(
         &f,
-        "system ReadHealth(health:Health) { state observed:double=0; "
+        "system ReadHealth(health:Health) { observed:double=0; "
         "await delay(Duration:1); observed=health.Current; }",
         backend
     ));
@@ -655,7 +685,7 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         input_source = authoring_source_prepare_document(
             "Input.chibi",
             "systems/Input.chibi",
-            "system InputWatch(controls:Input){ state pulses:double=0; on "
+            "system InputWatch(controls:Input){ pulses:double=0; on "
             "Pulse{pulses+=1;} }",
             authoring_language_catalog_view(input_catalog),
             &bindings,
@@ -734,7 +764,7 @@ TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
             &f,
             "system Rows query h:Health join target in self.Targets join a:Aim "
             "from target { "
-            "state starts:double=0; starts+=1; await delay(Duration:1); "
+            "starts:double=0; starts+=1; await delay(Duration:1); "
             "if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
             backends[backend]
         ));
@@ -779,7 +809,7 @@ TEST_CASE(source_query_changed_consumers_preserve_busy_writes)
         ecs_entity owner = health(&f);
         REQUIRE(prepare(
             &f,
-            "system Changed query h:Health where changed(h) { state "
+            "system Changed query h:Health where changed(h) { "
             "calls:double=0; "
             "calls+=1; await delay(Duration:1); }",
             backends[backend]
@@ -835,7 +865,7 @@ TEST_CASE(source_query_changed_provider_and_pure_helper)
             &f,
             "system Providers query h:Health, a:Aim, base:Health from "
             "ancestor(ChildOf) "
-            "where changed(base) and Accept(h) { state calls:double=0; "
+            "where changed(base) and Accept(h) { calls:double=0; "
             "calls+=1; "
             "Accept :: (value:Health)->bool { return value.Current>=0; } }",
             backends[backend]
@@ -932,7 +962,7 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
             &f,
             "system Chains query h:Health join middle in self.Targets join "
             "target in middle.Targets "
-            "join a:Aim from target { state ticks:double=0; state "
+            "join a:Aim from target { ticks:double=0; "
             "pulses:double=0; "
             "on Begin { pulses+=1; } ticks+=1; if a.Firing { h.Current+=10; } "
             "else { h.Current+=1; } }",

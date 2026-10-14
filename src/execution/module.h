@@ -1,5 +1,6 @@
 #ifndef CHIBI_EXECUTION_MODULE_H
 #define CHIBI_EXECUTION_MODULE_H
+#include "ecs/ecs.h"
 #include "execution/backend.h"
 #include "execution/function.h"
 #include "execution/service.h"
@@ -80,6 +81,7 @@ typedef struct
     int status;
     behavior_function_failure kind;
     uint64_t module_id, function_id, owner, node_id;
+    uint64_t query_variables[ECS_QUERY_VARS];
     int start, end, line, column;
     char asset_name[128], message[192];
 } execution_program_failure;

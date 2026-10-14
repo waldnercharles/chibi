@@ -51,19 +51,42 @@ target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chib
     chibi_asset_text chibi_project_document chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json)
 list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation)
 
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER OR CHIBI_WEB_AUTHOR)
     add_executable(chibi-compile "${CHIBI_SDK_ROOT}/src/host/compile_main.c")
-    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation)
+    target_link_libraries(chibi-compile PRIVATE Chibi::project_compilation Chibi::workspace_catalog Chibi::project_document Chibi::rooted_files)
 endif()
-if(CHIBI_WEB_PLAYER)
+if(CHIBI_WEB_PLAYER OR CHIBI_WEB_AUTHOR)
     # Prepared artifacts carry their target's ABI, so `chibi export --web` runs
     # this browser-target compiler under Node to prepare the game.
     set_target_properties(chibi-compile PROPERTIES SUFFIX ".js")
     target_link_options(chibi-compile PRIVATE -sENVIRONMENT=node -sNODERAWFS=1 -sEXIT_RUNTIME=1
         -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
-    install(FILES "$<TARGET_FILE:chibi-compile>" "$<TARGET_FILE_DIR:chibi-compile>/chibi-compile.wasm"
-        DESTINATION compiler COMPONENT web_player EXCLUDE_FROM_ALL)
+    if(CHIBI_WEB_PLAYER)
+        install(FILES "$<TARGET_FILE:chibi-compile>" "$<TARGET_FILE_DIR:chibi-compile>/chibi-compile.wasm"
+            DESTINATION compiler COMPONENT web_player EXCLUDE_FROM_ALL)
+    endif()
+    if(CHIBI_WEB_AUTHOR)
+        install(FILES "$<TARGET_FILE:chibi-compile>" "$<TARGET_FILE_DIR:chibi-compile>/chibi-compile.wasm"
+            DESTINATION compiler COMPONENT web_author EXCLUDE_FROM_ALL)
+    endif()
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     chibi_windows_manifest(chibi-compile)
     install(TARGETS chibi-compile RUNTIME DESTINATION bin)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND CHIBI_WEB_AUTHOR)
+    # A fresh Worker owns its source filesystem and compiler globals. The Node
+    # product above keeps NODERAWFS for offline target-ABI preparation.
+    add_executable(chibi-compile-worker "${CHIBI_SDK_ROOT}/src/host/compile_main.c")
+    target_link_libraries(chibi-compile-worker PRIVATE Chibi::project_compilation Chibi::workspace_catalog Chibi::project_document Chibi::rooted_files)
+    set_target_properties(chibi-compile-worker PROPERTIES SUFFIX ".js")
+    target_link_options(chibi-compile-worker PRIVATE
+        -sMODULARIZE=1 -sEXPORT_NAME=createChibiCompiler -sENVIRONMENT=worker
+        -sINVOKE_RUN=0 -sEXIT_RUNTIME=0 -sFORCE_FILESYSTEM=1
+        -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576
+        "-sEXPORTED_RUNTIME_METHODS=['FS','callMain']")
+    install(FILES "$<TARGET_FILE:chibi-compile-worker>"
+        "$<TARGET_FILE_DIR:chibi-compile-worker>/chibi-compile-worker.wasm"
+        "${CHIBI_SDK_ROOT}/src/host/web/compiler_worker.js"
+        DESTINATION compiler COMPONENT web_author EXCLUDE_FROM_ALL)
 endif()

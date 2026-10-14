@@ -2,6 +2,7 @@
 #define CHIBI_RCSS_H
 
 #include "support/rcss_map.h"
+#include "support/text_reader.h"
 
 #include <stddef.h>
 
@@ -27,6 +28,14 @@
  * on success its lines trace each output line. Returns owned RCSS, or NULL
  * with a message in `error`. */
 char *rcss_expand(const char *text, const char *directory, rcss_map *map, char *error, size_t error_size);
+char *rcss_expand_reader(
+    const char *text,
+    const char *directory,
+    rcss_map *map,
+    char *error,
+    size_t error_size,
+    const text_reader *
+);
 
 /* ---------- Custom properties ---------- */
 

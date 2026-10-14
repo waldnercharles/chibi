@@ -7,6 +7,7 @@
  * stencil, and filters and gradients are rml_gpu programs. */
 #include "ui/rml_backend.h"
 
+#include "assets/ui_texture.h"
 #include "diagnostics/tracy.h"
 #include "platform/cute.h"
 #include "runtime/ui/builtin_fonts.h"
@@ -575,10 +576,16 @@ static uintptr_t hold_texture(rml_backend *backend, held_texture held)
 
 static int external_index(rml_backend *backend, const char *name)
 {
+    if (!ui_texture_key_valid(name)) {
+        return -1;
+    }
     for (int i = 0; i < acount(backend->externals); i++) {
         if (strcmp(backend->externals[i].name, name) == 0) {
             return i;
         }
+    }
+    if (acount(backend->externals) >= UI_TEXTURE_BINDINGS_MAX) {
+        return -1;
     }
     apush(backend->externals, (external_texture){ .name = xstrdup(name) });
     return acount(backend->externals) - 1;
@@ -626,6 +633,11 @@ static char *image_path(const char *source, CF_Filter *filter)
 
 static rml_image_provider image_provider;
 static void *image_provider_user;
+void rml_backend_get_image_provider(rml_image_provider *provider, void **user)
+{
+    *provider = image_provider;
+    *user = image_provider_user;
+}
 void rml_backend_set_image_provider(rml_image_provider provider, void *user)
 {
     image_provider = provider;
@@ -641,7 +653,11 @@ static uintptr_t load_texture(void *user, const char *source, int *width, int *h
     ensure_gpu(backend);
     if (strncmp(source, "kit:", 4) == 0) {
         *width = *height = 1;
-        held_texture held = { .external = external_index(backend, source + 4) };
+        int index = external_index(backend, source + 4);
+        if (index < 0) {
+            return 0;
+        }
+        held_texture held = { .external = index };
         return hold_texture(backend, held);
     }
     CF_Filter filter;
@@ -2161,6 +2177,9 @@ void rml_backend_set_texture(rml_backend *backend, const char *name, uint64_t te
     assert(backend && name);
     /* The lookup may grow externals, so it runs before the array is read. */
     int i = external_index(backend, name);
+    if (i < 0) {
+        return;
+    }
     if (texture || backend->externals[i].texture.id != texture) {
         backend->externals[i].revision++;
     }
@@ -2172,6 +2191,9 @@ void rml_backend_set_image(rml_backend *backend, const char *name, uint64_t text
 {
     assert(backend && name);
     int i = external_index(backend, name);
+    if (i < 0) {
+        return;
+    }
     external_texture *external = &backend->externals[i];
     external->texture = (CF_Texture){ texture };
     external->revision++;
@@ -2184,6 +2206,9 @@ void rml_backend_set_texture_revision(rml_backend *backend, const char *name, ui
 {
     assert(backend && name);
     int i = external_index(backend, name);
+    if (i < 0) {
+        return;
+    }
     backend->externals[i].texture = (CF_Texture){ texture };
     backend->externals[i].revision = revision;
     backend->externals[i].still = false;

@@ -23,7 +23,8 @@ static void usage(const char *program)
         stderr,
         "Usage: %s [--project-root PATH] [--render]\n"
         "       %s --project-root PATH --render-request FILE\n"
-        "       %s --project-root PATH --format [--check]\n"
+        "       %s --project-root PATH --format [--check] [--asset "
+        "CONTENT_RELATIVE_PATH]\n"
         "       %s --project-root PATH --migrate\n"
         "       %s --engine-info\n"
         "       %s --project-root PATH --prepare-project OUTPUT [--scene "
@@ -49,6 +50,8 @@ static void usage(const char *program)
         "CHIBI_ALLOW_FULL_GPU=1.\n"
         "With --format, rewrite authored assets in canonical form; --check\n"
         "only lists assets that differ and fails when any do.\n"
+        "--asset selects exactly one content-relative KDL/.chibi asset,\n"
+        "component or input.kdl while retaining full project semantics.\n"
         "With --migrate, upgrade a project saved by an earlier build in "
         "place.\n",
         program,
@@ -171,11 +174,19 @@ static int run(int argc, char **argv)
     const char *request_path = NULL;
     const char *evidence_path = NULL;
     char *direct = NULL;
-    const char *prepared_path = NULL, *scene = NULL;
+    const char *prepared_path = NULL, *scene = NULL, *asset = NULL;
     int render = 0;
-    bool format = false, check = false, migrate = false;
+    bool format = false, format_option = false, check = false, migrate = false;
+    bool asset_option = false;
+    for (int i = 1; i < argc; i++) {
+        asset_option |= !strcmp(argv[i], "--asset");
+    }
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--engine-info")) {
+            if (asset_option) {
+                fprintf(stderr, "--asset requires only --format [--check]\n");
+                return CHIBI_AUTOMATION_INVALID_REQUEST;
+            }
             char *info = resource_info();
             if (!info) {
                 return 1;
@@ -193,8 +204,22 @@ static int run(int argc, char **argv)
             continue;
         }
         if (!strcmp(argv[i], "--format") || !strcmp(argv[i], "--check")) {
+            bool checking = !strcmp(argv[i], "--check");
+            if ((checking && check) || (!checking && format_option)) {
+                fprintf(stderr, "Duplicate formatting option: %s\n", argv[i]);
+                return CHIBI_AUTOMATION_INVALID_REQUEST;
+            }
             format = true;
-            check |= !strcmp(argv[i], "--check");
+            check |= checking;
+            format_option |= !checking;
+            continue;
+        }
+        if (!strcmp(argv[i], "--asset")) {
+            if (asset || i + 1 >= argc || argv[i + 1][0] == '-') {
+                fprintf(stderr, "--asset requires one path and cannot be repeated\n");
+                return CHIBI_AUTOMATION_INVALID_REQUEST;
+            }
+            asset = argv[++i];
             continue;
         }
         if (!strcmp(argv[i], "--migrate")) {
@@ -235,6 +260,12 @@ static int run(int argc, char **argv)
         usage(argv[0]);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
+    if (asset && (!format_option || render || migrate || prepared_path ||
+                  scene || direct || evidence_path)) {
+        fprintf(stderr, "--asset requires only --format [--check] and --project-root\n");
+        free(direct);
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
     if ((direct && render) ||
         ((direct || evidence_path) && (migrate || prepared_path || format))) {
         fprintf(stderr, "Direct commands/evidence cannot be combined with legacy execution flags\n");
@@ -272,7 +303,9 @@ static int run(int argc, char **argv)
                  : CHIBI_AUTOMATION_IO_ERROR;
     }
     if (format) {
-        int differing = chibi_automation_format_assets(project_root, check);
+        int differing = asset
+                          ? chibi_automation_format_asset(project_root, asset, check)
+                          : chibi_automation_format_assets(project_root, check);
         return differing < 0      ? CHIBI_AUTOMATION_IO_ERROR
              : check && differing ? CHIBI_AUTOMATION_VALIDATION_ERROR
                                   : CHIBI_AUTOMATION_OK;

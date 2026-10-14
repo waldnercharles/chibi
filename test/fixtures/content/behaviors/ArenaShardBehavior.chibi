@@ -1,10 +1,10 @@
 behavior "ArenaShardBehavior" {
-    state Age: float = 0.0
-    state "Pitch Rate": float = 0.0
-    state "Roll Rate": float = 0.0
-    state Lift: float = 0.0
-    state "Birth Scale": float = 1.0
-    action age_2 = set_variable<"Age">(state."Age" + delta_time())
+    self.Age: float = 0.0
+    "Pitch Rate": float = 0.0
+    "Roll Rate": float = 0.0
+    Lift: float = 0.0
+    "Birth Scale": float = 1.0
+    action age_2 = set_variable<"Age">(self."Age" + delta_time())
     on Tick {
         age_2()
     }
@@ -38,10 +38,10 @@ behavior "ArenaShardBehavior" {
     }
     "Initialize Shard" :: fn(scale: float = 0.0, "Pitch Rate": double = 0.0, "Roll Rate": double = 0.0, Lift: double = 0.0) {
         after entry {
-            state."Birth Scale" = entry.scale
-            state."Pitch Rate" = entry."Pitch Rate"
-            state."Roll Rate" = entry."Roll Rate"
-            state."Lift" = entry.Lift
+            self."Birth Scale" = entry.scale
+            self."Pitch Rate" = entry."Pitch Rate"
+            self."Roll Rate" = entry."Roll Rate"
+            self."Lift" = entry.Lift
             return
         }
     }
@@ -49,11 +49,11 @@ behavior "ArenaShardBehavior" {
         after entry {
             self.Transform.x = "Position X"(self.Transform.x, self.Velocity.x, entry.Seconds)
             self.Transform.y = "Position Y"(self.Transform.y, self.Velocity.y, entry.Seconds)
-            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, state."Pitch Rate", entry.Seconds)
-            self.VisualTransform.roll = Roll(self.VisualTransform.roll, state."Roll Rate", entry.Seconds)
-            self.VisualTransform.scale = state."Birth Scale" * Fade("Age Phase"(entry.Age, entry.Seconds))
-            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(state."Lift" * entry.Seconds)
-            state."Lift" = state."Lift" - multiply(entry.Seconds, B: plain double = 90.0)
+            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, self."Pitch Rate", entry.Seconds)
+            self.VisualTransform.roll = Roll(self.VisualTransform.roll, self."Roll Rate", entry.Seconds)
+            self.VisualTransform.scale = self."Birth Scale" * Fade("Age Phase"(entry.Age, entry.Seconds))
+            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(self."Lift" * entry.Seconds)
+            self."Lift" = self."Lift" - multiply(entry.Seconds, B: plain double = 90.0)
             return
         }
     }

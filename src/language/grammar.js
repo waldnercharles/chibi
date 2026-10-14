@@ -5,7 +5,6 @@ const K = Object.fromEntries(
     "library",
     "system",
     "without",
-    "state",
     "shared",
     "action",
     "event",
@@ -95,6 +94,7 @@ module.exports = grammar({
   extras: ($) => [/\s/, $.comment],
   externals: ($) => [$._automatic_terminator],
   word: ($) => $.identifier,
+  inline: ($) => [$._binding_name],
   // Contextual words stay usable as names wherever a name fits.
   reserved: {
     global: ($) =>
@@ -109,10 +109,12 @@ module.exports = grammar({
     [$.type_name],
     [$._name, $._member_name],
     [$._expression, $._name],
+    [$.parameter, $._expression],
     [$.argument_list, $.parenthesized_expression],
     [$._state_declaration_value, $.local_declaration, $.label_statement],
     [$.local_declaration, $.label_statement],
     [$._state_declaration_value, $.local_declaration],
+    [$._self_field_declaration, $._expression],
     [$._expression, $._member_name],
     [$._expression, $._call_target, $._name],
     [$._expression, $._call_target],
@@ -205,14 +207,20 @@ module.exports = grammar({
         $.query_declaration,
       ),
     // Systems accept both declarations and statements at their root. Prefer
-    // persistent state there. Callable bodies require explicit state storage.
+    // persistent fields there. Callable bodies qualify persistent declarations.
     state_declaration: ($) =>
-      prec.dynamic(1, seq(
-        optional(field("storage", choice(K.state, K.shared))),
-        $._state_declaration_value,
+      prec.dynamic(1, choice(
+        seq(optional(field("storage", K.shared)), $._state_declaration_value),
+        $._self_field_declaration,
       )),
     _explicit_state_declaration: ($) =>
-      seq(field("storage", choice(K.state, K.shared)), $._state_declaration_value),
+      choice(seq(field("storage", K.shared), $._state_declaration_value),
+        $._self_field_declaration),
+    _self_field_declaration: ($) =>
+      seq(field("storage", "self"), ".", field("name", $._name),
+        choice(seq(":=", field("value", $._expression)),
+          seq(":", field("type", $.type),
+            optional(seq("=", field("value", $._expression))))), $._end),
     _state_declaration_value: ($) =>
       seq(
         choice(
@@ -318,10 +326,10 @@ module.exports = grammar({
       seq(
         choice(
           seq(
-            field("name", $._name),
+            field("name", $._binding_name),
             optional(seq(":", field("type", $._signature_type))),
           ),
-          seq(field("type", $._signature_type), field("name", $._name)),
+          seq(field("type", $._signature_type), field("name", $._binding_name)),
         ),
         optional(seq(choice(K.from, K.split), field("source", $._expression))),
         optional(seq("=", field("value", $._expression))),
@@ -392,7 +400,7 @@ module.exports = grammar({
       ),
     local_declaration: ($) =>
       seq(
-        field("name", $._name),
+        field("name", $._binding_name),
         choice(":=", seq(":", field("type", $.type), "=")),
         field("value", $._expression),
         $._end,
@@ -508,7 +516,7 @@ module.exports = grammar({
         $.struct_expression,
         $.await_expression,
       ),
-    builtin_reference: ($) => choice(K.state, K.event, K.entry),
+    builtin_reference: ($) => choice(K.event, K.entry),
     engine_reference: ($) => seq(K.engine, "[", field("name", $.string), "]"),
     member_expression: ($) =>
       prec.left(
@@ -635,6 +643,7 @@ module.exports = grammar({
     struct_field: ($) =>
       seq(field("name", $._member_name), ":", field("value", $._expression)),
     _name: ($) => choice($.identifier, $.string),
+    _binding_name: ($) => choice($._name, alias("self", $.identifier)),
     _member_name: ($) => reserved("member", choice($.identifier, $.string)),
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
     number: ($) =>

@@ -2,6 +2,7 @@
 #include "capabilities/catalog.h"
 #include "ecs/component_catalog.h"
 #include "execution/prepared.h"
+#include "types/catalog.h"
 #include "types/value_wire.h"
 
 /* A component type a project declares in content/components instead of C. */
@@ -28,6 +29,13 @@ typedef struct declared_components declared_components;
  * type and script catalogs' project slots, and freeing it restores the next
  * newest. Rows start zeroed, then owning publication clamps range contracts. */
 declared_components *declared_components_new(const declared_component *, int count, char *error, size_t size);
+/* Independent descriptors for authoring; never changes process project slots. */
+declared_components *declared_components_authoring(
+    const declared_component *,
+    int count,
+    char *error,
+    size_t size
+);
 /* Whether a field may have the type `spelling`. */
 bool declared_components_field_type(const char *spelling);
 declared_components *declared_components_retain(declared_components *);
@@ -48,3 +56,19 @@ typedef struct
     const execution_prepared_linker *base;
 } declared_components_linking;
 execution_prepared_linker declared_components_linker(const declared_components_linking *);
+
+/* Thread-confined temporary project reflection. Zero initialize tokens, leave
+ * in reverse order and do not free a borrowed previous owner while entered.
+ * The entered owner is retained until leave. No descriptor construction occurs. */
+typedef struct
+{
+    type_catalog_pack previous;
+    const script_catalog *script;
+    declared_components *entered;
+    const declared_components *previous_owner;
+    unsigned depth;
+    bool had_previous, previous_scoped, active;
+} declared_components_scope;
+bool declared_components_scope_enter(declared_components *, declared_components_scope *);
+bool declared_components_scope_leave(declared_components_scope *);
+void declared_components_wire_detached(execution_wire *, declared_components **);

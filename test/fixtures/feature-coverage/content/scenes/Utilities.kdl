@@ -1,0 +1,9 @@
+version 1
+name "Utilities"
+(array)entities {
+    - {
+        name "Utilities"
+        prototype "UtilityPanel"
+        (array)behaviors "UtilityProbe"
+    }
+}

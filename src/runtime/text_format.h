@@ -11,5 +11,6 @@ pin_value native_format_text(const pin_value *, int, arena *);
 pin_value native_text_equal(const pin_value *, int, arena *);
 extern const node_host_call NATIVE_FORMAT_TEXT_HOST, NATIVE_FORMAT_TEXT_CALL;
 extern const node_host_call NATIVE_TEXT_EQUAL_HOST, NATIVE_TEXT_EQUAL_CALL;
+extern const node_host_call NATIVE_TEXT_CONTAINS_CALL, NATIVE_TEXT_RANK_CALL;
 extern const node_access NATIVE_TEXT_ACCESS;
 #endif

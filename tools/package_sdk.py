@@ -20,14 +20,14 @@ sys.dont_write_bytecode = True
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = Path('share/chibi/package.json')
-CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
+CORE_TARGETS = {'ui_style', 'ui_loader', 'utf8', 'rooted_files', 'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents', 'input_action'}
-COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
-NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
+COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
+NATIVE_TARGETS = {'visual_catalog', 'asset_json', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'value_json', 'json_query', 'color_value', 'authoring_platform_declarations', 'ui_replay', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
-NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'scene_authoring', 'asset_authoring', 'material_authoring', 'resource_catalog', 'model_authoring', 'scenario_document'}
-DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
+NATIVE_AUTHORING_TARGETS = {'workspace_tools_declarations', 'model_export_artifacts', 'runtime_properties', 'workspace_simulation_declarations', 'resource_preview_data', 'css_values', 'ui_source_provider', 'ui_source_preview_declarations', 'shader_preparation', 'project_compilation', 'scene_authoring', 'asset_authoring', 'material_authoring', 'resource_catalog', 'model_authoring', 'scenario_document', 'workspace_documents', 'workspace_presentation', 'workspace_resources', 'workspace_assets', 'workspace_file_history', 'document_semantics', 'visual_authoring', 'ui_source_sessions', 'workspace_catalog', 'document_graph', 'visual_model', 'ui_dom_declarations', 'observations', 'workspace_runtime_declarations', 'browser_messages', 'browser_compiler', 'workspace_debug', 'project_semantics', 'resource_previews_declarations', 'workspace_info', 'workspace_scaffold'}
+DESKTOP_AUTHORING_TARGETS = {'workspace_tools', 'workspace_simulation', 'ui_source_preview', 'project_preparation', 'model_import', 'visual_previews', 'authoring_host', 'ui_dom', 'authoring_platform', 'workspace_runtime', 'resource_previews', 'workspace_imports'}
 
 
 def digest(path):
@@ -109,8 +109,8 @@ def product_targets(cache, system=None):
         products.add('chibi-player')
     if native and cache.get('CHIBI_SDK_BUILD_COMPILER') == 'ON':
         products.add('chibi-compile')
-    if products == {'chibi-player', 'chibi-compile'}:
-        products.add('chibi')
+    if {'chibi-player', 'chibi-compile'}.issubset(products):
+        products.update(('chibi', 'chibi-author'))
     return products
 
 
@@ -181,7 +181,7 @@ def executable_identity(build, cache, target, target_directory, output=None, *, 
             'link_inputs': inputs}
 
 
-def build_identity(build, cache):
+def build_identity(build, cache, *, products=None):
     metadata_path = build / 'chibi_engine_metadata.json'
     if not metadata_path.is_file():
         raise ValueError('Packaging requires configured engine metadata')
@@ -214,7 +214,23 @@ def build_identity(build, cache):
     archives = {}
     archive_targets = {}
     executables = {}
-    allowed_products = product_targets(cache, cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME'))
+    allowed_products = (set(products) if products is not None else
+                        product_targets(cache, cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME')))
+    selected_objects = None
+    if products is not None:
+        if cache.get('CMAKE_GENERATOR') != 'Ninja' or not products:
+            raise ValueError('Explicit product packaging requires a nonempty Ninja product closure')
+        selected_objects = set()
+        for output in products.values():
+            lines = subprocess.check_output(
+                ['ninja', '-C', str(build), '-t', 'commands', output], text=True).splitlines()
+            for line in lines:
+                arguments = shlex.split(line)
+                if '-c' in arguments and '-o' in arguments:
+                    name = arguments[arguments.index('-o') + 1]
+                    selected_objects.add((build / name).resolve())
+        if not selected_objects:
+            raise ValueError('Explicit products have no compiled object closure')
     for entry in commands:
         directory = Path(entry['directory'])
         arguments = entry.get('arguments') or shlex.split(entry['command'])
@@ -228,6 +244,8 @@ def build_identity(build, cache):
             if not object_name:
                 raise ValueError('Compile command has no object output') from None
         object_path = (directory / object_name).resolve()
+        if selected_objects is not None and object_path not in selected_objects:
+            continue
         if not object_path.is_file():
             raise ValueError(f'Build is incomplete: {object_path.name}')
         target_directory = next((parent for parent in object_path.parents
@@ -235,11 +253,12 @@ def build_identity(build, cache):
         if target_directory is None:
             raise ValueError(f'Cannot identify archive owner for {object_path.name}')
         target = target_directory.name.removesuffix('.dir')
-        if target in ('chibi', 'chibi-player', 'chibi-compile'):
+        if target in allowed_products or target in ('chibi', 'chibi-player', 'chibi-compile', 'chibi-author', 'chibi-compile-worker'):
             if target not in allowed_products:
                 raise ValueError(f'Executable {target} is outside the configured product contract')
             if target not in executables:
-                executables[target] = executable_identity(build, cache, target, target_directory, source_root=ROOT)
+                executables[target] = executable_identity(build, cache, target, target_directory,
+                    output=build / products[target] if products is not None else None, source_root=ROOT)
             executable = build / executables[target]['path']
             if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
                 raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
@@ -288,6 +307,8 @@ def build_identity(build, cache):
             else:
                 key = 'external/' + path.name + '-' + checksum[:16]
             inputs[key] = checksum
+    if selected_objects is not None and set(objects) != {path.relative_to(build).as_posix() for path in selected_objects}:
+        raise ValueError('Explicit product object closure differs from the compilation database')
     def owned(name, record):
         if (not isinstance(record, dict) or not isinstance(record.get('source'), str)
                 or not isinstance(record.get('header'), str)
@@ -364,7 +385,7 @@ def check_exports(stage, kind, cache, build):
         if cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME') != 'Emscripten' or cache.get('CHIBI_WEB_THREADS') == 'ON':
             expected |= {'task_scheduler'}
         if kind == 'sdk':
-            expected |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
+            expected |= NATIVE_AUTHORING_TARGETS
     if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
         expected |= DESKTOP_TARGETS
         if kind == 'sdk':
@@ -386,7 +407,7 @@ def check_exports(stage, kind, cache, build):
     if cache.get('CHIBI_SDK_BUILD_NATIVE') == 'ON':
         header_owners |= NATIVE_TARGETS
         if kind == 'sdk':
-            header_owners |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
+            header_owners |= NATIVE_AUTHORING_TARGETS
     if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
         header_owners |= DESKTOP_TARGETS
         if kind == 'sdk':

@@ -84,7 +84,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
     parse(
         "behavior Demo {\n"
         "owner \"ecs.entity\"; description \"fixture\";\n"
-        "state count: int = 0; shared enabled := true;\n"
+        "count: int = 0; shared enabled := true;\n"
         "target := self.Velocity.Parent;\n"
         "action pending = delay(Duration: 1);\n"
         "event changed = self.Health.CurrentChanged;\n"
@@ -104,6 +104,32 @@ TEST_CASE(language_declarations_actions_and_bindings)
     return true;
 }
 
+TEST_CASE(language_persistent_fields_use_self_without_a_keyword)
+{
+    parse(
+        "behavior Fields { state: int = 1; Count := 0; "
+        "Next :: fn() { self.calls: int = 0; self.calls += 1; } "
+        "on Tick { self.Count += state; Next(); } }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode body = declaration_body();
+    REQUIRE(node_text(field(ts_node_named_child(body, 0), "name"), "state"));
+    TSNode callable = field(ts_node_named_child(body, 2), "body");
+    TSNode stored = ts_node_named_child(callable, 0);
+    REQUIRE(!strcmp(ts_node_type(stored), "state_declaration"));
+    REQUIRE(node_text(field(stored, "name"), "calls"));
+    const char *obsolete[] = {
+        "behavior Old { state Count: int = 0; }",
+        "behavior Old { state int Count = 0; }",
+        "library Old { Next :: fn() { state Count := 0; } }",
+    };
+    for (size_t i = 0; i < sizeof obsolete / sizeof *obsolete; i++) {
+        parse(obsolete[i]);
+        REQUIRE(original->diagnostic_count > 0);
+    }
+    return true;
+}
+
 TEST_CASE(language_callable_types_entries_and_results)
 {
     parse(
@@ -114,7 +140,7 @@ TEST_CASE(language_callable_types_entries_and_results)
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
         "converted := engine[\"To Real\"](Value: int = 3);\n"
-        "chosen := Identity<int>(source: ref int from state.count, "
+        "chosen := Identity<int>(source: ref int from self.count, "
         "item: 2);\n"
         "}"
     );
@@ -499,6 +525,7 @@ void test_language_syntax()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
+    RUN_TEST_CASE(language_persistent_fields_use_self_without_a_keyword);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);

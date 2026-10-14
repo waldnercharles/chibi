@@ -827,27 +827,25 @@ bool execution_prepared_write(
     }
     return success;
 }
-static bool preparation_budget(prepared_context *c)
+/* Preparation estimates include temporary verifier/optimizer storage. Check
+ * each phase against the remaining budget without retaining its peak charge. */
+static bool preparation_fits(execution_wire *w, size_t bytes)
+{
+    if (bytes == SIZE_MAX || w->owned_bytes > EXECUTION_WIRE_MAX_BYTES ||
+        bytes > EXECUTION_WIRE_MAX_BYTES - w->owned_bytes ||
+        (w->storage_budget && bytes > *w->storage_budget)) {
+        w->error = "prepared preparation peak exceeds aggregate budget";
+        return false;
+    }
+    return true;
+}
+static bool preparation_services(prepared_context *c)
 {
     execution_wire *w = &c->wire;
-    size_t bytes = execution_module_preparation_bytes(c->plan);
-    size_t effects = execution_module_effects_bytes(c->plan);
-    if (effects > SIZE_MAX - bytes) {
-        w->error = "prepared effects exceed allocation budget";
+    /* Validate owned closure depth/count before traversing retained definitions.
+     * This phase does not retain the later module-finalization scratch. */
+    if (!preparation_fits(w, execution_module_preparation_bytes(c->plan))) {
         return false;
-    }
-    bytes += effects;
-    if (bytes == SIZE_MAX) {
-        w->error = "prepared module closure exceeds preparation limit";
-        return false;
-    }
-    for (int i = 0; i < acount(c->functions); i++) {
-        size_t next = behavior_function_preparation_bytes(c->functions[i]);
-        if (next > SIZE_MAX - bytes) {
-            w->error = "prepared finalization count exceeds budget";
-            return false;
-        }
-        bytes += next;
     }
     size_t services = 1;
     for (int i = 0; i < acount(c->functions); i++) {
@@ -862,8 +860,7 @@ static bool preparation_budget(prepared_context *c)
         w->error = "prepared service requirement count exceeds budget";
         return false;
     }
-    if (!execution_wire_reserve(w, bytes) ||
-        !execution_wire_reserve(w, services * sizeof *c->plan->services)) {
+    if (!execution_wire_reserve(w, services * sizeof *c->plan->services)) {
         return false;
     }
     prepared_vector(
@@ -947,24 +944,44 @@ execution_module *execution_prepared_read_budget(
         owners(&c);
     }
     if (!w->error) {
-        preparation_budget(&c);
+        preparation_services(&c);
     }
     if (!w->error) {
         for (int i = count - 1; i >= 0; i--) {
-            size_t before = arena_storage_bytes(&c.functions[i]->owned);
-            size_t limit = *remaining > SIZE_MAX - before ? SIZE_MAX
-                                                          : before + *remaining;
+            behavior_function *f = c.functions[i];
+            if (!preparation_fits(w, behavior_function_preparation_bytes(f))) {
+                break;
+            }
+            size_t before = behavior_function_storage_bytes(f);
+            size_t arena_before = arena_storage_bytes(&f->owned);
+            size_t limit = *remaining > SIZE_MAX - arena_before
+                             ? SIZE_MAX
+                             : arena_before + *remaining;
             if (!behavior_function_prepare_definition(c.functions[i], limit, error, size)) {
                 w->error = "prepared definition verification failed";
                 break;
             }
-            size_t growth = arena_storage_bytes(&c.functions[i]->owned) - before;
-            assert(growth <= *remaining);
-            *remaining -= growth;
-            w->storage_charged += growth;
+            size_t after = behavior_function_storage_bytes(f);
+            size_t growth = after > before ? after - before : 0;
+            if (after == SIZE_MAX || !execution_wire_reserve(w, growth)) {
+                if (!w->error) {
+                    w->error = "prepared definition storage exceeds aggregate "
+                               "budget";
+                }
+                break;
+            }
         }
     }
     execution_module *m = NULL;
+    if (!w->error) {
+        size_t scratch = execution_module_preparation_bytes(c.plan);
+        size_t effects = execution_module_effects_bytes(c.plan);
+        if (effects > SIZE_MAX - scratch) {
+            w->error = "prepared finalization peak exceeds aggregate budget";
+        } else {
+            preparation_fits(w, scratch + effects);
+        }
+    }
     if (!w->error) {
         c.plan->valid = true;
         m = execution_module_finish_decoded(&c.plan, backend, error, size);
@@ -972,7 +989,7 @@ execution_module *execution_prepared_read_budget(
     if (m) {
         size_t bytes = execution_module_storage_bytes(m);
         size_t available = *remaining + w->storage_charged;
-        if (bytes > available) {
+        if (bytes > EXECUTION_WIRE_MAX_BYTES || bytes > available) {
             execution_module_free(m);
             m = NULL;
             w->error = "finalized canonical storage exceeds aggregate budget";

@@ -39,8 +39,6 @@
 #include "authoring/source_presentation.h"
 #include "authoring/source_references.h"
 #include "authoring/source_rename.h"
-#include "authoring/studio_project.h"
-#include "authoring/studio_schema.h"
 #include "authoring/visual_prepare.h"
 #include "automation/asset_operations.h"
 #include "automation/content_hash.h"
@@ -66,7 +64,6 @@
 #include "graph/nodes/component_nodes.h"
 #include "graph/nodes/conv_nodes.h"
 #include "graph/nodes/core_nodes.h"
-#include "graph/nodes/studio_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "host/native_default.h"
 #include "render/shader_catalog.h"
@@ -79,6 +76,7 @@
 #include "support/asset_json.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
+#include "support/rooted_files.h"
 #include "support/text_file.h"
 #include "support/text_search.h"
 #include "support/xalloc.h"
@@ -290,6 +288,10 @@ typedef struct
 static const contract_field CONTRACT_NO_FIELDS[1] = { { NULL, NULL, false, NULL } };
 static const contract_field CONTRACT_PROJECT_ROOT[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
+};
+static const contract_field CONTRACT_VALIDATE_PROJECT[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "authoring", "boolean", false, "Prepare against reusable workspace capabilities for an authored tools application; default false uses the game runtime profile." },
 };
 static const contract_field CONTRACT_LIST_ASSETS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -526,6 +528,19 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
 };
 
+static const contract_field CONTRACT_PREVIEW_MODEL[] = {
+    { "project_root", "string", false, "Project directory." },
+    { "path", "string", false, "Model asset path, or use kind=model and name." },
+    { "kind", "string", false, "model" },
+    { "name", "string", false, "Model asset name." },
+    { "width", "integer", false, "Preview width, default 256, maximum 512." },
+    { "height", "integer", false, "Preview height, default 256, maximum 512." },
+    { "time", "number", false, "Deterministic preview time, 0..3600 seconds." },
+    { "parameters", "object", false, "Declared model or scoped material overrides; scalar or exact-width numeric arrays." },
+    { "view", "object", false, "Yaw and pitch radians, zoom [0.25,4], finite pan_x/pan_y [-1000000,1000000]; same camera as Studio." },
+    { "inspection", "object", false, "part=-1 for all, or existing part index; section_axis=0 for none or 1/2/3 for x/y/z; finite bounded section_offset; reference_visible boolean and reference_opacity [0,1]. Reference image and alignment come from model source." },
+};
+
 static const contract_field CONTRACT_FIND_REFERENCES[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "asset", "object", false, "Asset {kind, name}; with graph or graph_id, its function or macro; with variable, parameter or local, that member." },
@@ -653,6 +668,15 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       true,
       true,
       false },
+    { "preview_model",
+      "Render a model through the production scene renderer with deterministic "
+      "view and part inspection.",
+      CONTRACT_PREVIEW_MODEL,
+      CONTRACT_FIELD_COUNT(CONTRACT_PREVIEW_MODEL),
+      1,
+      true,
+      true,
+      false },
     {
         "describe_contract",
         "Describe the native automation contract and reflected capabilities.",
@@ -719,8 +743,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "validate_project",
         "Validate the manifest, start scene and every asset, listing only "
         "assets with problems.",
-        CONTRACT_PROJECT_ROOT,
-        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        CONTRACT_VALIDATE_PROJECT,
+        CONTRACT_FIELD_COUNT(CONTRACT_VALIDATE_PROJECT),
         1,
         true,
         true,
@@ -1696,7 +1720,6 @@ typedef struct
     authoring_language_catalog *native;
     authoring_sources *sources;
     char error[256];
-    bool studio; /* the project is Studio's, whose world runs its editor nodes */
 } catalog_links;
 
 static bool links_family(const asset_family *family)
@@ -1706,10 +1729,9 @@ static bool links_family(const asset_family *family)
            !strcmp(family->kind, "event") || !strcmp(family->kind, "model");
 }
 
-static authoring_language_catalog *source_native_catalog(const char *root, char *error, size_t size)
+static authoring_language_catalog *source_native_catalog(char *error, size_t size)
 {
-    native_capabilities
-        *table = authoring_application_catalog_new(studio_project_is(root), error, size);
+    native_capabilities *table = authoring_application_catalog_new(true, error, size);
     if (!table) {
         return NULL;
     }
@@ -1724,8 +1746,7 @@ static authoring_language_catalog *source_native_catalog(const char *root, char 
 static bool load_declared(const char *root, declared_components **out, char *error, size_t size)
 {
     *out = NULL;
-    native_capabilities
-        *table = authoring_application_catalog_new(studio_project_is(root), error, size);
+    native_capabilities *table = authoring_application_catalog_new(true, error, size);
     if (!table) {
         return false;
     }
@@ -1742,7 +1763,7 @@ static bool load_declared(const char *root, declared_components **out, char *err
 
 static void load_catalog_links(const char *root, const asset_entry *entries, catalog_links *links)
 {
-    links->native = source_native_catalog(root, links->error, sizeof links->error);
+    links->native = source_native_catalog(links->error, sizeof links->error);
     if (!links->native) {
         return;
     }
@@ -1941,9 +1962,6 @@ static void catalog_validate_asset(
                 acount(links->assets),
                 &report
             ));
-            if (!links->studio) {
-                studio_nodes_check(behavior, &report);
-            }
             catalog_add_report(asset, &report);
             compile_report_free(&report);
         }
@@ -2455,7 +2473,7 @@ static int analyze_project_source(
         set_error(error, size, "location requires unsigned graph_id, node_id and optional pin_id");
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    authoring_language_catalog *native = source_native_catalog(root, error, size);
+    authoring_language_catalog *native = source_native_catalog(error, size);
     if (!native) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -2909,7 +2927,7 @@ static int build_catalog_from_entries(
     }
     catalog_asset *assets = NULL;
     bool graphs_cached = previous && catalog_links_unchanged(previous, entries);
-    catalog_links links = { .studio = studio_project_is(root) };
+    catalog_links links = { 0 };
     load_catalog_links(root, entries, &links);
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
@@ -5638,7 +5656,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "execution_status kind does not match an executable source asset");
         return -1;
     }
-    authoring_language_catalog *native = source_native_catalog(root, error, sizeof error);
+    authoring_language_catalog *native = source_native_catalog(error, sizeof error);
     if (!native) {
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
@@ -6298,22 +6316,127 @@ static int format_components(const char *root, bool check)
     return differing;
 }
 
-int chibi_automation_format_assets(const char *root, bool check)
+static int format_asset_entry(
+    const char *root,
+    const source_catalog *sources,
+    const asset_entry *entry,
+    bool check
+)
+{
+    char error[512] = { 0 };
+    int differing = 0;
+    char *path = content_path(root, entry->relative);
+    size_t bytes = 0;
+    uint64_t hash = 0;
+    char *json = read_file(path, &bytes, &hash, error, sizeof error);
+    char *metadata = NULL;
+    char *text = json
+                   ? canonical_asset(root, sources, entry->family, json, path, &metadata, error, sizeof error)
+                   : NULL;
+    if (text && strcmp(entry->family->extension, CODE_ASSET_EXTENSION)) {
+        char *disk = asset_text_to_disk(text, error, sizeof error);
+        free(text);
+        text = disk;
+    }
+    if (!text) {
+        fprintf(stderr, "chibi_ctl --format: %s: %s\n", entry->relative, error);
+        differing = -1;
+    } else if (strcmp(json, text)) {
+        differing++;
+        fprintf(stderr, "%s %s\n", check ? "not canonical:" : "formatted", entry->relative);
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write %s\n", entry->relative);
+            differing = -1;
+        }
+    }
+    if (!check && differing >= 0 && text && metadata &&
+        !save_code_metadata(path, text, metadata)) {
+        fprintf(
+            stderr,
+            "chibi_ctl --format: could not save metadata for %s\n",
+            entry->relative
+        );
+        differing = -1;
+    }
+    free(metadata);
+    free(text);
+    free(json);
+    free(path);
+    return differing;
+}
+
+/* Prove the exact selected spelling and every directory under the project.
+ * The shared writers also touch source metadata and its staging file. */
+static bool format_asset_path(const char *root, const char *asset, char *error, size_t size)
+{
+    if (!rooted_files_path_valid(asset)) {
+        set_error(error, size, "--asset requires a canonical content-relative file path");
+        return false;
+    }
+    const char *content = chibi_automation_content(root);
+    size_t root_bytes = strlen(root);
+    while (root_bytes && root[root_bytes - 1] == '/') {
+        root_bytes--;
+    }
+    if (strlen(content) <= root_bytes || strncmp(content, root, root_bytes) ||
+        content[root_bytes] != '/') {
+        set_error(error, size, "content must be inside the selected project");
+        return false;
+    }
+    const char *relative = content + root_bytes;
+    while (*relative == '/') {
+        relative++;
+    }
+    rooted_files *project = rooted_files_open(root);
+    rooted_files *files = project ? rooted_files_directory(project, relative, false)
+                                  : NULL;
+    char *canonical = files ? rooted_files_canonical_path(files, asset) : NULL;
+    bool valid = canonical && !strcmp(canonical, asset);
+    free(canonical);
+    const char *extension = strrchr(asset, '.');
+    if (valid && extension && !strcmp(extension, CODE_ASSET_EXTENSION)) {
+        const char *suffixes[] = { ".meta", ".meta.tmp" };
+        for (int i = 0; i < 2 && valid; i++) {
+            size_t bytes = strlen(asset) + strlen(suffixes[i]) + 1;
+            char *sidecar = xmalloc(bytes);
+            snprintf(sidecar, bytes, "%s%s", asset, suffixes[i]);
+            rooted_file_info info;
+            bool found = rooted_files_stat(files, sidecar, &info);
+            valid = found ? info.regular && !info.link : errno == ENOENT;
+            free(sidecar);
+        }
+    }
+    if (files) {
+        rooted_files_close(files);
+    }
+    if (project) {
+        rooted_files_close(project);
+    }
+    if (!valid) {
+        set_error(error, size, "selected asset must be an existing canonical regular file inside project content, without symbolic links");
+    }
+    return valid;
+}
+
+static int format_assets(const char *root, const char *asset, bool check)
 {
     asset_entry *entries = NULL;
     declared_components *declared = NULL;
     char error[512] = { 0 };
     if (!open_content(root, error, sizeof error) ||
+        (asset && !format_asset_path(root, asset, error, sizeof error)) ||
         !load_declared(root, &declared, error, sizeof error) ||
         enumerate_assets(root, &entries, error, sizeof error)) {
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
         declared_components_free(declared);
         return -1;
     }
-    authoring_language_catalog *native = source_native_catalog(root, error, sizeof error);
+    authoring_language_catalog *native = source_native_catalog(error, sizeof error);
     if (!native) {
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
         free_asset_entries(entries);
+        declared_components_free(declared);
         return -1;
     }
     source_catalog *sources = source_catalog_new(
@@ -6321,71 +6444,59 @@ int chibi_automation_format_assets(const char *root, bool check)
         authoring_language_catalog_view(native)
     );
     int differing = 0;
+    bool found = !asset;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
+        if (asset && strcmp(entries[i].relative + strlen("content/"), asset)) {
+            continue;
+        }
         if (entries[i].family->loader == ASSET_UI) {
             continue;
         }
-        char *path = content_path(root, entries[i].relative);
-        size_t bytes = 0;
-        uint64_t hash = 0;
-        char *json = read_file(path, &bytes, &hash, error, sizeof error);
-        char *metadata = NULL;
-        char *text = json
-                       ? canonical_asset(root, sources, entries[i].family, json, path, &metadata, error, sizeof error)
-                       : NULL;
-        if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
-            char *disk = asset_text_to_disk(text, error, sizeof error);
-            free(text);
-            text = disk;
-        }
-        if (!text) {
-            fprintf(stderr, "chibi_ctl --format: %s: %s\n", entries[i].relative, error);
-            differing = -1;
-        } else if (strcmp(json, text)) {
-            differing++;
-            fprintf(
-                stderr,
-                "%s %s\n",
-                check ? "not canonical:" : "formatted",
-                entries[i].relative
-            );
-            FILE *file = check ? NULL : fopen(path, "wb");
-            if (!check && (!file || fputs(text, file) < 0 || fclose(file))) {
-                fprintf(
-                    stderr,
-                    "chibi_ctl --format: could not write %s\n",
-                    entries[i].relative
-                );
-                differing = -1;
-            }
-        }
-        if (!check && differing >= 0 && text && metadata &&
-            !save_code_metadata(path, text, metadata)) {
-            fprintf(
-                stderr,
-                "chibi_ctl --format: could not save metadata for %s\n",
-                entries[i].relative
-            );
-            differing = -1;
-        }
-        free(metadata);
-        free(text);
-        free(json);
-        free(path);
+        found = true;
+        int one = format_asset_entry(root, sources, &entries[i], check);
+        differing = one < 0 ? one : differing + one;
     }
-    if (differing >= 0) {
+    if (differing >= 0 && (!asset || !strcmp(asset, INPUT_MAP_FILE))) {
+        found = true;
         int map = format_input_map(root, check);
         differing = map < 0 ? map : differing + map;
     }
-    if (differing >= 0) {
+    if (differing >= 0 && !asset) {
         int components = format_components(root, check);
         differing = components < 0 ? components : differing + components;
+    }
+    if (differing >= 0 && asset &&
+        !strncmp(asset, "components/", strlen("components/"))) {
+        const char *name = asset + strlen("components/");
+        size_t bytes = strlen(name), extension = strlen(CODE_ASSET_EXTENSION);
+        if (name[0] != '.' && !strchr(name, '/') && bytes > extension &&
+            !strcmp(name + bytes - extension, CODE_ASSET_EXTENSION)) {
+            found = true;
+            differing = format_component(root, name, check);
+        }
+    }
+    if (!found) {
+        fprintf(stderr, "chibi_ctl --format: unsupported or unknown authored asset: %s\n", asset);
+        differing = -1;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);
     free_asset_entries(entries);
     declared_components_free(declared);
     return differing;
+}
+
+int chibi_automation_format_assets(const char *root, bool check)
+{
+    return format_assets(root, NULL, check);
+}
+int chibi_automation_format_asset(const char *root, const char *asset, bool check)
+{
+    if (!asset) {
+        fprintf(stderr, "chibi_ctl --format: selected asset path is required\n");
+        return -1;
+    }
+    return format_assets(root, asset, check);
 }
 
 /* A ui asset as readAsset shows it: its markup, and its styles when it has
@@ -6619,7 +6730,7 @@ static behavior_asset *link_source_libraries(
     size_t error_size
 )
 {
-    authoring_language_catalog *native = source_native_catalog(root, error, error_size);
+    authoring_language_catalog *native = source_native_catalog(error, error_size);
     if (!native) {
         return NULL;
     }
@@ -6793,9 +6904,6 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset *linked = link_project_libraries(root, asset, error, sizeof error);
             if (linked) {
                 errors = compile_project_graph(root, linked, &report);
-                errors += studio_project_is(root)
-                            ? 0
-                            : studio_nodes_check(asset, &report);
             } else {
                 errors = 1;
                 add_load_diagnostic(result->doc, diagnostics, error);
@@ -6970,19 +7078,17 @@ static int validate_sounds(const char *root, yyjson_mut_doc *doc, yyjson_mut_val
    checks before it, such as resources that only overflow the player's limits
    together; the refusal is a problem of the project. Returns how many, at
    most one. */
-static int validate_preparation(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
+static int validate_preparation(const char *root, bool workspace, yyjson_mut_doc *doc, yyjson_mut_val *project)
 {
     char error[512] = { 0 };
-    native_capabilities *native = authoring_application_catalog_new(
-        studio_project_is(root),
-        error,
-        sizeof error
-    );
-    authoring_project_options options = { .project = root,
-                                          .native = native,
-                                          .components = { REGISTRY_COMPONENTS,
-                                                          REGISTRY_COMPONENT_COUNT },
-                                          .modules = WORLD_MODULES_ALL };
+    native_capabilities *native = authoring_application_catalog_new(workspace, error, sizeof error);
+    authoring_project_options options = {
+        .project = root,
+        .native = native,
+        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+        .modules = WORLD_MODULES_ALL,
+        .profile = workspace ? EXECUTION_PREPARATION_AUTHORED_TOOL : EXECUTION_PREPARATION_GAME
+    };
     authoring_project_artifact artifact = { 0 };
     bool valid = native &&
                  authoring_project_prepare(&options, &artifact, error, sizeof error);
@@ -7123,7 +7229,7 @@ static void add_range_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, con
    reports only that the catalog is incomplete. NULL with why in `error`. */
 static source_catalog *declaration_catalog(const char *root, char *error, size_t size)
 {
-    authoring_language_catalog *native = source_native_catalog(root, error, size);
+    authoring_language_catalog *native = source_native_catalog(error, size);
     if (!native) {
         return NULL;
     }
@@ -7135,8 +7241,13 @@ static source_catalog *declaration_catalog(const char *root, char *error, size_t
     return catalog;
 }
 
-static int handle_validate_project(const char *root, response *result, int *exit_code)
+static int handle_validate_project(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    yyjson_val *authoring = yyjson_obj_get(request, "authoring");
+    if (authoring && !yyjson_is_bool(authoring)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "authoring must be a boolean");
+        return -1;
+    }
     catalog_asset *assets = NULL;
     uint64_t revision = 0;
     uint64_t hash = 0;
@@ -7234,8 +7345,9 @@ static int handle_validate_project(const char *root, response *result, int *exit
        is wrong, since it stops at the first problem and would repeat one
        listed above; the project then opened at this build's version, so it
        never upgrades its files. Otherwise the sounds are checked alone. */
-    errors += errors ? validate_sounds(root, doc, project)
-                     : validate_preparation(root, doc, project);
+    errors += errors
+                ? validate_sounds(root, doc, project)
+                : validate_preparation(root, yyjson_get_bool(authoring), doc, project);
     yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
     yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
     yyjson_mut_obj_add_int(doc, value, "errors", errors);
@@ -11484,13 +11596,9 @@ static int handle_describe_registry(yyjson_val *request, response *result, int *
 }
 
 /* Behaviors and systems share the canonical capability vocabulary. Declarative
- * shader, field and model authoring retains its own node metadata. Studio
- * capabilities are offered only to the Studio project. */
-static bool domain_offers(const char *domain, const node_desc *node, bool studio)
+ * shader, field and model authoring retains its own node metadata. */
+static bool domain_offers(const char *domain, const node_desc *node)
 {
-    if (!studio && studio_node_is(node)) {
-        return false;
-    }
     if (domain && !strcmp(domain, "system")) {
         domain = "behavior";
     }
@@ -11518,7 +11626,6 @@ typedef struct
     behavior_asset **definitions;
     ui_event *ui;
     ui_data_binding *bindings;
-    bool studio; /* the Studio project, which runs Studio's editor nodes */
 } project_events;
 
 static bool defined_event(const project_events *events, const char *name)
@@ -12125,8 +12232,7 @@ static void add_node_outline(
     yyjson_mut_val *categories = yyjson_mut_obj_add_obj(doc, value, "categories");
     for (int i = 0; i < registry_node_count(); i++) {
         const node_desc *node = registry_node(i);
-        if (!domain_offers(domain, node, project->studio) ||
-            component_generated_kind(node)) {
+        if (!domain_offers(domain, node) || component_generated_kind(node)) {
             continue;
         }
         const char *category = node->category && node->category[0] ? node->category
@@ -12182,7 +12288,7 @@ static node_match *node_candidates(
 {
     node_match *matches = NULL;
     for (int i = 0; i < registry_node_count(); i++) {
-        if (domain_offers(domain, registry_node(i), project->studio)) {
+        if (domain_offers(domain, registry_node(i))) {
             apush(matches, ((node_match){ .desc = registry_node(i) }));
         }
     }
@@ -12341,7 +12447,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "invalid node search query, pin filter, page, include_pins or behavior");
         return -1;
     }
-    project_events events = { .studio = studio_project_is(root) };
+    project_events events = { 0 };
     char error[256] = "";
     int status = behavior_vocabulary(domain)
                    ? load_project_events(root, behavior, &events, error, sizeof error)
@@ -12649,7 +12755,7 @@ static int validate_prototype_behaviors(const char *root, const prototype *proto
 
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
 {
-    authoring_language_catalog *native = source_native_catalog(root, error, error_size);
+    authoring_language_catalog *native = source_native_catalog(error, error_size);
     if (!native) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -13009,6 +13115,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_preview_field(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_shader")) {
         response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
+    } else if (!strcmp(operation, "preview_model")) {
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_model requires chibi_ctl --render");
     } else if (!strcmp(operation, "describe_contract")) {
         handle_describe_contract(&result);
     } else if (!strcmp(operation, "status")) {
@@ -13046,7 +13154,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "validate_asset")) {
         handle_validate_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "validate_project")) {
-        handle_validate_project(root, &result, exit_code);
+        handle_validate_project(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "new_project")) {
         handle_new_project(root_value, &result, exit_code);
     } else if (!strcmp(operation, "new_asset")) {

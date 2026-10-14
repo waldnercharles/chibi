@@ -219,6 +219,9 @@ TEST_CASE(mismatched_maps_fail_preparation)
     REQUIRE(
         render_image_mount_content(CHIBI_SOURCE_ROOT "/test/fixtures/sprites/content", error, sizeof error)
     );
+    /* This fixture deliberately combines two separately decoded images. The
+     * active loader has one root; it never falls back into earlier projects. */
+    REQUIRE(render_image_reload("content/images/props.png", error, sizeof error));
     REQUIRE(
         render_image_mount_content(CHIBI_SOURCE_ROOT "/test/fixtures/content", error, sizeof error)
     );

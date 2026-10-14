@@ -17,6 +17,7 @@ extern "C"
      * Prepared backends reject absent resources without filesystem fallback. */
     typedef bool (*rml_image_provider)(void *, const char *, const unsigned char **, int *, int *);
     void rml_backend_set_image_provider(rml_image_provider, void *);
+    void rml_backend_get_image_provider(rml_image_provider *, void **);
     void rml_backend_require_resident_images(rml_backend *, bool);
     /* Initializes only RmlUi/font/native-element state, without a GPU backend.
      * Release is a host shutdown operation and requires no live backends. */
@@ -102,10 +103,27 @@ extern "C"
         RML_INPUT_KEY_OEM_MINUS = 41,
         RML_INPUT_KEY_OEM_PERIOD = 42,
         RML_INPUT_KEY_OEM_2 = 43, /* / */
+        RML_INPUT_KEY_OEM_3 = 44, /* ` */
         RML_INPUT_KEY_OEM_4 = 45, /* [ */
+        RML_INPUT_KEY_OEM_5 = 46, /* backslash */
         RML_INPUT_KEY_OEM_6 = 47, /* ] */
+        RML_INPUT_KEY_OEM_7 = 48, /* apostrophe */
+        RML_INPUT_KEY_NUMPAD0 = 51,
+        RML_INPUT_KEY_NUMPAD1 = 52,
+        RML_INPUT_KEY_NUMPAD2 = 53,
+        RML_INPUT_KEY_NUMPAD3 = 54,
+        RML_INPUT_KEY_NUMPAD4 = 55,
+        RML_INPUT_KEY_NUMPAD5 = 56,
+        RML_INPUT_KEY_NUMPAD6 = 57,
+        RML_INPUT_KEY_NUMPAD7 = 58,
+        RML_INPUT_KEY_NUMPAD8 = 59,
+        RML_INPUT_KEY_NUMPAD9 = 60,
         RML_INPUT_KEY_NUMPAD_ENTER = 61,
+        RML_INPUT_KEY_MULTIPLY = 62,
+        RML_INPUT_KEY_ADD = 63,
         RML_INPUT_KEY_SUBTRACT = 65,
+        RML_INPUT_KEY_DECIMAL = 66,
+        RML_INPUT_KEY_DIVIDE = 67,
         RML_INPUT_KEY_BACKSPACE = 69,
         RML_INPUT_KEY_TAB = 70,
         RML_INPUT_KEY_ENTER = 72,

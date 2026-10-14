@@ -77,7 +77,56 @@ TEST_CASE(process_arguments_output_and_cancellation)
     return true;
 }
 
+TEST_CASE(process_captured_output_drains_with_backpressure_and_preserves_exit)
+{
+    const char *args[] = {
+        "/bin/sh",
+        "-c",
+        "dd if=/dev/zero bs=4096 count=64 2>/dev/null; printf end; exit 9",
+        NULL
+    };
+    chibi_process process = { 0 };
+    REQUIRE(chibi_process_start_capture(&process, args, "/tmp"));
+    size_t total = 0;
+    char tail[3] = { 0 };
+    bool eof = false, payload = true;
+    struct timespec delay = { .tv_nsec = 1000000 };
+    for (int turn = 0; turn < 5000 && !(eof && process.finished); turn++) {
+        unsigned char block[4096];
+        int64_t count = chibi_process_read(&process, block, sizeof block);
+        if (count > 0) {
+            for (int64_t i = 0; i < count; i++) {
+                if (total < 262144) {
+                    payload = payload && block[i] == 0;
+                } else if (total < 262147) {
+                    tail[total - 262144] = (char)block[i];
+                }
+                total++;
+            }
+        } else if (!count) {
+            eof = true;
+        } else {
+            REQUIRE(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
+        }
+        if (!process.finished) {
+            chibi_process_poll(&process);
+        }
+        if (count <= 0 && !process.finished) {
+            nanosleep(&delay, NULL);
+        }
+    }
+    REQUIRE(eof && process.finished && process.status == 9);
+    REQUIRE(payload && total == 262147 && !memcmp(tail, "end", 3));
+    chibi_process_close_output(&process);
+    REQUIRE(!process.capturing);
+    const char *missing[] = { "/definitely/not/a/chibi-program", NULL };
+    REQUIRE(!chibi_process_start_capture(&process, missing, "/tmp"));
+    REQUIRE(errno == ENOENT);
+    return true;
+}
+
 void test_host_process()
 {
     RUN_TEST_CASE(process_arguments_output_and_cancellation);
+    RUN_TEST_CASE(process_captured_output_drains_with_backpressure_and_preserves_exit);
 }

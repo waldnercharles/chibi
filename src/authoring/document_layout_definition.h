@@ -1,0 +1,7 @@
+#ifndef CHIBI_DOCUMENT_LAYOUT_DEFINITION_H
+#define CHIBI_DOCUMENT_LAYOUT_DEFINITION_H
+#include "runtime/native_definitions.h"
+extern const native_definition_pack DOCUMENT_LAYOUT_DEFINITION_PACK;
+extern const node_host_call DOCUMENT_LAYOUT_CALL;
+extern const node_access DOCUMENT_LAYOUT_ACCESS;
+#endif

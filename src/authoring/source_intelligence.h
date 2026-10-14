@@ -35,7 +35,12 @@ typedef struct
  * their storage, and remain valid after that generation is released. Invalid
  * drafts retain canonical syntax highlighting and any resolved semantic facts.
  * Completion never constructs a graph or executes authored code. */
+authoring_highlight *authoring_syntax_highlights(const script_syntax *, int *count);
 authoring_highlight *authoring_source_highlights(const authoring_navigation *, int document, int *count);
+char *authoring_type_label(const script_catalog *, script_type);
+const script_symbol *authoring_visible_symbol(const script_analysis *, int offset, const char *name);
+/* Returned pointer array is malloc-owned; symbols borrow analysis. */
+const script_symbol **authoring_visible_symbols(const script_analysis *, int offset, int *count);
 char *authoring_source_hover(const authoring_navigation *, int document, int offset);
 void authoring_source_complete(
     const authoring_navigation *,

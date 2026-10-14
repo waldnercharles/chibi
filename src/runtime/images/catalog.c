@@ -40,6 +40,25 @@ static uint64_t next_revision()
     assert(revision < UINT64_MAX);
     return ++revision;
 }
+bool render_image_loader_copy(render_image_loader source, render_image_loader *out)
+{
+    *out = (render_image_loader){ 0 };
+    if (source.clear && !source.retain) {
+        return false;
+    }
+    if (source.retain) {
+        source.retain(source.context);
+    }
+    *out = source;
+    return true;
+}
+void render_image_loader_release(render_image_loader *value)
+{
+    if (value->clear) {
+        value->clear(value->context);
+    }
+    *value = (render_image_loader){ 0 };
+}
 void render_images_set_loader(render_image_loader value)
 {
     loader = value;
@@ -270,9 +289,7 @@ void render_image_catalog_clear()
         free(sources[i].image.pix);
     }
     afree(sources);
-    if (loader.clear) {
-        loader.clear(loader.context);
-    }
+    render_image_loader_release(&loader);
 }
 static size_t row_growth(int length, int capacity, size_t width)
 {

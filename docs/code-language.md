@@ -100,7 +100,7 @@ behavior Projectile {
 }
 ```
 
-Behavior-root declarations own persistent instance state. `elapsed := 0;` infers
+Behavior-root declarations own persistent instance fields without a storage keyword. `elapsed := 0;` infers
 `number`, backed by double precision, so subsequent assignments can contain fractions.
 Boolean, string and homogeneous array defaults also infer their type. Empty arrays
 and nominal values require an explicit type. `elapsed: number = 0;` spells out the
@@ -112,7 +112,31 @@ or a reflected interface needs them. Formatting keeps a declared type unless inf
 other constants and built-in operators, including constant arrays and reflected
 structs; runtime values and function calls are rejected. The compiler evaluates
 these expressions once when it builds the module. `:=` continues to infer a mutable
-value: persistent state at program scope, a local inside an executable block.
+value: a persistent field at program scope, a local inside an executable block.
+A callable can declare a persistent field explicitly with `self.Name := value` or
+`self.Name: Type = value`. That field retains the callable's lexical scope and its
+value between invocations; an ordinary local declaration initializes each time its
+statement executes.
+
+`self.Name` explicitly selects the nearest persistent field named `Name`, even
+when a parameter or local shadows that field. For example:
+
+```code
+behavior Counter {
+    count := 0;
+    SetCount :: fn(count: number) { self.count = count; }
+    Visit :: fn() {
+        self.visits := 0;
+        self.visits += 1;
+    }
+}
+```
+
+Here `count` belongs to the behavior instance and `visits` is persistent storage
+visible within `Visit`. `self.Name` declarations are also valid at program scope;
+formatting preserves their explicit qualification. Bare `self` still denotes the
+owning ECS entity. A parameter or local named `self` is an ordinary receiver and
+does not qualify the behavior's fields. The word `state` is an ordinary identifier.
 
 The graph derives variable operations from these declarations. Declaring
 `level: entity` and assigning `level = globals.Level` produces a **Set Level**
@@ -136,10 +160,10 @@ in the source as one undoable edit. The definition remains available for other
 calls. **Fold into Input** and **Show Input Nodes** only change presentation.
 
 Adding a standalone variable **Get** creates a named local read, such as
-`levelValue := state."level"`. Its execution pins show when the read occurs; its
+`levelValue := self."level"`. Its execution pins show when the read occurs; its
 output retains that value. Choosing the variable as an existing input's source
-reads it when that consumer runs. The `state` qualifier identifies the declared
-state even when a local parameter has the same name. A newly added **Set** uses
+reads it when that consumer runs. The `self` qualifier identifies the persistent
+field even when a local parameter has the same name. A newly added **Set** uses
 a zero default where one can be written, or the variable's current value for
 types such as entities; edit its Value input to choose the intended source.
 
@@ -183,7 +207,11 @@ A handler may name its entire payload with `on Tick as tick { ... }`. Event
 payload members are read-only unless their reflected signature supplies a reference.
 
 A behavior has an implicit `self: ecs.entity` owner. Component paths read the
-owner or another entity handle and follow reflected members:
+owner or another entity handle and follow reflected members. An owned persistent
+field takes precedence over a component with the same name: if a behavior declares
+`Dash`, `self.Dash` reads that field. Use `cast<entity>(self).Dash` to select the ECS
+component explicitly, or assign the entity to an ordinary local receiver and read
+its component there:
 
 ```code
 behavior Emitter {
@@ -210,7 +238,7 @@ reads the field only when it exists.
 `chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
 becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
 statement `set_dash_remaining(v)` becomes `self.Dash.remaining = v`. It also
-spells `get_variable<"x">()` as `state."x"` and operator functions such as
+spells `get_variable<"x">()` as `self."x"` and operator functions such as
 `add(a, b)` and `less(a, b)` as operators. Each rewrite is kept only when the
 program analyzes the same. Awaiting a component accessor does not wait.
 
@@ -420,7 +448,7 @@ and entering it can occur in the same handler:
 
 ```code
 behavior SharedGate {
-    state int visits = 0;
+    visits: int = 0;
     action latch = gate();
     on Tick() { latch.open(); latch.enter(); }
     after latch.Exit { visits += 1; }
@@ -604,6 +632,22 @@ work. Idle buffers have bounded retention; the retention limit does not limit
 valid query size. Reductions avoid conflicting direct writes, but do not guarantee
 a speedup: small workloads can cost more to collect and publish than a serial
 ordinary update.
+
+### Project source migration
+
+Project format 25 removes the old storage declaration keyword and replaces its
+explicit field qualifier with `self`. Opening an older project or running
+`chibi_ctl --project-root <root> --migrate` upgrades its source. Callable fields keep
+their lexical storage scope and names. Existing entity member accesses that collide
+with persistent fields become explicit `cast<entity>(self)` accesses. Comments,
+strings and source-bound graph identities and layout remain intact.
+
+When otherwise identical syntax would make an interrupted retry ambiguous, the
+migration explicitly qualifies one root field declaration with `self`. This uses
+normal language syntax and survives formatting. A removed explicit field qualifier
+inside a scope that shadows `self` is refused with a request to rename that binding;
+the migration leaves the step's original sources untouched rather than changing the
+receiver's meaning.
 
 ### State lifetime and live reload
 

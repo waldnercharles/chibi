@@ -6,6 +6,7 @@
 #include "execution/scalar.h"
 #include "execution/state.h"
 #include "execution/task.h"
+#include "language/function_identity.h"
 #include "language/identity.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -241,7 +242,7 @@ static int expression(lower *, int);
 static void debug_input(lower *, const script_expression *, int ordinal, int value, script_type);
 static void debug_point(lower *, script_record_kind, int record, script_range);
 static int condition_value(lower *, int);
-static uint64_t function_id(const script_analysis *, int);
+
 static const script_symbol *action_symbol(lower *l, const script_expression *expression)
 {
     if (expression->instance) {
@@ -3867,7 +3868,7 @@ static int expression_value(lower *l, int index)
                     l->a->functions[source].kind == SCRIPT_FUNCTION_HANDLER) {
                     pin_value headers[] = { { .type = BF_POINTER_TYPE },
                                             { .type = PIN_U64,
-                                              .u64 = function_id(l->a, source) },
+                                              .u64 = script_function_identity(l->a, source) },
                                             { .type = PIN_I32, .i = ordinal } };
                     int slots[] = { value_op(
                                         l,
@@ -5032,26 +5033,6 @@ static void discard_bodies(execution_module_plan *module)
         module->bindings[i].dependencies = NULL;
     }
 }
-static uint64_t function_id(const script_analysis *analysis, int index)
-{
-    const script_function *function = &analysis->functions[index];
-    if (function->symbol >= 0) {
-        return analysis->symbols[function->symbol].id;
-    }
-    size_t size = strlen(analysis->identity) + 64;
-    char *identity = xmalloc(size);
-    snprintf(
-        identity,
-        size,
-        "%s:%d:%d",
-        analysis->identity,
-        function->range.start,
-        function->kind
-    );
-    uint64_t id = script_catalog_id("function", identity);
-    free(identity);
-    return id;
-}
 static void dependency_expressions(lower *l, int index, bool *visited, int **out)
 {
     if (index < 0 || visited[index]) {
@@ -6032,7 +6013,7 @@ execution_module_plan *script_lower(
         const script_catalog_capability
             *event = f->event ? script_catalog_capability_by_id(catalog, f->event)
                               : NULL;
-        uint64_t id = function_id(a, i);
+        uint64_t id = script_function_identity(a, i);
         apush(
             m->functions,
             ((execution_module_function){
@@ -6044,7 +6025,7 @@ execution_module_plan *script_lower(
                 .outcome = f->kind == SCRIPT_FUNCTION_CONTINUATION && f->entry
                              ? script_catalog_id("outcome", f->entry)
                              : 0,
-                .parent = f->parent >= 0 ? function_id(a, f->parent) : 0,
+                .parent = f->parent >= 0 ? script_function_identity(a, f->parent) : 0,
                 .capture_count = f->kind == SCRIPT_FUNCTION_CONTINUATION && f->parent >= 0
                                    ? a->functions[f->parent].parameter_count
                                    : 0,

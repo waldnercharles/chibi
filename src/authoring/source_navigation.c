@@ -506,7 +506,8 @@ authoring_navigation *authoring_navigation_new_project(
             definition->text,
             definition->text_kind
         );
-        authoring_target target = { definition->field ? AUTHORING_FIELD
+        authoring_target target = { definition->type_definition ? AUTHORING_TYPE
+                                    : definition->field ? AUTHORING_FIELD
                                     : definition->kind == SCRIPT_CAPABILITY_PROTOTYPE
                                         ? AUTHORING_PROTOTYPE
                                         : AUTHORING_CALLABLE,
@@ -542,7 +543,11 @@ authoring_navigation *authoring_navigation_new_project(
             reference->text,
             reference->text_kind
         );
-        authoring_target_kind kind = reference->kind == SOURCE_REFERENCE_PROGRAM ||
+        authoring_target_kind kind = reference->kind == SOURCE_REFERENCE_TYPE
+                                       ? AUTHORING_TYPE
+                                   : reference->kind == SOURCE_REFERENCE_FIELD
+                                       ? AUTHORING_FIELD
+                                   : reference->kind == SOURCE_REFERENCE_PROGRAM ||
                                              reference->kind == SOURCE_REFERENCE_SYSTEM
                                        ? AUTHORING_PROGRAM
                                    : reference->kind == SOURCE_REFERENCE_PROTOTYPE

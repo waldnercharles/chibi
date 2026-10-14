@@ -43,8 +43,9 @@ typedef struct ui_element
     float popover_x, popover_y;
     int reveal; /* a requested list row to scroll into view; -1 for none */
     /* Where a presenter last measured the element scrolled, in dp. */
-    bool measured;
-    float scroll_top, view_height, content_height;
+    bool measured, width_measured, pixel_ratio_measured;
+    float scroll_top, view_height, content_height, view_width;
+    float pixel_ratio;
     uint64_t revision; /* the ui revision of its last change */
 } ui_element;
 
@@ -87,6 +88,15 @@ bool ui_reveal_row(ui *ui, uint64_t entity, const char *element, int row);
  * down, and the heights of its view and its content. A measurement is not a
  * setting, so presenters do not apply it back. */
 void ui_measure(ui *ui, uint64_t entity, const char *element, float scroll_top, float view_height, float content_height);
+/* A presenter's current client width in dp; independent of scroll metadata. */
+void ui_measure_width(ui *, uint64_t entity, const char *selector, float width);
+/* Actual owning context pixels per dp. Unknown until a presenter measures it;
+ * geometry invalidation clears it with width/scroll measurements. */
+void ui_measure_pixel_ratio(ui *, uint64_t entity, const char *selector, float ratio);
+bool ui_view_pixel_ratio(const ui *, uint64_t entity, const char *selector, float *ratio);
+/* Clear cached geometry before remeasuring a mount, including unmounted views. */
+void ui_unmeasure(ui *, uint64_t entity);
+bool ui_view_width(const ui *, uint64_t entity, const char *selector, float *width);
 /* The value last set under this selector, or false when none was. */
 bool ui_value(const ui *ui, uint64_t entity, const char *element, float *value);
 /* Copies `value` into self.<name>. False for a missing value or an invalid

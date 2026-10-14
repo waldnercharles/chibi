@@ -196,6 +196,15 @@ static bool collision(
 )
 {
     const script_catalog *catalog = authoring_navigation_catalog(index);
+    if (target.kind == AUTHORING_TYPE) {
+        for (int i = 0; i < catalog->type_count; i++) {
+            if (catalog->types[i].id != target.id &&
+                script_name_matches(catalog->types[i].name, name)) {
+                return true;
+            }
+        }
+        return false;
+    }
     if (target.kind == AUTHORING_FIELD) {
         const script_catalog_type
             *owner = script_catalog_type_by_id(catalog, target.owner);
@@ -432,7 +441,7 @@ static bool syntax_valid(const authoring_navigation *index, const authoring_rena
              * binding separator or markup delimiter can change. The complete
              * project candidate still requires semantic validation. */
             valid = true;
-        } else if (input->syntax) {
+        } else if (input->syntax || authoring_navigation_document_kind(index, document) == SOURCE_TEXT_CHIBI) {
             script_syntax *syntax = script_parse(text);
             valid = !syntax->diagnostic_count;
             script_syntax_free(syntax);
@@ -502,7 +511,7 @@ authoring_rename_plan *authoring_source_rename(
         bytes += n;
     }
     const authoring_reference *definition = authoring_navigation_definition(index, target);
-    if (!definition || target.kind == AUTHORING_TYPE) {
+    if (!definition) {
         fail(error, size, "Target has no editable source declaration");
         return NULL;
     }

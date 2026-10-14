@@ -57,3 +57,12 @@ flat normals, a green material and no external resources. Its native
 `import_model` operation with that source's absolute path and name `RenderWedge`.
 To regenerate, remove those three generated assets first; imports never overwrite
 an existing asset. The scene applies its size and 3D placement.
+
+`Utilities` exercises the default SDK's text matching and ranking, typed array
+JSON encoding and pointer queries (including missing and duplicate-key refusal), chord validation, and explicit unknown width in CPU simulation.
+The existing feature-coverage C dispatcher requests a bounded runtime snapshot
+for this scene and checks its five authored UI results. It runs the same four
+frames as other scenes, with one entity and one behavior; no renderer is created.
+Actual measured layout and code-editor presentation remain rendered coverage
+requirements, described alongside the optional workspace-host services in
+`coverage-gaps.txt`.

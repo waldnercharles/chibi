@@ -485,12 +485,14 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         directory[0] = 0;
     }
     REQUIRE(created);
-    char input[256], output[256], log[256], includes[PATH_MAX], debug[PATH_MAX];
+    char input[256], output[256], log[256], includes[PATH_MAX], debug[PATH_MAX],
+        random[PATH_MAX];
     snprintf(input, sizeof input, "%s/aliases.c", directory);
     snprintf(output, sizeof output, "%s/aliases.so", directory);
     snprintf(log, sizeof log, "%s/compiler.log", directory);
     snprintf(includes, sizeof includes, "%s/src", tool_root());
     snprintf(debug, sizeof debug, "%s/src/execution/source_debug.c", tool_root());
+    snprintf(random, sizeof random, "%s/src/execution/random.c", tool_root());
     source = fopen(input, "w");
     REQUIRE(source);
     for (int i = 0; i < ALIAS_FIXTURES; i++) {
@@ -509,8 +511,8 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         apush(argv, export_compiler[i]);
     }
     const char *arguments[] = { "-std=c11", "-shared", "-fPIC", "-I",
-                                includes,   input,     debug,   "-o",
-                                output,     NULL };
+                                includes,   input,     debug,   random,
+                                "-o",       output,    NULL };
     for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
         apush(argv, arguments[i]);
     }

@@ -10,7 +10,6 @@
 #include "authoring/project_prepare_internal.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_prototype_flow.h"
-#include "authoring/studio_project.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
 #include "runtime/components.h"
@@ -720,12 +719,8 @@ static void report()
 TEST_CASE(test_catalog_coverage)
 {
     char error[256];
-    /* The Studio project sees the editor's capabilities, as chibi_ctl gives it. */
-    native_capabilities *table = authoring_application_catalog_new(
-        studio_project_is(project_root),
-        error,
-        sizeof error
-    );
+    /* Runtime feature coverage uses the ordinary game capability profile. */
+    native_capabilities *table = authoring_application_catalog_new(false, error, sizeof error);
     REQUIRE(table != NULL);
     /* The live declared set joins the language catalog and project_components. */
     if (!authoring_component_declarations_load(
@@ -778,7 +773,14 @@ static bool run_scene(const char *path)
     yyjson_mut_val *root = yyjson_mut_obj(message);
     yyjson_mut_doc_set_root(message, root);
     yyjson_mut_obj_add_int(message, root, "contract", 1);
-    yyjson_mut_obj_add_str(message, root, "operation", "run_scenario");
+    bool utilities = !strcmp(name, "Utilities");
+    yyjson_mut_obj_add_str(message, root, "operation", utilities ? "runtime_snapshot" : "run_scenario");
+    if (utilities) {
+        yyjson_mut_obj_add_uint(message, root, "entity_limit", 1);
+        yyjson_mut_obj_add_uint(message, root, "component_limit", 2);
+        yyjson_mut_obj_add_uint(message, root, "field_limit", 8);
+        yyjson_mut_obj_add_uint(message, root, "behavior_limit", 1);
+    }
     yyjson_mut_obj_add_str(message, root, "kind", "scene");
     yyjson_mut_obj_add_str(message, root, "name", name);
     yyjson_mut_obj_add_int(message, root, "frames", SCENARIO_FRAMES);
@@ -810,7 +812,38 @@ static bool run_scene(const char *path)
     yyjson_val *failures = yyjson_obj_get(result, "behavior_failures");
     bool passed = !status &&
                   yyjson_get_uint(yyjson_obj_get(result, "frames")) == SCENARIO_FRAMES &&
-                  yyjson_is_arr(failures) && !yyjson_arr_size(failures);
+                  (utilities ||
+                   (yyjson_is_arr(failures) && !yyjson_arr_size(failures)));
+    if (utilities) {
+        yyjson_val *entity = yyjson_arr_get_first(yyjson_obj_get(result, "entities"));
+        yyjson_val *behavior = yyjson_arr_get_first(yyjson_obj_get(entity, "behaviors"));
+        passed = passed &&
+                 yyjson_equals_str(yyjson_obj_get(behavior, "asset"), "UtilityProbe") &&
+                 yyjson_is_null(yyjson_obj_get(behavior, "last_failure"));
+        static const char *const selectors[] = { "#text-result",
+                                                 "#json-result",
+                                                 "#json-status",
+                                                 "#chord-result",
+                                                 "#width-result" };
+        static const char *const expected[] = { "passed", "[1,2,3]", "passed", "passed", "unknown" };
+        yyjson_val *ui = yyjson_obj_get(result, "ui");
+        for (size_t i = 0; i < sizeof selectors / sizeof *selectors; i++) {
+            bool found = false;
+            size_t index, count;
+            yyjson_val *item;
+            yyjson_arr_foreach(ui, index, count, item)
+            {
+                if (yyjson_equals_str(yyjson_obj_get(item, "element"), selectors[i])) {
+                    found = yyjson_equals_str(yyjson_obj_get(item, "text"), expected[i]);
+                    break;
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "Utilities: %s must report %s\n", selectors[i], expected[i]);
+                passed = false;
+            }
+        }
+    }
     printf("Scene %s: %s\n", name, passed ? "ran" : "failed");
     if (!passed && !status) { /* tool_run already printed a failed run's log. */
         fprintf(stderr, "%s\n", output ? output : "(no output)");

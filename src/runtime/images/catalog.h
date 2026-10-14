@@ -20,6 +20,7 @@ typedef struct
     void *context;
     bool (*read)(void *, const char *, shader_image_view *, char *, size_t);
     void (*clear)(void *);
+    void (*retain)(void *);
 } render_image_loader;
 typedef struct
 {
@@ -35,6 +36,11 @@ typedef struct
     );
     void (*retire)(void *, uint64_t);
 } render_image_backend;
+/* Copies owned loaders only when retain is supported; otherwise refuses.
+ * Static borrowed loaders with no clear callback need no retention. */
+bool render_image_loader_copy(render_image_loader, render_image_loader *out);
+void render_image_loader_release(render_image_loader *);
+/* Transfers ownership; exchanges use this without retaining/releasing. */
 void render_images_set_loader(render_image_loader);
 render_image_loader render_images_loader();
 void render_images_set_backend(render_image_backend);

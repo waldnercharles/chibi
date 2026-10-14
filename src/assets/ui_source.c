@@ -2,6 +2,7 @@
  * tree, and the highlighting, outline and diagnostics read from it. */
 #include "assets/ui_source.h"
 
+#include "assets/ui_document.h"
 #include "assets/ui_source_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -824,6 +825,23 @@ ui_source *ui_source_parse(const char *text, ui_source_language language)
         asort(source->spans, span_order);
     }
     diagnose(source, root);
+    if (language == UI_SOURCE_RML) {
+        ui_document_event_call *calls = NULL;
+        ui_document_event_calls(text, &calls);
+        for (int i = 0; i < acount(calls); i++) {
+            if (calls[i].arguments > UI_ACTIVATION_ARGS) {
+                add_diagnostic(
+                    source,
+                    calls[i].start,
+                    calls[i].end,
+                    "emit passes %d explicit payload arguments; maximum is %d",
+                    calls[i].arguments,
+                    UI_ACTIVATION_ARGS
+                );
+            }
+        }
+        afree(calls);
+    }
     return source;
 }
 

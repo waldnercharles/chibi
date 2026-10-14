@@ -6,12 +6,14 @@
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/behaviors/scene_flow_definition.h"
 #include "runtime/behaviors/tilemap_definition.h"
+#include "runtime/color_value_definition.h"
 #include "runtime/comparison_definition.h"
 #include "runtime/conversion_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/fields/definition.h"
 #include "runtime/generated_capabilities.h"
 #include "runtime/input_definition.h"
+#include "runtime/json_query_definition.h"
 #include "runtime/materials_definition.h"
 #include "runtime/math_definition.h"
 #include "runtime/particles_definition.h"
@@ -25,6 +27,7 @@
 #include "runtime/text_definition.h"
 #include "runtime/ui_definition.h"
 #include "runtime/url_definition.h"
+#include "runtime/value_json_definition.h"
 #include "runtime/vectors_definition.h"
 #include "runtime/visibility_definition.h"
 #include "runtime/visual_motion_definition.h"
@@ -70,6 +73,9 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, SCENE_DEFINITION_PACK);
     apush(selected, PARTICLES_DEFINITION_PACK);
     apush(selected, UI_DEFINITION_PACK);
+    apush(selected, VALUE_JSON_DEFINITION_PACK);
+    apush(selected, JSON_QUERY_DEFINITION_PACK);
+    apush(selected, COLOR_VALUE_DEFINITION_PACK);
     apush(selected, URL_DEFINITION_PACK);
     apush(selected, PHYSICS_DEFINITION_PACK);
     apush(selected, PHYSICS3D_DEFINITION_PACK);

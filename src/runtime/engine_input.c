@@ -39,6 +39,7 @@ struct engine_input
     uint64_t controls;
     /* Device snapshots after each change since the last step, oldest first. */
     input_keyframe *trail;
+    int trail_limit;
     input_controller_state controllers[INPUT_CONTROLLER_MAX];
     input_button *buttons;
     input_transition *transitions;
@@ -257,11 +258,10 @@ void engine_input_pointer(engine_input *input, input_pointer_ray pointer)
     input->pointer = pointer.active ? pointer : (input_pointer_ray){ 0 };
 }
 
-int engine_input_devices(
-    engine_input *input,
+bool engine_input_devices_admissible(
+    const engine_input *input,
     uint64_t controls,
-    const input_controller_state controllers[INPUT_CONTROLLER_MAX],
-    bool *firing
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX]
 )
 {
     _Static_assert(CONTROL_COUNT < 64, "control bitset");
@@ -269,8 +269,29 @@ int engine_input_devices(
     uint32_t all_buttons = ((UINT32_C(1) << PAD_COUNT) - 1) & ~UINT32_C(1);
     for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
         if (controllers[i].buttons & ~all_buttons) {
-            return FLOW_ERR_ARGUMENT;
+            return false;
         }
+    }
+    bool changed = input->controls != controls;
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        uint32_t buttons = controllers[i].connected ? controllers[i].buttons : 0;
+        changed |= input->controllers[i].connected != controllers[i].connected ||
+                   input->controllers[i].buttons != buttons;
+    }
+    if (changed && input->trail_limit && acount(input->trail) >= input->trail_limit) {
+        return false;
+    }
+    return true;
+}
+int engine_input_devices(
+    engine_input *input,
+    uint64_t controls,
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX],
+    bool *firing
+)
+{
+    if (!engine_input_devices_admissible(input, controls, controllers)) {
+        return FLOW_ERR_ARGUMENT;
     }
     input_keyframe previous = engine_input_held(input);
     input->controls = controls;
@@ -322,6 +343,15 @@ int engine_input_controller(engine_input *input, int controller, input_controlle
     memcpy(controllers, input->controllers, sizeof controllers);
     controllers[controller] = state;
     return engine_input_devices(input, input->controls, controllers, firing);
+}
+
+bool engine_input_limit_trail(engine_input *input, int maximum)
+{
+    if (maximum < 0 || (maximum && acount(input->trail) > maximum)) {
+        return false;
+    }
+    input->trail_limit = maximum;
+    return true;
 }
 
 int engine_input_trail(const engine_input *input, const input_keyframe **keys)

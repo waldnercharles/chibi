@@ -1,6 +1,7 @@
 #include "runtime/ui_native.h"
 
 #include "runtime/ui.h"
+#include "runtime/ui_chord.h"
 #include "types/value_document.h"
 
 #include <cute_math.h>
@@ -71,6 +72,13 @@ static const char *scroll_call(void *ui, const pin_value *a, pin_value *results)
     return NULL;
 }
 
+static const char *width_call(void *ui, const pin_value *a, pin_value *results)
+{
+    results[1].b = ui_view_width(ui, a[0].u64, a[1].str, &results[0].f);
+    ui_view_pixel_ratio(ui, a[0].u64, a[1].str, &results[2].f);
+    return NULL;
+}
+
 static const char *get_call(void *ui, const pin_value *a, pin_value *results)
 {
     float value = 0;
@@ -129,9 +137,23 @@ const node_host_call UI_GET_SCROLL_CALL = {
     .missing_service = "Get UI Scroll requires a game world",
     .reusable = true
 };
+const node_host_call UI_GET_VIEW_WIDTH_CALL = {
+    .service = "game.ui",
+    .invoke = width_call,
+    .missing_service = "Get UI View Width requires a game world",
+    .reusable = true
+};
 const node_host_call UI_GET_VALUE_CALL = {
     .service = "game.ui",
     .invoke = get_call,
     .missing_service = "Get UI Value requires a game world",
     .reusable = true
 };
+
+static const char *chord_call(void *service, const pin_value *arguments, pin_value *results)
+{
+    (void)service;
+    results[0].b = ui_chord_valid(arguments[0].str);
+    return NULL;
+}
+const node_host_call UI_VALIDATE_CHORD_CALL = { .invoke = chord_call, .reusable = true };

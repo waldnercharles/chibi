@@ -1,6 +1,7 @@
 #include "assets/ui_document.h"
 
 #include "support/array.h"
+#include "support/markup_expression.h"
 #include "support/rcss.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
@@ -8,6 +9,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,6 +85,9 @@ static bool split_body(const char *rml, ui_document *out, char *error, size_t er
     out->rml = xmalloc((size_t)(inner_end - inner) + 1);
     snprintf(out->rml, (size_t)(inner_end - inner) + 1, "%s", inner);
     out->rml_line = 1 + breaks(rml, inner);
+    out->rml_start = (size_t)(inner - rml);
+    out->body_start = (size_t)(start - rml);
+    out->body_line = 1 + breaks(rml, start);
     return true;
 }
 
@@ -93,7 +98,8 @@ static bool read_parts(
     char ***imports,
     ui_document *out,
     char *error,
-    size_t error_size
+    size_t error_size,
+    const text_reader *reader
 )
 {
     if (!rml[strspn(rml, " \t\r\n")]) {
@@ -101,6 +107,9 @@ static bool read_parts(
     }
     if (strstr(rcss, "</style")) {
         return fail(error, error_size, "rcss must not close its style block");
+    }
+    if (!ui_document_validate_events(rml, error, error_size)) {
+        return false;
     }
     if (!split_body(rml, out, error, error_size)) {
         return false;
@@ -111,7 +120,7 @@ static bool read_parts(
         }
     }
     char message[200];
-    char *flat = rcss_expand(rcss, directory, &out->map, message, sizeof message);
+    char *flat = rcss_expand_reader(rcss, directory, &out->map, message, sizeof message, reader);
     for (int i = 0; imports && i < acount(out->map.files); i++) {
         apush(*imports, xstrdup(out->map.files[i]));
     }
@@ -132,9 +141,23 @@ bool ui_document_read(
     size_t error_size
 )
 {
+    return ui_document_read_reader(rml, rcss, directory, imports, out, error, error_size, NULL);
+}
+
+bool ui_document_read_reader(
+    const char *rml,
+    const char *rcss,
+    const char *directory,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size,
+    const text_reader *reader
+)
+{
     assert(rml && out);
     ui_document next = { 0 };
-    if (!read_parts(rml, rcss ? rcss : "", directory, imports, &next, error, error_size)) {
+    if (!read_parts(rml, rcss ? rcss : "", directory, imports, &next, error, error_size, reader)) {
         ui_document_free(&next);
         return false;
     }
@@ -161,11 +184,26 @@ bool ui_document_load(
     size_t error_size
 )
 {
+    return ui_document_load_reader(ui_root, name, imports, out, error, error_size, NULL);
+}
+
+bool ui_document_load_reader(
+    const char *ui_root,
+    const char *name,
+    char ***imports,
+    ui_document *out,
+    char *error,
+    size_t error_size,
+    const text_reader *reader
+)
+{
     char *rml_path = ui_document_path(ui_root, name, false);
     char *rcss_path = ui_document_path(ui_root, name, true);
-    char *rml = text_file_read(rml_path), *rcss = text_file_read(rcss_path);
-    bool ok = rml ? ui_document_read(rml, rcss, ui_root, imports, out, error, error_size)
-                  : fail(error, error_size, "is missing");
+    char *rml = text_reader_read(reader, rml_path),
+         *rcss = text_reader_read(reader, rcss_path);
+    bool ok = rml
+                ? ui_document_read_reader(rml, rcss, ui_root, imports, out, error, error_size, reader)
+                : fail(error, error_size, "is missing");
     free(rcss);
     free(rml);
     free(rcss_path);
@@ -198,6 +236,8 @@ typedef enum
 typedef struct expansion
 {
     const char *ui_root;
+    const text_reader *reader;
+    size_t remaining;
     char **names;         /* every widget looked up */
     ui_document *widgets; /* parallel to names; empty until read */
     const char *stack[UI_USE_DEPTH];
@@ -336,7 +376,7 @@ static const ui_document *widget_named(expansion *x, const char *name)
     apush(x->names, xstrdup(name));
     apush(x->widgets, (ui_document){ 0 });
     char why[160];
-    bool read = ui_document_load(x->ui_root, name, NULL, &alast(x->widgets), why, sizeof why);
+    bool read = ui_document_load_reader(x->ui_root, name, NULL, &alast(x->widgets), why, sizeof why, x->reader);
     if (read && alast(x->widgets).body) {
         snprintf(why, sizeof why, "has a <body>, which only a scene's root document has");
         read = false;
@@ -347,7 +387,14 @@ static const ui_document *widget_named(expansion *x, const char *name)
     }
     ui_document *widget = &alast(x->widgets);
     if (x->sources) {
-        char *marked = ui_document_sources(widget->rml, name, widget->rml_line);
+        char *marked = x->reader
+                         ? ui_document_sources_at(
+                               widget->rml,
+                               name,
+                               widget->rml_line,
+                               widget->rml_start
+                           )
+                         : ui_document_sources(widget->rml, name, widget->rml_line);
         free(widget->rml);
         widget->rml = marked;
     }
@@ -355,6 +402,24 @@ static const ui_document *widget_named(expansion *x, const char *name)
 }
 
 static bool expand(expansion *x, const char *rml, char **out);
+static bool reserve_expansion(expansion *x, size_t bytes)
+{
+    if (bytes > x->remaining) {
+        return fail(x->error, x->error_size, "expanded UI markup exceeds 16 MiB work budget");
+    }
+    x->remaining -= bytes;
+    return true;
+}
+static size_t filled_size(const char *body, const char *inner)
+{
+    const char *slot = strstr(body, "<slot/>");
+    size_t length = 7;
+    if (!slot) {
+        slot = strstr(body, "<slot />");
+        length = 8;
+    }
+    return slot ? strlen(body) - length + strlen(inner) : strlen(body);
+}
 
 /* Writes the widget's markup, with `inner` in its slot. */
 static void put_filled(char **out, const char *body, const char *inner)
@@ -410,11 +475,111 @@ static const char *past_source(const char *attrs)
     const char *close = strncmp(attrs, SOURCE, sizeof SOURCE - 1)
                           ? NULL
                           : strchr(attrs + sizeof SOURCE - 1, '"');
-    return close ? close + 1 : attrs;
+    if (!close) {
+        return attrs;
+    }
+    const char *next = close + 1;
+    static const char OFFSET[] = " data-source-start=\"";
+    close = strncmp(next, OFFSET, sizeof OFFSET - 1)
+              ? NULL
+              : strchr(next + sizeof OFFSET - 1, '"');
+    return close ? close + 1 : next;
 }
 
 /* The widget's markup with the use element's attributes, but ui and data-src,
  * in place of its attrs marker; NULL when it has none. */
+typedef struct
+{
+    const char *start, *end, *value;
+    size_t length;
+} class_attribute;
+
+/* Scan actual attributes, skipping values so text such as title=" class=x"
+ * cannot become a class. Both quoted and unquoted markup values are supported. */
+static void class_attributes(const char *p, const char *end, class_attribute **classes)
+{
+    while (p < end) {
+        while (p < end && isspace((unsigned char)*p)) {
+            p++;
+        }
+        if (p == end || *p == '/' || *p == '>') {
+            return;
+        }
+        const char *start = p;
+        while (p < end && !isspace((unsigned char)*p) && *p != '=' && *p != '>') {
+            p++;
+        }
+        size_t name = (size_t)(p - start);
+        const char *name_end = p;
+        while (p < end && isspace((unsigned char)*p)) {
+            p++;
+        }
+        const char *value = p;
+        size_t length = 0;
+        if (p < end && *p == '=') {
+            p++;
+            while (p < end && isspace((unsigned char)*p)) {
+                p++;
+            }
+            char quote = p < end && (*p == '\'' || *p == '"') ? *p++ : 0;
+            value = p;
+            while (p < end && (quote ? *p != quote
+                                     : !isspace((unsigned char)*p) && *p != '>')) {
+                p++;
+            }
+            length = (size_t)(p - value);
+            p += quote && p < end;
+        } else {
+            p = name_end;
+        }
+        if (name == 5 && !strncmp(start, "class", name)) {
+            apush(*classes, ((class_attribute){ start, p, value, length }));
+        }
+    }
+}
+
+/* Forwarded class values add to a widget's classes instead of producing
+ * duplicate attributes whose interpretation depends on the markup parser. */
+static char *merge_classes(char *body, size_t offset)
+{
+    const char *open = body + offset, *end = tag_end(open);
+    if (!end) {
+        return body;
+    }
+    const char *attrs = open + 1;
+    while (attrs < end && !isspace((unsigned char)*attrs) && *attrs != '>') {
+        attrs++;
+    }
+    class_attribute *classes = NULL;
+    class_attributes(attrs, end - 1, &classes);
+    if (acount(classes) < 2) {
+        afree(classes);
+        return body;
+    }
+    char *out = NULL;
+    put(&out, body, (size_t)(classes[0].start - body));
+    put(&out, "class=\"", 7);
+    for (int i = 0; i < acount(classes); i++) {
+        if (i) {
+            put(&out, " ", 1);
+        }
+        for (size_t j = 0; j < classes[i].length; j++) {
+            char c = classes[i].value[j];
+            put(&out, c == '"' ? "&quot;" : &c, c == '"' ? 6 : 1);
+        }
+    }
+    put(&out, "\"", 1);
+    const char *at = classes[0].end;
+    for (int i = 1; i < acount(classes); i++) {
+        put(&out, at, (size_t)(classes[i].start - at));
+        at = classes[i].end;
+    }
+    put(&out, at, strlen(at) + 1);
+    afree(classes);
+    afree(body);
+    return out;
+}
+
 static char *put_attrs(const char *body, const use_tag *tag)
 {
     const char *marker = attrs_marker(body);
@@ -426,7 +591,16 @@ static char *put_attrs(const char *body, const use_tag *tag)
     put_attribute_text(&out, past_source(tag->attrs), tag->ui);
     put_attribute_text(&out, tag->ui_end, tag->attrs_end);
     put(&out, marker + 6, strlen(marker + 6) + 1);
-    return out;
+    const char *open = body;
+    for (const char *p = strchr(body, '<'); p && p < marker;) {
+        open = p;
+        const char *end = tag_end(p);
+        if (!end || end > marker) {
+            break;
+        }
+        p = strchr(end, '<');
+    }
+    return merge_classes(out, (size_t)(open - body));
 }
 
 static bool expand_use(expansion *x, const use_tag *tag, char **out)
@@ -458,6 +632,14 @@ static bool expand_use(expansion *x, const use_tag *tag, char **out)
            but data-src, which stays on the div. */
         char *marked = put_attrs(body, tag);
         const char *kept = marked ? past_source(tag->attrs) : tag->ui;
+        size_t bytes = filled_size(marked ? marked : body, inner) +
+                       (size_t)(kept - tag->attrs) +
+                       (size_t)((marked ? tag->ui_end : tag->attrs_end) - tag->ui) + 18;
+        if (!reserve_expansion(x, bytes)) {
+            afree(marked);
+            ok = false;
+            goto done;
+        }
         put(out, "<div", 4);
         put(out, tag->attrs, (size_t)(kept - tag->attrs));
         if (marked) {
@@ -470,6 +652,7 @@ static bool expand_use(expansion *x, const use_tag *tag, char **out)
         put(out, "</div>", 6);
         afree(marked);
     }
+done:
     free(children);
     afree(inner);
     afree(body);
@@ -483,6 +666,9 @@ static bool expand(expansion *x, const char *rml, char **out)
     use_scan scan;
     const char *p = rml;
     while ((scan = next_use(p, &tag)) == USE_FOUND) {
+        if (!reserve_expansion(x, (size_t)(tag.open - p))) {
+            return false;
+        }
         put(out, p, (size_t)(tag.open - p));
         if (!expand_use(x, &tag, out)) {
             return false;
@@ -491,6 +677,9 @@ static bool expand(expansion *x, const char *rml, char **out)
     }
     if (scan == USE_BROKEN) {
         return fail(x->error, x->error_size, "each <use> needs ui=\"Name\" and an end");
+    }
+    if (!reserve_expansion(x, strlen(p) + 1)) {
+        return false;
     }
     put(out, p, strlen(p) + 1);
     return true;
@@ -727,13 +916,22 @@ static const char *markup_end(const char *p)
 
 static void put_source(char **out, const char *asset, int line)
 {
-    char mark[320];
-    int length = snprintf(mark, sizeof mark, " data-src=\"%s:%d\"", asset, line);
+    put(out, " data-src=\"", 11);
+    for (const char *p = asset; *p; p++) {
+        const char *escaped = *p == '&' ? "&amp;"
+                            : *p == '"' ? "&quot;"
+                            : *p == '<' ? "&lt;"
+                            : *p == '>' ? "&gt;"
+                                        : NULL;
+        put(out, escaped ? escaped : p, escaped ? strlen(escaped) : 1);
+    }
+    char mark[32];
+    int length = snprintf(mark, sizeof mark, ":%d\"", line);
     assert(length > 0 && (size_t)length < sizeof mark);
     put(out, mark, (size_t)length);
 }
 
-char *ui_document_sources(const char *rml, const char *asset, int first)
+static char *annotated_sources(const char *rml, const char *asset, int first, size_t offset, bool exact)
 {
     char *out = NULL;
     const char *copied = rml;
@@ -751,6 +949,17 @@ char *ui_document_sources(const char *rml, const char *asset, int first)
             line += breaks(copied, p);
             put(&out, copied, (size_t)(name_end - copied));
             put_source(&out, asset, line);
+            if (exact) {
+                char mark[80];
+                int length = snprintf(
+                    mark,
+                    sizeof mark,
+                    " data-source-start=\"%zu\"",
+                    offset + (size_t)(p - rml)
+                );
+                assert(length > 0 && (size_t)length < sizeof mark);
+                put(&out, mark, (size_t)length);
+            }
             copied = name_end;
         }
         p = end;
@@ -759,6 +968,14 @@ char *ui_document_sources(const char *rml, const char *asset, int first)
     char *text = xstrdup(out);
     afree(out);
     return text;
+}
+char *ui_document_sources(const char *rml, const char *asset, int first)
+{
+    return annotated_sources(rml, asset, first, 0, false);
+}
+char *ui_document_sources_at(const char *rml, const char *asset, int first, size_t offset)
+{
+    return annotated_sources(rml, asset, first, offset, true);
 }
 
 /* Appends asset `name`'s RCSS, scoped to it, to the expansion's, naming its
@@ -790,13 +1007,35 @@ bool ui_document_expand(
     size_t error_size
 )
 {
+    return ui_document_expand_reader(document, name, ui_root, sources, uses, error, error_size, NULL);
+}
+
+bool ui_document_expand_reader(
+    ui_document *document,
+    const char *name,
+    const char *ui_root,
+    bool sources,
+    char ***uses,
+    char *error,
+    size_t error_size,
+    const text_reader *reader
+)
+{
     expansion x = { .ui_root = ui_root,
+                    .reader = reader,
+                    .remaining = reader ? 16u * 1024u * 1024u : SIZE_MAX,
                     .sources = sources,
                     .error = error,
                     .error_size = error_size };
-    char *marked = sources
-                     ? ui_document_sources(document->rml, name, document->rml_line)
-                     : NULL;
+    char *marked = !sources ? NULL
+                 : reader
+                     ? ui_document_sources_at(
+                           document->rml,
+                           name,
+                           document->rml_line,
+                           document->rml_start
+                       )
+                     : ui_document_sources(document->rml, name, document->rml_line);
     char *rml = NULL;
     bool ok = expand(&x, marked ? marked : document->rml, &rml);
     free(marked);
@@ -951,10 +1190,64 @@ typedef struct
     const char *at;
     size_t length;
     bool change; /* the handler is data-event-change or data-event-input */
+    int arguments;
+    const char *call, *call_end;
 } emit_span;
 
-/* Appends the emit('Name') calls of the data-event-* handlers among the
- * tag's attributes [p, end), in order. */
+/* Counts callback arguments using balanced expression delimiters. Commas in
+ * quoted values and nested calls/indices are not argument separators. */
+static bool emit_arguments(const char *text, int length, int open, int *end, int *arguments)
+{
+    char stack[64] = { '(' };
+    int depth = 1, commas = 0;
+    bool content = false;
+    char quote = 0;
+    for (int i = open + 1; i < length; i++) {
+        char c = text[i];
+        if (quote) {
+            if (c == '\\' && i + 1 < length) {
+                i++;
+            } else if (c == quote) {
+                quote = 0;
+            }
+            continue;
+        }
+        if (c == '\'' || c == '"') {
+            quote = c;
+            content = true;
+            continue;
+        }
+        if (c == '(' || c == '[' || c == '{') {
+            if (depth == (int)sizeof stack) {
+                return false;
+            }
+            stack[depth++] = c;
+            content = true;
+            continue;
+        }
+        if (c == ')' || c == ']' || c == '}') {
+            char expected = c == ')' ? '(' : c == ']' ? '[' : '{';
+            if (!depth || stack[depth - 1] != expected) {
+                return false;
+            }
+            if (!--depth) {
+                *end = i + 1;
+                *arguments = content ? commas + 1 : 0;
+                return true;
+            }
+            continue;
+        }
+        if (c == ',' && depth == 1) {
+            commas++;
+        }
+        if (!isspace((unsigned char)c)) {
+            content = true;
+        }
+    }
+    return false;
+}
+/* The existing event/name scanner is also the authoring/runtime capacity
+ * authority. Both indexing and validation consume these parsed call spans. */
 static void emit_spans(const char *p, const char *end, emit_span **spans)
 {
     static const char PREFIX[] = "data-event-";
@@ -972,32 +1265,105 @@ static void emit_spans(const char *p, const char *end, emit_span **spans)
             strncmp(p + 1, PREFIX, prefix)) {
             continue;
         }
-        const char *type = p + 1 + prefix, *equals = type;
-        while (equals < end && name_char(*equals)) {
+        const char *type = p + 1 + prefix, *name_end = type;
+        while (name_end < end && name_char(*name_end)) {
+            name_end++;
+        }
+        const char *equals = name_end;
+        while (equals < end && isspace((unsigned char)*equals)) {
             equals++;
         }
-        if (end - equals < 2 || *equals != '=' ||
-            (equals[1] != '"' && equals[1] != '\'')) {
+        if (equals == end || *equals++ != '=') {
             continue;
         }
-        const char *value = equals + 2;
-        const char *close = memchr(value, equals[1], (size_t)(end - value));
+        while (equals < end && isspace((unsigned char)*equals)) {
+            equals++;
+        }
+        if (equals == end || (*equals != '"' && *equals != '\'')) {
+            continue;
+        }
+        const char *value = equals + 1,
+                   *close = memchr(value, *equals, (size_t)(end - value));
         if (!close) {
             return;
         }
-        bool change = (equals - type == 6 && !strncmp(type, "change", 6)) ||
-                      (equals - type == 5 && !strncmp(type, "input", 5));
-        for (const char *e = value; e + 6 < close; e++) {
-            if (strncmp(e, "emit(", 5) || (e[5] != '"' && e[5] != '\'')) {
+        bool change = (name_end - type == 6 && !strncmp(type, "change", 6)) ||
+                      (name_end - type == 5 && !strncmp(type, "input", 5));
+        markup_expression decoded;
+        markup_expression_decode(value, 0, (int)(close - value), &decoded);
+        for (int i = 0; i < decoded.length;) {
+            unsigned char c = (unsigned char)decoded.text[i];
+            if (c == '\'' || c == '"') {
+                char quote = (char)c;
+                i++;
+                while (i < decoded.length && decoded.text[i] != quote) {
+                    if (decoded.text[i] == '\\' && i + 1 < decoded.length) {
+                        i++;
+                    }
+                    i++;
+                }
+                i += i < decoded.length;
                 continue;
             }
-            const char *name = e + 6;
-            const char *stop = memchr(name, e[5], (size_t)(close - name));
-            if (stop && stop > name) {
-                apush(*spans, ((emit_span){ name, (size_t)(stop - name), change }));
-                e = stop;
+            if (!isalpha(c) && c != '_') {
+                i++;
+                continue;
             }
+            int start = i++;
+            while (i < decoded.length && (isalnum((unsigned char)decoded.text[i]) ||
+                                          decoded.text[i] == '_')) {
+                i++;
+            }
+            int previous = start - 1;
+            while (previous >= 0 && isspace((unsigned char)decoded.text[previous])) {
+                previous--;
+            }
+            if (i - start != 4 || strncmp(decoded.text + start, "emit", 4) ||
+                (previous >= 0 && decoded.text[previous] == '.')) {
+                continue;
+            }
+            int open = i;
+            while (open < decoded.length &&
+                   isspace((unsigned char)decoded.text[open])) {
+                open++;
+            }
+            if (open == decoded.length || decoded.text[open] != '(') {
+                continue;
+            }
+            int stop, arguments;
+            if (!emit_arguments(decoded.text, decoded.length, open, &stop, &arguments)) {
+                continue;
+            }
+            int name = open + 1;
+            while (name < stop && isspace((unsigned char)decoded.text[name])) {
+                name++;
+            }
+            int first = 0, last = 0;
+            if (name < stop &&
+                (decoded.text[name] == '\'' || decoded.text[name] == '"')) {
+                char quote = decoded.text[name++];
+                first = name;
+                while (name < stop && decoded.text[name] != quote) {
+                    if (decoded.text[name] == '\\' && name + 1 < stop) {
+                        name++;
+                    }
+                    name++;
+                }
+                if (name < stop) {
+                    last = name;
+                }
+            }
+            emit_span span = { .change = change,
+                               .arguments = arguments ? arguments - 1 : 0,
+                               .call = value + decoded.starts[start],
+                               .call_end = value + decoded.ends[stop - 1] };
+            if (last > first) {
+                span.at = value + decoded.starts[first];
+                span.length = (size_t)(decoded.ends[last - 1] - decoded.starts[first]);
+            }
+            apush(*spans, span);
         }
+        markup_expression_free(&decoded);
         p = close;
     }
 }
@@ -1016,6 +1382,9 @@ static void push_tag_events(ui_document_event **events, const char *open, const 
     emit_span *emits = NULL;
     emit_spans(attrs, end, &emits);
     for (int i = 0; i < acount(emits); i++) {
+        if (!emits[i].at) {
+            continue;
+        }
         apush(
             *events,
             ((ui_document_event){ .name = copy_text(emits[i].at, emits[i].length),
@@ -1202,7 +1571,9 @@ static void tag_event_spans(const char *open, const char *end, name_span **spans
     emit_span *emits = NULL;
     emit_spans(open, end, &emits);
     for (int i = 0; i < acount(emits); i++) {
-        apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
+        if (emits[i].at) {
+            apush(*spans, ((name_span){ emits[i].at, emits[i].length }));
+        }
     }
     afree(emits);
     key_event_spans(open, end, "data-keys", spans);
@@ -1269,4 +1640,58 @@ char *ui_document_rename(const char *rml, bool event, const char *from, const ch
     afree(out);
     afree(spans);
     return text;
+}
+
+void ui_document_event_calls(const char *rml, ui_document_event_call **calls)
+{
+    for (const char *p = strchr(rml, '<'); p; p = strchr(p, '<')) {
+        const char *end = strncmp(p, "<!--", 4) ? tag_end(p) : strstr(p, "-->");
+        if (!end) {
+            return;
+        }
+        if (isalpha((unsigned char)p[1])) {
+            emit_span *spans = NULL;
+            emit_spans(p, end, &spans);
+            for (int i = 0; i < acount(spans); i++) {
+                apush(
+                    *calls,
+                    ((ui_document_event_call){ (int)(spans[i].call - rml),
+                                               (int)(spans[i].call_end - rml),
+                                               spans[i].arguments })
+                );
+            }
+            afree(spans);
+        }
+        p = end;
+    }
+}
+bool ui_document_validate_events(const char *rml, char *error, size_t size)
+{
+    ui_document_event_call *calls = NULL;
+    ui_document_event_calls(rml, &calls);
+    bool valid = true;
+    for (int i = 0; i < acount(calls); i++) {
+        if (calls[i].arguments <= UI_ACTIVATION_ARGS) {
+            continue;
+        }
+        int line = 1;
+        for (int j = 0; j < calls[i].start; j++) {
+            line += rml[j] == '\n';
+        }
+        if (size) {
+            snprintf(
+                error,
+                size,
+                "emit at line %d passes %d explicit payload arguments; maximum "
+                "is %d",
+                line,
+                calls[i].arguments,
+                UI_ACTIVATION_ARGS
+            );
+        }
+        valid = false;
+        break;
+    }
+    afree(calls);
+    return valid;
 }

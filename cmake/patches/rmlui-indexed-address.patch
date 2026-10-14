@@ -1,0 +1,243 @@
+--- a/Include/RmlUi/Core/DataTypes.h
++++ b/Include/RmlUi/Core/DataTypes.h
+@@ -39,6 +39,9 @@
+ 	DataAddressEntry(int index) : index(index) {}
+ 	String name;
+ 	int index;
++	// A reference-valued index keeps its resolved alias scope and is read on access.
++	String index_expression;
++	Vector<DataAddressEntry> index_address;
+ };
+ using DataAddress = Vector<DataAddressEntry>;
+ 
+--- a/Source/Core/DataExpression.cpp
++++ b/Source/Core/DataExpression.cpp
+@@ -1148,8 +1148,8 @@
+ 	list.reserve(addresses.size());
+ 	for (const DataAddress& address : addresses)
+ 	{
+-		if (!address.empty())
+-			list.push_back(address[0].name);
++		auto names = DataModel::AddressVariables(address);
++		list.insert(list.end(), names.begin(), names.end());
+ 	}
+ 	return list;
+ }
+--- a/Source/Core/DataModel.cpp
++++ b/Source/Core/DataModel.cpp
+@@ -3,43 +3,54 @@
+ #include "../../Include/RmlUi/Core/Element.h"
+ #include "DataController.h"
+ #include "DataView.h"
++#include <cmath>
++#include <climits>
+ 
+ namespace Rml {
+ 
+ static DataAddress ParseAddress(const String& address_str)
+ {
+-	StringList list;
+-	StringUtilities::ExpandString(list, address_str, '.');
+-
+ 	DataAddress address;
+-	address.reserve(list.size() * 2);
+-
+-	for (const auto& item : list)
+-	{
+-		if (item.empty())
+-			return DataAddress();
+-
+-		size_t i_open = item.find('[', 0);
+-		if (i_open == 0)
+-			return DataAddress();
+-
+-		address.emplace_back(item.substr(0, i_open));
+-
+-		while (i_open != String::npos)
++	if (address_str.empty() || address_str.size() > 4096)
++		return address;
++	size_t position = 0;
++	while (position < address_str.size())
++	{
++		const size_t begin = position;
++		while (position < address_str.size() && address_str[position] != '.' && address_str[position] != '[')
++			position++;
++		if (position == begin)
++			return {};
++		address.emplace_back(address_str.substr(begin, position - begin));
++		while (position < address_str.size() && address_str[position] == '[')
+ 		{
+-			size_t i_close = item.find(']', i_open + 1);
+-			if (i_close == String::npos)
+-				return DataAddress();
+-
+-			int index = FromString<int>(item.substr(i_open + 1, i_close - i_open), -1);
+-			if (index < 0)
+-				return DataAddress();
+-
+-			address.emplace_back(index);
+-
+-			i_open = item.find('[', i_close + 1);
++			const size_t start = ++position;
++			int depth = 1;
++			while (position < address_str.size() && depth)
++			{
++				if (address_str[position] == '[') depth++;
++				if (address_str[position] == ']') depth--;
++				if (depth) position++;
++			}
++			if (depth || position == start)
++				return {};
++			String index = StringUtilities::StripWhitespace(address_str.substr(start, position - start));
++			if (index.empty()) return {};
++			const bool digits = index.find_first_not_of("0123456789") == String::npos;
++			int value = digits ? 0 : -1;
++			if (digits) for (char digit : index)
++			{
++				if (value > (INT_MAX - (digit - '0')) / 10) return {};
++				value = value * 10 + digit - '0';
++			}
++			address.emplace_back(value);
++			if (!digits) address.back().index_expression = std::move(index);
++			position++;
+ 		}
+-		// TODO: Abort on invalid characters among [ ] and after the last found bracket?
++		if (address.size() > 256)
++			return {};
++		if (position < address_str.size() && (address_str[position++] != '.' || position == address_str.size()))
++			return {};
+ 	}
+ 
+ 	RMLUI_ASSERT(!address.empty() && !address[0].name.empty());
+@@ -224,10 +235,24 @@
+ 
+ DataAddress DataModel::ResolveAddress(const String& address_str, Element* element) const
+ {
++	return ResolveAddressDepth(address_str, element, 0);
++}
++
++DataAddress DataModel::ResolveAddressDepth(const String& address_str, Element* element, int depth) const
++{
++	if (depth >= 16) return {};
+ 	DataAddress address = ParseAddress(address_str);
+ 
+ 	if (address.empty())
+ 		return address;
++
++	for (auto& entry : address)
++	{
++		if (entry.index_expression.empty()) continue;
++		entry.index_address = ResolveAddressDepth(entry.index_expression, element, depth + 1);
++		if (entry.index_address.empty()) return {};
++		entry.index_expression.clear();
++	}
+ 
+ 	const String& first_name = address.front().name;
+ 
+@@ -272,8 +297,29 @@
+ 	return DataAddress();
+ }
+ 
++static void AppendAddressVariables(const DataAddress& address, StringList& result, int depth)
++{
++	if (depth >= 16) return;
++	if (!address.empty() && address.front().name != "literal") result.push_back(address.front().name);
++	for (const auto& entry : address)
++		AppendAddressVariables(entry.index_address, result, depth + 1);
++}
++
++StringList DataModel::AddressVariables(const DataAddress& address)
++{
++	StringList result;
++	AppendAddressVariables(address, result, 0);
++	return result;
++}
++
+ DataVariable DataModel::GetVariable(const DataAddress& address) const
+ {
++	return GetVariableDepth(address, 0);
++}
++
++DataVariable DataModel::GetVariableDepth(const DataAddress& address, int depth) const
++{
++	if (depth >= 16) return {};
+ 	if (address.empty())
+ 		return DataVariable();
+ 
+@@ -284,7 +330,21 @@
+ 
+ 		for (int i = 1; i < (int)address.size() && variable; i++)
+ 		{
+-			variable = variable.Child(address[i]);
++			const auto& entry = address[i];
++			if (!entry.index_address.empty())
++			{
++				Variant value;
++				DataVariable index_variable = GetVariableDepth(entry.index_address, depth + 1);
++				double number = -1;
++				if (!index_variable || !index_variable.Get(value) || !value.GetInto(number) ||
++					(value.GetType() != Variant::INT && value.GetType() != Variant::INT64 && value.GetType() != Variant::UINT && value.GetType() != Variant::UINT64 && value.GetType() != Variant::FLOAT && value.GetType() != Variant::DOUBLE && value.GetType() != Variant::BYTE && value.GetType() != Variant::CHAR) ||
++					!std::isfinite(number) || number < 0 || number > INT_MAX || std::floor(number) != number ||
++					number >= variable.Size())
++					return {};
++				variable = variable.Child(DataAddressEntry((int)number));
++			}
++			else
++				variable = variable.Child(entry);
+ 			if (!variable)
+ 				return DataVariable();
+ 		}
+--- a/Source/Core/DataModel.h
++++ b/Source/Core/DataModel.h
+@@ -34,6 +34,7 @@
+ 	DataAddress ResolveAddress(const String& address_str, Element* element) const;
+ 	const DataEventFunc* GetEventCallback(const String& name);
+ 
++	static StringList AddressVariables(const DataAddress& address);
+ 	DataVariable GetVariable(const DataAddress& address) const;
+ 	bool GetVariableInto(const DataAddress& address, Variant& out_value) const;
+ 
+@@ -56,6 +57,8 @@
+ 	const UnorderedMap<String, DataVariable>& GetAllVariables() const { return variables; }
+ 
+ private:
++	DataAddress ResolveAddressDepth(const String&, Element*, int depth) const;
++	DataVariable GetVariableDepth(const DataAddress&, int depth) const;
+ 	UniquePtr<DataViews> views;
+ 	UniquePtr<DataControllers> controllers;
+ 
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -536,11 +536,9 @@
+ bool DataViewFor::Update(DataModel& model)
+ {
+ 	DataVariable variable = model.GetVariable(container_address);
+-	if (!variable)
+-		return false;
+-
+-	bool result = false;
+-	const int size = variable.Size();
++	bool result = false;
++	// Missing, invalid or shortened indexed containers retire their old children.
++	const int size = variable ? variable.Size() : 0;
+ 	const int num_elements = (int)elements.size();
+ 	Element* element = GetElement();
+ 
+@@ -585,7 +583,7 @@
+ StringList DataViewFor::GetVariableNameList() const
+ {
+ 	RMLUI_ASSERT(!container_address.empty());
+-	return StringList{container_address.front().name};
++	return DataModel::AddressVariables(container_address);
+ }
+ 
+ void DataViewFor::Release()
+@@ -692,7 +690,7 @@
+ 	if (address.empty())
+ 		return false;
+ 
+-	variables.push_back(modifier);
++	variables = DataModel::AddressVariables(address);
+ 	model.InsertAlias(element, modifier, address);
+ 	return true;
+ }

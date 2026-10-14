@@ -4,6 +4,9 @@
 #include "authoring/image_prepare.h"
 #include "authoring/mesh_prepare.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/visual_authoring_preview.h"
+#include "authoring/visual_model_preview.h"
+#include "authoring/workspace_resources.h"
 #include "automation/content_hash.h"
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
@@ -19,6 +22,7 @@
 #include "render/shader_dir.h"
 #include "render/shader_images.h"
 #include "render/shader_preview.h"
+#include "render/shader_publish.h"
 #include "support/array.h"
 #include "support/asset_json.h"
 #include "support/asset_text.h"
@@ -66,6 +70,7 @@ static const preview_family PREVIEW_FAMILIES[] = {
     { "material", BEHAVIOR_DOMAIN_MATERIAL, "materials" },
     { "shape", BEHAVIOR_DOMAIN_SHAPE, "shapes" },
     { "shader-library", BEHAVIOR_DOMAIN_SHADER_LIBRARY, "shader-libraries" },
+    { "model", BEHAVIOR_DOMAIN_MODEL, "models" },
 };
 
 typedef struct
@@ -87,8 +92,72 @@ typedef struct
 
 typedef struct
 {
-    float yaw, pitch, zoom;
+    float yaw, pitch, zoom, pan_x, pan_y;
 } preview_view;
+
+typedef struct
+{
+    int part, axis;
+    float offset, reference_opacity;
+    bool reference_visible;
+} preview_inspection;
+
+static bool parse_model_inspection(yyjson_val *value, preview_inspection *out, char *error, size_t size)
+{
+    *out = (preview_inspection){ .part = -1 };
+    if (!value) {
+        return true;
+    }
+    if (!yyjson_is_obj(value)) {
+        snprintf(error, size, "inspection must be an object");
+        return false;
+    }
+    size_t index, count;
+    yyjson_val *key, *member;
+    yyjson_obj_foreach(value, index, count, key, member)
+    {
+        const char *name = yyjson_get_str(key);
+        if (!strcmp(name, "part")) {
+            if (!yyjson_is_int(member) || yyjson_get_sint(member) < -1 ||
+                yyjson_get_sint(member) > INT_MAX) {
+                snprintf(error, size, "inspection.part must be -1 or a part index");
+                return false;
+            }
+            out->part = (int)yyjson_get_sint(member);
+        } else if (!strcmp(name, "section_axis")) {
+            if (!yyjson_is_int(member) || yyjson_get_sint(member) < 0 ||
+                yyjson_get_sint(member) > 3) {
+                snprintf(error, size, "inspection.section_axis must be 0..3");
+                return false;
+            }
+            out->axis = (int)yyjson_get_sint(member);
+        } else if (!strcmp(name, "section_offset")) {
+            double number = yyjson_is_num(member) ? yyjson_get_num(member) : NAN;
+            if (!isfinite(number) || fabs(number) > 1e6) {
+                snprintf(error, size, "inspection.section_offset must be finite and within +/-1000000");
+                return false;
+            }
+            out->offset = (float)number;
+        } else if (!strcmp(name, "reference_visible")) {
+            if (!yyjson_is_bool(member)) {
+                snprintf(error, size, "inspection.reference_visible must be boolean");
+                return false;
+            }
+            out->reference_visible = yyjson_get_bool(member);
+        } else if (!strcmp(name, "reference_opacity")) {
+            double number = yyjson_is_num(member) ? yyjson_get_num(member) : NAN;
+            if (!isfinite(number) || number < 0 || number > 1) {
+                snprintf(error, size, "inspection.reference_opacity must be finite0..1");
+                return false;
+            }
+            out->reference_opacity = (float)number;
+        } else {
+            snprintf(error, size, "inspection accepts only part, section_axis, section_offset, reference_visible and reference_opacity");
+            return false;
+        }
+    }
+    return true;
+}
 
 typedef struct
 {
@@ -221,15 +290,19 @@ static bool parse_preview_view(yyjson_val *value, preview_view *view, char *erro
         set_error(error, error_size, "view must be an object with yaw, pitch and zoom numbers");
         return false;
     }
-    const char *names[] = { "yaw", "pitch", "zoom" };
-    float *outputs[] = { &view->yaw, &view->pitch, &view->zoom };
+    const char *names[] = { "yaw", "pitch", "zoom", "pan_x", "pan_y" };
+    float *outputs[] = { &view->yaw, &view->pitch, &view->zoom, &view->pan_x, &view->pan_y };
     const double minimum[] = { -RENDER_SHADER_PREVIEW_YAW_MAX,
                                -RENDER_SHADER_PREVIEW_PITCH_MAX,
-                               RENDER_SHADER_PREVIEW_ZOOM_MIN };
+                               RENDER_SHADER_PREVIEW_ZOOM_MIN,
+                               -1000000,
+                               -1000000 };
     const double maximum[] = { RENDER_SHADER_PREVIEW_YAW_MAX,
                                RENDER_SHADER_PREVIEW_PITCH_MAX,
-                               RENDER_SHADER_PREVIEW_ZOOM_MAX };
-    for (int i = 0; i < 3; i++) {
+                               RENDER_SHADER_PREVIEW_ZOOM_MAX,
+                               1000000,
+                               1000000 };
+    for (int i = 0; i < 5; i++) {
         yyjson_val *member = yyjson_obj_get(value, names[i]);
         if (!member) {
             continue;
@@ -254,8 +327,9 @@ static bool parse_preview_view(yyjson_val *value, preview_view *view, char *erro
     yyjson_obj_foreach(value, index, count, key, member)
     {
         const char *name = yyjson_get_str(key);
-        if (strcmp(name, "yaw") && strcmp(name, "pitch") && strcmp(name, "zoom")) {
-            set_error(error, error_size, "view accepts only yaw, pitch and zoom");
+        if (strcmp(name, "yaw") && strcmp(name, "pitch") && strcmp(name, "zoom") &&
+            strcmp(name, "pan_x") && strcmp(name, "pan_y")) {
+            set_error(error, error_size, "view accepts only yaw, pitch, zoom and model-only pan_x/pan_y");
             return false;
         }
     }
@@ -695,9 +769,9 @@ static char *base64(const void *data, size_t size)
 }
 
 /* Waits for the current frame's pixels; the caller frees them. */
-static CF_Pixel *read_pixels(int width, int height, char *error, size_t error_size)
+static CF_Pixel *read_canvas_pixels(CF_Canvas canvas, int width, int height, char *error, size_t error_size)
 {
-    CF_Readback readback = cf_canvas_readback(cf_app_get_canvas());
+    CF_Readback readback = cf_canvas_readback(canvas);
     if (!readback.id) {
         set_error(error, error_size, "GPU readback could not be started");
         return NULL;
@@ -732,9 +806,9 @@ static CF_Pixel *read_pixels(int width, int height, char *error, size_t error_si
     return pixels;
 }
 
-bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+static bool read_canvas_png(CF_Canvas canvas, int width, int height, char **encoded, char *error, size_t error_size)
 {
-    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    CF_Pixel *pixels = read_canvas_pixels(canvas, width, height, error, error_size);
     if (!pixels) {
         return false;
     }
@@ -755,9 +829,14 @@ bool chibi_preview_readback(int width, int height, char **encoded, char *error, 
     return ok;
 }
 
+bool chibi_preview_readback(int width, int height, char **encoded, char *error, size_t error_size)
+{
+    return read_canvas_png(cf_app_get_canvas(), width, height, encoded, error, error_size);
+}
+
 bool chibi_preview_readback_raw(int width, int height, FILE *out, char *error, size_t error_size)
 {
-    CF_Pixel *pixels = read_pixels(width, height, error, error_size);
+    CF_Pixel *pixels = read_canvas_pixels(cf_app_get_canvas(), width, height, error, error_size);
     if (!pixels) {
         return false;
     }
@@ -986,6 +1065,179 @@ static bool render_asset(
     return rendered;
 }
 
+static bool render_model_asset(
+    const preview_ref *ref,
+    const behavior_asset *asset,
+    const char *root,
+    const char *content,
+    float time,
+    int width,
+    int height,
+    const char *parameters,
+    const preview_view *view,
+    const preview_inspection *inspection,
+    preview_response *response,
+    char **png,
+    char *error,
+    size_t size
+)
+{
+    CF_Result made = cf_make_app(
+        "Chibi model preview",
+        0,
+        0,
+        0,
+        width,
+        height,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        "chibi_ctl --render"
+    );
+    if (cf_is_error(made)) {
+        snprintf(error, size, "%s (SDL: %s)", made.details, SDL_GetError());
+        return false;
+    }
+    yyjson_mut_obj_add_strcpy(response->doc, response->result, "video_driver", SDL_GetCurrentVideoDriver());
+    yyjson_mut_obj_add_str(
+        response->doc,
+        response->result,
+        "backend",
+        cf_backend_type_to_string(cf_query_backend())
+    );
+    cf_fs_mount(render_shader_dir(), "/chibi-render", true);
+    cf_shader_directory("/chibi-render");
+    workspace_document_status status;
+    workspace_documents *documents = workspace_documents_new(root, &status);
+    workspace_resources *resources = NULL;
+    visual_previews *catalog = NULL;
+    visual_model_preview *renderer = NULL;
+    render_resource_scope scope = { 0 };
+    CF_Canvas canvas = { 0 };
+    bool ok = false;
+    int document = 0;
+    /* Recheck the source before admitting a disk generation. Open overlays
+     * then pin that exact text throughout catalog preparation and rendering. */
+    if (!under_root(root, ref->path)) {
+        set_error(error, size, "Model source must remain inside the workspace root");
+        goto done;
+    }
+    const char *relative = ref->path + strlen(root) + 1;
+    workspace_document_view source;
+    if (!documents ||
+        workspace_document_open(documents, relative, &document) != WORKSPACE_DOCUMENT_OK ||
+        workspace_document_read(documents, document, &source) != WORKSPACE_DOCUMENT_OK ||
+        automation_content_hash(source.text, source.bytes) != ref->hash) {
+        set_error(error, size, "Model source changed or could not be opened before preparation");
+        goto done;
+    }
+    resources = workspace_resources_new(root, error, size);
+    if (!resources) {
+        goto done;
+    }
+    workspace_resource_result inventory = workspace_resources_refresh(resources);
+    if (!inventory.ok || !inventory.complete) {
+        set_error(error, size, inventory.message);
+        goto done;
+    }
+    catalog = visual_previews_new(documents, NULL, content, root);
+    if (!visual_previews_refresh_catalog(catalog, resources, error, size) ||
+        !render_resource_scope_enter(visual_previews_resources(catalog), &scope, error, size)) {
+        goto done;
+    }
+    renderer = visual_model_preview_new(asset->name, width, height, error, size);
+    if (!renderer ||
+        !visual_model_preview_parameter_text(renderer, parameters ? parameters : "{}", error, size) ||
+        !visual_model_preview_inspection(
+            renderer,
+            inspection->part,
+            inspection->axis,
+            inspection->offset,
+            error,
+            size
+        )) {
+        goto done;
+    }
+    visual_model_reference reference = {
+        .image = asset->reference.image ? asset->reference.image : "",
+        .center_x = asset->reference.center[0],
+        .center_y = asset->reference.center[1],
+        .height = asset->reference.image ? asset->reference.span : 2,
+        .angle = asset->reference.angle,
+        .locked = asset->reference.locked
+    };
+    if (!visual_model_preview_pan(renderer, view->pan_x, view->pan_y, error, size) ||
+        !visual_model_preview_reference(
+            renderer,
+            &reference,
+            inspection->reference_visible,
+            inspection->reference_opacity,
+            error,
+            size
+        )) {
+        goto done;
+    }
+    cf_app_update(NULL);
+    if (!visual_model_preview_draw(renderer, time, view->yaw, view->pitch, view->zoom, error, size)) {
+        goto done;
+    }
+    canvas.id = visual_model_preview_take_canvas(renderer);
+    if (!canvas.id || !read_canvas_png(canvas, width, height, png, error, size)) {
+        goto done;
+    }
+    yyjson_mut_obj_remove_str(response->result, "view");
+    yyjson_mut_val *actual_view = yyjson_mut_obj_add_obj(response->doc, response->result, "view");
+    yyjson_mut_obj_add_real(response->doc, actual_view, "yaw", view->yaw);
+    yyjson_mut_obj_add_real(response->doc, actual_view, "pitch", view->pitch);
+    yyjson_mut_obj_add_real(response->doc, actual_view, "zoom", view->zoom);
+    yyjson_mut_obj_add_real(response->doc, actual_view, "pan_x", view->pan_x);
+    yyjson_mut_obj_add_real(response->doc, actual_view, "pan_y", view->pan_y);
+    yyjson_mut_obj_add_real(response->doc, response->result, "time", time);
+    yyjson_mut_val
+        *actual_inspection = yyjson_mut_obj_add_obj(response->doc, response->result, "inspection");
+    yyjson_mut_obj_add_int(response->doc, actual_inspection, "part", inspection->part);
+    yyjson_mut_obj_add_int(
+        response->doc,
+        actual_inspection,
+        "section_axis",
+        inspection->axis
+    );
+    yyjson_mut_obj_add_real(
+        response->doc,
+        actual_inspection,
+        "section_offset",
+        inspection->offset
+    );
+    yyjson_mut_obj_add_bool(
+        response->doc,
+        actual_inspection,
+        "reference_visible",
+        inspection->reference_visible
+    );
+    yyjson_mut_obj_add_real(
+        response->doc,
+        actual_inspection,
+        "reference_opacity",
+        inspection->reference_opacity
+    );
+    ok = true;
+done:
+    if (canvas.id) {
+        cf_destroy_canvas(canvas);
+    }
+    visual_model_preview_free(renderer);
+    if (scope.active) {
+        char leave_error[256];
+        if (!render_resource_scope_leave(&scope, leave_error, sizeof leave_error)) {
+            set_error(error, size, leave_error);
+            ok = false;
+        }
+    }
+    visual_previews_free(catalog);
+    workspace_resources_free(resources);
+    workspace_documents_free(documents);
+    cf_destroy_app();
+    return ok;
+}
+
 static char *response_finish(preview_response *response)
 {
     char *json = yyjson_mut_write(response->doc, 0, NULL);
@@ -1069,9 +1321,11 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_mut_doc_free(response.doc);
         return chibi_scene_preview_handle(request, default_root, exit_code);
     }
+    bool model = yyjson_is_str(operation) &&
+                 !strcmp(yyjson_get_str(operation), "preview_model");
     if (!yyjson_is_str(operation) ||
-        strcmp(yyjson_get_str(operation), "preview_shader")) {
-        response_error(&response, PREVIEW_INVALID_REQUEST, "operation must be preview_shader");
+        (!model && strcmp(yyjson_get_str(operation), "preview_shader"))) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "operation must be preview_shader, preview_model or preview_scene");
         if (exit_code) {
             *exit_code = response.status;
         }
@@ -1144,6 +1398,33 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
             return response_finish(&response);
         }
     }
+    preview_inspection inspection = { .part = -1 };
+    if ((model &&
+         (!parse_model_inspection(yyjson_obj_get(root, "inspection"), &inspection, error, sizeof error) ||
+          time < 0)) ||
+        (!model && yyjson_obj_get(root, "inspection"))) {
+        response_error(
+            &response,
+            PREVIEW_INVALID_REQUEST,
+            *error ? error : "Model time must be nonnegative; inspection requires preview_model"
+        );
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    if (model &&
+        (yyjson_obj_get(root, "camera") || yyjson_obj_get(root, "sample_grid") ||
+         yyjson_obj_get(root, "include_source") || yyjson_obj_get(root, "beat_phase") ||
+         yyjson_obj_get(root, "beat_pulse") || yyjson_obj_get(root, "influence"))) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "Model previews use view and inspection; shader-only fields are unsupported");
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
     preview_camera camera;
     if (!parse_preview_camera(yyjson_obj_get(root, "camera"), &camera, error, sizeof error)) {
         response_error(&response, PREVIEW_INVALID_REQUEST, error);
@@ -1208,6 +1489,14 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
+    if (model != (ref.family->domain == BEHAVIOR_DOMAIN_MODEL)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "preview_model requires a model asset; preview_shader requires a shader asset");
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
     char *json = read_ref(content, &ref, error, sizeof error);
     if (!json) {
         response_error(&response, PREVIEW_NOT_FOUND, error);
@@ -1227,6 +1516,15 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         if (exit_code) {
             *exit_code = response.status;
         }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    if (!model && (view.pan_x || view.pan_y)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "pan_x/pan_y are supported only by model previews");
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        behavior_asset_free(asset);
         yyjson_doc_free(document);
         return response_finish(&response);
     }
@@ -1270,6 +1568,47 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
     if (!realpath(project_root, root_abs)) {
         behavior_asset_free(asset);
         response_error(&response, PREVIEW_IO_ERROR, "project root cannot be resolved");
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    if (model) {
+        char *parameter_text = parameters ? yyjson_val_write(parameters, 0, NULL)
+                                          : NULL;
+        char *png = NULL;
+        bool rendered = (!parameters || parameter_text) && render_model_asset(
+                                                               &ref,
+                                                               asset,
+                                                               root_abs,
+                                                               content,
+                                                               time,
+                                                               width,
+                                                               height,
+                                                               parameter_text,
+                                                               &view,
+                                                               &inspection,
+                                                               &response,
+                                                               &png,
+                                                               error,
+                                                               sizeof error
+                                                           );
+        free(parameter_text);
+        behavior_asset_free(asset);
+        yyjson_mut_obj_add_bool(response.doc, response.result, "valid", rendered);
+        if (rendered) {
+            yyjson_mut_val
+                *preview = yyjson_mut_obj_add_obj(response.doc, response.result, "preview");
+            yyjson_mut_obj_add_str(response.doc, preview, "mime_type", "image/png");
+            yyjson_mut_obj_add_int(response.doc, preview, "width", width);
+            yyjson_mut_obj_add_int(response.doc, preview, "height", height);
+            yyjson_mut_obj_add_strcpy(response.doc, preview, "data", png);
+            yyjson_mut_obj_add_bool(response.doc, response.root, "ok", true);
+        } else {
+            response_error(&response, PREVIEW_EXECUTION_ERROR, *error ? error : "Model preview failed");
+        }
+        free(png);
         if (exit_code) {
             *exit_code = response.status;
         }

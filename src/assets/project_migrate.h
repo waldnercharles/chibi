@@ -72,4 +72,9 @@ char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t 
  * unchanged. Returns 0 on success or -1 with error set for invalid source. */
 int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 25 removes state declarations and uses self for explicit field
+ * access. Callable fields retain their lexical scope; entity member accesses
+ * that collide with a field gain an explicit entity cast. */
+int chibi_migrate_fields(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

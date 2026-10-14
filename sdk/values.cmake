@@ -29,7 +29,7 @@ add_library(chibi_vector_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/vect
 add_library(Chibi::vector_capabilities ALIAS chibi_vector_capabilities)
 set_target_properties(chibi_vector_capabilities PROPERTIES EXPORT_NAME vector_capabilities)
 chibi_sdk_headers(chibi_vector_capabilities PUBLIC runtime/vectors.h runtime/vectors_definition.h)
-target_link_libraries(chibi_vector_capabilities PUBLIC chibi_native_capabilities chibi_math)
+target_link_libraries(chibi_vector_capabilities PUBLIC chibi_native_capabilities chibi_math PRIVATE chibi_execution)
 add_library(chibi_math_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/math.c"
     "${CHIBI_SDK_ROOT}/src/runtime/math_definition.c")
 add_library(Chibi::math_capabilities ALIAS chibi_math_capabilities)

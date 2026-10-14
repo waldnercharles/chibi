@@ -1,0 +1,5 @@
+version 1
+name "Inventory"
+(array)entities {
+    - name="Inventory" prototype="Inventory"
+}

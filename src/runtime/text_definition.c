@@ -1,3 +1,4 @@
+#include "runtime/text_editing_native.h"
 #include "runtime/text_format.h"
 
 #define ARRAYS(KEY, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                           \

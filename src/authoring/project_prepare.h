@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTHORING_PROJECT_PREPARE_H
 #define CHIBI_AUTHORING_PROJECT_PREPARE_H
 #include "assets/project.h"
+#include "execution/preparation_profile.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/player_prepared.h"
 
@@ -10,6 +11,7 @@ typedef struct
     native_capabilities *native;
     ecs_component_catalog components;
     unsigned modules;
+    execution_preparation_profile profile;
 } authoring_project_options;
 typedef struct
 {

@@ -56,5 +56,10 @@ const char *chibi_automation_content(const char *root);
  * and saver produce. With check, only reports differences. Returns the
  * number of differing assets, or -1 when an asset cannot be loaded or written. */
 int chibi_automation_format_assets(const char *root, bool check);
+/* Formats only the exact content-relative KDL or .chibi asset, component or
+ * input map. Uses the full project catalog and the same canonical writers.
+ * Refuses unknown paths, noncanonical spelling, links and root escape.
+ * Source metadata is remapped with its asset. Return/check semantics match above. */
+int chibi_automation_format_asset(const char *root, const char *asset, bool check);
 
 #endif

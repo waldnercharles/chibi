@@ -311,6 +311,56 @@ void ui_measure(ui *ui, uint64_t entity, const char *element, float scroll_top, 
     e->content_height = content_height;
 }
 
+void ui_measure_width(ui *ui, uint64_t entity, const char *selector, float width)
+{
+    ui_element *element = find(ui, entity, selector);
+    if (!element) {
+        ui_measure(ui, entity, selector, 0, 0, 0);
+        element = find(ui, entity, selector);
+        element->measured = false;
+    }
+    element->view_width = width;
+    element->width_measured = true;
+}
+
+void ui_unmeasure(ui *ui, uint64_t entity)
+{
+    for (int i = 0; i < acount(ui->elements); i++) {
+        if (ui->elements[i].entity == entity) {
+            ui->elements[i].measured = false;
+            ui->elements[i].width_measured = false;
+            ui->elements[i].pixel_ratio_measured = false;
+        }
+    }
+}
+
+void ui_measure_pixel_ratio(ui *ui, uint64_t entity, const char *selector, float ratio)
+{
+    ui_element *element = find(ui, entity, selector);
+    if (!element) {
+        ui_measure(ui, entity, selector, 0, 0, 0);
+        element = find(ui, entity, selector);
+        element->measured = false;
+    }
+    element->pixel_ratio_measured = isfinite(ratio) && ratio > 0;
+    element->pixel_ratio = element->pixel_ratio_measured ? ratio : 0;
+}
+bool ui_view_pixel_ratio(const ui *ui, uint64_t entity, const char *selector, float *ratio)
+{
+    const ui_element *element = selector ? find(ui, entity, selector) : NULL;
+    bool known = element && element->pixel_ratio_measured;
+    *ratio = known ? element->pixel_ratio : 0;
+    return known;
+}
+
+bool ui_view_width(const ui *ui, uint64_t entity, const char *selector, float *width)
+{
+    const ui_element *element = selector ? find(ui, entity, selector) : NULL;
+    bool known = element && element->width_measured;
+    *width = known ? element->view_width : 0;
+    return known;
+}
+
 bool ui_value(const ui *ui, uint64_t entity, const char *element, float *value)
 {
     const ui_element *e = element ? find(ui, entity, element) : NULL;

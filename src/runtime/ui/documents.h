@@ -53,5 +53,7 @@ const prepared_ui_document *ui_documents_at(const ui_documents *, int);
 /* A prepared catalog is authoritative, including an intentionally empty one.
  * Missing documents must fail instead of loading authored project files. */
 bool ui_documents_active();
+/* Contents identity: mutation assigns a fresh token; restoring the same
+ * detached catalog restores its token without forcing a DOM reload. */
 uint64_t ui_documents_revision();
 #endif

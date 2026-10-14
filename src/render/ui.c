@@ -2,22 +2,61 @@
 
 #include "runtime/component_catalog.h"
 #include "runtime/ui/documents.h"
+#include "runtime/ui_chord.h"
 #include "support/array.h"
 #include "support/rcss_map.h"
 #include "support/ui_style.h"
 #include "support/xalloc.h"
 #include "third_party/yyjson/yyjson.h"
+#include "ui/input_keys.h"
 #include "ui/list.h"
 #include "ui/popover.h"
 
 #include <SDL3/SDL_video.h>
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(__APPLE__)
+#define PRIMARY RML_KM_META
+#else
+#define PRIMARY RML_KM_CTRL
+#endif
+
+/* Embedded documents form an ownership boundary for entity effects and
+ * host shortcuts, while ordinary authored descendants keep their aliases. */
+static bool mount_owns(rml_element *root, rml_element *element)
+{
+    for (rml_element *at = element; at; at = rml_element_parent(at)) {
+        if (at == root) {
+            return true;
+        }
+        if (rml_element_has_attribute(at, "data-ui-embedded-root")) {
+            return false;
+        }
+    }
+    return false;
+}
+
+static rml_element *first_owned(rml_element *root, const char *selector)
+{
+    int count = rml_element_query_selector_all(root, selector, NULL, 0);
+    rml_element **found = count ? xmalloc((size_t)count * sizeof *found) : NULL;
+    rml_element_query_selector_all(root, selector, found, count);
+    rml_element *first = NULL;
+    for (int i = 0; i < count && !first; i++) {
+        if (mount_owns(root, found[i])) {
+            first = found[i];
+        }
+    }
+    free(found);
+    return first;
+}
 
 /* ---------- Mounts ---------- */
 
@@ -44,10 +83,14 @@ struct ui_mount
     rml_element_ref *root; /* expires when a conditional host is destroyed */
     bool installed;        /* root holds the current markup */
     ui_activation *pending;
-    rml_element_ref *taken; /* the anchor of the activation last taken */
-    uint64_t applied;       /* the model revision already applied */
-    bool autofocus; /* installed, and its autofocus element not yet focused */
+    ui_activation taken; /* borrowed by the caller until next take */
+    size_t activation_bytes;
+    uint64_t applied; /* the model revision already applied */
+    bool autofocus;   /* installed, and its autofocus element not yet focused */
     mount_list *lists;
+    rml_element_ref *pointer_element;
+    float pointer_x, pointer_y;
+    int pointer_button, released_button;
 };
 
 static void forget_lists(ui_mount *m)
@@ -58,27 +101,146 @@ static void forget_lists(ui_mount *m)
     asetlen(m->lists, 0);
 }
 
-/* The names data-keys binds, for keys that are not letters or digits. */
-static const struct
+const char *ui_activation_argument(const ui_activation *a, int index)
 {
-    rml_key key;
-    const char *name;
-} KEY_NAMES[] = {
-    { RML_KEY_SPACE, "Space" },       { RML_KEY_RETURN, "Enter" },
-    { RML_KEY_NUMPADENTER, "Enter" }, { RML_KEY_ESCAPE, "Escape" },
-    { RML_KEY_TAB, "Tab" },           { RML_KEY_BACK, "Backspace" },
-    { RML_KEY_DELETE, "Delete" },     { RML_KEY_UP, "Up" },
-    { RML_KEY_DOWN, "Down" },         { RML_KEY_LEFT, "Left" },
-    { RML_KEY_RIGHT, "Right" },       { RML_KEY_HOME, "Home" },
-    { RML_KEY_END, "End" },           { RML_KEY_PRIOR, "PageUp" },
-    { RML_KEY_NEXT, "PageDown" },
-};
+    assert(index >= 0 && index < a->argc);
+    return a->full_args[index] ? a->full_args[index] : a->args[index];
+}
+const char *ui_activation_text(const ui_activation *a)
+{
+    return a->full_text ? a->full_text : a->text;
+}
+static void release_activation_strings(ui_activation *a)
+{
+    char *owned[UI_ACTIVATION_ARGS + 1];
+    int count = 0;
+    for (int i = 0; i <= UI_ACTIVATION_ARGS; i++) {
+        char *value = i < UI_ACTIVATION_ARGS ? a->full_args[i] : a->full_text;
+        bool alias = !value;
+        for (int j = 0; j < count; j++) {
+            alias |= value == owned[j];
+        }
+        if (!alias) {
+            owned[count++] = value;
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        free(owned[i]);
+    }
+    memset(a->full_args, 0, sizeof a->full_args);
+    a->full_text = NULL;
+}
+void ui_activation_clear(ui_activation *a)
+{
+    release_activation_strings(a);
+    rml_element_ref_destroy(a->anchor);
+    memset(a, 0, sizeof *a);
+}
+bool ui_activation_capture(ui_activation *a, int argc, const char *const *args, const char *text)
+{
+    if (argc < 0 || argc > UI_ACTIVATION_ARGS) {
+        return false;
+    }
+    size_t lengths[UI_ACTIVATION_ARGS], bytes = sizeof *a;
+    for (int i = 0; i < argc; i++) {
+        lengths[i] = strnlen(args[i], UI_ACTIVATION_BYTES_MAX + 1u);
+        bool alias = false;
+        for (int j = 0; j < i; j++) {
+            alias |= lengths[i] == lengths[j] &&
+                     !memcmp(args[i], args[j], lengths[i]);
+        }
+        if (!alias) {
+            if (lengths[i] >= UI_ACTIVATION_BYTES_MAX ||
+                lengths[i] + 1 > UI_ACTIVATION_BYTES_MAX - bytes) {
+                return false;
+            }
+            bytes += lengths[i] + 1;
+        }
+    }
+    size_t length = text ? strnlen(text, UI_ACTIVATION_BYTES_MAX + 1u) : 0;
+    int text_alias = -1;
+    for (int i = 0; text && i < argc; i++) {
+        if (length == lengths[i] && !memcmp(text, args[i], length)) {
+            text_alias = i;
+            break;
+        }
+    }
+    if (text && text_alias < 0) {
+        if (length >= UI_ACTIVATION_BYTES_MAX ||
+            length + 1 > UI_ACTIVATION_BYTES_MAX - bytes) {
+            return false;
+        }
+        bytes += length + 1;
+    }
+    ui_activation next = { .argc = argc, .has_text = text != NULL, .payload_bytes = bytes };
+    for (int i = 0; i < argc; i++) {
+        snprintf(next.args[i], sizeof next.args[i], "%s", args[i]);
+        if (lengths[i] < sizeof next.args[i]) {
+            continue;
+        }
+        for (int j = 0; j < i; j++) {
+            if (lengths[i] == lengths[j] && !memcmp(args[i], args[j], lengths[i])) {
+                next.full_args[i] = next.full_args[j];
+                break;
+            }
+        }
+        if (!next.full_args[i]) {
+            next.full_args[i] = xstrdup(args[i]);
+        }
+    }
+    if (text) {
+        snprintf(next.text, sizeof next.text, "%s", text);
+        if (length >= sizeof next.text) {
+            next.full_text = text_alias >= 0 ? next.full_args[text_alias]
+                                             : xstrdup(text);
+        }
+    }
+    release_activation_strings(a);
+    a->argc = next.argc;
+    a->has_text = next.has_text;
+    a->payload_bytes = next.payload_bytes;
+    memcpy(a->args, next.args, sizeof a->args);
+    memcpy(a->full_args, next.full_args, sizeof a->full_args);
+    memcpy(a->text, next.text, sizeof a->text);
+    a->full_text = next.full_text;
+    return true;
+}
+static void clear_mount_activations(ui_mount *m)
+{
+    for (int i = 0; i < acount(m->pending); i++) {
+        ui_activation_clear(&m->pending[i]);
+    }
+    asetlen(m->pending, 0);
+    ui_activation_clear(&m->taken);
+    m->activation_bytes = 0;
+}
+static bool queue_activation(ui_mount *m, ui_activation *a)
+{
+    enum
+    {
+        MAX_EVENTS = 1024,
+        MAX_BYTES = 16 * 1024 * 1024
+    };
+    if (!a->payload_bytes) {
+        a->payload_bytes = sizeof *a;
+    }
+    if (acount(m->pending) + (m->taken.payload_bytes != 0) >= MAX_EVENTS ||
+        a->payload_bytes > MAX_BYTES - m->activation_bytes) {
+        snprintf(m->error, sizeof m->error, "UI activation queue exceeds 1024 events or 16 MiB; event refused");
+        ui_activation_clear(a);
+        return false;
+    }
+    m->activation_bytes += a->payload_bytes;
+    apush(m->pending, *a);
+    return true;
+}
 
 ui_mount *ui_mount_new(const char *content_root, const char *name)
 {
     ui_mount *m = xcalloc(1, sizeof *m);
     m->content_root = xstrdup(content_root);
     m->name = xstrdup(name);
+    m->pointer_button = m->released_button = -1;
     return m;
 }
 
@@ -90,11 +252,9 @@ void ui_mount_free(ui_mount *m)
     if (m->source) {
         m->loader.close(m->source);
     }
-    for (int i = 0; i < acount(m->pending); i++) {
-        rml_element_ref_destroy(m->pending[i].anchor);
-    }
+    clear_mount_activations(m);
     afree(m->pending);
-    rml_element_ref_destroy(m->taken);
+    rml_element_ref_destroy(m->pointer_element);
     rml_element_ref_destroy(m->root);
     forget_lists(m);
     afree(m->lists);
@@ -123,12 +283,34 @@ const char *ui_mount_error(const ui_mount *m)
 
 static bool same_loader(render_ui_loader a, render_ui_loader b)
 {
-    return a.open == b.open && a.read == b.read && a.close == b.close;
+    return a.open == b.open && a.read == b.read && a.close == b.close &&
+           a.context == b.context && a.open_context == b.open_context &&
+           a.resident_images == b.resident_images;
 }
+static bool prepared_loader(render_ui_loader loader, bool prepared_only)
+{
+    return prepared_only ||
+           (!loader.open_context && (!loader.open || ui_documents_active()));
+}
+static void *open_source(render_ui_loader loader, const char *root, const char *name, bool page)
+{
+    return loader.open_context ? loader.open_context(loader.context, root, name, page)
+                               : loader.open(root, name, page);
+}
+#ifndef NDEBUG
+static bool valid_loader(render_ui_loader loader)
+{
+    bool open = loader.open || loader.open_context;
+    return !(
+        (loader.open && loader.open_context) ||
+        (open != (loader.read != NULL)) || (open != (loader.close != NULL))
+    );
+}
+#endif
 void ui_mount_set_loader(ui_mount *m, const render_ui_loader *loader)
 {
     render_ui_loader next = loader ? *loader : (render_ui_loader){ 0 };
-    assert((!next.open && !next.read && !next.close) || (next.open && next.read && next.close));
+    assert(valid_loader(next));
     if (same_loader(m->loader, next)) {
         return;
     }
@@ -136,14 +318,16 @@ void ui_mount_set_loader(ui_mount *m, const render_ui_loader *loader)
         m->loader.close(m->source);
     }
     m->loader = next;
-    m->source = next.open ? next.open(m->content_root, m->name, false) : NULL;
+    m->source = (next.open || next.open_context)
+                  ? open_source(next, m->content_root, m->name, false)
+                  : NULL;
     m->prepared_loaded = false;
 }
 /* Reads the asset and its widgets when one changed; returns true when it
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    if (m->prepared_only || !m->loader.open || ui_documents_active()) {
+    if (prepared_loader(m->loader, m->prepared_only)) {
         uint64_t generation = ui_documents_revision();
         if (m->prepared_loaded && m->prepared_revision == generation) {
             return false;
@@ -175,7 +359,7 @@ static bool read_asset(ui_mount *m, double time)
         if (m->source) {
             m->loader.close(m->source);
         }
-        m->source = m->loader.open(m->content_root, m->name, false);
+        m->source = open_source(m->loader, m->content_root, m->name, false);
         m->prepared_loaded = false;
     }
     ui_document next = { 0 };
@@ -214,6 +398,8 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         /* Authored key bindings precede text fields, whose default handler
            consumes Escape and Enter before they can bubble to the host. */
         rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, true);
+        rml_element_add_event_listener(root, RML_EVENT_MOUSEDOWN, listener, true);
+        rml_element_add_event_listener(root, RML_EVENT_MOUSEUP, listener, true);
     }
     if (!m->installed && m->markup) {
         rml_backend_take_warning();
@@ -237,9 +423,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     }
     /* A host may keep the root hidden for a frame, and hidden elements refuse
        focus, so this repeats until the focus takes. */
-    rml_element *first = m->autofocus
-                           ? rml_element_query_selector(root, "[autofocus]")
-                           : NULL;
+    rml_element *first = m->autofocus ? first_owned(root, "[autofocus]") : NULL;
     m->autofocus = first && !rml_element_focus(first, false);
     return restyled;
 }
@@ -251,8 +435,12 @@ void ui_mount_detach(ui_mount *m)
     if (!m) {
         return;
     }
+    clear_mount_activations(m);
     rml_element_ref_destroy(m->root);
     m->root = NULL;
+    rml_element_ref_destroy(m->pointer_element);
+    m->pointer_element = NULL;
+    m->pointer_button = m->released_button = -1;
     m->installed = false;
 }
 
@@ -272,43 +460,47 @@ bool ui_mount_holds(const ui_mount *m, rml_element *element)
     return false;
 }
 
-/* The name data-keys uses for `key`, or NULL for keys it cannot bind. */
-static const char *key_name(rml_key key, char *letter)
+bool ui_key_binding(
+    const char *bindings,
+    const char *key,
+    unsigned modifiers,
+    unsigned primary,
+    char *event,
+    size_t size
+)
 {
-    if (key >= RML_KEY_A && key <= RML_KEY_Z) {
-        letter[0] = (char)('A' + (key - RML_KEY_A));
-        letter[1] = '\0';
-        return letter;
-    }
-    if (key >= RML_KEY_0 && key <= RML_KEY_9) {
-        letter[0] = (char)('0' + (key - RML_KEY_0));
-        letter[1] = '\0';
-        return letter;
-    }
-    for (size_t i = 0; i < sizeof KEY_NAMES / sizeof *KEY_NAMES; i++) {
-        if (KEY_NAMES[i].key == key) {
-            return KEY_NAMES[i].name;
-        }
-    }
-    return NULL;
+    return ui_chord_binding(bindings, key, modifiers, primary, event, size);
 }
 
-/* The event `bindings` ("Key:Event Key:Event") names for `key`, if any. */
-static bool bound_event(const char *bindings, const char *key, char *event, size_t size)
+/* Attribute text is bounded explicitly; never run a truncated chord list. */
+static bool element_key_binding(
+    rml_element *element,
+    const char *attribute,
+    const char *key,
+    unsigned modifiers,
+    char *name,
+    size_t size
+)
 {
-    size_t length = strlen(key);
-    for (const char *p = bindings; *p;) {
-        while (*p == ' ') {
-            p++;
-        }
-        const char *end = p + strcspn(p, " ");
-        if (!strncmp(p, key, length) && p[length] == ':') {
-            snprintf(event, size, "%.*s", (int)(end - p - (int)length - 1), p + length + 1);
-            return event[0] != '\0';
-        }
-        p = end;
+    enum
+    {
+        MAX_BINDING_BYTES = 16384
+    };
+    char local[256];
+    size_t length = rml_element_attribute(element, attribute, local, sizeof local);
+    if (!length || length > MAX_BINDING_BYTES) {
+        return false;
     }
-    return false;
+    char *bindings = local;
+    if (length >= sizeof local) {
+        bindings = xmalloc(length + 1);
+        rml_element_attribute(element, attribute, bindings, length + 1);
+    }
+    bool found = ui_key_binding(bindings, key, modifiers, PRIMARY, name, size);
+    if (bindings != local) {
+        free(bindings);
+    }
+    return found;
 }
 
 /* Text and select controls keep editing/navigation keys unless the control
@@ -316,6 +508,10 @@ static bool bound_event(const char *bindings, const char *key, char *event, size
  * ancestor navigation, such as Studio's SidebarNav. */
 static bool owns_field_keys(rml_element *element)
 {
+    char ownership[2];
+    if (rml_element_attribute(element, "data-own-keys", ownership, sizeof ownership)) {
+        return true;
+    }
     const char *tag = rml_element_tag_name(element);
     if (!strcmp(tag, "textarea") || !strcmp(tag, "select")) {
         return true;
@@ -331,13 +527,48 @@ static bool owns_field_keys(rml_element *element)
 }
 
 /* An activation `element` sent through `event`. */
-static ui_activation activation(rml_element *element, const rml_event *event)
+static bool pointer_event(rml_event_id id)
 {
+    return id == RML_EVENT_MOUSEDOWN || id == RML_EVENT_MOUSEUP ||
+           id == RML_EVENT_MOUSEMOVE || id == RML_EVENT_MOUSESCROLL ||
+           id == RML_EVENT_CLICK || id == RML_EVENT_DBLCLICK ||
+           id == RML_EVENT_DRAGSTART || id == RML_EVENT_DRAG ||
+           id == RML_EVENT_DRAGMOVE || id == RML_EVENT_DRAGEND;
+}
+
+static ui_activation activation(ui_mount *m, rml_element *element, const rml_event *event)
+{
+    rml_vec2 origin = rml_element_absolute_offset(element, RML_BOX_BORDER);
     ui_activation a = { .modifiers = event->modifiers,
                         .button = event->button,
                         .x = event->mouse_x,
                         .y = event->mouse_y,
+                        .local_x = event->mouse_x - origin.x,
+                        .local_y = event->mouse_y - origin.y,
+                        .wheel_x = event->wheel_x,
+                        .wheel_y = event->wheel_y,
+                        .canceled = event->canceled,
                         .anchor = rml_element_ref_create(element) };
+    if (pointer_event(event->id)) {
+        if (a.button < 0) {
+            a.button = event->id == RML_EVENT_DRAGEND ? m->released_button
+                                                      : m->pointer_button;
+        }
+        if (event->id != RML_EVENT_MOUSEDOWN && m->pointer_element &&
+            rml_element_ref_get(m->pointer_element) == element) {
+            a.delta_x = a.x - m->pointer_x;
+            a.delta_y = a.y - m->pointer_y;
+        }
+        rml_element_ref_destroy(m->pointer_element);
+        m->pointer_element = rml_element_ref_create(element);
+        m->pointer_x = a.x;
+        m->pointer_y = a.y;
+    }
+    char key[4];
+    const char *name = ui_key_name(event->key, key);
+    if (name && (event->id == RML_EVENT_KEYDOWN || event->id == RML_EVENT_KEYUP)) {
+        snprintf(a.key, sizeof a.key, "%s", name);
+    }
     snprintf(a.id, sizeof a.id, "%s", rml_element_id(element));
     return a;
 }
@@ -346,18 +577,17 @@ static ui_activation activation(rml_element *element, const rml_event *event)
  * the nearest such element, and goes no further. */
 static void listen_key(ui_mount *m, const rml_event *event)
 {
-    char letter[2];
-    const char *key = key_name(event->key, letter);
+    char letter[4];
+    const char *key = ui_key_name(event->key, letter);
     rml_element *root = ui_mount_root(m);
     assert(root);
     for (rml_element *el = event->target; key && el && el != rml_element_parent(root);
          el = rml_element_parent(el)) {
-        char bindings[256], name[128];
-        if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
-            bound_event(bindings, key, name, sizeof name)) {
-            ui_activation a = activation(el, event);
+        char name[128];
+        if (element_key_binding(el, "data-keys", key, event->modifiers, name, sizeof name)) {
+            ui_activation a = activation(m, el, event);
             snprintf(a.event, sizeof a.event, "%s", name);
-            apush(m->pending, a);
+            queue_activation(m, &a);
             rml_event_stop_propagation(event);
             return;
         }
@@ -370,6 +600,14 @@ static void listen_key(ui_mount *m, const rml_event *event)
 
 void ui_mount_listen(ui_mount *m, const rml_event *event)
 {
+    if (event->id == RML_EVENT_MOUSEDOWN) {
+        m->pointer_button = event->button;
+        m->released_button = -1;
+    }
+    if (event->id == RML_EVENT_MOUSEUP) {
+        m->released_button = event->button;
+        m->pointer_button = -1;
+    }
     if (event->id == RML_EVENT_KEYDOWN) {
         listen_key(m, event);
     }
@@ -378,34 +616,54 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
 bool ui_mount_area_key(ui_mount *m, const char *key)
 {
     rml_element *root = ui_mount_root(m);
-    rml_element *el = m->installed && root
-                        ? rml_element_query_selector(root, "[data-area-keys]")
-                        : NULL;
-    char bindings[256], name[128];
-    if (!el ||
-        rml_element_attribute(el, "data-area-keys", bindings, sizeof bindings) <= 0 ||
-        !bound_event(bindings, key, name, sizeof name)) {
+    rml_element *el = m->installed && root ? first_owned(root, "[data-area-keys]")
+                                           : NULL;
+    char name[128];
+    if (!el || !element_key_binding(el, "data-area-keys", key, 0, name, sizeof name)) {
         return false;
     }
-    ui_activation a = { .anchor = rml_element_ref_create(el) };
+    ui_activation a = { .button = -1, .anchor = rml_element_ref_create(el) };
     snprintf(a.event, sizeof a.event, "%s", name);
     snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
-    apush(m->pending, a);
-    return true;
+    return queue_activation(m, &a);
 }
 
 void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int argc, const char *const *args)
 {
     rml_element *element = event->current;
     assert(ui_mount_holds(m, element));
-    ui_activation a = activation(element, event);
+    ui_activation a = activation(m, element, event);
     snprintf(a.event, sizeof a.event, "%s", name);
-    a.argc = argc < UI_ACTIVATION_ARGS ? argc : UI_ACTIVATION_ARGS;
-    for (int i = 0; i < a.argc; i++) {
-        snprintf(a.args[i], sizeof a.args[i], "%s", args[i]);
+    char input[128], control[128];
+    char *full_control = NULL;
+    const char *text = NULL;
+    if (event->native && event->has_value) {
+        size_t length = rml_event_value(event, NULL, 0);
+        if (length >= UI_ACTIVATION_BYTES_MAX) {
+            snprintf(m->error, sizeof m->error, "UI control text exceeds the activation byte budget; event refused");
+            ui_activation_clear(&a);
+            return;
+        }
+        char *buffer = control;
+        size_t capacity = sizeof control;
+        if (length >= capacity) {
+            full_control = xmalloc(length + 1);
+            buffer = full_control;
+            capacity = length + 1;
+        }
+        rml_event_value(event, buffer, capacity);
+        text = buffer;
     }
-    char input[64];
-    const char *value = argc ? args[0] : NULL;
+    bool captured = ui_activation_capture(&a, argc, args, text);
+    free(full_control);
+    if (!captured) {
+        snprintf(m->error, sizeof m->error, "UI event exceeds the argument or source-plus-metadata byte budget; event refused");
+        ui_activation_clear(&a);
+        return;
+    }
+    const char *value = a.has_text ? ui_activation_text(&a)
+                      : argc       ? ui_activation_argument(&a, 0)
+                                   : NULL;
     if (!value && !strcmp(rml_element_tag_name(element), "input") &&
         rml_element_value(element, input, sizeof input) > 0) {
         value = input;
@@ -415,7 +673,7 @@ void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int ar
         a.value = strtof(value, &end);
         a.has_value = end != value;
     }
-    apush(m->pending, a);
+    queue_activation(m, &a);
 }
 
 bool ui_mount_pending(const ui_mount *m)
@@ -429,9 +687,10 @@ bool ui_mount_take(ui_mount *m, ui_activation *out)
     if (!count) {
         return false;
     }
-    rml_element_ref_destroy(m->taken);
+    m->activation_bytes -= m->taken.payload_bytes;
+    ui_activation_clear(&m->taken);
     *out = m->pending[0];
-    m->taken = out->anchor;
+    m->taken = *out;
     memmove(m->pending, m->pending + 1, (size_t)(count - 1) * sizeof *m->pending);
     asetlen(m->pending, count - 1);
     return true;
@@ -478,21 +737,58 @@ static bool event_value(
             return true;
         }
     }
-    if (v->type.type == PIN_STRUCT && v->type.type_name &&
-        !strcmp(v->type.type_name, "CF_V2") && !strcmp(v->name, "Pointer")) {
-        pointer[0] = a->x;
-        pointer[1] = a->y;
-        value->ptr = pointer;
+    if ((v->type.type == PIN_STR || v->type.type == PIN_NAME) &&
+        !strcmp(v->name, "Key")) {
+        value->str = a->key;
         return true;
+    }
+    if (v->type.type == PIN_I32 && !strcmp(v->name, "Modifiers")) {
+        value->i = (int)a->modifiers;
+        return true;
+    }
+    if (v->type.type == PIN_I32 && !strcmp(v->name, "Button")) {
+        value->i = a->button;
+        return true;
+    }
+    if (v->type.type == PIN_BOOL && !strcmp(v->name, "Canceled")) {
+        value->b = a->canceled;
+        return true;
+    }
+    if (a->has_value && !strcmp(v->name, "Value") &&
+        (v->type.type == PIN_F32 || v->type.type == PIN_F64)) {
+        if (v->type.type == PIN_F32) {
+            value->f = a->value;
+        } else {
+            value->d = a->value;
+        }
+        return true;
+    }
+    if (a->has_text && !strcmp(v->name, "Text") &&
+        (v->type.type == PIN_STR || v->type.type == PIN_NAME)) {
+        value->str = ui_activation_text(a);
+        return true;
+    }
+    if (v->type.type == PIN_STRUCT && v->type.type_name &&
+        !strcmp(v->type.type_name, "CF_V2")) {
+        const float vectors[][2] = { { a->x, a->y },
+                                     { a->local_x, a->local_y },
+                                     { a->delta_x, a->delta_y },
+                                     { a->wheel_x, a->wheel_y } };
+        const char *names[] = { "Pointer", "LocalPointer", "Delta", "Wheel" };
+        for (int i = 0; i < 4; i++) {
+            if (!strcmp(v->name, names[i])) {
+                memcpy(pointer, vectors[i], sizeof vectors[i]);
+                value->ptr = pointer;
+                return true;
+            }
+        }
     }
     return false;
 }
 
-/* The payload `a` takes under `event`, the event asset declaring it (NULL
- * declares none), in its order: bool Shift, Alt and Mod (`primary` holds
- * Mod's modifier bits) and CF_V2 Pointer come from the DOM event, as a web
- * handler reads event.shiftKey and event.clientX; each other value is emit's
- * next argument read as its type (strings borrow `a`). Returns how many
+/* The declared payload in its order: event_value supplies automatic fields;
+ * each other value consumes emit's next argument (strings borrow `a`).
+ * `primary` holds Mod's platform modifier bits. Returns how many
  * values it wrote to `out`, or -1 for a payload a UI event cannot carry or
  * more than `capacity`. */
 static int ui_activation_payload(
@@ -500,7 +796,7 @@ static int ui_activation_payload(
     const render_ui_event_field *fields,
     int count,
     unsigned primary,
-    float pointer[2],
+    float vectors[][2],
     pin_value *out,
     int capacity
 )
@@ -509,16 +805,52 @@ static int ui_activation_payload(
     if (count > capacity) {
         return -1;
     }
+    /* A complete scalar tuple is explicit, including normally automatic
+     * names such as Key. Partial tuples retain DOM-derived fields and consume
+     * only authored arguments. Geometry vectors remain automatic. */
+    bool explicit_all = a->argc == count;
+    for (int i = 0; i < count && explicit_all; i++) {
+        pin_value value = fields[i].type;
+        explicit_all = value.container == PIN_CONTAINER_SINGLE &&
+                       argument_value("", &value);
+    }
+    if (explicit_all) {
+        for (int i = 0; i < count; i++) {
+            out[i] = fields[i].type;
+            if (!argument_value(ui_activation_argument(a, i), &out[i])) {
+                return -1;
+            }
+        }
+        return count;
+    }
+    int manual = 0;
+    for (int i = 0; i < count; i++) {
+        pin_value value = fields[i].type;
+        float vector[2];
+        if (!event_value(a, &fields[i], primary, vector, &value)) {
+            manual++;
+        }
+    }
+    int controls = a->argc > manual ? a->argc - manual : 0;
     for (int i = 0; i < count; i++) {
         const render_ui_event_field *v = &fields[i];
         out[i] = v->type;
         if (v->type.container != PIN_CONTAINER_SINGLE) {
             return -1;
         }
-        if (event_value(a, v, primary, pointer, &out[i])) {
+        bool automatic = event_value(a, v, primary, vectors[i], &out[i]);
+        bool control = (!strcmp(v->name, "Text") &&
+                        (v->type.type == PIN_STR || v->type.type == PIN_NAME)) ||
+                       (!strcmp(v->name, "Value") &&
+                        (v->type.type == PIN_F32 || v->type.type == PIN_F64));
+        if (automatic && !(control && controls > 0)) {
             continue;
         }
-        const char *text = argument < a->argc ? a->args[argument] : "";
+        if (automatic && control) {
+            controls--;
+        }
+        const char *text = argument < a->argc ? ui_activation_argument(a, argument)
+                                              : "";
         argument++;
         if (!argument_value(text, &out[i])) {
             return -1;
@@ -528,7 +860,7 @@ static int ui_activation_payload(
 }
 
 /* Values an event's payload may hold; a UI event declares a few. */
-#define PAYLOAD_MAX 16
+#define PAYLOAD_MAX UI_ACTIVATION_ARGS
 
 /* A status no dispatch returns: the payload could not be carried. */
 #define UNCARRIED INT_MIN
@@ -544,8 +876,8 @@ static int activation_send(const render_ui_host *host, ecs_entity entity, const 
         return UNCARRIED;
     }
     pin_value values[PAYLOAD_MAX];
-    float pointer[2];
-    count = ui_activation_payload(a, fields, count, primary, pointer, values, PAYLOAD_MAX);
+    float vectors[PAYLOAD_MAX][2];
+    count = ui_activation_payload(a, fields, count, primary, vectors, values, PAYLOAD_MAX);
     if (count < 0) {
         return UNCARRIED;
     }
@@ -630,11 +962,25 @@ static void move_focus(rml_element *root, rml_element **matches, int count, int 
 
 /* Applies the setting to every element its selector matches in `root`;
  * focus goes to the first. */
-static void apply_element(rml_element *root, ui_element *e)
+void ui_apply_element(rml_element *root, ui_element *e)
 {
-    int count = rml_element_query_selector_all(root, e->selector, NULL, 0);
+    bool is_root = !strcmp(e->selector, "body") || !strcmp(e->selector, ":scope");
+    int count = is_root
+                  ? 1
+                  : rml_element_query_selector_all(root, e->selector, NULL, 0);
     rml_element **matches = count ? xmalloc((size_t)count * sizeof *matches) : NULL;
-    rml_element_query_selector_all(root, e->selector, matches, count);
+    if (is_root) {
+        matches[0] = root;
+    } else {
+        rml_element_query_selector_all(root, e->selector, matches, count);
+    }
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (mount_owns(root, matches[i])) {
+            matches[kept++] = matches[i];
+        }
+    }
+    count = kept;
     for (int i = 0; i < count; i++) {
         apply_to(matches[i], e);
     }
@@ -665,7 +1011,7 @@ static void apply_element(rml_element *root, ui_element *e)
     free(matches);
 }
 
-void ui_mount_apply(ui_mount *m, ui *model, uint64_t entity)
+static void apply_mount(ui_mount *m, ui *model, uint64_t entity, bool read_only)
 {
     rml_element *root = ui_mount_root(m);
     if (!m->installed || !root) {
@@ -674,10 +1020,28 @@ void ui_mount_apply(ui_mount *m, ui *model, uint64_t entity)
     for (int i = 0; i < ui_element_count(model); i++) {
         ui_element *e = ui_element_at(model, i);
         if (e->entity == entity && e->revision > m->applied) {
-            apply_element(root, e);
+            if (read_only) {
+                ui_element local = *e;
+                local.focus = local.click = local.popover = false;
+                local.move_focus = 0;
+                local.reveal = -1;
+                ui_apply_element(root, &local);
+            } else {
+                ui_apply_element(root, e);
+            }
         }
     }
-    m->applied = ui_revision(model);
+    if (!read_only) {
+        m->applied = ui_revision(model);
+    }
+}
+void ui_mount_apply(ui_mount *m, ui *model, uint64_t entity)
+{
+    apply_mount(m, model, entity, false);
+}
+void ui_mount_apply_read_only(ui_mount *m, ui *model, uint64_t entity)
+{
+    apply_mount(m, model, entity, true);
 }
 
 /* What the mount keeps for list `element`, kept from its first window. */
@@ -708,6 +1072,9 @@ static void window_lists(ui_mount *m, rml_element *root)
     rml_element *found[8];
     int count = rml_element_query_selector_all(root, "[data-list-rows]", found, 8);
     for (int i = 0; i < count && i < 8; i++) {
+        if (!mount_owns(root, found[i])) {
+            continue;
+        }
         char text[32] = "";
         rml_element_attribute(found[i], "data-list-rows", text, sizeof text);
         ui_list list = { .count = atoi(text), .reveal = -1 };
@@ -738,15 +1105,25 @@ static void window_lists(ui_mount *m, rml_element *root)
 
 void ui_mount_measure(ui_mount *m, ui *model, uint64_t entity)
 {
+    ui_unmeasure(model, entity);
     rml_element *root = ui_mount_root(m);
     if (!m->installed || !root) {
         return;
     }
     window_lists(m, root);
-    rml_element *found[16];
-    int count = rml_element_query_selector_all(root, "[id][data-event-scroll]", found, 16);
+    rml_element *local[16];
+    const char *selector = "[id][data-event-scroll], [id][data-measure]";
+    int count = rml_element_query_selector_all(root, selector, local, 16);
+    rml_element **found = local;
+    if (count > 16) {
+        found = xmalloc((size_t)count * sizeof *found);
+        rml_element_query_selector_all(root, selector, found, count);
+    }
     float dp = rml_context_dp_ratio(rml_element_context(root));
-    for (int i = 0; i < count && i < 16; i++) {
+    for (int i = 0; i < count; i++) {
+        if (!mount_owns(root, found[i])) {
+            continue;
+        }
         char selector[160];
         snprintf(selector, sizeof selector, "#%s", rml_element_id(found[i]));
         ui_measure(
@@ -757,6 +1134,24 @@ void ui_mount_measure(ui_mount *m, ui *model, uint64_t entity)
             rml_element_client_height(found[i]) / dp,
             rml_element_scroll_height(found[i]) / dp
         );
+        ui_measure_width(model, entity, selector, rml_element_client_width(found[i]) / dp);
+        ui_measure_pixel_ratio(model, entity, selector, dp);
+    }
+    if (found != local) {
+        free(found);
+    }
+    const char *roots[] = { "body", ":scope" };
+    for (int i = 0; i < 2; i++) {
+        ui_measure(
+            model,
+            entity,
+            roots[i],
+            rml_element_scroll_top(root) / dp,
+            rml_element_client_height(root) / dp,
+            rml_element_scroll_height(root) / dp
+        );
+        ui_measure_width(model, entity, roots[i], rml_element_client_width(root) / dp);
+        ui_measure_pixel_ratio(model, entity, roots[i], dp);
     }
 }
 
@@ -1154,7 +1549,7 @@ bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double
     if (!name[0]) {
         return renamed;
     }
-    if (p->prepared_only || !p->loader.open || ui_documents_active()) {
+    if (prepared_loader(p->loader, p->prepared_only)) {
         uint64_t generation = ui_documents_revision();
         if (p->prepared_loaded && p->prepared_revision == generation && !renamed) {
             return false;
@@ -1185,7 +1580,7 @@ bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double
         p->prepared_loaded = false;
     }
     if (!p->source) {
-        p->source = p->loader.open(content_root, name, true);
+        p->source = open_source(p->loader, content_root, name, true);
     }
     ui_document next = { 0 };
     int status = p->loader.read(p->source, time, &next, p->error, sizeof p->error);
@@ -1210,7 +1605,7 @@ void ui_page_free(ui_page *p)
 void ui_page_set_loader(ui_page *p, const render_ui_loader *loader)
 {
     render_ui_loader next = loader ? *loader : (render_ui_loader){ 0 };
-    assert((!next.open && !next.read && !next.close) || (next.open && next.read && next.close));
+    assert(valid_loader(next));
     if (same_loader(p->loader, next)) {
         return;
     }
@@ -1268,7 +1663,14 @@ typedef struct ui_view
     ui_mount *mount;
     rml_element *root;
     bool seen;
+    bool shown;
 } ui_view;
+
+typedef struct ui_embed
+{
+    ui_view view;
+    rml_element_ref *host;
+} ui_embed;
 
 struct render_ui
 {
@@ -1281,7 +1683,10 @@ struct render_ui
     render_ui_loader loader;
     ui_page page;
     ui_data data;
+    uint64_t model_entity;
+    const ecs_world *world; /* identity of the owners currently mounted */
     ui_view *views;
+    ui_embed *embedded;
     ui_view overlay;         /* its entity is unused */
     char overlay_name[128];  /* the asset the host asked for, "" for none */
     char overlay_wanted[32]; /* the state it asked for */
@@ -1312,6 +1717,25 @@ static void close_view(render_ui *ui, ui_view *view)
     *view = (ui_view){ .entity = view->entity };
 }
 
+/* The host or one of its conditional ancestors may already be gone. Mount
+ * references expire with DOM destruction, so no cached raw root is touched. */
+static void close_embed(render_ui *ui, ui_embed *embed)
+{
+    ui->restyle = true;
+    embed->view.root = ui_mount_root(embed->view.mount);
+    close_view(ui, &embed->view);
+    rml_element_ref_destroy(embed->host);
+    *embed = (ui_embed){ 0 };
+}
+
+static void close_embeds(render_ui *ui)
+{
+    for (int i = acount(ui->embedded) - 1; i >= 0; i--) {
+        close_embed(ui, &ui->embedded[i]);
+    }
+    asetlen(ui->embedded, 0);
+}
+
 /* The page body's attributes: the data model, then the page's own. */
 static char *frame_body(const char *attributes, const char *page)
 {
@@ -1340,7 +1764,9 @@ static char *page_text(const ui_page *page)
         .rcss = "",
         .body = frame_body(
             d->body,
-            (page->prepared_only || !page->loader.open || ui_documents_active()) ? page->name : NULL
+            (prepared_loader(page->loader, page->prepared_only) || page->loader.open_context)
+                ? page->name
+                : NULL
         ),
     };
     char *text = ui_document_compose(&body, "");
@@ -1352,11 +1778,13 @@ static char *page_text(const ui_page *page)
  * slot, and loads its markup; markup RmlUi rejects is the page's error. */
 static void load_page(render_ui *ui)
 {
+    close_embeds(ui);
     for (int i = 0; i < acount(ui->views); i++) {
         close_view(ui, &ui->views[i]);
     }
     asetlen(ui->views, 0);
     close_view(ui, &ui->overlay);
+    ui->overlay.entity = ui->model_entity;
     if (ui->doc) {
         rml_document_close(ui->doc);
     }
@@ -1378,6 +1806,9 @@ static void load_page(render_ui *ui)
         );
     }
     assert(ui->doc);
+    if (ui->model_entity) {
+        ui_data_bind_self(&ui->data, ui->doc, ui->model_entity);
+    }
     rml_document_show(ui->doc, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_AUTO);
     ui->slot = rml_element_query_selector(ui->doc, "slot");
     ui->slot = ui->slot ? ui->slot : ui->doc;
@@ -1396,7 +1827,7 @@ static render_ui *new_ui(const char *content_root, yyjson_mut_doc *data, bool pr
     if (ui->backend) {
         rml_backend_require_resident_images(
             ui->backend,
-            prepared_only || !ui->loader.open || ui_documents_active()
+            ui->loader.resident_images || prepared_loader(ui->loader, prepared_only)
         );
     }
     ui->listener = rml_listener_create(on_event, ui);
@@ -1415,18 +1846,36 @@ render_ui *render_ui_new_prepared(yyjson_mut_doc *data)
 {
     return new_ui("", data, true);
 }
+void render_ui_set_model_entity(render_ui *ui, uint64_t entity)
+{
+    assert(ui);
+    if (ui->model_entity == entity) {
+        return;
+    }
+    ui->model_entity = entity;
+    load_page(ui);
+}
 
 void render_ui_set_loader(render_ui *ui, const render_ui_loader *loader)
 {
     assert(ui && !ui->prepared_only);
     ui->loader = loader ? *loader : (render_ui_loader){ 0 };
     ui_page_set_loader(&ui->page, loader);
+    if (ui->overlay.mount) {
+        ui_mount_set_loader(ui->overlay.mount, &ui->loader);
+    }
     for (int i = 0; i < acount(ui->views); i++) {
         if (ui->views[i].mount) {
             ui_mount_set_loader(ui->views[i].mount, loader);
         }
     }
-    rml_backend_require_resident_images(ui->backend, !ui->loader.open || ui_documents_active());
+    for (int i = 0; i < acount(ui->embedded); i++) {
+        ui_mount_set_loader(ui->embedded[i].view.mount, loader);
+    }
+    rml_backend_require_resident_images(
+        ui->backend,
+        ui->loader.resident_images || prepared_loader(ui->loader, ui->prepared_only)
+    );
 }
 
 void render_ui_free(render_ui *ui)
@@ -1439,6 +1888,8 @@ void render_ui_free(render_ui *ui)
     }
     afree(ui->views);
     close_view(ui, &ui->overlay);
+    close_embeds(ui);
+    afree(ui->embedded);
     ui_data_free(&ui->data);
     rml_backend_destroy(ui->backend);
     rml_listener_destroy(ui->listener);
@@ -1456,6 +1907,11 @@ ui_data *render_ui_data(render_ui *ui)
 const char *render_ui_error(const render_ui *ui)
 {
     return ui->error;
+}
+
+void render_ui_bind_texture(render_ui *ui, const char *name, uint64_t texture, uint64_t revision)
+{
+    rml_backend_set_texture_revision(ui->backend, name, texture, revision);
 }
 
 rml_context *render_ui_context(const render_ui *ui)
@@ -1484,6 +1940,14 @@ static void open_view(render_ui *ui, ui_view *view, const char *name, const char
 /* The overlay's or view's mount holding `element`, or NULL. */
 static ui_mount *mount_holding(render_ui *ui, rml_element *element)
 {
+    for (rml_element *at = element; at; at = rml_element_parent(at)) {
+        for (int i = 0; i < acount(ui->embedded); i++) {
+            ui_mount *m = ui->embedded[i].view.mount;
+            if (ui_mount_root(m) == at) {
+                return m;
+            }
+        }
+    }
     if (ui->overlay.mount && ui_mount_holds(ui->overlay.mount, element)) {
         return ui->overlay.mount;
     }
@@ -1498,7 +1962,7 @@ static ui_mount *mount_holding(render_ui *ui, rml_element *element)
 static void on_event(void *user, const rml_event *event)
 {
     ui_mount *m = mount_holding(user, event->target);
-    if (m) {
+    if (m && event->current == ui_mount_root(m)) {
         ui_mount_listen(m, event);
     }
 }
@@ -1582,7 +2046,27 @@ bool render_ui_wants_text(const render_ui *ui)
 
 /* Mod's modifier bits in a game, whose hosts trade Command and Control on a
  * Mac as they do for keys (viewport.c). */
-#define PRIMARY RML_KM_CTRL
+static int view_count(const render_ui *ui)
+{
+    return acount(ui->views) + acount(ui->embedded);
+}
+
+static ui_view *view_at(render_ui *ui, int i)
+{
+    return i < acount(ui->views) ? &ui->views[i]
+                                 : &ui->embedded[i - acount(ui->views)].view;
+}
+
+static bool entity_embedded(const render_ui *ui, uint64_t entity)
+{
+    for (int i = 0; i < acount(ui->embedded); i++) {
+        if (ui->embedded[i].view.entity == entity &&
+            ui_mount_root(ui->embedded[i].view.mount)) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /* Sends each view's activations to its entity's behaviors now, an input's
  * value first, so what they set shows in this update. They wait while a
@@ -1592,15 +2076,38 @@ static void send_activations(render_ui *renderer, const ui_world *world)
     ui *model = world->model;
     const render_ui_host *host = &world->host;
     renderer->failure[0] = '\0';
-    for (int i = 0; i < acount(renderer->views); i++) {
-        ui_view *view = &renderer->views[i];
+    if (world->read_only) {
+        for (int i = -1; i < view_count(renderer); i++) {
+            ui_mount *mount = i < 0 ? renderer->overlay.mount
+                                    : view_at(renderer, i)->mount;
+            ui_activation ignored;
+            while (mount && ui_mount_take(mount, &ignored)) {
+            }
+        }
+        return;
+    }
+    for (int i = 0; i < view_count(renderer); i++) {
+        ui_view *view = view_at(renderer, i);
         ui_activation a;
-        if (view->mount && model) {
+        ecs_entity target = ecs_entity_from_u64(view->entity);
+        if (!ecs_entity_is_alive(world->ecs, target) ||
+            ecs_entity_is_retiring(world->ecs, target)) {
+            while (view->mount && ui_mount_take(view->mount, &a)) {
+            }
+            continue;
+        }
+        if (view->mount && model &&
+            (i >= acount(renderer->views) ||
+             (view->shown && !entity_embedded(renderer, view->entity)))) {
             ui_mount_measure(view->mount, model, view->entity);
         }
         while (view->mount &&
                !(host->initializing && host->initializing(host->context)) &&
                ui_mount_take(view->mount, &a)) {
+            if (!ecs_entity_is_alive(world->ecs, target) ||
+                ecs_entity_is_retiring(world->ecs, target)) {
+                continue;
+            }
             if (model && a.has_value && a.id[0]) {
                 char selector[160];
                 snprintf(selector, sizeof selector, "#%s", a.id);
@@ -1650,6 +2157,7 @@ static void show_view(render_ui *ui, uint64_t entity, const Ui *component, bool 
         close_view(ui, view);
         view->seen = true;
     }
+    view->shown = shown;
     if (!name[0]) {
         return;
     }
@@ -1658,9 +2166,9 @@ static void show_view(render_ui *ui, uint64_t entity, const Ui *component, bool 
     if (!view->mount) {
         open_view(ui, view, name, order);
     }
-    ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
     rml_element_set_property(view->root, "z-index", order);
     rml_element_set_property(view->root, "display", shown ? "block" : "none");
+    ui->restyle |= ui_mount_sync(view->mount, view->root, ui->listener, ui->time);
 }
 
 /* Drops the views whose entity no longer shows a Ui. */
@@ -1682,9 +2190,9 @@ static void close_unseen(render_ui *renderer, ui *model)
 }
 
 /* The overlay's mount for i < 0, else view i's. */
-static ui_mount *mount_at(const render_ui *ui, int i)
+static ui_mount *mount_at(render_ui *ui, int i)
 {
-    return i < 0 ? ui->overlay.mount : ui->views[i].mount;
+    return i < 0 ? ui->overlay.mount : view_at(ui, i)->mount;
 }
 
 /* The base, then the page's RCSS, then each shown asset's RCSS once, with
@@ -1697,7 +2205,7 @@ static void install_styles(render_ui *ui)
     const ui_document *page = &ui->page.document;
     rcss_join(&sheet, &map, BASE_RCSS, NULL);
     rcss_join(&sheet, &map, page->rcss ? page->rcss : "", &page->map);
-    for (int i = -1; i < acount(ui->views); i++) {
+    for (int i = -1; i < view_count(ui); i++) {
         ui_mount *m = mount_at(ui, i);
         bool known = !m;
         for (int j = 0; !known && j < acount(names); j++) {
@@ -1724,7 +2232,7 @@ static void install_styles(render_ui *ui)
 static void collect_error(render_ui *ui)
 {
     snprintf(ui->error, sizeof ui->error, "%s", ui->page.error);
-    for (int i = -1; i < acount(ui->views) && !ui->error[0]; i++) {
+    for (int i = -1; i < view_count(ui) && !ui->error[0]; i++) {
         ui_mount *m = mount_at(ui, i);
         if (m) {
             snprintf(ui->error, sizeof ui->error, "%s", ui_mount_error(m));
@@ -1735,17 +2243,174 @@ static void collect_error(render_ui *ui)
     }
 }
 
+/* Generic authored composition, with an explicit live-world entity. The
+ * document defaults to that entity's Ui.document; an explicit document uses
+ * the same resident/provider loader as every ordinary view. Host geometry is
+ * untouched. Empty attributes unmount. Recursive embedding is bounded. */
+static void sync_embeds(render_ui *ui, const ui_world *world)
+{
+    enum
+    {
+        MAX_EMBEDS = 64,
+        MAX_DEPTH = 8
+    };
+    for (int i = 0; i < acount(ui->embedded); i++) {
+        ui->embedded[i].view.seen = false;
+    }
+    rml_element *found[MAX_EMBEDS];
+    int count = rml_element_query_selector_all(ui->doc, "[data-ui-entity]", found, MAX_EMBEDS);
+    if (count > MAX_EMBEDS) {
+        count = MAX_EMBEDS;
+    }
+    rml_element_ref *refs[MAX_EMBEDS];
+    for (int i = 0; i < count; i++) {
+        refs[i] = rml_element_ref_create(found[i]);
+    }
+    for (int i = 0; i < count; i++) {
+        rml_element *host = rml_element_ref_get(refs[i]);
+        if (!host) {
+            continue;
+        }
+        bool hidden = false;
+        for (int j = 0; j < acount(ui->views); j++) {
+            if (!ui->views[j].shown && ui->views[j].mount &&
+                ui_mount_holds(ui->views[j].mount, host)) {
+                hidden = true;
+            }
+        }
+        if (hidden) {
+            continue;
+        }
+        char text[64] = "", name[128] = "";
+        size_t length = rml_element_attribute(host, "data-ui-entity", text, sizeof text);
+        const char *digits = text;
+        bool typed = !strncmp(text, "ecs.entity(", 11);
+        if (typed) {
+            digits += 11;
+        }
+        char *end;
+        errno = 0;
+        uint64_t entity = strtoull(digits, &end, 10);
+        bool valid = isdigit((unsigned char)*digits) && errno != ERANGE &&
+                     (typed ? !strcmp(end, ")") : !*end);
+        ecs_entity target = ecs_entity_from_u64(entity);
+        if (!length || length >= sizeof text || !valid || !entity ||
+            !ecs_entity_is_alive(world->ecs, target) ||
+            ecs_entity_is_retiring(world->ecs, target)) {
+            continue;
+        }
+        length = rml_element_attribute(host, "data-ui-document", name, sizeof name);
+        if (length >= sizeof name) {
+            continue;
+        }
+        if (!name[0]) {
+            const Ui *component = Ui_get_const(world->ecs, target);
+            if (!component || !component->document ||
+                strlen(component->document) >= sizeof name) {
+                continue;
+            }
+            snprintf(name, sizeof name, "%s", component->document);
+        }
+        int depth = 0;
+        bool cycle = false;
+        for (rml_element *at = host; at; at = rml_element_parent(at)) {
+            for (int j = 0; j < acount(ui->embedded); j++) {
+                ui_view *view = &ui->embedded[j].view;
+                if (ui_mount_root(view->mount) == at) {
+                    depth++;
+                    if (view->entity == entity &&
+                        !strcmp(ui_mount_name(view->mount), name)) {
+                        cycle = true;
+                    }
+                }
+            }
+        }
+        if (cycle || depth >= MAX_DEPTH) {
+            continue;
+        }
+        ui_embed *embed = NULL;
+        for (int j = 0; j < acount(ui->embedded); j++) {
+            if (rml_element_ref_get(ui->embedded[j].host) == host) {
+                embed = &ui->embedded[j];
+            }
+        }
+        if (embed && (!ui_mount_root(embed->view.mount) || embed->view.entity != entity ||
+                      strcmp(ui_mount_name(embed->view.mount), name))) {
+            if (world->model && !world->read_only) {
+                ui_unmeasure(world->model, embed->view.entity);
+            }
+            close_embed(ui, embed);
+        }
+        if (!embed) {
+            if (acount(ui->embedded) >= MAX_EMBEDS) {
+                continue;
+            }
+            apush(ui->embedded, ((ui_embed){ 0 }));
+            embed = &alast(ui->embedded);
+        }
+        if (!embed->view.mount) {
+            embed->host = rml_element_ref_create(host);
+            embed->view.entity = entity;
+            embed->view.mount = ui_mount_new(ui->content_root, name);
+            embed->view.mount->prepared_only = ui->prepared_only;
+            ui_mount_set_loader(embed->view.mount, &ui->loader);
+            embed->view.root = rml_element_create_child(host, "div", NULL);
+            rml_element_set_attribute(embed->view.root, "data-ui-embedded-root", "");
+            ui_data_bind_self(&ui->data, embed->view.root, entity);
+            rml_element_set_property(embed->view.root, "width", "100%");
+            rml_element_set_property(embed->view.root, "height", "100%");
+            rml_element_set_property(embed->view.root, "min-width", "0");
+            rml_element_set_property(embed->view.root, "min-height", "0");
+        }
+        embed->view.seen = true;
+        ui->restyle |= ui_mount_sync(embed->view.mount, embed->view.root, ui->listener, ui->time);
+    }
+    for (int i = 0; i < count; i++) {
+        rml_element_ref_destroy(refs[i]);
+    }
+    int kept = 0;
+    for (int i = 0; i < acount(ui->embedded); i++) {
+        if (!ui->embedded[i].view.seen || !ui_mount_root(ui->embedded[i].view.mount)) {
+            if (world->model && !world->read_only) {
+                ui_unmeasure(world->model, ui->embedded[i].view.entity);
+            }
+            close_embed(ui, &ui->embedded[i]);
+        } else {
+            ui->embedded[kept++] = ui->embedded[i];
+        }
+    }
+    asetlen(ui->embedded, kept);
+}
+
 void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, double dt)
 {
     assert(ui && w && w->ecs);
     ecs_world *world = w->ecs;
+    if (ui->world != world) {
+        for (int i = 0; i < acount(ui->embedded); i++) {
+            ui_data_forget_entity(&ui->data, ui->embedded[i].view.entity);
+        }
+        close_embeds(ui);
+        for (int i = 0; i < acount(ui->views); i++) {
+            ui_data_forget_entity(&ui->data, ui->views[i].entity);
+            close_view(ui, &ui->views[i]);
+        }
+        asetlen(ui->views, 0);
+        ui->data.data_seen = 0;
+        ui->world = world;
+    }
     ui->time += dt;
     send_activations(ui, w);
     rml_backend_require_resident_images(
         ui->backend,
-        ui->prepared_only || !ui->loader.open || ui_documents_active()
+        ui->loader.resident_images || prepared_loader(ui->loader, ui->prepared_only)
     );
     if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
+        if (w->model && !w->read_only) {
+            for (int i = 0; i < acount(ui->embedded); i++) {
+                ui_unmeasure(w->model, ui->embedded[i].view.entity);
+            }
+        }
         load_page(ui);
     }
     if (width != ui->width || height != ui->height ||
@@ -1775,18 +2440,26 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         }
         ecs_query_end(&query);
     }
-    close_unseen(ui, w->model);
+    close_unseen(ui, w->read_only ? NULL : w->model);
     ui_data_sync(&ui->data, w->save);
     ui_data_show_entities(&ui->data, w->model);
+    sync_embeds(ui, w);
     if (ui->restyle) {
         install_styles(ui);
         ui->restyle = false;
     }
     collect_error(ui);
-    for (int i = 0; i < acount(ui->views); i++) {
-        ui_mount *m = ui->views[i].mount;
-        if (m && w->model) {
-            ui_mount_apply(m, w->model, ui->views[i].entity);
+    for (int i = 0; i < view_count(ui); i++) {
+        ui_view *view = view_at(ui, i);
+        ui_mount *m = view->mount;
+        if (m && w->model &&
+            (i >= acount(ui->views) ||
+             (view->shown && !entity_embedded(ui, view->entity)))) {
+            if (w->read_only) {
+                ui_mount_apply_read_only(m, w->model, view->entity);
+            } else {
+                ui_mount_apply(m, w->model, view->entity);
+            }
         }
     }
     rml_backend_update(ui->backend, dt);

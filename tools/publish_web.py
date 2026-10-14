@@ -65,7 +65,10 @@ def file_hashes(directory, names):
     hashes = {}
     for name in names:
         with (directory / name).open('rb') as stream:
-            hashes[name] = hashlib.file_digest(stream, 'sha256').hexdigest()
+            checksum = hashlib.sha256()
+            for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                checksum.update(chunk)
+            hashes[name] = checksum.hexdigest()
     return hashes
 
 

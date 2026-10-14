@@ -529,9 +529,17 @@ From the game root:
 ```sh
 chibi_ctl --project-root "$PWD" --format
 chibi_ctl --project-root "$PWD" --format --check
+chibi_ctl --project-root "$PWD" --format --asset behaviors/Projectile.chibi
+chibi_ctl --project-root "$PWD" --format --asset behaviors/Projectile.chibi --check
 chibi-compile --project-root "$PWD" --output game.chibip
 ./.chibi/runtime/bin/chibi-player game.chibip --resource-root "$PWD"
 ```
+
+`--asset` limits formatting to one path relative to the configured content
+folder. It uses the project's full source catalog and the same semantic checks
+as whole-project formatting. It accepts `.chibi` and KDL assets, including
+`input.kdl`; RML and RCSS are not handled by the asset formatter. Omit `--asset`
+to format the whole project.
 
 Keep `game.chibip.resources.json` and all declared resources with the prepared
 artifact. Compilation resolves authored source and dependencies before deployment;

@@ -68,9 +68,19 @@ typedef struct
     const char *name;
     scene *scene;
 } player_named_scene;
+/* Trusted host services are bound to the new owned world before executable
+ * service validation, scene attachment or Begin. No authored code runs here.
+ * The callback must not retain the world on failure or publish it externally;
+ * service values it binds must outlive the player. Borrowed during creation. */
+typedef struct
+{
+    void *context;
+    bool (*bind)(void *, world *, char *error, size_t size);
+} player_service_host;
 typedef struct
 {
     world_options world;
+    player_service_host services;
     /* Optional project-declared components, retained by the player. World
      * components and the linker must already include them. */
     declared_components *declared;
@@ -102,9 +112,43 @@ typedef struct
 player *player_new(const player_spec *, char *error, size_t size);
 void player_free(player *);
 world *player_world(const player *);
+/* Borrowed descriptors, retained by the player; may be NULL. */
+declared_components *player_declared_components(const player *);
 const scene_instance *player_scene(const player *);
 /* Destroys every entity, resets the engine's per-scene state and starts the
  * named scene; time, input and committed saves go on. Call it between frames,
  * as scene_flow_take asks. An unknown name changes nothing; any other
  * failure leaves an empty world, and the host should stop. */
 bool player_load_scene(player *, const char *name, char *error, size_t size);
+
+/* A fresh simulation, distinct from a cross-scene transition. A bounded record
+ * or replay is armed and seeded before scene Begin; clocks/input/audio reset.
+ * Replay keys borrow only during this call and must be finite/ordered from0.
+ * Options/unknown scene refusal changes nothing. After admission, a failed
+ * scene/Begin leaves an empty or failed world as player_load_scene does. */
+typedef struct
+{
+    unsigned seed;
+    /* NULL preserves committed saves; explicit JSON is copied and restored. */
+    const char *initial_save_json;
+    int record_limit;
+    const input_keyframe *replay;
+    int replay_count;
+} player_restart_input;
+/* Pure preflight shared with hosts that retire borrowed presentation before
+ * calling restart. Quiescent player/world/options must remain unchanged. */
+bool player_restart_scene_valid(
+    const player *,
+    const char *name,
+    const player_restart_input *,
+    char *error,
+    size_t
+);
+bool player_restart_scene(
+    player *,
+    const char *name,
+    const player_restart_input *,
+    bool *admitted,
+    char *error,
+    size_t
+);

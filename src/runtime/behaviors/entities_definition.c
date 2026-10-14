@@ -29,10 +29,21 @@ static const native_parameter_definition SPAWN_OUT[] = { ENTITY_SPAWN_OUTPUTS(NA
 static const native_parameter_definition TARGET[] = { ENTITY_TARGET_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition THEN[] = { ENTITY_THEN_PORTS(NATIVE_PORT) };
 
+static const native_parameter_definition NAME_IN[] = { ENTITY_ENTITY_PORTS(NATIVE_PORT) };
+static const native_parameter_definition NAME_OUT[] = {
+    { .name = "Name", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_STR,
+      .type_name = "const char *", .container = PIN_CONTAINER_SINGLE },
+};
+
 #define SIGNATURE(IN, OUT)                                                     \
     .inputs = IN, .input_count = NATIVE_COUNT(IN), .outputs = OUT,             \
     .output_count = NATIVE_COUNT(OUT)
 static const native_capability_definition DEFINITIONS[] = {
+    { .canonical_name = ENTITY_NAME_NAME,
+      .source_name = "entity_name", .category = "Entities",
+      .description = "Reads a live entity's authored name in the current world. Unnamed, dead and retiring entities return empty text.",
+      .kind = SCRIPT_CAPABILITY_FUNCTION, .pure = true, .completion_output = -1,
+      SIGNATURE(NAME_IN, NAME_OUT) },
     { .canonical_name = ENTITY_GET_GLOBAL_NAME,
       ENTITY_GET_GLOBAL_PRESENTATION,
       .source_name = "get_global_variable",
@@ -98,6 +109,9 @@ static const native_capability_definition DEFINITIONS[] = {
 #undef SIGNATURE
 
 static const native_definition_binding BINDINGS[] = {
+    { .canonical_name = ENTITY_NAME_NAME,
+      .implementation = { .call = &ENTITY_NAME_CALL,
+                          .access = &ENTITY_GLOBAL_READ_ACCESS } },
     { .canonical_name = ENTITY_GET_GLOBAL_NAME,
       .implementation = { .call = &ENTITY_GET_GLOBAL_CALL,
                           .access = &ENTITY_GLOBAL_READ_ACCESS } },

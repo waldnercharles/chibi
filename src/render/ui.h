@@ -8,6 +8,7 @@
 #include "render/ui_loader.h"
 #include "runtime/save.h"
 #include "runtime/ui.h"
+#include "ui/activation.h"
 #include "ui/rml.h"
 #include "ui/rml_backend.h"
 
@@ -46,6 +47,7 @@ typedef struct ui_world
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
     render_skip hidden;
+    bool read_only; /* No model measurements, activation writes or one-shot consumption. */
 } ui_world;
 
 /* ---------- Data ---------- */
@@ -112,9 +114,8 @@ void ui_data_free(ui_data *data);
  * (support/ui_style.h). */
 typedef struct ui_mount ui_mount;
 
-/* The arguments emit('Event', ...) passes after its name, as text; more are
- * dropped. */
-#define UI_ACTIVATION_ARGS 4
+/* The explicit payload capacity is shared with source validation. Capture
+ * refuses oversized activations before dispatch. */
 
 /* An activation: the event emitted or bound to a key, the id of the element
  * whose binding sent it ("" when it has none), emit's arguments, and its
@@ -134,15 +135,36 @@ typedef struct ui_activation
     unsigned modifiers;
     int button;
     float x, y;
+    float local_x, local_y, delta_x, delta_y, wheel_x, wheel_y;
+    bool canceled, has_text;
+    char text[128];
+    char key[16];
+    /* Optional owned strings; use accessors instead of the inline previews. */
+    char *full_args[UI_ACTIVATION_ARGS], *full_text;
+    size_t payload_bytes;
     rml_element_ref *anchor;
 } ui_activation;
+
+/* One source document plus bounded metadata. Capture is atomic on refusal.
+ * Captured strings are owned until clear; mount-taken strings instead remain
+ * borrowed until next take, detach or free. Repeated accessor reads are safe. */
+#define UI_ACTIVATION_BYTES_MAX (1024u * 1024u + 4096u)
+bool ui_activation_capture(ui_activation *, int argc, const char *const *args, const char *text);
+void ui_activation_clear(ui_activation *);
+const char *ui_activation_argument(const ui_activation *, int index);
+const char *ui_activation_text(const ui_activation *);
 
 /* Runs activation `a` on `entity`'s behaviors in `live` now, or on every
  * entity's for an entity of none, so what they set shows in the frame that
  * sent it. Its payload is what the event asset `live` holds under its name
  * declares (none for a local event), in order: Shift, Alt and Mod (bools;
  * `primary` holds Mod's modifier bits, Meta on a Mac and Control elsewhere)
- * and Pointer (CF_V2, in the document's pixels) come from the DOM event, as a
+ * and Pointer, LocalPointer, Delta, Wheel (CF_V2), Button (int), Canceled
+ * (bool), Key (canonical string), Value (float/double when available) and Text (string when available)
+ * come from the DOM event. Vectors use context pixels; LocalPointer subtracts
+ * the binding element's border origin, Delta is movement since its preceding
+ * emitted pointer activation, and Wheel has positive Y down. Each vector has
+ * independent storage for the duration of dispatch. As a
  * web handler reads event.shiftKey and event.clientX; each other value is
  * emit's next argument read as its type (text, a number or a flag). False,
  * running nothing, for a payload a UI event cannot carry; a dispatch that
@@ -175,6 +197,15 @@ bool ui_mount_holds(const ui_mount *mount, rml_element *element);
  * keys unless bound on that control. Text inputs and textareas permit an
  * ancestor Escape binding. */
 void ui_mount_listen(ui_mount *mount, const rml_event *event);
+/* Pure exact chord matcher used by data-keys; Mod uses primary bits. */
+bool ui_key_binding(
+    const char *bindings,
+    const char *key,
+    unsigned modifiers,
+    unsigned primary,
+    char *event,
+    size_t size
+);
 /* Records the activation key `key`, named as data-keys names it ("Left"),
  * sends while the area showing the mount has the keyboard but nothing in
  * it binds the key: data-area-keys="Key:Event ..." on its first element
@@ -192,13 +223,19 @@ void ui_mount_emit(
 );
 /* Whether activations wait to be taken. */
 bool ui_mount_pending(const ui_mount *mount);
-/* Takes the oldest activation, releasing the anchor of the one taken before;
- * false when there is none. */
+/* Borrows the oldest activation until the next successful take, detach or free.
+ * The mount retains ownership; do not call ui_activation_clear on this copy.
+ * False when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
 void ui_mount_apply(ui_mount *mount, ui *model, uint64_t entity);
-/* Records under #id, in dp, where each element with an id and a
- * data-event-scroll binding is scrolled, for Get UI Scroll. First it windows
+/* Applies visual settings without consuming focus/click/popover/reveal requests. */
+void ui_mount_apply_read_only(ui_mount *mount, ui *model, uint64_t entity);
+/* Apply one model setting to a DOM mount: body and :scope name its root. */
+void ui_apply_element(rml_element *root, ui_element *setting);
+/* Records under #id, in dp, the client width and scroll geometry of elements
+ * marked data-event-scroll or data-measure, for Get UI Scroll / Get UI View
+ * Width. Clears obsolete measurements, including detached mounts. First it windows
  * the lists marked data-list-rows="<rows>" (ui/list.h, the List widget's
  * scroller): it sizes each for its rows, scrolls a row data-list-reveal
  * names (Reveal UI List Row) into view once, and sends `window` with
@@ -269,6 +306,10 @@ void render_ui_update(render_ui *ui, const ui_world *world, int width, int heigh
  * render_ui_update. Its activations wait for render_ui_take_overlay_event
  * instead of reaching the world. */
 void render_ui_set_overlay(render_ui *ui, const char *name, const char *state);
+/* Optional read-model entity for isolated source previews. Zero preserves the
+ * normal page model; positive IDs bind page and overlay self to that Ui entity.
+ * Rebinding retires DOM elements. World document mounts keep their own entities. */
+void render_ui_set_model_entity(render_ui *, uint64_t entity);
 /* Takes the overlay's last activated event name; false when there is none. */
 bool render_ui_take_overlay_event(render_ui *ui, char *name, size_t size);
 /* Pointer and key input in canvas pixels. Returns what the documents
@@ -292,6 +333,10 @@ void render_ui_set_reference_height(render_ui *ui, float dp);
 bool render_ui_overlay_bounds(const render_ui *ui, float bounds[4]);
 /* The first mount's error, or "" when every shown asset loaded. */
 const char *render_ui_error(const render_ui *ui);
+/* Bind borrowed host GPU pixels to kit:<name>. Revision identifies changed
+ * contents even when the handle stays the same; texture 0 clears the binding.
+ * The host keeps the handle alive until replacement or render_ui_free. */
+void render_ui_bind_texture(render_ui *, const char *name, uint64_t texture, uint64_t revision);
 /* The RmlUi context the documents live in, for inspecting them. */
 rml_context *render_ui_context(const render_ui *ui);
 

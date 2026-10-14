@@ -121,6 +121,32 @@ TEST_CASE(language_shadowing_resolves_nearest_declaration)
     REQUIRE(analysis->symbols[state].type.storage == PIN_F64);
     return true;
 }
+TEST_CASE(language_self_resolves_persistent_fields_before_entity_components)
+{
+    const char *source = "behavior Fields { Count: int = 0; state: int = 1; "
+                         "Position: struct<\"Position\"> = {x: 2, y: 3}; "
+                         "Next :: fn(Count: int) { self.Count += Count; "
+                         "if Count > 0 { Count: int = 10; self.Count += Count; } } "
+                         "Other :: fn(self: entity) { self.Position.x = 9; } "
+                         "on Tick { other := self; self.Position.x += 1; "
+                         "other.Position.y = self.Position.x; Next(state); "
+                         "Other(self); } }";
+    parse(source);
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    int stored = -1;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (analysis->symbols[i].kind == SCRIPT_STATE &&
+            !strcmp(analysis->symbols[i].name, "Count")) {
+            stored = i;
+        }
+    }
+    REQUIRE(stored >= 0);
+    const script_use *use = script_use_at(analysis, (int)(strstr(source, "self.Count") - source) + 5);
+    REQUIRE(use && use->symbol == stored);
+    return true;
+}
+
 TEST_CASE(language_optional_component_requires_presence_guard)
 {
     parse("system Motion(position: Position?) { position.x = 1; }");
@@ -522,13 +548,13 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
         "system Bad query p: Position where await Deferred() { "
         "A :: () {} B :: () {} C :: () {} D :: () {} E :: () {} F :: () {} "
         "Deferred :: () -> bool { yield; return true; } }",
-        "system Bad query p: Position where enabled { state enabled := true; }",
+        "system Bad query p: Position where self.enabled { enabled := true; }",
         "system Bad query p: Position where enabled { enabled := true; }",
         "system Bad query p: Position where ReadLocal() { enabled := true; "
         "ReadLocal :: () -> bool { return enabled; } }",
         "system Bad query p: Position where ReadState() { shared enabled := "
         "true; ReadState :: () -> bool { return enabled; } }",
-        "system Bad query p: Position where ReadState() { state enabled := "
+        "system Bad query p: Position where ReadState() { enabled := "
         "true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool "
         "{ return enabled; } }",
         "system Bad query p: Position where event.dt > 0 {}",
@@ -849,8 +875,12 @@ TEST_CASE(language_component_rejects_invalid_fields)
     REQUIRE(acount(component_diagnostics) == 1);
     REQUIRE(component_diagnostic("A component source declares one component"));
     /* A reserved word is not a field name; the syntax reports it once. */
-    REQUIRE(!read_component("component C {\n    state: float\n}\n"));
+    REQUIRE(!read_component("component C {\n    on: float\n}\n"));
     REQUIRE(acount(component_diagnostics) == syntax->diagnostic_count);
+    script_component *ordinary = read_component("component Ordinary { state: float }");
+    REQUIRE(ordinary && !syntax->diagnostic_count && !acount(component_diagnostics));
+    REQUIRE(component_field(ordinary, "state") != NULL);
+    script_component_free(ordinary);
     afree(component_diagnostics);
     return true;
 }
@@ -1394,7 +1424,7 @@ TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches)
     );
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("Unreachable duplicate union pattern"));
-    parse("behavior Unions { Choice :: union { A | B }; state value: Choice; }");
+    parse("behavior Unions { Choice :: union { A | B }; value: Choice; }");
     REQUIRE(!analysis->valid);
     parse(
         "library Unions { Choice :: union { A | B }; "
@@ -1409,7 +1439,7 @@ TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches)
         "Run :: () -> (value: Choice = Choice.A) { return; } }"
     );
     REQUIRE(analysis->valid);
-    parse("behavior Unions { Choice :: union { A | B }; state value: Choice = null; }");
+    parse("behavior Unions { Choice :: union { A | B }; value: Choice = null; }");
     REQUIRE(!analysis->valid);
     parse(
         "library Unions { Choice :: union { A | B }; "
@@ -1638,6 +1668,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
+    RUN_TEST_CASE(language_self_resolves_persistent_fields_before_entity_components);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
     RUN_TEST_CASE(language_reductions_resolve_stored_fields_and_membership);
     RUN_TEST_CASE(language_reductions_require_system_component_fields);

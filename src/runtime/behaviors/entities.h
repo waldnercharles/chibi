@@ -7,6 +7,11 @@
 
 typedef struct arena arena;
 
+enum
+{
+    ENTITIES_EVENT_QUEUE_COUNT_MAX = 65536
+};
+
 typedef struct entities entities;
 typedef struct tilemap_grid tilemap_grid;
 /* Borrowed until the next tilemap query or entity service reset. Serial access only. */
@@ -26,6 +31,12 @@ typedef struct
  * queries/globals only; any spawn, event delivery or destruction requires hooks. */
 entities *entities_new(ecs_world *world, const entity_host *host);
 ecs_world *entities_world(const entities *);
+/* Optional owning-instance names. A lookup returns borrowed text or NULL for
+ * an entity outside that instance. The caller owns context/code until unbound;
+ * names are copied into activation storage by the authored capability. This
+ * does not register global ECS names or merge separate prefab namespaces. */
+void entities_bind_names(entities *, void *context, const char *(*lookup)(void *, ecs_entity));
+
 void entities_free(entities *entities);
 /* Ordered broadcaster only: consecutive proven bodies may reuse query
  * membership. NULL, an unproven body or the broadcast end invalidates it.
@@ -42,6 +53,26 @@ entity_query_profile entities_query_profile(const entities *entities);
 /* Replace a caller-owned core array with live host-spawned handles in spawn order. */
 void entities_copy_live(const entities *entities, ecs_entity **out);
 bool entities_owns(const entities *entities, ecs_entity entity);
+/* Exact provenance for live host-spawned prototype objects. Strings are
+ * borrowed while the entity remains live, until structural processing/reset.
+ * Creation is monotonic for the owning service/world lifetime.
+ * Missing provenance, retired entities and reused slots return false. */
+typedef struct
+{
+    const char *prototype;
+    int object;
+    uint64_t creation;
+} entity_origin;
+bool entities_origin(const entities *, ecs_entity, entity_origin *);
+
+/* Authoritative registered immutable prototype generations, borrowed only at
+ * quiescent boundaries until registration/reset/free. Origin iteration includes
+ * retained record slots; false skips dead/retiring entries, never reuses IDs. */
+int entities_prototype_count(const entities *);
+const char *entities_prototype_name_at(const entities *, int);
+const scene *entities_prototype_scene_at(const entities *, int);
+int entities_origin_count(const entities *);
+bool entities_origin_at(const entities *, int, ecs_entity *, entity_origin *);
 /* Names currently available to Get Global Variable. Results are borrowed
  * until the corresponding binding/value set is rebuilt or reset. */
 int entities_global_name_count(const entities *entities);
@@ -57,8 +88,11 @@ void entities_reset(entities *entities);
 int entities_register_prepared(entities *, const char *identity, scene *);
 void entities_request_destroy(entities *entities, ecs_entity entity);
 bool entities_is_retiring(const entities *entities, ecs_entity entity);
-/* Queue copied payloads. Containers and user_data are rejected. Delivery is
- * deferred; dead or retiring targets are skipped. */
+/* Queue owned payload snapshots, including homogeneous arrays/sets and
+ * reflected structs with nested strings. Task tokens, maps, malformed layouts
+ * and payloads beyond depth16/4096values/1MiB are refused without queuing.
+ * Queue ownership is bounded to65536events/16MiB, including a dispatch batch.
+ * Delivery is deferred; dead or retiring targets are skipped. */
 int entities_request_event(entities *entities, ecs_entity target, const char *name, execution_arguments inputs);
 /* Dispatch one bounded batch while simulation is playing or stepping. Events
  * submitted by handlers remain queued for the next dispatch boundary. */

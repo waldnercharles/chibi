@@ -55,6 +55,7 @@ static void free_strings(char **strings)
 typedef struct
 {
     char **files;
+    const text_reader *reader;
     char *error;
     size_t error_size;
 } expansion;
@@ -385,7 +386,7 @@ static bool import(reader *r, const char *chunk, rcss_origin at, output *out)
         }
     }
     apush(*files, xstrdup(path));
-    char *source = text_file_read(path);
+    char *source = text_reader_read(r->x->reader, path);
     if (!source) {
         return fail(r, "cannot read %s", path);
     }
@@ -502,8 +503,19 @@ static bool expand_text(expansion *x, const char *text, int file, const char *di
 
 char *rcss_expand(const char *text, const char *directory, rcss_map *map, char *error, size_t error_size)
 {
+    return rcss_expand_reader(text, directory, map, error, error_size, NULL);
+}
+char *rcss_expand_reader(
+    const char *text,
+    const char *directory,
+    rcss_map *map,
+    char *error,
+    size_t error_size,
+    const text_reader *reader
+)
+{
     assert(!map || (!map->files && !map->lines));
-    expansion x = { .error = error, .error_size = error_size };
+    expansion x = { .error = error, .error_size = error_size, .reader = reader };
     output out = { 0 };
     bool ok = expand_text(&x, text, -1, directory, &out);
     char *flat = ok ? take(&out.text) : NULL;

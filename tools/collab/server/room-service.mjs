@@ -410,7 +410,7 @@ export function createRoomService(options = {}) {
       revision: room.revision,
       checkpointVersion: message.payload.checkpoint_version,
       workspace: message.payload.workspace,
-      files: message.payload.files,
+      archive: message.payload.archive,
       sha256: message.payload.sha256,
     };
     room.checkpoint = checkpoint;
@@ -505,7 +505,7 @@ export function createRoomService(options = {}) {
       checkpoint.revision, 'snapshot', {
         checkpoint_version: checkpoint.checkpointVersion,
         workspace: checkpoint.workspace,
-        files: checkpoint.files,
+        archive: checkpoint.archive,
         sha256: checkpoint.sha256,
       }));
   }

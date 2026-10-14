@@ -206,22 +206,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             );
         }
     }
-    if (script_analyzer_is(object, "builtin_reference") &&
-        script_analyzer_text_is(a, object, "state")) {
-        int symbol = script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
-        if (symbol < 0) {
-            script_analyzer_diagnostic(a, member, "Unknown declared value '%s'", name);
-            free(name);
-            return script_analyzer_expr_add(
-                a,
-                (script_expression){ .kind = SCRIPT_EXPR_ERROR,
-                                     .type = script_analyzer_bad_type(),
-                                     .range = script_analyzer_range(node),
-                                     .symbol = -1,
-                                     .left = -1,
-                                     .right = -1 }
-            );
-        }
+    int symbol = script_analyzer_self_field(a, object, member);
+    if (symbol >= 0) {
         script_analyzer_resolve_initializer(a, symbol);
         script_analyzer_use(a, member, symbol, SCRIPT_READ, 0);
         script_symbol value = a->out->symbols[symbol];

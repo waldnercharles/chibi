@@ -22,6 +22,7 @@ typedef struct
     const script_catalog *catalog;
     script_diagnostic **diagnostics;
     bool failed;
+    uint64_t self_type;
 } reader;
 
 static void report(reader *r, TSNode node, const char *format, ...)
@@ -152,7 +153,12 @@ static char *unit(reader *r, TSNode node)
         }
         const char *append = NULL;
         char *spelling = text(r, part);
-        if (is(part, "identifier") && type_known(r, spelling)) {
+        int named = script_catalog_find_type(r->catalog, spelling);
+        bool other_type = named >= 0 && r->catalog->types[named].id != r->self_type;
+        /* Reading an already compiled component must use the same unit
+         * namespace as its first declaration, before its own type existed. */
+        if (is(part, "identifier") &&
+            (!(script_builtin_type(spelling).flags & SCRIPT_TYPE_ERROR) || other_type)) {
             report(r, part, "'%s' is a type, not a unit", spelling);
         } else if (is(part, "number")) {
             append = !strcmp(spelling, "2") ? "²"
@@ -258,7 +264,10 @@ script_component *script_component_read(
     script_diagnostic **diagnostics
 )
 {
-    reader r = { syntax, catalog, diagnostics, syntax->diagnostic_count > 0 };
+    reader r = { .syntax = syntax,
+                 .catalog = catalog,
+                 .diagnostics = diagnostics,
+                 .failed = syntax->diagnostic_count > 0 };
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(*diagnostics, syntax->diagnostics[i]);
     }
@@ -282,6 +291,7 @@ script_component *script_component_read(
     }
     script_component *out = xcalloc(1, sizeof *out);
     out->name = name(&r, field(declaration, "name"));
+    r.self_type = out->name ? script_catalog_id("type", out->name) : 0;
     out->description = description(&r, declaration);
     out->range = script_node_range(declaration);
     fields(&r, field(declaration, "body"), out);

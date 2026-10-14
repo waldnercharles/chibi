@@ -41,6 +41,7 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
         behavior_function_prepare_host(f, ctx);
         ctx->owned_host = true;
     }
+    behavior_random *previous_random = behavior_random_enter(behavior_random_context(ctx));
     int result = compiled ? run_compiled(f, ctx)
                           : behavior_function_run_interpreted(f, ctx);
     if (result < 0 && ctx->failure_observer) {
@@ -50,6 +51,7 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
         result != FLOW_PAUSED_RESULT && result != BEHAVIOR_FUNCTION_CALL_RESULT) {
         behavior_function_release_host(ctx);
     }
+    behavior_random_leave(previous_random);
     return result;
 }
 

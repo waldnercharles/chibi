@@ -364,7 +364,7 @@ TEST_CASE(catalog_errors_are_reported_once)
     }
 
     /* The catalog lists the declaration's unknown type, not the cast's. */
-    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    state a: Foo = 0\n    on Tick {\n        a = cast<Foo>(a)\n    }\n}\n");
+    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    a: Foo = 0\n    on Tick {\n        a = cast<Foo>(a)\n    }\n}\n");
     REQUIRE(validate() != 0 && errors() == 2);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(yyjson_arr_size(diagnostics) == 2);
@@ -821,6 +821,131 @@ static int format(const char *check)
     const char *args[] = { program, "--project-root", "game", "--format", check,
                            NULL };
     return tool_run(args, root, log_path);
+}
+
+static int format_selected(const char *asset, const char *check)
+{
+    const char *args[] = { program,   "--project-root",
+                           "game",    "--format",
+                           "--asset", asset,
+                           check,     NULL };
+    return tool_run(args, root, log_path);
+}
+static bool file_equals(const char *relative, const char *expected)
+{
+    char filename[256];
+    path(filename, sizeof filename, relative);
+    char *actual = tool_read(filename);
+    bool equal = actual && !strcmp(actual, expected);
+    free(actual);
+    return equal;
+}
+TEST_CASE(selected_format_preserves_unrelated_assets)
+{
+    const char *scene = "version 1\nname \"Start\"\n(array)entities {}\n";
+    const char *other = "version 1\nname \"Other\"\n(array)entities {}\n";
+    const char *behavior = "behavior Selected{Count:int=1}\n";
+    const char *component = "component Charge{level:float}\n";
+    const char *input = "Dash {\n  (array)sources \"Aim Stick\"\n}\n";
+    char folder[256];
+    const char *folders[] = { "game/content/behaviors", "game/content/components" };
+    for (int i = 0; i < 2; i++) {
+        path(folder, sizeof folder, folders[i]);
+        REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    }
+    write_file("game/content/scenes/Start.kdl", scene);
+    write_file("game/content/scenes/Other.kdl", other);
+    write_file("game/content/behaviors/Selected.chibi", behavior);
+    write_file("game/content/components/Charge.chibi", component);
+    write_file("game/content/input.kdl", input);
+    REQUIRE(format_selected("scenes/Start.kdl", "--check") != 0);
+    REQUIRE(file_equals("game/content/scenes/Start.kdl", scene));
+    REQUIRE(file_equals("game/content/scenes/Other.kdl", other));
+    REQUIRE(format_selected("scenes/Start.kdl", NULL) == 0);
+    REQUIRE(!file_equals("game/content/scenes/Start.kdl", scene));
+    REQUIRE(format_selected("scenes/Start.kdl", "--check") == 0);
+    REQUIRE(file_equals("game/content/scenes/Other.kdl", other));
+    REQUIRE(file_equals("game/content/behaviors/Selected.chibi", behavior));
+    REQUIRE(file_equals("game/content/components/Charge.chibi", component));
+    REQUIRE(file_equals("game/content/input.kdl", input));
+    REQUIRE(format_selected("behaviors/Selected.chibi", NULL) == 0);
+    REQUIRE(!file_equals("game/content/behaviors/Selected.chibi", behavior));
+    REQUIRE(format_selected("behaviors/Selected.chibi", "--check") == 0);
+    REQUIRE(format_selected("components/Charge.chibi", NULL) == 0);
+    REQUIRE(!file_equals("game/content/components/Charge.chibi", component));
+    REQUIRE(format_selected("components/Charge.chibi", "--check") == 0);
+    char from[256], to[256];
+    path(from, sizeof from, "game/content");
+    path(to, sizeof to, "game/assets");
+    REQUIRE(rename(from, to) == 0);
+    set_manifest("content", "assets");
+    REQUIRE(format_selected("input.kdl", "--check") != 0);
+    REQUIRE(file_equals("game/assets/input.kdl", input));
+    REQUIRE(format_selected("input.kdl", NULL) == 0);
+    REQUIRE(!file_equals("game/assets/input.kdl", input));
+    REQUIRE(format_selected("input.kdl", "--check") == 0);
+    REQUIRE(file_equals("game/assets/scenes/Other.kdl", other));
+    return true;
+}
+TEST_CASE(selected_format_refuses_paths_and_incompatible_modes)
+{
+    const char *outside = "version 1\nname \"Outside\"\n(array)entities {}\n";
+    write_file("Outside.kdl", outside);
+    const char *refused[] = { "../Outside.kdl",
+                              "/Outside.kdl",
+                              "scenes/./Start.kdl",
+                              "scenes//Start.kdl",
+                              "scenes/../scenes/Start.kdl",
+                              "scenes\\Start.kdl",
+                              "content/scenes/Start.kdl",
+                              "scenes/Missing.kdl",
+                              "project.kdl" };
+    for (int i = 0; i < (int)(sizeof refused / sizeof *refused); i++) {
+        REQUIRE(format_selected(refused[i], NULL) != 0);
+    }
+    char target[256], link[256];
+    path(target, sizeof target, "Outside.kdl");
+    path(link, sizeof link, "game/content/scenes/Linked.kdl");
+    REQUIRE(symlink(target, link) == 0);
+    REQUIRE(format_selected("scenes/Linked.kdl", NULL) != 0);
+    REQUIRE(unlink(link) == 0);
+    char folder[256];
+    path(folder, sizeof folder, "game/content/behaviors");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/behaviors/Selected.chibi", "behavior Selected{Count:int=1}\n");
+    path(link, sizeof link, "game/content/behaviors/Selected.chibi.meta");
+    REQUIRE(symlink(target, link) == 0);
+    REQUIRE(format_selected("behaviors/Selected.chibi", NULL) != 0);
+    REQUIRE(unlink(link) == 0);
+    path(target, sizeof target, "game/content/scenes");
+    path(link, sizeof link, "game/content/events");
+    REQUIRE(symlink(target, link) == 0);
+    REQUIRE(format_selected("events/Start.kdl", NULL) != 0);
+    REQUIRE(unlink(link) == 0);
+    set_manifest("content", "..");
+    REQUIRE(format_selected("Outside.kdl", NULL) != 0);
+    REQUIRE(file_equals("Outside.kdl", outside));
+    const char *modes[] = { "--render", "--migrate", "--format", "--check", "--engine-info" };
+    for (int i = 0; i < (int)(sizeof modes / sizeof *modes); i++) {
+        const char *args[] = {
+            program,   "--project-root",   "game",   "--format", "--check",
+            "--asset", "scenes/Start.kdl", modes[i], NULL
+        };
+        REQUIRE(tool_run(args, root, log_path) != 0);
+    }
+    const char *missing_format[] = { program,   "--project-root",
+                                     "game",    "--check",
+                                     "--asset", "scenes/Start.kdl",
+                                     NULL };
+    const char *duplicate_asset[] = { program,   "--project-root",
+                                      "game",    "--format",
+                                      "--asset", "scenes/Start.kdl",
+                                      "--asset", "scenes/Start.kdl",
+                                      NULL };
+    REQUIRE(tool_run(missing_format, root, log_path) != 0);
+    REQUIRE(tool_run(duplicate_asset, root, log_path) != 0);
+    REQUIRE(file_equals("Outside.kdl", outside));
+    return true;
 }
 
 TEST_CASE(prototypes_are_found_by_declared_name)
@@ -1713,6 +1838,8 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(other_project_versions_are_not_opened);
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);
+    RUN_TEST_CASE(selected_format_preserves_unrelated_assets);
+    RUN_TEST_CASE(selected_format_refuses_paths_and_incompatible_modes);
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
 #if CHIBI_TEST_MODEL_IMPORT
     RUN_TEST_CASE(models_import_into_the_project);

@@ -1,0 +1,13 @@
+#ifndef CHIBI_DOCUMENT_SOURCE_INVENTORY_DEFINITION_H
+#define CHIBI_DOCUMENT_SOURCE_INVENTORY_DEFINITION_H
+#include "authoring/document_source_inventory.h"
+#include "runtime/native_definitions.h"
+#include "runtime/type_definitions.h"
+#include "types/catalog.h"
+#define DOCUMENT_SOURCE_INVENTORY_TYPE_COUNT 2
+extern const native_type_definition DOCUMENT_SOURCE_INVENTORY_TYPE_DEFINITIONS[DOCUMENT_SOURCE_INVENTORY_TYPE_COUNT];
+extern const type_catalog_pack DOCUMENT_SOURCE_INVENTORY_TYPE_PACK;
+extern const native_definition_pack DOCUMENT_SOURCE_INVENTORY_DEFINITION_PACK;
+extern const node_host_call DOCUMENT_SOURCE_INVENTORY_CALLS[2];
+extern const node_access DOCUMENT_SOURCE_INVENTORY_ACCESS;
+#endif

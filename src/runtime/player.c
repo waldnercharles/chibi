@@ -3,6 +3,7 @@
 #include "runtime/audio.h"
 #include "runtime/component_catalog.h"
 #include "runtime/material_field_prepared.h"
+#include "runtime/save.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -22,6 +23,21 @@ struct player
     void *generation;
     bool committed;
 };
+/* The active prepared instance owns authored object names independently of
+ * global ECS naming, so multiple prefab instances may keep identical names. */
+static const char *instance_entity_name(void *context, ecs_entity entity)
+{
+    player *p = context;
+    if (!p->scene) return NULL;
+    const scene *source = scene_instance_scene(p->scene);
+    for (int i = 0; i < scene_object_count(source); i++) {
+        if (ecs_entity_to_u64(scene_instance_entity(p->scene, i)) == ecs_entity_to_u64(entity)) {
+            return scene_object_name(source, i);
+        }
+    }
+    return NULL;
+}
+
 static bool fail(char *error, size_t size, const char *message)
 {
     snprintf(error, size, "%s", message);
@@ -296,7 +312,19 @@ player *player_new(const player_spec *spec, char *error, size_t size)
         }
         goto reject;
     }
+    entities_bind_names(world_entities(p->world), p, instance_entity_name);
     ecs_world *ecs = world_ecs(p->world);
+    if (spec->services.bind) {
+        if (size) {
+            error[0] = 0;
+        }
+        if (!spec->services.bind(spec->services.context, p->world, error, size)) {
+            if (size && !error[0]) {
+                fail(error, size, "Host service binding failed");
+            }
+            goto reject;
+        }
+    }
     if (scene_register_components(spec->scene, ecs, error, size) != ECS_OK) {
         goto reject;
     }
@@ -439,6 +467,7 @@ reject:
 void player_free(player *p)
 {
     assert(p);
+    if (p->world) entities_bind_names(world_entities(p->world), NULL, NULL);
     if (p->scene) {
         scene_instance_free(p->scene);
     }
@@ -507,4 +536,114 @@ bool player_load_scene(player *p, const char *name, char *error, size_t size)
         return fail(error, size, source_error(sources));
     }
     return true;
+}
+
+bool player_restart_scene_valid(
+    const player *p,
+    const char *name,
+    const player_restart_input *input,
+    char *error,
+    size_t size
+)
+{
+    engine *e = p ? world_engine(p->world) : NULL;
+    if (!e || !name || !input || input->record_limit < 0 || input->record_limit > 4096 ||
+        input->replay_count < 0 || input->replay_count > 4096 ||
+        ((input->replay_count > 0) != (input->replay != NULL)) ||
+        (input->record_limit && input->replay_count) ||
+        ((input->record_limit || input->replay_count) && !engine_has_input(e))) {
+        return fail(error, size, "Fresh scene input options are invalid");
+    }
+    if (input->initial_save_json) {
+        save *candidate_save = save_new();
+        bool save_valid = save_import(candidate_save, input->initial_save_json);
+        save_free(candidate_save);
+        if (!save_valid) {
+            return fail(error, size, "Fresh scene save baseline is invalid");
+        }
+    }
+    bool found = false;
+    for (int i = 0; i < acount(p->scenes); i++) {
+        found |= !strcmp(p->scenes[i].name, name);
+    }
+    if (!found) {
+        return fail(error, size, "Fresh scene name is unavailable");
+    }
+    for (int i = 0; i < input->replay_count; i++) {
+        if (!input_keyframe_valid(&input->replay[i]) ||
+            (!i && input->replay[i].step != 0) ||
+            (i && input->replay[i].step < input->replay[i - 1].step)) {
+            return fail(error, size, "Fresh replay keys must be finite and ordered from step0");
+        }
+    }
+    return true;
+}
+bool player_restart_scene(
+    player *p,
+    const char *name,
+    const player_restart_input *input,
+    bool *admitted,
+    char *error,
+    size_t size
+)
+{
+    if (admitted) {
+        *admitted = false;
+    }
+    if (!admitted || !player_restart_scene_valid(p, name, input, error, size)) {
+        return false;
+    }
+    engine *e = world_engine(p->world);
+    char *save_json = input->initial_save_json ? xstrdup(input->initial_save_json)
+                                               : NULL;
+    /* Callers may pass the engine's own borrowed replay/recorded keys. */
+    input_keyframe *keys = NULL;
+    for (int i = 0; i < input->replay_count; i++) {
+        apush(keys, input->replay[i]);
+    }
+    url_requests_cancel(world_urls(p->world));
+    engine_cancel_input(e);
+    engine_stop_replay(e);
+    engine_set_playing(e, false);
+    engine_reset(e);
+    engine_seed_random(e, input->seed);
+    if (save_json) {
+        bool restored_save = save_import(world_modules(p->world)->save, save_json);
+        assert(restored_save);
+        (void)restored_save;
+        free(save_json);
+    }
+    *admitted = true;
+    if (input->record_limit) {
+        bool armed = engine_record_input_bounded(e, input->seed, input->record_limit);
+        assert(armed);
+        (void)armed;
+    }
+    if (input->replay_count) {
+        engine_replay_input(e, keys, input->replay_count, input->seed);
+    }
+    afree(keys);
+    /* Detach old actors before rebuilding programs so prior spawn counts cannot
+     * affect initializer draws or resurrect per-actor state. */
+    entities_reset(world_modules(p->world)->entities);
+    scene_instance_free(p->scene);
+    p->scene = NULL;
+    source_registry *sources = world_sources(p->world);
+    /* Restart in stable registration order. Each replacement commits its RNG
+     * fork before the next program's initializers, matching initial loading. */
+    for (int i = 0; i < source_program_count(sources); i++) {
+        const char *registration = source_program_name_at(sources, i);
+        execution_module *module = (execution_module *)execution_program_module(
+            source_program(sources, registration)
+        );
+        if (source_replace(sources, registration, module, true) < 0) {
+            return fail(error, size, source_error(sources));
+        }
+    }
+    return player_load_scene(p, name, error, size);
+}
+
+declared_components *player_declared_components(const player *p)
+{
+    return p->declared;
 }

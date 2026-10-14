@@ -510,6 +510,44 @@ ecs_entity scene_instance_entity(const scene_instance *instance, int index)
     assert(index >= 0 && index < acount(instance->entities));
     return instance->entities[index];
 }
+ecs_entity scene_instance_lookup(const scene_instance *instance, const char *path)
+{
+    if (!instance || !path || !*path) {
+        return (ecs_entity){ 0 };
+    }
+    const scene *scene = instance->scene;
+    int parent = -1;
+    for (;;) {
+        const char *end = strchr(path, '.');
+        size_t length = end ? (size_t)(end - path) : strlen(path);
+        if (!length) {
+            return (ecs_entity){ 0 };
+        }
+        int found = -1;
+        for (int i = 0; i < scene->spec.object_count; i++) {
+            const char *name = scene->spec.objects[i].name;
+            if (scene->spec.parents[i] == parent && name &&
+                strlen(name) == length && !memcmp(name, path, length)) {
+                if (found >= 0) {
+                    return (ecs_entity){ 0 };
+                }
+                found = i;
+            }
+        }
+        if (found < 0) {
+            return (ecs_entity){ 0 };
+        }
+        ecs_entity entity = instance->entities[found];
+        if (!ecs_entity_is_alive(instance->world, entity)) {
+            return (ecs_entity){ 0 };
+        }
+        if (!end) {
+            return entity;
+        }
+        parent = found;
+        path = end + 1;
+    }
+}
 
 int scene_link_count(const scene *scene)
 {

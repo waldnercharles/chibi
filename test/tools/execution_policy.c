@@ -26,6 +26,7 @@ TEST_CASE(preview_budgets)
     profile("iteration", "0");
     REQUIRE(allowed("{\"operation\":\"preview_scene\"}"));
     REQUIRE(allowed("{\"operation\":\"preview_shader\"}"));
+    REQUIRE(allowed("{\"operation\":\"preview_model\"}"));
     REQUIRE(allowed("{\"operation\":\"preview_scene\",\"gpu_warmup_frames\":32,\"frames\":60}"));
     REQUIRE(allowed("{\"operation\":\"preview_scene\",\"width\":360,\"height\":640}"));
     const char *requests[] = {
@@ -33,6 +34,8 @@ TEST_CASE(preview_budgets)
         "{\"operation\":\"preview_scene\",\"render_frames\":2}",
         "{\"operation\":\"preview_scene\",\"gpu_warmup_frames\":33}",
         "{\"operation\":\"preview_shader\",\"gpu_warmup_frames\":1}",
+        "{\"operation\":\"preview_model\",\"gpu_warmup_frames\":1}",
+        "{\"operation\":\"preview_model\",\"width\":640,\"height\":640}",
         "{\"operation\":\"preview_scene\",\"frames\":61}",
         "{\"operation\":\"preview_scene\",\"width\":641}",
         "{\"operation\":\"preview_scene\",\"width\":640,\"height\":640}",
@@ -90,6 +93,7 @@ TEST_CASE(capture_requires_explicit_profile_and_path)
     profile("iteration", "0");
     REQUIRE(!allowed(request));
     REQUIRE(!allowed("{\"operation\":\"preview_shader\",\"capture_frames\":\"/tmp/frames\"}"));
+    REQUIRE(!allowed("{\"operation\":\"preview_model\",\"capture_frames\":\"/tmp/frames\"}"));
     return true;
 }
 

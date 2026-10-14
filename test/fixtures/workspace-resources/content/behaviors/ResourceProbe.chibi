@@ -1,0 +1,11 @@
+behavior "ResourceProbe" {
+    Total: int = 0
+    action inventory = query_workspace_resources(First: 0, Count: 64, Kind: "", Query: "")
+    on Begin {
+        inventory()
+    }
+    after inventory {
+        await set_variable<"Total">(Value: inventory.Status.Total)
+        set_ui_data(Name: "resources.Rows", Value: inventory.Rows)
+    }
+}

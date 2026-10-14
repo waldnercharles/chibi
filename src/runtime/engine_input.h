@@ -43,6 +43,15 @@ const char *engine_input_error(const engine_input *input);
 /* Device snapshots after each change since the last step, oldest first.
  * Several entries preserve actions pressed and released between steps. */
 int engine_input_trail(const engine_input *input, const input_keyframe **keys);
+/* Optional host budget for device changes between fixed steps. Zero removes
+ * the bound. Refusal preserves the current held sample and transition trail. */
+bool engine_input_limit_trail(engine_input *, int maximum);
+bool engine_input_devices_admissible(
+    const engine_input *,
+    uint64_t,
+    const input_controller_state[INPUT_CONTROLLER_MAX]
+);
+
 /* The held input as a key at step zero. */
 input_keyframe engine_input_held(const engine_input *input);
 /* Hold a key's input as the host samples it: controls, movement, then aim. */

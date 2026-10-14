@@ -1,0 +1,14 @@
+diff --git a/Source/Core/Elements/WidgetTextInputMultiLine.cpp b/Source/Core/Elements/WidgetTextInputMultiLine.cpp
+--- a/Source/Core/Elements/WidgetTextInputMultiLine.cpp
++++ b/Source/Core/Elements/WidgetTextInputMultiLine.cpp
+@@ -11,6 +11,10 @@
+ 
+ void WidgetTextInputMultiLine::SanitizeValue(String& value)
+ {
++	// Source buffers preserve their byte ranges, tabs and original line endings.
++	// Ordinary form textareas retain RmlUi's existing sanitization contract.
++	if (GetElement()->HasAttribute("code"))
++		return;
+ 	value.erase(std::remove_if(value.begin(), value.end(), [](char c) { return c == '\r' || c == '\t'; }), value.end());
+ }
+ 

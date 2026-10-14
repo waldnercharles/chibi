@@ -1,0 +1,4 @@
+version 25
+name "Resource inventory utility"
+content "content"
+start_scene "scenes/Inventory.kdl"

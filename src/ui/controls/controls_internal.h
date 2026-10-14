@@ -47,5 +47,8 @@ void live_text_register();
 void choice_list_register();
 void tab_list_register();
 void line_chart_register();
+void texture_view_register();
+void shape_glyph_register();
+void vector_path_register();
 
 #endif

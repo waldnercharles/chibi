@@ -13,6 +13,8 @@ extern const node_host_call UI_SHOW_POPOVER_CALL;
 extern const node_host_call UI_REVEAL_ROW_CALL;
 extern const node_host_call UI_SET_DATA_CALL;
 extern const node_host_call UI_GET_SCROLL_CALL;
+extern const node_host_call UI_GET_VIEW_WIDTH_CALL;
+extern const node_host_call UI_VALIDATE_CHORD_CALL;
 extern const node_host_call UI_GET_VALUE_CALL;
 extern const node_access UI_WRITE_ACCESS, UI_READ_ACCESS;
 #endif

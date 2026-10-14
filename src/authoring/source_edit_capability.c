@@ -191,7 +191,7 @@ static bool create_variable_access(
         return false;
     }
     char *reference = NULL;
-    append(&reference, "state.%s", name);
+    append(&reference, "self.%s", name);
     free(name);
     name = take(&reference);
     source_edit_connection destination = { .text = name,
@@ -210,7 +210,7 @@ static bool create_variable_access(
             text_edits_apply(a->text, change->patches, acount(change->patches)),
             &destination,
             declaration,
-            target->range.start + 6,
+            target->range.start + 5,
             error,
             size
         );
@@ -244,11 +244,11 @@ static bool create_variable_access(
                 return false;
             }
             char *reference = NULL;
-            append(&reference, "state.%s", quoted_name);
+            append(&reference, "self.%s", quoted_name);
             free(quoted_name);
             free(producer.text);
             producer.text = take(&reference);
-            producer_prefix = 6;
+            producer_prefix = 5;
             break;
         }
         value = xstrdup(producer.text);
@@ -290,7 +290,7 @@ static bool create_variable_access(
             change->text,
             &destination,
             declaration,
-            first + (set ? 0 : (int)strlen(local) + 4) + 6,
+            first + (set ? 0 : (int)strlen(local) + 4) + 5,
             error,
             size
         );
@@ -303,7 +303,7 @@ static bool create_variable_access(
             change->text,
             &destination,
             declaration,
-            first + (int)strlen(name) + 3 + 6,
+            first + (int)strlen(name) + 3 + 5,
             error,
             size
         );

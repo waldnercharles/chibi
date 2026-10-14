@@ -51,3 +51,70 @@ component Drive
 # Source-native-features tests the authored requests without launching websites.
 function Open URL
 function Cancel Open URL
+
+# Authored utility coverage runs Utilities for four CPU frames through the normal
+# controller composition. It checks Unicode text matching/ranking, typed array
+# JSON encoding/query/missing/duplicate refusal, valid/invalid chords, and explicit unknown presenter width.
+# Get UI View Width is reached, but an actual measured width needs a rendered
+# presenter acceptance; CPU simulation does not establish layout correctness.
+#
+# Optional authoring packs are deliberately absent from this default catalog:
+# workspace_documents, workspace_resources, workspace_assets,
+# workspace_semantics, workspace_visual, authoring_platform, ui_source_sessions.
+# Their ordinary utility C cases and authored Studio source compilation are
+# separate coverage. Generic workspace-host runtime coverage remains pending:
+# document gestures/save/conflicts, inventory refresh/path mutation, asset
+# templates/identity, semantic query/refactor, visual parameter edits/preview,
+# platform chooser/job lifecycle, and UI source session edit/publication.
+# Do not count an absent optional pack as passed by this catalog check.
+#
+# Generic code-control/UI event fields are exercised by authored Studio sources
+# and owning CPU tests. Rendered acceptance is still required for caret/selection,
+# keyboard/focus/clipboard routing, scroll measurements, completion popup, and
+# composition/IME events. Source compilation does not prove those presenter paths.
+
+# Workspace document read-only preflight actions validate_edit/validate_candidates
+# are optional authoring capabilities absent from the ordinary default catalog.
+# Owning CPU cases cover redo preservation, exact-revision rechecks, absent draft
+# paths and no allocation/disk publication. SDK3 authored Collaboration consumer
+# is staged; generic-host room/runtime acceptance remains pending.
+
+# Color codecs are used by authored Studio controls and are absent from this
+# fixture's ordinary catalog. Owning CPU cases cover linear channel/alpha
+# handling, exact packed RGBA round trips and malformed/out-of-range refusal.
+
+# measure_ui_text requires a presenter's mounted RmlUi context and loaded fonts;
+# this headless ordinary-catalog scene has neither. Owning --host-services CPU case
+# checks live font shaping, dp scaling, missing targets and context retirement;
+# authored Studio graph consumes it for node widths and shape-glyph sockets.
+
+# workspace_runtime_prepare_document_scene_source is an optional authoring-host
+# capability absent from this ordinary runtime catalog. Owning --host-services
+# C cases cover stale base identity, unsafe virtual paths, two independent scene
+# sources and refusal without replacing the current player. Installed-SDK Studio
+# preview acceptance must verify compiler enqueue/poll/frozen-overlay ownership.
+
+# workspace_runtime_subject_origin is optional authoring metadata. Owning
+# --host-services C cases cover unknown host-only source origin, stale
+# sessions and owned output cleanup. Frozen-source authored origin
+# and spawned prototype metadata need installed-SDK prepared-session acceptance.
+
+# workspace_runtime_prepare_document_sources is optional authoring-host source
+# preparation. --host-services C snapshot cases cover bounded create-exclusive
+# private overlays, conflicts and lifetime. Installed-SDK native/browser
+# compile/poll and authored model preview acceptance remain separate.
+
+# shape-glyph and vector-path require a mounted UI presenter. The ordinary
+# runtime catalog fixture has no presenter. --host-services checks predecessor
+# feather geometry, cubic paths, malformed input, dp scaling and invalidation
+# using the actual RmlUi control with a CPU render sink. Rendered parity is
+# checked separately in Studio.
+
+# Runtime model snapshot/parameter/inspection, model action replay, runtime trace,
+# and object_subject are optional authoring-host capabilities absent from this
+# ordinary scene catalog. Owning --workspace-runtime C cases now include two real
+# compiled/prepared model scenes, accepted and rejected parameter writes, exact
+# declaration identity, owned metadata across session retirement, part/section
+# intent validation, artifact-pinned action replay and scene-index token guards.
+# Those cases have not been run for this source revision yet. Rendered section
+# clipping and model framing still need installed-SDK native/browser acceptance.

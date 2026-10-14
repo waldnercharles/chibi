@@ -22,6 +22,8 @@ typedef struct
     const execution_prepared_linker *linker;
     execution_log_service log;
     player_resource_host resources;
+    player_service_host services;
+    bool detached_types; /* Own declared types without publishing process reflection; host scopes them explicitly. */
     size_t decoded_budget; /* Zero selects 64 MiB; otherwise caller-selected. */
 } player_host;
 /* One portable project artifact owns the named start scene, the other named

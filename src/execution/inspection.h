@@ -68,6 +68,10 @@ behavior_source_watch behavior_function_source_watch_at(const behavior_function 
 execution_inspector *execution_inspector_retain(execution_inspector *);
 void execution_inspector_free(execution_inspector *);
 execution_debug_cursor execution_inspector_cursor(const execution_inspector *);
+/* Owned first execution failure, retained through program clear/retirement.
+ * Query tuple and authored source coordinates describe the failing activation. */
+const execution_program_failure *execution_inspector_failure(const execution_inspector *);
+void execution_inspector_clear_failure(execution_inspector *);
 /* Keeps the selected owner's last cursor/stack while siblings run or retire.
  * Multi-target owners expose their last tuple in cursor.query_variables;
  * watch and activity rows retain distinct tuples. Pause selects the next
@@ -91,6 +95,12 @@ int execution_inspector_owner_count(const execution_inspector *);
 uint64_t execution_inspector_owner_at(const execution_inspector *, int);
 bool execution_inspector_pause(execution_inspector *, uint64_t owner);
 int execution_inspector_control(execution_inspector *, execution_debug_control);
+bool execution_inspector_has_breakpoint(
+    const execution_inspector *,
+    uint64_t module,
+    uint64_t function,
+    uint64_t occurrence
+);
 bool execution_inspector_breakpoint(
     execution_inspector *,
     uint64_t module,

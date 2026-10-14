@@ -3,8 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include "support/rooted_files.h"
+#include "support/xalloc.h"
 
+#include <errno.h>
+#endif
+
+#ifndef _WIN32
 char *chibi_read_file(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -63,3 +71,41 @@ bool chibi_write_file(const char *path, const char *text)
     free(temporary);
     return ok;
 }
+
+#else
+char *chibi_read_file(const char *path)
+{
+    char *leaf = NULL;
+    rooted_files *files = rooted_files_open_parent(path, &leaf);
+    if (!files) {
+        return NULL;
+    }
+    unsigned char *text = NULL;
+    size_t bytes = 0;
+    bool ok = rooted_files_read(files, leaf, 64 * 1024 * 1024, &text, &bytes);
+    rooted_files_close(files);
+    free(leaf);
+    if (!ok) {
+        free(text);
+        return NULL;
+    }
+    return (char *)text;
+}
+bool chibi_write_file(const char *path, const char *text)
+{
+    char *leaf = NULL;
+    rooted_files *files = rooted_files_open_parent(path, &leaf);
+    if (!files) {
+        return false;
+    }
+    unsigned char *before = NULL;
+    size_t bytes = 0;
+    bool existed = rooted_files_read(files, leaf, 64 * 1024 * 1024, &before, &bytes);
+    bool ok = (existed || errno == ENOENT) &&
+              rooted_files_write(files, leaf, text, strlen(text), 64 * 1024 * 1024, existed, before, bytes);
+    free(before);
+    free(leaf);
+    rooted_files_close(files);
+    return ok;
+}
+#endif

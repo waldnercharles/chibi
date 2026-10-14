@@ -56,25 +56,26 @@ include("${CMAKE_CURRENT_LIST_DIR}/images.cmake")
 
 
 # The retained UI host, native controls and embedded faces are shared with Studio.
-set(ui_sources rml.cpp json_items.c rml_backend.c rml_gpu.c iframe.c motion.c text_motion.c
+set(ui_sources rml.cpp input_keys.c json_items.c rml_backend.c rml_gpu.c iframe.c motion.c text_motion.c
     controls/controls.c controls/choice_list.c controls/color_field.c controls/focus.c
-    controls/line_chart.c controls/line_text.c controls/live_text.c controls/number_field.c
-    controls/splitter.c controls/tab_list.c popover.c drag.c list.c focus_within.c autofocus.c)
+    controls/line_chart.c controls/line_chart_data.c controls/line_text.c controls/live_text.c controls/number_field.c
+    controls/splitter.c controls/tab_list.c controls/code_control.c controls/code_text.c controls/texture_view.c controls/shape_glyph.c controls/vector_path.c
+    popover.c drag.c list.c focus_within.c autofocus.c)
 list(TRANSFORM ui_sources PREPEND "${CHIBI_SDK_ROOT}/src/ui/")
-list(APPEND ui_sources "${CHIBI_SDK_ROOT}/src/support/ui_style.c"
-    "${CHIBI_SDK_ROOT}/src/support/number_expr.c")
+list(APPEND ui_sources "${CHIBI_SDK_ROOT}/src/support/number_expr.c")
 add_library(chibi_ui_host STATIC ${ui_sources})
 add_library(Chibi::ui ALIAS chibi_ui_host)
 set_target_properties(chibi_ui_host PROPERTIES EXPORT_NAME ui CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
-chibi_sdk_headers(chibi_ui_host PUBLIC ui/rml.h ui/rml_backend.h ui/rml_gpu.h ui/iframe.h
-    ui/iframe_profile.h ui/json_items.h ui/motion.h support/ui_style.h support/number_expr.h ui/controls/controls.h
+chibi_sdk_headers(chibi_ui_host PUBLIC ui/rml.h ui/input_keys.h ui/rml_backend.h ui/rml_gpu.h ui/iframe.h
+    ui/iframe_profile.h ui/json_items.h ui/motion.h support/number_expr.h ui/controls/controls.h
+    ui/controls/code_control.h ui/controls/line_chart_data.h
     ui/popover.h ui/drag.h ui/list.h ui/focus_within.h ui/autofocus.h ui/input_feel.h)
 set(ui_private "${CMAKE_CURRENT_BINARY_DIR}/private/ui")
 foreach(header ui/controls/controls_internal.h support/math.h diagnostics/tracy.h)
     configure_file("${CHIBI_SDK_ROOT}/src/${header}" "${ui_private}/${header}" COPYONLY)
 endforeach()
 target_include_directories(chibi_ui_host PRIVATE "${ui_private}")
-target_link_libraries(chibi_ui_host PUBLIC chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_text_search
+target_link_libraries(chibi_ui_host PUBLIC chibi_ui_style chibi_platform chibi_json chibi_ui_document_values chibi_ui_documents chibi_text_search
     PRIVATE chibi_builtin_fonts chibi_support $<BUILD_INTERFACE:RmlUi::Core> $<INSTALL_INTERFACE:${CHIBI_DESKTOP_RMLUI}>)
 if(APPLE)
     target_link_libraries(chibi_ui_host PRIVATE c++)
@@ -83,7 +84,7 @@ elseif(UNIX AND NOT EMSCRIPTEN)
 endif()
 
 
-set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
+set(render_sources debug_geometry.c appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
     shader_publish.c screenshot.c material.c material_lod.c shader_images.c
     shader_program.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c audio_input.c audio_web.c geometry_2d.c grid_2d.c
@@ -96,7 +97,7 @@ add_library(chibi_renderer STATIC ${render_sources}
 add_library(Chibi::render ALIAS chibi_renderer)
 set_target_properties(chibi_renderer PROPERTIES EXPORT_NAME render)
 file(GLOB render_headers RELATIVE "${CHIBI_SDK_ROOT}/src" "${CHIBI_SDK_ROOT}/src/render/*.h")
-list(REMOVE_ITEM render_headers render/shader_catalog_internal.h render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h)
+list(REMOVE_ITEM render_headers render/ui_loader.h render/shader_catalog_internal.h render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h)
 chibi_sdk_headers(chibi_renderer PUBLIC ${render_headers} support/file_watch.h runtime/camera.h)
 set(render_private "${CMAKE_CURRENT_BINARY_DIR}/private/render")
 file(REMOVE "${render_private}/render/shader_catalog_internal.h"
@@ -109,7 +110,7 @@ foreach(header diagnostics/tracy.h support/math.h third_party/yyjson/yyjson.h)
     endif()
 endforeach()
 target_include_directories(chibi_renderer PRIVATE "${render_private}")
-target_link_libraries(chibi_renderer PUBLIC chibi_platform chibi_ui_host chibi_engine chibi_player
+target_link_libraries(chibi_renderer PUBLIC chibi_ui_loader chibi_platform chibi_ui_host chibi_engine chibi_player
     chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_spatial_runtime chibi_native_capabilities chibi_particle_runtime chibi_material_runtime
     chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
     PRIVATE chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime)
@@ -154,3 +155,11 @@ endif()
 
 
 target_link_libraries(chibi_renderer PUBLIC chibi_image_catalog)
+
+if(TARGET chibi-player)
+    target_sources(chibi-player PRIVATE "${CHIBI_SDK_ROOT}/src/host/ui_replay_runtime.c" "${CHIBI_SDK_ROOT}/src/host/package_identity.c")
+    foreach(header ui_replay_runtime.h package_identity.h)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}" "${player_private}/host/${header}" COPYONLY)
+    endforeach()
+    target_link_libraries(chibi-player PRIVATE chibi_ui_replay chibi_asset_json)
+endif()

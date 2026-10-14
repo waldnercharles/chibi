@@ -19,6 +19,7 @@ static ui_font font, decoded_font;
 static unsigned char *ui_bytes, *font_bytes;
 static ui_source_resource *dependencies;
 static ui_documents *prepared_table;
+static char **widget_uses;
 
 static void cleanup()
 {
@@ -33,6 +34,10 @@ static void cleanup()
     ui_bytes = font_bytes = NULL;
     ui_source_resources_free(dependencies);
     dependencies = NULL;
+    for (int i = 0; i < acount(widget_uses); i++) {
+        free(widget_uses[i]);
+    }
+    afree(widget_uses);
     ui_source_free(source);
     ui_source_free(formatted);
     ui_source_free(changed);
@@ -232,9 +237,75 @@ TEST_CASE(prepared_ui_dependencies_use_owned_syntax_facts)
     return true;
 }
 
+static char *menu_reader(void *context, const char *path)
+{
+    return !strcmp(path, "memory/ui/Menu.rml") ? xstrdup(context) : NULL;
+}
+
+TEST_CASE(ui_widget_forwarded_classes_preserve_base_menu_styles)
+{
+    const char *widgets[] = {
+        "<div class=\"popup menu\" popover data-template role=\"menu\" "
+        "attrs><slot/></div>",
+        "<div attrs popover class='popup menu' role='menu'><slot/></div>",
+        "<div title=\"quoted class='untouched'\" class = 'popup' class='menu' "
+        "attrs><slot/></div>",
+        "<div class=popup attrs><slot/></div>",
+        "<div class attrs><slot/></div>",
+        "<div attrs><slot/></div>"
+    };
+    const char *uses[] = {
+        "<use ui='Menu' id='material-menu' "
+        "class='material-create-menu'><button>New material</button></use>",
+        "<use class='material-create-menu' ui='Menu' "
+        "id='material-menu'><button>New material</button></use>",
+        "<use ui='Menu' class='material-create-menu' class='compact' "
+        "id='material-menu'><button>New material</button></use>",
+        "<use ui='Menu' class=material-create-menu "
+        "id='material-menu'><button>New material</button></use>",
+        "<use ui='Menu' class='material-create-menu' "
+        "id='material-menu'><button>New material</button></use>",
+        "<use ui='Menu' class='material-create-menu' "
+        "id='material-menu'><button>New material</button></use>"
+    };
+    const char *expected[] = { "popup menu material-create-menu",
+                               "material-create-menu popup menu",
+                               "popup menu material-create-menu compact",
+                               "popup material-create-menu",
+                               " material-create-menu",
+                               "material-create-menu" };
+    for (int i = 0; i < (int)(sizeof widgets / sizeof *widgets); i++) {
+        char error[256];
+        text_reader reader = { .context = (void *)widgets[i], .read = menu_reader };
+        REQUIRE(ui_document_read(uses[i], NULL, NULL, NULL, &document, error, sizeof error));
+        REQUIRE(
+            ui_document_expand_reader(&document, "Main", "memory/ui", true, &widget_uses, error, sizeof error, &reader)
+        );
+        source = ui_source_parse(document.rml, UI_SOURCE_RML);
+        REQUIRE(acount(source->diagnostics) == 0);
+        REQUIRE(acount(source->elements) == 3);
+        value = ui_source_attribute_value(source, 1, "class");
+        REQUIRE(value && !strcmp(value, expected[i]));
+        int classes = 0;
+        for (int j = 0; j < acount(source->elements[1].attributes); j++) {
+            const ui_source_attribute *attribute = &source->elements[1].attributes[j];
+            classes += attribute->name_end - attribute->name_start == 5 &&
+                       !strncmp(source->text + attribute->name_start, "class", 5);
+        }
+        REQUIRE(classes == 1);
+        REQUIRE(strstr(document.rml, "New material") && strstr(document.rml, "data-src=\"Menu:1\""));
+        if (i == 2) {
+            REQUIRE(strstr(document.rml, "title=\"quoted class='untouched'\""));
+        }
+        cleanup();
+    }
+    return true;
+}
+
 void test_ui_authoring()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(ui_widget_forwarded_classes_preserve_base_menu_styles);
     RUN_TEST_CASE(ui_source_public_edit_preserves_markup_meaning);
     RUN_TEST_CASE(ui_document_public_update_keeps_last_valid_snapshot);
     RUN_TEST_CASE(prepared_ui_records_own_resources_and_reject_partial_input);

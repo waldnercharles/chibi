@@ -25,7 +25,7 @@
 - Keep ownership/lifetimes explicit; mark file-private symbols `static`.
 - Prefer direct calls and `switch` statements to function pointers.
 - Write benchmarks, unit tests, and integration tests in C using pico_unit; use another third-party library when additional functionality is needed.
-- Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi), Studio's `src/editor/text/zep_bridge.cpp` (Zep) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
+- Write C, never C++. The only exceptions are pass-through shims to C++ APIs: `src/ui/rml.cpp` (RmlUi) and `test/draw_backend.cpp` (Cute's C++-linkage draw diagnostics). They only convert types and forward calls, so all logic stays in C.
 - Follow existing names and clang-format; keep short names local; name constants and invariants with `#define`, `enum`, or `static const`.
 
 ## Working autonomously

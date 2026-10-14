@@ -606,12 +606,12 @@ TEST_CASE(source_view_variable_reads_capture_one_named_value)
 {
     REQUIRE(project(
         "behavior Inventory { \"items left\": double = 0;"
-        " on Tick { itemsValue := state.\"items left\"; state.\"items left\" = "
+        " on Tick { itemsValue := self.\"items left\"; self.\"items left\" = "
         "9; } }"
     ));
     REQUIRE(analysis->diagnostic_count == 0);
     node *read = statement_at("itemsValue :=");
-    node *set = statement_at("state.\"items left\" = 9");
+    node *set = statement_at("self.\"items left\" = 9");
     graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
     REQUIRE(read && set && g);
     REQUIRE(!strcmp(read->desc->name, "Get items left"));
@@ -627,10 +627,10 @@ TEST_CASE(source_view_variable_reads_capture_one_named_value)
         reads += !strcmp(g->nodes[i]->desc->name, "Get items left");
     }
     REQUIRE(reads == 1);
-    const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "state.\"items left\";");
+    const source_presentation_origin *o = source_origin(view, SOURCE_PRESENTATION_EXPRESSION, "self.\"items left\";");
     REQUIRE(o && origin_node(view, o) == read);
     edited = authoring_source_presentation_replace(view, o, "5");
-    REQUIRE(edited && strstr(edited, "itemsValue := 5; state.\"items left\" = 9"));
+    REQUIRE(edited && strstr(edited, "itemsValue := 5; self.\"items left\" = 9"));
     return true;
 }
 TEST_CASE(source_view_indexed_setters_keep_address_parts_editable)

@@ -1,7 +1,9 @@
 #include "execution/backend.h"
+#include "execution/preparation_profile.h"
 #include "host/native_default.h"
 #include "host/player_clock.h"
 #include "host/player_url.h"
+#include "host/ui_replay_runtime.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
 #include "render/scene3d.h"
@@ -15,11 +17,35 @@
 #include "runtime/component_catalog.h"
 #include "runtime/native_prepared.h"
 #include "runtime/player_prepared.h"
+#include "support/array.h"
 #include "support/file_io.h"
 #include "support/resources.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#ifdef CHIBI_AUTHORING_HOST
+#include "assets/project.h"
+#include "authoring/graph_catalog.h"
+#include "authoring/project_migration.h"
+#include "authoring/resource_previews_definition.h"
+#include "authoring/ui_dom_definition.h"
+#include "authoring/workspace_tools_definition.h"
+#include "authoring/visual_authoring_preview_definition.h"
+#include "authoring/workspace_catalog.h"
+#include "authoring/workspace_runtime_definition.h"
+#include "authoring/workspace_simulation_definition.h"
+#include "graph/model/registry.h"
+#include "host/authoring_platform_definition.h"
+#include "host/workspace_files_web.h"
+#include "host/workspace_host.h"
+#include "runtime/declared_components.h"
+#include "support/rooted_files.h"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_video.h>
+#include <stdatomic.h>
+#endif
+
+#include <assert.h>
 #include <errno.h>
 #include <math.h>
 #include <signal.h>
@@ -32,16 +58,52 @@
 #endif
 
 /* This final application supplies one explicit native type composition. */
+#ifdef CHIBI_AUTHORING_HOST
+static type_catalog_pack *host_type_packs;
+
+static void initialize_type_packs()
+{
+    assert(!host_type_packs);
+    apush(host_type_packs, TYPE_PACK);
+    int workspace_count = authoring_workspace_type_pack_count();
+    for (int i = 0; i < workspace_count; i++) {
+        apush(host_type_packs, authoring_workspace_type_pack_at(i));
+    }
+    int registry_count = registry_pack_count();
+    for (int i = 0; i < registry_count; i++) {
+        const registry_pack *pack = registry_pack_at(i);
+        if ((pack->type_count || pack->enum_count) && pack->types != TYPE_PACK.types) {
+            apush(
+                host_type_packs,
+                ((type_catalog_pack){ pack->types, pack->type_count, pack->enums, pack->enum_count })
+            );
+        }
+    }
+}
+#endif
 int type_catalog_pack_count()
 {
+#ifdef CHIBI_AUTHORING_HOST
+    return host_type_packs ? acount(host_type_packs)
+                           : 1 + authoring_workspace_type_pack_count();
+#else
     return 1;
+#endif
 }
 type_catalog_pack type_catalog_pack_at(int index)
 {
+#ifdef CHIBI_AUTHORING_HOST
+    assert(index >= 0 && index < type_catalog_pack_count());
+    if (!host_type_packs) {
+        return index ? authoring_workspace_type_pack_at(index - 1) : TYPE_PACK;
+    }
+    return host_type_packs[index];
+#else
     if (index != 0) {
         abort();
     }
     return TYPE_PACK;
+#endif
 }
 typedef struct
 {
@@ -49,6 +111,8 @@ typedef struct
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     bool render_failed;
+    ui_replay_session *replay;
+    int replay_frame;
     /* A browser keeps calling frame() after main returns, so everything a
      * frame reads lives here rather than on main's stack. */
     native_prepared_context context;
@@ -57,6 +121,19 @@ typedef struct
     double now;
     double fixed_dt;
     int width, height; /* Explicit canvas dimensions, independent of display DPI. */
+#ifdef CHIBI_AUTHORING_HOST
+    workspace_host *workspace;
+    authoring_graph_catalog *graphs;
+    workspace_host_config workspace_config;
+    char *artifact, *workspace_root, *compiler, *launcher;
+    char *project_name, *save_path;
+    behavior_backend backend;
+    SDL_EventFilter previous_filter;
+    void *previous_filter_context;
+    bool filtering;
+    SDL_WindowID window_id;
+    atomic_bool close_requested;
+#endif
 } desktop_player;
 #define BUNDLE_ARTIFACT "game.chibip"
 #define BUNDLE_ENGINE "engine"
@@ -66,6 +143,20 @@ typedef struct
 #define CAPTURE_MAX_DIMENSION 640
 #define CAPTURE_MAX_PIXELS 230400
 static volatile sig_atomic_t stopped;
+#ifdef CHIBI_AUTHORING_HOST
+static bool authoring_event_filter(void *context, SDL_Event *event)
+{
+    desktop_player *host = context;
+    if (event->type == SDL_EVENT_QUIT ||
+        (event->type == SDL_EVENT_WINDOW_CLOSE_REQUESTED &&
+         event->window.windowID == host->window_id)) {
+        atomic_store(&host->close_requested, true);
+        return false;
+    }
+    return !host->previous_filter ||
+           host->previous_filter(host->previous_filter_context, event);
+}
+#endif
 static rml_input keys[128];
 static int key_count;
 static bool input_overflow;
@@ -89,7 +180,31 @@ static rml_input_key ui_key(CF_KeyButton key)
     if (key >= CF_KEY_0 && key <= CF_KEY_9) {
         return RML_INPUT_KEY_0 + key - CF_KEY_0;
     }
+    if (key >= CF_KEY_F1 && key <= CF_KEY_F12) {
+        return RML_INPUT_KEY_F1 + key - CF_KEY_F1;
+    }
+    if (key >= CF_KEY_KP_1 && key <= CF_KEY_KP_9) {
+        return RML_INPUT_KEY_NUMPAD1 + key - CF_KEY_KP_1;
+    }
     switch (key) {
+        case CF_KEY_EQUALS: return RML_INPUT_KEY_OEM_PLUS;
+        case CF_KEY_SEMICOLON: return RML_INPUT_KEY_OEM_1;
+        case CF_KEY_COMMA: return RML_INPUT_KEY_OEM_COMMA;
+        case CF_KEY_MINUS: return RML_INPUT_KEY_OEM_MINUS;
+        case CF_KEY_PERIOD: return RML_INPUT_KEY_OEM_PERIOD;
+        case CF_KEY_SLASH: return RML_INPUT_KEY_OEM_2;
+        case CF_KEY_BACKQUOTE: return RML_INPUT_KEY_OEM_3;
+        case CF_KEY_LEFTBRACKET: return RML_INPUT_KEY_OEM_4;
+        case CF_KEY_BACKSLASH: return RML_INPUT_KEY_OEM_5;
+        case CF_KEY_RIGHTBRACKET: return RML_INPUT_KEY_OEM_6;
+        case CF_KEY_QUOTE: return RML_INPUT_KEY_OEM_7;
+        case CF_KEY_KP_0: return RML_INPUT_KEY_NUMPAD0;
+        case CF_KEY_KP_ENTER: return RML_INPUT_KEY_NUMPAD_ENTER;
+        case CF_KEY_KP_MULTIPLY: return RML_INPUT_KEY_MULTIPLY;
+        case CF_KEY_KP_PLUS: return RML_INPUT_KEY_ADD;
+        case CF_KEY_KP_MINUS: return RML_INPUT_KEY_SUBTRACT;
+        case CF_KEY_KP_PERIOD: return RML_INPUT_KEY_DECIMAL;
+        case CF_KEY_KP_DIVIDE: return RML_INPUT_KEY_DIVIDE;
         case CF_KEY_SPACE: return RML_INPUT_KEY_SPACE;
         case CF_KEY_TAB: return RML_INPUT_KEY_TAB;
         case CF_KEY_RETURN: return RML_INPUT_KEY_ENTER;
@@ -102,6 +217,9 @@ static rml_input_key ui_key(CF_KeyButton key)
         case CF_KEY_DOWN: return RML_INPUT_KEY_DOWN;
         case CF_KEY_HOME: return RML_INPUT_KEY_HOME;
         case CF_KEY_END: return RML_INPUT_KEY_END;
+        case CF_KEY_PAGEUP: return RML_INPUT_KEY_PAGE_UP;
+        case CF_KEY_PAGEDOWN: return RML_INPUT_KEY_PAGE_DOWN;
+        case CF_KEY_INSERT: return RML_INPUT_KEY_INSERT;
         default: return RML_INPUT_KEY_UNKNOWN;
     }
 }
@@ -356,8 +474,21 @@ static void set_icon(const char *root, const char *icon)
     cf_app_set_icon(path);
     free(path);
 }
-static void log_message(void *, const execution_log_message *message)
+static void log_message(void *context, const execution_log_message *message)
 {
+#ifdef CHIBI_AUTHORING_HOST
+    desktop_player *host = context;
+    if (host) {
+        workspace_host_record_log(
+            host->workspace,
+            message->now,
+            message->program_name,
+            message->text
+        );
+    }
+#else
+    (void)context;
+#endif
     printf(
         "[%s %.6f] %s\n",
         message->program_name ? message->program_name : "source",
@@ -392,22 +523,36 @@ static bool follow_scene(desktop_player *host)
 }
 /* Runs one frame: 1 to continue, 0 when the player quits, and -1 after
  * printing why the game failed. */
-static int run_frame(desktop_player *host)
+static int run_frame_inner(desktop_player *host)
 {
     world *world = player_world(host->player);
     engine *runtime = world_engine(world);
     key_count = 0;
     pressed_controls = 0;
     input_overflow = false;
-    if (engine_viewport_ui_typing(host->viewport)) {
+    bool typing = engine_viewport_ui_typing(host->viewport);
+#ifdef CHIBI_AUTHORING_HOST
+    typing |= workspace_host_text_input_requested(host->workspace);
+#endif
+    if (typing) {
         cf_input_enable_ime();
     } else {
         cf_input_disable_ime();
     }
     cf_app_update(NULL);
+#ifdef CHIBI_AUTHORING_HOST
+    if (atomic_exchange(&host->close_requested, false)) {
+        workspace_host_close_request(host->workspace);
+    }
+#endif
     if (host->width && (cf_app_get_canvas_width() != host->width ||
                         cf_app_get_canvas_height() != host->height)) {
         cf_app_set_canvas_size(host->width, host->height);
+    }
+    if (host->replay &&
+        !ui_replay_session_input(host->replay, host->replay_frame, host->viewport)) {
+        fprintf(stderr, "%s\n", ui_replay_session_error(host->replay));
+        return -1;
     }
     if (!text_input(host)) {
         fprintf(stderr, "Invalid or oversized text input\n");
@@ -417,13 +562,17 @@ static int run_frame(desktop_player *host)
         fprintf(stderr, "Input event limit exceeded\n");
         return -1;
     }
-    bool typing = engine_viewport_ui_typing(host->viewport);
+    typing = engine_viewport_ui_typing(host->viewport);
+#ifndef CHIBI_AUTHORING_HOST
     if (!typing && cf_key_just_pressed(CF_KEY_ESCAPE)) {
         engine_set_playing(runtime, !engine_is_playing(runtime));
     }
     if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
         return 0;
     }
+#else
+    (void)typing;
+#endif
     if (!engine_is_playing(runtime)) {
         url_requests_cancel(world_urls(world));
         player_url_submit(NULL);
@@ -452,13 +601,45 @@ static int run_frame(desktop_player *host)
         input.pressed[i] = cf_mouse_just_pressed(i);
         input.released[i] = cf_mouse_just_released(i);
     }
+    if (host->replay) {
+        input.focused = true;
+        input.hovered = true;
+    }
     engine_viewport_set_host_input(host->viewport, &input);
     engine_set_focus(runtime, input.focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
+#ifdef CHIBI_AUTHORING_HOST
+    workspace_host_set_frame_focus(host->workspace, input.focused);
+#endif
     if (sample_input(host) < 0 || engine_frame(runtime, host->now) < 0) {
         const char *message = engine_error(runtime);
         fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
         return -1;
     }
+#ifdef CHIBI_AUTHORING_HOST
+    const engine_frame_timing *host_timing = engine_last_timing(runtime);
+    workspace_host_record_timing(
+        host->workspace,
+        (authoring_timing){ .available = true,
+                            .time = host->now,
+                            .frame_ms = CF_DELTA_TIME * 1000,
+                            .behavior_ms = host_timing->behavior_ms,
+                            .physics_ms = host_timing->physics_ms,
+                            .systems_ms = host_timing->systems_ms,
+                            .rendering_ms = host_timing->rendering_ms,
+                            .gpu_ms = -1,
+                            .steps = host_timing->steps,
+                            .backlog = host_timing->event_backlog,
+                            .playing = engine_is_playing(runtime) }
+    );
+    workspace_host_pump(host->workspace, engine_viewport_ui(host->viewport));
+    render_ui_set_reference_height(
+        engine_viewport_ui(host->viewport),
+        height / (float)workspace_host_ui_scale(host->workspace)
+    );
+    if (workspace_host_quit_requested(host->workspace)) {
+        return 0;
+    }
+#endif
     engine_viewport_view view;
     int camera = camera_view(world_ecs(world), runtime, &view);
     if (camera < 0) {
@@ -483,6 +664,12 @@ static int run_frame(desktop_player *host)
         fprintf(stderr, "%s\n", ui_error);
         return -1;
     }
+    if (host->replay &&
+        !ui_replay_session_check(host->replay, host->replay_frame, &host->ui, player_scene(host->player), host->viewport)) {
+        fprintf(stderr, "%s\n", ui_replay_session_error(host->replay));
+        return -1;
+    }
+    host->replay_frame++;
     engine_viewport_present(host->viewport);
     cf_app_draw_onto_screen(true);
     if (!follow_scene(host)) {
@@ -495,6 +682,172 @@ static int run_frame(desktop_player *host)
     }
     host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
     return 1;
+}
+#ifdef CHIBI_AUTHORING_HOST
+static bool bind_workspace_services(void *context, world *world, char *error, size_t size)
+{
+    return workspace_host_bind(context, world_sources(world), error, size);
+}
+/* A project switch starts a fresh authored application against fresh service
+ * handles. Preflight both before retiring anything in the current application;
+ * no old queued event or UI context can address the replacement sessions. */
+static void activate_project(desktop_player *host)
+{
+    const char *pending = workspace_host_pending_project(host->workspace);
+    if (!pending) {
+        return;
+    }
+    char *root = xstrdup(pending);
+    char error[1024] = { 0 };
+    workspace_host_config config = host->workspace_config;
+    config.root = root;
+    size_t document_state_bytes = 0;
+    unsigned char *document_state = workspace_files_web_document_state(root, &document_state_bytes);
+    config.document_state = document_state;
+    config.document_state_bytes = document_state_bytes;
+    workspace_host *candidate = workspace_host_new(&config, error, sizeof error);
+    free(document_state);
+    /* Constructor imports owned text; keep no borrowed snapshot in the host's
+     * retained config or a later project-switch candidate. */
+    config.document_state = NULL;
+    config.document_state_bytes = 0;
+    player_host loader = config.player;
+    loader.services = (player_service_host){ candidate, bind_workspace_services };
+    loader.detached_types = true;
+    loader.resources = render_prepared_resources_detached(
+        config.player.resources.context
+    );
+    player *application = candidate
+                            ? player_open(host->artifact, &loader, host->backend, error, sizeof error)
+                            : NULL;
+    if (!application) {
+        workspace_host_free(candidate);
+        workspace_host_project_complete(host->workspace, false, error);
+        free(root);
+        return;
+    }
+    world *world = player_world(application);
+    declared_components_scope types = { 0 };
+    bool types_entered = declared_components_scope_enter(player_declared_components(application), &types);
+    assert(types_entered);
+    render_resource_scope scope = { 0 };
+    bool entered = render_resource_scope_enter(
+        render_resource_context_for_world(world),
+        &scope,
+        error,
+        sizeof error
+    );
+    assert(entered);
+    int width = host->width, height = host->height;
+    if (!width) {
+        cf_app_get_size(&width, &height);
+    }
+    engine_viewport *viewport = engine_viewport_new(width, height);
+    app_scene_renderer *renderer = viewport ? app_scene_renderer_new() : NULL;
+    ui_world ui = { .ecs = world_ecs(world),
+                    .page = scene_ui(scene_instance_scene(player_scene(application))),
+                    .model = world_modules(world)->ui,
+                    .save = world_modules(world)->save,
+                    .host = { host, payload, dispatch, initializing } };
+    bool ready = viewport != NULL;
+    if (ready && ui.save && (host->save_path || host->project_name)) {
+        const char *directory = NULL;
+#ifndef __EMSCRIPTEN__
+        if (!host->save_path) {
+            directory = cf_fs_get_user_directory("Chibi", "Saves");
+        }
+#endif
+        ready = save_open_project(ui.save, host->project_name, directory, host->save_path);
+        if (!ready) {
+            snprintf(error, sizeof error, "%s", save_error(ui.save));
+        }
+    }
+    if (!ready) {
+        if (viewport) {
+            engine_viewport_free(viewport);
+        }
+        if (renderer) {
+            app_scene_renderer_free(renderer);
+        }
+    }
+    bool left = render_resource_scope_leave(&scope, error, sizeof error);
+    assert(left);
+    bool types_left = declared_components_scope_leave(&types);
+    assert(types_left);
+    if (!ready) {
+        if (!error[0]) {
+            snprintf(error, sizeof error, "Cannot create the replacement application viewport");
+        }
+        player_free(application);
+        workspace_host_free(candidate);
+        workspace_host_project_complete(host->workspace, false, error);
+        free(root);
+        return;
+    }
+    workspace_files_web_adopt(root);
+    url_requests_cancel(world_urls(player_world(host->player)));
+    player_url_submit(NULL);
+    workspace_host_detach_ui(host->workspace);
+    engine_viewport_free(host->viewport);
+    app_scene_renderer_free(host->renderer);
+    player_free(host->player);
+    workspace_host_free(host->workspace);
+    workspace_files_web_release(host->workspace_root, root);
+    free(host->workspace_root);
+    host->workspace_root = root;
+    host->workspace_config = config;
+    host->workspace = candidate;
+    host->player = application;
+    host->viewport = viewport;
+    host->renderer = renderer;
+    host->ui = ui;
+    host->now = 0;
+    host->render_failed = false;
+    workspace_host_project_complete(candidate, true, "");
+    engine_viewport_adopt_ui(viewport, render_ui_new_prepared(NULL));
+    engine_viewport_set_perspective(
+        viewport,
+        scene_perspective(scene_instance_scene(player_scene(application)))
+    );
+    engine_viewport_set_runtime(viewport, world_engine(world));
+    engine_viewport_set_render_callback(viewport, render, host);
+    engine_viewport_set_ui(viewport, &host->ui, "");
+    engine_set_playing(world_engine(world), true);
+}
+#endif
+static int run_frame(desktop_player *host)
+{
+#ifdef CHIBI_AUTHORING_HOST
+    char error[512];
+    declared_components_scope types = { 0 };
+    if (!declared_components_scope_enter(player_declared_components(host->player), &types)) {
+        fprintf(stderr, "Cannot enter authored application type scope\n");
+        return -1;
+    }
+    render_resource_scope scope = { 0 };
+    if (!render_resource_scope_enter(
+            render_resource_context_for_world(player_world(host->player)),
+            &scope,
+            error,
+            sizeof error
+        )) {
+        fprintf(stderr, "%s\n", error);
+        bool types_left = declared_components_scope_leave(&types);
+        assert(types_left);
+        return -1;
+    }
+#endif
+    int result = run_frame_inner(host);
+#ifdef CHIBI_AUTHORING_HOST
+    bool left = render_resource_scope_leave(&scope, error, sizeof error);
+    assert(left);
+    bool types_left = declared_components_scope_leave(&types);
+    assert(types_left);
+    if (result > 0) {
+        activate_project(host);
+    }
+#endif
+    return result;
 }
 #ifdef __EMSCRIPTEN__
 /* Shows the last error the player printed on the page. */
@@ -518,7 +871,10 @@ static void web_frame(void *host)
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *root = NULL, *shader_dir = NULL, *save_path = NULL;
-    const char *capture = NULL;
+    const char *capture = NULL, *replay_path = NULL, *replay_result = NULL;
+#ifdef CHIBI_AUTHORING_HOST
+    const char *workspace_root = NULL, *sdk_root = NULL;
+#endif
     int width = 0, height = 0;
     bool hidden = false;
     int frames = 0;
@@ -528,7 +884,11 @@ int main(int argc, char **argv)
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
             puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit|wasm] [--hidden] [--frames N] [--fixed-dt SECONDS] [--size WIDTHxHEIGHT] [--capture PNG]");
+            puts("--ui-replay JSON --ui-replay-result JSON requires matching --frames <=60, --fixed-dt and --size <=640x360.");
             puts("--size allows dimensions up to 640 and 230400 pixels; --capture requires --frames and --size.");
+#ifdef CHIBI_AUTHORING_HOST
+            puts("chibi-author opens without a project; --workspace-root DIR binds authoring services before Begin.");
+#endif
             return 0;
         }
         if (!strcmp(option, "--hidden")) {
@@ -546,6 +906,16 @@ int main(int argc, char **argv)
         const char *value = argv[i];
         if (!strcmp(option, "--resource-root")) {
             root = value;
+#ifdef CHIBI_AUTHORING_HOST
+        } else if (!strcmp(option, "--workspace-root")) {
+            if (!*value) {
+                fprintf(stderr, "Workspace root is empty\n");
+                return 2;
+            }
+            workspace_root = value;
+        } else if (!strcmp(option, "--sdk-resource-root")) {
+            sdk_root = value;
+#endif
         } else if (!strcmp(option, "--shader-dir")) {
             shader_dir = value;
         } else if (!strcmp(option, "--size")) {
@@ -553,6 +923,10 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Invalid canvas size\n");
                 return 2;
             }
+        } else if (!strcmp(option, "--ui-replay")) {
+            replay_path = value;
+        } else if (!strcmp(option, "--ui-replay-result")) {
+            replay_result = value;
         } else if (!strcmp(option, "--capture")) {
             if (!*value) {
                 fprintf(stderr, "Capture path is empty\n");
@@ -580,6 +954,24 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+#ifdef CHIBI_AUTHORING_HOST
+    if (sdk_root) {
+        resource_configure(sdk_root, sdk_root, sdk_root);
+    }
+#endif
+    if ((replay_path || replay_result) &&
+        (!replay_path || !*replay_path || !replay_result || !*replay_result ||
+         !frames || frames > UI_REPLAY_FRAMES_MAX || !fixed_dt || !width ||
+         width > 640 || height > 360)) {
+        fprintf(stderr, "UI replay requires input/result paths, matching <=60frames, fixed dt and <=640x360canvas\n");
+        return 2;
+    }
+#ifdef __EMSCRIPTEN__
+    if (replay_path) {
+        fprintf(stderr, "CLI UI replay requires the native host\n");
+        return 2;
+    }
+#endif
     if (capture && (!frames || !width)) {
         fprintf(stderr, "Capture requires --frames and --size\n");
         return 2;
@@ -617,6 +1009,23 @@ int main(int argc, char **argv)
     int initial_height = height             ? height
                        : application.height ? application.height
                                             : DEFAULT_HEIGHT;
+#ifdef CHIBI_AUTHORING_HOST
+    const native_definition_pack authoring_packs[] = {
+        VISUAL_PREVIEW_DEFINITION_PACK,
+        AUTHORING_PLATFORM_DEFINITION_PACK,
+        UI_DOM_DEFINITION_PACK,
+        WORKSPACE_TOOLS_DEFINITION_PACK,
+        WORKSPACE_RUNTIME_DEFINITION_PACK,
+        WORKSPACE_SIMULATION_DEFINITION_PACK,
+        RESOURCE_PREVIEWS_DEFINITION_PACK
+    };
+    native = authoring_workspace_catalog_new(
+        authoring_packs,
+        sizeof authoring_packs / sizeof *authoring_packs,
+        error,
+        sizeof error
+    );
+#else
     native = host_native_default_catalog_new(
         NULL,
         0,
@@ -625,6 +1034,7 @@ int main(int argc, char **argv)
         error,
         sizeof error
     );
+#endif
     if (!native) {
         fprintf(stderr, "%s\n", error);
         goto release;
@@ -670,8 +1080,82 @@ int main(int argc, char **argv)
     host.linker = native_capabilities_prepared_linker(&host.context);
     player_host loader = { .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
                            .linker = &host.linker,
-                           .log = { log_message, NULL },
+                           .log = { log_message, &host },
                            .resources = render_prepared_resources(root) };
+#ifdef CHIBI_AUTHORING_HOST
+    loader.decoded_budget = execution_preparation_budget(EXECUTION_PREPARATION_AUTHORED_TOOL);
+    host.graphs = authoring_graph_catalog_new(
+        (authoring_graph_catalog_config){
+            .native = native,
+            .types = TYPE_PACK,
+            .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT } },
+        error,
+        sizeof error
+    );
+    if (!host.graphs) {
+        fprintf(stderr, "%s\n", error);
+        goto finish;
+    }
+    int graph_pack_count;
+    const registry_pack *const *graph_packs = authoring_graph_catalog_packs(host.graphs, &graph_pack_count);
+    registry_set_packs(graph_packs, graph_pack_count);
+    initialize_type_packs();
+#ifndef __EMSCRIPTEN__
+    char *bin = file_executable_dir();
+#ifdef _WIN32
+    host.compiler = join(bin, "chibi-compile.exe");
+    host.launcher = join(bin, "chibi.exe");
+#else
+    host.compiler = join(bin, "chibi-compile");
+    host.launcher = join(bin, "chibi");
+#endif
+    free(bin);
+#endif
+    host.artifact = xstrdup(artifact);
+    char *requested_root = NULL;
+    int requested_version = 0, selected_version = 0;
+    if (workspace_root &&
+        project_migration_version(workspace_root, &selected_version, error, sizeof error) &&
+        selected_version >= CHIBI_PROJECT_OLDEST_VERSION &&
+        selected_version < CHIBI_PROJECT_VERSION) {
+        rooted_files *selected = rooted_files_open(workspace_root);
+        requested_root = selected ? rooted_files_host_path(selected) : NULL;
+        if (selected) {
+            rooted_files_close(selected);
+        }
+        if (!requested_root) {
+            fprintf(stderr, "Cannot retain the selected older project root\n");
+            goto finish;
+        }
+        requested_version = selected_version;
+        workspace_root = NULL;
+    }
+    host.workspace_root = workspace_root ? xstrdup(workspace_root) : NULL;
+    host.backend = backend;
+    host.project_name = application.project_name ? xstrdup(application.project_name)
+                                                 : NULL;
+    host.save_path = save_path ? xstrdup(save_path) : NULL;
+    host.workspace_config = (workspace_host_config){ .root = host.workspace_root,
+                                                     .requested_root = requested_root,
+                                                     .requested_version = requested_version,
+                                                     .native = native,
+                                                     .compiler = host.compiler,
+                                                     .launcher = host.launcher,
+                                                     .window = cf_app_get_window(),
+                                                     .player = loader,
+                                                     .backend = backend };
+    host.workspace = workspace_host_new(&host.workspace_config, error, sizeof error);
+    free(requested_root);
+    host.workspace_config.requested_root = NULL;
+    host.workspace_config.requested_version = 0;
+    if (!host.workspace) {
+        fprintf(stderr, "%s\n", error);
+        goto finish;
+    }
+    /* Keep workspace_config.player capability-clean for target games. Only
+     * this application loader receives the workspace service binder. */
+    loader.services = (player_service_host){ host.workspace, bind_workspace_services };
+#endif
     host.player = player_open(artifact, &loader, backend, error, sizeof error);
     if (!host.player) {
         fprintf(stderr, "%s\n", error);
@@ -710,9 +1194,39 @@ int main(int argc, char **argv)
             goto finish;
         }
     }
+    if (replay_path) {
+        size_t bytes;
+        char *text = ui_replay_read_file(replay_path, UI_REPLAY_BYTES_MAX, &bytes);
+        ui_replay *replay = text ? ui_replay_parse(text, bytes, error, sizeof error)
+                                 : NULL;
+        free(text);
+        if (!replay || replay->frames != frames) {
+            fprintf(
+                stderr,
+                "%s\n",
+                replay     ? "Replay frames differ from --frames"
+                : error[0] ? error
+                           : "Cannot read bounded replay input"
+            );
+            ui_replay_free(replay);
+            goto finish;
+        }
+        host.replay = ui_replay_session_new(replay, artifact, error, sizeof error);
+        if (!host.replay) {
+            ui_replay_free(replay);
+            fprintf(stderr, "%s\n", error);
+            goto finish;
+        }
+    }
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     cf_register_key_callback(key_changed);
+#ifdef CHIBI_AUTHORING_HOST
+    SDL_GetEventFilter(&host.previous_filter, &host.previous_filter_context);
+    host.window_id = SDL_GetWindowID(cf_app_get_window());
+    SDL_SetEventFilter(authoring_event_filter, &host);
+    host.filtering = true;
+#endif
     player_clock_start();
     engine_set_playing(runtime, true);
 #ifdef __EMSCRIPTEN__
@@ -740,6 +1254,7 @@ int main(int argc, char **argv)
             hidden ? "true" : "false"
         );
     }
+    runtime = world_engine(player_world(host.player));
     printf(
         "frames=%d steps=%llu\n",
         frame,
@@ -747,8 +1262,35 @@ int main(int argc, char **argv)
     );
     result = 0;
 finish:
+    if (host.replay) {
+        if (!ui_replay_session_finished(host.replay)) {
+            result = 1;
+        }
+        if (!ui_replay_session_write(
+                host.replay,
+                replay_result,
+                result == 0 ? capture : NULL,
+                result == 0,
+                cf_backend_type_to_string(cf_query_backend()),
+                behavior_backend_name(backend),
+                width,
+                height,
+                fixed_dt
+            )) {
+            fprintf(stderr, "Could not write bounded UI replay result\n");
+            result = 1;
+        }
+        ui_replay_session_free(host.replay);
+        host.replay = NULL;
+    }
     player_url_stop();
     cf_register_key_callback(NULL);
+#ifdef CHIBI_AUTHORING_HOST
+    if (host.filtering) {
+        SDL_SetEventFilter(host.previous_filter, host.previous_filter_context);
+    }
+    workspace_host_detach_ui(host.workspace);
+#endif
     if (host.viewport) {
         engine_viewport_free(host.viewport);
     }
@@ -758,6 +1300,21 @@ finish:
     if (host.player) {
         player_free(host.player);
     }
+#ifdef CHIBI_AUTHORING_HOST
+    workspace_host_free(host.workspace);
+    workspace_files_web_release(host.workspace_root, NULL);
+    if (host.graphs) {
+        afree(host_type_packs);
+        registry_set_packs(NULL, 0);
+        authoring_graph_catalog_free(host.graphs);
+    }
+    free(host.artifact);
+    free(host.workspace_root);
+    free(host.compiler);
+    free(host.launcher);
+    free(host.project_name);
+    free(host.save_path);
+#endif
     rml_backend_release_prepared_fonts();
     render_images_clear();
     cf_destroy_app();

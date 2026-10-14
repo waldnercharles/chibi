@@ -75,6 +75,7 @@ int script_analyzer_lookup_name(const analyzer *a, const char *name);
 int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);
 int script_analyzer_lookup(analyzer *a, TSNode node);
 int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable);
+int script_analyzer_self_field(analyzer *, TSNode object, TSNode member);
 int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type);
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member);
 bool script_analyzer_present(const analyzer *a, int symbol);

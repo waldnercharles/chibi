@@ -213,7 +213,7 @@ void graph_expression_capture_name(const char *text, char *out, size_t size)
     }
     const char *start = text + first.start;
     int length = (int)(last.end - first.start);
-    if (code_token_is(&lexer, first, "state") || code_token_is(&lexer, first, "local")) {
+    if (code_token_is(&lexer, first, "self") || code_token_is(&lexer, first, "local")) {
         start = text + last.start;
         length = (int)(last.end - last.start);
     }

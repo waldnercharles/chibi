@@ -4,6 +4,9 @@
 #include "support/asset_text.h"
 #include "support/asset_value.h"
 #include "support/xalloc.h"
+#ifdef _WIN32
+#include "support/rooted_files.h"
+#endif
 
 #include <assert.h>
 #include <errno.h>
@@ -33,19 +36,41 @@ static void set_errorf(char *error, size_t error_size, const char *format, const
 
 static bool is_directory(const char *path)
 {
+#ifdef _WIN32
+    rooted_files *directory = rooted_files_open(path);
+    if (!directory) {
+        return false;
+    }
+    rooted_files_close(directory);
+    return true;
+#else
     struct stat info;
     return stat(path, &info) == 0 && S_ISDIR(info.st_mode);
+#endif
 }
 
 static bool is_file(const char *path)
 {
+#ifdef _WIN32
+    char *leaf = NULL;
+    rooted_files *parent = rooted_files_open_parent(path, &leaf);
+    rooted_file_info info;
+    bool ok = parent && rooted_files_stat(parent, leaf, &info) && info.regular;
+    if (parent) {
+        rooted_files_close(parent);
+    }
+    free(leaf);
+    return ok;
+#else
     struct stat info;
     return stat(path, &info) == 0 && S_ISREG(info.st_mode);
+#endif
 }
 
 static char *join_path(const char *base, const char *name);
 static char *parent_path(const char *path);
 
+#ifndef _WIN32
 /* `flags` adds open flags, such as O_EXCL | O_NOFOLLOW for a staging path. */
 static int write_asset_file(const char *path, const char *text, int flags, char *error, size_t error_size)
 {
@@ -53,6 +78,7 @@ static int write_asset_file(const char *path, const char *text, int flags, char 
     if (!canonical) {
         return -1;
     }
+
     int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | flags, 0666);
     FILE *file = fd >= 0 ? fdopen(fd, "wb") : NULL;
     if (fd >= 0 && !file) {
@@ -77,6 +103,8 @@ static int write_asset_file(const char *path, const char *text, int flags, char 
     free(canonical);
     return written ? 0 : -1;
 }
+
+#endif
 
 static char *manifest_text(const char *name)
 {
@@ -129,6 +157,64 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
         errno = EEXIST;
         return -1;
     }
+#ifdef _WIN32
+    char *leaf = NULL;
+    rooted_files *parent = rooted_files_open_parent(root, &leaf);
+    rooted_files *folder = parent ? rooted_files_directory_new(parent, leaf) : NULL;
+    if (!folder) {
+        if (parent) {
+            rooted_files_close(parent);
+        }
+        free(leaf);
+        set_error(error, error_size, "Cannot create project folder");
+        return -1;
+    }
+    rooted_files *scenes = rooted_files_directory(folder, "content/scenes", true);
+    char *manifest = manifest_text(name), *scene = start_scene_text();
+    char *manifest_disk = manifest ? asset_text_to_disk(manifest, error, error_size)
+                                   : NULL;
+    char *scene_disk = scene ? asset_text_to_disk(scene, error, error_size) : NULL;
+    bool written = scenes && manifest_disk && scene_disk &&
+                   rooted_files_write(
+                       folder,
+                       CHIBI_PROJECT_MANIFEST,
+                       manifest_disk,
+                       strlen(manifest_disk),
+                       512 * 1024,
+                       false,
+                       NULL,
+                       0
+                   ) &&
+                   rooted_files_write(
+                       folder,
+                       "content/scenes/Start.kdl",
+                       scene_disk,
+                       strlen(scene_disk),
+                       512 * 1024,
+                       false,
+                       NULL,
+                       0
+                   );
+    if (scenes) {
+        rooted_files_close(scenes);
+    }
+    if (!written) {
+        rooted_files_remove(folder, "content/scenes/Start.kdl");
+        rooted_files_remove(folder, CHIBI_PROJECT_MANIFEST);
+        rooted_files_remove_directory(folder, "content/scenes");
+        rooted_files_remove_directory(folder, "content");
+        rooted_files_remove_directory(parent, leaf);
+        set_error(error, error_size, "Could not create project files");
+    }
+    free(manifest);
+    free(scene);
+    free(manifest_disk);
+    free(scene_disk);
+    free(leaf);
+    rooted_files_close(folder);
+    rooted_files_close(parent);
+    return written ? 0 : -1;
+#else
     char *parent = parent_path(root);
     struct stat info;
     /* mkdir reports a parent that exists but cannot be inspected. */
@@ -179,11 +265,21 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     free(scenes);
     free(content);
     return written ? 0 : -1;
+#endif
 }
 
+static bool host_absolute(const char *path)
+{
+#ifdef _WIN32
+    return path[0] == '/' || path[0] == '\\' ||
+           (path[0] && path[1] == ':' && (path[2] == '/' || path[2] == '\\'));
+#else
+    return path[0] == '/';
+#endif
+}
 static char *join_path(const char *base, const char *name)
 {
-    if (name[0] == '/') {
+    if (host_absolute(name)) {
         return xstrdup(name);
     }
     size_t size = strlen(base) + strlen(name) + 2;
@@ -194,11 +290,32 @@ static char *join_path(const char *base, const char *name)
 
 static char *absolute_path(const char *path)
 {
+#ifdef _WIN32
+    rooted_files *directory = rooted_files_open(path);
+    if (directory) {
+        char *result = rooted_files_host_path(directory);
+        rooted_files_close(directory);
+        return result;
+    }
+    char *leaf = NULL;
+    rooted_files *parent = rooted_files_open_parent(path, &leaf);
+    char *canonical = parent ? rooted_files_canonical_path(parent, leaf) : NULL;
+    char *host = canonical ? rooted_files_host_path(parent) : NULL;
+    char *result = host ? join_path(host, canonical) : NULL;
+    free(leaf);
+    free(canonical);
+    free(host);
+    if (parent) {
+        rooted_files_close(parent);
+    }
+    return result;
+#else
     char resolved[PATH_MAX];
     if (!realpath(path, resolved)) {
         return NULL;
     }
     return xstrdup(resolved);
+#endif
 }
 
 static char *parent_path(const char *path)
@@ -209,7 +326,12 @@ static char *parent_path(const char *path)
         free(parent);
         return xstrdup(".");
     }
-    if (slash == parent) {
+    if (
+        slash == parent
+#ifdef _WIN32
+        || (slash == parent + 2 && parent[1] == ':')
+#endif
+    ) {
         slash[1] = '\0';
         return parent;
     }
@@ -225,6 +347,23 @@ static char *basename_copy(const char *path)
 
 static char *read_file(const char *path, char *error, size_t error_size)
 {
+#ifdef _WIN32
+    char *leaf = NULL;
+    rooted_files *parent = rooted_files_open_parent(path, &leaf);
+    unsigned char *text = NULL;
+    size_t bytes = 0;
+    bool ok = parent && rooted_files_read(parent, leaf, 512 * 1024, &text, &bytes);
+    if (parent) {
+        rooted_files_close(parent);
+    }
+    free(leaf);
+    if (!ok || memchr(text, 0, bytes)) {
+        free(text);
+        set_errorf(error, error_size, "Cannot read bounded project manifest %s", path);
+        return NULL;
+    }
+    return (char *)text;
+#else
     FILE *file = fopen(path, "rb");
     if (!file) {
         if (error_size) {
@@ -253,6 +392,7 @@ static char *read_file(const char *path, char *error, size_t error_size)
     }
     text[read] = '\0';
     return text;
+#endif
 }
 
 /* A project-relative path that stays inside the project. */
@@ -439,7 +579,7 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
 
 static char *scene_path(const char *root, const char *content, const char *scene)
 {
-    if (scene[0] == '/') {
+    if (host_absolute(scene)) {
         return xstrdup(scene);
     }
     if (!strncmp(scene, "content/", strlen("content/"))) {
@@ -499,7 +639,37 @@ static int upgrade(
         CHIBI_PROJECT_VERSION,
         text + version.end
     );
+#ifdef _WIN32
+    char *expected = xstrdup(text);
+#endif
     free(text);
+#ifdef _WIN32
+    char *leaf = NULL;
+    rooted_files *parent = rooted_files_open_parent(manifest, &leaf);
+    char *canonical = asset_text_to_disk(updated, error, error_size);
+    int status = parent && canonical &&
+                         rooted_files_write(
+                             parent,
+                             leaf,
+                             canonical,
+                             strlen(canonical),
+                             512 * 1024,
+                             true,
+                             expected,
+                             strlen(expected)
+                         )
+                   ? 0
+                   : -1;
+    if (status) {
+        set_errorf(error, error_size, "Cannot replace %s", manifest);
+    }
+    if (parent) {
+        rooted_files_close(parent);
+    }
+    free(leaf);
+    free(expected);
+    free(canonical);
+#else
     /* Replace the manifest only once the new one is fully written. */
     size_t length = strlen(manifest) + sizeof ".migrating";
     char *staged = xmalloc(length);
@@ -520,6 +690,8 @@ static int upgrade(
         status = -1;
     }
     free(staged);
+
+#endif
     free(updated);
     return status;
 }
@@ -651,7 +823,7 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
     } else if (!project->content) {
         project->content = xstrdup("content");
     }
-    char *content_path = project->content[0] == '/'
+    char *content_path = host_absolute(project->content)
                            ? xstrdup(project->content)
                            : join_path(project->root, project->content);
     free(input);

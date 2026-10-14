@@ -153,10 +153,10 @@ TEST_CASE(synchronous_activation_benchmark)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *names[] = { "system", "event", "helper-event" };
     const char *sources[] = {
-        "system Bench { state total:double=0; total+=1; }",
-        "behavior Bench { state total:double=0; on Run(amount:double) { "
+        "system Bench { total:double=0; total+=1; }",
+        "behavior Bench { total:double=0; on Run(amount:double) { "
         "total+=amount; } }",
-        "behavior Bench { state total:double=0; "
+        "behavior Bench { total:double=0; "
         "Add :: (value:double, amount:double)->double { return value+amount; } "
         "on Run(amount:double) { total=Add(total,amount); } }",
     };

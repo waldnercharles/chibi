@@ -43,6 +43,7 @@ struct execution_inspector
     execution_program *program;
     execution_activation *paused;
     execution_debug_cursor cursor;
+    execution_program_failure failure;
     execution_debug_frame *frames;
     watch_row *watches;
     uint64_t *owners;
@@ -104,6 +105,7 @@ execution_inspector *execution_program_inspector(execution_program *p)
         p->inspector = xcalloc(1, sizeof *p->inspector);
         p->inspector->references = 1;
         p->inspector->program = p;
+        p->inspector->failure = p->failure;
         assert(generations < UINT64_MAX);
         p->inspector->generation = ++generations;
     }
@@ -793,6 +795,21 @@ int execution_inspector_control(execution_inspector *i, execution_debug_control 
     program_apply_services(a->instance->program->owner_program);
     return status;
 }
+bool execution_inspector_has_breakpoint(
+    const execution_inspector *i,
+    uint64_t module,
+    uint64_t function,
+    uint64_t occurrence
+)
+{
+    for (int n = 0; n < acount(i->breakpoints); n++) {
+        breakpoint b = i->breakpoints[n];
+        if (b.module == module && b.function == function && b.occurrence == occurrence) {
+            return true;
+        }
+    }
+    return false;
+}
 bool execution_inspector_breakpoint(
     execution_inspector *i,
     uint64_t module,
@@ -822,4 +839,20 @@ bool execution_inspector_breakpoint(
     }
     apush(i->breakpoints, ((breakpoint){ module, function, occurrence }));
     return true;
+}
+
+void program_inspection_failure(execution_program *p, const execution_program_failure *failure)
+{
+    execution_inspector *i = p->owner_program->inspector;
+    if (i && failure && !i->failure.status) {
+        i->failure = *failure;
+    }
+}
+const execution_program_failure *execution_inspector_failure(const execution_inspector *i)
+{
+    return i->failure.status ? &i->failure : NULL;
+}
+void execution_inspector_clear_failure(execution_inspector *i)
+{
+    i->failure = (execution_program_failure){ 0 };
 }

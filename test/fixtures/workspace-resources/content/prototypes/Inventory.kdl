@@ -1,0 +1,5 @@
+name "Inventory"
+components {
+    Ui document="Inventory"
+}
+(array)behaviors "ResourceProbe"

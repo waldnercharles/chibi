@@ -344,7 +344,16 @@ player *player_prepared_read(
     }
     /* Declared components precede everything that stores their rows. */
     declared_components *declared = NULL;
-    declared_components_wire(&wire, &declared);
+    if (host->detached_types) {
+        declared_components_wire_detached(&wire, &declared);
+    } else {
+        declared_components_wire(&wire, &declared);
+    }
+    declared_components_scope reflection = { 0 };
+    if (host->detached_types &&
+        !declared_components_scope_enter(declared, &reflection)) {
+        wire.error = "Cannot enter prepared type reflection";
+    }
     const ecs_component_desc **components = NULL;
     for (int i = 0; i < host->components.component_count; i++) {
         apush(components, host->components.components[i]);
@@ -371,6 +380,7 @@ player *player_prepared_read(
     player_named_scene *scenes = NULL;
     player_asset *asset_records = NULL;
     spec.resources = host->resources;
+    spec.services = host->services;
     size_t decoded_budget = host->decoded_budget ? host->decoded_budget
                                                  : PLAYER_PREPARED_MAX_BYTES;
     spec.decoded_remaining = &decoded_budget;
@@ -466,6 +476,9 @@ player *player_prepared_read(
     }
     event_catalog_free(spec.world.events);
     afree(components);
+    if (reflection.active && !declared_components_scope_leave(&reflection)) {
+        abort();
+    }
     declared_components_free(declared);
     arena_free(&storage);
     return player;

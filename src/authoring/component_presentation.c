@@ -388,3 +388,15 @@ field_hint component_presentation_field(
     const type_field *reflected = &desc->type->fields[field];
     return (field_hint){ reflected->min, reflected->max, reflected->unit };
 }
+
+const char *component_presentation_category(component_tab tab)
+{
+    static const char *const names[] = { "object", "physics", "material", "gameplay" };
+    assert(tab >= 0 && tab < COMPONENT_TAB_COUNT);
+    return names[tab];
+}
+const char *component_presentation_icon_name(component_icon icon)
+{
+    assert(icon >= COMPONENT_ICON_NONE && icon < COMPONENT_ICON_COUNT);
+    return icon == COMPONENT_ICON_NONE ? "" : ICON_NAMES[icon];
+}

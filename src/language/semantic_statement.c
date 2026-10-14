@@ -357,22 +357,21 @@ static bool shadowed(analyzer *a, TSNode node, const char *name)
     return false;
 }
 /* The task state an assignment targets: `name` unless a local shadows it, or
- * `state.name`. */
+ * `self.name`. */
 static int task_target(analyzer *a, TSNode node)
 {
     TSNode target = script_analyzer_field(node, "target");
     if (script_analyzer_is(target, "member_expression")) {
         TSNode object = script_analyzer_field(target, "object");
-        return script_analyzer_is(object, "builtin_reference") &&
-                       script_analyzer_text_is(a, object, "state")
-                 ? script_analyzer_lookup_storage(a, script_analyzer_field(target, "member"), SCRIPT_STATE)
-                 : -1;
+        return script_analyzer_self_field(a, object, script_analyzer_field(target, "member"));
     }
     int symbol = script_analyzer_is(target, "identifier")
                    ? script_analyzer_lookup(a, target)
                    : -1;
-    return symbol >= 0 && !shadowed(a, node, a->out->symbols[symbol].name) ? symbol
-                                                                           : -1;
+    return symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK) &&
+                   !shadowed(a, node, a->out->symbols[symbol].name)
+             ? symbol
+             : -1;
 }
 /* Whether a callable between `node` and the program `body` declares a
  * function or macro named like the call's function, which the prepass cannot

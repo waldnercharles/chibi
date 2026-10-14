@@ -37,6 +37,14 @@ bool shader_authoring_inspect(const behavior_asset *, shader_authoring_report *,
  * source unchanged. This accepts unused declarations and unlinked/invalid graphs
  * so callers can repair sources. Reports are snapshots; inspect after editing. */
 bool shader_authoring_set_default(behavior_asset *, int slot, const float *values, int width, shader_error *);
+/* Double ingress preserves the full I32 domain; vector/F32 storage remains float. */
+bool shader_authoring_set_default_exact(
+    behavior_asset *,
+    int slot,
+    const double *values,
+    int width,
+    shader_error *
+);
 /* Fixed reproducible center probe; origin, UV .5/.5, time/activity zero,
  * normal/view +Y and preview coordinate gradients. Caller supplies resolver. */
 shader_sample_context shader_authoring_center_context(const behavior_asset *);

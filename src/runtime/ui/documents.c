@@ -13,9 +13,10 @@ struct ui_documents
 {
     prepared_ui_document **items;
     bool active;
+    uint64_t revision;
 };
 static ui_documents resident;
-static uint64_t revision;
+static uint64_t next_revision;
 void prepared_ui_document_free(prepared_ui_document *d)
 {
     free(d->name);
@@ -178,6 +179,7 @@ ui_documents *ui_documents_new_budget(size_t *remaining, bool active)
     *remaining -= sizeof(ui_documents);
     ui_documents *d = xcalloc(1, sizeof *d);
     d->active = active;
+    d->revision = ++next_revision;
     return d;
 }
 ui_documents *ui_documents_new()
@@ -207,6 +209,7 @@ bool ui_documents_add_owned_budget(ui_documents *table, prepared_ui_document *d,
     *owned = *d;
     *d = (prepared_ui_document){ 0 };
     apush(table->items, owned);
+    table->revision = ++next_revision;
     return true;
 }
 bool ui_documents_add_owned(ui_documents *table, prepared_ui_document *d)
@@ -220,7 +223,6 @@ void ui_documents_exchange(ui_documents *table)
     ui_documents old = resident;
     resident = *table;
     *table = old;
-    revision++;
 }
 void ui_documents_free(ui_documents *table)
 {
@@ -265,5 +267,5 @@ bool ui_documents_active()
 }
 uint64_t ui_documents_revision()
 {
-    return revision;
+    return resident.revision;
 }

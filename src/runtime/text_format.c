@@ -1,6 +1,7 @@
 #include "runtime/text_format.h"
 
 #include "fmt.h"
+#include "runtime/text_search.h"
 #include "support/arena.h"
 #include "types/array.h"
 #include "types/value_format.h"
@@ -393,3 +394,20 @@ SNAPSHOT(FORMAT_TEXT, native_format_text, true)
 SNAPSHOT(TEXT_EQUAL, native_text_equal, false)
 #undef SNAPSHOT
 const node_access NATIVE_TEXT_ACCESS = { .flags = NODE_EFFECT_PURE };
+
+static const char *text_contains_call(arena *, const pin_value *in, int, pin_value *out)
+{
+    *out = (pin_value){ .type = PIN_BOOL,
+                        .type_name = "bool",
+                        .b = text_search_contains(in[0].str, in[1].str, in[2].b) };
+    return NULL;
+}
+static const char *text_rank_call(arena *, const pin_value *in, int, pin_value *out)
+{
+    *out = (pin_value){ .type = PIN_I32,
+                        .type_name = "int",
+                        .i = text_search_rank(in[0].str, in[1].str, in[2].b) };
+    return NULL;
+}
+const node_host_call NATIVE_TEXT_CONTAINS_CALL = { .value = text_contains_call };
+const node_host_call NATIVE_TEXT_RANK_CALL = { .value = text_rank_call };

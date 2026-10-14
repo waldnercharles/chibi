@@ -47,6 +47,16 @@ TEST_CASE(source_format_block_layout)
     );
     return true;
 }
+TEST_CASE(source_format_qualified_callable_fields)
+{
+    REQUIRE(format(
+        "behavior Fields { Next::fn(){self.calls:int=0;self.calls+=1;"
+        "self.\"saved value\":int=0;} }"
+    ));
+    REQUIRE(strstr(text, "self.calls: int = 0;"));
+    REQUIRE(strstr(text, "self.\"saved value\": int = 0;"));
+    return true;
+}
 TEST_CASE(source_format_reductions)
 {
     REQUIRE(format(
@@ -404,6 +414,330 @@ TEST_CASE(source_minimize_reaches_a_fixed_point)
     return true;
 }
 
+TEST_CASE(source_minimize_splits_mixed_overlapping_rewrites)
+{
+    /* Inferring x would change float storage to int and must be refused.
+     * Nested parentheses overlap, while declarations, semicolons and the
+     * return spelling on either side remain independently reducible. */
+    const char *input = "library Demo {\n"
+                        "    Use :: fn(n: int) -> (r: int) {\n"
+                        "        before: int = (((n)));\n"
+                        "        x: float = n;\n"
+                        "        later: int = (((before)));\n"
+                        "        return(later);\n"
+                        "    }\n"
+                        "}\n";
+    const char *expected = "library Demo {\n"
+                           "    Use :: fn(n: int) -> (r: int) {\n"
+                           "        before := n\n"
+                           "        x: float = n\n"
+                           "        later := before\n"
+                           "        return later\n"
+                           "    }\n"
+                           "}\n";
+    REQUIRE(minimize(input, expected));
+    again = authoring_source_minimize(text, &catalog, "Demo");
+    REQUIRE(!strcmp(text, again));
+    source = script_parse(text);
+    script_analysis *analysis = script_analyze_document(source, &catalog, "Demo");
+    bool valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(valid);
+    char error[192];
+    free(again);
+    again = authoring_source_format(source, error, sizeof error);
+    REQUIRE(again);
+    formatted = script_parse(again);
+    char *second = authoring_source_format(formatted, error, sizeof error);
+    bool stable = second && !strcmp(again, second);
+    free(second);
+    REQUIRE(stable);
+    return true;
+}
+
+TEST_CASE(source_minimize_literal_types_keep_contextual_metadata)
+{
+    const char
+        *input = "library Demo {\n"
+                 "    Echo :: fn(x: string) -> (r: string) { return x }\n"
+                 "    Use :: fn(n: int) {\n"
+                 "        label: string = \"hello\";\n"
+                 "        empty: string = \"\";\n"
+                 "        precise: double = 0;\n"
+                 "        narrow: int = 1;\n"
+                 "        enabled: bool = true;\n"
+                 "        called: string = Echo(label);\n"
+                 "        copied: string = label;\n"
+                 "        converted: double = cast<double>(n);\n"
+                 "    }\n"
+                 "}\n";
+    const char
+        *expected = "library Demo {\n"
+                    "    Echo :: fn(x: string) -> (r: string) { return x }\n"
+                    "    Use :: fn(n: int) {\n"
+                    "        label: string = \"hello\"\n"
+                    "        empty: string = \"\"\n"
+                    "        precise: double = 0\n"
+                    "        narrow: int = 1\n"
+                    "        enabled := true\n"
+                    "        called := Echo(label)\n"
+                    "        copied := label\n"
+                    "        converted := cast<double>(n)\n"
+                    "    }\n"
+                    "}\n";
+    REQUIRE(minimize(input, expected));
+    again = authoring_source_minimize(text, &catalog, "Demo");
+    REQUIRE(!strcmp(text, again));
+    source = script_parse(text);
+    script_analysis *analysis = script_analyze_document(source, &catalog, "Demo");
+    bool valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(valid);
+    return true;
+}
+
+TEST_CASE(source_minimize_state_literal_types_keep_contextual_metadata)
+{
+    REQUIRE(minimize(
+        "behavior Demo {\n"
+        "    Label: string = \"hello\";\n"
+        "    Now: double = 0;\n"
+        "    Enabled: bool = false;\n"
+        "    on Tick { }\n"
+        "}\n",
+        "behavior Demo {\n"
+        "    Label: string = \"hello\"\n"
+        "    Now: double = 0\n"
+        "    Enabled := false\n"
+        "    on Tick { }\n"
+        "}\n"
+    ));
+    again = authoring_source_minimize(text, &catalog, "Demo");
+    REQUIRE(!strcmp(text, again));
+    return true;
+}
+
+TEST_CASE(source_minimize_resolved_defaults_only)
+{
+    static const script_catalog_parameter native_parameters[] = {
+        { .name = "Required", .type = { .storage = PIN_I32 } },
+        { .name = "Step",
+          .type = { .storage = PIN_I32 },
+          .has_default = true,
+          .default_value = { .type = PIN_I32, .i = 2 } },
+    };
+    static const script_catalog_parameter payload[] = {
+        { .name = "Id", .type = { .storage = PIN_STR } },
+        { .name = "Mode",
+          .type = { .storage = PIN_I32 },
+          .has_default = true,
+          .default_value = { .type = PIN_I32, .i = 2 } },
+    };
+    static const script_catalog_parameter target[] = {
+        { .name = "Target", .type = { .storage = PIN_HANDLE, .nominal = 40 } },
+    };
+    static const script_catalog_capability defaults[] = {
+        { .id = 30,
+          .name = "Tick",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = tick,
+          .parameter_count = 1 },
+        { .id = 31,
+          .name = "Sample",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = native_parameters,
+          .parameter_count = 2 },
+        { .id = 32,
+          .name = "Notify",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = payload,
+          .parameter_count = 2 },
+        { .id = 33,
+          .name = "send_event",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = target,
+          .parameter_count = 1,
+          .event_sender = true },
+    };
+    script_catalog in = { .capabilities = defaults,
+                          .capability_count = 4,
+                          .entity_type = 40,
+                          .tick_event = 30 };
+    const char *input = "behavior Demo {\n"
+                        "    Required :: fn(v: int) -> (r: int) { return v }\n"
+                        "    Opt :: fn(a: int, b: int = 2, c: int = 3) -> (r: "
+                        "int) { return a + b + c }\n"
+                        "    on Tick {\n"
+                        "        required := Required(8)\n"
+                        "        exact := Opt(5, 2, 3)\n"
+                        "        named := Opt(a: 5, c: 9, b: 2)\n"
+                        "        nonmatching := Opt(5, 8, 3)\n"
+                        "        ordered := Opt(5, 2, 9)\n"
+                        "        Sample(4, 2)\n"
+                        "        Sample(4, 8)\n"
+                        "        send_event<\"Notify\">(self, \"go\", 2)\n"
+                        "        send_event<\"Notify\">(self, \"go\", 8)\n"
+                        "    }\n"
+                        "}\n";
+    /* Native omissions introduce constant_snapshot, which the current oracle
+     * compares exactly. Matching native/event defaults therefore stay too. */
+    const char
+        *expected = "behavior Demo {\n"
+                    "    Required :: fn(v: int) -> (r: int) { return v }\n"
+                    "    Opt :: fn(a: int, b: int = 2, c: int = 3) -> (r: int) "
+                    "{ return a + b + c }\n"
+                    "    on Tick {\n"
+                    "        required := Required(8)\n"
+                    "        exact := Opt(5)\n"
+                    "        named := Opt(5, c: 9)\n"
+                    "        nonmatching := Opt(5, 8)\n"
+                    "        ordered := Opt(5, 2, 9)\n"
+                    "        Sample(4, 2)\n"
+                    "        Sample(4, 8)\n"
+                    "        send_event<\"Notify\">(self, \"go\", 2)\n"
+                    "        send_event<\"Notify\">(self, \"go\", 8)\n"
+                    "    }\n"
+                    "}\n";
+    REQUIRE(minimize_in(&in, input, expected));
+    again = authoring_source_minimize(text, &in, "Demo");
+    REQUIRE(!strcmp(text, again));
+    source = script_parse(text);
+    script_analysis *analysis = script_analyze_document(source, &in, "Demo");
+    bool valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(valid);
+    return true;
+}
+
+TEST_CASE(source_minimize_labels_preserve_resolved_positional_bindings)
+{
+    static const script_catalog_parameter data[] = {
+        { .name = "Entity",
+          .type = { .storage = PIN_HANDLE, .nominal = 40 },
+          .has_default = true,
+          .default_owner = true },
+        { .name = "Name", .type = { .storage = PIN_STR } },
+        { .name = "Value", .type = { .storage = PIN_I32 } }
+    };
+    static const script_catalog_parameter method[] = {
+        { .name = "Target", .type = { .storage = PIN_HANDLE, .nominal = 40 } },
+        { .name = "Count", .type = { .storage = PIN_I32 } },
+        { .name = "Label", .type = { .storage = PIN_STR } }
+    };
+    static const script_catalog_parameter target[] = {
+        { .name = "Target", .type = { .storage = PIN_HANDLE, .nominal = 40 } }
+    };
+    static const script_catalog_parameter payload[] = {
+        { .name = "Id", .type = { .storage = PIN_STR } },
+        { .name = "Value", .type = { .storage = PIN_I32 } }
+    };
+    static const script_catalog_field fields[] = {
+        { .id = 51, .name = "x", .type = { .storage = PIN_I32 } },
+        { .id = 52, .name = "y", .type = { .storage = PIN_I32 } }
+    };
+    static const script_catalog_type pair = { .id = 50,
+                                              .name = "Pair",
+                                              .type = { .storage = PIN_STRUCT,
+                                                        .nominal = 50 },
+                                              .fields = fields,
+                                              .field_count = 2,
+                                              .size = 2 * sizeof(int) };
+    static const script_catalog_parameter record[] = {
+        { .name = "Value", .type = { .storage = PIN_STRUCT, .nominal = 50 } }
+    };
+    static const script_catalog_capability calls[] = {
+        { .id = 30,
+          .name = "Tick",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = tick,
+          .parameter_count = 1 },
+        { .id = 31,
+          .name = "set_data",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = data,
+          .parameter_count = 3 },
+        { .id = 32,
+          .name = "adjust",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = method,
+          .parameter_count = 3,
+          .receiver = 40,
+          .method_name = "Adjust" },
+        { .id = 33,
+          .name = "Notify",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = payload,
+          .parameter_count = 2 },
+        { .id = 34,
+          .name = "send_event",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = target,
+          .parameter_count = 1,
+          .event_sender = true },
+        { .id = 35,
+          .name = "Record",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .parameters = record,
+          .parameter_count = 1 }
+    };
+    script_catalog in = { .capabilities = calls,
+                          .capability_count = 6,
+                          .entity_type = 40,
+                          .tick_event = 30,
+                          .types = &pair,
+                          .type_count = 1 };
+    const char
+        *input = "behavior Demo {\n"
+                 "    count: int = 0\n"
+                 "    PairFn :: fn(a: int, b: int = 2, c: int = 3) -> (r: int) "
+                 "{ return a + b + c }\n"
+                 "    Ref :: fn(ref int value) { }\n"
+                 "    Identity :: pure fn<T: plain int>(item: T) -> (Result: "
+                 "T) { return item }\n"
+                 "    on Tick {\n"
+                 "        set_data(Name: \"key\", Value: 8)\n"
+                 "        set_data(Entity: self, Name: \"key\", Value: 8)\n"
+                 "        normal := PairFn(a: 1, b: 8, c: 9)\n"
+                 "        reordered := PairFn(c: 9, a: 1, b: 8)\n"
+                 "        skipped := PairFn(a: 1, c: 9)\n"
+                 "        self.Adjust(Count: 4, Label: \"ok\")\n"
+                 "        send_event<\"Notify\">(Target: self, Id: \"go\", "
+                 "Value: 8)\n"
+                 "        Record(Value.x: 1, Value.y: 2)\n"
+                 "        Ref(value: ref int from self.count)\n"
+                 "        generic := Identity<int>(item: 4)\n"
+                 "    }\n"
+                 "}\n";
+    const char *expected = "behavior Demo {\n"
+                           "    count: int = 0\n"
+                           "    PairFn :: fn(a: int, b: int = 2, c: int = 3) "
+                           "-> (r: int) { return a + b + c }\n"
+                           "    Ref :: fn(ref int value) { }\n"
+                           "    Identity :: pure fn<T: plain int>(item: T) -> "
+                           "(Result: T) { return item }\n"
+                           "    on Tick {\n"
+                           "        set_data(Name: \"key\", Value: 8)\n"
+                           "        set_data(self, \"key\", 8)\n"
+                           "        normal := PairFn(1, 8, 9)\n"
+                           "        reordered := PairFn(c: 9, a: 1, b: 8)\n"
+                           "        skipped := PairFn(1, c: 9)\n"
+                           "        self.Adjust(4, \"ok\")\n"
+                           "        send_event<\"Notify\">(self, \"go\", 8)\n"
+                           "        Record(Value.x: 1, Value.y: 2)\n"
+                           "        Ref(value: ref int from count)\n"
+                           "        generic := Identity<int>(4)\n"
+                           "    }\n"
+                           "}\n";
+    REQUIRE(minimize_in(&in, input, expected));
+    again = authoring_source_minimize(text, &in, "Demo");
+    REQUIRE(!strcmp(text, again));
+    source = script_parse(text);
+    script_analysis *analysis = script_analyze_document(source, &in, "Demo");
+    bool valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(valid);
+    return true;
+}
 TEST_CASE(source_minimize_keeps_argument_order)
 {
     /* Arguments run in source order, so out-of-order labels stay. */
@@ -676,6 +1010,7 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_block_layout);
+    RUN_TEST_CASE(source_format_qualified_callable_fields);
     RUN_TEST_CASE(source_format_reductions);
     RUN_TEST_CASE(source_format_component_measures);
     RUN_TEST_CASE(source_format_measured_signatures);
@@ -692,6 +1027,11 @@ void test_language_format()
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
+    RUN_TEST_CASE(source_minimize_splits_mixed_overlapping_rewrites);
+    RUN_TEST_CASE(source_minimize_literal_types_keep_contextual_metadata);
+    RUN_TEST_CASE(source_minimize_state_literal_types_keep_contextual_metadata);
+    RUN_TEST_CASE(source_minimize_resolved_defaults_only);
+    RUN_TEST_CASE(source_minimize_labels_preserve_resolved_positional_bindings);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

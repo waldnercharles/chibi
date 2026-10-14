@@ -299,6 +299,36 @@ bool source_edit_declarations(
     }
     const source_presentation_origin *o = origin(p, r->origin);
     int index = symbol(a, o);
+    /* A structured signature rename may identify a parameter/result whose
+     * presentation is only the callable tunnel. Resolve its actual semantic
+     * symbol, bounded to that callable, before the ordinary reference rewrite. */
+    if (r->kind == AUTHORING_EDIT_RENAME_DECLARATION && r->symbol) {
+        if (!o || o->kind != SOURCE_PRESENTATION_FUNCTION || o->function < 0 ||
+            o->function >= a->function_count) {
+            return fail(error, size, "Parameter rename requires its owning callable origin");
+        }
+        const script_function *function = &a->functions[o->function];
+        int found = -1;
+        for (int i = 0; i < function->parameter_count; i++) {
+            int symbol = function->parameters[i];
+            if (symbol >= 0 && symbol < a->symbol_count &&
+                a->symbols[symbol].id == r->symbol) {
+                found = symbol;
+            }
+        }
+        for (int i = 0; i < function->result_count; i++) {
+            int symbol = function->results[i];
+            if (symbol >= 0 && symbol < a->symbol_count &&
+                a->symbols[symbol].id == r->symbol) {
+                found = symbol;
+            }
+        }
+        if (found < 0) {
+            return fail(error, size, "Parameter no longer belongs to this callable");
+        }
+        index = found;
+    }
+
     if (r->kind == AUTHORING_EDIT_SET_DISABLED && o &&
         o->kind == SOURCE_PRESENTATION_EXPRESSION && o->record >= 0 &&
         o->record < a->expression_count) {
@@ -413,6 +443,51 @@ bool source_edit_declarations(
                 }
             }
             patch(changes, range, r->name);
+        }
+        /* Named arguments are bound to a callable parameter, not lexical
+         * symbol uses. Rewrite only labels whose resolved local call and
+         * parameter ordinal identify the selected semantic symbol. */
+        if (r->symbol && o && o->kind == SOURCE_PRESENTATION_FUNCTION) {
+            const script_function *function = &a->functions[o->function];
+            int parameter = -1;
+            for (int j = 0; j < function->parameter_count; j++) {
+                if (function->parameters[j] == index) {
+                    parameter = j;
+                }
+            }
+            for (int j = 0; parameter >= 0 && j < a->expression_count; j++) {
+                const script_expression *call = &a->expressions[j];
+                if (call->kind != SCRIPT_EXPR_CALL || call->right != o->function) {
+                    continue;
+                }
+                for (int k = 0; k < call->argument_count; k++) {
+                    const script_argument *argument = &call->arguments[k];
+                    if (argument->parameter != parameter) {
+                        continue;
+                    }
+                    TSNode record = ts_node_named_descendant_for_byte_range(
+                        ts_tree_root_node(syntax->tree),
+                        argument->range.start,
+                        argument->range.end
+                    );
+                    while (!ts_node_is_null(record) &&
+                           strcmp(ts_node_type(record), "named_argument") &&
+                           strcmp(ts_node_type(record), "typed_argument")) {
+                        record = ts_node_parent(record);
+                    }
+                    if (ts_node_is_null(record)) {
+                        continue;
+                    }
+                    TSNode label = ts_node_child_by_field_name(record, "name", 4);
+                    if (ts_node_is_null(label)) {
+                        continue;
+                    }
+                    if (ts_node_named_child_count(label) > 0) {
+                        label = ts_node_named_child(label, 0);
+                    }
+                    patch(changes, script_node_range(label), r->name);
+                }
+            }
         }
         script_syntax_free(syntax);
     } else if (r->kind == AUTHORING_EDIT_SET_DISABLED) {

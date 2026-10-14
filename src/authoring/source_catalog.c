@@ -38,6 +38,7 @@ typedef enum
     DECLARATION_SOURCE,
     DECLARATION_SCENE,
     DECLARATION_UI,
+    DECLARATION_COMPONENT,
 } declaration_kind;
 struct source_catalog
 {
@@ -45,6 +46,7 @@ struct source_catalog
     const char *root;
     script_catalog view;
     source_catalog_source *sources;
+    source_catalog_asset *assets;
     source_catalog_definition *definitions;
     source_catalog_reference *references;
     source_catalog_diagnostic *diagnostics;
@@ -145,15 +147,18 @@ static script_type event_type(source_catalog *c, const av_value *variable)
             }
         }
     }
-    const char *container = av_get_str(av_obj_get(variable, "container"));
-    if (container && !strcmp(container, "array")) {
+    const av_value *container_value = av_obj_get(variable, "container");
+    const char *container = av_get_str(container_value);
+    if (av_is_uint(container_value) && av_get_uint(container_value) <= PIN_CONTAINER_MAP) {
+        type.container = (pin_container)av_get_uint(container_value);
+    } else if (container && !strcmp(container, "array")) {
         type.container = PIN_CONTAINER_ARRAY;
-    }
-    if (container && !strcmp(container, "set")) {
+    } else if (container && !strcmp(container, "set")) {
         type.container = PIN_CONTAINER_SET;
-    }
-    if (container && !strcmp(container, "map")) {
+    } else if (container && !strcmp(container, "map")) {
         type.container = PIN_CONTAINER_MAP;
+    } else if (container_value && !(container && !strcmp(container, "single"))) {
+        type.flags |= SCRIPT_TYPE_ERROR;
     }
     return type;
 }
@@ -277,6 +282,66 @@ static bool project_value(source_catalog *c, const char *path)
     error(c, path, (script_range){ 0 }, "Project declaration value limit exceeded");
     return false;
 }
+static script_range property_range(const char *text, const av_value *value)
+{
+    av_source source = av_get_source(value);
+    if (source.name_start == SIZE_MAX || source.name_end == SIZE_MAX) {
+        return (script_range){ 0 };
+    }
+    return text_range(text, (int)source.name_start, (int)source.name_end);
+}
+static void field_references(
+    source_catalog *c,
+    const char *path,
+    const char *text,
+    const av_value *value,
+    const script_catalog_type *type,
+    int depth
+)
+{
+    if (!type || depth > MAX_ENTITY_DEPTH) {
+        return;
+    }
+    if (av_is_arr(value)) {
+        for (size_t i = 0; i < av_arr_size(value); i++) {
+            if (!project_value(c, path)) {
+                return;
+            }
+            field_references(c, path, text, av_arr_get(value, i), type, depth + 1);
+        }
+        return;
+    }
+    for (size_t i = 0; i < av_obj_size(value); i++) {
+        if (!project_value(c, path)) {
+            return;
+        }
+        const av_value *key = av_obj_key_at(value, i);
+        const char *name = av_get_str(key);
+        for (int j = 0; name && j < type->field_count; j++) {
+            const script_catalog_field *field = &type->fields[j];
+            if (strcmp(name, field->name)) {
+                continue;
+            }
+            apush(
+                c->references,
+                ((source_catalog_reference){
+                    .id = field->id,
+                    .owner = type->id,
+                    .kind = SOURCE_REFERENCE_FIELD,
+                    .name = own(c, name),
+                    .path = path,
+                    .text = text,
+                    .range = property_range(text, av_obj_value_at(value, i)) })
+            );
+            const script_catalog_type
+                *nested = script_catalog_type_by_id(&c->view, field->type.nominal);
+            if (nested) {
+                field_references(c, path, text, av_obj_value_at(value, i), nested, depth + 1);
+            }
+            break;
+        }
+    }
+}
 static void project_references(
     source_catalog *c,
     const char *path,
@@ -356,6 +421,16 @@ static void project_references(
         }
         const script_catalog_type *component = &c->view.types[type];
         const av_value *fields = av_obj_value_at(components, i);
+        apush(
+            c->references,
+            ((source_catalog_reference){ .id = component->id,
+                                         .kind = SOURCE_REFERENCE_TYPE,
+                                         .name = own(c, key),
+                                         .path = path,
+                                         .text = text,
+                                         .range = property_range(text, fields) })
+        );
+        field_references(c, path, text, fields, component, 0);
         for (int j = 0; j < component->field_count; j++) {
             const char *field = component->fields[j].name;
             reference_asset_kind kind = reference_named_field_kind(component->name, field);
@@ -450,6 +525,110 @@ static char *edited_source(source_catalog *c, const char *path, const char *text
     c->bytes += size;
     return xstrdup(text);
 }
+static TSNode component_field(TSNode node, const char *name)
+{
+    return ts_node_child_by_field_name(node, name, (uint32_t)strlen(name));
+}
+static void component_declarations(source_catalog *c, const char *path, const char *text)
+{
+    script_syntax *syntax = script_parse(text);
+    for (int i = 0; i < syntax->diagnostic_count; i++) {
+        error(c, path, syntax->diagnostics[i].range, syntax->diagnostics[i].message);
+    }
+    TSNode root = ts_tree_root_node(syntax->tree), declaration = { 0 };
+    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+        TSNode node = ts_node_named_child(root, i);
+        if (!strcmp(ts_node_type(node), "component")) {
+            declaration = node;
+            break;
+        }
+    }
+    /* Component compilation already validated fields against its declaration
+     * environment. Navigation reads exact names and reflected metadata without
+     * reinterpreting unit terms against the completed project type catalog. */
+    if (!syntax->diagnostic_count && !ts_node_is_null(declaration)) {
+        const char *owned_path = own(c, path), *owned_text = own(c, text);
+        script_range name_range = script_node_range(component_field(declaration, "name"));
+        char *component_name = arena_alloc(
+            &c->storage,
+            (size_t)(name_range.end - name_range.start) + 1
+        );
+        memcpy(
+            component_name,
+            text + name_range.start,
+            (size_t)(name_range.end - name_range.start)
+        );
+        component_name[name_range.end - name_range.start] = 0;
+        uint64_t owner = script_catalog_id("type", component_name);
+        apush(
+            c->definitions,
+            ((source_catalog_definition){
+                .id = owner,
+                .name = component_name,
+                .path = owned_path,
+                .text = owned_text,
+                .range = script_node_range(component_field(declaration, "name")),
+                .text_kind = SOURCE_TEXT_CHIBI,
+                .type_definition = true })
+        );
+        const script_catalog_type *type = script_catalog_type_by_id(&c->view, owner);
+        TSNode body = component_field(declaration, "body");
+        for (uint32_t i = 0; i < ts_node_named_child_count(body); i++) {
+            TSNode node = ts_node_named_child(body, i);
+            if (strcmp(ts_node_type(node), "component_field")) {
+                continue;
+            }
+            TSNode name = component_field(node, "name");
+            script_range range = script_node_range(name);
+            for (int j = 0; type && j < type->field_count; j++) {
+                const script_catalog_field *field = &type->fields[j];
+                if (strlen(field->name) == (size_t)(range.end - range.start) &&
+                    !strncmp(
+                        text + range.start,
+                        field->name,
+                        (size_t)(range.end - range.start)
+                    )) {
+                    apush(
+                        c->definitions,
+                        ((source_catalog_definition){ .id = field->id,
+                                                      .name = own(c, field->name),
+                                                      .path = owned_path,
+                                                      .text = owned_text,
+                                                      .range = range,
+                                                      .text_kind = SOURCE_TEXT_CHIBI,
+                                                      .field = true,
+                                                      .owner = owner })
+                    );
+                    break;
+                }
+            }
+            TSNode type_node = component_field(node, "type");
+            script_range type_range = script_node_range(type_node);
+            for (int j = 0; j < c->view.type_count; j++) {
+                const script_catalog_type *named = &c->view.types[j];
+                if (strlen(named->name) == (size_t)(type_range.end - type_range.start) &&
+                    !strncmp(
+                        text + type_range.start,
+                        named->name,
+                        (size_t)(type_range.end - type_range.start)
+                    )) {
+                    apush(
+                        c->references,
+                        ((source_catalog_reference){ .id = named->id,
+                                                     .kind = SOURCE_REFERENCE_TYPE,
+                                                     .name = own(c, named->name),
+                                                     .path = owned_path,
+                                                     .text = owned_text,
+                                                     .range = type_range,
+                                                     .text_kind = SOURCE_TEXT_CHIBI })
+                    );
+                    break;
+                }
+            }
+        }
+    }
+    script_syntax_free(syntax);
+}
 static void load_file(source_catalog *c, const char *path, declaration_kind kind)
 {
     char *text = NULL;
@@ -472,6 +651,22 @@ static void load_file(source_catalog *c, const char *path, declaration_kind kind
         text = read_source(c, path);
     }
     if (!text) {
+        return;
+    }
+    if (kind == DECLARATION_UI || kind == DECLARATION_SCENE ||
+        kind == DECLARATION_PROTOTYPE) {
+        size_t length = strlen(c->root);
+        while (length && c->root[length - 1] == '/') {
+            length--;
+        }
+        apush(
+            c->assets,
+            ((source_catalog_asset){ own(c, path), own(c, text), own(c, path + length + 1) })
+        );
+    }
+    if (kind == DECLARATION_COMPONENT) {
+        component_declarations(c, path, text);
+        free(text);
         return;
     }
     if (kind == DECLARATION_UI) {
@@ -547,9 +742,10 @@ static void scan(source_catalog *c, const char *path, int depth, declaration_kin
         }
         return;
     }
-    const char *suffix = kind == DECLARATION_SOURCE ? ".chibi"
-                       : kind == DECLARATION_UI     ? ".rml"
-                                                    : ".kdl";
+    const char *suffix = (kind == DECLARATION_SOURCE || kind == DECLARATION_COMPONENT)
+                           ? ".chibi"
+                       : kind == DECLARATION_UI ? ".rml"
+                                                : ".kdl";
     struct dirent *entry;
     while (c->entries < MAX_ENTRIES && (entry = readdir(directory))) {
         c->entries++;
@@ -731,7 +927,8 @@ static void global_declarations(source_catalog *c)
     script_catalog_field *fields = NULL;
     for (int i = 0; i < acount(c->definitions); i++) {
         const source_catalog_definition *definition = &c->definitions[i];
-        if (!definition->field) {
+        if (!definition->field ||
+            definition->owner != script_catalog_id("type", "SceneGlobals")) {
             continue;
         }
         bool found = false;
@@ -758,7 +955,8 @@ static void global_declarations(source_catalog *c)
     }
     const source_catalog_definition *definition = NULL;
     for (int i = 0; !definition && i < acount(c->definitions); i++) {
-        if (c->definitions[i].field) {
+        if (c->definitions[i].field &&
+            c->definitions[i].owner == script_catalog_id("type", "SceneGlobals")) {
             definition = &c->definitions[i];
         }
     }
@@ -777,7 +975,8 @@ static void global_declarations(source_catalog *c)
         error(c, definition->path, definition->range, message);
         int kept = 0;
         for (int i = 0; i < acount(c->definitions); i++) {
-            if (!c->definitions[i].field) {
+            if (!c->definitions[i].field ||
+                c->definitions[i].owner != script_catalog_id("type", "SceneGlobals")) {
                 c->definitions[kept++] = c->definitions[i];
             }
         }
@@ -1090,9 +1289,11 @@ bool source_catalog_edit_path(const char *root, const char *path)
     if (!strcmp(relative, INPUT_MAP_FILE)) {
         return true;
     }
-    const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/" };
-    for (int i = 0; i < 4; i++) {
-        const char *extension = i == 3 ? ".rml" : DECLARATIVE_ASSET_EXTENSION;
+    const char *folders[] = { "events/", "prototypes/", "scenes/", "ui/", "components/" };
+    for (int i = 0; i < 5; i++) {
+        const char *extension = i == 3 ? ".rml"
+                              : i == 4 ? ".chibi"
+                                       : DECLARATIVE_ASSET_EXTENSION;
         size_t size = strlen(relative), suffix = strlen(extension);
         if (!strncmp(relative, folders[i], strlen(folders[i])) &&
             size > suffix && !strcmp(relative + size - suffix, extension)) {
@@ -1115,6 +1316,7 @@ static declaration_kind edit_kind(const char *root, const char *path)
     return !strncmp(relative, "events/", 7)      ? DECLARATION_EVENT
          : !strncmp(relative, "prototypes/", 11) ? DECLARATION_PROTOTYPE
          : !strncmp(relative, "ui/", 3)          ? DECLARATION_UI
+         : !strncmp(relative, "components/", 11) ? DECLARATION_COMPONENT
                                                  : DECLARATION_SCENE;
 }
 static source_catalog *build(
@@ -1171,13 +1373,13 @@ static source_catalog *build(
     }
     update_view(c);
     const char *folders[] = { "events",  "prototypes", "libraries", "behaviors",
-                              "systems", "scenes",     "ui" };
+                              "systems", "scenes",     "ui",        "components" };
     const declaration_kind kinds[] = {
         DECLARATION_EVENT,  DECLARATION_PROTOTYPE, DECLARATION_SOURCE,
         DECLARATION_SOURCE, DECLARATION_SOURCE,    DECLARATION_SCENE,
-        DECLARATION_UI
+        DECLARATION_UI,     DECLARATION_COMPONENT
     };
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
         if (replace && kinds[i] == DECLARATION_SOURCE) {
             continue;
         }
@@ -1272,6 +1474,10 @@ static source_catalog *build(
                 );
                 error(c, reference->path, reference->range, message);
             }
+            continue;
+        }
+        if (reference->kind == SOURCE_REFERENCE_TYPE ||
+            reference->kind == SOURCE_REFERENCE_FIELD) {
             continue;
         }
         script_capability_kind kind = reference->kind == SOURCE_REFERENCE_EVENT
@@ -1382,6 +1588,7 @@ void source_catalog_free(source_catalog *c)
         script_analysis_free(c->sources[i].declarations);
     }
     afree(c->sources);
+    afree(c->assets);
     afree(c->definitions);
     afree(c->references);
     afree(c->diagnostics);
@@ -1390,4 +1597,13 @@ void source_catalog_free(source_catalog *c)
     input_map_free(c->input);
     arena_free(&c->storage);
     free(c);
+}
+
+int source_catalog_asset_count(const source_catalog *c)
+{
+    return acount(c->assets);
+}
+const source_catalog_asset *source_catalog_asset_at(const source_catalog *c, int index)
+{
+    return index >= 0 && index < acount(c->assets) ? &c->assets[index] : NULL;
 }

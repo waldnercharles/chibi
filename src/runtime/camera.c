@@ -42,6 +42,45 @@ static bool camera_lens(const Camera *camera, const GlobalTransform3D *pose, eng
            isfinite(lens->eye.z);
 }
 
+bool camera_entity_view(ecs_world *world, const engine *runtime, ecs_entity entity, engine_viewport_view *out)
+{
+    const Camera *camera = Camera_get_const(world, entity);
+    if (!camera || !out) {
+        return false;
+    }
+    /* Drawn as bodies are, between physics steps, so a camera riding one
+     * holds still against it. */
+    GlobalTransform3D shown;
+    const GlobalTransform3D *pose = NULL;
+    if (Transform3D_has(world, entity)) {
+        shown = engine_render_transform_3d(runtime, world, entity);
+        pose = &shown;
+    }
+    if (!pose && !Transform_has(world, entity)) {
+        return false;
+    }
+    CF_V2 position = pose ? (CF_V2){ pose->position.x, pose->position.z }
+                          : engine_render_transform(runtime, world, entity).position;
+    *out = (engine_viewport_view){ .center_x = position.x + camera->offset.x,
+                                   .center_y = -position.y - camera->offset.y,
+                                   .width = camera->width,
+                                   .height = camera->height,
+                                   .focal_distance = camera->focal_distance,
+                                   .yaw = camera->yaw,
+                                   .pitch = camera->pitch,
+                                   .target_elevation = camera->target_elevation,
+                                   .roll = camera->roll };
+    if (!camera_lens(camera, pose, &out->lens) || !isfinite(out->center_x) ||
+        !isfinite(out->center_y) || !isfinite(out->width) || !isfinite(out->height) ||
+        out->width <= 0 || out->height <= 0 || !isfinite(out->focal_distance) ||
+        out->focal_distance < 0 || !isfinite(out->yaw) || !isfinite(out->pitch) ||
+        !isfinite(out->roll) || !isfinite(out->target_elevation) ||
+        (out->focal_distance > 0 && out->focal_distance <= 1)) {
+        return false;
+    }
+    return true;
+}
+
 int camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
 {
     if (!ecs_world_component(world, COMPONENT_Camera.id) ||
@@ -60,36 +99,7 @@ int camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *o
         if (camera->disabled || ecs_entity_is_retiring(world, entity)) {
             continue;
         }
-        /* Drawn as bodies are, between physics steps, so a camera riding one
-         * holds still against it. */
-        GlobalTransform3D shown;
-        const GlobalTransform3D *pose = NULL;
-        if (Transform3D_has(world, entity)) {
-            shown = engine_render_transform_3d(runtime, world, entity);
-            pose = &shown;
-        }
-        if (!pose && !Transform_has(world, entity)) {
-            found = -1;
-            break;
-        }
-        CF_V2 position = pose ? (CF_V2){ pose->position.x, pose->position.z }
-                              : engine_render_transform(runtime, world, entity).position;
-        *out = (engine_viewport_view){ .center_x = position.x + camera->offset.x,
-                                       .center_y = -position.y - camera->offset.y,
-                                       .width = camera->width,
-                                       .height = camera->height,
-                                       .focal_distance = camera->focal_distance,
-                                       .yaw = camera->yaw,
-                                       .pitch = camera->pitch,
-                                       .target_elevation = camera->target_elevation,
-                                       .roll = camera->roll };
-        if (found || !camera_lens(camera, pose, &out->lens) ||
-            !isfinite(out->center_x) || !isfinite(out->center_y) ||
-            !isfinite(out->width) || !isfinite(out->height) || out->width <= 0 ||
-            out->height <= 0 || !isfinite(out->focal_distance) ||
-            out->focal_distance < 0 || !isfinite(out->yaw) || !isfinite(out->pitch) ||
-            !isfinite(out->roll) || !isfinite(out->target_elevation) ||
-            (out->focal_distance > 0 && out->focal_distance <= 1)) {
+        if (found || !camera_entity_view(world, runtime, entity, out)) {
             found = -1;
             break;
         }

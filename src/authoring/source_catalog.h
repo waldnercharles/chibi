@@ -5,6 +5,15 @@
 #include "runtime/input_action.h"
 
 typedef struct source_catalog source_catalog;
+/* Retained non-executable documents for typed project context analysis.
+ * identity is relative to the content root, including extension. */
+typedef struct
+{
+    const char *path, *text, *identity;
+} source_catalog_asset;
+int source_catalog_asset_count(const source_catalog *);
+const source_catalog_asset *source_catalog_asset_at(const source_catalog *, int index);
+
 typedef struct
 {
     const char *path, *text, *identity;

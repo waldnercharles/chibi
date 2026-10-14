@@ -312,6 +312,35 @@ static void collect_imports(const execution_module *m, execution_module ***modul
         collect_imports(import, modules);
     }
 }
+static void random_retarget(execution_program *p, behavior_random *before, behavior_random *after)
+{
+    for (int i = 0; i < acount(p->services); i++) {
+        if (!strcmp(p->services[i].type_name, BEHAVIOR_RANDOM_SERVICE) &&
+            p->services[i].value == before) {
+            p->services[i].value = after;
+        }
+    }
+    for (int i = 0; i < acount(p->instances); i++) {
+        execution_instance *instance = p->instances[i];
+        for (int j = 0; j < acount(instance->activations); j++) {
+            execution_activation *a = instance->activations[j];
+            behavior_function_rebind_services(a->function, &a->context, p->services);
+        }
+    }
+    for (int i = 0; i < acount(p->imports); i++) {
+        random_retarget(p->imports[i], before, after);
+    }
+}
+static behavior_random *random_service(const execution_program *p)
+{
+    for (int i = 0; i < acount(p->services); i++) {
+        if (!strcmp(p->services[i].type_name, BEHAVIOR_RANDOM_SERVICE) &&
+            p->services[i].value) {
+            return p->services[i].value;
+        }
+    }
+    return p->random;
+}
 static execution_program *program_new(
     execution_module *m,
     ecs_world *world,
@@ -328,6 +357,8 @@ static execution_program *program_new(
     p->enabled = true;
     p->module = m;
     p->owner_program = p;
+    p->random = xcalloc(1, sizeof *p->random);
+    behavior_random_seed(p->random, 1);
     execution_module_retain(m);
     p->world = world;
     p->budget = 10000;
@@ -341,6 +372,18 @@ static execution_program *program_new(
         char *owned = arena_alloc(&p->service_names, length);
         memcpy(owned, name, length);
         apush(p->services, ((service_binding){ owned, services[i].value }));
+    }
+    if (!service_present(p->services, BEHAVIOR_RANDOM_SERVICE)) {
+        bool found = false;
+        for (int i = 0; i < acount(p->services); i++) {
+            if (!strcmp(p->services[i].type_name, BEHAVIOR_RANDOM_SERVICE)) {
+                p->services[i].value = p->random;
+                found = true;
+            }
+        }
+        if (!found) {
+            apush(p->services, ((service_binding){ BEHAVIOR_RANDOM_SERVICE, p->random }));
+        }
     }
     if (world && !service_present(p->services, "ecs.world")) {
         apush(p->services, ((service_binding){ "ecs.world", world }));
@@ -965,6 +1008,7 @@ void execution_program_free(execution_program *p)
     program_activation_cache_free(p);
     execution_module_free(p->module);
     free(p->name);
+    free(p->random);
     free(p);
 }
 static void record_failure(const behavior_function *f, const behavior_function_context *ctx, int status)
@@ -1000,7 +1044,11 @@ static void record_failure(const behavior_function *f, const behavior_function_c
     }
     snprintf(error.asset_name, sizeof error.asset_name, "%s", asset ? asset : "");
     snprintf(error.message, sizeof error.message, "%s", ctx->error_message ? ctx->error_message : "script execution failed");
+    if (ctx->query_variables) {
+        memcpy(error.query_variables, ctx->query_variables, sizeof error.query_variables);
+    }
     p->failure = error;
+    program_inspection_failure(p, &p->failure);
 }
 bool program_world_views_allowed(const behavior_function_context *ctx)
 {
@@ -1687,6 +1735,12 @@ static int query_matches(execution_instance *instance, int index)
                     "%s",
                     context->error_message ? context->error_message : "query predicate failed"
                 );
+                memcpy(
+                    p->failure.query_variables,
+                    instance->query_variables,
+                    sizeof p->failure.query_variables
+                );
+                program_inspection_failure(p, &p->failure);
             }
             if (!status) {
                 query_evaluator_keep(p, e);
@@ -2051,6 +2105,7 @@ static int merge_row_chunks(execution_program *p)
             status = work->status;
             if (!p->failure.status) {
                 p->failure = worker->failure;
+                program_inspection_failure(p, &p->failure);
             }
         }
     }
@@ -2722,11 +2777,33 @@ execution_program *execution_program_prepare_replace_services(
             }
         }
     }
+    behavior_random *original = random_service(p);
+    for (int i = 0; i < acount(services); i++) {
+        if (!strcmp(services[i].type_name, BEHAVIOR_RANDOM_SERVICE) &&
+            services[i].value) {
+            original = services[i].value;
+        }
+    }
+    behavior_random fork = *original;
+    bool found = false;
+    for (int i = 0; i < acount(services); i++) {
+        if (!strcmp(services[i].type_name, BEHAVIOR_RANDOM_SERVICE)) {
+            services[i].value = &fork;
+            found = true;
+        }
+    }
+    if (!found) {
+        apush(services, ((service_binding){ BEHAVIOR_RANDOM_SERVICE, &fork }));
+    }
     execution_program *next = execution_program_new(module, p->world, services);
     afree(services);
     if (!next) {
         return NULL;
     }
+    *next->random = fork;
+    random_retarget(next, &fork, next->random);
+    next->replacement_random = original == p->random ? NULL : original;
+    next->replacement_random_before = *original;
     execution_program_set_name(next, p->name);
     next->enabled = p->enabled;
     if (!restart) {
@@ -2744,7 +2821,8 @@ execution_program *execution_program_prepare_replace_services(
     }
     for (int i = 0; i < acount(p->instances); i++) {
         execution_instance *before = p->instances[i];
-        if (before->query_managed && !query_shape_equal(module, p->module)) {
+        if (before->query_managed &&
+            (restart || !query_shape_equal(module, p->module))) {
             continue;
         }
         execution_instance *after = attach_row(next, before->owner, before->query_variables);
@@ -2785,6 +2863,24 @@ void execution_program_commit_replace(execution_program *p, execution_program *n
     );
     assert(next->replacement_of == p && next->replacement_module == p->module);
     execution_program_cancel_system(p);
+    behavior_random *original = next->replacement_random ? next->replacement_random
+                                                         : p->random;
+    behavior_random before = next->replacement_random_before;
+    if (next->random->state == before.state &&
+        next->random->initialized == before.initialized) {
+        /* Preparation did not draw: preserve any draws since it was prepared. */
+        *next->random = *original;
+    } else {
+        /* A candidate that drew owns a fork; adoption requires a quiescent parent. */
+        assert(
+            original->state == before.state && original->initialized == before.initialized
+        );
+    }
+    if (next->replacement_random) {
+        *next->replacement_random = *next->random;
+        random_retarget(next, next->random, next->replacement_random);
+        next->replacement_random = NULL;
+    }
     next->replacement_of = NULL;
     next->replacement_module = NULL;
     execution_program old = *p;
@@ -2856,6 +2952,9 @@ static bool service_required(const execution_program *p, const char *name)
 }
 static void bind_service(execution_program *p, const char *name, void *value)
 {
+    if (!value && !strcmp(name, BEHAVIOR_RANDOM_SERVICE)) {
+        value = p->owner_program->random;
+    }
     int index = -1;
     for (int i = 0; i < acount(p->services); i++) {
         if (!strcmp(p->services[i].type_name, name)) {

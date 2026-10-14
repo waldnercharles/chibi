@@ -1,4 +1,5 @@
 /* Registration and the helpers the native controls share. */
+#include "ui/controls/code_control.h"
 #include "ui/controls/controls_internal.h"
 
 #include <stdio.h>
@@ -14,6 +15,10 @@ void controls_register()
     choice_list_register();
     tab_list_register();
     line_chart_register();
+    code_control_register();
+    texture_view_register();
+    shape_glyph_register();
+    vector_path_register();
 }
 
 rml_element *control_part(rml_element *parent, const char *tag, const char *cls)

@@ -11,20 +11,21 @@ void type_catalog_set_project(const type_catalog_pack *pack)
     has_project = pack != NULL;
     project = pack ? *pack : (type_catalog_pack){ 0 };
 }
-static int pack_count()
+const type_catalog_pack *type_catalog_project()
 {
-    return type_catalog_pack_count() + has_project;
+    return has_project ? &project : NULL;
 }
-static type_catalog_pack pack_at(int index)
+static type_catalog_pack pack_at(int index, int native_count)
 {
-    return index < type_catalog_pack_count() ? type_catalog_pack_at(index) : project;
+    return index < native_count ? type_catalog_pack_at(index) : project;
 }
 
 int type_catalog_count()
 {
     int count = 0;
-    for (int i = 0; i < pack_count(); i++) {
-        count += pack_at(i).type_count;
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        count += pack_at(i, native_count).type_count;
     }
     return count;
 }
@@ -34,8 +35,9 @@ const type_desc *type_catalog_at(int index)
     if (index < 0) {
         return NULL;
     }
-    for (int i = 0; i < pack_count(); i++) {
-        type_catalog_pack pack = pack_at(i);
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        type_catalog_pack pack = pack_at(i, native_count);
         if (index < pack.type_count) {
             return pack.types[index];
         }
@@ -52,8 +54,9 @@ const type_desc *type_catalog_find(const char *name)
     if (!strcmp(name, TYPE_MARKER.name)) {
         return &TYPE_MARKER;
     }
-    for (int i = 0; i < pack_count(); i++) {
-        type_catalog_pack pack = pack_at(i);
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        type_catalog_pack pack = pack_at(i, native_count);
         for (int j = 0; j < pack.type_count; j++) {
             if (strcmp(pack.types[j]->name, name) == 0) {
                 return pack.types[j];
@@ -66,8 +69,9 @@ const type_desc *type_catalog_find(const char *name)
 int type_catalog_enum_count()
 {
     int count = 0;
-    for (int i = 0; i < pack_count(); i++) {
-        count += pack_at(i).enum_count;
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        count += pack_at(i, native_count).enum_count;
     }
     return count;
 }
@@ -77,8 +81,9 @@ const enum_desc *type_catalog_enum_at(int index)
     if (index < 0) {
         return NULL;
     }
-    for (int i = 0; i < pack_count(); i++) {
-        type_catalog_pack pack = pack_at(i);
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        type_catalog_pack pack = pack_at(i, native_count);
         if (index < pack.enum_count) {
             return pack.enums[index];
         }
@@ -92,8 +97,9 @@ const enum_desc *type_catalog_enum_find(const char *name)
     if (!name) {
         return NULL;
     }
-    for (int i = 0; i < pack_count(); i++) {
-        type_catalog_pack pack = pack_at(i);
+    int native_count = type_catalog_pack_count();
+    for (int i = 0; i < native_count + has_project; i++) {
+        type_catalog_pack pack = pack_at(i, native_count);
         for (int j = 0; j < pack.enum_count; j++) {
             if (strcmp(pack.enums[j]->name, name) == 0) {
                 return pack.enums[j];

@@ -140,12 +140,36 @@ add_library(Chibi::save_runtime ALIAS chibi_save_runtime)
 set_target_properties(chibi_save_runtime PROPERTIES EXPORT_NAME save_runtime)
 chibi_sdk_headers(chibi_save_runtime PUBLIC runtime/save.h runtime/save_native.h runtime/save_definition.h)
 target_link_libraries(chibi_save_runtime PUBLIC chibi_native_capabilities PRIVATE chibi_json)
+if(WIN32)
+    target_link_libraries(chibi_save_runtime PRIVATE chibi_rooted_files)
+endif()
+add_library(chibi_value_json STATIC "${CHIBI_SDK_ROOT}/src/runtime/value_json.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/value_json_native.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/value_json_definition.c")
+add_library(Chibi::value_json ALIAS chibi_value_json)
+set_target_properties(chibi_value_json PROPERTIES EXPORT_NAME value_json)
+chibi_sdk_headers(chibi_value_json PUBLIC runtime/value_json.h runtime/value_json_native.h
+    runtime/value_json_definition.h)
+target_link_libraries(chibi_value_json PUBLIC chibi_types chibi_native_capabilities
+    PRIVATE chibi_value_document chibi_asset_json chibi_support chibi_json)
+list(APPEND CHIBI_SDK_TARGETS chibi_value_json)
+
+add_library(chibi_authoring_platform_declarations STATIC
+    "${CHIBI_SDK_ROOT}/src/host/authoring_platform_definition.c"
+    "${CHIBI_SDK_ROOT}/src/host/authoring_platform_types.c")
+add_library(Chibi::authoring_platform_declarations ALIAS chibi_authoring_platform_declarations)
+set_target_properties(chibi_authoring_platform_declarations PROPERTIES EXPORT_NAME authoring_platform_declarations)
+chibi_sdk_headers(chibi_authoring_platform_declarations PUBLIC host/authoring_platform.h host/authoring_platform_definition.h)
+target_link_libraries(chibi_authoring_platform_declarations PUBLIC chibi_native_capabilities chibi_types)
+list(APPEND CHIBI_SDK_TARGETS chibi_authoring_platform_declarations)
+
 add_library(chibi_ui_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui_native.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/ui_chord.c"
     "${CHIBI_SDK_ROOT}/src/runtime/ui_definition.c")
 add_library(Chibi::ui_runtime ALIAS chibi_ui_runtime)
 set_target_properties(chibi_ui_runtime PROPERTIES EXPORT_NAME ui_runtime)
-chibi_sdk_headers(chibi_ui_runtime PUBLIC runtime/ui.h runtime/ui_native.h runtime/ui_definition.h)
+chibi_sdk_headers(chibi_ui_runtime PUBLIC runtime/ui.h runtime/ui_native.h runtime/ui_definition.h runtime/ui_chord.h)
 target_link_libraries(chibi_ui_runtime PUBLIC chibi_asset_values chibi_native_capabilities PRIVATE chibi_value_document chibi_math)
 add_library(chibi_input_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/engine_input.c"
     "${CHIBI_SDK_ROOT}/src/runtime/input_definition.c" "${CHIBI_SDK_ROOT}/src/runtime/source_input.c")
@@ -182,6 +206,36 @@ target_link_libraries(chibi_host_native_default PUBLIC chibi_host_native_catalog
     chibi_selection_capabilities chibi_set_capabilities chibi_comparison_capabilities
     chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
     chibi_audio_runtime chibi_url_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
-    chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
+    chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_value_json
     chibi_visual_motion_runtime chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_input_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_host_native_default)
+
+add_library(chibi_json_query STATIC
+    "${CHIBI_SDK_ROOT}/src/runtime/json_query.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/json_query_native.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/json_query_definition.c"
+)
+add_library(Chibi::json_query ALIAS chibi_json_query)
+set_target_properties(chibi_json_query PROPERTIES EXPORT_NAME json_query)
+chibi_sdk_headers(chibi_json_query PUBLIC runtime/json_query.h runtime/json_query_native.h runtime/json_query_definition.h)
+target_link_libraries(chibi_json_query PUBLIC chibi_native_capabilities PRIVATE chibi_json chibi_support chibi_execution)
+list(APPEND CHIBI_SDK_TARGETS chibi_json_query)
+
+add_library(chibi_color_value STATIC
+    "${CHIBI_SDK_ROOT}/src/runtime/color_value.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/color_value_definition.c"
+)
+add_library(Chibi::color_value ALIAS chibi_color_value)
+set_target_properties(chibi_color_value PROPERTIES EXPORT_NAME color_value)
+chibi_sdk_headers(chibi_color_value PUBLIC runtime/color_value.h runtime/color_value_definition.h)
+target_link_libraries(chibi_color_value PUBLIC chibi_native_capabilities PRIVATE chibi_execution chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_color_value)
+
+target_link_libraries(chibi_host_native_default PRIVATE chibi_json_query chibi_color_value)
+
+add_library(chibi_ui_replay STATIC "${CHIBI_SDK_ROOT}/src/host/ui_replay.c")
+add_library(Chibi::ui_replay ALIAS chibi_ui_replay)
+set_target_properties(chibi_ui_replay PROPERTIES EXPORT_NAME ui_replay)
+chibi_sdk_headers(chibi_ui_replay PUBLIC host/ui_replay.h)
+target_link_libraries(chibi_ui_replay PUBLIC chibi_json PRIVATE chibi_json_query chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_ui_replay)

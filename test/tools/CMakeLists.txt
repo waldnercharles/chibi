@@ -160,7 +160,7 @@ if(TARGET Chibi::scene_authoring)
 endif()
 if(TARGET Chibi::entity_runtime)
     add_library(chibi_native_consumer OBJECT native.c native_values.c native_catalog.c physics.c
-        physics3d.c transforms.c tilemap_native.c)
+        physics3d.c transforms.c tilemap_native.c entity_names.c)
     target_include_directories(chibi_native_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_native_consumer PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime

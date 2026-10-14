@@ -283,6 +283,7 @@ void test_tool_reflect();
 void test_tool_reflect_ranges();
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
+void test_tool_entity_names();
 void test_tool_native();
 void test_tool_native_values();
 void test_tool_native_catalog();
@@ -1282,6 +1283,9 @@ int main(int argc, char **argv)
         test_tool_ecs();
         test_tool_ecs_relationships();
         test_tool_ecs_hierarchy();
+#ifdef CHIBI_TEST_NATIVE_RUNTIME
+        test_tool_entity_names();
+#endif
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();

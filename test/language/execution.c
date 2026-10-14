@@ -487,6 +487,63 @@ static const char *rebound_host(void *service, const pin_value *, pin_value *res
     return NULL;
 }
 
+static const char *reused_box(void *service, const pin_value *, pin_value *results)
+{
+    fixture_box *box = results[0].ptr;
+    if (!box || box->value) {
+        return "host buffer retained its previous payload";
+    }
+    box->value = *(const int *)service;
+    return NULL;
+}
+
+TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers)
+{
+    builder = behavior_function_builder_new();
+    const pin_value result = { .type = PIN_STRUCT, .type_name = "fixture.box" };
+    const node_host_call host = { .service = "fixture.rebound", .invoke = reused_box };
+    const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+    int capability = behavior_function_builder_host(builder, &host, &access, NULL, 0, &result, 1);
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = capability,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    int service = 31;
+    apush(log_services, ((service_binding){ "fixture.rebound", &service }));
+    for (int backend = 0; backend < 2; backend++) {
+        release_invocation();
+        context.budget = 100;
+        REQUIRE(behavior_function_bind(function, &context, log_services, 42));
+        behavior_function_prepare_host(function, &context);
+        behavior_data_storage *data = context.data;
+        fixture_box *box = data->values[0].ptr;
+        size_t bytes = behavior_function_host_storage_bytes(&context);
+        uint64_t allocations = behavior_function_data_allocations();
+        REQUIRE(bytes >= sizeof *data + sizeof *box);
+        for (int invocation = 0; invocation < 2; invocation++) {
+            service = invocation ? 73 : 31;
+            REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
+            REQUIRE(box->value == service);
+            behavior_function_reset_host(&context);
+            REQUIRE(context.data == data && context.owned_data);
+            REQUIRE(
+                !context.services && !context.owner && !context.source_function &&
+                !context.arguments && !context.results && !context.value_storage
+            );
+            REQUIRE(data->values[0].ptr == box && !box->value && !data->calls[0].service);
+            REQUIRE(behavior_function_host_storage_bytes(&context) == bytes);
+            context.budget = 100;
+            REQUIRE(behavior_function_bind(function, &context, log_services, 43));
+            behavior_function_prepare_host(function, &context);
+            REQUIRE(data->calls[0].service == &service);
+        }
+        REQUIRE(behavior_function_data_allocations() == allocations);
+    }
+    return true;
+}
+
 TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
 {
     builder = behavior_function_builder_new();
@@ -1376,6 +1433,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches);
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
+    RUN_TEST_CASE(execution_reused_host_storage_clears_context_and_rebinds_fixed_buffers);
     RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts);
     RUN_TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands);
     RUN_TEST_CASE(execution_print_string_is_synchronous_and_preserves_context);

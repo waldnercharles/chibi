@@ -68,7 +68,7 @@ chibi_sdk_contract(chibi_native_prepared "${CHIBI_SDK_ROOT}/src/runtime" chibi_n
 chibi_sdk_contract(chibi_host_native_catalog "${CHIBI_SDK_ROOT}/src/host" chibi_native_capabilities chibi_events)
 chibi_sdk_contract(chibi_ecs "${CHIBI_SDK_ROOT}/src/ecs" chibi_types)
 chibi_sdk_contract(chibi_execution "${CHIBI_SDK_ROOT}/src/execution"
-    chibi_types chibi_execution_contract chibi_ecs chibi_execution_sljit)
+    chibi_types chibi_execution_contract chibi_ecs chibi_execution_sljit chibi_tasks)
 chibi_sdk_contract(chibi_events "${CHIBI_SDK_ROOT}/src/runtime" chibi_types)
 chibi_sdk_contract(chibi_behavior_runtime "${CHIBI_SDK_ROOT}/src/runtime"
     chibi_execution chibi_events)

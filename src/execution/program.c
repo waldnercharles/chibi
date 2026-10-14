@@ -12,6 +12,7 @@
 #include "execution/runner.h"
 #include "execution/scalar.h"
 #include "execution/status.h"
+#include "runtime/tasks.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
@@ -24,6 +25,92 @@
 
 #define PENDING_SERVICE_LIMIT 256
 #define SYSTEM_SCRATCH_BYTES ((size_t)64 * 1024)
+#define ROW_WORKER_BYTES ((size_t)1024 * 1024)
+#define ROW_CHUNK_MIN 64
+
+typedef struct execution_row_worker
+{
+    execution_program *program;
+    const uint64_t *rows;
+    int first, end, width, status;
+    uint32_t worker;
+} execution_row_worker;
+static void row_workers_trim(execution_program *, int);
+
+typedef struct query_evaluator
+{
+    struct query_evaluator *next;
+    const behavior_function *function;
+    behavior_function_activation activation;
+    behavior_function_context context;
+    arena storage;
+    size_t bytes;
+} query_evaluator;
+
+static void query_evaluator_free(query_evaluator *e)
+{
+    behavior_function_release_host(&e->context);
+    behavior_function_activation_free(&e->activation);
+    arena_free(&e->storage);
+    free(e);
+}
+static void query_cache_clear(execution_program *p)
+{
+    while (p->query_evaluators) {
+        query_evaluator *e = p->query_evaluators;
+        p->query_evaluators = e->next;
+        query_evaluator_free(e);
+    }
+    p->query_cache_bytes = 0;
+}
+static query_evaluator *query_evaluator_take(execution_program *p, const behavior_function *f)
+{
+    query_evaluator **slot = &p->query_evaluators;
+    while (*slot) {
+        query_evaluator *e = *slot;
+        if (e->function == f) {
+            *slot = e->next;
+            p->query_cache_bytes -= e->bytes;
+            e->next = NULL;
+            return e;
+        }
+        slot = &e->next;
+    }
+    query_evaluator *e = xcalloc(1, sizeof *e);
+    e->function = f;
+    if (behavior_function_resumable(f)) {
+        behavior_function_activation_init(f, &e->activation);
+    }
+    return e;
+}
+static void query_evaluator_keep(execution_program *p, query_evaluator *e)
+{
+    /* Only the returned bool escapes. Reset every borrowed value before the
+     * arena can be reused, and leave a running evaluator out of the cache. */
+    behavior_function_reset_host(&e->context);
+    behavior_function_reset_activation(e->function, &e->activation);
+    arena_reset(&e->storage);
+    e->bytes = sizeof *e + arena_storage_bytes(&e->storage) +
+               behavior_function_host_storage_bytes(&e->context) +
+               behavior_function_activation_storage_bytes(e->function, &e->activation);
+    if (e->bytes > SYSTEM_SCRATCH_BYTES) {
+        query_evaluator_free(e);
+        return;
+    }
+    while (p->query_cache_bytes > SYSTEM_SCRATCH_BYTES - e->bytes) {
+        query_evaluator **oldest = &p->query_evaluators;
+        while ((*oldest)->next) {
+            oldest = &(*oldest)->next;
+        }
+        query_evaluator *old = *oldest;
+        *oldest = NULL;
+        p->query_cache_bytes -= old->bytes;
+        query_evaluator_free(old);
+    }
+    e->next = p->query_evaluators;
+    p->query_evaluators = e;
+    p->query_cache_bytes += e->bytes;
+}
 
 static bool paused_system(const execution_program *p)
 {
@@ -326,14 +413,24 @@ static execution_program *program_new(
     /* Shared callees can occur along many paths. Bound this optional proof;
      * falling back to retained rows does not limit program execution. */
     int stream_steps = 4096;
+    p->stream_system = -1;
+    bool stream_entries = m->plan.function_count == 1 || effects.parallel_safe;
+    for (int i = 0; i < m->plan.function_count; i++) {
+        const execution_module_function *function = &m->plan.functions[i];
+        if (function->kind == EXECUTION_FUNCTION_SYSTEM && p->stream_system < 0) {
+            p->stream_system = i;
+        } else if (function->kind != EXECUTION_FUNCTION_AUTHORED) {
+            stream_entries = false;
+        }
+    }
     p->query_streaming = (m->plan.query_variable_count || effects.reduce_count) &&
                          m->plan.query >= 0 && !m->plan.state_count &&
                          !m->plan.binding_count && !m->plan.action_count &&
-                         !m->plan.import_count && m->plan.function_count == 1 &&
-                         m->plan.functions[0].kind == EXECUTION_FUNCTION_SYSTEM &&
-                         !acount(p->change_queries) && effects.declared &&
-                         !effects.structural && !effects.host_sink &&
-                         stream_function(m->plan.functions[0].body, 0, &stream_steps);
+                         !m->plan.import_count && stream_entries &&
+                         p->stream_system >= 0 && !acount(p->change_queries) &&
+                         effects.declared && !effects.structural &&
+                         !effects.host_sink &&
+                         stream_function(m->plan.functions[p->stream_system].body, 0, &stream_steps);
     return p;
 }
 execution_program *execution_program_new(execution_module *m, ecs_world *world, const service_binding *services)
@@ -823,6 +920,7 @@ void execution_program_free(execution_program *p)
         assert(paused_system(p));
         execution_program_cancel_system(p);
     }
+    row_workers_trim(p, 0);
     afree(p->system_activations);
     afree(p->system_rows);
     afree(p->reductions);
@@ -835,6 +933,7 @@ void execution_program_free(execution_program *p)
     afree(p->row_table);
     afree(p->change_queries);
     afree(p->query_admissions);
+    query_cache_clear(p);
     for (int i = 0; i < acount(p->imports); i++) {
         execution_program_free(p->imports[i]);
     }
@@ -993,21 +1092,47 @@ static bool unbounded_field(const type_desc *type, size_t offset, pin_type scala
     }
     return false;
 }
-static bool reduction_target(const execution_program *p, const component_reduction *r)
+static bool reduction_target(execution_program *p, const component_reduction *r)
 {
-    const ecs_component_desc *desc = p->world
-                                       ? ecs_world_component(p->world, r->component)
-                                       : NULL;
-    return desc && type_layout_hash(desc->type) == r->layout &&
-           (r->op != EXECUTION_REDUCTION_ADD_UNORDERED ||
-            unbounded_field(desc->type, r->offset, r->value.type, 0)) &&
-           ecs_component_data_const(p->world, ecs_entity_from_u64(r->entity), r->component) &&
-           ecs_component_accepts_value(
-               p->world,
-               r->component,
-               r->offset,
-               (pin_value){ .type = r->value.type }
-           );
+    const ecs_execution_view *world = p->world ? ecs_world_execution(p->world) : NULL;
+    uint32_t entity = world ? ecs_execution_entity(world, r->entity) : 0;
+    const ecs_execution_column *column = world
+                                           ? ecs_execution_component(world, entity, r->component)
+                                           : NULL;
+    if (!column || column->layout != r->layout) {
+        return false;
+    }
+    /* Registration fixes the schema for this program's world. Reacquire the
+     * column and live entity on every check: storage may grow or rows disappear
+     * between collection and whole-log preflight, including across a pause. */
+    int count = (int)(sizeof p->reduction_fields / sizeof *p->reduction_fields);
+    for (int i = 0; i < count; i++) {
+        const reduction_field *field = &p->reduction_fields[i];
+        if (field->component == r->component && field->layout == r->layout &&
+            field->type == column->type && field->offset == r->offset &&
+            field->scalar == r->value.type) {
+            return r->op != EXECUTION_REDUCTION_ADD_UNORDERED || field->unbounded;
+        }
+    }
+    if (!ecs_component_accepts_value(
+            p->world,
+            r->component,
+            r->offset,
+            (pin_value){ .type = r->value.type }
+        )) {
+        return false;
+    }
+    reduction_field field = {
+        .component = r->component,
+        .layout = r->layout,
+        .type = column->type,
+        .offset = r->offset,
+        .scalar = r->value.type,
+        .unbounded = unbounded_field(column->type, r->offset, r->value.type, 0)
+    };
+    p->reduction_fields[p->next_reduction_field] = field;
+    p->next_reduction_field = (p->next_reduction_field + 1) % count;
+    return r->op != EXECUTION_REDUCTION_ADD_UNORDERED || field.unbounded;
 }
 static pin_value reduction_value(pin_value, pin_value, execution_reduction_op);
 static bool same_reduction(const component_reduction *a, const component_reduction *b)
@@ -1074,41 +1199,15 @@ static void begin_reductions(execution_program *p)
     p->reducing = p->module->effects.reduce_count > 0;
     p->reduction_contributions = p->reduction_records = 0;
     p->reduction_peak_bytes = 0;
+    p->row_parallel_jobs = p->row_parallel_workers = 0;
 }
-static int reduce_component(
-    behavior_function_context *ctx,
-    uint64_t entity,
-    uint64_t component,
-    uint64_t layout,
-    size_t offset,
-    pin_value declared,
-    pin_value value,
-    execution_reduction_op op
-)
+static int append_reduction(execution_program *p, component_reduction record)
 {
-    execution_activation *a = ctx->inspection_user;
-    execution_program *p = a->instance->program;
-    if (!p->reducing || declared.container != PIN_CONTAINER_SINGLE ||
-        declared.type < PIN_I8 || declared.type > PIN_F64 ||
-        value.type != declared.type || value.container != PIN_CONTAINER_SINGLE ||
-        op < EXECUTION_REDUCTION_ADD || op > EXECUTION_REDUCTION_ADD_UNORDERED) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    component_reduction record = { .entity = entity,
-                                   .component = component,
-                                   .layout = layout,
-                                   .offset = offset,
-                                   .value = { .type = declared.type },
-                                   .op = op };
-    memcpy(&record.value.d, &value.d, behavior_scalar_size(declared.type));
-    if (!reduction_target(p, &record)) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    bool unordered = op == EXECUTION_REDUCTION_ADD_UNORDERED;
+    bool unordered = record.op == EXECUTION_REDUCTION_ADD_UNORDERED;
     if ((unordered && p->ordered_reductions) ||
         (!unordered && p->unordered_reductions)) {
         for (int i = 0; i < acount(p->reductions); i++) {
-            if (p->reductions[i].component == component &&
+            if (p->reductions[i].component == record.component &&
                 (p->reductions[i].op == EXECUTION_REDUCTION_ADD_UNORDERED) != unordered) {
                 return FLOW_ERR_ARGUMENT;
             }
@@ -1149,6 +1248,34 @@ static int reduce_component(
         p->reduction_peak_bytes = capacity;
     }
     return FLOW_OK;
+}
+static int reduce_component(
+    behavior_function_context *ctx,
+    uint64_t entity,
+    uint64_t component,
+    uint64_t layout,
+    size_t offset,
+    pin_value declared,
+    pin_value value,
+    execution_reduction_op op
+)
+{
+    execution_activation *a = ctx->inspection_user;
+    execution_program *p = a->instance->program;
+    if (!p->reducing || declared.container != PIN_CONTAINER_SINGLE ||
+        declared.type < PIN_I8 || declared.type > PIN_F64 ||
+        value.type != declared.type || value.container != PIN_CONTAINER_SINGLE ||
+        op < EXECUTION_REDUCTION_ADD || op > EXECUTION_REDUCTION_ADD_UNORDERED) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    component_reduction record = { .entity = entity,
+                                   .component = component,
+                                   .layout = layout,
+                                   .offset = offset,
+                                   .value = { .type = declared.type },
+                                   .op = op };
+    memcpy(&record.value.d, &value.d, behavior_scalar_size(declared.type));
+    return reduction_target(p, &record) ? append_reduction(p, record) : FLOW_ERR_ARGUMENT;
 }
 void execution_program_discard_reductions(execution_program *p)
 {
@@ -1521,42 +1648,36 @@ static int query_matches(execution_instance *instance, int index)
             assert(!"change query is not tracked");
             return FLOW_ERR_STATE;
         case EXECUTION_QUERY_VALUE: {
-            arena storage = { 0 };
-            behavior_function_activation activation = { 0 };
+            query_evaluator *e = query_evaluator_take(p, q->predicate);
             bool resumable = behavior_function_resumable(q->predicate);
-            if (resumable) {
-                behavior_function_activation_init(q->predicate, &activation);
-            }
             pin_value result = { .type = PIN_BOOL };
-            behavior_function_context context = {
-                .activation = resumable ? &activation : NULL,
-                .owner = instance->owner,
-                .query_variables = instance->query_variables,
-                .results = &result,
-                .now = p->now,
-                .delta_seconds = p->delta,
-                .budget = p->budget,
-                .services = p->services
-            };
-            behavior_function_bind_storage(&context, &storage);
+            behavior_function_context *context = &e->context;
+            /* Even a non-suspending predicate can reuse its VM scratch. */
+            context->activation = &e->activation;
+            context->query_variables = instance->query_variables;
+            context->results = &result;
+            context->now = p->now;
+            context->delta_seconds = p->delta;
+            context->budget = p->budget;
+            behavior_function_bind_storage(context, &e->storage);
             if (!behavior_function_bind(
                     q->predicate,
-                    &context,
+                    context,
                     p->services,
                     instance->owner
                 )) {
-                behavior_function_activation_free(&activation);
-                arena_free(&storage);
+                query_evaluator_free(e);
                 return FLOW_ERR_ARGUMENT;
             }
+            behavior_function_prepare_host(q->predicate, context);
             bool compiled = p->module->backend != BEHAVIOR_BYTECODE;
             int status = resumable
-                           ? behavior_function_run(q->predicate, &context, compiled)
-                           : behavior_function_run_once(q->predicate, &context, compiled);
+                           ? behavior_function_run(q->predicate, context, compiled)
+                           : behavior_function_run_once(q->predicate, context, compiled);
             if (status < 0 && !p->failure.status) {
                 p->failure = (execution_program_failure){
                     .status = status,
-                    .kind = context.failure,
+                    .kind = context->failure,
                     .module_id = p->module->plan.id,
                     .owner = instance->owner
                 };
@@ -1564,12 +1685,14 @@ static int query_matches(execution_instance *instance, int index)
                     p->failure.message,
                     sizeof p->failure.message,
                     "%s",
-                    context.error_message ? context.error_message : "query predicate failed"
+                    context->error_message ? context->error_message : "query predicate failed"
                 );
             }
-            behavior_function_release_host(&context);
-            behavior_function_activation_free(&activation);
-            arena_free(&storage);
+            if (!status) {
+                query_evaluator_keep(p, e);
+            } else {
+                query_evaluator_free(e);
+            }
             return status < 0 ? status : status ? FLOW_ERR_STATE : result.b;
         }
         case EXECUTION_QUERY_ALL:
@@ -1757,6 +1880,8 @@ static int prepare_stream(execution_program *p)
 static int prepare_system_rows(execution_program *p)
 {
     aclear(p->system_rows);
+    p->query_rows = 0;
+    p->query_lookup_steps = 0;
     if (!p->enabled) {
         return FLOW_OK;
     }
@@ -1770,6 +1895,7 @@ static int prepare_system_rows(execution_program *p)
     int status = FLOW_OK;
     while (ecs_query_next(&query, &entity)) {
         uint64_t row = index++;
+        p->query_rows++;
         if (acount(p->query_admissions) &&
             !(p->query_admissions[row / 64] & (UINT64_C(1) << (row % 64)))) {
             continue;
@@ -1797,7 +1923,7 @@ static int run_stream_row(execution_program *p, execution_instance *row)
 {
     execution_activation *a = program_activation_new(
         row,
-        p->module->plan.functions[0].body,
+        p->module->plan.functions[p->stream_system].body,
         NULL,
         0,
         p->now,
@@ -1816,7 +1942,6 @@ static int run_system_rows(execution_program *p)
 {
     int width = p->module->plan.query_variable_count + 1;
     execution_instance row = { .program = p, .query_managed = true };
-    p->query_rows = 0;
     p->dispatching = true;
     int status = FLOW_OK;
     for (int at = 0; at < acount(p->system_rows); at += width) {
@@ -1824,7 +1949,6 @@ static int run_system_rows(execution_program *p)
         for (int i = 1; i < width; i++) {
             row.query_variables[i - 1] = p->system_rows[at + i];
         }
-        p->query_rows++;
         status = run_stream_row(p, &row);
         if (status < 0) {
             break;
@@ -1832,6 +1956,171 @@ static int run_system_rows(execution_program *p)
     }
     p->dispatching = false;
     return status;
+}
+size_t program_row_worker_bytes(const execution_program *p)
+{
+    size_t bytes = p->row_workers ? sizeof(dyna_hdr) + (size_t)acap(p->row_workers) *
+                                                           sizeof *p->row_workers
+                                  : 0;
+    for (int i = 0; i < acount(p->row_workers); i++) {
+        const execution_program *worker = p->row_workers[i].program;
+        bytes += sizeof *worker + program_activation_cache_bytes(worker) +
+                 reduction_capacity(worker);
+    }
+    return bytes;
+}
+static void row_workers_trim(execution_program *p, int count)
+{
+    while (acount(p->row_workers) > count) {
+        execution_program *worker = p->row_workers[acount(p->row_workers) - 1].program;
+        /* Worker programs borrow their module, names, services and world. */
+        assert(!worker->running && !worker->dispatching && !worker->query_evaluators);
+        program_activation_cache_free(worker);
+        afree(worker->reductions);
+        afree(worker->reduction_table);
+        free(worker);
+        asetlen(p->row_workers, acount(p->row_workers) - 1);
+    }
+    if (!count) {
+        afree(p->row_workers);
+    }
+}
+static void row_workers_idle(execution_program *p)
+{
+    for (int i = acount(p->row_workers) - 1;
+         i >= 0 && program_row_worker_bytes(p) > ROW_WORKER_BYTES;
+         i--) {
+        execution_program *worker = p->row_workers[i].program;
+        program_activation_cache_free(worker);
+        afree(worker->reductions);
+        afree(worker->reduction_table);
+    }
+    while (program_row_worker_bytes(p) > ROW_WORKER_BYTES) {
+        row_workers_trim(p, acount(p->row_workers) - 1);
+    }
+}
+static void run_row_chunks(int start, int end, uint32_t worker, void *context)
+{
+    execution_program *parent = context;
+    for (int chunk = start; chunk < end; chunk++) {
+        execution_row_worker *work = &parent->row_workers[chunk];
+        execution_program *p = work->program;
+        execution_instance row = { .program = p, .query_managed = true };
+        work->worker = worker;
+        p->dispatching = true;
+        for (int at = work->first; at < work->end; at++) {
+            const uint64_t *values = work->rows + (size_t)at * work->width;
+            row.owner = values[0];
+            for (int i = 1; i < work->width; i++) {
+                row.query_variables[i - 1] = values[i];
+            }
+            work->status = run_stream_row(p, &row);
+            if (work->status < 0) {
+                break;
+            }
+        }
+        p->dispatching = false;
+    }
+}
+static int merge_row_chunks(execution_program *p)
+{
+    int status = FLOW_OK;
+    uint32_t workers = 0;
+    uint64_t contributions = 0;
+    size_t peak = 0;
+    for (int i = 0; i < acount(p->row_workers); i++) {
+        execution_row_worker *work = &p->row_workers[i];
+        execution_program *worker = work->program;
+        workers |= UINT32_C(1) << work->worker;
+        contributions += worker->reduction_contributions;
+        peak += worker->reduction_peak_bytes;
+    }
+    for (; workers; workers &= workers - 1) {
+        p->row_parallel_workers++;
+    }
+    for (int i = 0; status == FLOW_OK && i < acount(p->row_workers); i++) {
+        const execution_row_worker *work = &p->row_workers[i];
+        const execution_program *worker = work->program;
+        for (int j = 0; j < acount(worker->reductions); j++) {
+            status = append_reduction(p, worker->reductions[j]);
+            if (status < 0) {
+                break;
+            }
+        }
+        if (status == FLOW_OK && work->status < 0) {
+            status = work->status;
+            if (!p->failure.status) {
+                p->failure = worker->failure;
+            }
+        }
+    }
+    p->reduction_contributions = contributions;
+    p->reduction_peak_bytes += peak;
+    for (int i = 0; i < acount(p->row_workers); i++) {
+        execution_program_discard_reductions(p->row_workers[i].program);
+        p->row_workers[i].rows = NULL;
+    }
+    row_workers_idle(p);
+    return status;
+}
+int execution_program_run_system_parallel(execution_program *p, const task_system *tasks)
+{
+    assert(p && p->system_prepared && !p->system_ran && !p->dispatching && !p->running);
+    int budget = tasks ? tasks->workers : 1;
+    assert(budget > 0 && budget <= TASK_WORKER_MAX);
+    int width = p->module->plan.query_variable_count + 1;
+    int rows = acount(p->system_rows) / width;
+    int chunks = rows / ROW_CHUNK_MIN;
+    if (chunks > budget) {
+        chunks = budget;
+    }
+    execution_effect_summary effects = p->module->effects;
+    if (chunks < 2 || !streaming(p) || p->observer || !effects.reduce_count ||
+        !effects.parallel_safe || effects.write_count) {
+        row_workers_trim(p, budget > 1 ? budget : 0);
+        return execution_program_run_system(p);
+    }
+    assert(tasks->enqueue && tasks->finish && p->reducing && !acount(p->reductions));
+    row_workers_trim(p, chunks);
+    while (acount(p->row_workers) < chunks) {
+        apush(p->row_workers, ((execution_row_worker){ .program = xcalloc(1, sizeof *p) }));
+    }
+    for (int i = 0; i < chunks; i++) {
+        execution_program *worker = p->row_workers[i].program;
+        worker->module = p->module;
+        worker->stream_system = p->stream_system;
+        worker->world = p->world;
+        worker->services = p->services;
+        worker->name = p->name;
+        worker->owner_program = worker;
+        worker->now = p->now;
+        worker->delta = p->delta;
+        worker->budget = p->budget;
+        worker->enabled = p->enabled;
+        worker->failure = (execution_program_failure){ 0 };
+        begin_reductions(worker);
+        p->row_workers[i] = (execution_row_worker){
+            .program = worker,
+            .rows = p->system_rows,
+            .first = (int)((int64_t)rows * i / chunks),
+            .end = (int)((int64_t)rows * (i + 1) / chunks),
+            .width = width
+        };
+    }
+    p->system_ran = true;
+    p->row_parallel_jobs = chunks;
+    p->dispatching = true;
+    int locked = ecs_world_iteration_begin(p->world);
+    assert(locked == ECS_OK);
+    (void)locked;
+    void *ticket = tasks->enqueue(run_row_chunks, chunks, 1, p, tasks->user);
+    if (ticket) {
+        tasks->finish(ticket, tasks->user);
+    }
+    ecs_world_iteration_end(p->world);
+    p->dispatching = false;
+    p->system_status = merge_row_chunks(p);
+    return p->system_status;
 }
 static int stream_rows(execution_program *p)
 {
@@ -1867,6 +2156,52 @@ static int stream_rows(execution_program *p)
     ecs_query_end(&query);
     return status;
 }
+static int dispatch_events(execution_program *p)
+{
+    queued_event *events = p->events;
+    p->events = NULL;
+    for (int i = 0; i < acount(events); i++) {
+        queued_event *e = &events[i];
+        int failure = FLOW_OK;
+        for (int j = 0; j < acount(p->instances); j++) {
+            execution_instance *instance = p->instances[j];
+            int status = dispatch_to(
+                instance,
+                e->event,
+                e->owner,
+                e->arguments,
+                e->count,
+                p->now,
+                p->delta,
+                p->budget
+            );
+            if (status == FLOW_ERR_UNKNOWN_EVENT) {
+                continue;
+            }
+            if (status < 0) {
+                failure = status;
+                break;
+            }
+        }
+        free(e->arguments);
+        arena_free(&e->storage);
+        if (failure < 0) {
+            queued_event *later = p->events;
+            p->events = NULL;
+            for (int j = i + 1; j < acount(events); j++) {
+                apush(p->events, events[j]);
+            }
+            for (int j = 0; j < acount(later); j++) {
+                apush(p->events, later[j]);
+            }
+            afree(later);
+            afree(events);
+            return failure;
+        }
+    }
+    afree(events);
+    return FLOW_OK;
+}
 static int program_run(execution_program *p, double now, double delta, unsigned budget, int phase)
 {
     if (p->system_prepared && p->module->effects.reduce_count &&
@@ -1874,7 +2209,8 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
         return FLOW_PAUSED_RESULT;
     }
     assert(!p->dispatching && !p->system_prepared);
-    bool update = phase > 0;
+    bool prepare_update = phase == -2;
+    bool update = phase > 0 || prepare_update;
     p->updates += update;
     p->now = now;
     p->delta = delta;
@@ -1887,8 +2223,8 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
         }
         asetlen(p->events, 0);
         int status = prepare_stream(p);
-        if (status < 0 || !update) {
-            if (status < 0 || phase != -1) {
+        if (status < 0 || !update || prepare_update) {
+            if (status < 0 || (phase != -1 && !prepare_update)) {
                 afree(p->query_admissions);
             }
             return status;
@@ -1934,7 +2270,9 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
             }
         }
     }
-    for (int i = 0; update && p->enabled && i < acount(p->instances); i++) {
+    for (int i = 0;
+         update && !prepare_update && p->enabled && i < acount(p->instances);
+         i++) {
         execution_instance *instance = p->instances[i];
         for (int f = 0; f < p->module->plan.function_count; f++) {
             const execution_module_function *function = &p->module->plan.functions[f];
@@ -1964,40 +2302,16 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
             }
         }
     }
-    queued_event *events = p->events;
-    p->events = NULL;
-    for (int i = 0; i < acount(events); i++) {
-        queued_event *e = &events[i];
-        int failure = FLOW_OK;
-        for (int j = 0; j < acount(p->instances); j++) {
-            execution_instance *instance = p->instances[j];
-            int status = dispatch_to(instance, e->event, e->owner, e->arguments, e->count, now, delta, p->budget);
-            if (status == FLOW_ERR_UNKNOWN_EVENT) {
-                continue;
-            }
-            if (status < 0) {
-                failure = status;
-                break;
-            }
-        }
-        free(e->arguments);
-        arena_free(&e->storage);
-        if (failure < 0) {
-            queued_event *later = p->events;
-            p->events = NULL;
-            for (int j = i + 1; j < acount(events); j++) {
-                apush(p->events, events[j]);
-            }
-            for (int j = 0; j < acount(later); j++) {
-                apush(p->events, later[j]);
-            }
-            afree(later);
-            afree(events);
-            p->dispatching = false;
-            return failure;
-        }
+    if (prepare_update) {
+        /* The prepared systems publish before this update's queued handlers. */
+        p->dispatching = false;
+        return FLOW_OK;
     }
-    afree(events);
+    int delivered = dispatch_events(p);
+    if (delivered < 0) {
+        p->dispatching = false;
+        return delivered;
+    }
     for (int i = 0; phase == 2 && i < acount(p->instances); i++) {
         for (int j = 0; j < acount(p->binding_order); j++) {
             int status = program_binding_run(p->instances[i], p->binding_order[j], now, delta, p->budget);
@@ -2033,10 +2347,11 @@ int execution_program_pump(execution_program *p, double now, double delta, unsig
     program_apply_services(p);
     return status;
 }
+static int prepare_system(execution_program *, double, double, unsigned, bool);
 int execution_program_update(execution_program *p, double now, double delta, unsigned budget)
 {
     if (p->module->effects.reduce_count) {
-        int status = execution_program_prepare_system(p, now, delta, budget);
+        int status = prepare_system(p, now, delta, budget, true);
         if (status < 0) {
             return status;
         }
@@ -2049,7 +2364,7 @@ int execution_program_update(execution_program *p, double now, double delta, uns
     program_apply_services(p);
     return status;
 }
-int execution_program_prepare_system(execution_program *p, double now, double delta, unsigned budget)
+static int prepare_system(execution_program *p, double now, double delta, unsigned budget, bool update)
 {
     if (p->system_prepared && p->module->effects.reduce_count) {
         assert(
@@ -2061,14 +2376,15 @@ int execution_program_prepare_system(execution_program *p, double now, double de
     }
     assert(p && !p->system_prepared && !p->running && !p->dispatching);
     begin_reductions(p);
-    p->updates++;
-    int status = program_run(p, now, delta, budget, -1);
+    p->updates += !update;
+    int status = program_run(p, now, delta, budget, update ? -2 : -1);
     program_apply_services(p);
     if (status < 0) {
         execution_program_discard_reductions(p);
         return status;
     }
     p->system_prepared = true;
+    p->system_update = update;
     p->system_ran = false;
     p->system_status = FLOW_OK;
     if (streaming(p) && p->module->effects.reduce_count) {
@@ -2081,8 +2397,10 @@ int execution_program_prepare_system(execution_program *p, double now, double de
     }
     for (int i = 0; i < acount(p->instances); i++) {
         execution_instance *instance = p->instances[i];
-        instance->time += delta;
-        instance->last_time = now;
+        if (!update) {
+            instance->time += delta;
+            instance->last_time = now;
+        }
         if (!p->enabled || !instance->query_ready || program_instance_busy(instance)) {
             continue;
         }
@@ -2102,6 +2420,10 @@ int execution_program_prepare_system(execution_program *p, double now, double de
         }
     }
     return FLOW_OK;
+}
+int execution_program_prepare_system(execution_program *p, double now, double delta, unsigned budget)
+{
+    return prepare_system(p, now, delta, budget, false);
 }
 int execution_program_run_system(execution_program *p)
 {
@@ -2164,6 +2486,8 @@ int execution_program_finish_system(execution_program *p)
     }
     asetlen(p->system_activations, 0);
     p->system_prepared = false;
+    bool update = p->system_update;
+    p->system_update = false;
     afree(p->query_admissions);
     aclear(p->system_rows);
     if (p->system_rows &&
@@ -2172,6 +2496,11 @@ int execution_program_finish_system(execution_program *p)
         afree(p->system_rows);
     }
     int status = finish_reductions(p, p->system_status);
+    if (status >= 0 && update) {
+        p->dispatching = true;
+        status = dispatch_events(p);
+        p->dispatching = false;
+    }
     if (status >= 0) {
         status = program_observers_maintain(p, p->now, p->delta, p->budget);
     }

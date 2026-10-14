@@ -438,7 +438,7 @@ typedef struct
     execution_program *program;
     size_t log_bytes, peak_bytes, retained_bytes, row_bytes;
     uint64_t contributions, records;
-    int runs, finishes;
+    int runs, parallel_runs, finishes;
 } source_row;
 typedef struct
 {
@@ -455,7 +455,7 @@ typedef struct
     atomic_uint workers;
     atomic_int arrived;
     atomic_bool gate_failed;
-    bool parallel, gate, open;
+    bool parallel, gate, row_gate, open;
 } source_driver;
 static source_driver driver;
 static void cleanup_driver()
@@ -478,6 +478,15 @@ static void observed_range(int start, int end, uint32_t worker, void *context)
 {
     source_driver *d = context;
     atomic_fetch_or(&d->workers, 1u << worker);
+    if (d->row_gate) {
+        atomic_fetch_add(&d->arrived, 1);
+        double deadline = now() + 2;
+        while (atomic_load(&d->arrived) < 2 && now() < deadline) {
+        }
+        if (atomic_load(&d->arrived) < 2) {
+            atomic_store(&d->gate_failed, true);
+        }
+    }
     d->run(start, end, worker, d->context);
 }
 static void *enqueue(task_range *run, int count, int minimum, void *context, void *user)
@@ -555,6 +564,19 @@ static int finish_row(void *user, bool commit, schedule_error *error)
     row->retained_bytes = memory.reduction_capacity;
     row->row_bytes = memory.system_row_capacity;
     return status;
+}
+static int run_row_parallel(void *user, const task_system *tasks, schedule_error *error)
+{
+    source_row *row = user;
+    row->runs++;
+    row->parallel_runs++;
+    return source_systems_run_parallel(
+        driver.batch,
+        row->index,
+        tasks,
+        error->message,
+        sizeof error->message
+    );
 }
 static bool create_driver(const char *const *names, int count, bool parallel)
 {
@@ -717,26 +739,66 @@ TEST_CASE(source_reductions_discard_prepared_cohort_after_prepare_failure)
 TEST_CASE(source_reductions_preflight_all_records_before_publication)
 {
     for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(create(2, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
-        REQUIRE(publish("Preflight", "system Preflight(t:ReductionTotals){reduce t.total += 1;}"));
-        execution_program *program = source_program(f.sources, "Preflight");
-        REQUIRE(execution_program_prepare_system(program, 0, .01, 10000) == FLOW_OK);
-        f.pending_program = program;
-        REQUIRE(execution_program_run_system(program) == FLOW_OK);
-        REQUIRE(execution_program_memory_usage(program).reduction_records == 2);
-        uint64_t version = ecs_component_version(f.world, f.owners[0], f.totals->id);
-        /* Deliberately invalidate a later record after collection. Callers
-         * ordinarily keep membership fixed; finish must still reject the whole
-         * log before touching its earlier, valid destination. */
-        REQUIRE(!ecs_world_record_remove(f.world, f.owners[1], f.totals->id, 0));
-        REQUIRE(!ecs_world_apply_commands(f.world));
-        int status = execution_program_finish_system(program);
-        f.pending_program = NULL;
-        REQUIRE(status < 0);
-        REQUIRE(read_field(f.owners[0], f.totals, TOTAL).d == 0);
-        REQUIRE(ecs_component_version(f.world, f.owners[0], f.totals->id) == version);
-        REQUIRE(execution_program_memory_usage(program).reduction_bytes == 0);
-        cleanup();
+        for (int reused = 0; reused < 2; reused++) {
+            REQUIRE(create(2, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+            REQUIRE(publish("Preflight", "system Preflight(t:ReductionTotals){reduce t.total += 1;}"));
+            execution_program *program = source_program(f.sources, "Preflight");
+            REQUIRE(execution_program_prepare_system(program, 0, .01, 10000) == FLOW_OK);
+            f.pending_program = program;
+            REQUIRE(execution_program_run_system(program) == FLOW_OK);
+            REQUIRE(execution_program_memory_usage(program).reduction_records == 2);
+            uint64_t
+                version = ecs_component_version(f.world, f.owners[0], f.totals->id);
+            /* Deliberately invalidate a later record after collection. Callers
+             * ordinarily keep membership fixed; finish must still reject the
+             * whole log before touching its earlier, valid destination. */
+            ecs_entity replacement = { 0 };
+            uint64_t replacement_version = 0;
+            if (reused) {
+                /* Grow the world's column array after the repeated field lookup
+                 * warmed metadata, then reuse the later destination's slot. */
+                int columns = ecs_world_component_count(f.world);
+                REQUIRE(columns <= 512);
+                for (int i = 0; i <= columns; i++) {
+                    char name[64];
+                    snprintf(name, sizeof name, "PreflightExtra%d", i);
+                    ecs_component_desc extra = *f.seen;
+                    extra.id = 0;
+                    extra.key = extra.name = name;
+                    REQUIRE(!ecs_world_register_component(f.world, &extra, NULL));
+                }
+                REQUIRE(!ecs_world_record_destroy(f.world, f.owners[1], 0));
+                REQUIRE(!ecs_world_apply_commands(f.world));
+                replacement = ecs_world_create_entity(f.world);
+                REQUIRE(replacement.slot == f.owners[1].slot);
+                REQUIRE(replacement.generation != f.owners[1].generation);
+                REQUIRE(!ecs_world_record_add(f.world, replacement, f.totals->id, NULL, 0));
+            } else {
+                REQUIRE(!ecs_world_record_remove(f.world, f.owners[1], f.totals->id, 0));
+            }
+            REQUIRE(!ecs_world_apply_commands(f.world));
+            if (reused) {
+                write_field(replacement, f.totals, TOTAL, (pin_value){ .type = PIN_F64, .d = 17 });
+                replacement_version = ecs_component_version(
+                    f.world,
+                    replacement,
+                    f.totals->id
+                );
+            }
+            int status = execution_program_finish_system(program);
+            f.pending_program = NULL;
+            REQUIRE(status < 0);
+            REQUIRE(read_field(f.owners[0], f.totals, TOTAL).d == 0);
+            REQUIRE(ecs_component_version(f.world, f.owners[0], f.totals->id) == version);
+            REQUIRE(execution_program_memory_usage(program).reduction_bytes == 0);
+            if (reused) {
+                REQUIRE(read_field(replacement, f.totals, TOTAL).d == 17);
+                REQUIRE(
+                    ecs_component_version(f.world, replacement, f.totals->id) == replacement_version
+                );
+            }
+            cleanup();
+        }
     }
     return true;
 }
@@ -1193,6 +1255,354 @@ TEST_CASE(source_reductions_discard_paused_log_when_descriptor_edit_restarts_pha
     return true;
 }
 
+enum
+{
+    ROW_BENCH_PASSES = 4,
+    ROW_BENCH_LARGE = 1024,
+    ROW_TEST_COUNT = 256
+};
+
+static void create_row_executor()
+{
+    driver.pool = task_pool_acquire_workers(2);
+    driver.delegate = task_pool_tasks(driver.pool);
+    driver.tasks = (task_system){ driver.delegate->workers, &driver, enqueue, finish_task };
+    atomic_init(&driver.workers, 0);
+    atomic_init(&driver.arrived, 0);
+    atomic_init(&driver.gate_failed, false);
+}
+
+/* This unit-level runner deliberately measures one program: no system-level
+ * scheduler job can account for the row executor's work counters. */
+static int run_rows(execution_program *program, int pass, bool parallel)
+{
+    task_pool_begin(driver.pool, parallel);
+    driver.open = true;
+    int status = execution_program_prepare_system(program, pass, .01, 100000);
+    if (status < 0) {
+        task_pool_end(driver.pool);
+        driver.open = false;
+        return status;
+    }
+    f.pending_program = program;
+    status = parallel ? execution_program_run_system_parallel(program, &driver.tasks)
+                      : execution_program_run_system(program);
+    if (status < 0) {
+        execution_program_discard_reductions(program);
+    }
+    int finished = execution_program_finish_system(program);
+    f.pending_program = NULL;
+    task_pool_end(driver.pool);
+    driver.open = false;
+    return status < 0 ? status : finished;
+}
+
+static int32_t mix_reference(int seed, int iterations)
+{
+    uint32_t bits = (uint32_t)seed;
+    for (int i = 0; i < iterations; i++) {
+        bits = bits * UINT32_C(1664525) + UINT32_C(1013904223);
+    }
+    int32_t value;
+    memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
+static bool row_benchmark(int rows, int iterations, bool parallel, bool unordered)
+{
+    REQUIRE(create(1, BEHAVIOR_SLJIT));
+    char source[1024];
+    snprintf(
+        source,
+        sizeof source,
+        "system Work(c:ReductionContribution){"
+        "Mix :: pure fn(seed:int)->int { value:=seed; i:int=0;"
+        "while i < %d {value=value*1664525+1013904223; i+=1;} return value;}"
+        "if true {value:=Mix(cast<int>(c.amount));"
+        "reduce %sc.target.ReductionTotals.count += value;"
+        "reduce %sc.target.ReductionTotals.total += cast<number>(value);}}",
+        iterations,
+        unordered ? "unordered " : "",
+        unordered ? "unordered " : ""
+    );
+    REQUIRE(publish("Work", source));
+    execution_program *program = source_program(f.sources, "Work");
+    ecs_entity target = f.owners[0];
+    uint32_t expected_bits = 0;
+    double expected_total = 0;
+    for (int i = 0; i < rows; i++) {
+        int seed = i % 16 + 1;
+        contribution(target, target, seed, 0);
+        int32_t value = mix_reference(seed, iterations);
+        expected_bits += (uint32_t)value;
+        expected_total += value;
+    }
+    create_row_executor();
+    REQUIRE(run_rows(program, 0, parallel) == FLOW_OK);
+    REQUIRE(read_field(target, f.totals, TOTAL).d == expected_total);
+    REQUIRE((uint32_t)read_field(target, f.totals, COUNT).i == expected_bits);
+    bool eligible = parallel && rows >= 128 && driver.delegate->workers > 1;
+    for (int trial = 0; trial < BENCH_TRIALS; trial++) {
+        write_field(target, f.totals, TOTAL, (pin_value){ .type = PIN_F64, .d = 0 });
+        write_field(target, f.totals, COUNT, (pin_value){ .type = PIN_I32, .i = 0 });
+        uint64_t version = ecs_component_version(f.world, target, f.totals->id);
+        atomic_store(&driver.workers, 0);
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        double start = now();
+        int status = FLOW_OK;
+        for (int pass = 0; pass < ROW_BENCH_PASSES && status >= 0; pass++) {
+            status = run_rows(program, 1 + trial * ROW_BENCH_PASSES + pass, parallel);
+        }
+        double elapsed = now() - start;
+        xalloc_stats_get(&after);
+        REQUIRE(status == FLOW_OK);
+        execution_memory_usage memory = execution_program_memory_usage(program);
+        unsigned worker_mask = atomic_load(&driver.workers);
+        REQUIRE(read_field(target, f.totals, TOTAL).d == expected_total * ROW_BENCH_PASSES);
+        REQUIRE((uint32_t)read_field(target, f.totals, COUNT).i == expected_bits * ROW_BENCH_PASSES);
+        uint64_t writes = ecs_component_version(f.world, target, f.totals->id) - version;
+        int records = 2 * (unordered ? 1 : rows);
+        REQUIRE(writes == (uint64_t)records * ROW_BENCH_PASSES);
+        REQUIRE(memory.reduction_contributions == (uint64_t)2 * rows);
+        REQUIRE(memory.reduction_records == (uint64_t)records);
+        REQUIRE(memory.instance_count == 0 && memory.instance_bytes == 0);
+        REQUIRE(memory.system_row_bytes == 0 && memory.reduction_bytes == 0);
+        REQUIRE(memory.system_row_capacity <= 64 * 1024);
+        REQUIRE(memory.reduction_capacity <= 64 * 1024);
+        REQUIRE(memory.activation_cache_bytes <= 64 * 1024);
+        REQUIRE(memory.row_worker_capacity <= 1024 * 1024);
+        REQUIRE(memory.query_rows == (uint64_t)rows);
+        REQUIRE(eligible ? memory.row_parallel_jobs > 1 : memory.row_parallel_jobs == 0);
+        REQUIRE(memory.row_parallel_jobs <= driver.delegate->workers);
+        REQUIRE(memory.row_parallel_workers <= memory.row_parallel_jobs);
+        REQUIRE(eligible ? worker_mask != 0 : worker_mask == 0);
+        unsigned allowed = driver.delegate->workers == TASK_WORKER_MAX
+                             ? UINT32_MAX
+                             : (1u << driver.delegate->workers) - 1;
+        REQUIRE(!(worker_mask & ~allowed));
+        printf(
+            "BENCH source-execution rows=%d iterations=%d execution=%s mode=%s "
+            "passes=%d trial=%d ns/pass=%.2f published_writes=%llu "
+            "contributions=%llu records=%llu row_jobs=%d row_workers=%d "
+            "worker_budget=%d worker_mask=%u xalloc_calls=%llu "
+            "requested_bytes=%llu "
+            "activation_cache_bytes=%zu row_retained_bytes=%zu "
+            "reduction_retained_bytes=%zu worker_retained_bytes=%zu "
+            "total=%.0f count=%d\n",
+            rows,
+            iterations,
+            parallel ? "parallel-requested" : "serial",
+            unordered ? "unordered" : "ordered",
+            ROW_BENCH_PASSES,
+            trial,
+            elapsed * 1e9 / ROW_BENCH_PASSES,
+            (unsigned long long)writes,
+            (unsigned long long)memory.reduction_contributions,
+            (unsigned long long)memory.reduction_records,
+            memory.row_parallel_jobs,
+            memory.row_parallel_workers,
+            driver.delegate->workers,
+            worker_mask,
+            (unsigned long long)(after.calls - before.calls),
+            (unsigned long long)(after.requested_bytes - before.requested_bytes),
+            memory.activation_cache_bytes,
+            memory.system_row_capacity,
+            memory.reduction_capacity,
+            memory.row_worker_capacity,
+            read_field(target, f.totals, TOTAL).d,
+            read_field(target, f.totals, COUNT).i
+        );
+    }
+    cleanup();
+    return true;
+}
+
+TEST_CASE(source_execution_benchmark_tiny_light_and_heavy_rows)
+{
+    for (int parallel = 0; parallel < 2; parallel++) {
+        REQUIRE(row_benchmark(16, 1, parallel, true));
+        REQUIRE(row_benchmark(ROW_BENCH_LARGE, 1, parallel, true));
+        REQUIRE(row_benchmark(ROW_BENCH_LARGE, 64, parallel, true));
+        REQUIRE(row_benchmark(ROW_BENCH_LARGE, 64, parallel, false));
+    }
+    return true;
+}
+
+TEST_CASE(source_parallel_rows_keep_order_and_discard_failed_dispatch)
+{
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(create(1, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        REQUIRE(publish(
+            "Rows",
+            "system Rows(c:ReductionContribution){"
+            "reduce c.target.ReductionTotals.total += c.amount;"
+            "reduce c.target.ReductionTotals.count += 1;}"
+        ));
+        ecs_entity target = f.owners[0], first_bad = { 0 }, last = { 0 };
+        for (int i = 0; i < ROW_TEST_COUNT; i++) {
+            /* The later chunk's cancellation loses the first chunk's 1 when
+             * folded in row order. Combining chunk sums would preserve it. */
+            double amount = i == 0 ? 1 : i == 129 ? 1e16 : i == 130 ? -1e16 : 0;
+            last = contribution(target, target, amount, 0);
+            if (i == 64) {
+                first_bad = last;
+            }
+        }
+        double expected = 0;
+        for (int i = 0; i < ROW_TEST_COUNT; i++) {
+            expected += i == 0 ? 1 : i == 129 ? 1e16 : i == 130 ? -1e16 : 0;
+        }
+        execution_program *program = source_program(f.sources, "Rows");
+        create_row_executor();
+        driver.row_gate = backend && driver.delegate->workers > 1;
+        uint64_t version = ecs_component_version(f.world, target, f.totals->id);
+        REQUIRE(run_rows(program, 0, true) == FLOW_OK);
+        REQUIRE(!atomic_load(&driver.gate_failed));
+        driver.row_gate = false;
+        REQUIRE(read_field(target, f.totals, TOTAL).d == expected);
+        REQUIRE(read_field(target, f.totals, COUNT).i == ROW_TEST_COUNT);
+        REQUIRE(ecs_component_version(f.world, target, f.totals->id) == version + 2 * ROW_TEST_COUNT);
+        execution_memory_usage memory = execution_program_memory_usage(program);
+        REQUIRE(
+            driver.delegate->workers > 1 ? memory.row_parallel_jobs > 1
+                                         : memory.row_parallel_jobs == 0
+        );
+        REQUIRE(memory.row_parallel_jobs <= driver.delegate->workers);
+        if (backend && driver.delegate->workers > 1) {
+            REQUIRE(memory.row_parallel_workers >= 2);
+            unsigned workers = atomic_load(&driver.workers);
+            REQUIRE(workers && (workers & (workers - 1)));
+        }
+        ecs_entity missing = ecs_world_create_entity(f.world);
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        write_field(
+            last,
+            f.contribution,
+            TARGET,
+            (pin_value){ .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(missing) }
+        );
+        write_field(
+            first_bad,
+            f.contribution,
+            TARGET,
+            (pin_value){ .type = PIN_HANDLE,
+                         .type_name = "ecs.entity",
+                         .u64 = ecs_entity_to_u64(missing) }
+        );
+        version = ecs_component_version(f.world, target, f.totals->id);
+        REQUIRE(run_rows(program, 1, true) < 0);
+        REQUIRE(execution_program_error(program)->owner == ecs_entity_to_u64(first_bad));
+        REQUIRE(read_field(target, f.totals, TOTAL).d == expected);
+        REQUIRE(read_field(target, f.totals, COUNT).i == ROW_TEST_COUNT);
+        REQUIRE(ecs_component_version(f.world, target, f.totals->id) == version);
+        memory = execution_program_memory_usage(program);
+        REQUIRE(memory.reduction_bytes == 0 && memory.system_row_bytes == 0);
+        REQUIRE(memory.row_worker_capacity <= 1024 * 1024);
+        cleanup();
+    }
+    return true;
+}
+
+static void count_profile(void *user, const execution_profile_sample *)
+{
+    (*(int *)user)++;
+}
+TEST_CASE(source_parallel_rows_publish_through_scheduler_hook)
+{
+    REQUIRE(create(1, BEHAVIOR_SLJIT));
+    REQUIRE(publish(
+        "Rows",
+        "system Rows(c:ReductionContribution){"
+        "reduce unordered c.target.ReductionTotals.total += c.amount;}"
+    ));
+    REQUIRE(publish(
+        "Observe",
+        "system Observe query t:ReductionTotals, s:ReductionSeen "
+        "where t.total == 256 {s.total=t.total; s.hits+=1;}"
+    ));
+    for (int i = 0; i < ROW_TEST_COUNT; i++) {
+        contribution(f.owners[0], f.owners[0], 1, 0);
+    }
+    const char *names[] = { "Rows", "Observe" };
+    REQUIRE(create_driver(names, 2, true));
+    const schedule_desc *found = NULL;
+    for (int i = 0; i < schedule_count(driver.schedule); i++) {
+        const schedule_desc *desc = schedule_descriptor_at(driver.schedule, i);
+        if (!strcmp(desc->name, "Rows")) {
+            found = desc;
+            break;
+        }
+    }
+    REQUIRE(found);
+    schedule_desc rows = *found;
+    rows.run_parallel = run_row_parallel;
+    REQUIRE(!schedule_register(driver.schedule, &rows));
+    uint64_t version = ecs_component_version(f.world, f.owners[0], f.totals->id);
+    REQUIRE(!run_driver(0));
+    REQUIRE(driver.rows[0].parallel_runs == 1);
+    REQUIRE(driver.rows[0].finishes == 1 && driver.rows[1].finishes == 1);
+    REQUIRE(schedule_parallel_batches(driver.schedule) == 0);
+    execution_memory_usage memory = execution_program_memory_usage(
+        driver.rows[0].program
+    );
+    REQUIRE(
+        driver.delegate->workers > 1 ? memory.row_parallel_jobs > 1
+                                     : memory.row_parallel_jobs == 0
+    );
+    REQUIRE(read_field(f.owners[0], f.totals, TOTAL).d == ROW_TEST_COUNT);
+    REQUIRE(read_field(f.owners[0], f.seen, SEEN_TOTAL).d == ROW_TEST_COUNT);
+    REQUIRE(read_field(f.owners[0], f.seen, SEEN_HITS).i == 1);
+    REQUIRE(ecs_component_version(f.world, f.owners[0], f.totals->id) == version + 1);
+    return true;
+}
+
+TEST_CASE(source_parallel_rows_fall_back_for_inspection_and_profiling)
+{
+    for (int observed = 0; observed < 2; observed++) {
+        REQUIRE(create(1, BEHAVIOR_SLJIT));
+        REQUIRE(publish(
+            "Rows",
+            "system Rows(c:ReductionContribution){"
+            "reduce unordered c.target.ReductionTotals.total += c.amount;}"
+        ));
+        for (int i = 0; i < ROW_TEST_COUNT; i++) {
+            contribution(f.owners[0], f.owners[0], 1, 0);
+        }
+        execution_program *program = source_program(f.sources, "Rows");
+        int samples = 0;
+        if (observed) {
+            execution_program_observe(program, count_profile, &samples);
+        } else {
+            f.inspector = execution_program_inspector(program);
+            REQUIRE(f.inspector);
+        }
+        create_row_executor();
+        REQUIRE(run_rows(program, 0, true) == FLOW_OK);
+        REQUIRE(read_field(f.owners[0], f.totals, TOTAL).d == ROW_TEST_COUNT);
+        execution_memory_usage memory = execution_program_memory_usage(program);
+        REQUIRE(memory.row_parallel_jobs == 0 && memory.row_parallel_workers == 0);
+        REQUIRE(atomic_load(&driver.workers) == 0);
+        if (observed) {
+            REQUIRE(samples == ROW_TEST_COUNT);
+            execution_program_observe(program, NULL, NULL);
+        } else {
+            REQUIRE(memory.instance_count == ROW_TEST_COUNT);
+        }
+        cleanup();
+    }
+    return true;
+}
+
+void test_source_execution_benchmark()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_execution_benchmark_tiny_light_and_heavy_rows);
+    pu_clear_setup();
+}
+
 void test_source_reduction_benchmark()
 {
     pu_setup(NULL, cleanup);
@@ -1210,6 +1620,9 @@ void test_source_reductions()
     RUN_TEST_CASE(source_reductions_run_on_distinct_worker_threads);
     RUN_TEST_CASE(source_reductions_discard_prepared_cohort_after_prepare_failure);
     RUN_TEST_CASE(source_reductions_preflight_all_records_before_publication);
+    RUN_TEST_CASE(source_parallel_rows_keep_order_and_discard_failed_dispatch);
+    RUN_TEST_CASE(source_parallel_rows_publish_through_scheduler_hook);
+    RUN_TEST_CASE(source_parallel_rows_fall_back_for_inspection_and_profiling);
     RUN_TEST_CASE(source_reductions_cancel_later_paused_peer_after_earlier_failure);
     RUN_TEST_CASE(source_reductions_resume_post_physics_without_replaying_prior_stages);
     RUN_TEST_CASE(source_reductions_discard_paused_log_when_descriptor_edit_restarts_phase);

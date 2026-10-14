@@ -38,6 +38,9 @@ typedef struct
      * and user storage; copied names/access declarations own their snapshots. */
     const void *identity;
     schedule_run_fn run;
+    /* Optional row executor. Called only by the submitting thread for a
+     * single-system batch, never from a system worker. */
+    int (*run_parallel)(void *, const task_system *, schedule_error *);
     int (*prepare)(void *, schedule_error *);
     /* Called serially in schedule order after the batch has joined, before
      * the next batch prepares. commit is false after preparation/execution

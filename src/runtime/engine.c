@@ -320,6 +320,19 @@ static int source_system_run(ecs_world *, double, double, void *user, schedule_e
     error->status = status;
     return status;
 }
+static int source_system_run_parallel(void *user, const task_system *tasks, schedule_error *error)
+{
+    authored_system *system = user;
+    assert(system->batch);
+    error->status = source_systems_run_parallel(
+        system->batch,
+        system->batch_index,
+        tasks,
+        error->message,
+        sizeof error->message
+    );
+    return error->status;
+}
 static int source_system_prepare(void *user, schedule_error *error)
 {
     authored_system *system = user;
@@ -471,6 +484,7 @@ static int sync_authored_systems(engine *engine)
                                .order = system->order,
                                .identity = system->program,
                                .run = source_system_run,
+                               .run_parallel = source_system_run_parallel,
                                .prepare = source_system_prepare,
                                .finish = source_system_finish,
                                .parallel_ready = source_system_parallel,

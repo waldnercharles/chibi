@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define RESULT_COMPONENT 8501
 #define INPUT_COMPONENT 8502
@@ -209,7 +210,7 @@ static bool lower_source(const char *source)
     REQUIRE(plan && plan->valid);
     return true;
 }
-static bool compile(const char *source, behavior_backend backend, bool roundtrip)
+static bool compile_module(const char *source, behavior_backend backend, bool roundtrip)
 {
     REQUIRE(behavior_backend_available(backend));
     REQUIRE(lower_source(source));
@@ -239,14 +240,19 @@ static bool compile(const char *source, behavior_backend backend, bool roundtrip
         bytes = NULL;
     }
     REQUIRE(execution_module_backend(module) == backend);
+    program = execution_program_new(module, world, NULL);
+    REQUIRE(program);
+    return true;
+}
+static bool compile(const char *source, behavior_backend backend, bool roundtrip)
+{
+    REQUIRE(compile_module(source, backend, roundtrip));
     execution_effect_summary effects = execution_module_effects(module);
     REQUIRE(effects.declared && effects.parallel_safe && effects.reduce_count > 0);
     REQUIRE(effects.write_count == 0);
     for (int i = 0; i < effects.reduce_count; i++) {
         REQUIRE(effects.reduces[i] == RESULT_COMPONENT);
     }
-    program = execution_program_new(module, world, NULL);
-    REQUIRE(program);
     return true;
 }
 TEST_CASE(reductions_prepared_ordered_fold_preserves_storage_and_clamps)
@@ -381,6 +387,50 @@ TEST_CASE(reductions_failures_and_discard_do_not_publish_partial_results)
     }
     return true;
 }
+TEST_CASE(reductions_scalar_helper_closure_streams_and_preserves_fallbacks)
+{
+    static const char *const sources[] = {
+        "system Sum(input: ReductionInput) {"
+        "Twice :: (amount: double) -> double { return amount * 2; }"
+        "Adjust :: (amount: double) -> double { adjusted := Twice(amount);"
+        "if adjusted > 0 { adjusted += 1; } return adjusted; }"
+        "reduce input.target.ReductionResult.total += Adjust(input.amount); }",
+        "system Sum(input: ReductionInput) {"
+        "Read :: (extra: double) -> double { if self.ReductionInput {"
+        "return self.ReductionInput.amount + extra; } return extra; }"
+        "reduce input.target.ReductionResult.total += Read(0); }",
+        "system Sum(input: ReductionInput) {"
+        "First :: (amounts: double[]) -> double { return amounts[0]; }"
+        "reduce input.target.ReductionResult.total += First([input.amount]); }",
+        "system Sum(input: ReductionInput) {"
+        "Unused :: (amount: double) -> double { return amount * 2; }"
+        "reduce input.target.ReductionResult.total += input.amount; }"
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int example = 0; example < 4; example++) {
+            prepare();
+            ecs_entity entity = target((reduction_result){ 0 });
+            contribute(entity, 2);
+            contribute(entity, 3);
+            REQUIRE(compile_module(sources[example], backends[backend], example == 0));
+            REQUIRE(execution_module_function_count(module) == (example ? 2 : 3));
+            execution_effect_summary effects = execution_module_effects(module);
+            REQUIRE(effects.reduce_count > 0 && !effects.write_count);
+            REQUIRE(effects.parallel_safe == (example == 0));
+            if (!example) {
+                REQUIRE(effects.declared && effects.deterministic);
+            }
+            REQUIRE(execution_program_update(program, 1, 0, REDUCTION_BUDGET) == FLOW_OK);
+            REQUIRE(value(entity)->total == (example ? 5 : 12));
+            execution_memory_usage used = execution_program_memory_usage(program);
+            REQUIRE(used.query_rows == 2 && used.reduction_contributions == 2);
+            if (!example) {
+                REQUIRE(used.instance_count == 0 && used.instance_bytes == 0);
+            }
+        }
+    }
+    return true;
+}
 static int raw_value(behavior_function_instruction instruction, behavior_value_kind kind)
 {
     int slot = behavior_function_builder_slot(builder, instruction.type);
@@ -388,6 +438,174 @@ static int raw_value(behavior_function_instruction instruction, behavior_value_k
     instruction.output = slot;
     behavior_function_builder_emit(builder, instruction);
     return slot;
+}
+static int raw_reference_call(
+    const node_host_call *call,
+    const pin_value *args,
+    const int *slots,
+    int count,
+    int source
+)
+{
+    bool make = call == &EXECUTION_reference_make_call;
+    bool reference = call != &EXECUTION_reference_reduce_call;
+    pin_value result = { .type = reference ? BF_POINTER_TYPE : PIN_BOOL };
+    uint64_t id = execution_intrinsic_id(call);
+    int host = behavior_function_builder_host(
+        builder,
+        call,
+        execution_intrinsic_access(id),
+        args,
+        count,
+        &result,
+        1
+    );
+    assert(behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id)));
+    int first = behavior_function_builder_host_first(builder, host);
+    int output = behavior_function_builder_host_results(builder, host);
+    assert(
+        behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, make ? BEHAVIOR_ADDRESS : BEHAVIOR_REFERENCE)
+    );
+    if (make) {
+        assert(
+            behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first + 4, BEHAVIOR_ADDRESS)
+        );
+    }
+    assert(
+        behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, output, reference ? BEHAVIOR_REFERENCE : BEHAVIOR_VALUE)
+    );
+    for (int i = 0; i < count; i++) {
+        if (slots[i] < 0) {
+            continue;
+        }
+        int address = raw_value(
+            (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = first + i },
+            BEHAVIOR_ADDRESS
+        );
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_WRITE,
+                                             .type = args[i].type,
+                                             .left = slots[i],
+                                             .right = address,
+                                             .offset = offsetof(pin_value, d) }
+        );
+    }
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA,
+                                         .target = host,
+                                         .source = source }
+    );
+    int address = raw_value(
+        (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = output },
+        BEHAVIOR_ADDRESS
+    );
+    return raw_value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = result.type,
+                                         .left = address,
+                                         .offset = offsetof(pin_value, d) },
+        reference ? BEHAVIOR_REFERENCE : BEHAVIOR_VALUE
+    );
+}
+static behavior_function *raw_mixed_reductions()
+{
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, NULL, 0, NULL, 0);
+    int source = behavior_function_builder_origin(
+        builder,
+        (
+            behavior_function_source
+        ){ .asset_name = "mixed-reduction-ir", .parent = -1, .line = 17, .column = 3 }
+    );
+    behavior_function_builder_component(builder, RESULT_COMPONENT, false, false);
+    int context = raw_value(
+        (behavior_function_instruction){ .op = BF_CONTEXT,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = 1 },
+        BEHAVIOR_ADDRESS
+    );
+    int owner = raw_value((behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE }, BEHAVIOR_VALUE);
+    const pin_value root[] = {
+        { .type = BF_POINTER_TYPE },
+        { .type = PIN_STRUCT, .type_name = "ReductionResult" },
+        { .type = PIN_I32, .i = LANGUAGE_REFERENCE_COMPONENT },
+        { .type = PIN_I32, .i = -1 },
+        { .type = BF_POINTER_TYPE },
+        { .type = PIN_HANDLE },
+        { .type = PIN_U64, .u64 = RESULT_COMPONENT },
+        { .type = PIN_U64, .u64 = type_layout_hash(&result_type) },
+        { .type = PIN_U64, .u64 = sizeof(reduction_result) }
+    };
+    const int root_slots[] = { context, -1, -1, -1, -1, owner, -1, -1, -1 };
+    int reference = raw_reference_call(&EXECUTION_reference_make_call, root, root_slots, 9, source);
+    const pin_value field[] = { { .type = BF_POINTER_TYPE },
+                                { .type = PIN_F64 },
+                                { .type = PIN_U64,
+                                  .u64 = offsetof(reduction_result, total) },
+                                { .type = PIN_BOOL } };
+    const int field_slots[] = { reference, -1, -1, -1 };
+    int scalar = raw_reference_call(&EXECUTION_reference_field_call, field, field_slots, 4, source);
+    for (int mode = 0; mode < 2; mode++) {
+        const pin_value args[] = { { .type = BF_POINTER_TYPE },
+                                   { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_I32,
+                                     .i = mode ? EXECUTION_REDUCTION_ADD_UNORDERED
+                                               : EXECUTION_REDUCTION_ADD } };
+        const int slots[] = { scalar, -1, -1 };
+        raw_reference_call(&EXECUTION_reference_reduce_call, args, slots, 3, source);
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "reduction raw mixed modes: %s\n", error);
+    }
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    return function;
+}
+TEST_CASE(reductions_mixed_public_ir_preserves_serial_failure_owner)
+{
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity first = target((reduction_result){ .total = 10 });
+        ecs_entity second = target((reduction_result){ .total = 20 });
+        REQUIRE(lower_source("system Mixed(result: ReductionResult) { reduce result.total += 1; }"));
+        REQUIRE(plan->function_count == 1);
+        behavior_function *body = raw_mixed_reductions();
+        REQUIRE(body);
+        behavior_function_free(plan->functions[0].body);
+        plan->functions[0].body = body;
+        char error[256];
+        module = execution_module_finish(&plan, backends[backend], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "reduction mixed module: %s\n", error);
+        }
+        REQUIRE(module);
+        execution_effect_summary effects = execution_module_effects(module);
+        REQUIRE(effects.declared && !effects.parallel_safe && effects.reduce_count > 0);
+        REQUIRE(!effects.read_count && !effects.write_count);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        int status = execution_program_update(program, 1, 0, REDUCTION_BUDGET);
+        REQUIRE(status < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && failure->status == status);
+        REQUIRE(failure->owner == ecs_entity_to_u64(first));
+        REQUIRE(!strcmp(failure->message, "Cannot collect component reduction"));
+        REQUIRE(failure->line == 17 && failure->column == 3);
+        REQUIRE(value(first)->total == 10 && value(second)->total == 20);
+        REQUIRE(execution_program_memory_usage(program).reduction_bytes == 0);
+    }
+    return true;
 }
 static const char *read_payload(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -545,6 +763,8 @@ void test_language_reductions()
     RUN_TEST_CASE(reductions_unordered_opt_in_regroups_contributions);
     RUN_TEST_CASE(reductions_min_max_preserve_candidate_nan_and_signed_zero);
     RUN_TEST_CASE(reductions_failures_and_discard_do_not_publish_partial_results);
+    RUN_TEST_CASE(reductions_scalar_helper_closure_streams_and_preserves_fallbacks);
+    RUN_TEST_CASE(reductions_mixed_public_ir_preserves_serial_failure_owner);
     RUN_TEST_CASE(reductions_effects_include_component_payload_reads);
     pu_clear_setup();
 }

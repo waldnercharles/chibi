@@ -131,6 +131,13 @@ source_system_batch *source_systems_prepare(
 int source_systems_prepare_index(source_system_batch *, int index, char *error, size_t size);
 bool source_systems_parallel(const source_system_batch *, int index);
 int source_systems_run(source_system_batch *, int index, char *error, size_t size);
+int source_systems_run_parallel(
+    source_system_batch *,
+    int index,
+    const task_system *,
+    char *error,
+    size_t size
+);
 int source_systems_finish_index(source_system_batch *, int index, bool commit, char *error, size_t size);
 int source_systems_finish(source_system_batch *);
 /* Quiescent scene/reset boundary; discard retained paused system dispatches. */

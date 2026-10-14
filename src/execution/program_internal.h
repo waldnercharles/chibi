@@ -138,6 +138,14 @@ typedef struct
     pin_value value;
     execution_reduction_op op;
 } component_reduction;
+typedef struct
+{
+    uint64_t component, layout;
+    const type_desc *type;
+    size_t offset;
+    pin_type scalar;
+    bool unbounded;
+} reduction_field;
 struct execution_program
 {
     execution_module *module;
@@ -158,14 +166,22 @@ struct execution_program
     int *change_queries;
     uint64_t query_rows, query_lookup_steps;
     bool query_streaming;
+    int stream_system;
     uint64_t *query_admissions;
+    struct query_evaluator *query_evaluators;
+    size_t query_cache_bytes;
     /* Detached scalar contributions and immutable prepared query row IDs. */
     component_reduction *reductions;
     int *reduction_table;
+    /* Successful immutable field metadata only; never column or row pointers. */
+    reduction_field reduction_fields[8];
+    int next_reduction_field;
     int unordered_reductions, ordered_reductions;
     uint64_t reduction_contributions, reduction_records;
     size_t reduction_peak_bytes;
     uint64_t *system_rows;
+    struct execution_row_worker *row_workers;
+    int row_parallel_jobs, row_parallel_workers;
     bool reducing;
     struct execution_program **imports;
     struct execution_program *owner_program;
@@ -181,7 +197,7 @@ struct execution_program
     execution_activation *running;
     execution_activation *spare_activation; /* Idle, with no borrowed instance/context. */
     execution_activation **system_activations;
-    bool system_prepared, system_ran;
+    bool system_prepared, system_ran, system_update;
     int system_status;
     const execution_program *replacement_of;
     execution_inspector *inspector;
@@ -207,6 +223,7 @@ void program_collect_states(execution_program *p);
 void program_activation_free(execution_activation *a);
 void program_activation_cache_free(execution_program *);
 size_t program_activation_cache_bytes(const execution_program *);
+size_t program_row_worker_bytes(const execution_program *);
 void program_activation_cancel(execution_activation *a);
 void program_bind_tasks(behavior_function_context *);
 int program_task_command(

@@ -161,6 +161,74 @@ void behavior_function_activation_free(behavior_function_activation *a)
     free(a->values);
     *a = (behavior_function_activation){ 0 };
 }
+static size_t vm_values(const behavior_function *f)
+{
+    size_t count = (size_t)acount(f->slots) + acount(f->locals) + 1;
+    if (f->fast) {
+        size_t fast = (size_t)acount(f->fast->slots) + acount(f->fast->locals) + 1;
+        if (fast > count) {
+            count = fast;
+        }
+    }
+    return count;
+}
+static size_t vm_frames(const behavior_function *f)
+{
+    int count = acount(f->frames);
+    return (size_t)(f->fast && acount(f->fast->frames) > count ? acount(f->fast->frames)
+                                                               : count);
+}
+size_t behavior_function_activation_storage_bytes(
+    const behavior_function *f,
+    const behavior_function_activation *a
+)
+{
+    size_t bytes = behavior_function_calls_storage_bytes(a->calls);
+    if (a->values) {
+        bytes += ((size_t)acount(f->slots) + acount(f->locals) + acount(f->frames)) *
+                 sizeof *a->values;
+    }
+    if (a->wake_times) {
+        bytes += (size_t)acount(f->frames) * sizeof *a->wake_times;
+    }
+    if (a->vm) {
+        bytes += sizeof *a->vm;
+        if (a->vm->values) {
+            bytes += vm_values(f) * sizeof *a->vm->values;
+        }
+        if (a->vm->parents) {
+            bytes += vm_frames(f) * sizeof *a->vm->parents;
+        }
+    }
+    return bytes;
+}
+void behavior_function_reset_activation(const behavior_function *f, behavior_function_activation *a)
+{
+    behavior_function_calls_reset(a->calls);
+    if (a->values) {
+        memset(
+            a->values,
+            0,
+            ((size_t)acount(f->slots) + acount(f->locals) + acount(f->frames)) *
+                sizeof *a->values
+        );
+    }
+    if (a->wake_times) {
+        memset(a->wake_times, 0, (size_t)acount(f->frames) * sizeof *a->wake_times);
+    }
+    if (a->vm) {
+        if (a->vm->values) {
+            memset(a->vm->values, 0, vm_values(f) * sizeof *a->vm->values);
+        }
+        if (a->vm->parents) {
+            memset(a->vm->parents, 0, vm_frames(f) * sizeof *a->vm->parents);
+        }
+    }
+    *a = (behavior_function_activation){ .values = a->values,
+                                         .wake_times = a->wake_times,
+                                         .vm = a->vm,
+                                         .calls = a->calls };
+}
 void behavior_function_copy_activation(
     const behavior_function *f,
     behavior_function_activation *target,

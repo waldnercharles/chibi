@@ -15,6 +15,7 @@
 #define EFFECT_DEPTH 64
 #define EFFECT_RECORDS 65536
 #define EFFECT_STEPS 200000
+#define SCALAR_HELPERS 64
 
 typedef struct
 {
@@ -29,6 +30,8 @@ typedef struct
     uint64_t *reads, *writes, *reduces;
     size_t capacity, records;
     bool counting, valid, predicate, reducing;
+    const behavior_function *scalar_root, *scalar_functions[SCALAR_HELPERS];
+    int scalar_count, reduction_modes;
     int operation, instruction;
     uint64_t capability, function;
 } effects;
@@ -595,6 +598,214 @@ static bool plan_reduces(const execution_module_plan *p)
     }
     return false;
 }
+typedef struct
+{
+    const behavior_function *seen[SCALAR_HELPERS], *stack[EFFECT_DEPTH];
+    int count, steps;
+} scalar_helpers;
+static bool scalar_value(pin_value value)
+{
+    return value.container == PIN_CONTAINER_SINGLE && value.type >= PIN_BOOL &&
+           value.type <= PIN_F64;
+}
+static bool scalar_helper(scalar_helpers *proof, const behavior_function *f, int depth)
+{
+    if (!f || depth == EFFECT_DEPTH || --proof->steps < 0 || f->variable_count ||
+        acount(f->components) || acount(f->queries) || acount(f->commands)) {
+        return false;
+    }
+    for (int i = 0; i < depth; i++) {
+        if (proof->stack[i] == f) {
+            return false;
+        }
+    }
+    for (int i = 0; i < proof->count; i++) {
+        if (proof->seen[i] == f) {
+            return true;
+        }
+    }
+    if (proof->count == SCALAR_HELPERS) {
+        return false;
+    }
+    /* Lowered writable scalar locals reserve private banks through snapshot
+     * descriptors. Executing a host call is still excluded below. */
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        if (--proof->steps < 0 || intrinsic(&f->host_calls[i]) !=
+                                      execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < f->argument_count; i++) {
+        if (!scalar_value(f->argument_defaults[i]) ||
+            behavior_function_kind(f, BEHAVIOR_BANK_ARGUMENT, i) != BEHAVIOR_VALUE) {
+            return false;
+        }
+    }
+    for (int i = 0; i < f->result_count; i++) {
+        if (!scalar_value(f->result_defaults[i]) ||
+            behavior_function_kind(f, BEHAVIOR_BANK_RESULT, i) != BEHAVIOR_VALUE) {
+            return false;
+        }
+    }
+    for (int i = 0; i < acount(f->locals); i++) {
+        if (!scalar_value(f->locals[i].initial) || f->locals[i].kind != BEHAVIOR_VALUE) {
+            return false;
+        }
+    }
+    for (int i = 0; i < acount(f->data_values); i++) {
+        if (!scalar_value(f->data_values[i].initial) ||
+            f->data_values[i].kind != BEHAVIOR_VALUE) {
+            return false;
+        }
+    }
+    proof->stack[depth] = f;
+    for (int i = 0; i < acount(f->calls); i++) {
+        if (f->calls[i].task ||
+            !scalar_helper(proof, f->calls[i].function, depth + 1)) {
+            return false;
+        }
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (--proof->steps < 0 || i->indirect) {
+            return false;
+        }
+        if (i->op >= BF_ADD && i->op <= BF_FMA &&
+            behavior_function_kind(f, BEHAVIOR_BANK_SLOT, i->output) == BEHAVIOR_VALUE) {
+            continue;
+        }
+        switch (i->op) {
+            case BF_CONSTANT:
+                if (!scalar_value(i->value) ||
+                    behavior_function_kind(f, BEHAVIOR_BANK_SLOT, i->output) !=
+                        BEHAVIOR_VALUE) {
+                    return false;
+                }
+                break;
+            case BF_ARGUMENT:
+            case BF_LOCAL:
+            case BF_SAVE:
+            case BF_RESULT:
+            case BF_BRANCH:
+            case BF_JUMP:
+            case BF_REQUIRE:
+            case BF_ASSERT:
+            case BF_FAIL:
+            case BF_CHECK:
+            case BF_CALL_CHECK:
+            case BF_RETURN:
+            case BF_END:
+            case BF_SOURCE_POINT:
+            case BF_SOURCE_WATCH: break;
+            case BF_HOST_SLOT:
+                if (i->target) {
+                    return false;
+                }
+                break;
+            case BF_CONTEXT:
+                if (i->target != 1 || !context_uses(f, i->output, &proof->steps)) {
+                    return false;
+                }
+                break;
+            case BF_LOAD:
+            case BF_WRITE: {
+                origin address = slot_origin(
+                    f,
+                    pc,
+                    i->op == BF_LOAD ? i->left : i->right,
+                    0,
+                    &proof->steps
+                );
+                if (i->op == BF_WRITE && control_write(i, address)) {
+                    break;
+                }
+                if (!address.bank || address.offset ||
+                    i->offset != offsetof(pin_value, d) || i->type < PIN_BOOL ||
+                    i->type > PIN_F64 ||
+                    behavior_function_kind(f, BEHAVIOR_BANK_SLOT, i->op == BF_LOAD ? i->output : i->left) !=
+                        BEHAVIOR_VALUE) {
+                    return false;
+                }
+                break;
+            }
+            case BF_INVOKE:
+                if (i->left < 0 || i->left >= acount(f->calls)) {
+                    return false;
+                }
+                break;
+            default: return false;
+        }
+    }
+    if (proof->count == SCALAR_HELPERS) {
+        return false;
+    }
+    proof->seen[proof->count++] = f;
+    return true;
+}
+static const behavior_function *scalar_helper_root(const execution_module_plan *p, scalar_helpers *proof)
+{
+    if (p->state_count || p->binding_count || p->action_count || p->import_count) {
+        return NULL;
+    }
+    const behavior_function *root = NULL;
+    for (int i = 0; i < p->function_count; i++) {
+        const execution_module_function *function = &p->functions[i];
+        if (function->subscription ||
+            (function->kind != EXECUTION_FUNCTION_SYSTEM &&
+             function->kind != EXECUTION_FUNCTION_AUTHORED)) {
+            return NULL;
+        }
+        if (function->kind == EXECUTION_FUNCTION_SYSTEM) {
+            if (root) {
+                return NULL;
+            }
+            root = function->body;
+        }
+    }
+    if (!root) {
+        return NULL;
+    }
+    for (int i = 0; i < acount(root->calls); i++) {
+        if (root->calls[i].task || !scalar_helper(proof, root->calls[i].function, 0)) {
+            return NULL;
+        }
+    }
+    for (int i = 0; i < p->function_count; i++) {
+        if (p->functions[i].body == root) {
+            continue;
+        }
+        bool reachable = false;
+        for (int j = 0; j < proof->count; j++) {
+            reachable |= proof->seen[j] == p->functions[i].body;
+        }
+        if (!reachable) {
+            return NULL;
+        }
+    }
+    return root;
+}
+static void scalar_plan(effects *e, const execution_module_plan *p)
+{
+    if (!e->reducing) {
+        return;
+    }
+    scalar_helpers proof = { .steps = EFFECT_STEPS };
+    e->scalar_root = scalar_helper_root(p, &proof);
+    if (e->scalar_root) {
+        for (int i = 0; i < proof.count; i++) {
+            e->scalar_functions[e->scalar_count++] = proof.seen[i];
+        }
+    }
+}
+static bool scalar_function(const effects *e, const behavior_function *f)
+{
+    for (int i = 0; i < e->scalar_count; i++) {
+        if (e->scalar_functions[i] == f) {
+            return true;
+        }
+    }
+    return false;
+}
 static void unknown(effects *e)
 {
     if (e->counting) {
@@ -672,6 +883,9 @@ static void function(effects *e, const behavior_function *f, int depth)
 {
     if (!f || !e->valid) {
         return;
+    }
+    if (!e->predicate && scalar_function(e, f)) {
+        return; /* Reachable scalar helpers have no world effects. */
     }
     if (depth > EFFECT_DEPTH || ++e->records > EFFECT_RECORDS) {
         e->valid = false;
@@ -755,6 +969,11 @@ static void function(effects *e, const behavior_function *f, int depth)
                         unknown(e);
                     }
                     add_reduction(e, target.component);
+                    if (op.constant) {
+                        e->reduction_modes |= op.bits == EXECUTION_REDUCTION_ADD_UNORDERED
+                                                ? 2
+                                                : 1;
+                    }
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
@@ -870,8 +1089,16 @@ static void function(effects *e, const behavior_function *f, int depth)
                 break;
             case BF_WORLD:
             case BF_ENTITY: break;
-            case BF_ARGUMENT:
             case BF_INVOKE:
+                if (i->left < 0 || i->left >= acount(f->calls)) {
+                    e->valid = false;
+                    return;
+                }
+                if (!e->predicate && !scalar_function(e, f->calls[i->left].function)) {
+                    unknown(e);
+                }
+                break;
+            case BF_ARGUMENT:
             case BF_INDEX:
             case BF_COLUMN:
             case BF_COLUMN_TRY:
@@ -961,7 +1188,8 @@ static void plan(effects *e, const execution_module_plan *p)
     for (int i = 0; i < p->function_count; i++) {
         const execution_module_function *f = &p->functions[i];
         e->function = f->id;
-        if (!e->counting && (f->kind != EXECUTION_FUNCTION_SYSTEM || f->subscription)) {
+        if (!e->counting && ((!e->scalar_root && f->kind != EXECUTION_FUNCTION_SYSTEM) ||
+                             f->subscription)) {
             e->summary->parallel_safe = false;
         }
         function(e, f->body, 0);
@@ -996,6 +1224,7 @@ static void plan(effects *e, const execution_module_plan *p)
 size_t execution_module_effects_bytes(const execution_module_plan *p)
 {
     effects e = { .counting = true, .valid = true, .reducing = plan_reduces(p) };
+    scalar_plan(&e, p);
     plan(&e, p);
     return !e.valid || e.capacity > EFFECT_RECORDS ||
                    e.capacity > SIZE_MAX / (3 * sizeof(uint64_t))
@@ -1027,12 +1256,16 @@ bool execution_module_build_effects(execution_module *m)
                   .reduces = capacity ? m->effect_ids + 2 * capacity : NULL,
                   .valid = true,
                   .reducing = plan_reduces(&m->plan) };
+    scalar_plan(&e, &m->plan);
     plan(&e, &m->plan);
     if (e.reducing) {
         /* Rows may alias through generators or arbitrary target handles. Only
          * private contributions, never ordinary writes, permit this proof. */
         m->effects.parallel_safe &= m->effects.reduce_count > 0 &&
-                                    !m->effects.write_count;
+                                    !m->effects.write_count &&
+                                    e.reduction_modes != 3;
+        /* Mixed ordered/unordered public IR stays serial so the exact failing
+         * contribution retains its row and source diagnostics. */
         for (int i = 0; i < m->effects.reduce_count; i++) {
             for (int j = 0; j < m->effects.read_count; j++) {
                 if (m->effects.reduces[i] == m->effects.reads[j]) {

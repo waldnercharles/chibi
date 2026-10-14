@@ -22,6 +22,7 @@ enum
     WAIT_EVENT,
     DELAY_ACTION,
     REENTER_EVENT,
+    WIDE_VALUES = 4096,
     CACHE_LIMIT = 64 * 1024
 };
 static const script_catalog_parameter amount = { .name = "amount",
@@ -71,6 +72,7 @@ static execution_module_plan *wide_plan;
 static execution_program *program;
 static execution_inspector *inspector;
 static ecs_world *world;
+static char *large_payload;
 static uint64_t owners[2];
 static execution_instance *instances[2];
 
@@ -83,6 +85,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     ecs_world_free(world);
+    free(large_payload);
     program = NULL;
     inspector = NULL;
     module = NULL;
@@ -90,6 +93,7 @@ static void cleanup()
     analysis = NULL;
     syntax = NULL;
     world = NULL;
+    large_payload = NULL;
 }
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
@@ -186,7 +190,9 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
             "behavior Cache { state total:double=0; "
             "Work :: (value:double) { total+=value; if value<0 { await "
             "Delay(1); } } "
-            "on Run(amount:double) { total+=amount; } "
+            "Leaf :: fn(value:double)->double { return value; } "
+            "Forward :: fn(value:double)->double { return Leaf(value); } "
+            "on Run(amount:double) { total+=Forward(amount); } "
             "on Reenter(amount:double) { total+=amount; child:task=Work(7); "
             "total+=amount; } }",
             backends[backend]
@@ -250,7 +256,7 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
-        char first[] = "first", second[] = "second";
+        char first[] = "first", second[] = "second", third[] = "third!";
         REQUIRE(
             dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = first }, 0) ==
                 FLOW_OK &&
@@ -265,6 +271,15 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
         const pin_value *one = execution_instance_state(instances[0], state_id("kept"));
         const pin_value *two = execution_instance_state(instances[1], state_id("kept"));
         REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "second"));
+        REQUIRE(
+            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = third }, 1.5) ==
+                FLOW_OK &&
+            cached()
+        );
+        third[0] = 'X';
+        one = execution_instance_state(instances[0], state_id("kept"));
+        two = execution_instance_state(instances[1], state_id("kept"));
+        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "third!"));
         REQUIRE(run(0, 1, 2) == FLOW_OK && cached());
         REQUIRE(run(0, -2, 3) < 0);
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
@@ -275,6 +290,54 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
         );
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(run(0, 2, 6) == FLOW_OK && total(0, 3) && cached());
+        cleanup();
+    }
+    return true;
+}
+TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
+{
+    const char *source = "behavior Cache { state total:double=0; "
+                         "on Run(amount:double) { values:=[amount,amount+1]; "
+                         "values[0]+=2; "
+                         "total+=values[0]+values[1]; } "
+                         "on Text(value:string) { total+=1; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 5) && cached());
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        int first = run(1, 2, 1);
+        int second = run(0, 3, 2);
+        xalloc_stats_get(&after);
+        REQUIRE(first == FLOW_OK && second == FLOW_OK);
+        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
+        REQUIRE(total(0, 14) && total(1, 7) && cached());
+
+        /* The input snapshot alone exceeds the complete idle cache budget. */
+        large_payload = xmalloc(CACHE_LIMIT + 1);
+        memset(large_payload, 'x', CACHE_LIMIT);
+        large_payload[CACHE_LIMIT] = '\0';
+        REQUIRE(
+            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = large_payload }, 3) == FLOW_OK
+        );
+        REQUIRE(
+            total(0, 15) &&
+            execution_program_memory_usage(program).activation_cache_bytes == 0
+        );
+        free(large_payload);
+        large_payload = NULL;
+
+        REQUIRE(
+            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 4) ==
+                FLOW_OK &&
+            total(1, 8) && cached()
+        );
+        xalloc_stats_get(&before);
+        int small = dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 5);
+        xalloc_stats_get(&after);
+        REQUIRE(small == FLOW_OK && total(0, 16) && cached());
+        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
         cleanup();
     }
     return true;
@@ -309,51 +372,68 @@ TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
     }
     return true;
 }
+static const char *fill_wide_host(void *, const pin_value *, pin_value *results)
+{
+    for (int i = 0; i < WIDE_VALUES; i++) {
+        results[i].d = i;
+    }
+    return NULL;
+}
 TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
-        enum
-        {
-            ARGUMENT_COUNT = 4096
-        };
-        pin_value *arguments = xcalloc(ARGUMENT_COUNT, sizeof *arguments);
-        for (int i = 0; i < ARGUMENT_COUNT; i++) {
-            arguments[i].type = PIN_F64;
+        for (int host_bank = 0; host_bank < 2; host_bank++) {
+            pin_value *arguments = xcalloc(WIDE_VALUES, sizeof *arguments);
+            for (int i = 0; i < WIDE_VALUES; i++) {
+                arguments[i].type = PIN_F64;
+            }
+            behavior_function_builder *builder = behavior_function_builder_new();
+            if (host_bank) {
+                static const node_host_call host = { .invoke = fill_wide_host };
+                static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+                int call = behavior_function_builder_host(builder, &host, &access, NULL, 0, arguments, WIDE_VALUES);
+                behavior_function_builder_emit(
+                    builder,
+                    (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                                     .target = call,
+                                                     .left = BEHAVIOR_FUNCTION_HOST_DATA }
+                );
+            } else {
+                behavior_function_builder_signature(builder, arguments, WIDE_VALUES, NULL, 0, NULL, 0);
+            }
+            behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
+            behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+            char error[256];
+            behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
+            behavior_function_builder_free(builder);
+            free(arguments);
+            REQUIRE(function);
+            wide_plan = execution_module_plan_new();
+            wide_plan->valid = true;
+            wide_plan->id = 42;
+            apush(
+                wide_plan->functions,
+                ((execution_module_function){ .id = 43,
+                                              .kind = EXECUTION_FUNCTION_SYSTEM,
+                                              .body = function })
+            );
+            wide_plan->function_count = 1;
+            module = execution_module_finish(&wide_plan, backends[backend], error, sizeof error);
+            REQUIRE(module);
+            world = ecs_world_new();
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(program);
+            REQUIRE(
+                execution_program_attach(program, ecs_entity_to_u64(ecs_world_create_entity(world)))
+            );
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(execution_program_step(program, i, 0, 1000) == FLOW_OK);
+                execution_memory_usage usage = execution_program_memory_usage(program);
+                REQUIRE(usage.activation_bytes == 0 && usage.activation_cache_bytes == 0);
+            }
+            cleanup();
         }
-        behavior_function_builder *builder = behavior_function_builder_new();
-        behavior_function_builder_signature(builder, arguments, ARGUMENT_COUNT, NULL, 0, NULL, 0);
-        behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
-        behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
-        char error[256];
-        behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
-        behavior_function_builder_free(builder);
-        free(arguments);
-        REQUIRE(function);
-        wide_plan = execution_module_plan_new();
-        wide_plan->valid = true;
-        wide_plan->id = 42;
-        apush(
-            wide_plan->functions,
-            ((execution_module_function){ .id = 43,
-                                          .kind = EXECUTION_FUNCTION_SYSTEM,
-                                          .body = function })
-        );
-        wide_plan->function_count = 1;
-        module = execution_module_finish(&wide_plan, backends[backend], error, sizeof error);
-        REQUIRE(module);
-        world = ecs_world_new();
-        program = execution_program_new(module, world, NULL);
-        REQUIRE(program);
-        REQUIRE(
-            execution_program_attach(program, ecs_entity_to_u64(ecs_world_create_entity(world)))
-        );
-        for (int i = 0; i < 2; i++) {
-            REQUIRE(execution_program_step(program, i, 0, 1000) == FLOW_OK);
-            execution_memory_usage usage = execution_program_memory_usage(program);
-            REQUIRE(usage.activation_bytes == 0 && usage.activation_cache_bytes == 0);
-        }
-        cleanup();
     }
     return true;
 }
@@ -362,6 +442,7 @@ void test_language_activation_cache()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work);
     RUN_TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs);
+    RUN_TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention);
     RUN_TEST_CASE(activation_cache_keeps_waits_and_inspection_independent);
     RUN_TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks);
     pu_clear_setup();

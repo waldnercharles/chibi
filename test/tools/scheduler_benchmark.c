@@ -402,6 +402,93 @@ TEST_CASE(scheduler_callback_changes_and_retries_keep_failure_order)
     REQUIRE(replacement.runs == 3 && second.runs == 6);
     return true;
 }
+typedef struct
+{
+    int submissions;
+    bool worker;
+} row_executor;
+typedef struct
+{
+    row_executor *executor;
+    const task_system *tasks;
+    int runs, worker_runs, parallel_runs, replacement_runs;
+    bool invalid_parallel_call;
+} row_hooks;
+static void *row_enqueue(task_range *run, int count, int, void *context, void *user)
+{
+    row_executor *executor = user;
+    assert(!executor->worker);
+    executor->submissions++;
+    executor->worker = true;
+    run(0, count, 1, context);
+    executor->worker = false;
+    return NULL;
+}
+static int row_run(ecs_world *, double, double, void *user, schedule_error *)
+{
+    row_hooks *h = user;
+    h->runs++;
+    h->worker_runs += h->executor->worker;
+    return 0;
+}
+static int row_parallel(void *user, const task_system *tasks, schedule_error *)
+{
+    row_hooks *h = user;
+    h->parallel_runs++;
+    h->invalid_parallel_call |= h->executor->worker || tasks != h->tasks;
+    return 0;
+}
+static int row_parallel_replacement(void *user, const task_system *tasks, schedule_error *)
+{
+    row_hooks *h = user;
+    h->replacement_runs++;
+    h->invalid_parallel_call |= h->executor->worker || tasks != h->tasks;
+    return 0;
+}
+TEST_CASE(scheduler_row_hooks_run_on_submitter_and_refresh_registration)
+{
+    row_executor executor = { 0 };
+    task_system tasks = { .workers = 2,
+                          .user = &executor,
+                          .enqueue = row_enqueue,
+                          .finish = inline_finish };
+    row_hooks first = { .executor = &executor, .tasks = &tasks }, second = first;
+    schedule_free(scheduled);
+    scheduled = schedule_new(world, &tasks);
+    schedule_desc a = descriptor("A", 0), b = descriptor("B", 1);
+    a.run = b.run = row_run;
+    a.run_parallel = b.run_parallel = row_parallel;
+    a.identity = a.user = &first;
+    b.identity = b.user = &second;
+    REQUIRE(!schedule_register(scheduled, &a));
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(first.parallel_runs == 1 && first.runs == 0 && executor.submissions == 0);
+    REQUIRE(!first.invalid_parallel_call);
+    a.run_parallel = row_parallel_replacement;
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(first.parallel_runs == 2 && first.replacement_runs == 0);
+    REQUIRE(!schedule_register(scheduled, &a));
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(first.parallel_runs == 2 && first.replacement_runs == 1);
+    REQUIRE(schedule_descriptor_at(scheduled, 0)->run_parallel == row_parallel_replacement);
+    REQUIRE(!schedule_register(scheduled, &b));
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(executor.submissions == 1 && first.runs == 1 && second.runs == 1);
+    REQUIRE(first.worker_runs == 1 && second.worker_runs == 1);
+    REQUIRE(first.replacement_runs == 1 && second.parallel_runs == 0);
+    schedule_remove(scheduled, "B");
+    a.host_sink = true;
+    REQUIRE(!schedule_register(scheduled, &a));
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(first.runs == 2 && first.worker_runs == 1 && first.replacement_runs == 1);
+    a.host_sink = false;
+    a.parallel_ready = not_ready;
+    REQUIRE(!schedule_register(scheduled, &a));
+    REQUIRE(!schedule_run(scheduled, SYSTEM_PRE_PHYSICS, 0, 0));
+    REQUIRE(first.runs == 3 && first.worker_runs == 1 && first.replacement_runs == 1);
+    REQUIRE(executor.submissions == 1 && !first.invalid_parallel_call);
+    return true;
+}
 static int nested_run(ecs_world *, double, double, void *, schedule_error *error)
 {
     int result = schedule_run(scheduled, SYSTEM_POST_PHYSICS, 0, 0);
@@ -655,6 +742,7 @@ void test_tool_scheduler_benchmark()
     RUN_TEST_CASE(scheduler_unchanged_descriptors_and_small_batches_allocate_nothing);
     RUN_TEST_CASE(scheduler_effect_and_order_changes_rebuild_dependencies);
     RUN_TEST_CASE(scheduler_callback_changes_and_retries_keep_failure_order);
+    RUN_TEST_CASE(scheduler_row_hooks_run_on_submitter_and_refresh_registration);
     RUN_TEST_CASE(scheduler_recursive_dispatch_keeps_outer_batch_storage);
     RUN_TEST_CASE(scheduler_large_batches_do_not_retain_unbounded_scratch);
     RUN_TEST_CASE(scheduler_reductions_commit_before_dependent_preparation);

@@ -132,6 +132,10 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     for (int scope = -1; scope < acount(p->imports); scope++) {
         const execution_program *program = scope < 0 ? p : p->imports[scope];
         result.activation_cache_bytes += program_activation_cache_bytes(program);
+        result.row_worker_capacity += program_row_worker_bytes(program);
+        result.row_parallel_jobs += program->row_parallel_jobs;
+        result.row_parallel_workers += program->row_parallel_workers;
+        result.query_cache_bytes += program->query_cache_bytes;
         result.reduction_bytes += (size_t)acount(program->reductions) *
                                   sizeof *program->reductions;
         result.reduction_capacity += program->reductions

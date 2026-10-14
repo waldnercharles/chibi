@@ -342,6 +342,14 @@ void behavior_function_prepare_data(
 void behavior_function_free_data(behavior_data_storage *storage);
 /* Begin a fresh invocation while retaining this function's backing buffers. */
 void behavior_function_reset_data(behavior_data_storage *storage);
+size_t behavior_function_data_storage_bytes(const behavior_data_storage *storage);
+/* Successful completed invocations only: clear saved values and control state,
+ * retaining scratch and idle nested calls for this immutable function. */
+void behavior_function_reset_activation(const behavior_function *, behavior_function_activation *);
+size_t behavior_function_activation_storage_bytes(
+    const behavior_function *,
+    const behavior_function_activation *
+);
 void behavior_function_copy_activation(
     const behavior_function *function,
     behavior_function_activation *target,
@@ -358,6 +366,11 @@ void behavior_function_rebind_services(
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
+/* End a completed invocation, retaining fixed host allocations. Clears the
+ * entire context except data/owned_data and empty query/command banks; callers
+ * must bind fresh invocation metadata and call prepare_host before running. */
+void behavior_function_reset_host(behavior_function_context *ctx);
+size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx);
 size_t behavior_function_watch_size(const behavior_function *function);
 /* Checks the live saved values, value banks and outlined call frames. Used by
  * a managed state owner to release overwritten storage after suspension. */

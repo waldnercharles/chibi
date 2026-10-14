@@ -195,6 +195,8 @@ static inline bool behavior_function_inspection_required(
     return op == BF_POINT || op == BF_SOURCE_POINT;
 }
 void behavior_function_calls_free(struct behavior_function_calls *calls);
+void behavior_function_calls_reset(struct behavior_function_calls *calls);
+size_t behavior_function_calls_storage_bytes(const struct behavior_function_calls *calls);
 static inline bool behavior_function_runtime_keeps(const behavior_function *f, int pc)
 {
     return !f->runtime_map || f->runtime_map[pc] != f->runtime_map[pc + 1];

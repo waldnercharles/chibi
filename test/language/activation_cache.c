@@ -72,6 +72,7 @@ static execution_module_plan *wide_plan;
 static execution_program *program;
 static execution_inspector *inspector;
 static ecs_world *world;
+static char *large_payload;
 static uint64_t owners[2];
 static execution_instance *instances[2];
 
@@ -84,6 +85,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     ecs_world_free(world);
+    free(large_payload);
     program = NULL;
     inspector = NULL;
     module = NULL;
@@ -91,6 +93,7 @@ static void cleanup()
     analysis = NULL;
     syntax = NULL;
     world = NULL;
+    large_payload = NULL;
 }
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
@@ -253,7 +256,7 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));
-        char first[] = "first", second[] = "second";
+        char first[] = "first", second[] = "second", third[] = "third!";
         REQUIRE(
             dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = first }, 0) ==
                 FLOW_OK &&
@@ -268,6 +271,15 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
         const pin_value *one = execution_instance_state(instances[0], state_id("kept"));
         const pin_value *two = execution_instance_state(instances[1], state_id("kept"));
         REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "second"));
+        REQUIRE(
+            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = third }, 1.5) ==
+                FLOW_OK &&
+            cached()
+        );
+        third[0] = 'X';
+        one = execution_instance_state(instances[0], state_id("kept"));
+        two = execution_instance_state(instances[1], state_id("kept"));
+        REQUIRE(one && two && !strcmp(one->str, "first") && !strcmp(two->str, "third!"));
         REQUIRE(run(0, 1, 2) == FLOW_OK && cached());
         REQUIRE(run(0, -2, 3) < 0);
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
@@ -278,6 +290,54 @@ TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
         );
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         REQUIRE(run(0, 2, 6) == FLOW_OK && total(0, 3) && cached());
+        cleanup();
+    }
+    return true;
+}
+TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
+{
+    const char *source = "behavior Cache { state total:double=0; "
+                         "on Run(amount:double) { values:=[amount,amount+1]; "
+                         "values[0]+=2; "
+                         "total+=values[0]+values[1]; } "
+                         "on Text(value:string) { total+=1; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 5) && cached());
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        int first = run(1, 2, 1);
+        int second = run(0, 3, 2);
+        xalloc_stats_get(&after);
+        REQUIRE(first == FLOW_OK && second == FLOW_OK);
+        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
+        REQUIRE(total(0, 14) && total(1, 7) && cached());
+
+        /* The input snapshot alone exceeds the complete idle cache budget. */
+        large_payload = xmalloc(CACHE_LIMIT + 1);
+        memset(large_payload, 'x', CACHE_LIMIT);
+        large_payload[CACHE_LIMIT] = '\0';
+        REQUIRE(
+            dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = large_payload }, 3) == FLOW_OK
+        );
+        REQUIRE(
+            total(0, 15) &&
+            execution_program_memory_usage(program).activation_cache_bytes == 0
+        );
+        free(large_payload);
+        large_payload = NULL;
+
+        REQUIRE(
+            dispatch(1, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 4) ==
+                FLOW_OK &&
+            total(1, 8) && cached()
+        );
+        xalloc_stats_get(&before);
+        int small = dispatch(0, TEXT_EVENT, (pin_value){ .type = PIN_STR, .str = "tiny" }, 5);
+        xalloc_stats_get(&after);
+        REQUIRE(small == FLOW_OK && total(0, 16) && cached());
+        REQUIRE(after.calls == before.calls && after.requested_bytes == before.requested_bytes);
         cleanup();
     }
     return true;
@@ -382,6 +442,7 @@ void test_language_activation_cache()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work);
     RUN_TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs);
+    RUN_TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention);
     RUN_TEST_CASE(activation_cache_keeps_waits_and_inspection_independent);
     RUN_TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks);
     pu_clear_setup();

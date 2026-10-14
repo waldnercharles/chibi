@@ -60,7 +60,8 @@ typedef struct
  * owned snapshots; task slots include reusable slots. Instance/activation headers,
  * fixed state banks, query history and index slots are logical byte counts and
  * exclude allocator overhead and nested buffers. activation_cache_bytes counts
- * owned idle activation storage separately, bounded to 64 KiB per program.
+ * owned idle activation storage, including retired payload backing, separately
+ * from live payload_capacity, bounded to 64 KiB per program.
  * query_cache_bytes counts idle predicate evaluators, independently bounded to
  * 64 KiB per program, including fixed host, helper and arena storage.
  * row_worker_capacity counts private row execution scratch, bounded to 1 MiB

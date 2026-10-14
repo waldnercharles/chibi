@@ -24,6 +24,7 @@
 static size_t cache_bytes(const execution_activation *a)
 {
     return sizeof *a + arena_storage_bytes(&a->storage) +
+           arena_storage_bytes(&a->payload) +
            behavior_function_host_storage_bytes(&a->context) +
            behavior_function_activation_storage_bytes(a->function, &a->activation);
 }
@@ -113,19 +114,23 @@ void program_activation_free(execution_activation *activation)
     if (keep) {
         behavior_function_reset_host(&activation->context);
         behavior_function_reset_activation(activation->function, &activation->activation);
+        /* All escaping values already have their own storage. Retire payload
+         * roots only after callbacks and host/call scratch have released them. */
+        arena_reset(&activation->payload);
     } else {
         behavior_function_clear_calls(&activation->activation);
     }
-    arena_free(&activation->payload);
     if (keep && !p->spare_activation &&
         cache_bytes(activation) <= ACTIVATION_CACHE_BYTES) {
         arena storage = activation->storage;
+        arena payload = activation->payload;
         behavior_function_activation saved = activation->activation;
         behavior_function_context host = activation->context;
         const behavior_function *function = activation->function;
         arena_reset(&storage);
         *activation = (execution_activation){ .function = function,
                                               .storage = storage,
+                                              .payload = payload,
                                               .activation = saved,
                                               .context = host };
         p->spare_activation = activation;
@@ -188,11 +193,11 @@ execution_activation *program_activation_new(
     p->spare_activation = NULL; /* Reentrant work cannot borrow this live frame. */
     if (!a) {
         a = xcalloc(1, sizeof *a);
+        arena_init_collectable(&a->payload);
     }
     a->instance = instance;
     a->function = function;
     a->cacheable = true;
-    arena_init_collectable(&a->payload);
     pin_value *args = arena_alloc(&a->storage, (size_t)(declared + 1) * sizeof *args);
     for (int i = 0; i < declared; i++) {
         const pin_value *value = i < count ? &arguments[i] : &defaults[i];
@@ -414,7 +419,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     program_inspection_finish(a);
     program_continuation_finish(a);
-    /* Completed calls release their whole payload arena. Collect only calls
+    /* Completed calls retire their payload values. Collect only calls
      * that can retain values across another resume or outstanding request. */
     if (!a->finished || acount(a->requests)) {
         program_collect_payloads(a->instance->program, a);

@@ -833,7 +833,7 @@ The language follow-up admits these focused C checks under the same supervisor:
   changes and dynamic dependency targets. Cache fallback uses 17 programs and
   1,025 independent constant binding rows, proving cache bounds are not execution
   limits. There are no frames, child processes or GPU work.
-- `tool language-activation-cache` and `tool wasm-activation-cache` use four
+- `tool language-activation-cache` and `tool wasm-activation-cache` use five
   cases on both backends to check warm allocation counts, owner/default reset,
   nested tasks, read-only observation, reload, managed payloads, errors, suspended
   work and debugger pause/resume. Each fixture has at most two entities and ten
@@ -938,7 +938,10 @@ The execution-storage and row-worker follow-up adds these reviewed bounds:
 - Existing activation-cache checks use two ordinary helper levels and add a
   4,096-value host-bank cap variant, two executions per backend. The execution
   selector adds four fixed-struct host calls to check clearing and service
-  rebinding. The full program selector retains the query regressions.
+  rebinding. Payload-reuse extensions add one array warmup and two dispatches,
+  one managed-string reuse, and one 65,537-byte oversized payload followed by
+  two small dispatches per backend. No workload uses an executor or real wait.
+  The full program selector retains the query regressions.
 - The SDK reduction selector adds four scalar-helper proof cases on each
   backend, with two input rows and one destination per case. A reachable
   numeric helper chain qualifies; component-reading, array-argument and unused

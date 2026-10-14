@@ -6,18 +6,18 @@
 
 #include <math.h>
 
-bool game_rhythm_sample(ecs_world *world, double time, game_beat *beat)
+bool rhythm_sample(ecs_world *world, double time, beat *out)
 {
-    GameRhythm settings = { 120, .18f };
-    ecs_component_id component = GAME_COMPONENT_GameRhythm.id;
+    Rhythm settings = { 120, .18f };
+    ecs_component_id component = COMPONENT_Rhythm.id;
     const ecs_execution_column
         *column = ecs_execution_find_column((const ecs_execution_view *)world, component);
     if (column && column->count > 1) {
         return false;
     }
     if (column && column->count == 1) {
-        settings = *(const GameRhythm *)((const char *)column->data +
-                                         column->singleton * column->stride);
+        settings = *(const Rhythm *)((const char *)column->data +
+                                     column->singleton * column->stride);
     }
     if (!isfinite(time) || !isfinite(settings.bpm) || settings.bpm <= 0 ||
         !isfinite(settings.pulse_width) || settings.pulse_width <= 0) {
@@ -28,7 +28,7 @@ bool game_rhythm_sample(ecs_world *world, double time, game_beat *beat)
     phase -= floor(phase);
     double duration = fmin(settings.pulse_width, period);
     double decay = fmax(0, 1 - phase * period / duration);
-    *beat = (game_beat){ phase, decay * decay, period, duration };
+    *out = (beat){ phase, decay * decay, period, duration };
     return true;
 }
 
@@ -40,11 +40,11 @@ static const char *sample_rhythm(
 )
 {
     if (!context->instance_time) {
-        return GAME_RHYTHM_NO_SCENE;
+        return RHYTHM_NO_SCENE;
     }
-    game_beat beat;
-    if (!game_rhythm_sample(world, *context->instance_time, &beat)) {
-        return GAME_RHYTHM_INVALID;
+    beat beat;
+    if (!rhythm_sample(world, *context->instance_time, &beat)) {
+        return RHYTHM_INVALID;
     }
     out[0].d = beat.phase;
     out[1].d = beat.pulse;
@@ -52,11 +52,10 @@ static const char *sample_rhythm(
     out[3].d = beat.duration;
     return NULL;
 }
-const node_host_call GAME_RHYTHM_CALL = {
+const node_host_call RHYTHM_CALL = {
     .service = "ecs.world",
     .context = sample_rhythm,
-    .missing_service = GAME_RHYTHM_NO_SCENE,
+    .missing_service = RHYTHM_NO_SCENE,
 };
 
-const node_access GAME_RHYTHM_ACCESS = { .reads = &GAME_COMPONENT_GameRhythm.id,
-                                         .read_count = 1 };
+const node_access RHYTHM_ACCESS = { .reads = &COMPONENT_Rhythm.id, .read_count = 1 };

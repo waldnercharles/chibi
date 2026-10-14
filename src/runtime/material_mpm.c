@@ -568,7 +568,7 @@ static void gather(int start, int end, uint32_t, void *context)
     }
 }
 
-static void run(const game_task_system *tasks, game_task_range *fn, int count, int particles, void *context)
+static void run(const task_system *tasks, task_range *fn, int count, int particles, void *context)
 {
     if (tasks->workers > 1 && particles >= 2048) {
         int grain = 256;
@@ -592,7 +592,7 @@ bool material_mpm_step_colliders(
     fluid_particle *particles,
     const int *active,
     int count,
-    const game_task_system *tasks,
+    const task_system *tasks,
     fluid_mpm_colliders colliders
 )
 {
@@ -605,7 +605,7 @@ bool material_mpm_step_colliders(
     if (!seed(mpm, settings, dt, particles, active, count)) {
         return false;
     }
-    game_task_system serial = { 0 };
+    task_system serial = { 0 };
     if (!tasks) {
         tasks = &serial;
     }
@@ -642,7 +642,7 @@ bool material_mpm_step(
     fluid_particle *particles,
     const int *active,
     int count,
-    const game_task_system *tasks
+    const task_system *tasks
 )
 {
     return material_mpm_step_colliders(

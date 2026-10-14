@@ -28,7 +28,7 @@ enum
     MAX_DEPTH = 16,
     MAX_PATH = 4096,
     MAX_VALUES = 65536,
-    /* GAME_SCENE_DEPTH_MAX: a scene nested deeper does not load. */
+    /* SCENE_DEPTH_MAX: a scene nested deeper does not load. */
     MAX_ENTITY_DEPTH = 256
 };
 typedef enum
@@ -57,6 +57,8 @@ struct source_catalog
     const source_catalog_edit *edits;
     bool *edit_used;
     int edit_count;
+    unsigned char *default_key;
+    bool defaults_known;
 };
 static const char *own(source_catalog *c, const char *text)
 {
@@ -324,6 +326,25 @@ static void project_references(
         value_reference(c, path, text, av_arr_get(behaviors, i), SOURCE_REFERENCE_PROGRAM);
     }
     const av_value *components = av_obj_get(value, "components");
+    const av_value *binding = av_obj_get(av_obj_get(components, "GlobalBinding"), "name");
+    const char *binding_name = av_get_str(binding);
+    if (binding_name && binding_name[0]) {
+        size_t size = strlen(binding_name) + sizeof "SceneGlobals.";
+        char *field = arena_alloc(&c->storage, size);
+        snprintf(field, size, "SceneGlobals.%s", binding_name);
+        apush(
+            c->definitions,
+            ((source_catalog_definition){
+                .id = script_catalog_id("field", field),
+                .name = own(c, binding_name),
+                .path = path,
+                .text = text,
+                .range = value_range(text, binding),
+                .field = true,
+                .owner = script_catalog_id("type", "SceneGlobals"),
+            })
+        );
+    }
     for (size_t i = 0; i < av_obj_size(components); i++) {
         if (!project_value(c, path)) {
             return;
@@ -567,6 +588,93 @@ static void *grow(source_catalog *c, const void *items, int count, int extra, si
     memcpy(grown, items, (size_t)count * size);
     return grown;
 }
+static bool library_type_source(const script_syntax *syntax)
+{
+    /* Invalid syntax may recover a library declaration during analysis. */
+    if (syntax->diagnostic_count) {
+        return true;
+    }
+    TSNode root = ts_tree_root_node(syntax->tree);
+    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+        TSNode program = ts_node_named_child(root, i);
+        if (ts_node_is_extra(program)) {
+            continue;
+        }
+        const char *kind = ts_node_type(program);
+        return strcmp(kind, "behavior") && strcmp(kind, "system");
+    }
+    return true;
+}
+/* Publish library type identities before callable signatures. A second pass
+ * resolves payloads that name a type from a later library in source order. */
+static void declared_types(source_catalog *c)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < acount(c->sources); i++) {
+            source_catalog_source *source = &c->sources[i];
+            if (!library_type_source(source->syntax)) {
+                continue;
+            }
+            script_analysis *analysis = script_declarations_document(
+                source->syntax,
+                &c->view,
+                source->identity
+            );
+            if (analysis->kind != SCRIPT_PROGRAM_LIBRARY || !analysis->type_count) {
+                script_analysis_free(analysis);
+                continue;
+            }
+            script_catalog input = { .types = analysis->types,
+                                     .type_count = analysis->type_count },
+                           owned;
+            if (!source_catalog_snapshot(&c->storage, &input, &owned)) {
+                error(c, source->path, (script_range){ 0 }, "Cannot retain declared type payload");
+                script_analysis_free(analysis);
+                continue;
+            }
+            for (int j = 0; j < owned.type_count; j++) {
+                script_catalog_type type = owned.types[j];
+                if (!type.internal) {
+                    const char *local = type.source_name ? type.source_name
+                                                         : type.name;
+                    size_t bytes = strlen(analysis->name) + strlen(local) + 2;
+                    char *qualified = arena_alloc(&c->storage, bytes);
+                    snprintf(qualified, bytes, "%s.%s", analysis->name, local);
+                    type.name = qualified;
+                    type.source_name = local;
+                }
+                int existing = -1;
+                bool duplicate = false;
+                for (int k = 0; k < c->view.type_count; k++) {
+                    if (c->view.types[k].id == type.id) {
+                        existing = k;
+                    } else if (
+                        !type.internal && !c->view.types[k].internal &&
+                        !strcmp(c->view.types[k].name, type.name)
+                    ) {
+                        duplicate = true;
+                    }
+                }
+                if (duplicate) {
+                    if (pass) {
+                        char message[192];
+                        snprintf(message, sizeof message, "Duplicate exported type name '%s'", type.name);
+                        error(c, source->path, (script_range){ 0 }, message);
+                    }
+                    continue;
+                }
+                if (existing >= 0) {
+                    ((script_catalog_type *)c->view.types)[existing] = type;
+                    continue;
+                }
+                script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 1, sizeof *types);
+                types[c->view.type_count++] = type;
+                c->view.types = types;
+            }
+            script_analysis_free(analysis);
+        }
+    }
+}
 /* An edit of the input map replaces the file, and one without text removes
  * it. */
 static char *input_text(source_catalog *c, const char *path)
@@ -615,6 +723,89 @@ static bool has_global(const source_catalog *c, const char *name)
         }
     }
     return false;
+}
+/* Named entity bindings are project declarations. Discover them from authored
+ * KDL, without expanding a scene or depending on the running world. */
+static void global_declarations(source_catalog *c)
+{
+    script_catalog_field *fields = NULL;
+    for (int i = 0; i < acount(c->definitions); i++) {
+        const source_catalog_definition *definition = &c->definitions[i];
+        if (!definition->field) {
+            continue;
+        }
+        bool found = false;
+        for (int j = 0; j < acount(fields); j++) {
+            found |= fields[j].id == definition->id;
+        }
+        if (!found) {
+            apush(
+                fields,
+                ((script_catalog_field){
+                    .id = definition->id,
+                    .name = definition->name,
+                    .type = { .storage = PIN_HANDLE, .nominal = c->view.entity_type },
+                    .read = script_catalog_id("capability", "Get Global Variable"),
+                    .read_key = definition->name,
+                })
+            );
+        }
+    }
+    int count = acount(fields);
+    if (!count) {
+        afree(fields);
+        return;
+    }
+    const source_catalog_definition *definition = NULL;
+    for (int i = 0; !definition && i < acount(c->definitions); i++) {
+        if (c->definitions[i].field) {
+            definition = &c->definitions[i];
+        }
+    }
+    assert(definition);
+    const char *message = NULL;
+    if (has_global(c, "globals")) {
+        message = "Scene bindings need the global name globals; rename the "
+                  "global that uses it";
+    } else if (script_catalog_find_type(&c->view, "SceneGlobals") >= 0) {
+        message = "Scene bindings need the type name SceneGlobals; rename the "
+                  "type that uses it";
+    } else if (!script_catalog_capability_by_id(&c->view, fields[0].read)) {
+        message = "Scene bindings need the native global read capability";
+    }
+    if (message) {
+        error(c, definition->path, definition->range, message);
+        int kept = 0;
+        for (int i = 0; i < acount(c->definitions); i++) {
+            if (!c->definitions[i].field) {
+                c->definitions[kept++] = c->definitions[i];
+            }
+        }
+        asetlen(c->definitions, kept);
+        afree(fields);
+        return;
+    }
+    script_catalog_field *owned = arena_alloc(&c->storage, (size_t)count * sizeof *owned);
+    memcpy(owned, fields, (size_t)count * sizeof *owned);
+    afree(fields);
+    uint64_t id = script_catalog_id("type", "SceneGlobals");
+    script_type scope = { .storage = PIN_STR, .nominal = id, .flags = SCRIPT_TYPE_NAMESPACE };
+    script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 1, sizeof *types);
+    types[c->view.type_count++] = (script_catalog_type){
+        .id = id,
+        .name = "SceneGlobals",
+        .type = scope,
+        .fields = owned,
+        .field_count = count,
+    };
+    c->view.types = types;
+    script_catalog_global *globals = grow(c, c->view.globals, c->view.global_count, 1, sizeof *globals);
+    globals[c->view.global_count++] = (script_catalog_global){
+        .id = script_catalog_id("global", "globals"),
+        .name = "globals",
+        .type = scope,
+    };
+    c->view.globals = globals;
 }
 /* Each action is the event of its name, so an action named like a host
  * event (Tick, Begin, ...) would dispatch that event when pressed. Project
@@ -749,6 +940,7 @@ static script_catalog_parameter *parameters(
     for (int i = 0; i < count; i++) {
         const script_symbol *symbol = &a->symbols[symbols[i]];
         values[i] = (script_catalog_parameter){ .name = own(c, symbol->name),
+                                                .unit = own(c, symbol->unit),
                                                 .type = symbol->type };
         if (symbol->initializer >= 0) {
             const script_expression *expression = &a->expressions[symbol->initializer];
@@ -1003,6 +1195,7 @@ static source_catalog *build(
             load_file(c, edits[i].path, edit_kind(root, edits[i].path));
         }
     }
+    global_declarations(c);
     free(c->edit_used);
     c->edit_used = NULL;
     c->edits = NULL;
@@ -1015,6 +1208,7 @@ static source_catalog *build(
             }
         }
     }
+    declared_types(c);
     for (int i = 0; i < acount(c->sources); i++) {
         source_catalog_source *source = &c->sources[i];
         script_analysis
@@ -1102,6 +1296,7 @@ static source_catalog *build(
             error(c, reference->path, reference->range, message);
         }
     }
+    c->defaults_known = source_catalog_default_key(&c->view, &c->default_key);
     return c;
 }
 source_catalog *source_catalog_new(const char *root, const script_catalog *native)
@@ -1129,6 +1324,14 @@ source_catalog *source_catalog_replaced(
 const script_catalog *source_catalog_view(const source_catalog *c)
 {
     return &c->view;
+}
+bool source_catalog_same(const source_catalog *a, const source_catalog *b)
+{
+    int bytes = acount(a->default_key);
+    return a->defaults_known && b->defaults_known &&
+           bytes == acount(b->default_key) &&
+           (!bytes || !memcmp(a->default_key, b->default_key, (size_t)bytes)) &&
+           source_catalog_metadata_equal(&a->view, &b->view);
 }
 const input_action *source_catalog_input(const source_catalog *c)
 {
@@ -1183,6 +1386,7 @@ void source_catalog_free(source_catalog *c)
     afree(c->references);
     afree(c->diagnostics);
     afree(c->capabilities);
+    afree(c->default_key);
     input_map_free(c->input);
     arena_free(&c->storage);
     free(c);

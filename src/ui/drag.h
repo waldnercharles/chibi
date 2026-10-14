@@ -15,7 +15,9 @@
  *   takes; data-drop-hint says what a drop does there, under the overlay's
  *   label. data-drop-zones="tree" splits it as a sortable tree's row: its
  *   top and bottom quarters drop before and after it and its middle inside;
- *   "list" splits it in halves, before and after.
+ *   "list" splits it in halves, before and after. Optional
+ *   data-drop-zones-type="type" limits those zones to one drag type; other
+ *   accepted types drop on the whole target with an empty zone.
  * - While a drag runs the source has data-dragging, each target that takes
  *   its type data-drop-accept, and the nearest one under the pointer
  *   data-drop-over and, with zones, data-drop-zone="before|inside|after".

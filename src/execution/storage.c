@@ -35,6 +35,7 @@ static size_t own_bytes(const behavior_function *f)
     COUNT(reductions);
     COUNT(query_diagnostics);
     COUNT(suspensions);
+    COUNT(value_roots);
     COUNT(points);
     COUNT(source_points);
     COUNT(source_watches);
@@ -68,6 +69,10 @@ static size_t own_bytes(const behavior_function *f)
         bytes = add(
             bytes,
             vector(f->suspensions[i].values, sizeof *f->suspensions[i].values)
+        );
+        bytes = add(
+            bytes,
+            vector(f->suspensions[i].roots, sizeof *f->suspensions[i].roots)
         );
     }
     for (int i = 0; i < acount(f->component_proofs); i++) {

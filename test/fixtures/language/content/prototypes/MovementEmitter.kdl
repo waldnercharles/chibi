@@ -1,5 +1,5 @@
 name "MovementEmitter"
 components {
-    (object)GAME.GameParticleEmitter
-    (object)GAME.GameTransform
+    (object)ParticleEmitter
+    (object)Transform
 }

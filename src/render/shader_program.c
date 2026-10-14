@@ -13,7 +13,8 @@
 #include <string.h>
 
 /* The scene's shadow, shadow blocker, light shadow, sky specular, split-sum
- * and ambient occlusion maps, which follow its images in set 2. */
+ * and ambient occlusion maps, which follow its images in set 2, then the
+ * global illumination probes' atlas in the programs that read it. */
 enum
 {
     SCENE3D_MAPS = 6
@@ -60,9 +61,33 @@ char *render_shader_source(const char *name)
     return copy;
 }
 
+CF_Shader render_pass_shader(const char *fragment_name, char *error, size_t size)
+{
+    char *vertex = render_shader_source("hrc/pass.vert");
+    char *fragment = render_shader_source(fragment_name);
+    CF_Shader shader = { 0 };
+    if (vertex && fragment) {
+        shader = cf_make_shader_from_source(vertex, fragment);
+    }
+    if (!shader.id) {
+        snprintf(
+            error,
+            size,
+            "Shader %s: %s",
+            fragment_name,
+            vertex && fragment ? cf_shader_compile_error() : "cannot read its sources"
+        );
+    }
+    free(vertex);
+    free(fragment);
+    return shader;
+}
+
 static bool scene3d_kind(render_program_kind kind)
 {
     return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_SCENE3D_MESH ||
+           kind == RENDER_PROGRAM_SCENE3D_GI ||
+           kind == RENDER_PROGRAM_SCENE3D_MESH_GI ||
            kind == RENDER_PROGRAM_SCENE3D_SHADOW ||
            kind == RENDER_PROGRAM_SCENE3D_MESH_SHADOW;
 }
@@ -79,6 +104,7 @@ render_programs *render_programs_new(render_program_kind kind)
     programs->kind = kind;
     if (scene3d_kind(kind)) {
         bool mesh = kind == RENDER_PROGRAM_SCENE3D_MESH ||
+                    kind == RENDER_PROGRAM_SCENE3D_MESH_GI ||
                     kind == RENDER_PROGRAM_SCENE3D_MESH_SHADOW;
         programs->vertex = render_shader_source(mesh ? "scene3d_mesh.vert" : "scene3d.vert");
         programs->body = render_shader_source("scene3d.frag");
@@ -194,14 +220,25 @@ static bool sdf_kind(render_program_kind kind)
     return kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW;
 }
 
+/* Whether a lit program reads the probes' atlas. Only programs drawn while
+ * global illumination is on compile its code. Their images, the parameters,
+ * maps and ramps fill the 16 samplers SDL allows a fragment shader on every
+ * backend, so the atlas takes the last image's place. */
+static bool reads_probes(render_program_kind kind, int images)
+{
+    return (kind == RENDER_PROGRAM_SCENE3D_GI || kind == RENDER_PROGRAM_SCENE3D_MESH_GI) &&
+           images < RENDER_SHADER_IMAGE_MAX;
+}
+
 /* Set 2 holds the samplers, then the storage buffers. The lit scene's maps,
- * SDF depth or the previous batch's targets follow the images, and the ramp
- * table comes last. Shadow programs read no maps. */
+ * SDF depth or the previous batch's targets follow the images, then the
+ * probes' atlas where a lit program reads it, and the ramp table comes last.
+ * Shadow programs read no maps. */
 static int ramp_binding(render_program_kind kind, int images)
 {
     return first_image(kind) + images +
            (shadow_kind(kind)    ? 0
-            : scene3d_kind(kind) ? SCENE3D_MAPS
+            : scene3d_kind(kind) ? SCENE3D_MAPS + reads_probes(kind, images)
             : sdf_kind(kind)     ? 1
                                  : previous_targets(kind));
 }
@@ -284,6 +321,10 @@ static bool compile(render_programs *programs, program *entry)
               "int u_metaball_group; vec4 u_mesh_rect; vec2 u_mesh_extent; "
               "vec4 u_plane_right; vec4 u_plane_down; vec4 u_plane_target; };\n"
             : "";
+    char gi[48] = "";
+    if (reads_probes(programs->kind, entry->set.count)) {
+        snprintf(gi, sizeof gi, "#define SG_GI_BINDING %d\n", entry->set.count + SCENE3D_MAPS + 1);
+    }
     /* Room for the defines ahead of the sources. */
     size_t bytes = strlen(graphs) + strlen(programs->body) + strlen(scene) +
                    strlen(uniforms) + strlen(ramps) + 1024;
@@ -304,7 +345,7 @@ static bool compile(render_programs *programs, program *entry)
         "%d\n#define SG_LIGHT_SHADOW_BINDING %d\n#define "
         "SG_SKY_SPECULAR_BINDING "
         "%d\n#define SG_SKY_BRDF_BINDING %d\n#define SG_OCCLUSION_BINDING "
-        "%d\n%s%s%s%s\n%s",
+        "%d\n%s%s%s%s%s\n%s",
         SHADER_OUTPUT_MAX,
         programs->kind == RENDER_PROGRAM_RASTER_MESH
             ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
@@ -326,6 +367,7 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + 4,
         entry->set.count + 5,
         entry->set.count + 6,
+        gi,
         scene,
         uniforms,
         ramps,

@@ -10,7 +10,7 @@ typedef struct
     /* A scalar script type (bool, int, float, double, number, string, entity,
      * ...) or a struct in the final target's type catalog, such as CF_V2. */
     const char *name, *type, *description;
-    /* Presentation of a number, as type_field's. */
+    /* Numeric unit and inclusive stored-value range; equal means unbounded. */
     const char *unit;
     double min, max;
 } declared_field;
@@ -26,7 +26,7 @@ typedef struct declared_components declared_components;
  * its type descriptor, ECS descriptor and script type. Inputs are copied.
  * The newest set alive is the loaded project's: its types are the process
  * type and script catalogs' project slots, and freeing it restores the next
- * newest. Rows start zeroed. */
+ * newest. Rows start zeroed, then owning publication clamps range contracts. */
 declared_components *declared_components_new(const declared_component *, int count, char *error, size_t size);
 /* Whether a field may have the type `spelling`. */
 bool declared_components_field_type(const char *spelling);
@@ -37,8 +37,8 @@ const script_catalog *declared_components_catalog(const declared_components *);
 /* The components a project's assets can name: the native registry, then the
  * live set's. */
 ecs_component_catalog project_components();
-/* Writes names and field types, or reads them and builds a new set into *out.
- * Descriptions, units and ranges stay with the authored source. An empty set reads as NULL. */
+/* Writes names, field types and range contracts, or rebuilds a set into *out.
+ * Descriptions and units stay with the source. An empty set reads as NULL. */
 void declared_components_wire(execution_wire *, declared_components **out);
 
 /* Resolves declared types, then defers every request to base. */

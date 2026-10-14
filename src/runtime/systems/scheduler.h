@@ -19,15 +19,15 @@ typedef struct
 {
     int status;
     char message[192];
-} game_schedule_error;
-typedef int (*game_schedule_run_fn)(ecs_world *, double, double, void *, game_schedule_error *);
+} schedule_error;
+typedef int (*schedule_run_fn)(ecs_world *, double, double, void *, schedule_error *);
 typedef struct
 {
     const char *name;
     system_phase phase;
     int order;
-    const uint64_t *reads, *writes;
-    int read_count, write_count;
+    const uint64_t *reads, *writes, *reduces;
+    int read_count, write_count, reduce_count;
     const char *const *resource_reads, *const *resource_writes;
     int resource_read_count, resource_write_count;
     const char *const *after;
@@ -37,33 +37,49 @@ typedef struct
      * identifies stateless native callbacks. The scheduler borrows all hooks
      * and user storage; copied names/access declarations own their snapshots. */
     const void *identity;
-    game_schedule_run_fn run;
-    int (*prepare)(void *, game_schedule_error *);
+    schedule_run_fn run;
+    /* Optional row executor. Called only by the submitting thread for a
+     * single-system batch, never from a system worker. */
+    int (*run_parallel)(void *, const task_system *, schedule_error *);
+    int (*prepare)(void *, schedule_error *);
+    /* Called serially in schedule order after the batch has joined, before
+     * the next batch prepares. commit is false after preparation/execution
+     * failure, including an earlier peer's failure. Only commit=true may
+     * publish successful work or retain a paused dispatch; false discards it. */
+    int (*finish)(void *, bool commit, schedule_error *);
     /* Optional serial check of current instrumentation/runtime barriers. */
     bool (*parallel_ready)(void *);
-    int (*maintain)(void *, double, double, game_schedule_error *);
-    int (*field_changed)(void *, ecs_entity, ecs_component_id, size_t, pin_value, game_schedule_error *);
+    int (*maintain)(void *, double, double, schedule_error *);
+    int (*field_changed)(void *, ecs_entity, ecs_component_id, size_t, pin_value, schedule_error *);
     void *user;
-} game_schedule_desc;
+} schedule_desc;
 
-typedef struct game_schedule game_schedule;
+typedef struct schedule schedule;
 /* Borrowed executor must outlive the schedule. NULL runs serially. */
-game_schedule *game_schedule_new(ecs_world *, const game_task_system *);
-void game_schedule_free(game_schedule *);
-int game_schedule_register(game_schedule *, const game_schedule_desc *);
-void game_schedule_remove(game_schedule *, const char *);
-bool game_schedule_build(game_schedule *);
-int game_schedule_maintain(game_schedule *, double, double, game_schedule_error *);
-int game_schedule_field_changed(game_schedule *, ecs_entity, ecs_component_id, size_t, pin_value, game_schedule_error *);
-int game_schedule_run(game_schedule *, system_phase, double, double);
-const char *game_schedule_error_message(const game_schedule *);
-const char *game_schedule_warning(const game_schedule *);
-void game_schedule_set_parallel(game_schedule *, bool);
-int game_schedule_count(const game_schedule *);
-const char *game_schedule_at(const game_schedule *, int);
+schedule *schedule_new(ecs_world *, const task_system *);
+void schedule_free(schedule *);
+int schedule_register(schedule *, const schedule_desc *);
+void schedule_remove(schedule *, const char *);
+/* Quiescent scene/reset boundary: forget an unfinished phase cursor and
+ * rebuild the existing registrations on the next dispatch. */
+void schedule_reset(schedule *);
+/* Whether an unfinished phase still has a valid resume cursor. */
+bool schedule_paused(const schedule *);
+bool schedule_build(schedule *);
+int schedule_maintain(schedule *, double, double, schedule_error *);
+int schedule_field_changed(schedule *, ecs_entity, ecs_component_id, size_t, pin_value, schedule_error *);
+int schedule_run(schedule *, system_phase, double, double);
+const char *schedule_error_message(const schedule *);
+const char *schedule_warning(const schedule *);
+void schedule_set_parallel(schedule *, bool);
+int schedule_count(const schedule *);
+const char *schedule_at(const schedule *, int);
 /* Borrowed copied registration until the next register/remove/free. Indexes
  * use the built schedule order returned by count/at. */
-const game_schedule_desc *game_schedule_descriptor_at(const game_schedule *, int);
-int game_schedule_parallel_batches(const game_schedule *);
-bool game_schedule_dependency(const game_schedule *, const char *, const char *);
+const schedule_desc *schedule_descriptor_at(const schedule *, int);
+int schedule_parallel_batches(const schedule *);
+/* Dispatch scratch retained between runs; excludes in-flight temporary storage.
+ * At most 128 batch entries are retained; larger and recursive runs use temporary storage. */
+size_t schedule_scratch_bytes(const schedule *);
+bool schedule_dependency(const schedule *, const char *, const char *);
 #endif

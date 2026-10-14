@@ -1,9 +1,12 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
+#include "host/player_clock.h"
+#include "host/player_url.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
 #include "render/scene3d.h"
 #include "render/scene_renderer.h"
+#include "render/screenshot.h"
 #include "render/shader_images.h"
 #include "render/shader_parameters.h"
 #include "render/shader_publish.h"
@@ -38,11 +41,11 @@ type_catalog_pack type_catalog_pack_at(int index)
     if (index != 0) {
         abort();
     }
-    return GAME_TYPE_PACK;
+    return TYPE_PACK;
 }
 typedef struct
 {
-    game_player *player;
+    player *player;
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     bool render_failed;
@@ -53,12 +56,15 @@ typedef struct
     ui_world ui;
     double now;
     double fixed_dt;
-} player_host;
+    int width, height; /* Explicit canvas dimensions, independent of display DPI. */
+} desktop_player;
 #define BUNDLE_ARTIFACT "game.chibip"
 #define BUNDLE_ENGINE "engine"
 #define BUNDLE_MOUNT "/chibi-game"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
+#define CAPTURE_MAX_DIMENSION 640
+#define CAPTURE_MAX_PIXELS 230400
 static volatile sig_atomic_t stopped;
 static rml_input keys[128];
 static int key_count;
@@ -114,22 +120,22 @@ static void key_changed(CF_KeyButton key, bool down)
     if (!down) {
         return;
     }
-    GameControl control = game_control_for_key(key);
+    Control control = control_for_key(key);
     if (control) {
         pressed_controls |= UINT64_C(1) << control;
     }
 }
 static int payload(void *context, const char *name, render_ui_event_field *fields, int capacity)
 {
-    player_host *host = context;
-    game_source_registry *sources = game_world_sources(game_player_world(host->player));
+    desktop_player *host = context;
+    source_registry *sources = world_sources(player_world(host->player));
     execution_module_event_info event;
-    if (!game_source_event(sources, name, &event) || event.field_count > capacity) {
+    if (!source_event(sources, name, &event) || event.field_count > capacity) {
         return -1;
     }
     for (int i = 0; i < event.field_count; i++) {
         execution_module_event_field_info field;
-        if (!game_source_event_field(sources, name, i, &field)) {
+        if (!source_event_field(sources, name, i, &field)) {
             return -1;
         }
         fields[i] = (render_ui_event_field){ field.name, field.initial };
@@ -138,11 +144,11 @@ static int payload(void *context, const char *name, render_ui_event_field *field
 }
 static int dispatch(void *context, uint64_t owner, const char *name, execution_arguments args)
 {
-    player_host *host = context;
-    game_world *world = game_player_world(host->player);
-    const engine_frame_timing *timing = engine_last_timing(game_world_engine(world));
-    return game_source_dispatch(
-        game_world_sources(world),
+    desktop_player *host = context;
+    world *world = player_world(host->player);
+    const engine_frame_timing *timing = engine_last_timing(world_engine(world));
+    return source_dispatch(
+        world_sources(world),
         ecs_entity_from_u64(owner),
         name,
         args.values,
@@ -153,63 +159,78 @@ static int dispatch(void *context, uint64_t owner, const char *name, execution_a
 }
 static bool initializing(void *context)
 {
-    player_host *host = context;
-    return game_entities_initializing(game_world_entities(game_player_world(host->player)));
+    desktop_player *host = context;
+    return entities_initializing(world_entities(player_world(host->player)));
 }
 static void render(void *context)
 {
-    player_host *host = context;
-    game_world *world = game_player_world(host->player);
-    const engine_modules *modules = game_world_modules(world);
+    desktop_player *host = context;
+    world *world = player_world(host->player);
+    const engine_modules *modules = world_modules(world);
     app_scene_renderer_set_time(
         host->renderer,
-        (float)engine_last_timing(game_world_engine(world))->simulation_time
+        (float)engine_last_timing(world_engine(world))->simulation_time
     );
     if (engine_viewport_perspective(host->viewport)) {
         render_scene3d_camera camera;
         engine_viewport_get_camera3d(host->viewport, &camera);
         host->render_failed = !app_scene_renderer_draw3d(
             host->renderer,
-            game_world_ecs(world),
+            world_ecs(world),
             modules->particles,
             &camera,
             host->viewport,
-            game_world_engine(world),
+            world_engine(world),
             (render_skip){ 0 }
         );
         return;
     }
     host->render_failed = !app_scene_renderer_draw(
         host->renderer,
-        game_world_ecs(world),
+        world_ecs(world),
         modules->particles,
         host->viewport,
-        game_world_engine(world),
+        world_engine(world),
         (render_skip){ 0 }
     );
 }
-static int sample_input(player_host *host)
+static int sample_input(desktop_player *host)
 {
-    engine *runtime = game_world_engine(game_player_world(host->player));
+    engine *runtime = world_engine(player_world(host->player));
     bool active = cf_app_has_focus() && engine_is_playing(runtime) &&
                   !engine_viewport_ui_capture(host->viewport) &&
                   !engine_viewport_ui_typing(host->viewport);
-    uint64_t controls = active ? pressed_controls | game_controls_down() : 0;
+    uint64_t controls = active ? pressed_controls | controls_down() : 0;
     bool firing = false;
-    if (engine_sample_controls(runtime, controls, &firing) < 0) {
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        controllers[i] = controller_state(i);
+        if (!active) {
+            controllers[i].buttons = 0;
+        }
+    }
+    if (engine_sample_devices(runtime, controls, controllers, &firing) < 0) {
         return -1;
     }
-    CF_V2 movement = active ? game_controls_movement() : (CF_V2){ 0 };
+    CF_V2 movement = active ? controls_movement() : (CF_V2){ 0 };
     engine_sample_movement(runtime, movement.x, movement.y);
-    CF_V2 aim = active ? game_controls_aim() : (CF_V2){ 0 };
+    CF_V2 aim = active ? controls_aim() : (CF_V2){ 0 };
     bool point = false;
     if (active && !aim.x && !aim.y) {
         point = engine_viewport_mouse_world(host->viewport, &aim.x, &aim.y);
         aim.y = -aim.y;
     }
+    CF_Ray3 ray;
+    input_pointer_ray pointer = { 0 };
+    if (active && engine_viewport_mouse_ray(host->viewport, &ray)) {
+        pointer = (input_pointer_ray){ .origin = ray.p, .direction = ray.d, .active = true };
+    }
+    if (engine_sample_pointer_ray(runtime, pointer) < 0) {
+        return -1;
+    }
     return engine_sample_aim(runtime, aim, firing, point);
 }
-static bool text_input(player_host *host)
+static bool text_input(desktop_player *host)
 {
     CF_InputTextBuffer buffer;
     if (!cf_input_text_get_buffer(&buffer)) {
@@ -257,6 +278,24 @@ static bool number(const char *text, double *out)
     errno = 0;
     *out = strtod(text, &end);
     return !errno && end != text && !*end && isfinite(*out) && *out > 0;
+}
+static bool dimensions(const char *text, int *width, int *height)
+{
+    char *end;
+    errno = 0;
+    long x = strtol(text, &end, 10);
+    if (errno || end == text || *end != 'x' || x < 1 || x > CAPTURE_MAX_DIMENSION) {
+        return false;
+    }
+    const char *second = end + 1;
+    long y = strtol(second, &end, 10);
+    if (errno || end == second || *end || y < 1 || y > CAPTURE_MAX_DIMENSION ||
+        x * y > CAPTURE_MAX_PIXELS) {
+        return false;
+    }
+    *width = (int)x;
+    *height = (int)y;
+    return true;
 }
 /* An exported game keeps its artifact and resources in data/ beside the
  * executable, or in Contents/Resources of a macOS app bundle, with the engine's
@@ -328,33 +367,35 @@ static void log_message(void *, const execution_log_message *message)
 }
 /* Starts the scene scripts asked for during the frame that just drew, or
  * prints why it could not. */
-static bool follow_scene(player_host *host)
+static bool follow_scene(desktop_player *host)
 {
-    char *next = game_scene_flow_take(game_world_scenes(game_player_world(host->player)));
+    char *next = scene_flow_take(world_scenes(player_world(host->player)));
     if (!next) {
         return true;
     }
+    url_requests_cancel(world_urls(player_world(host->player)));
+    player_url_submit(NULL);
     char error[512];
-    bool loaded = game_player_load_scene(host->player, next, error, sizeof error);
+    bool loaded = player_load_scene(host->player, next, error, sizeof error);
     free(next);
     if (!loaded) {
         fprintf(stderr, "%s\n", error);
         return false;
     }
-    const game_scene *scene = game_scene_instance_scene(game_player_scene(host->player));
+    const scene *scene = scene_instance_scene(player_scene(host->player));
     engine_viewport_reset_camera(host->viewport);
     app_scene_renderer_reset(host->renderer);
-    engine_viewport_set_perspective(host->viewport, game_scene_perspective(scene));
-    host->ui.page = game_scene_ui(scene);
+    engine_viewport_set_perspective(host->viewport, scene_perspective(scene));
+    host->ui.page = scene_ui(scene);
     engine_viewport_set_ui(host->viewport, &host->ui, "");
     return true;
 }
 /* Runs one frame: 1 to continue, 0 when the player quits, and -1 after
  * printing why the game failed. */
-static int run_frame(player_host *host)
+static int run_frame(desktop_player *host)
 {
-    game_world *world = game_player_world(host->player);
-    engine *runtime = game_world_engine(world);
+    world *world = player_world(host->player);
+    engine *runtime = world_engine(world);
     key_count = 0;
     pressed_controls = 0;
     input_overflow = false;
@@ -364,6 +405,10 @@ static int run_frame(player_host *host)
         cf_input_disable_ime();
     }
     cf_app_update(NULL);
+    if (host->width && (cf_app_get_canvas_width() != host->width ||
+                        cf_app_get_canvas_height() != host->height)) {
+        cf_app_set_canvas_size(host->width, host->height);
+    }
     if (!text_input(host)) {
         fprintf(stderr, "Invalid or oversized text input\n");
         return -1;
@@ -379,8 +424,14 @@ static int run_frame(player_host *host)
     if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
         return 0;
     }
-    int width, height;
-    cf_app_get_size(&width, &height);
+    if (!engine_is_playing(runtime)) {
+        url_requests_cancel(world_urls(world));
+        player_url_submit(NULL);
+    }
+    int width = host->width, height = host->height;
+    if (!width) {
+        cf_app_get_size(&width, &height);
+    }
     engine_viewport_request_resize(host->viewport, width, height);
     engine_viewport_host_input input = { .width = width,
                                          .height = height,
@@ -409,7 +460,7 @@ static int run_frame(player_host *host)
         return -1;
     }
     engine_viewport_view view;
-    int camera = game_camera_view(game_world_ecs(world), runtime, &view);
+    int camera = camera_view(world_ecs(world), runtime, &view);
     if (camera < 0) {
         fprintf(stderr, "Invalid active camera\n");
         return -1;
@@ -437,6 +488,11 @@ static int run_frame(player_host *host)
     if (!follow_scene(host)) {
         return -1;
     }
+    char *url;
+    if (url_requests_take(world_urls(world), &url)) {
+        player_url_submit(url);
+        free(url);
+    }
     host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
     return 1;
 }
@@ -454,6 +510,7 @@ static void web_frame(void *host)
 {
     if (run_frame(host) <= 0) {
         emscripten_cancel_main_loop();
+        player_url_stop();
         web_stopped();
     }
 }
@@ -461,6 +518,8 @@ static void web_frame(void *host)
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *root = NULL, *shader_dir = NULL, *save_path = NULL;
+    const char *capture = NULL;
+    int width = 0, height = 0;
     bool hidden = false;
     int frames = 0;
     double fixed_dt = 0;
@@ -468,7 +527,8 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
-            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
+            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit|wasm] [--hidden] [--frames N] [--fixed-dt SECONDS] [--size WIDTHxHEIGHT] [--capture PNG]");
+            puts("--size allows dimensions up to 640 and 230400 pixels; --capture requires --frames and --size.");
             return 0;
         }
         if (!strcmp(option, "--hidden")) {
@@ -488,12 +548,25 @@ int main(int argc, char **argv)
             root = value;
         } else if (!strcmp(option, "--shader-dir")) {
             shader_dir = value;
+        } else if (!strcmp(option, "--size")) {
+            if (!dimensions(value, &width, &height)) {
+                fprintf(stderr, "Invalid canvas size\n");
+                return 2;
+            }
+        } else if (!strcmp(option, "--capture")) {
+            if (!*value) {
+                fprintf(stderr, "Capture path is empty\n");
+                return 2;
+            }
+            capture = value;
         } else if (!strcmp(option, "--save")) {
             save_path = value;
         } else if (!strcmp(option, "--backend") && !strcmp(value, "vm")) {
             backend = BEHAVIOR_BYTECODE;
         } else if (!strcmp(option, "--backend") && !strcmp(value, "sljit")) {
             backend = BEHAVIOR_SLJIT;
+        } else if (!strcmp(option, "--backend") && !strcmp(value, "wasm")) {
+            backend = BEHAVIOR_WASM;
         } else if (!strcmp(option, "--fixed-dt") && number(value, &fixed_dt) && fixed_dt <= ENGINE_FRAME_SECONDS_MAX) {
         } else if (!strcmp(option, "--frames")) {
             double count;
@@ -507,6 +580,16 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    if (capture && (!frames || !width)) {
+        fprintf(stderr, "Capture requires --frames and --size\n");
+        return 2;
+    }
+#ifdef __EMSCRIPTEN__
+    if (capture) {
+        fprintf(stderr, "Capture requires the native player\n");
+        return 2;
+    }
+#endif
     char *bundle = artifact ? NULL : bundle_directory();
     char *bundled = bundle ? join(bundle, BUNDLE_ARTIFACT) : NULL;
     char *engine_dir = bundle ? join(bundle, BUNDLE_ENGINE) : NULL;
@@ -517,19 +600,23 @@ int main(int argc, char **argv)
     }
     int result = 1;
     char error[1024] = { 0 };
-    game_player_application application = { 0 };
+    player_application application = { 0 };
     native_capabilities *native = NULL;
     if (!artifact) {
         fprintf(stderr, "A prepared project artifact is required; use --help.\n");
         result = 2;
         goto release;
     }
-    if (!game_player_application_read(artifact, &application, error, sizeof error)) {
+    if (!player_application_read(artifact, &application, error, sizeof error)) {
         fprintf(stderr, "%s: %s\n", artifact, error);
         goto release;
     }
-    int initial_width = application.width ? application.width : DEFAULT_WIDTH;
-    int initial_height = application.height ? application.height : DEFAULT_HEIGHT;
+    int initial_width = width             ? width
+                      : application.width ? application.width
+                                          : DEFAULT_WIDTH;
+    int initial_height = height             ? height
+                       : application.height ? application.height
+                                            : DEFAULT_HEIGHT;
     native = host_native_default_catalog_new(
         NULL,
         0,
@@ -550,7 +637,7 @@ int main(int argc, char **argv)
         initial_width,
         initial_height,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
-            (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
+            (application.fullscreen && !width ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
             (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
         argv[0]
     );
@@ -559,8 +646,10 @@ int main(int argc, char **argv)
         goto release;
     }
     set_icon(root, application.icon);
-    static player_host host;
+    static desktop_player host;
     host.fixed_dt = fixed_dt;
+    host.width = width;
+    host.height = height;
     if (!shader_dir) {
         shader_dir = resource_shaders();
     }
@@ -579,40 +668,52 @@ int main(int argc, char **argv)
     engine_viewport_adopt_ui(host.viewport, render_ui_new_prepared(NULL));
     host.context = (native_prepared_context){ .native = native };
     host.linker = native_capabilities_prepared_linker(&host.context);
-    game_player_host loader = { .components = { GAME_REGISTRY_COMPONENTS,
-                                                GAME_REGISTRY_COMPONENT_COUNT },
-                                .linker = &host.linker,
-                                .log = { log_message, NULL },
-                                .resources = render_prepared_resources(root) };
-    host.player = game_player_open(artifact, &loader, backend, error, sizeof error);
+    player_host loader = { .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+                           .linker = &host.linker,
+                           .log = { log_message, NULL },
+                           .resources = render_prepared_resources(root) };
+    host.player = player_open(artifact, &loader, backend, error, sizeof error);
     if (!host.player) {
         fprintf(stderr, "%s\n", error);
         goto finish;
     }
-    game_world *world = game_player_world(host.player);
-    engine *runtime = game_world_engine(world);
-    const game_scene *scene = game_scene_instance_scene(game_player_scene(host.player));
-    engine_viewport_set_perspective(host.viewport, game_scene_perspective(scene));
+    world *world = player_world(host.player);
+    if (!hidden && !frames) {
+        url_requests_enable(world_urls(world), true);
+        player_url_start();
+    }
+    engine *runtime = world_engine(world);
+    const scene *scene = scene_instance_scene(player_scene(host.player));
+    engine_viewport_set_perspective(host.viewport, scene_perspective(scene));
     engine_viewport_set_runtime(host.viewport, runtime);
     engine_viewport_set_render_callback(host.viewport, render, &host);
-    host.ui = (ui_world){ .ecs = game_world_ecs(world),
-                          .page = game_scene_ui(scene),
-                          .model = game_world_modules(world)->ui,
-                          .save = game_world_modules(world)->save,
+    host.ui = (ui_world){ .ecs = world_ecs(world),
+                          .page = scene_ui(scene),
+                          .model = world_modules(world)->ui,
+                          .save = world_modules(world)->save,
                           .host = { &host, payload, dispatch, initializing } };
     engine_viewport_set_ui(host.viewport, &host.ui, "");
     if (save_path && !host.ui.save) {
         fprintf(stderr, "Save service is unavailable\n");
         goto finish;
     }
-    if (save_path && !game_save_open(host.ui.save, save_path)) {
-        fprintf(stderr, "%s\n", game_save_error(host.ui.save));
-        goto finish;
+    if (host.ui.save && (save_path || application.project_name)) {
+        const char *directory = NULL;
+#ifndef __EMSCRIPTEN__
+        if (!save_path) {
+            directory = cf_fs_get_user_directory("Chibi", "Saves");
+        }
+#endif
+        /* Initial Begin handlers are queued until the first engine frame. */
+        if (!save_open_project(host.ui.save, application.project_name, directory, save_path)) {
+            fprintf(stderr, "%s\n", save_error(host.ui.save));
+            goto finish;
+        }
     }
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     cf_register_key_callback(key_changed);
-    cf_set_target_framerate(60);
+    player_clock_start();
     engine_set_playing(runtime, true);
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(web_frame, &host, 0, true);
@@ -626,6 +727,19 @@ int main(int argc, char **argv)
     if (status < 0) {
         goto finish;
     }
+    if (capture && (frame != frames || app_save_screenshot(capture))) {
+        fprintf(stderr, "Final frame capture failed\n");
+        goto finish;
+    }
+    if (capture) {
+        printf(
+            "capture backend=%s size=%dx%d hidden=%s\n",
+            cf_backend_type_to_string(cf_query_backend()),
+            cf_app_get_canvas_width(),
+            cf_app_get_canvas_height(),
+            hidden ? "true" : "false"
+        );
+    }
     printf(
         "frames=%d steps=%llu\n",
         frame,
@@ -633,6 +747,7 @@ int main(int argc, char **argv)
     );
     result = 0;
 finish:
+    player_url_stop();
     cf_register_key_callback(NULL);
     if (host.viewport) {
         engine_viewport_free(host.viewport);
@@ -641,14 +756,14 @@ finish:
         app_scene_renderer_free(host.renderer);
     }
     if (host.player) {
-        game_player_free(host.player);
+        player_free(host.player);
     }
     rml_backend_release_prepared_fonts();
     render_images_clear();
     cf_destroy_app();
 release:
     native_capabilities_free(native);
-    game_player_application_free(&application);
+    player_application_free(&application);
     free(engine_dir);
     free(bundled);
     free(bundle);

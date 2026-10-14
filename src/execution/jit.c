@@ -295,6 +295,7 @@ static behavior_layout layout(
     for (int i = 0; i < acount(f->slots); i++) {
         integers |= behavior_scalar_integer(f->slots[i]) ||
                     f->slots[i] == PIN_BOOL || f->slots[i] == PIN_HANDLE ||
+                    f->slots[i] == PIN_TASK || f->slots[i] == PIN_UNION ||
                     behavior_scalar_string(f->slots[i]);
     }
     int saved_float = 0;
@@ -365,6 +366,17 @@ static behavior_layout layout(
     }
     free(invariants);
     behavior_jit_coalesce_saves(f, registers, local_registers);
+    /* DIV/MOD publish their secondary result to the stack. A reused target
+     * may already have acquired a register from an earlier definition or a
+     * local alias. Keep every definition and use of that slot on the stack;
+     * writing an aliased register would also overwrite the persistent local. */
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if ((i->op == BF_DIV || i->op == BF_MOD) &&
+            (i->type == PIN_I32 || i->type == PIN_I64) && i->target >= 0) {
+            registers[i->target] = 0;
+        }
+    }
     int stack_slots = 0;
     for (int i = 0; i < acount(f->slots); i++) {
         if (!registers[i]) {

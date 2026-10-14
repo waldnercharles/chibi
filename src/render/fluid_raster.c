@@ -256,14 +256,13 @@ static void collect(
         assert(index >= 0 && index < count);
         fluid_particle p = particles[index];
         float age = p.style.duration > 0 ? 1 - p.lifetime / p.style.duration : 0;
-        float radius = p.style.duration > 0 && !p.smoke
-                         ? game_particle_curve_value(
-                               p.radius,
-                               p.style.size_end,
-                               p.style.size_exponent,
-                               age
-                           )
-                         : p.radius;
+        float radius = p.style.duration > 0 && !p.smoke ? particle_curve_value(
+                                                              p.radius,
+                                                              p.style.size_end,
+                                                              p.style.size_exponent,
+                                                              age
+                                                          )
+                                                        : p.radius;
         float blend = p.style.blend;
         bool grain = p.grain_radius > 0 && !p.smoke;
         if (grain) {
@@ -287,7 +286,7 @@ static void collect(
             continue;
         }
         float x = (p.position.x - view.min_x) * px;
-        /* Physics and emitters use game Y-down, like GameTransform. */
+        /* Physics and emitters use game Y-down, like Transform. */
         float y = (view.max_y + p.position.y) * py;
         float rx = (radius + blend) * px, ry = (radius + blend) * py;
         if (grain) {
@@ -342,7 +341,7 @@ static void collect(
             data.optical[0] *= opacity;
             data.optical[1] *= remaining;
         } else if (p.style.duration > 0) {
-            data.optical[1] = game_particle_curve_value(
+            data.optical[1] = particle_curve_value(
                 p.emission,
                 p.style.emission_end,
                 p.style.emission_exponent,

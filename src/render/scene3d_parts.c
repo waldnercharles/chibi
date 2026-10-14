@@ -26,7 +26,7 @@ bool render_scene3d_parts_publish(const char *key, const scene3d_parts *parts, c
     }
     for (int i = 0; i < parts->count; i++) {
         const scene3d_part *p = &parts->parts[i];
-        if (p->primitive < GAME_PRIMITIVE_BOX || p->primitive >= GAME_PRIMITIVE_COUNT ||
+        if (p->primitive < PRIMITIVE_BOX || p->primitive >= PRIMITIVE_COUNT ||
             p->dimensions.x <= 0 || p->dimensions.y <= 0 || p->dimensions.z <= 0 ||
             !isfinite(
                 p->dimensions.x + p->dimensions.y + p->dimensions.z +
@@ -81,7 +81,7 @@ static bool parts_valid(const scene3d_parts *parts)
     }
     for (int i = 0; i < parts->count; i++) {
         const scene3d_part *p = &parts->parts[i];
-        if (p->primitive < GAME_PRIMITIVE_BOX || p->primitive >= GAME_PRIMITIVE_COUNT ||
+        if (p->primitive < PRIMITIVE_BOX || p->primitive >= PRIMITIVE_COUNT ||
             p->dimensions.x <= 0 || p->dimensions.y <= 0 || p->dimensions.z <= 0 ||
             !isfinite(
                 p->dimensions.x + p->dimensions.y + p->dimensions.z +

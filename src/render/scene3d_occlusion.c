@@ -26,9 +26,9 @@ typedef struct
 } search_quality;
 
 static const search_quality qualities[] = {
-    [GAME_OCCLUSION_LOW] = { 2, 4, 2 },
-    [GAME_OCCLUSION_MEDIUM] = { 3, 6, 2 },
-    [GAME_OCCLUSION_HIGH] = { 4, 8, 1 },
+    [OCCLUSION_LOW] = { 2, 4, 2 },
+    [OCCLUSION_MEDIUM] = { 3, 6, 2 },
+    [OCCLUSION_HIGH] = { 4, 8, 1 },
 };
 
 /* The widest search as a share of the frame's height. A radius that reaches
@@ -46,7 +46,7 @@ struct render_scene3d_occlusion
     CF_Material material;
     CF_Sampler point;
     CF_Mesh triangle;
-    GameOcclusion quality;
+    Occlusion quality;
     float radius;
     int width, height, scale;
     CF_M4x4 projection;
@@ -117,19 +117,19 @@ static void resize(render_scene3d_occlusion *occlusion, int width, int height, i
 
 bool render_scene3d_occlusion_prepare(
     render_scene3d_occlusion *occlusion,
-    const GameEnvironment *environment,
+    const Environment *environment,
     int width,
     int height,
     char *error,
     size_t size
 )
 {
-    occlusion->quality = GAME_OCCLUSION_OFF;
-    if ((unsigned)environment->occlusion > GAME_OCCLUSION_HIGH) {
+    occlusion->quality = OCCLUSION_OFF;
+    if ((unsigned)environment->occlusion > OCCLUSION_HIGH) {
         snprintf(error, size, "Environment occlusion must be Off, Low, Medium or High.");
         return false;
     }
-    if (environment->occlusion == GAME_OCCLUSION_OFF) {
+    if (environment->occlusion == OCCLUSION_OFF) {
         return true;
     }
     float radius = environment->occlusion_radius;
@@ -146,29 +146,7 @@ bool render_scene3d_occlusion_prepare(
 
 bool render_scene3d_occlusion_active(const render_scene3d_occlusion *occlusion)
 {
-    return occlusion->quality != GAME_OCCLUSION_OFF;
-}
-
-static CF_Shader make_shader(const char *fragment_name, char *error, size_t size)
-{
-    char *vertex = render_shader_source("hrc/pass.vert");
-    char *fragment = render_shader_source(fragment_name);
-    CF_Shader shader = { 0 };
-    if (vertex && fragment) {
-        shader = cf_make_shader_from_source(vertex, fragment);
-    }
-    if (!shader.id) {
-        snprintf(
-            error,
-            size,
-            "Occlusion shader %s: %s",
-            fragment_name,
-            vertex && fragment ? cf_shader_compile_error() : "cannot read its sources"
-        );
-    }
-    free(vertex);
-    free(fragment);
-    return shader;
+    return occlusion->quality != OCCLUSION_OFF;
 }
 
 static bool load_passes(render_scene3d_occlusion *occlusion, char *error, size_t size)
@@ -176,11 +154,11 @@ static bool load_passes(render_scene3d_occlusion *occlusion, char *error, size_t
     if (occlusion->search.id) {
         return true;
     }
-    CF_Shader search = make_shader("scene3d_occlusion.frag", error, size);
+    CF_Shader search = render_pass_shader("scene3d_occlusion.frag", error, size);
     if (!search.id) {
         return false;
     }
-    CF_Shader blur = make_shader("scene3d_occlusion_blur.frag", error, size);
+    CF_Shader blur = render_pass_shader("scene3d_occlusion_blur.frag", error, size);
     if (!blur.id) {
         cf_destroy_shader(search);
         return false;

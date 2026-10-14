@@ -1,5 +1,6 @@
 #include "support/arena.h"
 
+#include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -19,16 +20,20 @@ struct arena_allocation
     size_t size, capacity;
     arena_tracer trace;
     const void *shape;
-    bool live, marked, traced;
+    bool live, marked;
     _Alignas(max_align_t) unsigned char data[];
 };
-static _Thread_local uint64_t block_allocations;
+static _Thread_local uint64_t block_allocations, collect_marks;
 /* Keep bounded reuse across safepoints even when payload sizes keep changing. */
 #define ARENA_VALUE_CACHE_BYTES ((size_t)4 * 1024)
 
 uint64_t arena_block_allocations()
 {
     return block_allocations;
+}
+uint64_t arena_collect_marks()
+{
+    return collect_marks;
 }
 
 static arena_block *new_block(size_t cap)
@@ -65,6 +70,8 @@ void arena_reset(arena *a)
         a->allocations = value->next;
         retire(a, value);
     }
+    a->allocated = 0;
+    a->kept = 0;
     for (arena_block *block = a->first; block; block = block->next) {
         block->used = 0;
     }
@@ -98,10 +105,10 @@ static void *allocate_value(arena *a, size_t size)
     }
     value->next = a->allocations;
     a->allocations = value;
+    a->allocated += size;
     value->size = size;
     value->live = true;
     value->marked = false;
-    value->traced = false;
     value->trace = NULL;
     value->shape = NULL;
     return value->data;
@@ -185,47 +192,62 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void 
     }
     assert(false);
 }
-void arena_collect_begin(arena *a)
+static int by_address(const void *a, const void *b)
 {
-    for (arena_allocation *value = a->allocations; value; value = value->next) {
-        value->marked = false;
-        value->traced = false;
-    }
+    uintptr_t x = (uintptr_t)(*(arena_allocation *const *)a)->data;
+    uintptr_t y = (uintptr_t)(*(arena_allocation *const *)b)->data;
+    return (x > y) - (x < y);
 }
-bool arena_mark(arena *a, const void *address)
+void arena_collect_begin(arena_collection *c, arena **arenas, int count)
 {
-    uintptr_t pointer = (uintptr_t)address;
-    for (arena_allocation *value = a->allocations; value; value = value->next) {
-        uintptr_t begin = (uintptr_t)value->data;
-        if (value->live && pointer >= begin && pointer - begin < value->size) {
-            if (value->marked) {
-                return false;
-            }
-            value->marked = true;
-            return true;
+    *c = (arena_collection){ .arenas = arenas, .count = count };
+    for (int i = 0; i < count; i++) {
+        assert(arenas[i]->collectable);
+        for (arena_allocation *value = arenas[i]->allocations; value;
+             value = value->next) {
+            value->marked = false;
+            apush(c->live, value);
         }
     }
-    return false;
+    asort(c->live, by_address);
 }
-bool arena_trace_marked(arena *a, arena_marker mark, void *user)
+/* The live value whose bytes hold address, if any. */
+static arena_allocation *find(const arena_collection *c, uintptr_t address)
 {
-    bool traced = false;
-    for (arena_allocation *value = a->allocations; value; value = value->next) {
-        if (value->live && value->marked && !value->traced) {
-            value->traced = true;
-            traced = true;
-            if (value->trace) {
-                value->trace(value->data, value->shape, mark, user);
-            }
+    int low = 0, high = acount(c->live);
+    while (low < high) {
+        int middle = low + (high - low) / 2;
+        if ((uintptr_t)c->live[middle]->data <= address) {
+            low = middle + 1;
+        } else {
+            high = middle;
         }
     }
-    return traced;
+    if (!low) {
+        return NULL;
+    }
+    arena_allocation *value = c->live[low - 1];
+    return address - (uintptr_t)value->data < value->size ? value : NULL;
 }
-void arena_sweep(arena *a)
+void arena_collect_mark(void *collection, const void *address)
 {
+    arena_collection *c = collection;
+    collect_marks++;
+    arena_allocation *value = find(c, (uintptr_t)address);
+    if (!value || value->marked) {
+        return;
+    }
+    value->marked = true;
+    apush(c->pending, value);
+}
+static void sweep(arena *a)
+{
+    a->allocated = 0;
+    a->kept = 0;
     for (arena_allocation **link = &a->allocations; *link;) {
         arena_allocation *value = *link;
         if (value->marked) {
+            a->kept += value->size;
             link = &value->next;
             continue;
         }
@@ -242,6 +264,20 @@ void arena_sweep(arena *a)
         a->unused = value->next;
         free(value);
     }
+}
+void arena_collect_end(arena_collection *c)
+{
+    while (acount(c->pending)) {
+        arena_allocation *value = apop(c->pending);
+        if (value->trace) {
+            value->trace(value->data, value->shape, arena_collect_mark, c);
+        }
+    }
+    for (int i = 0; i < c->count; i++) {
+        sweep(c->arenas[i]);
+    }
+    afree(c->live);
+    afree(c->pending);
 }
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 {

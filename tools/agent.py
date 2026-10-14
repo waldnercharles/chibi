@@ -25,11 +25,48 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--player-url': 'player-url',
+    '--player-clock': 'player-clock',
+    '--audio-analysis': 'audio-analysis',
+    '--shader-webgpu': 'shader-webgpu',
+    '--arena': 'arena',
+    '--asset-source': 'asset-source',
+    '--asset-values': 'asset-values',
+    '--behavior-loader': 'behavior-loader',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--examples-projects': 'examples-projects',
+    '--contact-benchmark': 'contact-benchmark',
+    '--engine-clock': 'engine-clock',
+    '--fields': 'fields',
+    '--fmt': 'fmt',
+    '--graph-document': 'graph-document',
+    '--graph-functions': 'graph-functions',
+    '--graph-presentation': 'graph-presentation',
+    '--material-benchmark': 'material-benchmark',
+    '--material-destruction': 'material-destruction',
+    '--material-fluids': 'material-fluids',
+    '--material-mpm': 'material-mpm',
+    '--material-thermal': 'material-thermal',
+    '--material-simulation': 'material-simulation',
+    '--material-ecs': 'material-ecs',
+    '--material-render': 'material-render',
+    '--model-catalog': 'model-catalog',
+    '--model-graphs': 'model-graphs',
+    '--particles': 'particles',
+    '--png-encoding': 'png-encoding',
+    '--preview-layout': 'preview-layout',
+    '--project-document': 'project-document',
+    '--prototype-documents': 'prototype-documents',
+    '--reference-index': 'reference-index',
+    '--render-geometry': 'render-geometry',
+    '--shader-graphs': 'shader-graphs',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',
+    '--text-files': 'text-files',
+    '--ui-document': 'ui-document',
+    '--vector-nodes': 'vector-nodes',
 }
 INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}
 PLAYER_SELECTORS = {
@@ -37,15 +74,42 @@ PLAYER_SELECTORS = {
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
 }
 STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
-                    '--studio-graph-visibility': 'studio-graph-visibility'}
+                    '--studio-graph-visibility': 'studio-graph-visibility',
+                    '--studio-scene-move': 'studio-scene-move',
+                    '--studio-outliner-move': 'studio-outliner-move',
+                    '--studio-graph-pointer': 'studio-graph-pointer',
+                    '--studio-asset-pointer': 'studio-asset-pointer',
+                    '--studio-debugger-source-history': 'studio-debugger-source-history',
+                    '--studio-scene-camera': 'studio-scene-camera',
+                    '--studio-scene-gizmo3d': 'studio-scene-gizmo3d',
+                    '--studio-scene-collider3d': 'studio-scene-collider3d'}
 STUDIO_ACCEPTANCE = {
+    '--studio-scene-collider3d': ('--scene-collider3d', 26, 'Studio 3D collider handles accepted: frames=26'),
+    '--studio-scene-gizmo3d': ('--scene-gizmo3d', 42, 'Studio 3D gizmo accepted: frames=42'),
+    '--studio-scene-camera': ('--scene-camera', 30, 'Studio 3D camera accepted: frames=30'),
+    '--studio-scene-move': ('--scene-move', 2, 'Studio scene move accepted: frames=2'),
+    '--studio-outliner-move': ('--outliner-move', 21, 'Studio outliner move accepted: frames=21'),
     '--studio-source-edit': ('--source-edit', 4, 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'),
     '--studio-graph-visibility': ('--graph-visibility', 10, 'Studio graph visibility accepted: frames=10'),
+    '--studio-graph-pointer': ('--graph-pointer', 19, 'Studio graph pointer accepted: frames=19'),
+    '--studio-asset-pointer': ('--asset-pointer', 20, 'Studio asset pointer accepted: frames=20'),
+    '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
                     '--sdf-visibility': 'sdf-visibility',
-                    '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
-                    '--material-ramps': 'material-ramps'}
+                    '--radiance': 'radiance', '--radiance-depth': 'radiance-depth',
+                    '--material-sampling': 'material-sampling',
+                    '--scene2d': 'scene2d', '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
+                    '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
+                    '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
+                    '--material-pixels': 'material-pixels', '--shader-parity': 'shader-parity',
+                    '--shader-programs': 'shader-programs', '--material-cameras': 'material-cameras',
+                    '--mesh-materials': 'mesh-materials', '--sdf-quality': 'sdf-quality',
+                    '--scene3d-post': 'scene3d-post', '--scene3d-shapes': 'scene3d-shapes',
+                    '--texture-transform': 'texture-transform'}
+RENDER_SELECTORS |= {f'--installed-example-{lab}': f'installed-example-{lab}' for lab in
+                     ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
@@ -67,9 +131,18 @@ def runnable_selectors(classified, mappings):
             if admitted([selector]) and selector_command(selector, mappings)]
 
 
-def studio_resource_preflight(build):
-    resources = {'studio': (261, 436675, '3ae7676c6de4a45db6dc2faadd29a9cf7dde2ea09409f1a008af4df4a4a65689'),
-                 'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
+def studio_resource_preflight(build, resources=None):
+    if resources is not None and (
+            not isinstance(resources, dict) or set(resources) != {'studio', 'ui'} or
+            any(not isinstance(row, list) or len(row) != 3 or
+                type(row[0]) is not int or not 0 < row[0] <= 320 or
+                type(row[1]) is not int or not 0 < row[1] <= 1024 * 1024 or
+                not isinstance(row[2], str) or not re.fullmatch(r'[0-9a-f]{64}', row[2])
+                for row in resources.values())):
+        raise ValueError('studio_acceptance_resource_bounds_invalid')
+    if resources is None:
+        resources = {'studio': (264, 450406, 'be09f90b2472bf48a7e3486fbd26759da8eff47886d7914558f3209d0a995296'),
+                     'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
     for name, (count, length, digest) in resources.items():
         base = build / 'share/chibi' / name
         files = sorted(p for p in base.rglob('*') if p.is_file())
@@ -114,6 +187,27 @@ def bounded_read(path, limit):
     return data
 
 
+def studio_acceptance_sources(source, records):
+    acceptance = source / 'tests/acceptance'
+    if (source / 'tests').is_symlink() or acceptance.is_symlink():
+        raise ValueError('studio_acceptance_source_size_changed')
+    paths = list(acceptance.rglob('*'))
+    if any(p.is_symlink() for p in paths):
+        raise ValueError('studio_acceptance_source_size_changed')
+    acceptance_files = {p.relative_to(source).as_posix() for p in paths if p.is_file()}
+    if not isinstance(records, dict) or not 8 <= len(records) <= 32 or set(records) != acceptance_files:
+        raise ValueError('studio_acceptance_source_records_changed')
+    for name, record in records.items():
+        relative = Path(name)
+        if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
+            raise ValueError('studio_acceptance_source_path_invalid')
+        path = source / relative
+        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 256 * 1024:
+            raise ValueError('studio_acceptance_source_size_changed')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
+            raise ValueError('studio_acceptance_source_changed')
+
+
 def studio_acceptance_preflight(selector):
     _, frames, success = STUDIO_ACCEPTANCE[selector]
     source = Path(os.environ.get('CHIBI_STUDIO_SOURCE', ''))
@@ -143,18 +237,7 @@ def studio_acceptance_preflight(selector):
         raise ValueError('studio_acceptance_build_not_verified')
     if hashlib.sha256(bounded_read(build / 'compile_commands.json', 64 * 1024 * 1024)).hexdigest() != evidence.get('compile_commands_sha256'):
         raise ValueError('studio_acceptance_compile_inputs_changed')
-    records = evidence.get('files')
-    if not isinstance(records, dict) or len(records) != 8:
-        raise ValueError('studio_acceptance_source_records_changed')
-    for name, record in records.items():
-        relative = Path(name)
-        if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
-            raise ValueError('studio_acceptance_source_path_invalid')
-        path = source / relative
-        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 65536:
-            raise ValueError('studio_acceptance_source_size_changed')
-        if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
-            raise ValueError('studio_acceptance_source_changed')
+    studio_acceptance_sources(source, evidence.get('files'))
     sdk = Path(evidence['sdk'])
     if hashlib.sha256(bounded_read(sdk / 'lib/cmake/Chibi/ChibiConfig.cmake', 1024 * 1024)).hexdigest() != native.get('sdk_config_sha256'):
         raise ValueError('studio_acceptance_sdk_changed')
@@ -171,7 +254,7 @@ def studio_acceptance_preflight(selector):
     for name, value in expected.items():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
-    studio_resource_preflight(build)
+    studio_resource_preflight(build, evidence.get('resources'))
     return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=210, frames=frames, window=[1920,1080])
 
 
@@ -265,13 +348,13 @@ def installed_space_cadet(selector):
         raise ValueError('compiler_player_runtime_contract_mismatch')
     pin_path = project / '.chibi-engine.json'
     if pin_path.stat().st_size > 65536:
-        raise ValueError('game_pin_oversize')
+        raise ValueError('pin_oversize')
     pin = json.loads(pin_path.read_text())
     expected = dict(format=2, kind='player', build_id=player['build_id'],
                     engine_build_id=player['engine']['build_id'], sdk_build_id=player['sdk']['build_id'],
                     package_version=player['package_version'], requirements=player['requirements'])
     if pin != expected:
-        raise ValueError('game_pin_differs_from_installed_manifest')
+        raise ValueError('pin_differs_from_installed_manifest')
     paths = [project / 'project.kdl'] + sorted(p for p in (project / 'content').rglob('*') if p.is_file())
     if len(paths) != 36 or sum(p.stat().st_size for p in paths) != 144741:
         raise ValueError('SpaceCadet_source_membership_or_bytes_changed')
@@ -285,7 +368,7 @@ def installed_space_cadet(selector):
     for path in (project / '.chibi', artifact.parent, artifact, Path(str(artifact) + '.resources.json')):
         if path.is_symlink():
             raise ValueError('installed_prepared_handoff_must_not_be_symlink')
-    evidence = dict(game_root=str(project), player_build_id=player['build_id'],
+    evidence = dict(root=str(project), player_build_id=player['build_id'],
                     compiler_build_id=compiler['build_id'], source_fingerprint=fingerprint)
     if selector == '--compile-installed-space-cadet':
         binary = sdk / 'bin/chibi-compile'
@@ -483,7 +566,7 @@ def main():
             if not Path(command[0]).is_file():
                 return report('blocked', 'render_tools_not_built', selector=args.selector,
                               build_command=f'make build BUILD_DIR={args.build_dir} BUILD_TARGET=test_tools')
-            if args.selector == '--scene3d-gles':
+            if args.selector.endswith('-gles'):
                 # GLES needs a display, and Xvfb provides one on Linux.
                 if not shutil.which('xvfb-run'):
                     return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)
@@ -516,8 +599,7 @@ def main():
                 if args.selector in STUDIO_SELECTORS:
                     log.seek(0)
                     execution_evidence = studio_acceptance_output(args.selector, log.read())
-        reason = ('admitted_studio_graph_visibility_completed' if args.selector == '--studio-graph-visibility' else
-                  'admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
+        reason = ('admitted_studio_acceptance_completed' if args.selector in STUDIO_SELECTORS else
                   'admitted_installed_compile_completed' if args.selector == '--compile-installed-space-cadet' else
                   'admitted_four_frame_player_completed' if preflight else 'selected_assertions_passed')
         return report('passed', reason,

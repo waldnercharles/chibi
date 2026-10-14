@@ -29,7 +29,7 @@ bindings, comments and every byte between tags. Invalid parts stay byte-for-byte
 unchanged, and formatting the saved parts is one Undo step.
 
 ImGui remains only as the `--play` window host, showing the game image and
-supplying input. In-game UI, including the pause and outcome menu, is GameUi
+supplying input. In-game UI, including the pause and outcome menu, is Ui
 documents drawn over the game image (`src/render/ui.c`).
 
 RML image paths use linear filtering by default for smooth general UI imagery.
@@ -333,7 +333,7 @@ Expanding an attached behavior only expands its contents. Opening its graph is a
 explicit action. Undo and Redo use the Edit menu instead of duplicate buttons
 in a component pane. Content search now has a clear button.
 
-The native integration test reopens a saved prototype, expands GameTransform,
+The native integration test reopens a saved prototype, expands Transform,
 types `73` into its x field, and checks the saved value. It then clicks Document >
 Undo and checks that saving restores `42`. `make test` passes with sanitizers,
 including the existing scene/graph, Focus, and resize scenarios. Inspected a
@@ -949,7 +949,7 @@ path was also verified. Full radiance/material lighting remains unfinished.
 
 ## Source deformation
 
-`GameSdfMotion` once carried Neon-Swarm's standing-wave and pluck deformation.
+`SdfMotion` once carried Neon-Swarm's standing-wave and pluck deformation.
 It was removed on October 9, 2026, with project version 18, so shapes no longer
 deform.
 
@@ -984,7 +984,7 @@ existing CPU particles before adopting GPU simulation or pseudo-3D motion.
 ## Material and radiance implementation
 
 The native Scene and prototype views now use the source material raster and HRC
-solve. `GameMaterial` exposes linear scene, albedo, filter and emission colors,
+solve. `Material` exposes linear scene, albedo, filter and emission colors,
 independent border colors, emission intensity/multiplier and absorption. Colors
 use the existing RGBA8 picker and graph field controls; emission coefficients
 remain HDR after multiplication. The source's floating color constants are
@@ -1429,7 +1429,7 @@ or holds a value (a literal, binding, local, or implied Self).
 `graph_node_is_inline` decides this for the canvas, arrangement, extraction,
 copying, and saving. Trees of up to three nodes fold into one chip written in
 Behavior Expression grammar with the typographic operators node titles use,
-such as `elapsed ≥ Self.GameWeapon.cooldown`. Literal nodes read as their
+such as `elapsed ≥ Self.Weapon.cooldown`. Literal nodes read as their
 value, named sources such as shader parameters as their name, and other nodes
 as calls, such as `multiply(time, Glow)`. Nodes with breakpoints or watches, and
 generated expression graphs, keep their boxes.

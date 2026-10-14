@@ -3,6 +3,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/type.h"
+#include "types/union.h"
 
 void pin_value_write_document(
     av_doc *doc,
@@ -86,6 +87,22 @@ void pin_value_write_document(
             break;
         case PIN_FLOW: value = av_null(doc); break;
         case PIN_HANDLE: value = av_uint(doc, v->u64); break;
+        case PIN_TASK: value = av_uint(doc, v->u64); break;
+        case PIN_UNION: {
+            const pin_union *tagged = v->ptr;
+            if (!tagged) {
+                value = av_null(doc);
+                break;
+            }
+            value = av_obj(doc);
+            av_obj_set(doc, value, "tag", av_uint(doc, tagged->tag));
+            av_value *payload = av_arr(doc);
+            for (int i = 0; i < tagged->count; i++) {
+                av_arr_append(payload, pin_value_to_document(doc, &tagged->values[i]));
+            }
+            av_obj_set(doc, value, "values", payload);
+            break;
+        }
     }
     if (value) {
         av_obj_set(doc, obj, key, value);

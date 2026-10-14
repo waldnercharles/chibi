@@ -368,8 +368,8 @@ TEST_CASE(numeric_fields_reflect_their_unit_and_range)
     REQUIRE(reflectf(COMPONENT PRESENTED, "float damage") == 0);
     char *types = tool_read(output);
     bool presented = types && strstr(types, "\"speed\", PIN_F32,") &&
-                     strstr(types, "false, \"u/s\", 0, 2.5 },") &&
-                     strstr(types, "false, NULL, 0, 0 },");
+                     strstr(types, "false, \"u/s\", 0, 2.5, true, 0 },") &&
+                     strstr(types, "false, NULL, 0, 0, false, 0 },");
     free(types);
     REQUIRE(presented);
     snapshot(&output_before, output);
@@ -381,11 +381,34 @@ TEST_CASE(numeric_fields_reflect_their_unit_and_range)
         "float suffixed __attribute__((annotate(\"node:range:0 1f\")))",
         "float single __attribute__((annotate(\"node:range:1\")))",
         "float endless __attribute__((annotate(\"node:range:-inf 0\")))",
+        "int fractional __attribute__((annotate(\"node:range:0 1.5\")))",
+        "int overflow __attribute__((annotate(\"node:range:0 2147483648\")))",
+        ("float both __attribute__((annotate(\"node:range:0 1\"), "
+         "annotate(\"node:range-hint:0 1\")))"),
+        "float fallback __attribute__((annotate(\"node:range-default:1\")))",
     };
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
         REQUIRE(reflectf(COMPONENT PRESENTED, invalid[i]) != 0);
         REQUIRE(outputs_unchanged());
     }
+    return true;
+}
+
+TEST_CASE(numeric_range_hints_and_defaults_are_distinct)
+{
+    REQUIRE(
+        reflectf(
+            COMPONENT PRESENTED,
+            "float hint __attribute__((annotate(\"node:range-hint:0 1\"))); "
+            "float fallback __attribute__((annotate(\"node:range:0 1\"), "
+            "annotate(\"node:range-default:0.5\")))"
+        ) == 0
+    );
+    char *types = tool_read(output);
+    bool distinct = types && strstr(types, "false, NULL, 0, 1, false, 0 },") &&
+                    strstr(types, "false, NULL, 0, 1, true, 0.5 },");
+    free(types);
+    REQUIRE(distinct);
     return true;
 }
 
@@ -439,7 +462,34 @@ TEST_CASE(derived_component_names_its_source)
     return true;
 }
 
-void test_tool_reflect()
+TEST_CASE(empty_prefix_generates_canonical_component_names)
+{
+    const char *const unprefixed[] = {
+        CHIBI_REFLECT_PATH, source,  "--prefix", "", "--types-output", output,
+        "--runtime-output", runtime, NULL
+    };
+    tool_write(source, COMPONENT HEALTH);
+    REQUIRE(tool_run(unprefixed, directory, log_path) == 0);
+    char *types = tool_read(output), *capabilities = tool_read(runtime);
+    bool canonical = types && capabilities &&
+                     strstr(types, "const type_desc T_Health =") &&
+                     strstr(types, "const ecs_component_desc COMPONENT_Health =") &&
+                     strstr(types, ".key = \"Health\"") &&
+                     strstr(types, "Health *Health_get(") &&
+                     strstr(capabilities, "const native_capability_pack NATIVE_PACK =") &&
+                     strstr(capabilities, "native_bool_result[]") &&
+                     strstr(capabilities, ".results = native_bool_result,") &&
+                     strstr(capabilities, ".source_name = \"Health\"") &&
+                     !strstr(types, "_COMPONENT_Health") &&
+                     !strstr(types, "_T_Health") &&
+                     !strstr(capabilities, "_NATIVE_PACK");
+    free(types);
+    free(capabilities);
+    REQUIRE(canonical);
+    return true;
+}
+
+static void begin()
 {
     strcpy(directory, "/tmp/chibi-reflect-test-XXXXXX");
     assert(mkdtemp(directory));
@@ -450,6 +500,30 @@ void test_tool_reflect()
     path(log_path, "reflect.log");
     path(output_target, "types.c.stable");
     path(manifest_target, "components.tsv.stable");
+}
+
+static void end()
+{
+    afree(original);
+    afree(inserted);
+    afree(readded);
+    afree(latest);
+    free(output_before.text);
+    free(manifest_before.text);
+    tool_remove_tree(directory);
+}
+
+void test_tool_reflect_ranges()
+{
+    begin();
+    RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
+    RUN_TEST_CASE(numeric_range_hints_and_defaults_are_distinct);
+    end();
+}
+
+void test_tool_reflect()
+{
+    begin();
     RUN_TEST_CASE(component_insertion_keeps_existing_identities);
     RUN_TEST_CASE(component_rename_keeps_its_identity);
     RUN_TEST_CASE(restored_component_name_reclaims_its_alias);
@@ -460,13 +534,9 @@ void test_tool_reflect()
     RUN_TEST_CASE(failed_reflection_keeps_linked_outputs);
     RUN_TEST_CASE(handle_pins_keep_their_nominal_type);
     RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
+    RUN_TEST_CASE(numeric_range_hints_and_defaults_are_distinct);
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
     RUN_TEST_CASE(derived_component_names_its_source);
-    afree(original);
-    afree(inserted);
-    afree(readded);
-    afree(latest);
-    free(output_before.text);
-    free(manifest_before.text);
-    tool_remove_tree(directory);
+    RUN_TEST_CASE(empty_prefix_generates_canonical_component_names);
+    end();
 }

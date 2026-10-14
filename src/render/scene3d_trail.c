@@ -29,7 +29,7 @@ typedef struct
 typedef struct
 {
     ecs_entity entity;
-    GameTrail style;
+    Trail style;
     trail_point points[TRAIL_POINTS];
     int count;
     trail_point head;
@@ -263,8 +263,7 @@ void render_scene3d_trails_collect(scene3d_trails *trails, ecs_world *world, con
             (size_t)source->count * sizeof *source->points
         );
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameTrail.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id, COMPONENT_Trail.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
@@ -272,11 +271,10 @@ void render_scene3d_trails_collect(scene3d_trails *trails, ecs_world *world, con
             if (!engine_entity_visible(runtime, world, entity)) {
                 continue;
             }
-            GameTransform position = engine_render_transform(runtime, world, entity)
-                                         .position;
-            const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
+            Transform position = engine_render_transform(runtime, world, entity).position;
+            const Geometry3D *shape = Geometry3D_get_const(world, entity);
             float elevation = shape ? shape->elevation : 0;
-            GameTrail style = *GAME_GameTrail_get_const(world, entity);
+            Trail style = *Trail_get_const(world, entity);
             if (!isfinite(
                     position.x + position.y + elevation + style.width +
                     style.lifetime + style.emission

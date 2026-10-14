@@ -97,7 +97,7 @@ python3 "$COMPILER_SDK/share/chibi/tools/install_game_runtime.py" \
 ```
 
 `make update-game-runtime` performs this refresh for the checkout registration
-when `UPDATE_GAME_RUNTIME=1`. Installation verifies complete package inventories,
+when `UPDATE_RUNTIME=1`. Installation verifies complete package inventories,
 project format requirements, and the captured prior deployment. A valid formerly
 managed combined runtime can be replaced; unmanaged or modified directories are
 preserved. Restart running games after installation.

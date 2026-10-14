@@ -42,8 +42,8 @@ bool render_mesh_surface_vertices(
 bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     const model_bounds *bounds,
     render_mesh_surface *surface,
     char *error,
@@ -52,12 +52,12 @@ bool render_mesh_surface_build_with_bounds(
 bool render_mesh_surface_build(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
+    const Transform *position,
     render_mesh_surface *surface,
     char *error,
     size_t size
 );
-const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pixels, bool disabled);
+const char *render_mesh_surface_lod_shape(const SdfSurface3D *sdf, float pixels, bool disabled);
 /* How many triangle corners the part draws: three per triangle. */
 int render_mesh_surface_corner_count(const render_mesh_surface_part *part);
 /* The vertex at a part's triangle corner. */
@@ -69,7 +69,7 @@ void render_mesh_surface_free(render_mesh_surface *surface);
 bool render_mesh_surface_bounds(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
+    const Transform *position,
     CF_V2 *min,
     CF_V2 *max,
     char *error,

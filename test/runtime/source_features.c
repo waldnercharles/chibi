@@ -9,15 +9,18 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
 #include "runtime/declared_components.h"
+#include "runtime/engine_input.h"
 #include "runtime/math_native.h"
 #include "runtime/particles.h"
 #include "runtime/scenes/physics3d.h"
 #include "runtime/shaders/prepared.h"
+#include "runtime/url.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,14 +32,16 @@ static authoring_language_catalog *catalog;
 static authoring_source *prepared;
 static execution_program *program;
 static execution_instance *instance;
-static ecs_world *world;
-static game_particles *particles, *expected_particles;
-static game_entities *entities;
-static game_physics3d *physics3d;
-static declared_components *declared;
+static ecs_world *test_world;
+static particles *test_particles, *expected_particles;
+static entities *test_entities;
+static physics3d *test_physics3d;
+static url_requests *test_urls;
+static engine_input *input_service;
+static declared_components *declared, *newer_declared;
 static shader_prepared_asset shader_record;
 static unsigned char *shader_bytes;
-static game_player_resource_host resource_host;
+static player_resource_host resource_host;
 static void *resource_generation;
 static uint64_t done_id, rotation_id, target_id, phase_id, pulse_id, period_id,
     duration_id;
@@ -49,27 +54,37 @@ static void cleanup()
     prepared = NULL;
     authoring_language_catalog_free(catalog);
     catalog = NULL;
-    if (particles) {
-        game_particles_free(particles);
+    if (test_urls) {
+        url_requests_free(test_urls);
     }
-    particles = NULL;
+    test_urls = NULL;
+    if (input_service) {
+        engine_input_free(input_service);
+    }
+    input_service = NULL;
+    if (test_particles) {
+        particles_free(test_particles);
+    }
+    test_particles = NULL;
     if (expected_particles) {
-        game_particles_free(expected_particles);
+        particles_free(expected_particles);
     }
     expected_particles = NULL;
-    if (physics3d) {
-        game_physics3d_free(physics3d);
+    if (test_physics3d) {
+        physics3d_free(test_physics3d);
     }
-    physics3d = NULL;
-    if (entities) {
-        game_entities_free(entities);
+    test_physics3d = NULL;
+    if (test_entities) {
+        entities_free(test_entities);
     }
-    entities = NULL;
-    if (world) {
-        render_shader_clear_world(world);
+    test_entities = NULL;
+    if (test_world) {
+        render_shader_clear_world(test_world);
     }
-    ecs_world_free(world);
-    world = NULL;
+    ecs_world_free(test_world);
+    test_world = NULL;
+    declared_components_free(newer_declared);
+    newer_declared = NULL;
     declared_components_free(declared);
     declared = NULL;
     if (resource_generation) {
@@ -132,16 +147,19 @@ static bool prepare(const char *text, behavior_backend backend)
     period_id = state_id("period");
     duration_id = state_id("duration");
     service_binding *services = NULL;
-    if (particles) {
-        apush(services, ((service_binding){ "game.particles", particles }));
+    if (test_urls) {
+        apush(services, ((service_binding){ URL_SERVICE, test_urls }));
     }
-    if (entities) {
-        apush(services, ((service_binding){ "game.entities", entities }));
+    if (test_particles) {
+        apush(services, ((service_binding){ "game.particles", test_particles }));
     }
-    if (physics3d) {
-        apush(services, ((service_binding){ "game.physics3d", physics3d }));
+    if (test_entities) {
+        apush(services, ((service_binding){ "game.entities", test_entities }));
     }
-    program = execution_program_new(prepared->module, world, services);
+    if (test_physics3d) {
+        apush(services, ((service_binding){ "game.physics3d", test_physics3d }));
+    }
+    program = execution_program_new(prepared->module, test_world, services);
     afree(services);
     if (!program) {
         fprintf(stderr, "source feature program rejected required services/layout\n");
@@ -189,8 +207,8 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
         "behavior Reaction { owner \"ecs.entity\"; state done:bool=false; "
         "state rotation:struct<\"CF_V3\">={x:-1.0,y:2.0,z:3.0}; state "
         "target:handle<\"ecs.entity\">=0; "
-        "function "
-        "Apply(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
+        "Apply :: fn"
+        "(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
         "await delay(Duration:0.125); await "
         "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } "
         "on Tick { await Apply(Rotation:rotation,Target:target); done=true; } "
@@ -199,20 +217,20 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
         for (int explicit_target = 0; explicit_target < 2; explicit_target++) {
             char text[1024];
             snprintf(text, sizeof text, format, explicit_target ? ",Target:Target" : "");
-            world = ecs_world_new();
+            test_world = ecs_world_new();
             REQUIRE(
-                ecs_world_register_component(world, &GAME_COMPONENT_GameVisualMotion, NULL) == 0
+                ecs_world_register_component(test_world, &COMPONENT_VisualMotion, NULL) == 0
             );
-            ecs_entity owner = ecs_world_create_entity(world),
-                       other = ecs_world_create_entity(world);
-            REQUIRE(GAME_GameVisualMotion_add(world, owner, 0) == 0);
-            REQUIRE(GAME_GameVisualMotion_add(world, other, 0) == 0);
-            REQUIRE(ecs_world_apply_commands(world) == 0);
-            GameVisualMotion initial = { .speed = 2,
-                                         .reaction_age = 7,
-                                         .reaction_duration = .25f };
-            *GAME_GameVisualMotion_get(world, owner) = initial;
-            *GAME_GameVisualMotion_get(world, other) = initial;
+            ecs_entity owner = ecs_world_create_entity(test_world),
+                       other = ecs_world_create_entity(test_world);
+            REQUIRE(VisualMotion_add(test_world, owner, 0) == 0);
+            REQUIRE(VisualMotion_add(test_world, other, 0) == 0);
+            REQUIRE(ecs_world_apply_commands(test_world) == 0);
+            VisualMotion initial = { .speed = 2,
+                                     .reaction_age = 7,
+                                     .reaction_duration = .25f };
+            *VisualMotion_get(test_world, owner) = initial;
+            *VisualMotion_get(test_world, other) = initial;
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
             REQUIRE(tick && done_id && rotation_id && target_id);
@@ -244,10 +262,7 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                 execution_instance_pending(instance) == 0 &&
                 execution_instance_state(instance, done_id)->b
             );
-            const GameVisualMotion *actual = GAME_GameVisualMotion_get_const(
-                world,
-                explicit_target ? other : owner
-            );
+            const VisualMotion *actual = VisualMotion_get_const(test_world, explicit_target ? other : owner);
             REQUIRE(
                 actual->reaction_rotation.x == -1 &&
                 actual->reaction_rotation.y == 2 && actual->reaction_rotation.z == 3
@@ -257,7 +272,7 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
                 actual->speed == 2
             );
             REQUIRE(
-                GAME_GameVisualMotion_get_const(world, explicit_target ? owner : other)
+                VisualMotion_get_const(test_world, explicit_target ? owner : other)
                     ->reaction_age == 7
             );
             cleanup();
@@ -270,27 +285,25 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
     const char
         *text = "behavior Rhythm { state phase:double=0; state pulse:double=0; "
                 "state period:double=0; state duration:double=0; "
-                "function "
-                "Read()->(Phase:double,Pulse:double,Period:double,Duration:"
+                "Read :: fn"
+                "()->(Phase:double,Pulse:double,Period:double,Duration:"
                 "double){ r:=scene_rhythm(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } "
-                "function "
-                "Apply()->(Phase:double,Pulse:double,Period:double,Duration:"
+                "Apply :: fn"
+                "()->(Phase:double,Pulse:double,Period:double,Duration:"
                 "double){ await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } "
                 "on Tick { r:=await Apply(); phase=r.Phase; pulse=r.Pulse; "
                 "period=r.Period; duration=r.Duration; } }";
     for (int backend = 0; backend < 2; backend++) {
-        world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameRhythm, NULL) == 0);
-        ecs_entity clock = ecs_world_create_entity(world);
-        GameRhythm settings = { 60, .25f };
-        REQUIRE(
-            ecs_world_record_add(world, clock, GAME_COMPONENT_GameRhythm.id, &settings, 0) == 0
-        );
-        REQUIRE(ecs_world_apply_commands(world) == 0);
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Rhythm, NULL) == 0);
+        ecs_entity clock = ecs_world_create_entity(test_world);
+        Rhythm settings = { 60, .25f };
+        REQUIRE(ecs_world_record_add(test_world, clock, COMPONENT_Rhythm.id, &settings, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick");
         REQUIRE(tick && phase_id && pulse_id && period_id && duration_id);
@@ -312,8 +325,8 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 }
 TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 {
-    const char *text = "behavior Particles { state done:bool=false; function "
-                       "Emit()->(){ "
+    const char *text = "behavior Particles { state done:bool=false; Emit :: fn"
+                       "()->(){ "
                        "await "
                        "emit_particles(Position:{x:1.0,y:-2.0},Color:"
                        "4040002047,Count:3,Speed:80.0,Lifetime:0.3); "
@@ -323,42 +336,42 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
                        "4040002047,Count:3,Speed:80.0,Lifetime:0.3); } "
                        "on Tick { Emit(); done=true; } }";
     for (int backend = 0; backend < 2; backend++) {
-        particles = game_particles_new();
-        expected_particles = game_particles_new();
+        test_particles = particles_new();
+        expected_particles = particles_new();
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick");
         REQUIRE(tick && done_id);
-        REQUIRE(execution_program_bind_service(program, "game.particles", particles) == 0);
+        REQUIRE(execution_program_bind_service(program, "game.particles", test_particles) == 0);
         instance = execution_program_attach(program, 0);
         REQUIRE(instance);
         retire_producer();
-        game_particle_burst burst = { .position = { 1, -2 },
-                                      .color = 4040002047u,
-                                      .count = 3,
-                                      .speed = 80,
-                                      .lifetime = .3f };
-        REQUIRE(game_particles_emit(expected_particles, &burst) == 3);
+        particle_burst burst = { .position = { 1, -2 },
+                                 .color = 4040002047u,
+                                 .count = 3,
+                                 .speed = 80,
+                                 .lifetime = .3f };
+        REQUIRE(particles_emit(expected_particles, &burst) == 3);
         REQUIRE(dispatch(tick, 1024) >= 0);
         REQUIRE(
-            game_particles_count(particles) == 3 &&
+            particles_count(test_particles) == 3 &&
             execution_instance_pending(instance) > 0
         );
         REQUIRE(!memcmp(
-            game_particles_data(particles),
-            game_particles_data(expected_particles),
-            3 * sizeof(game_particle)
+            particles_data(test_particles),
+            particles_data(expected_particles),
+            3 * sizeof(particle)
         ));
-        REQUIRE(game_particles_emit(expected_particles, &burst) == 3);
+        REQUIRE(particles_emit(expected_particles, &burst) == 3);
         REQUIRE(pump(.125, .125, 1024) >= 0);
         REQUIRE(
-            game_particles_count(particles) == 6 &&
+            particles_count(test_particles) == 6 &&
             execution_instance_pending(instance) == 0
         );
         REQUIRE(execution_instance_state(instance, done_id)->b);
         REQUIRE(!memcmp(
-            game_particles_data(particles),
-            game_particles_data(expected_particles),
-            6 * sizeof(game_particle)
+            particles_data(test_particles),
+            particles_data(expected_particles),
+            6 * sizeof(particle)
         ));
         cleanup();
     }
@@ -371,8 +384,8 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
                "state smooth:double=0; state root:double=0; state "
                "low:double=0; state high:double=0; state nearest:double=0; "
                "state position:float=0; state velocity:float=0; "
-               "function "
-               "Calculate(Value:double)->(Angle:double,Smooth:double,Root:"
+               "Calculate :: fn"
+               "(Value:double)->(Angle:double,Smooth:double,Root:"
                "double,Low:double,High:double,Nearest:double){ "
                "return(Angle:quantize_angle(Angle:Value,Step:1."
                "5707963267948966),Smooth:smooth_step(Value:Value),Root:sqrt("
@@ -464,31 +477,30 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
 }
 TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
-    const char *
-        text = "behavior Query { state visits:int=0; state "
-               "last:handle<\"ecs.entity\">=0; "
-               "function Count()->(){ foreach (outer in "
-               "find_entities_with_component(Component:\"GAME.GameHealth\")) { "
-               "foreach (inner in "
-               "find_entities_with_component(Component:\"GAME.GameHealth\")) { "
-               "visits+=1; last=inner; } } } "
-               "on Tick { visits=0; last=0; Count(); } }";
+    const char *text = "behavior Query { state visits:int=0; state "
+                       "last:handle<\"ecs.entity\">=0; "
+                       "Count :: fn()->(){ foreach (outer in "
+                       "find_entities_with_component(Component:\"Health\")) { "
+                       "foreach (inner in "
+                       "find_entities_with_component(Component:\"Health\")) { "
+                       "visits+=1; last=inner; } } } "
+                       "on Tick { visits=0; last=0; Count(); } }";
     for (int backend = 0; backend < 2; backend++) {
-        world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == 0);
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Health, NULL) == 0);
         ecs_entity members[3];
         for (int i = 0; i < 3; i++) {
-            members[i] = ecs_world_create_entity(world);
-            REQUIRE(GAME_GameHealth_add(world, members[i], 0) == 0);
+            members[i] = ecs_world_create_entity(test_world);
+            REQUIRE(Health_add(test_world, members[i], 0) == 0);
         }
-        REQUIRE(ecs_world_apply_commands(world) == 0);
-        entities = game_entities_new(world, NULL);
-        REQUIRE(entities);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
+        test_entities = entities_new(test_world, NULL);
+        REQUIRE(test_entities);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick"),
                  visits = state_id("visits"), last = state_id("last");
         REQUIRE(tick && visits && last);
-        REQUIRE(execution_program_bind_service(program, "game.entities", entities) == 0);
+        REQUIRE(execution_program_bind_service(program, "game.entities", test_entities) == 0);
         instance = execution_program_attach(program, 0);
         REQUIRE(instance);
         retire_producer();
@@ -516,13 +528,13 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
             if (count) {
                 REQUIRE(
                     ecs_world_record_remove(
-                        world,
+                        test_world,
                         members[count - 1],
-                        GAME_COMPONENT_GameHealth.id,
+                        COMPONENT_Health.id,
                         0
                     ) == 0
                 );
-                REQUIRE(ecs_world_apply_commands(world) == 0);
+                REQUIRE(ecs_world_apply_commands(test_world) == 0);
             }
         }
         cleanup();
@@ -543,19 +555,19 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
         "members=find_entities_with_component(\"SolidTile\"); } "
         "on Tick { boxes=count_matching_entities(members,["
         "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
-        "{component:\"GAME.GameTransform\",field:\"x\",test:\">\",value:left-4}"
+        "{component:\"Transform\",field:\"x\",test:\">\",value:left-4}"
         ","
-        "{component:\"GAME.GameTransform\",field:\"x\",test:\"<\",value:right+"
+        "{component:\"Transform\",field:\"x\",test:\"<\",value:right+"
         "4},"
-        "{component:\"GAME.GameTransform\",field:\"y\",test:\">\",value:top-4},"
-        "{component:\"GAME.GameTransform\",field:\"y\",test:\"<\",value:bottom+"
+        "{component:\"Transform\",field:\"y\",test:\">\",value:top-4},"
+        "{component:\"Transform\",field:\"y\",test:\"<\",value:bottom+"
         "4}]);"
         "points=count_matching_entities(members,["
         "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
-        "{component:\"GAME.GameTransform\",field:\"x\",test:\"<=\",value:x+4},"
-        "{component:\"GAME.GameTransform\",field:\"x\",test:\">\",value:x-4},"
-        "{component:\"GAME.GameTransform\",field:\"y\",test:\"<=\",value:y+4},"
-        "{component:\"GAME.GameTransform\",field:\"y\",test:\">\",value:y-4}]);"
+        "{component:\"Transform\",field:\"x\",test:\"<=\",value:x+4},"
+        "{component:\"Transform\",field:\"x\",test:\">\",value:x-4},"
+        "{component:\"Transform\",field:\"y\",test:\"<=\",value:y+4},"
+        "{component:\"Transform\",field:\"y\",test:\">\",value:y-4}]);"
         " "
         "} }";
     static const struct
@@ -576,19 +588,19 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
         REQUIRE(declared);
         ecs_component_catalog components = declared_components_ecs(declared);
         const ecs_component_desc *solid = components.components[0];
-        world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(world, solid, NULL) == 0);
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == 0);
-        ecs_entity tile = ecs_world_create_entity(world);
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, solid, NULL) == 0);
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform, NULL) == 0);
+        ecs_entity tile = ecs_world_create_entity(test_world);
         bool enabled = true;
-        GameTransform transform = { .x = 4, .y = 4 };
-        REQUIRE(ecs_world_record_add(world, tile, solid->id, &enabled, 0) == 0);
+        Transform transform = { .x = 4, .y = 4 };
+        REQUIRE(ecs_world_record_add(test_world, tile, solid->id, &enabled, 0) == 0);
         REQUIRE(
-            ecs_world_record_add(world, tile, GAME_COMPONENT_GameTransform.id, &transform, 0) == 0
+            ecs_world_record_add(test_world, tile, COMPONENT_Transform.id, &transform, 0) == 0
         );
-        REQUIRE(ecs_world_apply_commands(world) == 0);
-        entities = game_entities_new(world, NULL);
-        REQUIRE(entities);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
+        test_entities = entities_new(test_world, NULL);
+        REQUIRE(test_entities);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t begin = execution_module_event(prepared->module, "Begin"),
                  tick = execution_module_event(prepared->module, "Tick"),
@@ -599,7 +611,7 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
         retire_producer();
         REQUIRE(dispatch(begin, 4096) >= 0);
         for (int i = 0; i < (int)(sizeof poses / sizeof *poses); i++) {
-            GameTransform *at = GAME_GameTransform_get(world, tile);
+            Transform *at = Transform_get(test_world, tile);
             REQUIRE(at);
             at->x = poses[i].x;
             at->y = poses[i].y;
@@ -610,24 +622,24 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
         }
         /* The snapshot survives field changes, component removal and stale
          * handles; only the currently enabled live rectangle can match. */
-        GameTransform *at = GAME_GameTransform_get(world, tile);
+        Transform *at = Transform_get(test_world, tile);
         at->x = at->y = 8;
-        *(bool *)ecs_component_data(world, tile, solid->id) = false;
+        *(bool *)ecs_component_data(test_world, tile, solid->id) = false;
         REQUIRE(dispatch(tick, 4096) >= 0);
         REQUIRE(execution_instance_state(instance, boxes)->i == 0);
-        *(bool *)ecs_component_data(world, tile, solid->id) = true;
+        *(bool *)ecs_component_data(test_world, tile, solid->id) = true;
         REQUIRE(dispatch(tick, 4096) >= 0);
         REQUIRE(execution_instance_state(instance, boxes)->i == 1);
-        REQUIRE(ecs_world_record_remove(world, tile, solid->id, 0) == 0);
-        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(ecs_world_record_remove(test_world, tile, solid->id, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
         REQUIRE(dispatch(tick, 4096) >= 0);
         REQUIRE(execution_instance_state(instance, boxes)->i == 0);
-        REQUIRE(ecs_world_record_add(world, tile, solid->id, &enabled, 0) == 0);
-        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(ecs_world_record_add(test_world, tile, solid->id, &enabled, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
         REQUIRE(dispatch(tick, 4096) >= 0);
         REQUIRE(execution_instance_state(instance, boxes)->i == 1);
-        REQUIRE(ecs_world_record_destroy(world, tile, 0) == 0);
-        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(ecs_world_record_destroy(test_world, tile, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(test_world) == 0);
         REQUIRE(dispatch(tick, 4096) >= 0);
         REQUIRE(execution_instance_state(instance, boxes)->i == 0);
         cleanup();
@@ -635,19 +647,17 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
     return true;
 }
 
-static ecs_entity place_collider(CF_V3 position, GameCollider3D collider)
+static ecs_entity place_collider(CF_V3 position, Collider3D collider)
 {
-    ecs_entity entity = ecs_world_create_entity(world);
-    assert(GAME_GameTransform3D_add(world, entity, 0) == 0);
-    assert(GAME_GameCollider3D_add(world, entity, 0) == 0);
-    assert(ecs_world_apply_commands(world) == 0);
-    *GAME_GameTransform3D_get(world, entity) = (GameTransform3D){
-        .position = position,
-        .rotation = cf_quat_identity(),
-        .scale = { 1, 1, 1 }
-    };
+    ecs_entity entity = ecs_world_create_entity(test_world);
+    assert(Transform3D_add(test_world, entity, 0) == 0);
+    assert(Collider3D_add(test_world, entity, 0) == 0);
+    assert(ecs_world_apply_commands(test_world) == 0);
+    *Transform3D_get(test_world, entity) = (Transform3D){ .position = position,
+                                                          .rotation = cf_quat_identity(),
+                                                          .scale = { 1, 1, 1 } };
     collider.mask = ~0u;
-    *GAME_GameCollider3D_get(world, entity) = collider;
+    *Collider3D_get(test_world, entity) = collider;
     return entity;
 }
 /* The 3D queries read colliders from scripts on both backends before any
@@ -675,25 +685,23 @@ TEST_CASE(source_native_physics3d_queries_read_colliders)
                "travel=shape_cast_3d(self,push,1,false).Distance; "
                "touching=length(contact_entities_3d(self,2)); } }";
     for (int backend = 0; backend < 2; backend++) {
-        world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform3D, NULL) == 0);
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider3D, NULL) == 0);
-        GameCollider3D slab = { .shape = GAME_COLLIDER3D_BOX,
-                                .size = { 1280, 32, 1280 },
-                                .category = 2 },
-                       cube = { .shape = GAME_COLLIDER3D_BOX,
-                                .size = { 32, 32, 32 },
-                                .category = 1 },
-                       ball = { .shape = GAME_COLLIDER3D_SPHERE,
-                                .radius = 16,
-                                .category = 1 };
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform3D, NULL) == 0);
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Collider3D, NULL) == 0);
+        Collider3D slab = { .shape = COLLIDER3D_BOX,
+                            .size = { 1280, 32, 1280 },
+                            .category = 2 },
+                   cube = { .shape = COLLIDER3D_BOX,
+                            .size = { 32, 32, 32 },
+                            .category = 1 },
+                   ball = { .shape = COLLIDER3D_SPHERE, .radius = 16, .category = 1 };
         place_collider((CF_V3){ 0, -16, 0 }, slab);
         ecs_entity rock = place_collider((CF_V3){ 0, 64, 0 }, ball);
         ecs_entity crate = place_collider((CF_V3){ 0, 16, 128 }, cube);
         ecs_entity wall = place_collider((CF_V3){ 160, 16, 128 }, cube);
-        entities = game_entities_new(world, NULL);
-        REQUIRE(entities);
-        physics3d = game_physics3d_new(world, entities);
+        test_entities = entities_new(test_world, NULL);
+        REQUIRE(test_entities);
+        test_physics3d = physics3d_new(test_world, test_entities);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick");
         uint64_t found = state_id("found"), target = state_id("target"),
@@ -742,10 +750,10 @@ static bool publish_material(int width)
         fprintf(stderr, "source material artifact: %s\n", error.message);
         return false;
     }
-    game_player_asset asset = { .name = "Typed host material",
-                                .kind = GAME_PLAYER_ASSET_SHADER,
-                                .data = shader_bytes,
-                                .length = length };
+    player_asset asset = { .name = "Typed host material",
+                           .kind = PLAYER_ASSET_SHADER,
+                           .data = shader_bytes,
+                           .length = length };
     resource_host = render_prepared_resources(NULL);
     size_t remaining = 1024 * 1024;
     resource_generation = resource_host.stage(resource_host.context, &asset, 1, &remaining, message, sizeof message);
@@ -770,21 +778,21 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
         for (int kind = 0; kind < 4; kind++) {
             int width = kind == 3 ? 2 : 1;
             REQUIRE(publish_material(width));
-            world = ecs_world_new();
-            REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == 0);
-            ecs_entity owner = ecs_world_create_entity(world);
-            GameShader binding = { .material = "Typed host material" };
+            test_world = ecs_world_new();
+            REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Shader, NULL) == 0);
+            ecs_entity owner = ecs_world_create_entity(test_world);
+            Shader binding = { .material = "Typed host material" };
             REQUIRE(
-                ecs_world_record_add(world, owner, GAME_COMPONENT_GameShader.id, &binding, 0) == 0
+                ecs_world_record_add(test_world, owner, COMPONENT_Shader.id, &binding, 0) == 0
             );
-            REQUIRE(ecs_world_apply_commands(world) == 0);
+            REQUIRE(ecs_world_apply_commands(test_world) == 0);
             char text[1024];
             snprintf(
                 text,
                 sizeof text,
                 "behavior Material { owner \"ecs.entity\"; state "
                 "done:bool=false; state payload:%s; "
-                "function Apply(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
+                "Apply :: fn(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
                 "await delay(Duration:0.125); "
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Value\",Value:"
@@ -813,14 +821,14 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
             );
             float values[SHADER_PARAMETER_MAX][4];
             int material = render_shader_find("Typed host material");
-            render_shader_parameters(material, world, owner, NULL, values);
+            render_shader_parameters(material, test_world, owner, NULL, values);
             REQUIRE(values[0][0] == 0 && values[1][0] == 0);
             REQUIRE(pump(.125, .125, 1024) >= 0);
             REQUIRE(
                 execution_instance_pending(instance) == 0 &&
                 execution_instance_state(instance, done_id)->b
             );
-            render_shader_parameters(material, world, owner, NULL, values);
+            render_shader_parameters(material, test_world, owner, NULL, values);
             for (int slot = 0; slot < 2; slot++) {
                 for (int field = 0; field < width; field++) {
                     REQUIRE(values[slot][field] == expected[kind][field]);
@@ -842,36 +850,180 @@ TEST_CASE(source_tilemap_queries_use_live_authored_cells)
                 "on Tick { frame=tilemap_frame_at(self,point); "
                 "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
     for (int backend = 0; backend < 2; backend++) {
-        world = ecs_world_new();
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTilemap, NULL) == ECS_OK);
-        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-        ecs_entity tilemap = ecs_world_create_entity(world);
-        REQUIRE(GAME_GameTilemap_add(world, tilemap, 0) == ECS_OK);
-        REQUIRE(GAME_GameTransform_add(world, tilemap, 0) == ECS_OK);
-        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-        *GAME_GameTransform_get(world, tilemap) = (GameTransform){ 10, -5 };
-        *GAME_GameTilemap_get(world, tilemap) = (GameTilemap){ .cells = "7 -1",
-                                                               .columns = 2,
-                                                               .rows = 1,
-                                                               .frame_width = 3,
-                                                               .frame_height = 5 };
-        entities = game_entities_new(world, NULL);
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Tilemap, NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Transform, NULL) == ECS_OK);
+        ecs_entity tilemap = ecs_world_create_entity(test_world);
+        REQUIRE(Tilemap_add(test_world, tilemap, 0) == ECS_OK);
+        REQUIRE(Transform_add(test_world, tilemap, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+        *Transform_get(test_world, tilemap) = (Transform){ 10, -5 };
+        *Tilemap_get(test_world, tilemap) = (Tilemap){ .cells = "7 -1",
+                                                       .columns = 2,
+                                                       .rows = 1,
+                                                       .frame_width = 3,
+                                                       .frame_height = 5 };
+        test_entities = entities_new(test_world, NULL);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick"),
                  frame = state_id("frame"), count = state_id("count");
         REQUIRE(tick && frame && count);
-        REQUIRE(execution_program_bind_service(program, "game.entities", entities) == 0);
+        REQUIRE(execution_program_bind_service(program, "game.entities", test_entities) == 0);
         instance = execution_program_attach(program, ecs_entity_to_u64(tilemap));
         REQUIRE(instance);
         retire_producer();
         REQUIRE(dispatch(tick, 1024) >= 0);
         REQUIRE(execution_instance_state(instance, frame)->i == 7);
         REQUIRE(execution_instance_state(instance, count)->i == 1);
-        GAME_GameTilemap_get(world, tilemap)->cells = "-1 9";
+        Tilemap_get(test_world, tilemap)->cells = "-1 9";
         REQUIRE(dispatch(tick, 1024) >= 0);
         REQUIRE(execution_instance_state(instance, frame)->i == -1);
         REQUIRE(execution_instance_state(instance, count)->i == 0);
         REQUIRE(execution_instance_pending(instance) == 0);
+        cleanup();
+    }
+    return true;
+}
+
+void test_source_input_save();
+
+TEST_CASE(url_requests_validate_copy_replace_and_cancel)
+{
+    test_urls = url_requests_new();
+    REQUIRE(!url_requests_open(test_urls, "https://example.org"));
+    url_requests_enable(test_urls, true);
+    const char *invalid[] = {
+        NULL,
+        "",
+        "javascript:alert(1)",
+        "file:///tmp/page.html",
+        "//example.org",
+        "https://",
+        "https:///path",
+        "http://?page",
+        "https://:443/",
+        "https://example.org:",
+        "https://user@example.org/",
+        "https://example.org/\n",
+        "https://example.org/a b",
+        "https://example.org\\path",
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(!url_requests_open(test_urls, invalid[i]));
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && !url);
+    }
+    const char *accepted[] = { "https://example.org/path?q=a%20b#part",
+                               "http://localhost:8080/",
+                               "https://[::1]/" };
+    for (int i = 0; i < (int)(sizeof accepted / sizeof *accepted); i++) {
+        char buffer[128];
+        snprintf(buffer, sizeof buffer, "%s", accepted[i]);
+        REQUIRE(url_requests_open(test_urls, buffer));
+        memset(buffer, 0, sizeof buffer);
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && url);
+        REQUIRE(!strcmp(url, accepted[i]));
+        free(url);
+        REQUIRE(!url_requests_take(test_urls, &url) && !url);
+    }
+    REQUIRE(url_requests_open(test_urls, "https://example.org/first"));
+    REQUIRE(url_requests_open(test_urls, "https://example.org/second"));
+    char *url;
+    REQUIRE(url_requests_take(test_urls, &url) && url);
+    /* Ownership transfers, so retiring the runtime cannot invalidate the host. */
+    url_requests_free(test_urls);
+    test_urls = url_requests_new();
+    REQUIRE(!strcmp(url, "https://example.org/second"));
+    free(url);
+    url_requests_enable(test_urls, true);
+    REQUIRE(url_requests_open(test_urls, "https://example.org/"));
+    url_requests_cancel(test_urls);
+    REQUIRE(url_requests_take(test_urls, &url) && !url);
+    REQUIRE(url_requests_open(test_urls, "https://example.org/"));
+    url_requests_enable(test_urls, false);
+    REQUIRE(url_requests_take(test_urls, &url) && !url);
+    REQUIRE(!url_requests_open(test_urls, "https://example.org/"));
+    return true;
+}
+
+TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
+{
+    const char
+        *text = "behavior Links { state done:bool=true; state mode:int=0; "
+                "on Tick { if mode==0 { result := await "
+                "open_url(Url:\"https://example.org/help\"); "
+                "done=result.Accepted; } "
+                "if mode==1 { open_url(\"http://localhost/help\"); } "
+                "if mode==2 { cancel_open_url(); } } }";
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 mode = state_id("mode");
+        REQUIRE(tick && mode && done_id);
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, done_id)->b);
+        test_urls = url_requests_new();
+        REQUIRE(execution_program_bind_service(program, URL_SERVICE, test_urls) == 0);
+        url_requests_enable(test_urls, true);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, done_id)->b);
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && url);
+        REQUIRE(!strcmp(url, "https://example.org/help"));
+        free(url);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 1 }) == 0
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 2 }) == 0
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(url_requests_take(test_urls, &url) && !url);
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
+{
+    const char *text = "behavior Pointer { state active:bool=true; "
+                       "state origin:struct<\"CF_V3\">={}; state "
+                       "direction:struct<\"CF_V3\">={}; "
+                       "on Tick { ray:=get_pointer_ray(); active=ray.Active; "
+                       "origin=ray.Origin; direction=ray.Direction; } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 active = state_id("active"), origin = state_id("origin"),
+                 direction = state_id("direction");
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance && tick && active && origin && direction);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, active)->b);
+        input_service = engine_input_new(test_world, NULL);
+        REQUIRE(execution_program_bind_service(program, INPUT_SERVICE, input_service) == 0);
+        input_pointer_ray ray = { .origin = { 2, 3, 4 },
+                                  .direction = { 0, 0, -1 },
+                                  .active = true };
+        engine_input_pointer(input_service, ray);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, active)->b);
+        engine_input_clear(input_service);
+        REQUIRE(
+            !memcmp(execution_instance_state(instance, origin)->ptr, &ray.origin, sizeof(CF_V3))
+        );
+        REQUIRE(
+            !memcmp(execution_instance_state(instance, direction)->ptr, &ray.direction, sizeof(CF_V3))
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, active)->b);
         cleanup();
     }
     return true;
@@ -883,7 +1035,130 @@ void test_source_native_features()
     RUN_TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target);
     RUN_TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait);
     RUN_TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission);
+    RUN_TEST_CASE(url_requests_validate_copy_replace_and_cancel);
+    RUN_TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation);
     pu_clear_setup();
+    test_source_input_save();
+}
+
+TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
+{
+    const char *source =
+        "behavior Ranges { state input:number=0; state observed:number=0; "
+        "state steps:number=0; state converted:int=0; state "
+        "constructed:number=0; state fresh:Bounded={}; state "
+        "defaulted:number=0; "
+        "on Tick { self.Bounded.value=input; observed=self.Bounded.value; "
+        "self.Bounded.value+=100; self.Bounded.value-=1; "
+        "steps=self.Bounded.value; "
+        "self.Bounded.count=cast<int>(observed); converted=self.Bounded.count; "
+        "local:Bounded={value:input}; constructed=local.value; "
+        "defaulted=fresh.positive; } "
+        "on Begin { copy:=self.Bounded; self.Bounded=copy; "
+        "observed=self.Bounded.value; } "
+        "}";
+    static const struct
+    {
+        double input, expected;
+        int integer;
+    } cases[] = {
+        { -5, 0, 0 },         { 2.75, 2.75, 2 },   { 100, 10, 10 },
+        { INFINITY, 10, 10 }, { -INFINITY, 0, 0 }, { NAN, 0, 0 },
+        { DBL_MAX, 10, 10 },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        char error[256];
+        declared_field fields[] = {
+            { .name = "value", .type = "number", .min = 0, .max = 10 },
+            { .name = "count", .type = "int", .min = 0, .max = 10 },
+            { .name = "positive", .type = "number", .min = 2, .max = 5 },
+        };
+        declared_component component = { .name = "Bounded",
+                                         .fields = fields,
+                                         .field_count = 3 };
+        declared = declared_components_new(&component, 1, error, sizeof error);
+        REQUIRE(declared);
+        const ecs_component_desc *desc = declared_components_ecs(declared).components[0];
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, desc, NULL) == ECS_OK);
+        ecs_entity owner = ecs_world_create_entity(test_world);
+        REQUIRE(ecs_world_record_add(test_world, owner, desc->id, NULL, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+        behavior_backend selected = backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(prepare(source, selected));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        uint64_t input = state_id("input"), observed = state_id("observed"),
+                 steps = state_id("steps"), converted = state_id("converted"),
+                 constructed = state_id("constructed"),
+                 defaulted = state_id("defaulted");
+        instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(
+            instance && tick && input && observed && steps && converted &&
+            constructed && defaulted
+        );
+        for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+            REQUIRE(
+                execution_instance_set_state(
+                    instance,
+                    input,
+                    (pin_value){ .type = PIN_F64, .d = cases[i].input }
+                ) == FLOW_OK
+            );
+            REQUIRE(dispatch(tick, 4096) >= 0);
+            REQUIRE(execution_instance_state(instance, observed)->d == cases[i].expected);
+            REQUIRE(
+                execution_instance_state(instance, constructed)->d == cases[i].expected
+            );
+            REQUIRE(execution_instance_state(instance, converted)->i == cases[i].integer);
+            REQUIRE(execution_instance_state(instance, defaulted)->d == 2);
+            /* Each saturating assignment is observable: these two updates
+             * cannot be reassociated into a single addition of 99. */
+            REQUIRE(execution_instance_state(instance, steps)->d == 9);
+        }
+        REQUIRE(
+            ecs_component_write_field(
+                test_world,
+                owner,
+                desc->id,
+                0,
+                (pin_value){ .type = PIN_F64, .d = 1.75 }
+            ) == ECS_OK
+        );
+        fields[0].max = 1;
+        newer_declared = declared_components_new(&component, 1, error, sizeof error);
+        REQUIRE(newer_declared);
+        uint64_t copy = execution_module_event(prepared->module, "Begin");
+        REQUIRE(copy && dispatch(copy, 4096) >= 0);
+        /* Both whole-component snapshot and publication retain the world's
+         * original range while a newer global schema is being prepared. */
+        REQUIRE(execution_instance_state(instance, observed)->d == 1.75);
+        declared_components_free(newer_declared);
+        newer_declared = NULL;
+        script_lower_bindings bindings = authoring_language_bindings(catalog);
+        authoring_source *replacement = authoring_source_prepare_document(
+            "features.chibi",
+            "test/native-features",
+            "behavior Ranges { state input:number=0; on Tick { "
+            "self.Bounded.value=input*input; } }",
+            authoring_language_catalog_view(catalog),
+            &bindings,
+            selected
+        );
+        REQUIRE(replacement && replacement->valid);
+        int replaced = execution_program_replace(program, replacement->module, false);
+        authoring_source_free(replacement);
+        REQUIRE(replaced == FLOW_OK);
+        instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        /* The retained DBL_MAX input overflows only floating intermediates;
+         * publication sees +infinity and stores the finite high endpoint. */
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        pin_value actual;
+        REQUIRE(ecs_component_read_field(test_world, owner, desc->id, 0, &actual) == ECS_OK);
+        REQUIRE(actual.d == 10);
+        cleanup();
+    }
+    return true;
 }
 
 void test_source_native_numeric_queries()
@@ -894,6 +1169,8 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_native_query_matches_authored_rectangles);
     RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
     RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
+    RUN_TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default);
+    RUN_TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement);
     pu_clear_setup();
 }
 

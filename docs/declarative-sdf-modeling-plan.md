@@ -28,7 +28,7 @@ Excluded: Blender API emulation; a new Python SDK or MCP server; exact Blender m
 
 ## Existing code and constraints
 
-Paths below are relative to the implementation checkout. Features under `projects/sdf_lab`, `GameSdfSurface3D`, and the SDF material shader currently depend on the SDF worktree; their presence is not a claim that they are integrated into main.
+Paths below are relative to the implementation checkout. Features under `projects/sdf_lab`, `SdfSurface3D`, and the SDF material shader currently depend on the SDF worktree; their presence is not a claim that they are integrated into main.
 
 | Existing path | What it supplies |
 | --- | --- |
@@ -43,7 +43,7 @@ Paths below are relative to the implementation checkout. Features under `project
 | `src/automation/graph_edit.c`, `controller.c`, `render_preview.c` | Generic graph edits, asset validation, discovery, and previews |
 | `projects/sdf_lab/author.mjs` | Existing construction of SDF graphs through those tools |
 
-The existing shape graph returns one distance. The inspected shader IR permits 32 parameter slots and 1,024 nodes; these are current limits, not targets to raise automatically. Shape asset bounds are two-dimensional, while `GameGeometry3D` currently supplies the three-dimensional rendering proxy. The new model contract needs explicit three-dimensional bounds ownership.
+The existing shape graph returns one distance. The inspected shader IR permits 32 parameter slots and 1,024 nodes; these are current limits, not targets to raise automatically. Shape asset bounds are two-dimensional, while `Geometry3D` currently supplies the three-dimensional rendering proxy. The new model contract needs explicit three-dimensional bounds ownership.
 
 ## Recommended architecture
 
@@ -84,9 +84,9 @@ Derive a local 3D AABB from the construction DAG. Bounds use the same validated 
 
 Evaluate the bounds program when relevant uniform parameters change, not per ray step. If a parameter source cannot provide a finite conservative bound, reject that model path until an explicit finite contract exists. Preview sampling is a validation aid, not proof that bounds are conservative.
 
-For model-backed SDF objects, compiled model bounds are authoritative. Integrate a local bound center and half extents into the proxy and inverse transform; off-center objects must work. Preserve the existing manually bounded raw shape path for its separate purpose. Do not silently reinterpret `GameGeometry3D.width/height/depth` as model scale; model dimensions belong to parameters and instance scale belongs to visual transforms.
+For model-backed SDF objects, compiled model bounds are authoritative. Integrate a local bound center and half extents into the proxy and inverse transform; off-center objects must work. Preserve the existing manually bounded raw shape path for its separate purpose. Do not silently reinterpret `Geometry3D.width/height/depth` as model scale; model dimensions belong to parameters and instance scale belongs to visual transforms.
 
-Existing `GameShader.shape` may reference a compiled model through the common shape catalog. Extend reference discovery and pickers to accept both asset families. Reject ambiguous name collisions and update references on rename through the existing reference index. No second entity geometry binding is required.
+Existing `Shader.shape` may reference a compiled model through the common shape catalog. Extend reference discovery and pickers to accept both asset families. Reject ambiguous name collisions and update references on rename through the existing reference index. No second entity geometry binding is required.
 
 ### Materials and parts
 

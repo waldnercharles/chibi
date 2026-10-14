@@ -12,10 +12,10 @@ void emit_execution_unwrap(FILE *out, const struct_info *s)
     const field_info *field = &s->fields[0];
     fprintf(
         out,
-        "static const char *__execution_%s_Unwrap_%s(const "
+        "static const char *__execution_%sUnwrap_%s(const "
         "behavior_function_context *ctx, void *service, const pin_value *args, "
         "pin_value *out) {\n",
-        g_prefix,
+        symbol_prefix(),
         s->name
     );
     fputs("    (void)ctx; (void)service; if (!args[0].ptr) return \"Unwrap requires a value\";\n", out);
@@ -29,11 +29,11 @@ void emit_execution_unwrap(FILE *out, const struct_info *s)
     emit_execution_result(out, field->pin, "value", field->spelling, 0);
     fprintf(
         out,
-        "    return NULL;\n}\nconst node_host_call %s_Unwrap_%s_execution = { "
-        ".context = __execution_%s_Unwrap_%s };\n\n",
-        g_prefix,
+        "    return NULL;\n}\nconst node_host_call %sUnwrap_%s_execution = { "
+        ".context = __execution_%sUnwrap_%s };\n\n",
+        symbol_prefix(),
         s->name,
-        g_prefix,
+        symbol_prefix(),
         s->name
     );
 }
@@ -78,17 +78,17 @@ void emit_component_accessors(FILE *out, const struct_info *s)
     const struct_info *source = derived_source(s);
     fprintf(
         out,
-        "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
+        "const ecs_component_desc %sCOMPONENT_%s = { .id = UINT64_C(%llu), "
         ".key = \"%s\", .name = \"%s\", .element_size = sizeof(%s), .type = "
-        "&%s_T_%s, "
+        "&%sT_%s, "
         ".index = %s",
-        g_prefix,
+        symbol_prefix(),
         name,
         (unsigned long long)id,
         component_key(s),
         name,
         name,
-        g_prefix,
+        symbol_prefix(),
         name,
         s->dense ? "ECS_INDEX_DENSE" : "ECS_INDEX_BITSET"
     );
@@ -98,56 +98,56 @@ void emit_component_accessors(FILE *out, const struct_info *s)
     fputs(" };\n", out);
     fprintf(
         out,
-        "%s *%s_%s_get(ecs_world *world, ecs_entity entity) { return "
-        "(%s *)ecs_component_data(world, entity, %s_COMPONENT_%s.id); }\n",
+        "%s *%s%s_get(ecs_world *world, ecs_entity entity) { return "
+        "(%s *)ecs_component_data(world, entity, %sCOMPONENT_%s.id); }\n",
         name,
-        g_prefix,
+        symbol_prefix(),
         name,
         name,
-        g_prefix,
+        symbol_prefix(),
         name
     );
     fprintf(
         out,
-        "const %s *%s_%s_get_const(const ecs_world *world, ecs_entity entity) "
+        "const %s *%s%s_get_const(const ecs_world *world, ecs_entity entity) "
         "{ return (const %s *)ecs_component_data_const(world, entity, "
-        "%s_COMPONENT_%s.id); }\n",
+        "%sCOMPONENT_%s.id); }\n",
         name,
-        g_prefix,
+        symbol_prefix(),
         name,
         name,
-        g_prefix,
+        symbol_prefix(),
         name
     );
     fprintf(
         out,
-        "int %s_%s_has(const ecs_world *world, ecs_entity entity) { return "
-        "ecs_component_has(world, entity, %s_COMPONENT_%s.id); }\n",
-        g_prefix,
+        "int %s%s_has(const ecs_world *world, ecs_entity entity) { return "
+        "ecs_component_has(world, entity, %sCOMPONENT_%s.id); }\n",
+        symbol_prefix(),
         name,
-        g_prefix,
+        symbol_prefix(),
         name
     );
     fprintf(
         out,
-        "int %s_%s_add(ecs_world *world, ecs_entity entity, uint64_t sort_key) "
-        "{ return ecs_world_record_add(world, entity, %s_COMPONENT_%s.id, "
+        "int %s%s_add(ecs_world *world, ecs_entity entity, uint64_t sort_key) "
+        "{ return ecs_world_record_add(world, entity, %sCOMPONENT_%s.id, "
         "NULL, "
         "sort_key); }\n",
-        g_prefix,
+        symbol_prefix(),
         name,
-        g_prefix,
+        symbol_prefix(),
         name
     );
     fprintf(
         out,
-        "int %s_%s_remove(ecs_world *world, ecs_entity entity, uint64_t "
+        "int %s%s_remove(ecs_world *world, ecs_entity entity, uint64_t "
         "sort_key) "
-        "{ return ecs_world_record_remove(world, entity, %s_COMPONENT_%s.id, "
+        "{ return ecs_world_record_remove(world, entity, %sCOMPONENT_%s.id, "
         "sort_key); }\n\n",
-        g_prefix,
+        symbol_prefix(),
         name,
-        g_prefix,
+        symbol_prefix(),
         name
     );
 }

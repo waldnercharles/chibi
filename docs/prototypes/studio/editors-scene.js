@@ -9,13 +9,13 @@ const SHAPES = ['Box', 'Circle', 'Diamond', 'Chevron', 'Stroked chevron', 'Capsu
 function geometry(e, subject) {
   const s = subject || { kind: 'scene', entity: e };
   const proto = subject?.kind === 'prototype' ? App.prototypes[subject.name] : App.prototypes[e.prototype] || {};
-  if (!proto.GameTransform && !subject) return null;
+  if (!proto.Transform && !subject) return null;
   const pos = subject?.kind === 'prototype' ? { x: 0, y: 0 } : App.position(e);
-  const rot = App.read(s, 'GameOrientation', 'radians') || 0;
-  if (proto.GameCamera) return { kind: 'camera', ...pos, w: App.read(s, 'GameCamera', 'width'), h: App.read(s, 'GameCamera', 'height'), rot: 0, color: 0x8a9daaff };
-  if (proto.MaterialTerrain) return { kind: 'terrain', ...pos, w: App.read(s, 'MaterialTerrain', 'width'), h: App.read(s, 'MaterialTerrain', 'height'), rot: 0, color: App.read(s, 'GameAppearance', 'color') ?? 0x536268ff };
-  if (proto.GameFluidVolume) return { kind: 'fluid', ...pos, w: App.read(s, 'GameFluidVolume', 'width'), h: App.read(s, 'GameFluidVolume', 'height'), rot: 0, color: App.read(s, 'GameFluidVolume', 'color') ?? 0x70909dff };
-  if (proto.GameAppearance) return { kind: 'shape', shape: App.read(s, 'GameAppearance', 'shape'), ...pos, w: App.read(s, 'GameAppearance', 'width') || 10, h: App.read(s, 'GameAppearance', 'height') || 10, rot, color: App.read(s, 'GameAppearance', 'color') ?? 0xffffffff };
+  const rot = App.read(s, 'Orientation', 'radians') || 0;
+  if (proto.Camera) return { kind: 'camera', ...pos, w: App.read(s, 'Camera', 'width'), h: App.read(s, 'Camera', 'height'), rot: 0, color: 0x8a9daaff };
+  if (proto.MaterialTerrain) return { kind: 'terrain', ...pos, w: App.read(s, 'MaterialTerrain', 'width'), h: App.read(s, 'MaterialTerrain', 'height'), rot: 0, color: App.read(s, 'Appearance', 'color') ?? 0x536268ff };
+  if (proto.FluidVolume) return { kind: 'fluid', ...pos, w: App.read(s, 'FluidVolume', 'width'), h: App.read(s, 'FluidVolume', 'height'), rot: 0, color: App.read(s, 'FluidVolume', 'color') ?? 0x70909dff };
+  if (proto.Appearance) return { kind: 'shape', shape: App.read(s, 'Appearance', 'shape'), ...pos, w: App.read(s, 'Appearance', 'width') || 10, h: App.read(s, 'Appearance', 'height') || 10, rot, color: App.read(s, 'Appearance', 'color') ?? 0xffffffff };
   return { kind: 'empty', ...pos, w: 16, h: 16, rot: 0, color: 0xaaaaaaff };
 }
 
@@ -226,7 +226,7 @@ App.EDITORS.viewport = (area, head, body) => {
     draw();
   }
   function addMenu(at) {
-    return Object.keys(App.prototypes).filter((p) => App.prototypes[p].GameTransform).map((p) => ({ label: p, icon: App.protoIcon(p), run: () => App.addEntity(p, at) }));
+    return Object.keys(App.prototypes).filter((p) => App.prototypes[p].Transform).map((p) => ({ label: p, icon: App.protoIcon(p), run: () => App.addEntity(p, at) }));
   }
   const local = (e) => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   const locked = () => !!App.State.runtime || !!subjectDoc();
@@ -236,7 +236,7 @@ App.EDITORS.viewport = (area, head, body) => {
     const sel = App.selected().filter((e) => !e.locked);
     if (!sel.length || locked()) return;
     const start = sel.map((e) => App.position(e));
-    const rot0 = sel.map((e) => App.read({ kind: 'scene', entity: e }, 'GameOrientation', 'radians') || 0);
+    const rot0 = sel.map((e) => App.read({ kind: 'scene', entity: e }, 'Orientation', 'radians') || 0);
     const origin = lastPointer;
     const c = start.reduce((a, p) => ({ x: a.x + p.x / start.length, y: a.y + p.y / start.length }), { x: 0, y: 0 });
     modal = { kind, sel, start, rot0, origin, axis: null, c };
@@ -246,13 +246,13 @@ App.EDITORS.viewport = (area, head, body) => {
         let dx = w1.x - w0.x, dy = w1.y - w0.y;
         if (modal.axis === 'x') dy = 0; if (modal.axis === 'y') dx = 0;
         if (snap || pt.ctrl) { dx = Math.round(dx / 32) * 32; dy = Math.round(dy / 32) * 32; }
-        sel.forEach((e, i) => { e.overrides.GameTransform ??= {}; e.overrides.GameTransform.x = Math.round(start[i].x + dx); e.overrides.GameTransform.y = Math.round(start[i].y + dy); });
+        sel.forEach((e, i) => { e.overrides.Transform ??= {}; e.overrides.Transform.x = Math.round(start[i].x + dx); e.overrides.Transform.y = Math.round(start[i].y + dy); });
         App.setHints([['icon:mouse', 'Confirm'], ['Esc', 'Cancel'], ['X', 'Along X'], ['Y', 'Along Y'], ['Ctrl', 'Snap'], ['icon:move', `Δ ${Math.round(dx)}, ${Math.round(dy)}`]]);
       } else {
         const a0 = Math.atan2(w0.y - c.y, w0.x - c.x), a1 = Math.atan2(w1.y - c.y, w1.x - c.x);
         let d = a1 - a0;
         if (snap || pt.ctrl) d = Math.round(d / (Math.PI / 12)) * (Math.PI / 12);
-        sel.forEach((e, i) => { if (App.prototypes[e.prototype]?.GameOrientation) { e.overrides.GameOrientation ??= {}; e.overrides.GameOrientation.radians = +(rot0[i] + d).toFixed(4); } });
+        sel.forEach((e, i) => { if (App.prototypes[e.prototype]?.Orientation) { e.overrides.Orientation ??= {}; e.overrides.Orientation.radians = +(rot0[i] + d).toFixed(4); } });
         App.setHints([['icon:mouse', 'Confirm'], ['Esc', 'Cancel'], ['Ctrl', 'Snap 15°'], ['icon:rotate', `${Math.round(d * 180 / Math.PI)}°`]]);
       }
       App.refresh('values');
@@ -262,13 +262,13 @@ App.EDITORS.viewport = (area, head, body) => {
       const m = modal; modal = null;
       if (!m) return;
       if (kind === 'move') {
-        const after = sel.map((e) => ({ ...e.overrides.GameTransform }));
-        sel.forEach((e, i) => Object.assign(e.overrides.GameTransform, start[i]));
+        const after = sel.map((e) => ({ ...e.overrides.Transform }));
+        sel.forEach((e, i) => Object.assign(e.overrides.Transform, start[i]));
         if (ok && after.some((p, i) => p.x !== start[i].x || p.y !== start[i].y)) App.moveEntities(sel, start, after, `Move ${sel.length === 1 ? sel[0].name : `${sel.length} objects`}`);
       } else {
-        const after = sel.map((e) => e.overrides.GameOrientation?.radians);
-        sel.forEach((e, i) => { if (e.overrides.GameOrientation) e.overrides.GameOrientation.radians = rot0[i]; });
-        if (ok) sel.forEach((e, i) => after[i] !== undefined && after[i] !== rot0[i] && App.setValue({ kind: 'scene', entity: e }, 'GameOrientation', 'radians', after[i], rot0[i], `Rotate ${e.name}`));
+        const after = sel.map((e) => e.overrides.Orientation?.radians);
+        sel.forEach((e, i) => { if (e.overrides.Orientation) e.overrides.Orientation.radians = rot0[i]; });
+        if (ok) sel.forEach((e, i) => after[i] !== undefined && after[i] !== rot0[i] && App.setValue({ kind: 'scene', entity: e }, 'Orientation', 'radians', after[i], rot0[i], `Rotate ${e.name}`));
       }
       App.setHints(hints());
       App.refresh('values');
@@ -442,7 +442,7 @@ App.EDITORS.outliner = (area, head, body) => {
   const collapsed = new Set();
   let renaming = null, anchor = null;
 
-  const isSystem = (e) => !App.prototypes[e.prototype]?.GameTransform;
+  const isSystem = (e) => !App.prototypes[e.prototype]?.Transform;
   function hl(name, q) {
     if (!q) return name;
     const i = name.toLowerCase().indexOf(q.toLowerCase());

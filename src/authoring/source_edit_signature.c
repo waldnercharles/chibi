@@ -23,7 +23,7 @@ static TSNode field(TSNode node, const char *name)
 }
 static bool signature(const char *text)
 {
-    const char *prefix = "library __Edit { function __Signature";
+    const char *prefix = "library __Edit { __Signature :: fn";
     const char *suffix = " {} }";
     size_t bytes = strlen(prefix) + strlen(text) + strlen(suffix) + 1;
     char *source = xmalloc(bytes);

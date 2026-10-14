@@ -249,7 +249,7 @@ static bool extract(
             input_collision |= !strncmp(a->symbols[i].name, prefix, strlen(prefix));
         }
     } while (input_collision);
-    source_refactor_append(&definition, "\n%s %s(", macro ? "macro" : "function", name);
+    source_refactor_append(&definition, macro ? "\nmacro %s(" : "\n%s :: fn(", name);
     for (int i = 0; valid && i < acount(inputs); i++) {
         const script_symbol *symbol = &a->symbols[inputs[i]];
         char parameter[64];

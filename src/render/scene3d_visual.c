@@ -8,28 +8,23 @@
 #include <math.h>
 #include <stdio.h>
 
-GameGlobalTransform2D render_scene3d_placement(
-    const ecs_world *world,
-    ecs_entity entity,
-    const GameTransform *position
-)
+GlobalTransform2D render_scene3d_placement(const ecs_world *world, ecs_entity entity, const Transform *position)
 {
     /* Picking and bounds pass no position and may run before any
      * propagation, so they read the exact world placement. */
     if (!position) {
-        return game_transform_world_2d(world, entity);
+        return transform_world_2d(world, entity);
     }
-    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
-    return (GameGlobalTransform2D){ *position, global ? global->radians : 0 };
+    const GlobalTransform2D *global = GlobalTransform2D_get_const(world, entity);
+    return (GlobalTransform2D){ *position, global ? global->radians : 0 };
 }
 
 void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities)
 {
-    ecs_component_id placements[] = { GAME_COMPONENT_GameTransform.id,
-                                      GAME_COMPONENT_GameTransform3D.id };
+    ecs_component_id placements[] = { COMPONENT_Transform.id,
+                                      COMPONENT_Transform3D.id };
     for (int i = 0; i < 2; i++) {
-        ecs_component_id required[] = { placements[i],
-                                        GAME_COMPONENT_GameGeometry3D.id };
+        ecs_component_id required[] = { placements[i], COMPONENT_Geometry3D.id };
         ecs_query query;
         if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
             continue;
@@ -37,7 +32,7 @@ void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **en
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             if (!render_skip_has(skip, entity) &&
-                (i || !GAME_GameTransform3D_has(world, entity))) {
+                (i || !Transform3D_has(world, entity))) {
                 apush(*entities, entity);
             }
         }
@@ -81,8 +76,8 @@ static float direction_volume(CF_M4x4 frame)
  * an axis to zero. */
 static bool scaled_to_nothing(const ecs_world *world, ecs_entity entity)
 {
-    for (ecs_entity at = entity; at.slot; at = game_transform_parent_3d(world, at)) {
-        const GameTransform3D *local = GAME_GameTransform3D_get_const(world, at);
+    for (ecs_entity at = entity; at.slot; at = transform_parent_3d(world, at)) {
+        const Transform3D *local = Transform3D_get_const(world, at);
         assert(local);
         if (!local->scale.x || !local->scale.y || !local->scale.z) {
             return true;
@@ -99,26 +94,26 @@ bool render_scene3d_frame_mirrors(CF_M4x4 frame)
 scene3d_frame_state render_scene3d_visual_frame(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     CF_M4x4 *frame
 )
 {
-    const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+    const VisualTransform *visual = VisualTransform_get_const(world, entity);
     float scale = visual ? visual->scale : 1;
     CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
                             : (CF_V3){ 0 };
     if (transform) {
         *frame = cf_mul_m4(
-            game_transform_matrix_3d(transform),
-            cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
+            transform_matrix_3d(transform),
+            cf_m4_from_trs((CF_V3){ 0 }, visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
         );
     } else {
-        float elevation = GAME_GameGeometry3D_get_const(world, entity)->elevation;
-        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+        float elevation = Geometry3D_get_const(world, entity)->elevation;
+        GlobalTransform2D pose = render_scene3d_placement(world, entity, position);
         *frame = cf_m4_from_trs(
             (CF_V3){ pose.position.x, elevation, pose.position.y },
-            game_visual_rotation(pose.radians, rotation),
+            visual_rotation(pose.radians, rotation),
             (CF_V3){ scale, scale, scale }
         );
     }
@@ -135,8 +130,8 @@ scene3d_frame_state render_scene3d_visual_frame(
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     scene3d_visual visuals[SCENE3D_PART_LIMIT],
     const render_mesh_asset **mesh,
     char *error,
@@ -144,13 +139,12 @@ int render_scene3d_visuals(
 )
 {
     *mesh = NULL;
-    const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-    if (!shape ||
-        (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
+    const Geometry3D *shape = Geometry3D_get_const(world, entity);
+    if (!shape || (!transform && !position && !Transform_get_const(world, entity))) {
         return 0;
     }
-    const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
-    const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
+    const MeshParts *authored = MeshParts_get_const(world, entity);
+    const MeshAsset *imported = MeshAsset_get_const(world, entity);
     CF_M4x4 frame;
     scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
     if (state == SCENE3D_FRAME_INVALID) {
@@ -174,7 +168,7 @@ int render_scene3d_visuals(
             return -1;
         }
         parts.parts[0] = (scene3d_part){
-            .primitive = GAME_PRIMITIVE_BOX,
+            .primitive = PRIMITIVE_BOX,
             .dimensions = { shape->width, shape->height, shape->depth }
         };
         parts.count = 1;
@@ -189,8 +183,7 @@ int render_scene3d_visuals(
     int count = 0;
     for (int i = 0; i < parts.count; i++) {
         const scene3d_part *part = &parts.parts[i];
-        if (part->primitive < GAME_PRIMITIVE_BOX ||
-            part->primitive >= GAME_PRIMITIVE_COUNT ||
+        if (part->primitive < PRIMITIVE_BOX || part->primitive >= PRIMITIVE_COUNT ||
             !isfinite(part->dimensions.x + part->dimensions.y + part->dimensions.z) ||
             part->dimensions.x <= 0 || part->dimensions.y <= 0 ||
             part->dimensions.z <= 0) {
@@ -199,7 +192,7 @@ int render_scene3d_visuals(
         }
         CF_M4x4 local = cf_m4_from_trs(
             part->position,
-            game_visual_rotation(0, part->rotation),
+            visual_rotation(0, part->rotation),
             (CF_V3){ 1, 1, 1 }
         );
         visuals[count] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
@@ -228,7 +221,7 @@ scene3d_frame_state render_scene3d_visual_state(const scene3d_visual *visual)
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)
 {
     CF_V3 dimensions = visual->part.dimensions;
-    if (visual->part.primitive == GAME_PRIMITIVE_CAPSULE) {
+    if (visual->part.primitive == PRIMITIVE_CAPSULE) {
         dimensions.x *= 2;
         dimensions.z *= 2;
     }

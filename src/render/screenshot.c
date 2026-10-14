@@ -1,9 +1,12 @@
 #include "render/screenshot.h"
 
 #include "platform/cute.h"
+#include "support/xalloc.h"
 
 #include <stdio.h>
 #include <stdlib.h>
+
+#define READBACK_SECONDS 10
 
 int app_save_screenshot(const char *path)
 {
@@ -22,13 +25,16 @@ int app_save_screenshot(const char *path)
         cf_destroy_readback(readback);
         return 1;
     }
-    CF_Pixel *pixels = (CF_Pixel *)malloc((size_t)size);
-    if (!pixels) {
-        fprintf(stderr, "screenshot allocation failed\n");
-        cf_destroy_readback(readback);
-        return 1;
-    }
+    CF_Pixel *pixels = xmalloc((size_t)size);
+    uint64_t start = cf_get_ticks();
     while (!cf_readback_ready(readback)) {
+        if (cf_get_ticks() - start > cf_get_tick_frequency() * READBACK_SECONDS) {
+            fprintf(stderr, "screenshot readback timed out\n");
+            free(pixels);
+            cf_destroy_readback(readback);
+            return 1;
+        }
+        cf_sleep(1);
     }
     int copied = cf_readback_data(readback, pixels, size);
     int result = 1;
@@ -42,8 +48,8 @@ int app_save_screenshot(const char *path)
             if (file && fwrite(png_data, 1, (size_t)png_size, file) == (size_t)png_size) {
                 result = 0;
             }
-            if (file) {
-                fclose(file);
+            if (file && fclose(file)) {
+                result = 1;
             }
         }
         cf_free(png_data);

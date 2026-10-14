@@ -61,7 +61,7 @@ bool field_program_bake(
     field_context context,
     field_grid grid,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 );
@@ -75,7 +75,7 @@ bool field_program_bake_rows(
     int first,
     int count,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 );
@@ -96,7 +96,7 @@ bool field_program_baker_bake_rows(
     int first,
     int count,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 );

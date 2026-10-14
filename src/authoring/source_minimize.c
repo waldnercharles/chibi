@@ -373,7 +373,8 @@ static bool same_statement(const pair *p, int i, int j)
     if (same_write(p, x, y)) {
         return true;
     }
-    if (x->kind != y->kind || x->op != y->op || !same_effects(x->effects, y->effects) ||
+    if (x->kind != y->kind || x->op != y->op || x->reduction != y->reduction ||
+        !same_effects(x->effects, y->effects) ||
         x->child_count != y->child_count || !same_symbol(p, x->symbol, y->symbol) ||
         !same_expression(p, x->expression, y->expression) ||
         !same_expression(p, x->second, y->second) ||
@@ -713,7 +714,7 @@ static char *string_argument(const collector *c, TSNode list, uint32_t index)
     }
     return slice(c->text, start(value) + 1, end(value) - 1);
 }
-/* Reflected source spelling: `GameHealth` is `Health`, `cooldown_remaining`
+/* Reflected source spelling: `Health` is `Health`, `cooldown_remaining`
  * is `CooldownRemaining`. */
 static void append_pascal(char **out, const char *name)
 {
@@ -727,7 +728,7 @@ static void append_pascal(char **out, const char *name)
         upper = false;
     }
 }
-/* `component("GAME.GameHealth", "current")` reads `self.Health.Current`. */
+/* `component("Health", "current")` reads `self.Health.Current`. */
 static char *component_path_text(const collector *c, TSNode call)
 {
     TSNode function = field(call, "function"), list = field(call, "arguments");
@@ -744,9 +745,6 @@ static char *component_path_text(const collector *c, TSNode call)
         const script_catalog_type *type = &c->catalog->types[found];
         const char *name = strrchr(type->name, '.');
         name = name ? name + 1 : type->name;
-        if (!strncmp(name, "Game", 4) && isupper((unsigned char)name[4])) {
-            name += 4;
-        }
         for (const char *p = "self."; *p; p++) {
             apush(out, *p);
         }

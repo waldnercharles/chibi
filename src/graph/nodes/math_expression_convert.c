@@ -220,13 +220,11 @@ static char *identifier(const char *source)
     return result;
 }
 
-/* GAME.GameTransform reads as transform: the key's namespace and the Game
-   prefix carry nothing in a name the author will read. */
+/* Use a local, lowercase label for the component. */
 static void component_label(char *out, size_t size, const char *key)
 {
     const char *name = key ? strrchr(key, '.') : NULL;
     name = name ? name + 1 : key ? key : "component";
-    name += !strncmp(name, "Game", 4) && isupper((unsigned char)name[4]) ? 4 : 0;
     snprintf(out, size, "%s", name);
     out[0] = (char)tolower((unsigned char)out[0]);
 }

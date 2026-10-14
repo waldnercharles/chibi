@@ -7,8 +7,8 @@
 
 enum
 {
-    GAME_PHYSICS_WORKER_MAX = GAME_TASK_WORKER_MAX,
-    GAME_PHYSICS_SUBSTEP_MAX = 16
+    PHYSICS_WORKER_MAX = TASK_WORKER_MAX,
+    PHYSICS_SUBSTEP_MAX = 16
 };
 
 typedef struct
@@ -19,27 +19,27 @@ typedef struct
     bool continuous; /* Box2D solids; authored swept sensors are independent. */
     bool force_drive; /* Dynamic velocity targets reached by force over a step. */
     float contact_hertz, contact_damping;
-} game_physics_settings;
+} physics_settings;
 
-static inline game_physics_settings game_physics_defaults()
+static inline physics_settings physics_defaults()
 {
-    return (game_physics_settings){ .substeps = 4,
-                                    .sleep = true,
-                                    .continuous = true,
-                                    .contact_hertz = 30,
-                                    .contact_damping = 10 };
+    return (physics_settings){ .substeps = 4,
+                               .sleep = true,
+                               .continuous = true,
+                               .contact_hertz = 30,
+                               .contact_damping = 10 };
 }
 
-static inline bool game_physics_settings_valid(game_physics_settings settings)
+static inline bool physics_settings_valid(physics_settings settings)
 {
-    return settings.workers >= 0 && settings.workers <= GAME_PHYSICS_WORKER_MAX &&
-           settings.substeps >= 1 && settings.substeps <= GAME_PHYSICS_SUBSTEP_MAX &&
+    return settings.workers >= 0 && settings.workers <= PHYSICS_WORKER_MAX &&
+           settings.substeps >= 1 && settings.substeps <= PHYSICS_SUBSTEP_MAX &&
            isfinite(settings.contact_hertz) && settings.contact_hertz >= 0 &&
            settings.contact_hertz <= 240 && isfinite(settings.contact_damping) &&
            settings.contact_damping >= 0 && settings.contact_damping <= 100;
 }
 
-static inline bool game_physics_settings_equal(game_physics_settings a, game_physics_settings b)
+static inline bool physics_settings_equal(physics_settings a, physics_settings b)
 {
     return a.workers == b.workers && a.substeps == b.substeps &&
            a.sleep == b.sleep && a.continuous == b.continuous &&

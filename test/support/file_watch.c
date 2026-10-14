@@ -1,6 +1,6 @@
 #include "support/file_watch.h"
 
-#include "test/suite_internal.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -23,7 +23,7 @@ static void time_file(const char *path, long seconds, long microseconds)
     assert(utimes(path, stamp) == 0);
 }
 
-void test_file_watch()
+TEST_CASE(file_watch_sees_edits_replacements_and_removals)
 {
     char root[] = "/tmp/chibi-file-watch-XXXXXX";
     assert(mkdtemp(root));
@@ -35,21 +35,34 @@ void test_file_watch()
     time_file(path, 10, 1000);
 
     file_watch w = { 0 };
-    test_check(file_watch_changed(&w, path, 0) && file_watch_exists(&w), "file watch reports a new path");
+    /* File watch reports a new path. */
+    REQUIRE(file_watch_changed(&w, path, 0) && file_watch_exists(&w));
     write_file(path, "b: 2\n");
     time_file(path, 10, 2000);
-    test_check(!file_watch_changed(&w, path, 0.5), "file watch checks at most once a second");
-    test_check(file_watch_changed(&w, path, 1), "file watch sees same-size edits within one second");
+    /* File watch checks at most once a second. */
+    REQUIRE(!file_watch_changed(&w, path, 0.5));
+    /* File watch sees same-size edits within one second. */
+    REQUIRE(file_watch_changed(&w, path, 1));
 
     char replacement[256];
     snprintf(replacement, sizeof replacement, "%s/replacement.chibi", root);
     write_file(replacement, "c: 3\n");
     time_file(replacement, 10, 2000);
     assert(rename(replacement, path) == 0);
-    test_check(file_watch_changed(&w, path, 2), "file watch sees atomic replacements with unchanged size and mtime");
-    test_check(!file_watch_changed(&w, path, 2), "file watch ignores an unchanged file");
+    /* File watch sees atomic replacements with unchanged size and mtime. */
+    REQUIRE(file_watch_changed(&w, path, 2));
+    /* File watch ignores an unchanged file. */
+    REQUIRE(!file_watch_changed(&w, path, 2));
     unlink(path);
-    test_check(file_watch_changed(&w, path, 3) && !file_watch_exists(&w), "file watch reports a removed file");
-    test_check(file_watch_changed(&w, other, 3) && !file_watch_exists(&w), "file watch reports a different path");
+    /* File watch reports a removed file. */
+    REQUIRE(file_watch_changed(&w, path, 3) && !file_watch_exists(&w));
+    /* File watch reports a different path. */
+    REQUIRE(file_watch_changed(&w, other, 3) && !file_watch_exists(&w));
     rmdir(root);
+    return true;
+}
+
+void test_file_watch()
+{
+    RUN_TEST_CASE(file_watch_sees_edits_replacements_and_removals);
 }

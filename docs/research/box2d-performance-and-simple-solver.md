@@ -66,7 +66,7 @@ See [Box2D tuning results](physics-settings.md#box2d-tuning-and-worker-selection
 
 ## Pooling and Box2D settings
 
-`game_physics` creates a Box2D body when an ECS entity first enters the physics
+`physics` creates a Box2D body when an ECS entity first enters the physics
 query, retains it while that entity and its collider configuration remain
 stable, and destroys it when the entity retires or its physics configuration
 changes. Body creation already supplies the final position and rotation in the

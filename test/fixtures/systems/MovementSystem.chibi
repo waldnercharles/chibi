@@ -1,5 +1,5 @@
 system "MovementSystem" {
     on Tick {
-        set_game_transform(add(get_game_transform(), multiply(multiply(convert<"Unwrap_GameInput">(get_game_input()), convert<"Unwrap_GameMovement">(get_game_movement())), event.DeltaSeconds)))
+        set_transform(add(get_transform(), multiply(multiply(convert<"Unwrap_Input">(get_input()), convert<"Unwrap_Movement">(get_movement())), event.DeltaSeconds)))
     }
 }

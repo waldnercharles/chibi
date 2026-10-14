@@ -7,7 +7,7 @@
 #include <string.h>
 
 int authoring_source_apply(
-    game_source_registry *world,
+    source_registry *world,
     const char *registration,
     const authoring_source *source,
     bool restart,
@@ -30,22 +30,22 @@ int authoring_source_apply(
         snprintf(error, error_size, "Source declaration name differs from registration '%s'", registration);
         return -1;
     }
-    if (game_source_registered(world, name)) {
-        return game_source_publish(
+    if (source_registered(world, name)) {
+        return source_publish(
             world,
-            &(game_source_publication){ .name = name,
-                                        .previous_name = name,
-                                        .module = source->module,
-                                        .restart = restart },
+            &(source_publication){ .name = name,
+                                   .previous_name = name,
+                                   .module = source->module,
+                                   .restart = restart },
             1,
             NULL,
             error,
             error_size
         );
     }
-    return game_source_publish(
+    return source_publish(
         world,
-        &(game_source_publication){ .name = name, .module = source->module },
+        &(source_publication){ .name = name, .module = source->module },
         1,
         NULL,
         error,

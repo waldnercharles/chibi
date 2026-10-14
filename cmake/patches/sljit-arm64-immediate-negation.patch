@@ -1,0 +1,30 @@
+diff --git a/sljitNativeARM_64.c b/sljitNativeARM_64.c
+--- a/sljitNativeARM_64.c
++++ b/sljitNativeARM_64.c
+@@ -904,7 +904,7 @@
+ 			compiler->status_flags_state = SLJIT_CURRENT_FLAGS_SUB;
+ 			if (flags & ARG1_IMM)
+ 				break;
+-			imm = -imm;
++			imm = (sljit_sw)((sljit_uw)0 - (sljit_uw)imm);
+ 			SLJIT_FALLTHROUGH
+ 		case SLJIT_ADD:
+ 			if (op != SLJIT_SUB)
+@@ -918,7 +918,7 @@
+ 				CHECK_FLAGS(1 << 29);
+ 				return push_inst(compiler, (ADDI ^ inv_bits) | RD(dst) | RN(reg) | ((sljit_ins)imm << 10));
+ 			}
+-			nimm = -imm;
++			nimm = (sljit_sw)((sljit_uw)0 - (sljit_uw)imm);
+ 			if (nimm > 0 && nimm <= 0xfff) {
+ 				CHECK_FLAGS(1 << 29);
+ 				return push_inst(compiler, (SUBI ^ inv_bits) | RD(dst) | RN(reg) | ((sljit_ins)nimm << 10));
+@@ -1005,7 +1005,7 @@
+ 				break;
+ 
+ 			if (op == SLJIT_ROTL)
+-				imm = -imm;
++				imm = (sljit_sw)((sljit_uw)0 - (sljit_uw)imm);
+ 
+ 			imm &= (flags & INT_OP) ? 0x1f : 0x3f;
+ 			return push_inst(compiler, (EXTR ^ (inv_bits | (inv_bits >> 9))) | RD(dst) | RN(arg1) | RM(arg1) | ((sljit_ins)imm << 10));

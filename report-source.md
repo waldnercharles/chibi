@@ -178,7 +178,7 @@ visual language and renderer.
 ### One contained 3D SDF spike later
 
 Only if a design prototype proves that a 3D procedural hero form changes the
-game's appeal, create a `render3d` experiment with a distinct `GameRender3D`
+game's appeal, create a `render3d` experiment with a distinct `Render3D`
 component and its own viewport. First milestone:
 
 - one bounded analytic object;
@@ -188,7 +188,7 @@ component and its own viewport. First milestone:
 - explicit max distance, steps, and frame-time budget;
 - deterministic fixed-camera image/readback tests on desktop and web.
 
-Do not widen the current 2D graph schema, change `GameTransform`, or replace
+Do not widen the current 2D graph schema, change `Transform`, or replace
 radiance cascades during this spike. Promote it only if it meets the budget and
 is clearly easier to author than the current 2D effect.
 

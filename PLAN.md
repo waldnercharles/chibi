@@ -1,4 +1,189 @@
+# Shared execution interface and web rollout, 2026-10-11
+
+Continue the approved Wasm rollout from engine main `c159b6cd6`. Keep one Chibi
+compile/run interface with sibling SLJIT and Wasm emitters. Move shared execution
+dispatch and host lifetime handling into `src/execution/runner.c`; rename its
+boolean selector from `native` to `compiled`. Keep the VM interpreter explicit.
+This changes module organization, not execution state or ownership contracts.
+
+Stillwater currently depends on engine `e9d23b04e` and game `991ca048`. Its engine
+branch repeats the native-name migration already on main and predates newer
+arena collection and test layout. Port the required functional changes onto
+current main, preserving the newer implementations: measured audio/capture,
+direct scalar component writes, finished-activation collection elision, particle
+fields, responsive camera framing, URL actions and pointer input. Retain the
+helper/macro-aware migration and WebGPU noise fix from the old integration.
+Keep main's project version 23 and existing migrations; migrate the game with
+the matching controller after its source merge.
+
+Preserve the dirty primary engine and Studio checkouts. Use this isolated engine
+checkout and a separate game worktree. Merge the current 3D game's source with
+game main, then record the exact clean engine revision and produced package
+hashes in `toolchain.json`. Publish the tested engine and game source to main.
+Wait for complete engine packages before publishing Studio; publish and verify
+the game through its existing Pages workflow.
+
+Independent reviews cover execution ownership, migration, new runtime/renderer
+capabilities, SDK closure and the merged game. Use admitted C checks under the
+60-second production deadline, native and Emscripten builds, serial/pthread
+Wasm checks and matching game validation. Run only bounded relevant GPU/browser
+checks, including actual music selection, play, Duet and warmed frame timing at
+normal display size. Full GPU/Studio suites remain quarantined. Keep evidence
+under `.chibi/wasm-jit` and game evidence under its existing validation location.
+
+---
+
+# WebAssembly JIT backend, 2026-10-11
+
+Implement the approved browser JIT in the isolated `cwaldner/wasm-jit` branch
+from `06e7b1a2b`. Authored source and prepared canonical IR stay authoritative.
+Browser loading emits full Wasm functions, which the browser compiles to machine
+code before publishing a program. Native execution continues to use SLJIT.
+
+The publication API is synchronous. Compile synchronously for this version and
+measure load cost separately from execution; asynchronous publication would need
+an explicit readiness/rollback contract. Failed compilation fails publication,
+with no automatic VM fallback. Explicit BYTECODE remains a diagnostic backend.
+
+Generated functions handle scalar arithmetic and control flow directly. Shared
+C machine helpers own complex runtime effects, managed values, inspection,
+requests and continuations. Extract those semantics from the VM instead of
+maintaining two implementations. The Wasm entry uses the existing activation
+storage and call protocol, including completed-frame reuse and cancellation.
+
+Each immutable execution artifact owns emitted bytes and an identity. Each
+thread retains entries for live artifacts in its own engine function table
+and memory, compiling each worker's entry on first use. Retirement releases only
+those entries on their next use or at thread exit; active calls retain their
+generation, including any constant payloads embedded in generated code.
+Ordinary and pthread builds must both use this contract.
+
+Changes:
+
+- `src/execution/machine.*`, `vm.c`: share instruction effects and activation setup.
+- `src/execution/wasm_emit.*`: emit full functions with direct numeric operations,
+  basic-block control flow, runtime imports and continuation entry dispatch.
+- `src/execution/wasm_jit.*`, `artifact.*`: compile, link, cache and retire code.
+- `backend.*`, `function.c`, `module.c`, `program_activation.c`: select WASM by
+  default on the web and require successful compilation before publication.
+- SDK/test build files and host diagnostics: expose the backend truthfully.
+- Remove the unused numeric-only Wasm implementation and VM hooks.
+- `test/language`: C pico_unit coverage, generated-execution proof and bounded
+  benchmark workloads. Keep one dispatcher and the production 60s supervisor.
+
+Verification:
+
+- Test default selection, actual generated execution, numeric/control parity,
+  calls, arrays, suspension, inspection, failure and generation replacement.
+- Run existing language coverage under Emscripten/Node and native, then a real
+  browser CPU run and pthread coverage where the available environment permits.
+- Measure JIT compile time separately from steady execution and compare VM/JIT
+  with equal outputs. CPU timings do not establish rendered 60 FPS.
+- Independently review ownership, emitter semantics and integration. Run admitted
+  native/language/tooling checks, product builds and formatting. Full GPU/Studio
+  suites remain quarantined. Retain logs in `.chibi/wasm-jit` only.
+
+No authored contract or project version change is planned. Fields remain under
+their existing evaluator; this task changes behavior execution.
+
+Implemented on 2026-10-11. Web publication now requires full-function Wasm
+compilation; native SLJIT remains the default. The previous unused numeric-region
+emitter is removed. Generated arithmetic, loads and branches call shared C
+helpers only for runtime effects. Independent review covered emission, cache
+ownership, worker teardown, shared-machine semantics and host reporting. New
+regression cases failed against the previous backend selection, scratch sizing
+and cache implementation, then passed on this candidate.
+
+Chrome passed 91 cases/5,007 assertions, and pthread Chrome passed 92 cases/5,041
+assertions. Node passed both configurations, including headless coverage.
+ASan/UBSan passed the native language group in 57.116 seconds. Native and web
+player/compiler builds passed. The Chrome benchmark measured 2.19x faster inline
+execution and 1.32x faster helper calls than the original VM at `06e7b1a2b`.
+The shared helper extraction slows the explicit diagnostic VM by 9.9%/17.3% in
+those workloads. Small-module cold publication measured 1.065/0.190 ms; loading
+and first use on each worker remain synchronous. See `docs/testing.md` for the
+workload, evidence and limits. No rendered Tetris FPS claim is made.
+
+Final `make test-native`, `make test-language-all`, `make test-tools` and
+`make test-projects` passed in 2.296s, 1.450s, 35.143s and 13.557s respectively,
+with configuration/build timing excluded. `make check-format` passed. Full
+GPU/Studio suites remain quarantined. Logs and benchmark provenance remain in
+`.chibi/wasm-jit`; temporary baseline binaries and the sanitizer build are removed.
+
+---
+
+# Script helper-call optimization, 2026-10-11
+
+Start from `f3ff608c1697f0491ac4d2ae052a864ede1200f7` in the isolated
+`cwaldner/script-call-optimization` worktree. Reduce the measured allocation
+cost of ordinary authored helper calls on VM and SLJIT without changing source
+semantics, project formats, rendering policy, or authored game assets.
+
+The current `BF_INVOKE` path allocates a frame, arena, activation and value banks
+for each helper call. Keep that execution protocol and its existing debugger,
+request, task, error and cancellation handling. Each root invocation will own
+one spare completed frame, bounded to 64 KiB of retained backing storage. Reuse
+function-sized activation and data buffers only for the same callee. Reset all
+logical state/defaults on borrow and rebind services. Copy returned values and
+run the existing leave callback before retiring a frame. Inactive storage must
+never participate in context traversal or payload tracing. Failure frees active
+frames; final teardown also frees cached storage. Callees with an alternate
+optimized body rebuild activation buffers because inspection can select a
+different buffer layout. Source programs remain authoritative.
+
+Implementation:
+- `src/execution/call.c`: own, reset, bound and release reusable completed frames.
+- `src/execution/host.c` / execution declarations if required: restore data bank
+  defaults without changing buffer ownership.
+- `test/language/program.c`: allocation regression and reuse/lifetime cases.
+- `test/language/benchmark.c`, dispatcher, CMake and test policy: finite repeatable
+  default-compiler helper/inline comparison with exact output assertions.
+- `docs/testing.md`: benchmark bounds and measured evidence.
+
+Verification:
+- Run the new allocation regression before the runtime change and see it fail.
+- Compare baseline/candidate Release benchmarks with exact output parity.
+- Exercise changing arguments, different callees, nesting, retained managed
+  results, references, waits, cancellation, debugger and failure paths.
+- Run admitted language/native/tooling groups under their shared 60-second
+  deadlines; keep builds separate, full GPU/Studio coverage quarantined.
+- Review ownership/lifetimes independently and run targeted sanitizer coverage.
+- Reproduce a fixed Tetris CPU profile on baseline and candidate when compatible;
+  do not equate CPU-only timing with end-to-end FPS.
+
+Completed on 2026-10-11: the new allocation regression failed on the baseline
+and passes with reuse on both backends. The Release benchmark passed its 64
+output assertions before and after; SLJIT helper dispatch measured about 2.2x
+faster, VM about 1.4x faster, with approximately 98% fewer allocation calls.
+Timing samples are short and machine dependent; allocation counts are stable.
+See `docs/testing.md` for workload bounds and measurements.
+
+`make test-native`, `make test-language-all` and `make test-tools` passed under
+their shared deadlines (9.649s, 1.362s and 21.210s respectively). ASan/UBSan
+execution, program and publication selectors passed 80 cases/3,801 assertions.
+The normal Release product build and `make check-format` passed. The clean baseline also needed
+`<unistd.h>` in two existing `mkdtemp` test consumers on this macOS SDK.
+Independent review checked call ownership, teardown, service rebinding and
+benchmark comparability; optimized alternate bodies rebuild their activation
+storage to avoid reusing differently sized VM buffers. Full GPU/Studio suites
+remain quarantined. The base engine cannot load Tetris `8cac6a7`'s newer input
+contract, so no rendered FPS or whole-game improvement is claimed. Local logs remain in
+`.chibi/script-optimization`; temporary binaries and the copied game are removed.
+
+Earlier architecture work follows for historical context.
+
+---
+
 # Engine SDK and Chibi language implementation
+
+> Historical plan and delivery evidence for the 2026-10-08 SDK extraction.
+> Use [current status](docs/status.md) for today's backlog and owners, and
+> [architecture](docs/architecture.md) for the current package contracts.
+> The extraction is present in engine `main` at the reconciliation baseline
+> `f3ff608c`. Browser publication was added after this delivery. The branch,
+> repository-visibility constraints, local artifact paths and acceptance limits
+> below describe their recorded checkpoints, not current checkout or deployment
+> state. Later work does not retroactively extend these test results.
 
 ## Objective and authority
 
@@ -30,7 +215,7 @@ repositories are `waldnercharles/chibi-studio`, `waldnercharles/chibi-arena3d`,
 repository. Branch publication does not merge the refactor into engine `main`
 or change the acceptance limits below.
 
-## Evidence and preservation
+## Historical baseline and preservation
 
 - Branch `cwaldner/code-language-prototype`, based on `1e5d6584`. Preserve the
   conversation's uncommitted prototype and build/test integration while migrating.

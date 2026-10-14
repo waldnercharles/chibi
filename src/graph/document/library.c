@@ -17,7 +17,7 @@ typedef struct
 {
     const char *name;
     uint64_t offset;
-    bool active;
+    bool active, transient_function_ids;
 } library_import;
 
 typedef struct
@@ -323,7 +323,7 @@ static void shift_graph(graph *g, uint64_t offset, bool local_calls)
 
 static int link_graph(library_link *link, graph *g);
 
-static int import_library(library_link *link, const char *name, uint64_t *offset)
+static int import_library(library_link *link, const char *name, uint64_t *offset, bool *transient)
 {
     for (int i = 0; i < acount(link->imports); i++) {
         if (strcmp(link->imports[i].name, name)) {
@@ -333,6 +333,7 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
             return fail(link, "cyclic library dependency", name);
         }
         *offset = link->imports[i].offset;
+        *transient = link->imports[i].transient_function_ids;
         return 0;
     }
     const behavior_asset *source = NULL;
@@ -362,7 +363,8 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
     *offset = link->result->graph->id_counter;
     link->result->graph->id_counter += copy->graph->id_counter;
     int index = acount(link->imports);
-    apush(link->imports, ((library_import){ source->name, *offset, true }));
+    *transient = source->transient_function_ids;
+    apush(link->imports, ((library_import){ source->name, *offset, true, *transient }));
     int first = acount(link->result->graphs);
     for (int i = 1; i < acount(copy->graphs); i++) {
         graph *g = copy->graphs[i];
@@ -383,6 +385,20 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
     }
     link->imports[index].active = false;
     return 0;
+}
+
+/* A source library's functions have no stable graph ids, so a call into one
+ * names its function. */
+static graph *imported_function(const behavior_asset *result, const char *library, const char *name)
+{
+    for (int i = 1; name && i < acount(result->graphs); i++) {
+        graph *g = result->graphs[i];
+        if (g->source_asset && !strcmp(g->source_asset, library) &&
+            !strcmp(g->name, name)) {
+            return g;
+        }
+    }
+    return NULL;
 }
 
 static int link_graph(library_link *link, graph *g)
@@ -420,14 +436,31 @@ static int link_graph(library_link *link, graph *g)
             return fail(link, "external reference is not a function call", n->reference_asset);
         }
         uint64_t offset;
-        if (import_library(link, n->reference_asset, &offset)) {
+        bool transient;
+        if (import_library(link, n->reference_asset, &offset, &transient)) {
             return -1;
         }
-        graph *target = behavior_asset_find_graph(link->result, n->reference_id + offset);
+        graph *target = n->reference_id && !transient
+                          ? behavior_asset_find_graph(link->result, n->reference_id + offset)
+                          : imported_function(link->result, n->reference_asset, n->reference_name);
         if (!target || target->kind != GRAPH_FUNCTION) {
             return fail(link, "missing library function", n->reference_asset);
         }
-        n->reference_id += offset;
+        if (transient) {
+            /* Generated pin IDs change too; names retain defaults and wires. */
+            for (int side = 0; side < 2; side++) {
+                pin_spec *pins = side ? n->output_pins : n->input_pins;
+                int count = side ? n->output_count : n->input_count;
+                for (int p = 0; p < count; p++) {
+                    pins[p].declaration_id = 0;
+                }
+            }
+            const char *error = graph_library_refresh_call(g, n, target);
+            if (error) {
+                return fail(link, error, n->reference_asset);
+            }
+        }
+        n->reference_id = target->graph_id;
         n->reference_name = graph_own_str(g, target->name, strlen(target->name));
         n->reference_asset = NULL;
     }

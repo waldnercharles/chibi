@@ -1,8 +1,10 @@
 #include "ecs/ecs.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static const type_field value_fields[] = {
     { .name = "value", .type = PIN_I32, .offset = 0, .size = sizeof(int), .type_name = "int" },
@@ -108,6 +110,24 @@ static int collect(const ecs_term *terms, int count, uint32_t *slots, int capaci
 {
     ecs_query query;
     int result = ecs_query_begin_terms(world, &query, terms, count);
+    assert(result == ECS_OK);
+    (void)result;
+    int found = 0;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (found < capacity) {
+            slots[found] = entity.slot;
+        }
+        found++;
+    }
+    ecs_query_end(&query);
+    return found;
+}
+
+static int collect_plan(ecs_query_plan *plan, uint32_t *slots, int capacity)
+{
+    ecs_query query;
+    int result = ecs_query_begin_plan(plan, &query);
     assert(result == ECS_OK);
     (void)result;
     int found = 0;
@@ -360,6 +380,564 @@ TEST_CASE(ecs_invalid_terms_are_rejected)
     return true;
 }
 
+TEST_CASE(ecs_reusable_plans_refresh_sources_membership_and_storage)
+{
+    ecs_entity root = spawn(), parent = spawn(), child = spawn();
+    add(root, &team_desc);
+    add(parent, &team_desc);
+    add(child, &position_desc);
+    pair(parent, ECS_CHILD_OF, root);
+    pair(child, ECS_CHILD_OF, parent);
+    pair(child, owner_desc.id, parent);
+    apply();
+    ecs_term terms[] = { { .id = position_desc.id },
+                         { .id = team_desc.id, .trav = ECS_UP },
+                         { .id = team_desc.id, .src_rel = owner_desc.id } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 3, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), parent));
+    REQUIRE(same(ecs_query_src(&query, 2), parent));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_query_plan_stats(plan).cached_rows == 1);
+    REQUIRE(ecs_world_record_remove(world, parent, team_desc.id, 0) == ECS_OK);
+    pair(child, owner_desc.id, root);
+    apply();
+    REQUIRE(ecs_world_reserve_entities(world, 2048) == ECS_OK);
+    /* Reallocation of both registration tables must not stale a plan. */
+    for (int i = 0; i < 24; i++) {
+        char key[64];
+        snprintf(key, sizeof key, "sdk.query.extra.%d", i);
+        ecs_component_desc component = { .id = 3000 + i,
+                                         .key = key,
+                                         .name = key,
+                                         .element_size = sizeof(int),
+                                         .type = &value_type };
+        REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+        ecs_relationship_desc relationship = { .id = 4000 + i, .key = key, .name = key };
+        snprintf(key, sizeof key, "sdk.query.relation.%d", i);
+        REQUIRE(ecs_world_register_relationship(world, &relationship, NULL) == ECS_OK);
+    }
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), root));
+    REQUIRE(same(ecs_query_src(&query, 2), root));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == 2);
+    REQUIRE(ecs_world_record_remove(world, root, team_desc.id, 0) == ECS_OK);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_scalar_sources_are_optional_and_exclusive)
+{
+    ecs_entity root = spawn(), child = spawn(), missing = spawn();
+    add(root, &team_desc);
+    add(child, &position_desc);
+    add(missing, &position_desc);
+    pair(child, owner_desc.id, root);
+    pair(child, ECS_CHILD_OF, root);
+    apply();
+    ecs_term terms[] = {
+        { .id = position_desc.id },
+        { .id = team_desc.id, .src_rel = owner_desc.id, .oper = ECS_OPTIONAL }
+    };
+    ecs_query query;
+    REQUIRE(ecs_query_begin_terms(world, &query, terms, 2) == ECS_OK);
+    ecs_entity found;
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), root));
+    REQUIRE(ecs_query_next(&query, &found) && same(found, missing));
+    REQUIRE(!ecs_query_src(&query, 1).slot);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(same(ecs_query_source(world, child, team_desc.id, ECS_CHILD_OF, ECS_UP), root));
+    REQUIRE(!ecs_query_source(world, root, team_desc.id, ECS_CHILD_OF, ECS_UP).slot);
+    REQUIRE(same(ecs_query_source(world, root, team_desc.id, ECS_CHILD_OF, ECS_SELF_UP), root));
+    terms[1].src_rel = likes_desc.id;
+    REQUIRE(ecs_query_begin_terms(world, &query, terms, 2) == ECS_ERR_ARGUMENT);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_boolean_plan_avoids_iteration_allocations)
+{
+    ecs_entity a = spawn(), b = spawn();
+    add(a, &position_desc);
+    add(b, &position_desc);
+    add(b, &frozen_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = frozen_desc.id, .oper = ECS_NOT } };
+    xalloc_stats before, fresh, reused;
+    xalloc_stats_get(&before);
+    for (int i = 0; i < 8; i++) {
+        uint32_t slots[2];
+        REQUIRE(collect(terms, 2, slots, 2) == 1 && slots[0] == a.slot);
+    }
+    xalloc_stats_get(&fresh);
+    REQUIRE(fresh.calls > before.calls);
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    xalloc_stats_get(&before);
+    for (int i = 0; i < 8; i++) {
+        ecs_query query;
+        ecs_entity found;
+        REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+        REQUIRE(ecs_query_next(&query, &found) && same(found, a));
+        REQUIRE(!ecs_query_next(&query, &found));
+        ecs_query_end(&query);
+    }
+    xalloc_stats_get(&reused);
+    REQUIRE(reused.calls == before.calls);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_fixed_source_does_not_follow_recycled_entities)
+{
+    ecs_entity settings = spawn(), entity = spawn();
+    add(settings, &team_desc);
+    add(entity, &position_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = team_desc.id, .src = settings } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, entity));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_destroy_entity(world, settings) == ECS_OK);
+    ecs_entity replacement = spawn();
+    REQUIRE(replacement.slot == settings.slot && !same(replacement, settings));
+    add(replacement, &team_desc);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_pair_candidates_recheck_target_generations)
+{
+    ecs_entity target = spawn(), source = spawn();
+    pair(source, likes_desc.id, target);
+    apply();
+    const ecs_term term = { .id = likes_desc.id, .target = target };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, &term, 1, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, source));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_destroy_entity(world, target) == ECS_OK);
+    ecs_entity replacement = spawn();
+    REQUIRE(replacement.slot == target.slot && !same(replacement, target));
+    pair(source, likes_desc.id, replacement);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_reuses_membership_but_reads_current_values)
+{
+    ecs_entity a = spawn(), b = spawn();
+    add(a, &position_desc);
+    add(b, &position_desc);
+    add(b, &frozen_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = frozen_desc.id, .oper = ECS_NOT } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    uint32_t slots[2];
+    REQUIRE(collect_plan(plan, slots, 2) == 1 && slots[0] == a.slot);
+    ecs_query_stats built = ecs_query_plan_stats(plan);
+    REQUIRE(built.cache_builds == 1 && built.cached_rows == 1);
+    REQUIRE(built.candidates == 2 && built.node_tests > 0);
+    *(int *)ecs_component_data(world, a, position_desc.id) = 42;
+    REQUIRE(ecs_component_modified(world, a, position_desc.id) == ECS_OK);
+    /* Unrelated membership, pair and entity changes do not invalidate a plan
+     * anchored in Position. Native row writes never become stale snapshots. */
+    add(a, &team_desc);
+    pair(a, owner_desc.id, b);
+    apply();
+    ecs_entity unrelated = spawn();
+    REQUIRE(ecs_world_destroy_entity(world, unrelated) == ECS_OK);
+    REQUIRE(collect_plan(plan, slots, 2) == 1 && slots[0] == a.slot);
+    ecs_query_stats hit = ecs_query_plan_stats(plan);
+    REQUIRE(hit.cache_hits == 1 && hit.cache_builds == built.cache_builds);
+    REQUIRE(hit.candidates == built.candidates && hit.node_tests == built.node_tests);
+    REQUIRE(*(int *)ecs_component_data(world, a, position_desc.id) == 42);
+    REQUIRE(ecs_world_record_add(world, a, ECS_DISABLED, NULL, 0) == ECS_OK);
+    apply();
+    REQUIRE(collect_plan(plan, slots, 2) == 0);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == 2);
+    REQUIRE(ecs_world_record_remove(world, a, ECS_DISABLED, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_remove(world, b, frozen_desc.id, 0) == ECS_OK);
+    apply();
+    REQUIRE(collect_plan(plan, slots, 2) == 2);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == 3);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_partial_iterations_never_publish)
+{
+    ecs_entity a = spawn(), b = spawn();
+    add(a, &position_desc);
+    add(b, &position_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = frozen_desc.id, .oper = ECS_NOT } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    REQUIRE(ecs_world_record_remove(world, b, position_desc.id, 0) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, a));
+    REQUIRE(ecs_world_record_remove(world, b, position_desc.id, 0) == ECS_ERR_ENTITY);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_ERR_ITERATING);
+    ecs_query_end(&query);
+    REQUIRE(ecs_query_plan_stats(plan).cached_rows == 0);
+    uint32_t slots[2];
+    REQUIRE(collect_plan(plan, slots, 2) == 2);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 0);
+    REQUIRE(collect_plan(plan, slots, 2) == 2);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 1);
+    apply();
+    REQUIRE(collect_plan(plan, slots, 2) == 1 && slots[0] == a.slot);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_preserves_sources_and_optional_absence)
+{
+    ecs_entity root = spawn(), parent = spawn(), child = spawn();
+    add(root, &team_desc);
+    add(child, &position_desc);
+    pair(parent, ECS_CHILD_OF, root);
+    pair(child, ECS_CHILD_OF, parent);
+    pair(child, owner_desc.id, parent);
+    apply();
+    const ecs_term terms[] = {
+        { .id = position_desc.id },
+        { .id = team_desc.id, .trav = ECS_UP, .cascade = true },
+        { .id = team_desc.id, .src_rel = owner_desc.id, .oper = ECS_OPTIONAL },
+    };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 3, &plan) == ECS_OK);
+    for (int pass = 0; pass < 4; pass++) {
+        if (pass == 1) {
+            /* Storage growth and unrelated registration must be safe on a hit. */
+            REQUIRE(ecs_world_reserve_entities(world, 2048) == ECS_OK);
+            for (int i = 0; i < 24; i++) {
+                char key[64];
+                snprintf(key, sizeof key, "sdk.query.cache.extra.%d", i);
+                ecs_component_desc desc = position_desc;
+                desc.id = 6000 + i;
+                desc.key = key;
+                REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_OK);
+            }
+        }
+        if (pass == 2) {
+            add(parent, &team_desc);
+            pair(child, owner_desc.id, root);
+            apply();
+        }
+        ecs_query query;
+        ecs_entity found;
+        REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+        REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+        REQUIRE(same(ecs_query_src(&query, 1), pass < 2 ? root : parent));
+        REQUIRE(
+            pass < 2 ? !ecs_query_src(&query, 2).slot
+                     : same(ecs_query_src(&query, 2), root)
+        );
+        REQUIRE(!ecs_query_next(&query, &found));
+        ecs_query_end(&query);
+    }
+    ecs_query_stats stats = ecs_query_plan_stats(plan);
+    REQUIRE(stats.cache_hits == 2 && stats.cache_builds == 2);
+    REQUIRE(ecs_world_record_remove_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    apply();
+    REQUIRE(collect_plan(plan, NULL, 0) == 0);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_preserves_multi_target_bindings_and_source_order)
+{
+    ecs_entity root = spawn(), a = spawn(), b = spawn();
+    pair(a, ECS_CHILD_OF, root);
+    pair(b, ECS_CHILD_OF, root);
+    pair(a, likes_desc.id, a);
+    pair(a, likes_desc.id, b);
+    pair(b, likes_desc.id, a);
+    apply();
+    const ecs_term terms[] = { { .id = ECS_CHILD_OF, .target = root },
+                               { .id = likes_desc.id, .target_var = 1 } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    for (int pass = 0; pass < 4; pass++) {
+        if (pass == 2) {
+            REQUIRE(ecs_world_record_child_index(world, b, 0, 0) == ECS_OK);
+            apply();
+        }
+        ecs_entity owners[] = { a, a, b }, targets[] = { a, b, a };
+        if (pass >= 2) {
+            owners[0] = b;
+            owners[1] = a;
+            owners[2] = a;
+            targets[0] = a;
+            targets[1] = a;
+            targets[2] = b;
+        }
+        ecs_query query;
+        ecs_entity found;
+        REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(ecs_query_next(&query, &found) && same(found, owners[i]));
+            REQUIRE(same(ecs_query_var(&query, 1), targets[i]));
+            REQUIRE(same(ecs_query_src(&query, 1), owners[i]));
+        }
+        REQUIRE(!ecs_query_next(&query, &found));
+        ecs_query_end(&query);
+    }
+    ecs_query_stats stats = ecs_query_plan_stats(plan);
+    REQUIRE(stats.cache_hits == 2 && stats.cache_builds == 2);
+    REQUIRE(ecs_world_record_remove_pair(world, a, likes_desc.id, b, 0) == ECS_OK);
+    apply();
+    REQUIRE(collect_plan(plan, NULL, 0) == 2);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_bounds_cartesian_result_storage)
+{
+    ecs_entity source = spawn(), targets[36];
+    for (int i = 0; i < 36; i++) {
+        targets[i] = spawn();
+        pair(source, likes_desc.id, targets[i]);
+    }
+    apply();
+    const ecs_term terms[] = { { .id = likes_desc.id, .target_var = 1 },
+                               { .id = likes_desc.id, .target_var = 2 },
+                               { .id = likes_desc.id, .target_var = 3 } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 3, &plan) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 36 * 36 * 36);
+    ecs_query_stats stats = ecs_query_plan_stats(plan);
+    REQUIRE(stats.cache_overflows == 1 && stats.cached_rows == 0);
+    REQUIRE(stats.retained_bytes == 0);
+    REQUIRE(collect_plan(plan, NULL, 0) == 36 * 36 * 36);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == stats.cache_builds);
+    for (int i = 2; i < 36; i++) {
+        REQUIRE(
+            ecs_world_record_remove_pair(world, source, likes_desc.id, targets[i], 0) == ECS_OK
+        );
+    }
+    apply();
+    REQUIRE(collect_plan(plan, NULL, 0) == 8);
+    REQUIRE(collect_plan(plan, NULL, 0) == 8);
+    stats = ecs_query_plan_stats(plan);
+    REQUIRE(stats.cache_hits == 1 && stats.cached_rows == 8);
+    REQUIRE(stats.retained_bytes <= 1024 * 1024);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_reserves_multi_target_rows_outside_iteration)
+{
+    ecs_entity source = spawn();
+    for (int i = 0; i < 3; i++) {
+        pair(source, likes_desc.id, spawn());
+    }
+    apply();
+    const ecs_term terms[] = { { .id = likes_desc.id, .target_var = 1 },
+                               { .id = likes_desc.id, .target_var = 2 } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    xalloc_stats before, after;
+    xalloc_stats_get(&before);
+    REQUIRE(collect_plan(plan, NULL, 0) == 9);
+    xalloc_stats_get(&after);
+    REQUIRE(after.calls == before.calls);
+    REQUIRE(ecs_query_plan_stats(plan).cached_rows == 0);
+    ecs_query query;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    xalloc_stats_get(&before);
+    int rows = 0;
+    ecs_entity found;
+    while (ecs_query_next(&query, &found)) {
+        REQUIRE(same(found, source));
+        rows++;
+    }
+    ecs_query_end(&query);
+    xalloc_stats_get(&after);
+    REQUIRE(rows == 9 && after.calls == before.calls);
+    REQUIRE(ecs_query_plan_stats(plan).cached_rows == 9);
+    REQUIRE(collect_plan(plan, NULL, 0) == 9);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 1);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_cache_all_entity_plans_track_lifetimes)
+{
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, NULL, 0, &plan) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 0);
+    REQUIRE(collect_plan(plan, NULL, 0) == 0);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 1);
+    ecs_entity entity = spawn();
+    REQUIRE(collect_plan(plan, NULL, 0) == 1);
+    REQUIRE(ecs_world_destroy_entity(world, entity) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 0);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == 3);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_candidates_use_actual_sparse_and_dense_costs)
+{
+    ecs_entity last = { 0 };
+    for (int i = 0; i < 256; i++) {
+        last = spawn();
+        add(last, &position_desc);
+    }
+    add(last, &team_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id }, { .id = team_desc.id } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    uint32_t slots[1];
+    REQUIRE(collect_plan(plan, slots, 1) == 1 && slots[0] == last.slot);
+    ecs_query_stats stats = ecs_query_plan_stats(plan);
+    REQUIRE(stats.candidates == 1 && stats.node_tests == 1);
+    REQUIRE(collect_plan(plan, slots, 1) == 1 && slots[0] == last.slot);
+    REQUIRE(ecs_query_plan_stats(plan).candidates == stats.candidates);
+    ecs_query_plan_free(plan);
+    REQUIRE(ecs_query_plan_new(world, terms, 1, &plan) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 256);
+    REQUIRE(ecs_query_plan_stats(plan).retained_bytes == 0);
+    REQUIRE(ecs_query_plan_stats(plan).cache_builds == 0);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_query_filters_prune_before_later_variable_generators)
+{
+    ecs_entity source = spawn(), targets[8];
+    add(source, &position_desc);
+    for (int i = 0; i < 8; i++) {
+        targets[i] = spawn();
+        pair(source, likes_desc.id, targets[i]);
+    }
+    add(targets[0], &team_desc);
+    add(targets[7], &frozen_desc);
+    apply();
+    const ecs_term terms[] = {
+        { .id = position_desc.id },
+        { .id = likes_desc.id, .target_var = 1 },
+        { .id = likes_desc.id, .target_var = 2 },
+        { .id = team_desc.id, .src_var = 1 },
+        { .id = frozen_desc.id, .src_var = 2, .oper = ECS_NOT },
+        { .id = team_desc.id, .src_var = 2, .oper = ECS_OPTIONAL },
+    };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 6, &plan) == ECS_OK);
+    for (int pass = 0; pass < 2; pass++) {
+        ecs_query query;
+        ecs_entity found;
+        REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+        for (int i = 0; i < 7; i++) {
+            REQUIRE(ecs_query_next(&query, &found) && same(found, source));
+            REQUIRE(same(ecs_query_var(&query, 1), targets[0]));
+            REQUIRE(same(ecs_query_var(&query, 2), targets[i]));
+            REQUIRE(
+                i ? !ecs_query_src(&query, 5).slot
+                  : same(ecs_query_src(&query, 5), targets[0])
+            );
+        }
+        REQUIRE(!ecs_query_next(&query, &found));
+        ecs_query_end(&query);
+    }
+    ecs_query_stats stats = ecs_query_plan_stats(plan);
+    /* Each generator advances across eight targets plus exhaustion once.
+     * Deferring Team($1) until both generators would require 9 + 8*9 steps. */
+    REQUIRE(stats.binding_steps == 18);
+    REQUIRE(stats.cache_hits == 1 && stats.cached_rows == 7);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_component_versions_track_publications_without_invalidating_membership)
+{
+    ecs_entity entity = spawn();
+    add(entity, &position_desc);
+    add(entity, &team_desc);
+    apply();
+    REQUIRE(ecs_component_track_changes(world, position_desc.id) == ECS_OK);
+    REQUIRE(ecs_world_iteration_begin(world) == ECS_OK);
+    REQUIRE(ecs_component_track_changes(world, position_desc.id) == ECS_ERR_ITERATING);
+    REQUIRE(ecs_world_iteration_end(world) == ECS_OK);
+    const ecs_term terms[] = { { .id = position_desc.id }, { .id = team_desc.id } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 1);
+    uint64_t before = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(
+        ecs_component_write_field(world, entity, position_desc.id, 0, (pin_value){ .type = PIN_I32, .i = 0 }) ==
+        ECS_OK
+    );
+    uint64_t written = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(written > before);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == written);
+    REQUIRE(collect_plan(plan, NULL, 0) == 1);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 1);
+    *(int *)ecs_component_data(world, entity, position_desc.id) = 7;
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == written);
+    REQUIRE(ecs_component_modified(world, entity, position_desc.id) == ECS_OK);
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) > written);
+    uint64_t marked = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(ecs_world_reserve_entities(world, 2048) == ECS_OK);
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == marked);
+    REQUIRE(ecs_world_record_remove(world, entity, position_desc.id, 0) == ECS_OK);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == 0);
+    add(entity, &position_desc);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) > marked);
+    REQUIRE(ecs_world_destroy_entity(world, entity) == ECS_OK);
+    ecs_entity replacement = spawn();
+    add(replacement, &position_desc);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == 0);
+    REQUIRE(ecs_component_version(world, replacement, position_desc.id) > 0);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
 void test_tool_ecs_query()
 {
     pu_setup(prepare_world, release_world);
@@ -370,5 +948,20 @@ void test_tool_ecs_query()
     RUN_TEST_CASE(ecs_scopes_nest_any_boolean_expression);
     RUN_TEST_CASE(ecs_fixed_sources_gate_every_result);
     RUN_TEST_CASE(ecs_invalid_terms_are_rejected);
+    RUN_TEST_CASE(ecs_reusable_plans_refresh_sources_membership_and_storage);
+    RUN_TEST_CASE(ecs_scalar_sources_are_optional_and_exclusive);
+    RUN_TEST_CASE(ecs_reusable_boolean_plan_avoids_iteration_allocations);
+    RUN_TEST_CASE(ecs_reusable_fixed_source_does_not_follow_recycled_entities);
+    RUN_TEST_CASE(ecs_reusable_pair_candidates_recheck_target_generations);
+    RUN_TEST_CASE(ecs_query_cache_reuses_membership_but_reads_current_values);
+    RUN_TEST_CASE(ecs_query_cache_partial_iterations_never_publish);
+    RUN_TEST_CASE(ecs_query_cache_preserves_sources_and_optional_absence);
+    RUN_TEST_CASE(ecs_query_cache_preserves_multi_target_bindings_and_source_order);
+    RUN_TEST_CASE(ecs_query_cache_bounds_cartesian_result_storage);
+    RUN_TEST_CASE(ecs_query_cache_reserves_multi_target_rows_outside_iteration);
+    RUN_TEST_CASE(ecs_query_cache_all_entity_plans_track_lifetimes);
+    RUN_TEST_CASE(ecs_query_candidates_use_actual_sparse_and_dense_costs);
+    RUN_TEST_CASE(ecs_query_filters_prune_before_later_variable_generators);
+    RUN_TEST_CASE(ecs_component_versions_track_publications_without_invalidating_membership);
     pu_clear_setup();
 }

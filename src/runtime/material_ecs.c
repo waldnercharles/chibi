@@ -17,26 +17,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-game_materials *game_materials_new_prepared(
-    ecs_world *world,
-    game_entities *entities,
-    game_particles *particles,
-    material_fields *fields
-)
+materials *materials_new_prepared(ecs_world *world, entities *entities, particles *particles, material_fields *fields)
 {
-    game_materials *materials = xcalloc(1, sizeof *materials);
+    materials *materials = xcalloc(1, sizeof *materials);
     materials->world = world;
     materials->entities = entities;
     materials->particles = particles;
-    materials->pool = game_task_pool_acquire();
+    materials->pool = task_pool_acquire();
     materials->destruction = material_destruction_new();
     materials->fields = fields ? fields : material_fields_new();
     return materials;
 }
 
-game_materials *game_materials_new(ecs_world *world, game_entities *entities, game_particles *particles)
+materials *materials_new(ecs_world *world, entities *entities, particles *particles)
 {
-    return game_materials_new_prepared(world, entities, particles, NULL);
+    return materials_new_prepared(world, entities, particles, NULL);
 }
 
 void material_ecs_release_record(material_record *record)
@@ -58,7 +53,7 @@ static bool terrain_record(const material_record *record)
 
 /* Releases records and destroys the entities materials made for them;
  * terrain's stay when kept. */
-static void release_records(game_materials *materials, bool keep_terrain)
+static void release_records(materials *materials, bool keep_terrain)
 {
     materials->fragments = 0;
     for (int i = 0; i < acount(materials->records); i++) {
@@ -77,7 +72,7 @@ static void release_records(game_materials *materials, bool keep_terrain)
     }
 }
 
-static void reset_simulation(game_materials *materials)
+static void reset_simulation(materials *materials)
 {
     material_destruction_reset(materials->destruction);
     aclear(materials->damage_requests);
@@ -95,7 +90,7 @@ static void reset_simulation(game_materials *materials)
     materials->settings = (MaterialFluidWorld){ 0 };
 }
 
-void game_materials_reset(game_materials *materials)
+void materials_reset(materials *materials)
 {
     release_records(materials, false);
     aclear(materials->records);
@@ -104,15 +99,15 @@ void game_materials_reset(game_materials *materials)
     reset_simulation(materials);
 }
 
-void game_materials_reset_except_terrain(game_materials *materials)
+void materials_reset_except_terrain(materials *materials)
 {
     release_records(materials, true);
     reset_simulation(materials);
 }
 
-void game_materials_free(game_materials *materials)
+void materials_free(materials *materials)
 {
-    game_materials_reset(materials);
+    materials_reset(materials);
     afree(materials->records);
     material_destruction_free(materials->destruction);
     afree(materials->damage_requests);
@@ -123,11 +118,11 @@ void game_materials_free(game_materials *materials)
     afree(materials->terrain_views);
     afree(materials->host_views);
     afree(materials->debris_blasts);
-    game_task_pool_release(materials->pool);
+    task_pool_release(materials->pool);
     free(materials);
 }
 
-void game_materials_set_stream_views(game_materials *materials, const material_stream_view *views, int count)
+void materials_set_stream_views(materials *materials, const material_stream_view *views, int count)
 {
     aclear(materials->host_views);
     for (int i = 0; i < count; i++) {
@@ -135,7 +130,7 @@ void game_materials_set_stream_views(game_materials *materials, const material_s
     }
 }
 
-bool game_materials_streaming(const game_materials *materials)
+bool materials_streaming(const materials *materials)
 {
     for (int i = 0; i < acount(materials->records); i++) {
         const material_stream *stream = materials->records[i].stream;
@@ -146,17 +141,17 @@ bool game_materials_streaming(const game_materials *materials)
     return false;
 }
 
-void game_materials_set_stream_deferred(game_materials *materials, bool deferred)
+void materials_set_stream_deferred(materials *materials, bool deferred)
 {
     materials->stream_deferred = deferred;
 }
 
-bool game_materials_enabled(const game_materials *materials)
+bool materials_enabled(const materials *materials)
 {
     return materials && (materials->fluid || acount(materials->records));
 }
 
-const material_fluid *game_materials_fluid(const game_materials *materials)
+const material_fluid *materials_fluid(const materials *materials)
 {
     return materials ? materials->fluid : NULL;
 }
@@ -170,10 +165,10 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
     return hash;
 }
 
-static game_material_state inspect_materials(const game_materials *materials, game_material_hash_parts *parts)
+static material_state inspect_materials(const materials *materials, material_hash_parts *parts)
 {
-    game_material_state state = { 0 };
-    if (!game_materials_enabled(materials)) {
+    material_state state = { 0 };
+    if (!materials_enabled(materials)) {
         return state;
     }
     state.hash = UINT64_C(14695981039346656037);
@@ -197,7 +192,7 @@ static game_material_state inspect_materials(const game_materials *materials, ga
     }
     state.fragments = materials->fragments;
     int chunk_count;
-    const material_chunk *chunks = game_materials_chunks(materials, &chunk_count);
+    const material_chunk *chunks = materials_chunks(materials, &chunk_count);
     state.chunks = chunk_count;
     for (int i = 0; i < chunk_count; i++) {
         float values[] = { chunks[i].position.x,
@@ -422,19 +417,19 @@ static game_material_state inspect_materials(const game_materials *materials, ga
     return state;
 }
 
-game_material_state game_materials_inspect(const game_materials *materials)
+material_state materials_inspect(const materials *materials)
 {
     return inspect_materials(materials, NULL);
 }
 
-game_material_hash_parts game_materials_hash_parts(const game_materials *materials)
+material_hash_parts materials_hash_parts(const materials *materials)
 {
-    game_material_hash_parts parts = { 0 };
+    material_hash_parts parts = { 0 };
     inspect_materials(materials, &parts);
     return parts;
 }
 
-const material_mask *game_materials_mask(const game_materials *materials, ecs_entity entity)
+const material_mask *materials_mask(const materials *materials, ecs_entity entity)
 {
     if (!materials || entity.slot >= (unsigned)acount(materials->records)) {
         return NULL;
@@ -445,28 +440,27 @@ const material_mask *game_materials_mask(const game_materials *materials, ecs_en
              : NULL;
 }
 
-uint64_t game_materials_mask_generation(const game_materials *materials, ecs_entity entity)
+uint64_t materials_mask_generation(const materials *materials, ecs_entity entity)
 {
-    return game_materials_mask(materials, entity)
+    return materials_mask(materials, entity)
              ? materials->records[entity.slot].mask_generation
              : 0;
 }
 
-bool game_materials_is_fragment(const game_materials *materials, ecs_entity entity)
+bool materials_is_fragment(const materials *materials, ecs_entity entity)
 {
-    return game_materials_mask(materials, entity) &&
-           materials->records[entity.slot].fragment;
+    return materials_mask(materials, entity) && materials->records[entity.slot].fragment;
 }
 
-bool game_materials_is_pierceable_fragment(const game_materials *materials, ecs_entity entity)
+bool materials_is_pierceable_fragment(const materials *materials, ecs_entity entity)
 {
-    if (!game_materials_is_fragment(materials, entity)) {
+    if (!materials_is_fragment(materials, entity)) {
         return false;
     }
-    return GAME_GameDestructible_get_const(materials->world, entity)->pierceable_fragments;
+    return Destructible_get_const(materials->world, entity)->pierceable_fragments;
 }
 
-material_record *material_ecs_record(game_materials *materials, ecs_entity entity)
+material_record *material_ecs_record(materials *materials, ecs_entity entity)
 {
     if (entity.slot >= (unsigned)acount(materials->records)) {
         int previous = acount(materials->records);
@@ -488,10 +482,10 @@ material_record *material_ecs_record(game_materials *materials, ecs_entity entit
     return record;
 }
 
-static const char *configure(game_materials *materials)
+static const char *configure(materials *materials)
 {
     materials->fragment_limit = 0;
-    ecs_component_id destruction_id = GAME_COMPONENT_MaterialDestructionWorld.id;
+    ecs_component_id destruction_id = COMPONENT_MaterialDestructionWorld.id;
     if (ecs_world_component(materials->world, destruction_id)) {
         ecs_query query;
         int result = ecs_query_begin(materials->world, &query, &destruction_id, 1);
@@ -502,7 +496,7 @@ static const char *configure(game_materials *materials)
         int debris_limit = 0;
         while (ecs_query_next(&query, &entity)) {
             const MaterialDestructionWorld
-                *world = GAME_MaterialDestructionWorld_get_const(materials->world, entity);
+                *world = MaterialDestructionWorld_get_const(materials->world, entity);
             materials->fragment_limit = world->fragment_limit;
             debris_limit = world->debris_limit;
             count++;
@@ -524,10 +518,10 @@ static const char *configure(game_materials *materials)
     return material_ecs_configure_fluid(materials);
 }
 
-static const char *create_mask(game_materials *materials, ecs_entity entity)
+static const char *create_mask(materials *materials, ecs_entity entity)
 {
     const MaterialBreakProfile
-        *profile = GAME_MaterialBreakProfile_get_const(materials->world, entity);
+        *profile = MaterialBreakProfile_get_const(materials->world, entity);
     if (profile) {
         float values[] = {
             profile->chip_speed,        profile->fragment_speed,
@@ -564,30 +558,30 @@ static const char *create_mask(game_materials *materials, ecs_entity entity)
                    "gas parcels";
         }
     }
-    const GameFragmentGlow *glow = GAME_GameFragmentGlow_get_const(materials->world, entity);
+    const FragmentGlow *glow = FragmentGlow_get_const(materials->world, entity);
     if (glow && (!isfinite(glow->duration + glow->flicker) ||
                  glow->duration < 0 || glow->flicker < 0 || glow->flicker > 1)) {
         return "Fragment glow needs a nonnegative duration and flicker 0..1";
     }
-    const GameDestructible *style = GAME_GameDestructible_get_const(materials->world, entity);
-    const GameCollider *collider = GAME_GameCollider_get_const(materials->world, entity);
-    if (!collider || !GAME_GameTransform_get_const(materials->world, entity) ||
+    const Destructible *style = Destructible_get_const(materials->world, entity);
+    const Collider *collider = Collider_get_const(materials->world, entity);
+    if (!collider || !Transform_get_const(materials->world, entity) ||
         !isfinite(style->cell_size) || style->cell_size <= 0 ||
         style->min_fragment_cells < 1 || !isfinite(style->release_fraction) ||
         style->release_fraction < 0 || style->release_fraction > 1) {
         return "Destructible needs Transform, Collider, a positive cell size "
                "and a minimum fragment size, with release fraction 0..1";
     }
-    float width = collider->shape == GAME_COLLIDER_CIRCLE ? 2 * collider->radius
-                                                          : collider->width;
-    float height = collider->shape == GAME_COLLIDER_CIRCLE ? 2 * collider->radius
-                                                           : collider->height;
+    float width = collider->shape == COLLIDER_CIRCLE ? 2 * collider->radius
+                                                     : collider->width;
+    float height = collider->shape == COLLIDER_CIRCLE ? 2 * collider->radius
+                                                      : collider->height;
     float nx = ceilf(width / style->cell_size), ny = ceilf(height / style->cell_size);
     if (!(nx >= 1 && nx <= 256 && ny >= 1 && ny <= 256)) {
         return "Destructible dimensions must fit 1..256 material cells per "
                "axis";
     }
-    const GameSubstance *substance = GAME_GameSubstance_get_const(materials->world, entity);
+    const Substance *substance = Substance_get_const(materials->world, entity);
     if (substance && (!isfinite(substance->hardness + substance->blast_multiplier) ||
                       substance->hardness <= 0 || substance->blast_multiplier < 0)) {
         return "Substance needs positive hardness and nonnegative blast "
@@ -596,9 +590,8 @@ static const char *create_mask(game_materials *materials, ecs_entity entity)
     material_record *record = material_ecs_record(materials, entity);
     if (!record->mask) {
         record->mask = xmalloc(sizeof *record->mask);
-        *record->mask = material_mask_new((int)nx, (int)ny, style->cell_size, collider->shape == GAME_COLLIDER_CIRCLE);
-        const GameMaterialCavity
-            *cavity = GAME_GameMaterialCavity_get_const(materials->world, entity);
+        *record->mask = material_mask_new((int)nx, (int)ny, style->cell_size, collider->shape == COLLIDER_CIRCLE);
+        const MaterialCavity *cavity = MaterialCavity_get_const(materials->world, entity);
         if (cavity) {
             if (!isfinite(cavity->radius) || cavity->radius <= 0 ||
                 cavity->radius >= fminf(width, height) * .5f) {
@@ -611,10 +604,10 @@ static const char *create_mask(game_materials *materials, ecs_entity entity)
     return NULL;
 }
 
-MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_entity entity)
+MaterialBreakProfile material_ecs_break_profile(materials *materials, ecs_entity entity)
 {
     const MaterialBreakProfile
-        *profile = GAME_MaterialBreakProfile_get_const(materials->world, entity);
+        *profile = MaterialBreakProfile_get_const(materials->world, entity);
     return profile ? *profile : (MaterialBreakProfile){ 0 };
 }
 
@@ -656,7 +649,7 @@ static float crater_random(fluid_vec point, int index, int salt)
  * start in the striker's light color and cool through the material's spark
  * color. */
 static void crater(
-    game_materials *materials,
+    materials *materials,
     const material_event *event,
     fluid_vec normal,
     unsigned color,
@@ -671,7 +664,7 @@ static void crater(
     }
     fluid_vec point = { event->point.x, event->point.y };
     bool facing = normal.x != 0 || normal.y != 0;
-    game_particle_spray base = {
+    particle_spray base = {
         .position = { point.x, point.y },
         .direction = { facing ? normal.x : 1, facing ? normal.y : 0 },
         .speed_min = cell_size * profile.dust_speed_min,
@@ -687,13 +680,13 @@ static void crater(
         .antialias = 1.5f,
     };
     if (materials->particles && profile.dust_limit > 0) {
-        game_particle_spray grit = base;
+        particle_spray grit = base;
         unsigned tint = profile.dust_color ? profile.dust_color : color;
         grit.color = tint;
         grit.end_color = tint & 0xffffff00u;
         grit.count = cells < profile.dust_limit ? cells : profile.dust_limit;
-        grit.shape = GAME_PARTICLE_TRIANGLE;
-        game_particles_emit_directed(materials->particles, &grit);
+        grit.shape = PARTICLE_TRIANGLE;
+        particles_emit_directed(materials->particles, &grit);
         int sparks = (int)(cells * profile.spark_density * event->impact.heat + .5f);
         if (sparks > 0) {
             /* Start halfway between the striker's light and the material's
@@ -704,7 +697,7 @@ static void crater(
                 unsigned a = (hot >> shift) & 255u, b = (light >> shift) & 255u;
                 start |= ((a + b) / 2) << shift;
             }
-            game_particle_spray spark = base;
+            particle_spray spark = base;
             spark.color = event->impact.color ? start : hot;
             spark.end_color = hot & 0xffffff00u;
             spark.count = sparks < profile.dust_limit * 2 ? sparks
@@ -720,8 +713,8 @@ static void crater(
             spark.emission_exponent = .5f;
             spark.stretch = .012f;
             spark.antialias = 0;
-            spark.shape = GAME_PARTICLE_STREAK;
-            game_particles_emit_directed(materials->particles, &spark);
+            spark.shape = PARTICLE_STREAK;
+            particles_emit_directed(materials->particles, &spark);
         }
     }
     if (facing && profile.chunk_limit > 0 && materials->debris) {
@@ -743,7 +736,7 @@ static void crater(
         float swirl = (crater_random(point, i, 3) - .5f) * profile.smoke_speed;
         float lifetime = profile.smoke_lifetime *
                          (.7f + .6f * crater_random(point, i, 4));
-        game_materials_emit(
+        materials_emit(
             materials,
             (fluid_particle){
                 .position = { point.x + normal.x * along - normal.y * side,
@@ -784,42 +777,40 @@ void material_ecs_add_component(
     (void)result;
 }
 
-static void detach(game_materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
+static void detach(materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
 {
     ecs_world *world = materials->world;
     /* Copy before entity growth can relocate component columns. The fragment
      * is a root, so it starts at its source's world placement. */
-    GameGlobalTransform2D pose = game_transform_world_2d(world, source);
-    GameTransform transform = { pose.position.x, pose.position.y };
-    GameCollider collider = *GAME_GameCollider_get_const(world, source);
-    GameDestructible destructible = *GAME_GameDestructible_get_const(world, source);
+    GlobalTransform2D pose = transform_world_2d(world, source);
+    Transform transform = { pose.position.x, pose.position.y };
+    Collider collider = *Collider_get_const(world, source);
+    Destructible destructible = *Destructible_get_const(world, source);
     destructible.release_fraction = 0;
-    const GameVelocity *movement = GAME_GameVelocity_get_const(world, source);
-    GameVelocity velocity = movement ? *movement : (GameVelocity){ 0 };
-    GameOrientation orientation = { pose.radians };
-    const GameAppearance *look = GAME_GameAppearance_get_const(world, source);
-    GameAppearance appearance = look ? *look
-                                     : (GameAppearance){ .color = 0xffffffffu };
-    const GameMaterial *surface = GAME_GameMaterial_get_const(world, source);
-    GameMaterial material = surface ? *surface : (GameMaterial){ 0 };
-    const GameShader *binding = GAME_GameShader_get_const(world, source);
-    GameShader shader = binding ? *binding : (GameShader){ 0 };
+    const Velocity *movement = Velocity_get_const(world, source);
+    Velocity velocity = movement ? *movement : (Velocity){ 0 };
+    Orientation orientation = { pose.radians };
+    const Appearance *look = Appearance_get_const(world, source);
+    Appearance appearance = look ? *look : (Appearance){ .color = 0xffffffffu };
+    const Material *surface = Material_get_const(world, source);
+    Material material = surface ? *surface : (Material){ 0 };
+    const Shader *binding = Shader_get_const(world, source);
+    Shader shader = binding ? *binding : (Shader){ 0 };
     bool has_shader = binding != NULL;
     /* The fragment's local frame is its source's, so it inherits where that
      * frame sat when the material was laid out. */
-    const GameMaterialFrame *laid_out = GAME_GameMaterialFrame_get_const(world, source);
-    GameMaterialFrame frame = laid_out ? *laid_out
-                                       : (GameMaterialFrame){ transform.x,
-                                                              transform.y,
-                                                              orientation.radians };
-    const GameSubstance *substance_ptr = GAME_GameSubstance_get_const(world, source);
-    GameSubstance substance = substance_ptr ? *substance_ptr : (GameSubstance){ 0 };
-    const GameReflection *reflection_ptr = GAME_GameReflection_get_const(world, source);
-    GameReflection reflection = reflection_ptr ? *reflection_ptr
-                                               : (GameReflection){ 0 };
-    const GameFragmentGlow *glow_ptr = GAME_GameFragmentGlow_get_const(world, source);
-    GameFragmentGlow glow = glow_ptr ? *glow_ptr : (GameFragmentGlow){ 0 };
-    const GameBody *source_body = GAME_GameBody_get_const(world, source);
+    const MaterialFrame *laid_out = MaterialFrame_get_const(world, source);
+    MaterialFrame frame = laid_out ? *laid_out
+                                   : (MaterialFrame){ transform.x,
+                                                      transform.y,
+                                                      orientation.radians };
+    const Substance *substance_ptr = Substance_get_const(world, source);
+    Substance substance = substance_ptr ? *substance_ptr : (Substance){ 0 };
+    const Reflection *reflection_ptr = Reflection_get_const(world, source);
+    Reflection reflection = reflection_ptr ? *reflection_ptr : (Reflection){ 0 };
+    const FragmentGlow *glow_ptr = FragmentGlow_get_const(world, source);
+    FragmentGlow glow = glow_ptr ? *glow_ptr : (FragmentGlow){ 0 };
+    const Body *source_body = Body_get_const(world, source);
     bool allow_rotation = source_body && source_body->allow_rotation;
     float cx = 0, cy = 0;
     for (int i = 0; i < acount(mask.rects); i++) {
@@ -850,34 +841,34 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     velocity.x += dx / distance * kick;
     velocity.y += dy / distance * kick;
     ecs_entity entity = ecs_world_create_entity(world);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameTransform, &transform);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameVelocity, &velocity);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameOrientation, &orientation);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameCollider, &collider);
+    material_ecs_add_component(world, entity, &COMPONENT_Transform, &transform);
+    material_ecs_add_component(world, entity, &COMPONENT_Velocity, &velocity);
+    material_ecs_add_component(world, entity, &COMPONENT_Orientation, &orientation);
+    material_ecs_add_component(world, entity, &COMPONENT_Collider, &collider);
     material_ecs_add_component(
         world,
         entity,
-        &GAME_COMPONENT_GameBody,
-        &(GameBody){ .type = GAME_BODY_DYNAMIC, .allow_rotation = allow_rotation }
+        &COMPONENT_Body,
+        &(Body){ .type = BODY_DYNAMIC, .allow_rotation = allow_rotation }
     );
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameDestructible, &destructible);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameAppearance, &appearance);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameMaterial, &material);
+    material_ecs_add_component(world, entity, &COMPONENT_Destructible, &destructible);
+    material_ecs_add_component(world, entity, &COMPONENT_Appearance, &appearance);
+    material_ecs_add_component(world, entity, &COMPONENT_Material, &material);
     if (substance.hardness > 0) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameSubstance, &substance);
+        material_ecs_add_component(world, entity, &COMPONENT_Substance, &substance);
     }
     if (reflection.strength > 0) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameReflection, &reflection);
+        material_ecs_add_component(world, entity, &COMPONENT_Reflection, &reflection);
     }
     if (has_shader) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameShader, &shader);
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameMaterialFrame, &frame);
+        material_ecs_add_component(world, entity, &COMPONENT_Shader, &shader);
+        material_ecs_add_component(world, entity, &COMPONENT_MaterialFrame, &frame);
     }
     if (glow.duration > 0) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameFragmentGlow, &glow);
+        material_ecs_add_component(world, entity, &COMPONENT_FragmentGlow, &glow);
     }
     MaterialBreakProfile profile = material_ecs_break_profile(materials, source);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_MaterialBreakProfile, &profile);
+    material_ecs_add_component(world, entity, &COMPONENT_MaterialBreakProfile, &profile);
     int result = ecs_world_apply_commands(world);
     assert(result == ECS_OK);
     (void)result;
@@ -891,8 +882,8 @@ static void detach(game_materials *materials, ecs_entity source, material_mask m
     materials->fragments++;
 }
 
-void game_materials_damage(
-    game_materials *materials,
+void materials_damage(
+    materials *materials,
     ecs_entity entity,
     fluid_vec point,
     float radius,
@@ -911,17 +902,17 @@ void game_materials_damage(
     );
 }
 
-static void queue_damage(game_materials *materials, material_damage damage)
+static void queue_damage(materials *materials, material_damage damage)
 {
     ecs_entity entity = ecs_entity_from_u64(damage.target);
     fluid_vec point = { damage.point.x, damage.point.y };
     float radius = damage.radius;
     assert(isfinite(point.x) && isfinite(point.y) && isfinite(radius) && radius >= 0);
-    const material_mask *target = game_materials_mask(materials, entity);
+    const material_mask *target = materials_mask(materials, entity);
     uint64_t terrain = target && !materials->records[entity.slot].fragment
                          ? ecs_entity_to_u64(materials->records[entity.slot].terrain_source)
                          : 0;
-    if (GAME_MaterialTerrain_get_const(materials->world, entity)) {
+    if (MaterialTerrain_get_const(materials->world, entity)) {
         terrain = ecs_entity_to_u64(entity);
     }
     if (!terrain) {
@@ -935,7 +926,7 @@ static void queue_damage(game_materials *materials, material_damage damage)
             !record.mask || !ecs_entity_is_alive(materials->world, record.entity)) {
             continue;
         }
-        CF_V2 p = game_transform_world_2d(materials->world, record.entity).position;
+        CF_V2 p = transform_world_2d(materials->world, record.entity).position;
         float dx = fmaxf(
             0,
             fabsf(point.x - p.x) - record.mask->width * record.mask->cell_size * .5f
@@ -954,16 +945,16 @@ static void queue_damage(game_materials *materials, material_damage damage)
 
 static bool read_source(void *user, uint64_t target, material_source *out)
 {
-    game_materials *materials = user;
+    materials *materials = user;
     ecs_entity entity = ecs_entity_from_u64(target);
-    const material_mask *mask = game_materials_mask(materials, entity);
+    const material_mask *mask = materials_mask(materials, entity);
     if (!mask || !mask->count || !ecs_entity_is_alive(materials->world, entity) ||
-        game_entities_is_retiring(materials->entities, entity)) {
+        entities_is_retiring(materials->entities, entity)) {
         return false;
     }
-    const GameDestructible *style = GAME_GameDestructible_get_const(materials->world, entity);
-    const GameSubstance *substance = GAME_GameSubstance_get_const(materials->world, entity);
-    GameGlobalTransform2D pose = game_transform_world_2d(materials->world, entity);
+    const Destructible *style = Destructible_get_const(materials->world, entity);
+    const Substance *substance = Substance_get_const(materials->world, entity);
+    GlobalTransform2D pose = transform_world_2d(materials->world, entity);
     material_record *record = &materials->records[entity.slot];
     MaterialBreakProfile profile = material_ecs_break_profile(materials, entity);
     *out = (material_source){
@@ -987,7 +978,7 @@ static bool read_source(void *user, uint64_t target, material_source *out)
 
 static void create_fragment(void *user, uint64_t source, material_fragment fragment)
 {
-    game_materials *materials = user;
+    materials *materials = user;
     material_record *record = &materials->records[ecs_entity_from_u64(source).slot];
     if (record->mask && !record->mask->width && !record->streamed_mask) {
         free(record->mask);
@@ -1004,13 +995,13 @@ static void create_fragment(void *user, uint64_t source, material_fragment fragm
 
 static void destroy_source(void *user, uint64_t target)
 {
-    game_materials *materials = user;
+    materials *materials = user;
     material_record *record = material_ecs_record(materials, ecs_entity_from_u64(target));
     if (record->streamed_mask) {
         material_mask_free(record->mask);
         *record->mask = (material_mask){ 0 };
     }
-    game_entities_request_destroy(materials->entities, ecs_entity_from_u64(target));
+    entities_request_destroy(materials->entities, ecs_entity_from_u64(target));
 }
 
 /* Physics and render adapters consume mask revision at this boundary. */
@@ -1021,13 +1012,13 @@ static void material_result(void *user, const material_event *event)
     if (event->kind != MATERIAL_EVENT_DAMAGE) {
         return;
     }
-    game_materials *materials = user;
+    materials *materials = user;
     ecs_entity entity = ecs_entity_from_u64(event->target);
     ecs_world *world = materials->world;
-    const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
-    const material_mask *mask = game_materials_mask(materials, entity);
+    const Appearance *appearance = Appearance_get_const(world, entity);
+    const material_mask *mask = materials_mask(materials, entity);
     /* Find the crater's open side in the mask's local frame, then rotate back. */
-    GameGlobalTransform2D pose = game_transform_world_2d(world, entity);
+    GlobalTransform2D pose = transform_world_2d(world, entity);
     float c = cosf(pose.radians), s = sinf(pose.radians);
     float dx = event->point.x - pose.position.x,
           dy = event->point.y - pose.position.y;
@@ -1049,21 +1040,21 @@ static void material_result(void *user, const material_event *event)
     );
 }
 
-void game_materials_release(game_materials *materials, ecs_entity entity)
+void materials_release(materials *materials, ecs_entity entity)
 {
     material_destruction_queue_release(materials->destruction, ecs_entity_to_u64(entity));
 }
 
-void material_ecs_fade_fragments(game_materials *materials, float delta)
+void material_ecs_fade_fragments(materials *materials, float delta)
 {
     for (int i = 0; i < acount(materials->records); i++) {
         material_record *record = &materials->records[i];
         if (!record->fragment) {
             continue;
         }
-        const GameFragmentGlow
-            *glow = GAME_GameFragmentGlow_get_const(materials->world, record->entity);
-        GameMaterial *surface = GAME_GameMaterial_get(materials->world, record->entity);
+        const FragmentGlow
+            *glow = FragmentGlow_get_const(materials->world, record->entity);
+        Material *surface = Material_get(materials->world, record->entity);
         if (!glow || !surface || glow->duration <= 0) {
             continue;
         }
@@ -1079,7 +1070,7 @@ void material_ecs_fade_fragments(game_materials *materials, float delta)
     }
 }
 
-const char *game_materials_prepare(game_materials *materials)
+const char *materials_prepare(materials *materials)
 {
     const char *error = configure(materials);
     if (error) {
@@ -1088,7 +1079,7 @@ const char *game_materials_prepare(game_materials *materials)
     for (int i = 0; i < acount(materials->records); i++) {
         material_record *record = &materials->records[i];
         if (ecs_entity_to_u64(record->terrain_source) &&
-            !GAME_MaterialTerrain_get_const(materials->world, record->terrain_source) &&
+            !MaterialTerrain_get_const(materials->world, record->terrain_source) &&
             ecs_entity_is_alive(materials->world, record->entity)) {
             int result = ecs_world_destroy_entity(materials->world, record->entity);
             assert(result == ECS_OK);
@@ -1099,13 +1090,12 @@ const char *game_materials_prepare(game_materials *materials)
             material_ecs_release_record(record);
             continue;
         }
-        if (record->mask &&
-            !GAME_GameDestructible_get_const(materials->world, record->entity)) {
+        if (record->mask && !Destructible_get_const(materials->world, record->entity)) {
             materials->fragments -= record->fragment;
             material_ecs_release_record(record);
         }
         if (record->terrain &&
-            !GAME_MaterialTerrain_get_const(materials->world, record->entity)) {
+            !MaterialTerrain_get_const(materials->world, record->entity)) {
             material_ecs_release_record(record);
         }
     }
@@ -1113,8 +1103,7 @@ const char *game_materials_prepare(game_materials *materials)
     if (error) {
         return error;
     }
-    ecs_component_id ids[] = { GAME_COMPONENT_GameDestructible.id,
-                               GAME_COMPONENT_GameFluidVolume.id };
+    ecs_component_id ids[] = { COMPONENT_Destructible.id, COMPONENT_FluidVolume.id };
     for (int i = 0; i < (materials->fluid ? 2 : 1); i++) {
         if (!ecs_world_component(materials->world, ids[i])) {
             continue;
@@ -1125,7 +1114,7 @@ const char *game_materials_prepare(game_materials *materials)
         (void)result;
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            if (game_entities_is_retiring(materials->entities, entity)) {
+            if (entities_is_retiring(materials->entities, entity)) {
                 continue;
             }
             error = i == 0 ? create_mask(materials, entity)
@@ -1156,7 +1145,7 @@ const char *game_materials_prepare(game_materials *materials)
     return NULL;
 }
 
-int game_materials_dispatch_events(game_materials *materials)
+int materials_dispatch_events(materials *materials)
 {
     material_event event;
     while (material_destruction_poll_event(materials->destruction, &event)) {
@@ -1179,7 +1168,7 @@ int game_materials_dispatch_events(game_materials *materials)
                 target = record->terrain_source;
             }
         }
-        int result = game_entities_request_event(
+        int result = entities_request_event(
             materials->entities,
             target,
             impact ? "Material Impact" : "Material Result",
@@ -1192,7 +1181,7 @@ int game_materials_dispatch_events(game_materials *materials)
     return 0;
 }
 
-material_fields *game_materials_fields(game_materials *materials)
+material_fields *materials_fields(materials *materials)
 {
     return materials->fields;
 }

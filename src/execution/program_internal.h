@@ -56,6 +56,7 @@ struct execution_activation
     int status;
     /* Cancelled while running: stops when control returns to it. */
     bool finished, running, has_run, stopping;
+    bool cacheable; /* Cleared by inspection, suspension, cancellation or resumption. */
 };
 typedef struct
 {
@@ -72,11 +73,9 @@ typedef struct
     arena storage;
     bool seen;
 } observer_cache;
-/* A task slot keeps its results after the task finishes so a later await can
- * read them. Handles carry the slot generation, so a reused slot's old handles
- * neither wait nor cancel. Links name slots as index + 1, 0 for none: a running
- * task is in its running parent's child list, and a finished one is in the
- * instance's queue of finished slots, oldest first. */
+/* Tasks retain completion snapshots while a live handle can observe them.
+ * Links name slots as index + 1, 0 for none. Running tasks form their parent's
+ * child list; unused slots form the instance's spare list. */
 typedef struct
 {
     uint32_t generation;
@@ -85,13 +84,24 @@ typedef struct
     pin_value *results;
     int result_count;
     arena storage;
-    flow_host_request **waiters;
+    struct task_waiter *waiters;
+    double started, deadline;
+    bool timed, cancelled, marked;
 } execution_task;
+typedef struct
+{
+    uint64_t entity, version;
+} query_change;
 struct execution_instance
 {
     execution_program *program;
     uint64_t owner;
     bool query_managed;
+    int index;
+    bool query_seen, query_ready, query_started, query_new;
+    uint64_t query_variables[ECS_QUERY_VARS];
+    uint64_t query_order;
+    query_change *query_changes, *query_snapshot;
     pin_value *values, *node_states;
     state_value *states;
     behavior_variable_storage *layouts;
@@ -99,8 +109,7 @@ struct execution_instance
     observer_cache *observations;
     execution_activation **activations;
     execution_task *tasks;
-    int finished_first, finished_last, finished_count;
-    int spare; /* Evicted slots, linked by next. */
+    int spare; /* Unobserved finished slots, linked by next. */
     arena selections;
     execution_activation *running;
     execution_activation **system_activations;
@@ -122,10 +131,26 @@ typedef struct
     pin_value value;
     arena storage;
 } observer_edge;
+typedef struct
+{
+    uint64_t entity, component, layout;
+    size_t offset;
+    pin_value value;
+    execution_reduction_op op;
+} component_reduction;
+typedef struct
+{
+    uint64_t component, layout;
+    const type_desc *type;
+    size_t offset;
+    pin_type scalar;
+    bool unbounded;
+} reduction_field;
 struct execution_program
 {
     execution_module *module;
     uint64_t updates;
+    uint64_t task_lookup_steps;
     execution_program_failure failure;
     execution_profile_observer observer;
     void *observer_context;
@@ -137,18 +162,42 @@ struct execution_program
     eval_component_reader reader;
     state_value *shared;
     execution_instance **instances;
+    execution_instance **row_table;
+    int *change_queries;
+    uint64_t query_rows, query_lookup_steps;
+    bool query_streaming;
+    int stream_system;
+    uint64_t *query_admissions;
+    struct query_evaluator *query_evaluators;
+    size_t query_cache_bytes;
+    /* Detached scalar contributions and immutable prepared query row IDs. */
+    component_reduction *reductions;
+    int *reduction_table;
+    /* Successful immutable field metadata only; never column or row pointers. */
+    reduction_field reduction_fields[8];
+    int next_reduction_field;
+    int unordered_reductions, ordered_reductions;
+    uint64_t reduction_contributions, reduction_records;
+    size_t reduction_peak_bytes;
+    uint64_t *system_rows;
+    struct execution_row_worker *row_workers;
+    int row_parallel_jobs, row_parallel_workers;
+    bool reducing;
     struct execution_program **imports;
     struct execution_program *owner_program;
     queued_event *events;
     observer_edge *field_edges;
-    ecs_term *query; /* Membership terms, when queried. */
+    ecs_query_plan *query_plan;
     int *binding_order;
+    struct binding_schedule *binding_schedule;
+    struct binding_identity *binding_identity;
     double now, delta;
     unsigned budget;
     bool dispatching, enabled, queried;
     execution_activation *running;
+    execution_activation *spare_activation; /* Idle, with no borrowed instance/context. */
     execution_activation **system_activations;
-    bool system_prepared, system_ran;
+    bool system_prepared, system_ran, system_update;
     int system_status;
     const execution_program *replacement_of;
     execution_inspector *inspector;
@@ -156,11 +205,25 @@ struct execution_program
 };
 
 bool program_same_type(pin_value a, pin_value b);
+bool program_world_views_allowed(const behavior_function_context *);
+bool program_view_disjoint(
+    const behavior_function *,
+    const behavior_function_context *,
+    const void *,
+    size_t
+);
+execution_instance *program_instance_row(execution_program *, uint64_t owner, const uint64_t *variables);
+void program_query_consume(execution_instance *);
 bool program_preflight(const execution_module *, const ecs_world *);
 bool program_binding_order(execution_program *p);
+void program_bindings_free(execution_program *);
+size_t program_binding_storage_bytes(const execution_program *);
 int program_binding_run(execution_instance *, int, double, double, unsigned);
 void program_collect_states(execution_program *p);
 void program_activation_free(execution_activation *a);
+void program_activation_cache_free(execution_program *);
+size_t program_activation_cache_bytes(const execution_program *);
+size_t program_row_worker_bytes(const execution_program *);
 void program_activation_cancel(execution_activation *a);
 void program_bind_tasks(behavior_function_context *);
 int program_task_command(
@@ -175,6 +238,9 @@ void program_task_finished(execution_activation *, bool cancelled);
 void program_boxes_detach(execution_activation *, behavior_function_context *context);
 void program_boxes_free(execution_activation *);
 void program_tasks_free(execution_instance *);
+void program_tasks_collect(execution_program *);
+void program_tasks_tick(execution_instance *, double now);
+bool program_task_due(const execution_activation *, double now);
 bool program_request_deliver(flow_host_request *, const pin_value *, int);
 int program_activation_run(execution_activation *, double, double, unsigned);
 execution_activation *program_activation_new(

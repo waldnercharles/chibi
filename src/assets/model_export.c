@@ -329,7 +329,7 @@ bool model_export_bundle(
     model_program program;
     model_program_init(&program);
     shader_error diagnostic = { 0 };
-    GameShader binding = { .shape = (char *)name };
+    Shader binding = { .shape = (char *)name };
     if (ok) {
         ok = render_shader_binding_sources_validate(
             &binding,

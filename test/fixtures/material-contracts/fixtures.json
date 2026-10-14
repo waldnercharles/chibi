@@ -21,7 +21,7 @@
   },
   "content/fields/MaterialIslands.kdl": {
     "purpose": "shared field-library dependency",
-    "sha256": "fffc1afacdb8ad3b8ab3d3443b282e4bf636c4dd2f28cebb39b04890678e0ff1",
+    "sha256": "e3313e1669d44cdb32ff66e6ebd872af0f957285ad3d6691adad014732ce5ff7",
     "source": "projects/arena2d/content/fields/MaterialIslands.kdl"
   },
   "content/libraries/FieldShapes.chibi": {

@@ -16,7 +16,7 @@ void render_scene3d_occlusion_free(render_scene3d_occlusion *occlusion);
  * quality or, while it is on, a radius that is not positive and finite. */
 bool render_scene3d_occlusion_prepare(
     render_scene3d_occlusion *occlusion,
-    const GameEnvironment *environment,
+    const Environment *environment,
     int width,
     int height,
     char *error,

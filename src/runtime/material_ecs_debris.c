@@ -28,7 +28,7 @@ static float chunk_random(fluid_vec point, int index, int salt)
 }
 
 void material_ecs_throw_chunks(
-    game_materials *materials,
+    materials *materials,
     fluid_vec point,
     fluid_vec normal,
     int cells,
@@ -95,7 +95,7 @@ static float sample_mask(const material_mask *mask, float x, float y)
 
 static bool terrain_distance(void *user, fluid_vec point, float *distance)
 {
-    const game_materials *materials = user;
+    const materials *materials = user;
     for (int i = 0; i < acount(materials->debris_tiles); i++) {
         struct material_debris_tile tile = materials->debris_tiles[i];
         float half_w = tile.mask->width * tile.mask->cell_size * .5f;
@@ -111,7 +111,7 @@ static bool terrain_distance(void *user, fluid_vec point, float *distance)
 }
 
 void material_ecs_tick_debris(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -131,7 +131,7 @@ void material_ecs_tick_debris(
             !ecs_entity_is_alive(materials->world, record->entity)) {
             continue;
         }
-        CF_V2 p = game_transform_world_2d(materials->world, record->entity).position;
+        CF_V2 p = transform_world_2d(materials->world, record->entity).position;
         apush(materials->debris_tiles, ((struct material_debris_tile){ record->mask, p.x, p.y }));
     }
     if (materials->fluid) {
@@ -170,11 +170,11 @@ void material_ecs_tick_debris(
         ecs_entity source = ecs_entity_from_u64(chunk->source);
         const MaterialBreakProfile
             *profile = ecs_entity_is_alive(materials->world, source)
-                         ? GAME_MaterialBreakProfile_get_const(materials->world, source)
+                         ? MaterialBreakProfile_get_const(materials->world, source)
                          : NULL;
         unsigned color = profile && profile->smoke_color ? profile->smoke_color
                                                          : 0x8c8378b0u;
-        game_particle puff = {
+        particle puff = {
             .position = { chunk->position.x, chunk->position.y },
             .velocity = { chunk->velocity.x * .3f, chunk->velocity.y * .3f },
             .color = color,
@@ -188,13 +188,13 @@ void material_ecs_tick_debris(
             .antialias = chunk->radius * .5f,
             .antialias_end = chunk->radius,
             .antialias_exponent = 1,
-            .shape = GAME_PARTICLE_ROUND,
+            .shape = PARTICLE_ROUND,
         };
-        game_particles_emit_particle(materials->particles, &puff);
+        particles_emit_particle(materials->particles, &puff);
     }
 }
 
-const material_chunk *game_materials_chunks(const game_materials *materials, int *count)
+const material_chunk *materials_chunks(const materials *materials, int *count)
 {
     if (!materials || !materials->debris) {
         *count = 0;

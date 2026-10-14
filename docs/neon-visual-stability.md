@@ -17,7 +17,7 @@ Sandbox's `HRC` prototype now uses:
 | Setting | Value | Effect |
 | --- | --- | --- |
 | `lighting_margin` | 0 | Leaves offscreen sources and occluders out until the margin is redesigned. |
-| `trace_levels` | 3 | Directly traces cascades 0, 1 and 2 before extending the hierarchy. |
+| lab `trace_levels` | 3 | The default; directly traces cascades 0, 1 and 2 before extending the hierarchy. |
 | `radiance_hysteresis` | 1 | Uses current radiance without temporal averaging. |
 | `bounce_hysteresis` | 1 | Uses the current bounce result without temporal averaging. |
 | `feedback` | true | Keeps indirect bounce enabled. |

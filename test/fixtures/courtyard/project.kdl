@@ -1,0 +1,4 @@
+version 24
+name "Courtyard"
+content "content"
+start_scene "scenes/Start.kdl"

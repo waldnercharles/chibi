@@ -4,7 +4,7 @@
 #include <float.h>
 #include <math.h>
 
-static const float camera_fov = 0.6108652382f; /* 35 degrees vertically by default. */
+static const float camera_fov = ENGINE_VIEWPORT_FOV_DEFAULT;
 static const float camera_tilt = 0.1745329252f; /* 10 degrees from overhead. */
 
 static CF_V3 camera_direction()

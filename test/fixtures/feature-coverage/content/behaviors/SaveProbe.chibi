@@ -2,6 +2,8 @@ behavior SaveProbe {
     on Begin {
         saved := read_saved_text("best", "0")
         await set_saved_text("best", "1")
+        number := read_saved_number("visits", 0.0)
+        await set_saved_number("visits", number.Number + 1.0)
         await set_saved_text("scratch", "x")
         await remove_saved_text("scratch")
         await commit_save()

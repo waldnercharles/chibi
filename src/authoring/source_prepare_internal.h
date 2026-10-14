@@ -14,4 +14,5 @@ void authoring_source_lower(
     const script_lower_bindings *,
     behavior_backend
 );
+authoring_source *authoring_source_retain(authoring_source *);
 #endif

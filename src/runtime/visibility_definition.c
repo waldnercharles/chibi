@@ -19,10 +19,10 @@ static const native_capability_definition DEFINITIONS[] = {
 };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = VISIBILITY_SAMPLE_NAME,
-      .implementation = { .call = &GAME_VISIBILITY_SAMPLE_CALL,
-                          .access = &GAME_VISIBILITY_READ_ACCESS } },
+      .implementation = { .call = &VISIBILITY_SAMPLE_CALL,
+                          .access = &VISIBILITY_READ_ACCESS } },
 };
-const native_definition_pack GAME_VISIBILITY_DEFINITION_PACK = {
+const native_definition_pack VISIBILITY_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,

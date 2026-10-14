@@ -36,6 +36,7 @@ typedef struct
     void (*retire)(void *, uint64_t);
 } render_image_backend;
 void render_images_set_loader(render_image_loader);
+render_image_loader render_images_loader();
 void render_images_set_backend(render_image_backend);
 bool render_image_sampler(int id, shader_image_source *, shader_image_view *, uint64_t *revision);
 

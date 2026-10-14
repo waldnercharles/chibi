@@ -118,7 +118,7 @@ and uses ordinary compiled activations where batching is ineligible.
 The largest remaining native Tick costs in the profiled run are
 SpawnTelegraphBehavior at 2.560 microseconds per measured frame and CombatFeedback
 at 2.093, including setup. Their first whole-function blockers are
-Get_GameSpawnRequest and Set Material Parameter respectively. These are the next
+Get_SpawnRequest and Set Material Parameter respectively. These are the next
 measured candidates for expanding whole compilation. The pickup's Contains
 operation remains another catalog blocker but is not a leading cost in this
 particular Arena run.

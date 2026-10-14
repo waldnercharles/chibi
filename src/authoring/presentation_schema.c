@@ -52,15 +52,19 @@ node_desc *authoring_presentation_descriptor(
     assert(g && name && input_count >= 0 && output_count >= 0);
     assert((!input_count || inputs) && (!output_count || outputs));
     node_desc *desc = graph_own_block(g, sizeof *desc);
-    *desc = (node_desc){ .name = own(g, name),
-                         .metadata_only = true,
-                         .display_class = display,
-                         .category = own(g, category),
-                         .pure_kind = display == NODE_DISPLAY_LITERAL ? NODE_PURE_CONST
-                                                                      : NODE_PURE_READ,
-                         .input_count = input_count,
-                         .output_count = output_count,
-                         .inputs = pins(g, inputs, input_count),
-                         .outputs = pins(g, outputs, output_count) };
+    *desc = (node_desc){
+        .name = own(g, name),
+        .metadata_only = true,
+        .display_class = display,
+        .flow_kind = display == NODE_DISPLAY_EVENT ? NODE_FLOW_EVENT : NODE_FLOW_NONE,
+        .category = own(g, category),
+        .pure_kind = display == NODE_DISPLAY_LITERAL  ? NODE_PURE_CONST
+                   : display == NODE_DISPLAY_FUNCTION ? NODE_PURE_FUNCTION
+                                                      : NODE_PURE_READ,
+        .input_count = input_count,
+        .output_count = output_count,
+        .inputs = pins(g, inputs, input_count),
+        .outputs = pins(g, outputs, output_count)
+    };
     return desc;
 }

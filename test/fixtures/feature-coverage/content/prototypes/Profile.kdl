@@ -1,4 +1,4 @@
 name "Profile"
 components {
-    (object)GAME.GameTransform
+    (object)Transform
 }

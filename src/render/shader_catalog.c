@@ -68,6 +68,13 @@ int render_shader_find(const char *name)
     }
     return 0;
 }
+
+const char *render_shader_name(int id)
+{
+    assert(id > 0 && id <= acount(shader_catalog_assets));
+    return shader_catalog_assets[id - 1].name;
+}
+
 const char *render_shader_parameter_name(int index, int slot)
 {
     return index > 0 && index <= acount(shader_catalog_assets) && slot >= 0 && slot < 32
@@ -292,6 +299,27 @@ bool render_shader_is_model(int index)
     return index > 0 && index <= acount(shader_catalog_assets) &&
            shader_catalog_assets[index - 1].is_model;
 }
+bool render_shader_is_particle(int index)
+{
+    if (index <= 0 || index > acount(shader_catalog_assets)) {
+        return false;
+    }
+    const shader_asset *asset = &shader_catalog_assets[index - 1];
+    return !asset->shape && !asset->is_model &&
+           shader_particle_parameters_validate(asset->names, asset->widths, NULL) &&
+           shader_graph_particle_validate(&asset->graph, NULL);
+}
+char *render_shader_particle_glsl(int index, shader_error *error)
+{
+    if (!render_shader_is_particle(index)) {
+        if (error) {
+            error->node = 0;
+            snprintf(error->message, sizeof error->message, "Shader is not a particle function");
+        }
+        return NULL;
+    }
+    return shader_graph_glsl_named(&shader_catalog_assets[index - 1].graph, "sg_particle", error);
+}
 bool render_shader_model_bounds(
     int index,
     const float parameters[32][4],
@@ -321,6 +349,9 @@ bool render_shader_may_be_transparent(int index)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[index - 1];
+    if (asset->graph.output_count == 3) {
+        return true;
+    }
     if (asset->alpha_mode != SHADER_ALPHA_BLEND) {
         return false;
     }
@@ -399,7 +430,7 @@ static bool render_shader_set_contains(const render_shader_set *set, int id)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
-    if (!asset->name[0]) {
+    if (!asset->name[0] || asset->graph.output_count == 3) {
         return false;
     }
     for (int i = 0; i < acount(asset->images); i++) {
@@ -460,6 +491,12 @@ bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
         return true;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
+    if (asset->graph.output_count == 3) {
+        if (error) {
+            snprintf(error->message, sizeof error->message, "Particle function requires a ParticleField3D renderer");
+        }
+        return false;
+    }
     render_shader_set fresh = *set;
     for (int i = 0; i < acount(asset->images); i++) {
         if (!render_shader_set_add_image(&fresh, asset->images[i], error)) {
@@ -574,7 +611,8 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
             i
         );
     }
-    /* Sprites name their image variant; graphs reach theirs through assets. */
+    /* Sprites name their image and map variants; graphs reach theirs through
+     * assets. */
     append(&text, "vec4 sg_image_sample(int id,vec2 uv) {\n");
     for (int i = 0; i < set->count; i++) {
         append(&text, " if(id==%d) return textureLod(sg_image_%d,uv,0.0);\n", set->images[i], i);
@@ -842,13 +880,16 @@ const shader_asset *shader_catalog_material_asset_find(
     if (catalog) {
         for (int i = 0; i < count; i++) {
             if (!strcmp(catalog[i]->name, name)) {
-                return catalog[i]->shape ? NULL : catalog[i];
+                return !catalog[i]->shape && catalog[i]->graph.output_count == SHADER_OUTPUT_MAX
+                         ? catalog[i]
+                         : NULL;
             }
         }
         return NULL;
     }
     int id = render_shader_find(name);
-    return id && !shader_catalog_assets[id - 1].shape
+    return id && !shader_catalog_assets[id - 1].shape &&
+                   shader_catalog_assets[id - 1].graph.output_count == SHADER_OUTPUT_MAX
              ? &shader_catalog_assets[id - 1]
              : NULL;
 }
@@ -864,6 +905,12 @@ bool shader_catalog_model_material_entries(
 )
 {
     memset(values, 0, 32 * 4 * sizeof(float));
+    if (shape && fallback && fallback->graph.output_count != SHADER_OUTPUT_MAX) {
+        if (error) {
+            snprintf(error->message, sizeof error->message, "Shape material must return surface outputs");
+        }
+        return false;
+    }
     int slots = shape && shape->is_model ? acount(shape->model.material_slots) : 0;
     int used = 0;
     *length = slots + 1;
@@ -977,11 +1024,13 @@ bool shader_catalog_model_material_contract_validate(
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         const shader_asset *asset = i + 1 == replaced ? candidate
                                                       : &shader_catalog_assets[i];
-        if (asset && asset->name[0] && !asset->shape) {
+        if (asset && asset->name[0] && !asset->shape &&
+            asset->graph.output_count == SHADER_OUTPUT_MAX) {
             apush(catalog, asset);
         }
     }
-    if (candidate && replaced > acount(shader_catalog_assets) && !candidate->shape) {
+    if (candidate && replaced > acount(shader_catalog_assets) &&
+        !candidate->shape && candidate->graph.output_count == SHADER_OUTPUT_MAX) {
         apush(catalog, candidate);
     }
     const shader_asset *empty = NULL;
@@ -1116,7 +1165,9 @@ bool render_shader_model_material_snapshot(
     if (!render_shader_is_model(index) || fallback < 0 ||
         fallback > acount(shader_catalog_assets) ||
         (fallback && (!shader_catalog_assets[fallback - 1].name[0] ||
-                      shader_catalog_assets[fallback - 1].shape))) {
+                      shader_catalog_assets[fallback - 1].shape ||
+                      shader_catalog_assets[fallback - 1].graph.output_count !=
+                          SHADER_OUTPUT_MAX))) {
         if (error) {
             snprintf(error->message, sizeof error->message, "Model material snapshot requires valid model and Material IDs.");
         }
@@ -1179,7 +1230,7 @@ bool shader_catalog_validate_model_values(
     model_bounds bounds;
     return model_program_prepare(&shape->model, incoming, prepared, &bounds, error);
 }
-bool render_shader_binding_parameters_validate(const GameShader *binding, const char *text, shader_error *error)
+bool render_shader_binding_parameters_validate(const Shader *binding, const char *text, shader_error *error)
 {
     int shape_id = binding ? render_shader_find(binding->shape) : 0;
     int material_id = binding ? render_shader_find(binding->material) : 0;
@@ -1371,7 +1422,7 @@ bool render_shader_model_snapshot(
     if (!render_shader_is_model(index)) {
         return false;
     }
-    const GameShader *binding = world ? GAME_GameShader_get_const(world, entity) : NULL;
+    const Shader *binding = world ? Shader_get_const(world, entity) : NULL;
     int material_id = binding ? render_shader_find(binding->material) : 0;
     shader_asset *asset = &shader_catalog_assets[index - 1];
     const shader_asset *material = material_id
@@ -1537,7 +1588,7 @@ bool render_shader_bounds(int index, float bounds[2])
            isfinite(bounds[1]);
 }
 bool render_shader_contains(
-    const GameShader *binding,
+    const Shader *binding,
     ecs_world *world,
     ecs_entity entity,
     const float local[2],
@@ -1652,7 +1703,7 @@ const char *shader_catalog_write_parameter_value(void *service, const pin_value 
     ecs_world *world = service;
     pin_value target = inputs[0], name = inputs[1], value = inputs[2];
     ecs_entity entity = ecs_entity_from_u64(target.u64);
-    const GameShader *binding = world ? GAME_GameShader_get_const(world, entity) : NULL;
+    const Shader *binding = world ? Shader_get_const(world, entity) : NULL;
     int id = binding ? render_shader_find(shape ? binding->shape : binding->material)
                      : 0;
     if (!id || !name.str) {

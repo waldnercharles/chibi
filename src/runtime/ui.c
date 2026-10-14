@@ -9,19 +9,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct game_ui
+struct ui
 {
-    game_ui_element *elements;
-    game_ui_datum *data;
+    ui_element *elements;
+    ui_datum *data;
     uint64_t revision;
 };
 
-game_ui *game_ui_new()
+ui *ui_new()
 {
-    return xcalloc(1, sizeof(game_ui));
+    return xcalloc(1, sizeof(ui));
 }
 
-static void element_free(game_ui_element *e)
+static void element_free(ui_element *e)
 {
     free(e->selector);
     free(e->text);
@@ -36,13 +36,13 @@ static void element_free(game_ui_element *e)
     afree(e->styles);
 }
 
-static void datum_free(game_ui_datum *d)
+static void datum_free(ui_datum *d)
 {
     free(d->name);
     av_value_free(d->value);
 }
 
-void game_ui_reset(game_ui *ui)
+void ui_reset(ui *ui)
 {
     for (int i = 0; i < acount(ui->elements); i++) {
         element_free(&ui->elements[i]);
@@ -55,19 +55,19 @@ void game_ui_reset(game_ui *ui)
     ui->revision++;
 }
 
-void game_ui_free(game_ui *ui)
+void ui_free(ui *ui)
 {
     if (!ui) {
         return;
     }
-    game_ui_reset(ui);
+    ui_reset(ui);
     free(ui);
 }
 
-static game_ui_element *find(const game_ui *ui, uint64_t entity, const char *element)
+static ui_element *find(const ui *ui, uint64_t entity, const char *element)
 {
     for (int i = 0; i < acount(ui->elements); i++) {
-        game_ui_element *e = &ui->elements[i];
+        ui_element *e = &ui->elements[i];
         if (e->entity == entity && strcmp(e->selector, element) == 0) {
             return e;
         }
@@ -77,19 +77,19 @@ static game_ui_element *find(const game_ui *ui, uint64_t entity, const char *ele
 
 /* The element to change, created on first use and stamped with a new
  * revision, or NULL for an empty selector. */
-static game_ui_element *change(game_ui *ui, uint64_t entity, const char *element)
+static ui_element *change(ui *ui, uint64_t entity, const char *element)
 {
     if (!element || !element[0]) {
         return NULL;
     }
-    game_ui_element *e = find(ui, entity, element);
+    ui_element *e = find(ui, entity, element);
     if (!e) {
         apush(
             ui->elements,
-            ((game_ui_element){ .entity = entity,
-                                .selector = xstrdup(element),
-                                .visible = -1,
-                                .reveal = -1 })
+            ((ui_element){ .entity = entity,
+                           .selector = xstrdup(element),
+                           .visible = -1,
+                           .reveal = -1 })
         );
         e = &alast(ui->elements);
     }
@@ -97,9 +97,9 @@ static game_ui_element *change(game_ui *ui, uint64_t entity, const char *element
     return e;
 }
 
-bool game_ui_set_text(game_ui *ui, uint64_t entity, const char *element, const char *text)
+bool ui_set_text(ui *ui, uint64_t entity, const char *element, const char *text)
 {
-    game_ui_element *e = text ? change(ui, entity, element) : NULL;
+    ui_element *e = text ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -108,9 +108,9 @@ bool game_ui_set_text(game_ui *ui, uint64_t entity, const char *element, const c
     return true;
 }
 
-bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const char *name, bool on)
+bool ui_set_class(ui *ui, uint64_t entity, const char *element, const char *name, bool on)
 {
-    game_ui_element *e = name && name[0] ? change(ui, entity, element) : NULL;
+    ui_element *e = name && name[0] ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -120,7 +120,7 @@ bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const 
             return true;
         }
     }
-    apush(e->classes, ((game_ui_class){ xstrdup(name), on }));
+    apush(e->classes, ((ui_class){ xstrdup(name), on }));
     return true;
 }
 
@@ -138,20 +138,19 @@ static bool property_name(const char *name)
     return true;
 }
 
-bool game_ui_set_style(game_ui *ui, uint64_t entity, const char *element, const char *property, const char *value)
+bool ui_set_style(ui *ui, uint64_t entity, const char *element, const char *property, const char *value)
 {
-    game_ui_element *e = property_name(property) && value
-                           ? change(ui, entity, element)
-                           : NULL;
+    ui_element *e = property_name(property) && value ? change(ui, entity, element)
+                                                     : NULL;
     if (!e) {
         return false;
     }
-    game_ui_style *style = NULL;
+    ui_property_override *style = NULL;
     for (int i = 0; !style && i < acount(e->styles); i++) {
         style = !strcmp(e->styles[i].property, property) ? &e->styles[i] : NULL;
     }
     if (!style) {
-        apush(e->styles, ((game_ui_style){ .property = xstrdup(property) }));
+        apush(e->styles, ((ui_property_override){ .property = xstrdup(property) }));
         style = &alast(e->styles);
     }
     free(style->value);
@@ -159,9 +158,9 @@ bool game_ui_set_style(game_ui *ui, uint64_t entity, const char *element, const 
     return true;
 }
 
-bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible)
+bool ui_set_visible(ui *ui, uint64_t entity, const char *element, bool visible)
 {
-    game_ui_element *e = change(ui, entity, element);
+    ui_element *e = change(ui, entity, element);
     if (!e) {
         return false;
     }
@@ -169,9 +168,9 @@ bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool
     return true;
 }
 
-bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float value)
+bool ui_set_value(ui *ui, uint64_t entity, const char *element, float value)
 {
-    game_ui_element *e = isfinite(value) ? change(ui, entity, element) : NULL;
+    ui_element *e = isfinite(value) ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -180,9 +179,9 @@ bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float 
     return true;
 }
 
-bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element)
+bool ui_focus(ui *ui, uint64_t entity, const char *element)
 {
-    game_ui_element *e = change(ui, entity, element);
+    ui_element *e = change(ui, entity, element);
     if (!e) {
         return false;
     }
@@ -190,9 +189,9 @@ bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element)
     return true;
 }
 
-bool game_ui_click(game_ui *ui, uint64_t entity, const char *element)
+bool ui_click(ui *ui, uint64_t entity, const char *element)
 {
-    game_ui_element *e = change(ui, entity, element);
+    ui_element *e = change(ui, entity, element);
     if (!e) {
         return false;
     }
@@ -200,9 +199,9 @@ bool game_ui_click(game_ui *ui, uint64_t entity, const char *element)
     return true;
 }
 
-bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step)
+bool ui_move_focus(ui *ui, uint64_t entity, const char *element, int step)
 {
-    game_ui_element *e = step ? change(ui, entity, element) : NULL;
+    ui_element *e = step ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -210,10 +209,9 @@ bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int s
     return true;
 }
 
-bool game_ui_show_popover(game_ui *ui, uint64_t entity, const char *element, float x, float y)
+bool ui_show_popover(ui *ui, uint64_t entity, const char *element, float x, float y)
 {
-    game_ui_element *e = isfinite(x) && isfinite(y) ? change(ui, entity, element)
-                                                    : NULL;
+    ui_element *e = isfinite(x) && isfinite(y) ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -223,9 +221,9 @@ bool game_ui_show_popover(game_ui *ui, uint64_t entity, const char *element, flo
     return true;
 }
 
-bool game_ui_reveal_row(game_ui *ui, uint64_t entity, const char *element, int row)
+bool ui_reveal_row(ui *ui, uint64_t entity, const char *element, int row)
 {
-    game_ui_element *e = row >= 0 ? change(ui, entity, element) : NULL;
+    ui_element *e = row >= 0 ? change(ui, entity, element) : NULL;
     if (!e) {
         return false;
     }
@@ -258,12 +256,12 @@ static bool data_path(const char *path)
     return true;
 }
 
-bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_value *value)
+bool ui_set_data(ui *ui, uint64_t entity, const char *name, const av_value *value)
 {
     if (!data_path(name) || !value) {
         return false;
     }
-    game_ui_datum *d = NULL;
+    ui_datum *d = NULL;
     for (int i = 0; !d && i < acount(ui->data); i++) {
         d = ui->data[i].entity == entity && !strcmp(ui->data[i].name, name)
               ? &ui->data[i]
@@ -273,7 +271,7 @@ bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_v
         return true;
     }
     if (!d) {
-        apush(ui->data, ((game_ui_datum){ .entity = entity, .name = xstrdup(name) }));
+        apush(ui->data, ((ui_datum){ .entity = entity, .name = xstrdup(name) }));
         d = &alast(ui->data);
     }
     av_value_free(d->value);
@@ -282,35 +280,28 @@ bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_v
     return true;
 }
 
-int game_ui_data_count(const game_ui *ui)
+int ui_data_count(const ui *ui)
 {
     return acount(ui->data);
 }
 
-const game_ui_datum *game_ui_data_at(const game_ui *ui, int index)
+const ui_datum *ui_data_at(const ui *ui, int index)
 {
     assert(index >= 0 && index < acount(ui->data));
     return &ui->data[index];
 }
 
-void game_ui_measure(
-    game_ui *ui,
-    uint64_t entity,
-    const char *element,
-    float scroll_top,
-    float view_height,
-    float content_height
-)
+void ui_measure(ui *ui, uint64_t entity, const char *element, float scroll_top, float view_height, float content_height)
 {
     assert(element && element[0]);
-    game_ui_element *e = find(ui, entity, element);
+    ui_element *e = find(ui, entity, element);
     if (!e) {
         apush(
             ui->elements,
-            ((game_ui_element){ .entity = entity,
-                                .selector = xstrdup(element),
-                                .visible = -1,
-                                .reveal = -1 })
+            ((ui_element){ .entity = entity,
+                           .selector = xstrdup(element),
+                           .visible = -1,
+                           .reveal = -1 })
         );
         e = &alast(ui->elements);
     }
@@ -320,9 +311,9 @@ void game_ui_measure(
     e->content_height = content_height;
 }
 
-bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value)
+bool ui_value(const ui *ui, uint64_t entity, const char *element, float *value)
 {
-    const game_ui_element *e = element ? find(ui, entity, element) : NULL;
+    const ui_element *e = element ? find(ui, entity, element) : NULL;
     if (!e || !e->has_value) {
         return false;
     }
@@ -330,7 +321,7 @@ bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, floa
     return true;
 }
 
-void game_ui_forget(game_ui *ui, uint64_t entity)
+void ui_forget(ui *ui, uint64_t entity)
 {
     int kept = 0, before = acount(ui->elements) + acount(ui->data);
     for (int i = 0; i < acount(ui->elements); i++) {
@@ -355,17 +346,17 @@ void game_ui_forget(game_ui *ui, uint64_t entity)
     }
 }
 
-uint64_t game_ui_revision(const game_ui *ui)
+uint64_t ui_revision(const ui *ui)
 {
     return ui->revision;
 }
 
-int game_ui_element_count(const game_ui *ui)
+int ui_element_count(const ui *ui)
 {
     return acount(ui->elements);
 }
 
-game_ui_element *game_ui_element_at(game_ui *ui, int index)
+ui_element *ui_element_at(ui *ui, int index)
 {
     assert(index >= 0 && index < acount(ui->elements));
     return &ui->elements[index];
@@ -377,9 +368,9 @@ game_ui_element *game_ui_element_at(game_ui *ui, int index)
    and compiled behaviors. Arguments are the data inputs in order: Entity,
    Element, then the node's own values. */
 
-bool game_ui_scroll(const game_ui *ui, uint64_t entity, const char *selector, float values[3])
+bool ui_scroll(const ui *ui, uint64_t entity, const char *selector, float values[3])
 {
-    const game_ui_element *element = selector ? find(ui, entity, selector) : NULL;
+    const ui_element *element = selector ? find(ui, entity, selector) : NULL;
     bool known = element && element->measured;
     values[0] = known ? element->scroll_top : 0;
     values[1] = known ? element->view_height : 0;

@@ -226,6 +226,9 @@ static bool wait_valid(void *owner)
 static bool wait_runnable(void *owner, double now)
 {
     execution_activation *a = ((command_wait *)owner)->activation;
+    if (!a->finished && !a->running && program_task_due(a, now)) {
+        return true;
+    }
     if (a->finished || a->running || a->context.wake_time > now) {
         return false;
     }
@@ -342,7 +345,7 @@ static int begin_command(behavior_function_context *ctx, int command)
         int completed = program_complete_action(
             ctx,
             c->node_id,
-            ctx->command_results + c->result_first,
+            c->result_count ? ctx->command_results + c->result_first : NULL,
             c->result_count
         );
         wait->delivered = true;

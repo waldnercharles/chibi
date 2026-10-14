@@ -82,9 +82,35 @@ TEST_CASE(box3d_box_falls_rests_and_answers_raycasts)
     return true;
 }
 
+TEST_CASE(box3d_contact_manifold_storage_can_be_reused)
+{
+    b3WorldDef def = b3DefaultWorldDef();
+    world = b3CreateWorld(&def);
+    add_box(b3_staticBody, (b3Pos){ 0.0f, -1.0f, 0.0f }, 20.0f, 1.0f, 20.0f);
+
+    // Single manifolds have float alignment. Their allocator freelist stores pointers.
+    // Several contacts exercise consecutive slots, then both freelist writes and reads.
+    for (int pass = 0; pass < 2; pass++) {
+        b3BodyId cubes[4];
+        for (int i = 0; i < 4; i++) {
+            cubes[i] = add_box(b3_dynamicBody, (b3Pos){ 3.0f * i, 0.5f, 0.0f }, 0.5f, 0.5f, 0.5f);
+        }
+        for (int i = 0; i < frames; i++) {
+            b3World_Step(world, step, substeps);
+        }
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(within(b3Body_GetPosition(cubes[i]).y, 0.5f, 0.02f));
+            b3DestroyBody(cubes[i]);
+            REQUIRE(!b3Body_IsValid(cubes[i]));
+        }
+    }
+    return true;
+}
+
 void test_box3d()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(box3d_box_falls_rests_and_answers_raycasts);
+    RUN_TEST_CASE(box3d_contact_manifold_storage_can_be_reused);
     pu_clear_setup();
 }

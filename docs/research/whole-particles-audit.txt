@@ -9,7 +9,7 @@ EVENT_EXCLUDED ArenaEnemyVisualBehavior.Damaged graph=96 node=120 type=Trigger V
 FUNCTION_WHOLE ArenaImpactFeedback.Spawn Surface Pulse
 FUNCTION_EXCLUDED ArenaImpactFeedback.Prepare Enemy Experience graph=543 node=549 type=Function Entry pin=3 output=1 reason=aggregate contains unsupported fields
 EVENT_WHOLE ArenaImpactFeedback.Damaged
-EVENT_EXCLUDED ArenaImpactFeedback.Died graph=0 node=123 type=Get_GameShader pin=0 output=1 reason=data operation
+EVENT_EXCLUDED ArenaImpactFeedback.Died graph=0 node=123 type=Get_Shader pin=0 output=1 reason=data operation
 FUNCTION_EXCLUDED ArenaPickupBehavior.Wait and Pulse graph=1 node=76 type=Scene Rhythm pin=0 output=1 reason=data operation
 FUNCTION_EXCLUDED ArenaPickupBehavior.Collect Along Spiral graph=6 node=232 type=Contains pin=0 output=1 reason=data operation
 FUNCTION_WHOLE ArenaPickupBehavior.Start Collection
@@ -91,8 +91,8 @@ EVENT_WHOLE ProjectileBehavior.Tick
 FUNCTION_WHOLE ProjectileHitBehavior.Impact Particles
 EVENT_WHOLE ProjectileHitBehavior.Contact Begin
 FUNCTION_WHOLE SpawnTelegraphBehavior.Arrive At Marker
-EVENT_EXCLUDED SpawnTelegraphBehavior.Begin graph=0 node=6 type=Get_GameSpawnRequest pin=0 output=1 reason=data operation
-EVENT_EXCLUDED SpawnTelegraphBehavior.Tick graph=0 node=6 type=Get_GameSpawnRequest pin=0 output=1 reason=data operation
+EVENT_EXCLUDED SpawnTelegraphBehavior.Begin graph=0 node=6 type=Get_SpawnRequest pin=0 output=1 reason=data operation
+EVENT_EXCLUDED SpawnTelegraphBehavior.Tick graph=0 node=6 type=Get_SpawnRequest pin=0 output=1 reason=data operation
 EVENT_WHOLE SurfacePulseBehavior.Begin
 EVENT_WHOLE SurfacePulseBehavior.Tick
 EVENT_WHOLE TwinStickInputBehavior.Input

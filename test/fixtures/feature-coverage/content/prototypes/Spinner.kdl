@@ -1,9 +1,9 @@
 name "Spinner"
 components {
-    GAME.GameAppearance color=0xe1a95bff height=8.0 width=32.0
-    GAME.GameBody allow_rotation=#true type="Dynamic"
-    GAME.GameCollider category=1 height=8.0 mask=1 shape="Box" width=32.0
-    GAME.GameJoint motor=#true speed=1.0 strength=1000000.0
-    (object)GAME.GameOrientation
-    GAME.GameTransform x=-96.0 y=64.0
+    Appearance color=0xe1a95bff height=8.0 width=32.0
+    Body allow_rotation=#true type="Dynamic"
+    Collider category=1 height=8.0 mask=1 shape="Box" width=32.0
+    Joint motor=#true speed=1.0 strength=1000000.0
+    (object)Orientation
+    Transform x=-96.0 y=64.0
 }

@@ -14,6 +14,8 @@
 float render_shader_distance_lipschitz(int index);
 
 int render_shader_find(const char *name);
+/* The name of the shader render_shader_find returned an id for. */
+const char *render_shader_name(int id);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
 /* Copies applied public metadata. Strings are borrowed until the next model
@@ -70,11 +72,7 @@ bool render_shader_model_hit(
     model_hit *out,
     shader_error *error
 );
-bool render_shader_binding_parameters_validate(
-    const GameShader *binding,
-    const char *text,
-    shader_error *error
-);
+bool render_shader_binding_parameters_validate(const Shader *binding, const char *text, shader_error *error);
 
 typedef struct
 {
@@ -102,6 +100,10 @@ bool render_shader_is_shape(int index);
 /* Exact centered sphere with a constant or scalar parameter radius. */
 bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius);
 bool render_shader_is_model(int index);
+bool render_shader_is_particle(int index);
+/* malloc-owned portable function named sg_particle; rejected unless the catalog
+ * record satisfies the complete particle signature and operation contract. */
+char *render_shader_particle_glsl(int index, shader_error *);
 /* Model bounds use the same validated parameter snapshot as distance evaluation. */
 bool render_shader_model_bounds(
     int index,
@@ -167,7 +169,7 @@ void render_shader_parameters(
 );
 bool render_shader_bounds(int index, float bounds[2]);
 bool render_shader_contains(
-    const GameShader *binding,
+    const Shader *binding,
     ecs_world *world,
     ecs_entity entity,
     const float local[2],

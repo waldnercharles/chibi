@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 16. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 24. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 16
+version 24
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -33,7 +33,7 @@ name "Main"
         name "Ship"
         prototype "Ship"
         components {
-            "GAME.GameProjectile" age=0.0 lifetime=2.0
+            "Projectile" age=0.0 lifetime=2.0
         }
     }
 }
@@ -75,8 +75,9 @@ system FreeMotion(position: Transform, velocity: Velocity)
 
 A file under `content/components` declares one component instead: its fields
 and their types, ranges and units. Scripts check those units, and the engine
-fields' units and `dt`'s seconds, and a mismatch is a warning. See "Declare
-components" in `runtime-authoring.md`.
+fields' units and `dt`'s seconds. Proven unit mismatches and malformed referenced
+unit metadata are compile errors. See "Declare components" in
+`runtime-authoring.md`.
 
 A behavior, library or system is a readable program. Its declarations and
 statements resolve into an owned typed semantic program. Direct lowering produces
@@ -111,6 +112,42 @@ root is a syntax error with the diagnostic "Remove redundant self.". Inside a
 callable, `self.` still names the owner's member, so it disambiguates a local that
 shadows the name. The `state` keyword is optional at behavior root and formatting
 removes it.
+
+`::` defines a compile-time constant, function or union type. A constant such as
+`BaseDamage :: 12` has no writable instance storage. Its initializer can use literals,
+other constants and built-in operators, including constant arrays and reflected
+structs; runtime values and function calls are rejected. The compiler evaluates
+these expressions once when it builds the module. `:=` continues to infer a mutable
+value: persistent state at program scope, a local inside an executable block.
+
+The graph derives variable operations from these declarations. Declaring
+`level: entity` and assigning `level = globals.Level` produces a **Set Level**
+node with one entity-valued **Value** input. It stores the named scene entity in
+this behavior instance's `level` variable. The assignment does not change scenes
+or rewrite the global binding. The same mechanism produces **Set Score** from
+`score = 10`; no native node registration or C code is needed.
+
+In Studio, add a variable in **Members**, then edit its **Name**, **Type** and
+default in **Properties**. The node chooser offers its **Get** and **Set**
+operations. Dragging the variable onto the graph creates a Get; Alt-dragging
+creates a Set. These edits update the same source and use normal undo.
+
+An authored function is the reusable way to create a custom operation. Its
+parameters become inputs and its results become outputs. A call uses the same
+definition wherever it appears. Small pure calls can be folded into their
+consumer's input without changing the source or the number of evaluations.
+Use **Open Function** on a call or its folded input to inspect the definition.
+**Inline Function into Caller** instead replaces a supported call with its body
+in the source as one undoable edit. The definition remains available for other
+calls. **Fold into Input** and **Show Input Nodes** only change presentation.
+
+Adding a standalone variable **Get** creates a named local read, such as
+`levelValue := state."level"`. Its execution pins show when the read occurs; its
+output retains that value. Choosing the variable as an existing input's source
+reads it when that consumer runs. The `state` qualifier identifies the declared
+state even when a local parameter has the same name. A newly added **Set** uses
+a zero default where one can be written, or the variable's current value for
+types such as entities; edit its Value input to choose the intended source.
 
 Names may be identifiers or quoted display names. Prototype references in native
 prototype arguments resolve project symbols, such as `spawn(MovementEmitter)`.
@@ -172,9 +209,9 @@ entity. Reads can traverse nested reflected structs; assigning a nested struct
 subfield is currently rejected. Component and field names that cannot be resolved
 produce source diagnostics. Prototype membership improves completion ranking;
 it does not guarantee that a component is present on a live entity.
-A component path used as a condition tests presence instead: `if self.GameDash`,
-`!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
-entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
+A component path used as a condition tests presence instead: `if self.Dash`,
+`!self.Dash`, `self.Dash == nil` and `&&`/`||` operands ask whether the
+entity has the component, so `if self.Dash && self.Dash.remaining > 0`
 reads the field only when it exists.
 `chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
 becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
@@ -183,7 +220,7 @@ spells `get_variable<"x">()` as `state."x"` and operator functions such as
 `add(a, b)` and `less(a, b)` as operators. Each rewrite is kept only when the
 program analyzes the same. Awaiting a component accessor does not wait.
 
-Ordinary blocks support assignments, compound assignments, `if`/`else`, `match`, `while`,
+Ordinary blocks support assignments, compound assignments, `if`/`else`, `switch`, `while`,
 `for (i in first..last)` with inclusive bounds, `foreach (item in array)`,
 `break`, `continue` and calls. An ordinary call invokes its native entry and then
 continues with the following statement, including entries that emit no outcome.
@@ -194,6 +231,28 @@ one conventional completion produce a diagnostic when awaited. Native sequence
 branches use `sequence { branch { ... } branch { ... } }` and run in their native
 order. Labels and `goto` express shared or irreducible control flow when structured
 blocks cannot describe it.
+
+A `switch` evaluates its value once and executes the matching case. Cases never
+fall through, so they do not need `break`. `case:` is the default. The switch
+keeps its outer braces; braces around each case body are optional:
+
+```code
+switch level {
+    case 1:
+        damage = 10
+    case 2: {
+        damage = 20
+    }
+    case:
+        damage = 30
+}
+```
+
+Project version 24 migrates existing `function` declarations and `match` statements
+to these forms. Those old keywords are no longer runtime syntax.
+The new reserved words are `fn`, `union`, `switch`, `is`, `and`, `or`, and `where`.
+If a version 23 project uses one as an identifier, rename it and its references
+before migrating; the migration does not rename identifiers automatically.
 
 An unawaited call continues before its native completes, so using its data
 result is an error. An awaited call with one data result can declare a
@@ -211,62 +270,133 @@ Capturing a shared action instance is rejected because later invocations could
 replace its output. Scopes with explicit labels cannot declare awaited results,
 because a jump could bypass their initialization. An ordinary block declaration
 such as `x := calculation;` evaluates once at that execution point using a native
-Snapshot node. Later reads use the captured value; a root-level `local`
-remains a lazy computation.
+Snapshot node. Later reads use the captured value.
+
+### Unions and patterns
+
+Named tagged unions declare alternatives with optional owned payload fields.
+Literal unions restrict a value to the listed strings. Type alternatives use `|`.
+
+```code
+AttackState :: union { Idle | Windup(remaining: number) | Active(damage: number) }
+Status :: union { "Yes" | "No" }
+
+phase := AttackState.Windup(0.3)
+switch phase {
+    case .Idle: ready = true
+    case .Windup(remaining): countdown = remaining
+    case .Active(damage): health -= damage
+}
+
+result: number | Cancelled = 0
+if result is number num_result {
+    total += num_result
+}
+extracted := result as number
+if extracted {
+    total += extracted
+}
+```
+
+`is` and `is not` test types or union alternatives without converting values.
+Matching branches narrow the original symbol; the opposite branch removes the
+tested alternatives. A terminating branch also permits the surviving path to
+keep its proof. Assignment or calls that may change the value invalidate that
+proof. Pattern bindings belong to the matching arm or positive condition.
+Switches over finite unions must cover every alternative or include `case:`.
+Union declarations require a value, and union function results must be initialized
+on every return path. Guard an optional union before switching over it.
+
+`as T` safely extracts `T?`: a mismatch is `nil`, and a match preserves zero,
+false, and empty text as present values. It does not perform numeric conversion.
+An optional condition tests presence; inside that branch the value has type `T`.
+
+Union values retain immutable snapshots of their payloads in execution-owned
+storage. Trivial payload fields live inline in the tagged record; creating that
+record uses arena storage. `Cancelled` is a shared payload-free singleton.
+Union values can be local values, parameters, results and behavior state. ECS
+component fields currently reject unions because ECS storage does not own their
+managed payloads. Recursive owned union payload types are rejected; use task or
+entity identities for references to independently owned work or entities.
 
 ### Tasks
 
 A function waits when its body contains `await` or `yield`. Calling such a
-function without `await` starts a task: the function runs inside the call until
-its first suspension, then runs beside the caller, and the call returns a `task`
-handle. `await` on the call or on the handle waits for the function and gives its
-result.
+function without `await` starts a task: it runs inside the call until its first
+suspension, then runs beside the caller and returns a task handle. Awaiting a
+call gives its result directly. Awaiting a `task<T>` handle gives `T | Cancelled`.
+The successful alternative contains the original result, including zero, false,
+and empty strings. `Cancelled` is a distinct singleton, never a default result.
+It is reserved for cancellation and cannot appear in a task's successful result type.
+`Cancelled` is also a semantic builtin: a bare declaration cannot reuse its name.
+Qualified names such as `Outcome.Cancelled` and component fields named `Cancelled`
+remain legal; this restriction does not make it a grammar keyword.
 
 ```code
 behavior Turret {
     pulse: task
     ready: bool = false
 
-    function Charge(time: double) -> (power: double) {
+    Charge :: fn(time: double) -> (power: double) {
         await Delay(time)
         yield
         return(time * 2)
     }
 
     on Begin {
-        pulse = Charge(1)     // starts a task and continues here
-        power := await pulse  // waits for the task's result
-        if !pulse {           // a task is true while it is running
-            ready = true
+        pulse = Charge(1)
+        cancel pulse after 2
+        result := await pulse
+        if result is Cancelled {
+            ready = false
+        } else {
+            ready = result > 0
         }
-        cancel pulse          // stops it and every task it started
     }
 }
 ```
 
 - `yield` resumes on the next update.
-- `cancel t` stops a running task and the tasks it started; anything awaiting it
-  wakes with default results. Cancelling a finished task does nothing.
-- A finished task keeps its results until 32 more of its owner's tasks finish.
-  Awaiting it after that is a runtime error, so keep a result you need longer in
-  a state.
-- A task is true while it is running, so `if t` and `if !t` test it.
-- A `task` state needs no default; until assigned it refers to no task.
-- Tasks belong to the entity or system registration that started them and stop
-  when it is removed. A running task never blocks the events and ticks of its
-  owner.
-- Calls into a library start tasks the same way, such as `Store.Work()`.
-- A `task` state takes the function of the tasks assigned to it, so after
-  `pulse = Charge(1)`, `power := await pulse` gives `Charge`'s result. A state
-  that holds tasks of different functions, or a task passed in as a plain
-  `task`, can be awaited only for completion.
-- Awaiting a task whose function has several results gives the same tuple as
-  awaiting the call: `(await t).b`.
-- A task keeps references to state, components and locals for as long as it
-  runs, so `Bump(health)` works. A task shares a local with its caller like a
-  closure: each sees the other's writes while the caller runs, and the task
-  keeps the local after the caller returns. Each declaration makes a new local,
-  so tasks started in a loop each keep their own.
+- `cancel t` stops a running task and the tasks it started. Awaiters receive
+  `Cancelled` and can continue; cancelling the awaited target does not by itself
+  cancel the awaiting caller.
+- `cancel t after n` schedules cancellation without waiting. Its deadline is the
+  task's original start time plus `n`, measured in the same game-clock seconds as
+  `Delay`. The start time is recorded before the task's initial synchronous work.
+  Negative or NaN durations count as zero; positive infinity sets no finite
+  deadline. Repeated deadlines keep the earliest. An overdue pending task stops
+  at a safe point; already performed effects remain. Completion removes the deadline, and
+  cancelling a completed task leaves its successful result intact.
+- A completed result remains available while a live handle or waiter can observe
+  it within its owner. Copied handles name the same task. Awaited values have their
+  own snapshots and remain valid after the task handle is dropped. Locals stop
+  retaining results when their scope exits, including `break`, `continue`, and
+  jumps to an enclosing scope; references held by other tasks keep their values.
+- Dropping the last handle does not cancel a running task. Unobserved completed
+  results are reclaimed at owner safe points, so repeated fire-and-forget work
+  does not accumulate results each frame. Collection visits live frames, typed
+  value banks, state, captured locals, and nested result values; task-slot storage
+  is reused up to the owner's peak number of simultaneously retained tasks.
+  Collection indexes live tasks once, then resolves each handle in logarithmic
+  time; chains of task results are visited iteratively. Primitive collections
+  are skipped because their elements cannot contain task handles.
+- A task is true while it is running, so `if t` and `if !t` test it. An unassigned
+  `task` state names no task; awaiting it yields `Cancelled`.
+- Handles remain bound to the entity or system registration that started them;
+  copying a handle to another owner does not grant that owner access to the task.
+  Tasks stop when their owner is removed. A running task never blocks its owner's
+  events and ticks.
+- Calls into a library start tasks in the same way, such as `Store.Work()`.
+- An explicit `task<T>` annotation declares the successful result type. A `task`
+  state infers its successful result from the functions assigned to it.
+  A state holding different function signatures, or a plain `task` parameter,
+  can be awaited only for completion.
+- Multiple function results form the successful tuple alternative. Narrow away
+  cancellation before accessing fields: `r := await t; if r is not Cancelled {
+  use(r.b) }`.
+- Tasks retain references to state, components, and locals. A captured local is
+  shared with its caller while the caller runs and remains alive after it returns.
+  Each declaration creates a new local, including declarations inside loops.
 
 The runtime retains call frames and captured locals across supported native waits
 and cancels owned invocations when their entity or system registration is
@@ -278,17 +408,15 @@ arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
 `nearest.Entity`. No result is selected by guessing the first output.
 
-A root-level `local` names a computation that each activation evaluates once,
-when it is first read, and keeps until the activation ends:
+A local declared inside an executable block evaluates its initializer at that
+statement and retains the value for that activation:
 
 ```code
-local nearest = find_nearest_entity(Owner: self, Radius: 500);
+nearest := find_nearest_entity(Owner: self, Radius: 500)
 ```
 
-A computation that should be recomputed at every read is written where it is
-read, or as a function. Assignments belong in executable blocks.
-
-A local is not an eager snapshot. Stateful capabilities shared by several paths
+A computation that should be recomputed is written where it is used or as a
+function. Assignments belong in executable blocks. Stateful capabilities shared by several paths
 have one named action instance. Methods invoke its named entries, and handlers
 consume its named outcomes. The instance keeps its state across method calls and
 events. An invocation runs any emitted outcome handler before its next statement.
@@ -305,12 +433,47 @@ behavior SharedGate {
 }
 ```
 
+A named function uses `Name :: fn(parameters) -> result_type { body }`. The `fn`
+marker is optional: these definitions have the same signature and behavior:
+
+```code
+DamageFor :: fn(level: int) -> number { return level * 2 }
+OtherDamage :: (level: int) -> number { return level * 2 }
+```
+
+A single result may be named with `-> (Damage: number)`, and multiple results retain
+that parenthesized form. Anonymous function values and closures are not supported
+by the current callable model.
+
+Function parameters and results can carry the same erased dimensional units as
+component fields:
+
+```code
+Distance :: (speed: u/s, elapsed: s) -> u {
+    return speed * elapsed
+}
+ChargeRate :: (charge: number charge, elapsed: s) -> number charge/s {
+    return charge / elapsed
+}
+```
+
+Known standalone unit names and compound units use `number` storage. An explicit
+numeric storage type can precede the unit, as in `float u/s` or `number charge`.
+Unknown bare type names remain errors; use the explicit form for a custom single
+dimension. Units are checked at calls, defaults, returns and reference writes,
+including named multiple results and imported signatures. Native callable
+metadata can supply the same contract. Incompatible known dimensions are compile
+errors, and unit-only signature edits invalidate affected compiled callers.
+Unannotated parameters/results remain dimensionally unknown; this does not infer
+unit-polymorphic signatures or permit cyclic library publication. Numeric
+inference and runtime representation stay unchanged.
+
 Functions declare data parameters and results. Ordinary functions infer their
-execution continuation; `pure function` declares a data-only signature. Calls
+execution continuation; `Name :: pure fn(...)` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
 `"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
 Type parameters preserve generic relationships, for example
-`function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
+`Identity :: fn<T: float>(item: T) -> (output: T) { ... }`. A function
 gives its results with `return x`, or `return(a, b)` in signature order. A bare `return` gives
 each result's current value.
 
@@ -409,11 +572,82 @@ component's value. A component cannot appear in both the parameter list and
 `without`, including an optional parameter.
 
 An explicit query declaration also supports `all`, `any`, `not` and `has`, such as
-`query all(has("GAME.GameTransform"), not(has("GAME.GameCollider")));`.
+`query all(has("Transform"), not(has("Collider")));`.
 When both a header and an explicit query are present, the query intersects the
 header's required and excluded components. A parameterless system may omit
 `()`; its body still has an implicit Tick, including an empty body. Systems
 without declared membership use the runtime's inferred component query.
+
+The separate header form, `system Move query position: Transform, velocity:
+Velocity where not Frozen { ... }`, supports Boolean membership filters and
+relationship-sourced bindings. `join aim: Targets.Transform?` groups a binding
+that follows an exclusive relationship; the existing comma-separated binding
+has the same meaning. `team: Team from ancestor(ChildOf)` selects the nearest
+matching ancestor. Sources also accept `from self` and `from Targets`. Header
+filters can test `self.Frozen`, `Targets.Frozen` or
+`ancestor(ChildOf).Frozen`; `has(Targets)` tests relationship existence without
+repeating the root's body. Access is inferred from the body. See
+[query headers and relationship sources](runtime-authoring.md) for source
+selection, explicit relationship loops, and their lifetime restrictions.
+
+### Shared-target reductions
+
+A synchronous system can contribute to a numeric component field without reading
+and writing the destination immediately:
+
+```chibi
+system Damage query projectile: Projectile {
+    reduce projectile.Target.Health.Damage += projectile.Damage
+}
+system Closest query candidate: Candidate {
+    reduce min(candidate.Target.Threat.Distance, candidate.Distance)
+}
+```
+
+The destination must be a writable numeric ECS component field. Contributions
+are evaluated when the statement runs, then published after the system batch
+finishes and before the next dependent system prepares its query. A producer
+cannot ordinarily read or write a component it reduces; this includes reachable
+helpers, bindings and value/change filters. Component-presence tests are allowed.
+The restriction lets separate systems calculate contributions to shared targets
+concurrently. Query rows within each system still execute sequentially.
+
+Ordinary `reduce` replays contributions in stable system/query order, including
+integer wrapping at the destination width, clamping each bounded-field update,
+and normal floating-point rounding. Min/max use the existing comparison-and-select
+rules: the incoming value wins ties and unordered NaN comparisons. Units are
+checked as for assignment. A failed system discards its contributions; earlier
+successful systems stay published, and later peers' contributions are discarded.
+This is not a rollback of ordinary writes. Debug pauses retain the unfinished
+reduction dispatch and resume it before dependent work proceeds.
+Reloading a paused system cancels its unfinished log. A scheduling change while
+paused restarts the current system phase with fresh dispatches, including systems
+already run in that phase; completed earlier engine phases stay complete. Scene
+reset and engine teardown also cancel held dispatches.
+
+Opt in to regrouped sums when the changed numeric behavior is acceptable:
+
+```chibi
+system Damage query projectile: Projectile {
+    reduce unordered projectile.Target.Health.Damage += projectile.Damage
+}
+```
+
+`unordered` combines contributions per target within each system, then adds the
+subtotal to the field. This reduces log entries and publication work when many
+rows share targets. It can change floating-point rounding, NaNs and signed zero,
+so use ordinary reductions for calculations that need the default reproducible
+order. Integer addition still wraps at its declared width. Unordered sums require
+fields without a stored range contract; clamping once would differ from clamping
+each update. A producer cannot mix unordered sums with ordered reductions on the
+same component. Min/max remain ordered. Publication occurs once per aggregated
+target field, so its write-revision count differs from the ordered form.
+
+Reduction logs and prepared query rows use temporary memory proportional to the
+work. Idle buffers have bounded retention; the retention limit does not limit
+valid query size. Reductions avoid conflicting direct writes, but do not guarantee
+a speedup: small workloads can cost more to collect and publish than a serial
+ordinary update.
 
 ### State lifetime and live reload
 
@@ -437,9 +671,43 @@ continuations are cancelled, and both entity-private and shared state start from
 the authored defaults. Compatible behavior instance reload does not preserve
 state across this system registration replacement.
 
+### Named scene entities
+
+The built-in `globals` namespace exposes entities named by authored
+`GlobalBinding` components. It is available in behaviors, libraries and systems:
+
+```chibi
+behavior CameraFollow {
+    player: entity
+    on Begin {
+        player = globals.Player
+    }
+    on Tick {
+        self.Transform = player.Transform
+    }
+}
+```
+
+Names are discovered from the project's prototypes and scenes before Play.
+`globals.Player` has type `entity`; it needs no string lookup or cast.
+Completion after `globals.` lists the declared names, and an unknown name is a
+source error. Definition, references and rename connect a member to its authored
+bindings. A name may be reused in different scenes; two entities cannot publish
+the same name in one running scene.
+
+Each read resolves the binding in the current scene. A declared name absent from
+that scene is a runtime error. Assigning the result to a behavior variable,
+as above, captures that handle rather than maintaining a live binding; it does
+not retarget the variable when the scene changes.
+
+Namespace members are read-only references: assign to an entity's writable
+component, such as `globals.Player.Transform`, rather than to `globals.Player`.
+The namespace itself is not a value. These bindings do not declare shared scalar
+variables or persistent save data.
+
 ### Input actions
 
-A project's input map, `content/input.kdl`, names each action, the GameControl
+A project's input map, `content/input.kdl`, names each action, the Control
 labels that hold it, and whether it also holds the Aim of input owners:
 
 ```kdl
@@ -463,7 +731,7 @@ for a tap released before that step. Action names are typed members, so
 map's actions. A pause or focus change keeps held actions, so resuming with the
 same controls held presses nothing again.
 
-Migrating a version 15 project moves its GameActionBinding components into the
+Migrating a version 15 project moves its ActionBinding components into the
 map, leaving out disabled and retained ones. Which action a script's
 `ActionBinding` or `PressedChanged` meant depended on its entity, so a script
 that still uses one stops the migration until it is rewritten with
@@ -515,7 +783,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 16. Executable files contain no generated identity
+Project manifests use version 24. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently
@@ -541,7 +809,95 @@ Vim editing preserve indentation on new lines and indent inside brace blocks.
 A connected input can retain a binding or literal for later disconnection:
 
 ```text
-reroute_data(In: fallback(driver, binding: component("GameMovement"), default: {speed: 0}));
+reroute_data(In: fallback(driver, binding: component("Movement"), default: {speed: 0}));
 ```
 
 `fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(binding: speed, default: 0)`; a binding must be writable. Defaults must be compatible literals.
+
+### Automatic performance diagnostics
+
+Ordinary code needs no `hot` or `noalloc` annotation. Successful source preparation
+exposes nonfatal `authoring_source.performance` diagnostics for allocation, copying,
+and values retained beyond their producing expression or frame. The shared
+`behavior_function_costs` API analyzes finalized normal instructions and follows
+linked callees, including library bodies. `execution_module_costs` also includes
+entry points, binding bodies, and imports. Evidence retains the originating
+function, instruction, capability, and source location.
+
+“Proven” means the generated body contains the identified operation; a conditional
+branch may never execute it. An allocation is a dynamic storage request, which
+an arena or pool may satisfy without a fresh heap allocation. Scalar moves do not
+count as managed copies. “Possible” covers nullable payloads, cache misses,
+runtime callbacks, and native code without a verified cost contract. Pure native
+functions are not assumed allocation-free. Folded constants and scalar arithmetic
+carry no such body costs. These summaries do not estimate elapsed time, operation
+counts, or algorithmic complexity, and exclude backend compilation and initial
+activation setup. Analysis
+is bounded to 1,024 definitions/modules and 200,000 instructions; exceeding a
+budget returns conservative possible costs and an incomplete summary.
+
+Normal native, Wasm and bytecode bodies omit source watch and pause operations.
+Native and Wasm inspection code is compiled on first use and cached for the
+retained definition. Concurrent native first-use inspection can execute bytecode
+until compilation publishes the complete code and resume map. Pauses and watches
+preserve the canonical instruction locations. Detaching inspection after a debug
+pause keeps that saved continuation canonical until its next real wait or
+completion, preserving values while temporarily forgoing optimization of that
+continuation.
+
+Normal VM and compiled bodies also remove construction, snapshots and tag/payload
+operations for nonescaping unions of plain scalars, including nested unions and
+aliases whose incoming values agree at forward control-flow joins. Isolated native
+calls with only plain scalar inputs and outputs preserve unrelated virtual values;
+the calls, side effects and errors still execute. Different values merged at a
+join, backedges, managed payloads, escaped values, authored calls, context callbacks
+and suspension retain their owning representation. Analysis has a bounded scratch
+budget and conservatively retains allocations when it cannot prove safety.
+Inspection retains the canonical
+operations. Numeric interval analysis removes proven redundant clamps and tests,
+and can compare original integers when widening them to `number` was exact.
+It preserves floating-point rounding, NaN and signed-zero behavior; `n := 0`
+still infers `number`. Generic component reads do not acquire range proofs from
+metadata alone.
+
+Read-only plain-array traversals can borrow their existing storage during a
+synchronous invocation, including loops that update unrelated scalar state.
+The compiler rejects borrowing when addresses escape, collection storage can
+change, raw header or pointer identity is observed, an opaque helper runs, or
+execution can suspend. Runtime guards check the actual array and element headers
+and exclude overlap with writable context, state, result, host-value, saved
+activation and VM scratch banks.
+Matching arrays avoid snapshot allocations and element copies; checking their
+headers still takes linear time. Other inputs retain the canonical deep copy and
+its errors, including mixed element headers supplied by native callers. Debug
+inspection retains owned snapshots, and prepared modules recompute the proof
+instead of trusting saved optimization flags. Purity alone does not establish
+that a helper cannot mutate an aliased collection.
+
+The same proof follows synchronous authored helper chains. Eligible array
+parameters become internal call-scoped read-only views automatically; no new
+parameter syntax or author annotation is required. The callee cannot mutate,
+return, retain, expose collection identity, start tasks, or suspend with a view.
+Unsupported or recursive call chains keep owning copies. Runtime checks cover
+actual argument headers, ancestor scratch and bound library state, and recognize
+only the engine's exact safe callbacks. Custom callbacks and debugging keep
+snapshots. Generated C conservatively retains caller snapshots around helper
+calls, while its shared call driver can still borrow verified helper arguments.
+These restrictions govern when the optimization applies; ordinary array helpers
+retain their existing value semantics when it cannot apply.
+
+Preview source preparation reuses unchanged analysis and executable generations
+through `authoring_sources_prepare_incremental`. Exact source identity/text,
+semantic catalog metadata/defaults, backend and native binding generation must match.
+Editing a library body rebuilds its transitive callers. Generations own their
+data independently of older collections; declaration discovery and parsing still
+run. Default comparison evidence is capped at 1 MiB and depth 64; unsupported
+defaults, managed struct pointers or padding can conservatively prevent reuse.
+Custom binding providers must supply a nonzero immutable generation to opt into
+reuse. This is an in-process cache, with no persistent artifacts.
+
+World-owned strings use a hash table with exact text comparison and stable
+allocations until world teardown. A null input interns as an empty string.
+Lookup has expected constant probe count at a bounded load factor; adversarial
+collisions can still require a linear scan. This structural improvement and the
+removed instrumentation work are not a measured speedup claim.

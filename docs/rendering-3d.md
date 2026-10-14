@@ -1,11 +1,11 @@
 # 3D rendering
 
 A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
-`GameTransform` and `GameGeometry3D` become lit solids; gameplay x/y maps to world
+`Transform` and `Geometry3D` become lit solids; gameplay x/y maps to world
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
 into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
-An entity with `GameTransform3D` and `GameGeometry3D` becomes a solid too. Its
+An entity with `Transform3D` and `Geometry3D` becomes a solid too. Its
 global transform, through any ChildOf parents, places the solid's center, turns
 it and scales it, and its `elevation` is ignored. An entity with both
 transforms draws at its Transform3D. Its Visual Transform turns and scales the
@@ -20,16 +20,16 @@ tiny, thin or sheared frame that keeps some volume stays. Picks
 and bounds follow the same placement, a model surface's included, and a Render
 State's fog culling reads the ground under its drawn pose. Point and spot
 lights, particles, trails and Surface Influences still place from
-`GameTransform`, and SDF and Mesh Surface 2D surfaces belong to the 2D
+`Transform`, and SDF and Mesh Surface 2D surfaces belong to the 2D
 renderer, which ignores Transform3D.
 
 ## Camera
 
-A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
+A `Camera` with a `Transform3D` looks along its global -Z with +Y up, so
 its local +X points right in the image. It looks from its drawn pose, so a
 camera riding a body moves between physics steps as the body does. Its `offset` moves the eye across the
 ground (gameplay y is world z), as it moves an overhead camera's target. One
-with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
+with only a `Transform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
 narrowest) to below 180, and zero picks 35 degrees. `near_clip` and `far_clip`
 are set together, with far at most a million times near, or both left at zero,
@@ -45,16 +45,16 @@ eye is from the origin.
 
 ## Lighting
 
-- **Directional Light** (`GameDirectionalLight`): color, intensity and the world
+- **Directional Light** (`DirectionalLight`): color, intensity and the world
   direction the light travels. A scene shows at most one; a second visible one is
   an error, and hidden ones are left out. Fog never culls it. With none, only
   ambient, point and spot lights shade the scene. `shadows` lets opaque solids
   block it, and `angular_diameter`, the sun's apparent size from 0 to 20
   degrees, softens their shadows (see Shadows).
-- **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
+- **Point Light** (`PointLight`): up to 32 per view, ranked by estimated
   influence on the camera. `shadows` lets opaque solids within its radius
   block it (see Point and spot light shadows).
-- **Spot Light** (`GameSpotLight`): a point light that shines along
+- **Spot Light** (`SpotLight`): a point light that shines along
   `direction` in a cone. It has full strength out to `inner_angle` across and
   fades to nothing at `outer_angle`, falling off with the square of how far a
   point lies into that edge. The outer angle can be 2 to 160 degrees, and the
@@ -62,11 +62,12 @@ eye is from the origin.
   hidden light. Spot and point lights share the 32-light ranking, and a spot
   light without a direction lights nothing. `shadows` works as it does for a
   point light.
-- **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), a
+- **Environment** (`Environment`): exposure, bloom, a sky (see Sky), a
   hemisphere ambient that blends `ambient_ground` below to `ambient_sky` above,
-  scaled by `ambient_intensity`, and ambient occlusion (see Ambient
-  occlusion). A sky's light replaces the hemisphere ambient. Without an
-  Environment the scene uses `game_environment_defaults()`.
+  scaled by `ambient_intensity`, ambient occlusion (see Ambient occlusion) and
+  global illumination (see Global illumination). A sky's light replaces the
+  hemisphere ambient. Without an Environment the scene uses
+  `environment_defaults()`.
 
 Omitted KDL fields are zero, so author every lighting field you need. Studio adds
 both components with their defaults filled in.
@@ -218,6 +219,106 @@ Reference: Jimenez et al., [Practical Real-Time Strategies for Accurate
 Indirect Occlusion](https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf),
 and Intel's [XeGTAO](https://github.com/GameTechDev/XeGTAO).
 
+## Global illumination
+
+The Environment's `global_illumination` bounces light between 3D surfaces:
+light from the sun, point and spot lights, emissive surfaces and the sky
+reaches surfaces it doesn't shine on directly, off the walls, floors and
+objects it lit first, in the colors of what it bounced off. Solids outside
+the view bounce light too. It replaces the hemisphere ambient and the sky's
+diffuse light on every 3D surface; the sky still gives reflections, and
+ambient occlusion and a material's Occlusion still dim it. Off, the default,
+lights surfaces with the ambient colors or the sky alone, and Environments
+saved before this setting load with it Off.
+
+`render/scene3d_gi.c` follows dynamic diffuse global illumination (DDGI). A
+grid of probes covers the opaque solids' bounds, with an eighth of their
+extent spare on each side. The grid stays while it covers the solids and
+isn't more than twice as coarse as a grid fit to them again. Each frame every
+probe traces its rays, evenly spread over the sphere and turned at random
+each frame, through a simplified copy of the scene: each opaque built-in
+shape as itself, a Box Frame as its twelve beams, and an imported mesh as the
+box around it. Rays find the solids through a bounding volume hierarchy
+built each frame, so tracing costs grow with the log of the solids. A ray
+that hits a solid brings back the solid's emission plus its color times the
+light there: the sun and lights with the lit pass's falloffs, blocked by
+solids for the lights whose shadows the lit pass draws, but not by a solid
+whose box holds the light, such as its bulb or a lantern's Box Frame, as in
+the lit pass, and the probes' own light from the last
+frame, which bounces light on again. A ray that hits nothing brings back the
+sky's light from that way or, without a sky, the sky ambient color above the
+horizon and the ground color below, so open ground takes the same light as
+without global illumination. A mesh's box stands in for the mesh only from
+outside: rays starting inside it pass through it, since the mesh within may
+be open, like a building or a valley.
+
+Each probe keeps an octahedral map of the light arriving from each direction
+(8x8 texels with their border) and of the mean distance and squared distance
+its rays reached (16x16). Its first frames average evenly, then it keeps 95%
+of its earlier values each frame. That averages the rays' noise over about
+twenty frames, so light from a fast moving solid or light trails behind it.
+When the grid is fit again, each probe starts from the light the old probes
+held where it now stands, and its distances start over. Turning global
+illumination off releases the probes and forgets their light. The lit pass
+blends the eight probes around each point by nearness, by whether they lie
+in front of the surface, and by the chance, from the distances they saw,
+that they see the point, which keeps light from leaking through walls. A
+probe holds no light from the frame it lies inside a solid, and where none of
+the eight holds any,
+the surface takes the light it would without global illumination. The
+quality sets the most probes and the rays each traces:
+
+| Quality | Most probes | Rays per probe |
+| --- | --- | --- |
+| Off (default) | none; no passes | |
+| Low | 512 | 32 |
+| Medium | 2048 | 64 |
+| High | 4096 | 128 |
+
+Rays take a solid's color and emission from its Material component; a shader
+graph's computed base color and emission don't reach them. Translucent and
+masked solids and Triangle Outlines let rays through. Global illumination
+traces at most 4096 solids, a Box Frame counting as twelve, and more is an
+error. The grid fits every opaque solid, so one far from the rest, such as a
+projectile flying off, spreads the probes thinner while it lasts. Solids
+spanning more than about 1e18 units pass what the shaders' float math holds, so
+such a scene takes its light without global illumination.
+
+The probes' light takes one of the 16 samplers SDL lets a fragment shader
+bind on every backend, after the scene's six maps, so it works on Vulkan,
+Metal, Direct3D 12, GLES 3 and WebGPU alike. A lit program's images, its
+parameters, those maps and its ramp table can fill all 16, so with global
+illumination on, a 3D surface material reads at most seven images rather than
+eight, and a material that reads eight is an error naming it. Only the lit
+programs drawn while global illumination is on read the probes, so scenes
+without it compile none of its code, and turning it on compiles their
+materials' programs again.
+
+To compare it, preview the Room scene of `test/fixtures/scene3d`: an
+open-topped room with red and green walls, a block and an emissive lamp,
+under the field sky with Medium occlusion and Medium global illumination.
+Setting its Environment's `global_illumination` to `"Off"` gives the baseline
+of direct light, the sky's light and ambient occlusion.
+
+```sh
+echo '{"contract":1,"operation":"preview_scene","kind":"scene","name":"Room","width":640,"height":360,"gpu_warmup_frames":32}' | \
+  SDL_VIDEO_DRIVER=offscreen build/bin/chibi_ctl --render --project-root test/fixtures/scene3d
+```
+
+The probes start dark and settle over about twenty frames, so preview after
+warmup frames. On hardware opted into profiling, a performance run's
+`pass_timing` charges each frame's 3D work to "3D setup" (the sky's
+filtering and the scene's uploads), "3D shadow maps", "3D ambient
+occlusion", "3D global illumination", "3D surfaces" and "3D
+post-processing".
+
+Reference: Majercik et al., [Dynamic Diffuse Global Illumination with
+Ray-Traced Irradiance Fields](https://jcgt.org/published/0008/02/01/), and
+Ramamoorthi and Hanrahan, [An Efficient Representation for Irradiance
+Environment Maps](https://graphics.stanford.edu/papers/envmap/envmap.pdf),
+whose cosine factors per harmonic band turn the sky's irradiance back into
+the light it gives off.
+
 ## Sky
 
 The Environment's `sky` names an equirectangular Radiance `.hdr` image under
@@ -273,7 +374,7 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 
 ## Meshes
 
-A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
+A `MeshAsset` source names a binary `.mesh` file in the content folder,
 such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
 vertex has a position, normal, texture coordinate and tangent. The tangent's w
 is 1 or -1, and the bitangent is cross(normal, tangent) times w; normal maps
@@ -300,8 +401,8 @@ vertices. Runtime C code reads a loaded mesh's vertices and indices through
 `render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
 export the model again to get a `.mesh` file.
 
-An entity with a `GameMeshAsset` draws its mesh in the lit 3D pass and, with
-`GameMeshSurface2D`, in the planar material renderer. Its `GameGeometry3D`
+An entity with a `MeshAsset` draws its mesh in the lit 3D pass and, with
+`MeshSurface2D`, in the planar material renderer. Its `Geometry3D`
 dimensions scale the mesh's own coordinates, so dimensions of 1 keep them as
 authored, and its transforms place it as they place a shape. It cannot also
 have Mesh Parts. Each material group draws its run of the index list with the
@@ -372,7 +473,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
 
 - **Frames**: UVs copy as they are, since glTF and Chibi both put (0, 0) at an
   image's top left. Tangents take the engine's frame, whose bitangent points
-  down the image, toward +v: the import generates them as the engine does,
+  down the image, toward +v: the import generates them from the normal
+  texture's transformed UVs when that texture is present,
   and negates the w of a primitive's authored tangents, since glTF's
   bitangent points up the image. A primitive without normals gets each
   triangle's flat normal. A node that mirrors, by the signs of its and its
@@ -394,19 +496,32 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   images sample as sRGB color and the others as linear data. Metallic reads
   the blue channel of the metallic-roughness image and roughness its green;
   occlusion is `mix(1, red, strength)`; normal images use the OpenGL
-  convention, whose green tilts up the image. Alpha Mode and Alpha Cutoff carry
-  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
-  base color and its image, since glTF makes its other properties fallbacks
+  tangent convention, whose green tilts up the image and whose unit frame
+  keeps UV density from changing the normal direction. Alpha Mode and Alpha
+  Cutoff carry over, and `KHR_materials_unlit` sets Unlit. An unlit material
+  keeps only its base color and its image, since glTF makes its other properties fallbacks
   for viewers that light it. An image has one filter, its sampler's
   `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
   warning when its `minFilter` differs. Engine images have no mip levels, so
   a mipmapped `minFilter` reads the full image, as every image does, without
   a warning. A sampler that clamps both axes samples Clamp; every other wrap
   repeats, with a warning.
+- **Texture transforms**: each of the five texture slots independently applies
+  `KHR_texture_transform`: scale, counterclockwise rotation in radians about
+  the UV origin, then offset. The material writes a Mapping node only for a
+  nonidentity transform, converting radians to the node's degrees. Mesh UVs
+  stay unchanged so one slot cannot move another slot's image. An extension's
+  `texCoord` overrides its textureInfo value, but the effective set must be
+  `TEXCOORD_0`. Zero and negative scales are valid. A supplied tangent frame
+  stays authoritative even when the normal lookup is transformed; missing
+  tangents use the transformed normal coordinates. This follows the
+  [extension's transform order](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+  and the [Khronos renderer's tangent handling](https://github.com/KhronosGroup/glTF-Sample-Renderer/blob/main/source/Renderer/shaders/material_info.glsl).
 - **Refused**: a required extension other than `KHR_materials_unlit`,
-  `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
-  transform other than the identity; a texture that reads a UV set other than
-  `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
+  `KHR_materials_emissive_strength` and `KHR_texture_transform`; malformed or
+  nonfinite texture transforms, or ones that overflow on used UVs; a texture
+  that reads a UV set other than `TEXCOORD_0`; an image that is not a PNG or
+  JPEG of 1 to 2048 pixels a side;
   a material factor beyond float range; primitives that are not triangles; a
   buffer or image named by an absolute path or a scheme other than `data:`, or
   one that `..` or a symbolic link leads outside the model's folder; a model
@@ -563,13 +678,40 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 95 cases and 83503 assertions in 23.3 seconds on 2026-10-10.
+Vulkan llvmpipe passed 95 cases and 83503 assertions in 24.2 seconds on 2026-10-11,
+and in 55 seconds with an empty shader cache.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
 a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 95
-cases and 83503 assertions in 15.2 seconds on 2026-10-10.
+cases and 83503 assertions in 17.9 seconds on 2026-10-11.
+
+`make agent-gpu-test AGENT_SELECTOR=--scene3d-gi` runs global illumination's
+cases, apart from the rest so that each selector compiles its shaders and runs
+within the 60-second limit even with an empty shader cache; `--scene3d-gi-gles`
+runs them on GLES. At Low, a sunlit red floor lights the white box's face that
+the sun misses in red, and an orange emissive box below the view lights the
+floor near it, both black without global illumination. The red floor still does
+so lit by a shadowed point light inside its bulb, within a tenth as brightly
+through a Box Frame around the light as without it, and inside a hollow mesh's
+box; a floor of 144 tiles, whose BVH takes more than a row of its texture,
+gives the same light as one floor box. A red block 1e13 units wide, whose
+volume passes float's range, still lights the face, and one 1e20 units wide
+leaves it the light it has without global illumination. Open ground under a
+blue sky color and a brown ground color keeps its ambient light within four
+levels at every quality, and exactly when every probe lies inside a solid
+around the view, from the frame the solid moves around lit probes as from the
+first. Ground under a roof, which takes its light in two bounces, is dark on
+the first frame and lit after eight; it keeps over half that light through a
+refit of the grid and starts dark again after a frame with global illumination
+off. An unknown quality is rejected, and so are 4104 Box Frame beams, past the
+4096 solids rays trace; a material reading eight images is rejected with global
+illumination on and draws with it off, and one reading seven and a ramp, which
+fill all 16 samplers, draws with it on. Pass timing charges the scene's setup,
+the shadow maps, ambient occlusion and global illumination to passes of their
+own. Debug ASan+UBSan on Vulkan llvmpipe passed its 13 cases and 67 assertions
+in 9.3 seconds on 2026-10-11, and in 5.4 seconds on GLES.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
@@ -585,6 +727,15 @@ preparation and refusals the same way, and
 `python3 tools/test_policy.py tool model-import` checks the files a glTF
 import writes, its names, refusals, warnings, left-out vertices and tangent
 frames.
+
+For texture transforms, build `test_tools` with `make build BUILD_TARGET=test_tools`
+and run `make agent-gpu-test AGENT_SELECTOR=--texture-transform`. Pass the same
+`BUILD_DIR` to both commands when using another build folder. This focused
+check draws 21 frames in one hidden 64 x 64 app. It compares each PBR texture
+slot with an equivalent baked-UV model and an unchanged negative control,
+including generated, mirrored and supplied normal tangents. `--model-import`
+also checks transform defaults, malformed fields and overflow, UV-set overrides,
+transactional refusal, glTF/GLB parity and the prepared normal-frame mode.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

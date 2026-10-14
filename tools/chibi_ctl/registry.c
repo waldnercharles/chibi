@@ -16,7 +16,7 @@ type_catalog_pack type_catalog_pack_at(int index)
 {
     if (catalog) return authoring_graph_catalog_type_pack_at(catalog, index);
     assert(index == 0);
-    return GAME_TYPE_PACK;
+    return TYPE_PACK;
 }
 bool chibi_ctl_registry_init()
 {
@@ -26,8 +26,8 @@ bool chibi_ctl_registry_init()
     const registry_pack *extra[] = { &STUDIO_PACK };
     if (native) {
         catalog = authoring_graph_catalog_new((authoring_graph_catalog_config){
-            .native = native, .types = GAME_TYPE_PACK,
-            .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
+            .native = native, .types = TYPE_PACK,
+            .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
             .extra_packs = extra, .extra_count = 1 }, error, sizeof error);
         native_capabilities_free(native);
     }

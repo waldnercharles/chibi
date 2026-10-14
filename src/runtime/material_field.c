@@ -333,7 +333,7 @@ bool material_field_bake(
     field_context context,
     field_grid grid,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )
@@ -349,7 +349,7 @@ bool material_field_bake_rows(
     int first,
     int count,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )
@@ -367,7 +367,7 @@ material_field_session *material_field_session_new(
     const material_fields *fields,
     const char *name,
     field_context context,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )
@@ -416,7 +416,7 @@ bool material_field_session_bake_rows(
     int first,
     int count,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )

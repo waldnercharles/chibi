@@ -35,10 +35,12 @@ typedef struct ui_list
 /* What a list keeps between calls; start it as UI_LIST_STATE_INIT. */
 typedef struct ui_list_state
 {
-    int revealed;   /* the reveal last applied */
-    float total;    /* the content height last placed, in dp */
-    float scroll;   /* where the view was left, in dp */
-    bool at_bottom; /* the view was at the bottom of it */
+    int revealed;        /* the reveal last requested */
+    int reveal_row;      /* the row awaiting content layout */
+    bool reveal_pending; /* its scroll was clamped before layout */
+    float total;         /* the content height last placed, in dp */
+    float scroll;        /* where the view was left, in dp */
+    bool at_bottom;      /* the view was at the bottom of it */
 } ui_list_state;
 
 #define UI_LIST_STATE_INIT { .revealed = -1, .at_bottom = true }

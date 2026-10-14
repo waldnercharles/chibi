@@ -18,7 +18,7 @@ static uint32_t be32(const unsigned char *p)
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
            ((uint32_t)p[2] << 8) | p[3];
 }
-bool game_ui_font_valid(const game_ui_font *f)
+bool ui_font_valid(const ui_font *f)
 {
     if (!f->key || !*f->key || !f->family || !*f->family ||
         strlen(f->key) > 1024 || strlen(f->family) > 255 || !f->data ||
@@ -44,21 +44,20 @@ bool game_ui_font_valid(const game_ui_font *f)
     }
     return true;
 }
-void game_ui_font_free(game_ui_font *f)
+void ui_font_free(ui_font *f)
 {
     free((void *)f->key);
     free((void *)f->family);
     free((void *)f->data);
-    *f = (game_ui_font){ 0 };
+    *f = (ui_font){ 0 };
 }
-static void wire(execution_wire *w, game_ui_font *f)
+static void wire(execution_wire *w, ui_font *f)
 {
-    uint64_t magic = UINT64_C(0x31544e4642484343),
-             version = GAME_UI_FONT_PREPARED_VERSION;
+    uint64_t magic = UINT64_C(0x31544e4642484343), version = UI_FONT_PREPARED_VERSION;
     execution_wire_u64(w, &magic);
     execution_wire_u64(w, &version);
     if (!w->error && (magic != UINT64_C(0x31544e4642484343) ||
-                      version != GAME_UI_FONT_PREPARED_VERSION)) {
+                      version != UI_FONT_PREPARED_VERSION)) {
         w->error = "Unknown prepared font format";
     }
     char *key = (char *)f->key, *family = (char *)f->family;
@@ -96,20 +95,14 @@ static bool report(execution_wire *w, char *error, size_t size)
     }
     return false;
 }
-bool game_ui_font_prepared_write(
-    const game_ui_font *f,
-    unsigned char **data,
-    size_t *length,
-    char *error,
-    size_t size
-)
+bool ui_font_prepared_write(const ui_font *f, unsigned char **data, size_t *length, char *error, size_t size)
 {
     assert(f && data && length);
     *data = NULL;
     *length = 0;
     execution_wire w = { 0 };
-    game_ui_font view = *f;
-    if (!game_ui_font_valid(f)) {
+    ui_font view = *f;
+    if (!ui_font_valid(f)) {
         w.error = "Invalid prepared font";
     }
     if (!w.error) {
@@ -125,11 +118,11 @@ bool game_ui_font_prepared_write(
     afree(w.data);
     return true;
 }
-bool game_ui_font_prepared_read_budget(
+bool ui_font_prepared_read_budget(
     const void *data,
     size_t length,
     size_t *remaining,
-    game_ui_font *result,
+    ui_font *result,
     char *error,
     size_t size
 )
@@ -145,23 +138,23 @@ bool game_ui_font_prepared_read_budget(
                          .storage = &storage,
                          .storage_budget = &allocation_budget,
                          .owned_bytes = EXECUTION_WIRE_MAX_BYTES - budget };
-    game_ui_font decoded = { 0 };
+    ui_font decoded = { 0 };
     if (!data || length > EXECUTION_WIRE_MAX_BYTES) {
         w.error = "Invalid font input extent";
     }
     if (!w.error) {
         wire(&w, &decoded);
     }
-    if (!w.error && (w.offset != w.size || !game_ui_font_valid(&decoded))) {
+    if (!w.error && (w.offset != w.size || !ui_font_valid(&decoded))) {
         w.error = "Invalid prepared font";
     }
     arena_free(&storage);
     if (!report(&w, error, size)) {
-        game_ui_font_free(&decoded);
+        ui_font_free(&decoded);
         return false;
     }
     *remaining -= w.owned_bytes - (EXECUTION_WIRE_MAX_BYTES - budget);
-    game_ui_font_free(result);
+    ui_font_free(result);
     *result = decoded;
     return true;
 }

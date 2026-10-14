@@ -18,8 +18,7 @@ static void cleanup()
 }
 static ecs_component_catalog registry()
 {
-    return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
-                                    GAME_REGISTRY_COMPONENT_COUNT };
+    return (ecs_component_catalog){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
 }
 static const ecs_component_desc *component(const char *key)
 {
@@ -52,41 +51,33 @@ TEST_CASE(engine_components_present_without_a_document)
     free(engine);
     REQUIRE(valid && acount(listed.components) > 0);
     component_presentation_free(&listed);
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameCollider")) == COMPONENT_TAB_PHYSICS
-    );
-    REQUIRE(
-        component_presentation_icon(&presentation, component("GAME.GameCamera")) == COMPONENT_ICON_CAMERA
-    );
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameCamera")) == COMPONENT_TAB_OBJECT
-    );
-    field_hint radius = hint("GAME.GameCollider", "radius");
+    REQUIRE(component_presentation_tab(&presentation, component("Collider")) == COMPONENT_TAB_PHYSICS);
+    REQUIRE(component_presentation_icon(&presentation, component("Camera")) == COMPONENT_ICON_CAMERA);
+    REQUIRE(component_presentation_tab(&presentation, component("Camera")) == COMPONENT_TAB_OBJECT);
+    field_hint radius = hint("Collider", "radius");
     REQUIRE(unit_is(radius, "u") && radius.min == radius.max);
-    field_hint friction = hint("GAME.GameCollider", "friction");
+    field_hint friction = hint("Collider", "friction");
     REQUIRE(unit_is(friction, NULL) && friction.min == 0 && friction.max == 1);
-    field_hint width = hint("GAME.GameCollider", "width");
+    field_hint width = hint("Collider", "width");
     REQUIRE(unit_is(width, NULL) && width.min == width.max);
-    field_hint blast = hint("GAME.GameCombustion", "blast_radius");
+    field_hint blast = hint("Combustion", "blast_radius");
     REQUIRE(unit_is(blast, "u") && blast.min == 0 && blast.max == 1024);
-    REQUIRE(unit_is(hint("GAME.GameCamera", "fov"), "rad"));
-    REQUIRE(unit_is(hint("GAME.GameCamera", "far_clip"), "u"));
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameCharacter3D")) == COMPONENT_TAB_PHYSICS
-    );
-    field_hint height = hint("GAME.GameCollider3D", "height");
+    REQUIRE(unit_is(hint("Camera", "fov"), "rad"));
+    REQUIRE(unit_is(hint("Camera", "far_clip"), "u"));
+    REQUIRE(component_presentation_tab(&presentation, component("Character3D")) == COMPONENT_TAB_PHYSICS);
+    field_hint height = hint("Collider3D", "height");
     REQUIRE(unit_is(height, "u") && height.min == height.max);
-    field_hint restitution = hint("GAME.GameCollider3D", "restitution");
+    field_hint restitution = hint("Collider3D", "restitution");
     REQUIRE(unit_is(restitution, NULL) && restitution.min == 0 && restitution.max == 1);
     return true;
 }
 TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
 {
     const char *document = "components {\n"
-                           "    GAME.GameCollider icon=\"shape\"\n"
-                           "    GAME.GameBody tab=\"Object\"\n"
-                           "    GAME.GameCamera icon=\"none\"\n"
-                           "    GAME.GameCombustion {\n"
+                           "    Collider icon=\"shape\"\n"
+                           "    Body tab=\"Object\"\n"
+                           "    Camera icon=\"none\"\n"
+                           "    Combustion {\n"
                            "        fields {\n"
                            "            blast_radius unit=\"m\"\n"
                            "            ignition {\n"
@@ -97,30 +88,24 @@ TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
                            "}\n";
     char error[256] = { 0 };
     REQUIRE(component_presentation_read(document, registry(), &presentation, error, sizeof error));
-    const ecs_component_desc *collider = component("GAME.GameCollider");
+    const ecs_component_desc *collider = component("Collider");
     REQUIRE(component_presentation_tab(&presentation, collider) == COMPONENT_TAB_PHYSICS);
     REQUIRE(component_presentation_icon(&presentation, collider) == COMPONENT_ICON_SHAPE);
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameBody")) == COMPONENT_TAB_OBJECT
-    );
-    REQUIRE(
-        component_presentation_icon(&presentation, component("GAME.GameCamera")) == COMPONENT_ICON_NONE
-    );
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameCombustion")) == COMPONENT_TAB_GAMEPLAY
-    );
-    field_hint blast = hint("GAME.GameCombustion", "blast_radius");
+    REQUIRE(component_presentation_tab(&presentation, component("Body")) == COMPONENT_TAB_OBJECT);
+    REQUIRE(component_presentation_icon(&presentation, component("Camera")) == COMPONENT_ICON_NONE);
+    REQUIRE(component_presentation_tab(&presentation, component("Combustion")) == COMPONENT_TAB_GAMEPLAY);
+    field_hint blast = hint("Combustion", "blast_radius");
     REQUIRE(unit_is(blast, "m") && blast.min == 0 && blast.max == 1024);
-    field_hint ignition = hint("GAME.GameCombustion", "ignition");
+    field_hint ignition = hint("Combustion", "ignition");
     REQUIRE(unit_is(ignition, NULL) && ignition.min == 0 && ignition.max == 2);
     /* An invalid document keeps the last valid read. */
     const char *invalid = "components {\n"
-                          "    GAME.GameBody tab=\"Nowhere\"\n"
+                          "    Body tab=\"Nowhere\"\n"
                           "}\n";
     REQUIRE(!component_presentation_read(invalid, registry(), &presentation, error, sizeof error));
     REQUIRE(strstr(error, "unknown tab"));
     const char *color = "components {\n"
-                        "    GAME.GameAppearance {\n"
+                        "    Appearance {\n"
                         "        fields {\n"
                         "            color unit=\"u\"\n"
                         "        }\n"
@@ -128,9 +113,7 @@ TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
                         "}\n";
     REQUIRE(!component_presentation_read(color, registry(), &presentation, error, sizeof error));
     REQUIRE(strstr(error, "numeric field"));
-    REQUIRE(
-        component_presentation_tab(&presentation, component("GAME.GameBody")) == COMPONENT_TAB_OBJECT
-    );
+    REQUIRE(component_presentation_tab(&presentation, component("Body")) == COMPONENT_TAB_OBJECT);
     return true;
 }
 void test_component_presentation()

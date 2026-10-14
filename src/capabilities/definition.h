@@ -15,6 +15,7 @@ typedef struct
     pin_type storage;
     pin_container container;
     const char *type_name;
+    const char *unit; /* Optional erased numeric parameter/result dimension. */
     unsigned type_flags;
     int generic_group;
     script_reference_kind reference_kind;

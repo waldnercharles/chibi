@@ -23,7 +23,7 @@ static bool fail(char *error, size_t size, const char *text)
     }
     return false;
 }
-static bool contains(const game_player_asset *assets, const char *key, game_player_asset_kind kind)
+static bool contains(const player_asset *assets, const char *key, player_asset_kind kind)
 {
     for (int i = 0; i < acount(assets); i++) {
         if (assets[i].kind == kind && !strcmp(assets[i].name, key)) {
@@ -33,9 +33,9 @@ static bool contains(const game_player_asset *assets, const char *key, game_play
     return false;
 }
 static bool append(
-    game_player_asset **assets,
+    player_asset **assets,
     const char *key,
-    game_player_asset_kind kind,
+    player_asset_kind kind,
     unsigned char *bytes,
     size_t length,
     size_t *total,
@@ -43,56 +43,56 @@ static bool append(
     size_t size
 )
 {
-    if (!bytes || !length || acount(*assets) == GAME_PLAYER_MAX_ASSETS ||
-        length > GAME_PLAYER_MAX_ASSET_BYTES - *total) {
+    if (!bytes || !length || acount(*assets) == PLAYER_MAX_ASSETS ||
+        length > PLAYER_MAX_ASSET_BYTES - *total) {
         free(bytes);
         return fail(error, size, "Prepared UI resource collection exceeds limit");
     }
     apush(
         *assets,
-        ((game_player_asset){ .name = xstrdup(key),
-                              .kind = kind,
-                              .data = bytes,
-                              .length = length,
-                              .content_hash = game_player_asset_fingerprint(bytes, length) })
+        ((player_asset){ .name = xstrdup(key),
+                         .kind = kind,
+                         .data = bytes,
+                         .length = length,
+                         .content_hash = player_asset_fingerprint(bytes, length) })
     );
     *total += length;
     return true;
 }
-static void dependency(game_ui_document *doc, game_ui_resource_kind kind, const char *key)
+static void dependency(prepared_ui_document *doc, ui_resource_kind kind, const char *key)
 {
     for (int i = 0; i < acount(doc->resources); i++) {
         if (doc->resources[i].kind == kind && !strcmp(doc->resources[i].key, key)) {
             return;
         }
     }
-    apush(doc->resources, ((game_ui_resource){ kind, xstrdup(key) }));
+    apush(doc->resources, ((ui_resource){ kind, xstrdup(key) }));
 }
 static bool font(
-    game_ui_document *doc,
+    prepared_ui_document *doc,
     const char *family,
-    game_player_asset **assets,
+    player_asset **assets,
     size_t *total,
     char *error,
     size_t size
 )
 {
     bool found = false;
-    for (int i = 0; i < game_ui_builtin_font_count(); i++) {
-        game_ui_font face = game_ui_builtin_font_at(i);
+    for (int i = 0; i < ui_builtin_font_count(); i++) {
+        ui_font face = ui_builtin_font_at(i);
         if (strcasecmp(family, face.family)) {
             continue;
         }
         found = true;
-        if (!contains(*assets, face.key, GAME_PLAYER_ASSET_FONT)) {
+        if (!contains(*assets, face.key, PLAYER_ASSET_FONT)) {
             unsigned char *bytes = NULL;
             size_t length = 0;
-            if (!game_ui_font_prepared_write(&face, &bytes, &length, error, size) ||
-                !append(assets, face.key, GAME_PLAYER_ASSET_FONT, bytes, length, total, error, size)) {
+            if (!ui_font_prepared_write(&face, &bytes, &length, error, size) ||
+                !append(assets, face.key, PLAYER_ASSET_FONT, bytes, length, total, error, size)) {
                 return false;
             }
         }
-        dependency(doc, GAME_UI_RESOURCE_FONT, face.key);
+        dependency(doc, UI_RESOURCE_FONT, face.key);
     }
     if (!found && size) {
         snprintf(error, size, "UI font family '%s' has no supplied font bytes", family);
@@ -100,9 +100,9 @@ static bool font(
     return found;
 }
 static bool image(
-    game_ui_document *doc,
+    prepared_ui_document *doc,
     const char *url,
-    game_player_asset **assets,
+    player_asset **assets,
     size_t *total,
     char *error,
     size_t size
@@ -118,7 +118,7 @@ static bool image(
         return fail(error, size, "UI image URL must resolve to a content-relative resident image");
     }
     bool valid = true;
-    if (!contains(*assets, key, GAME_PLAYER_ASSET_IMAGE)) {
+    if (!contains(*assets, key, PLAYER_ASSET_IMAGE)) {
         unsigned char *bytes = NULL;
         size_t length = 0;
         shader_error diagnostic = { 0 };
@@ -128,11 +128,11 @@ static bool image(
             snprintf(error, size, "%s", diagnostic.message);
         }
         if (valid) {
-            valid = append(assets, key, GAME_PLAYER_ASSET_IMAGE, bytes, length, total, error, size);
+            valid = append(assets, key, PLAYER_ASSET_IMAGE, bytes, length, total, error, size);
         }
     }
     if (valid) {
-        dependency(doc, GAME_UI_RESOURCE_IMAGE, key);
+        dependency(doc, UI_RESOURCE_IMAGE, key);
     }
     free(key);
     return valid;
@@ -140,13 +140,13 @@ static bool image(
 static bool document(
     const char *content,
     const char *name,
-    game_player_asset **assets,
+    player_asset **assets,
     size_t *total,
     char *error,
     size_t size
 )
 {
-    game_ui_document doc = { 0 };
+    prepared_ui_document doc = { 0 };
     ui_source_resource *resources = NULL;
     bool valid = authoring_ui_prepare(content, name, &doc, &resources, error, size);
     for (int i = 0; valid && i < acount(resources); i++) {
@@ -158,11 +158,11 @@ static bool document(
     if (valid) {
         unsigned char *bytes = NULL;
         size_t length = 0;
-        valid = game_ui_document_prepared_write(&doc, &bytes, &length, error, size) &&
-                append(assets, name, GAME_PLAYER_ASSET_UI, bytes, length, total, error, size);
+        valid = ui_document_prepared_write(&doc, &bytes, &length, error, size) &&
+                append(assets, name, PLAYER_ASSET_UI, bytes, length, total, error, size);
     }
     ui_source_resources_free(resources);
-    game_ui_document_free(&doc);
+    prepared_ui_document_free(&doc);
     return valid;
 }
 static int compare(const void *a, const void *b)
@@ -171,9 +171,9 @@ static int compare(const void *a, const void *b)
 }
 bool authoring_ui_assets_prepare(
     const char *content,
-    const game_scene *const *scenes,
+    const scene *const *scenes,
     int scene_count,
-    game_player_asset **assets,
+    player_asset **assets,
     char *error,
     size_t size
 )
@@ -219,7 +219,7 @@ bool authoring_ui_assets_prepare(
         asort(names, compare);
     }
     for (int i = 0; i < acount(*assets); i++) {
-        if ((*assets)[i].length > GAME_PLAYER_MAX_ASSET_BYTES - total) {
+        if ((*assets)[i].length > PLAYER_MAX_ASSET_BYTES - total) {
             valid = fail(error, size, "Prepared visual resource collection exceeds limit");
             break;
         }
@@ -229,21 +229,20 @@ bool authoring_ui_assets_prepare(
         valid = document(content, names[i], assets, &total, error, size);
     }
     for (int i = 0; valid && i < scene_count; i++) {
-        const char *name = game_scene_ui(scenes[i]);
-        if (name && *name && !contains(*assets, name, GAME_PLAYER_ASSET_UI)) {
+        const char *name = scene_ui(scenes[i]);
+        if (name && *name && !contains(*assets, name, PLAYER_ASSET_UI)) {
             valid = fail(error, size, "Scene requires a missing prepared UI document");
         }
-        for (int j = 0; valid && j < game_scene_object_count(scenes[i]); j++) {
-            for (int k = 0;
-                 valid && k < game_scene_object_component_count(scenes[i], j);
+        for (int j = 0; valid && j < scene_object_count(scenes[i]); j++) {
+            for (int k = 0; valid && k < scene_object_component_count(scenes[i], j);
                  k++) {
-                game_scene_component c = game_scene_object_component_at(scenes[i], j, k);
-                if (c.desc->id != GAME_COMPONENT_GameUi.id) {
+                scene_component c = scene_object_component_at(scenes[i], j, k);
+                if (c.desc->id != COMPONENT_Ui.id) {
                     continue;
                 }
-                const GameUi *ui = c.data;
+                const Ui *ui = c.data;
                 if (ui->document && *ui->document &&
-                    !contains(*assets, ui->document, GAME_PLAYER_ASSET_UI)) {
+                    !contains(*assets, ui->document, PLAYER_ASSET_UI)) {
                     valid = fail(error, size, "Entity requires a missing prepared UI document");
                 }
             }
@@ -255,7 +254,7 @@ bool authoring_ui_assets_prepare(
     afree(names);
     if (!valid) {
         while (acount(*assets) > before) {
-            game_player_asset *asset = &alast(*assets);
+            player_asset *asset = &alast(*assets);
             free((void *)asset->name);
             free((void *)asset->data);
             asetlen(*assets, acount(*assets) - 1);

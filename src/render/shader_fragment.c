@@ -26,7 +26,7 @@ char *render_shader_fragment_source()
         " Entity e; e.inv_rot=sg_entity[0]; e.pos=sg_entity[1].xy; "
         "e.extent=sg_entity[1].zw;\n"
         " e.shape_type=uint(sg_entity[2].x); e.radius=sg_entity[2].y; "
-        "e.thickness=sg_entity[2].z; e.chubbiness=sg_entity[2].w;\n"
+        "e.thickness=sg_entity[2].z; e.relief=sg_entity[2].w;\n"
         " e.aa=sg_entity[3].x; e.point_count=uint(sg_entity[3].y); "
         "e.border_thickness=sg_entity[4].x;\n"
         " e.points_01=sg_entity[5]; e.points_23=sg_entity[6]; "

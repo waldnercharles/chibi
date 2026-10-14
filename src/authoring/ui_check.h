@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Validates a ui asset the way RmlUi reads it, as a GameUi or a scene's page
+/* Validates a ui asset the way RmlUi reads it, as a Ui or a scene's page
  * shows it: in a scratch RmlUi context with the ui data model, collecting
  * every warning RmlUi logs, not only the first. */
 
@@ -30,7 +30,7 @@ typedef struct ui_check_message
 /* Checks ui asset `name` whose markup is `rml` and styles `rcss` (NULL for
  * none): its markup alone; its RCSS, whose warnings the RCSS's source map
  * (support/rcss.h) places in its file or an import; and, when it uses
- * widgets, the markup a GameUi shows, which reports only what the markup
+ * widgets, the markup a Ui shows, which reports only what the markup
  * alone did not, at the data-src of the element concerned
  * (ui_document_expand). Widgets and @imports resolve in `content_root`/ui
  * through text_file_read, so unsaved text counts. Appends each warning to `messages`

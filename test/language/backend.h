@@ -1,0 +1,12 @@
+#ifndef CHIBI_TEST_LANGUAGE_BACKEND_H
+#define CHIBI_TEST_LANGUAGE_BACKEND_H
+
+#include "execution/backend.h"
+
+#ifdef __EMSCRIPTEN__
+#define TEST_COMPILED_BACKEND BEHAVIOR_WASM
+#else
+#define TEST_COMPILED_BACKEND BEHAVIOR_SLJIT
+#endif
+
+#endif

@@ -1,5 +1,5 @@
-#ifndef CHIBI_GAME_EVENTS_H
-#define CHIBI_GAME_EVENTS_H
+#ifndef CHIBI_RUNTIME_EVENTS_H
+#define CHIBI_RUNTIME_EVENTS_H
 
 #include "types/value.h"
 
@@ -9,19 +9,19 @@ typedef struct
     pin_type type;
     const char *type_name;
     pin_container container;
-} game_event_field;
+} event_field;
 
 typedef enum
 {
-    GAME_HOST_EVENT_BEGIN,
-    GAME_HOST_EVENT_TICK,
-    GAME_HOST_EVENT_INPUT,
-    GAME_HOST_EVENT_CONTACT_BEGIN,
-    GAME_HOST_EVENT_CONTACT_BEGIN_3D,
-    GAME_HOST_EVENT_CONTACT_END_3D,
-    GAME_HOST_EVENT_CONTACT_END,
-    GAME_HOST_EVENT_COUNT,
-} game_host_event;
+    HOST_EVENT_BEGIN,
+    HOST_EVENT_TICK,
+    HOST_EVENT_INPUT,
+    HOST_EVENT_CONTACT_BEGIN,
+    HOST_EVENT_CONTACT_BEGIN_3D,
+    HOST_EVENT_CONTACT_END_3D,
+    HOST_EVENT_CONTACT_END,
+    HOST_EVENT_COUNT,
+} host_event;
 
 /* An event the engine dispatches: its name, words for and a sentence on when
  * it fires, and the payload its Event node outputs after Then. */
@@ -30,14 +30,14 @@ typedef struct
     const char *name;
     const char *keywords;
     const char *description;
-    const game_event_field *payload;
+    const event_field *payload;
     int payload_count;
-} game_host_event_desc;
+} host_event_desc;
 
-extern const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT];
-const char *game_host_event_name(game_host_event event);
-bool game_host_event_is(const char *name, game_host_event event);
+extern const host_event_desc HOST_EVENTS[HOST_EVENT_COUNT];
+const char *host_event_name(host_event event);
+bool host_event_is(const char *name, host_event event);
 
-bool game_host_event_reserved(const char *name);
+bool host_event_reserved(const char *name);
 
 #endif

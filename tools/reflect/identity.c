@@ -168,7 +168,7 @@ const char *component_key(const struct_info *s)
         return g_component_identities[index].key;
     }
     static char key[256];
-    snprintf(key, sizeof key, "%s.%s", g_prefix, s->name);
+    snprintf(key, sizeof key, "%s%s%s", g_prefix, *g_prefix ? "." : "", s->name);
     return key;
 }
 
@@ -262,7 +262,7 @@ void record_new_components(const collect_ctx *ctx)
         uint64_t fingerprint = declaration_fingerprint(s);
         if (index < 0) {
             char key[256];
-            snprintf(key, sizeof key, "%s.%s", g_prefix, s->name);
+            snprintf(key, sizeof key, "%s%s%s", g_prefix, *g_prefix ? "." : "", s->name);
             apush(
                 g_component_identities,
                 ((component_identity){ strdup(s->file),

@@ -9,7 +9,7 @@
 
 #include <assert.h>
 #include <stdlib.h>
-static inline void register_damage_event(game_preview_world *world)
+static inline void register_damage_event(preview_world *world)
 {
     const char *paths[] = {
         "test/fixtures/behavior-catalog/content/events/Damage.kdl",
@@ -24,9 +24,7 @@ static inline void register_damage_event(game_preview_world *world)
         behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
-        assert(
-            game_preview_add_definition(world, game_preview_definition_new(asset->name, asset)) == 0
-        );
+        assert(preview_add_definition(world, preview_definition_new(asset->name, asset)) == 0);
     }
 }
 static inline behavior_asset *link_test_libraries(behavior_asset *asset)
@@ -71,7 +69,7 @@ static inline behavior_asset *link_test_libraries(behavior_asset *asset)
     }
     return linked;
 }
-static inline void register_test_preview_catalog(game_prototype_preview *preview)
+static inline void register_test_preview_catalog(prototype_preview *preview)
 {
     if (!preview) {
         return;
@@ -82,7 +80,7 @@ static inline void register_test_preview_catalog(game_prototype_preview *preview
     assert(text);
     test_source_fixture fixture = test_source_prepare(path, text);
     free(text);
-    test_source_register(game_prototype_preview_live(preview)->runtime, &fixture);
+    test_source_register(prototype_preview_live(preview)->runtime, &fixture);
     test_source_free(&fixture);
 }
 #endif

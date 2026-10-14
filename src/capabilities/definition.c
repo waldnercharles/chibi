@@ -59,6 +59,7 @@ static bool port(
     }
     *result = (script_catalog_parameter){
         .name = source->name,
+        .unit = source->unit,
         .type = { .storage = source->storage,
                   .container = source->container,
                   .flags = source->type_flags },
@@ -84,6 +85,9 @@ static bool port(
     result->default_value.type = source->storage;
     result->default_value.container = source->container;
     result->default_value.type_name = source->type_name;
+    if (source->unit && (!*source->unit || !script_type_numeric(result->type))) {
+        return fail(error, size, definition->canonical_name, "A measured port requires a numeric type and a nonempty unit");
+    }
     if (source->default_owner && source->storage != PIN_HANDLE) {
         return fail(error, size, definition->canonical_name, "Owner default requires a handle port");
     }

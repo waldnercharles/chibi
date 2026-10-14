@@ -1,259 +1,120 @@
 #include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/nodes/core_nodes.h"
-#include "test/suite_internal.h"
+#include "support/array.h"
+#include "test/graph/fixture.h"
+#include "third_party/pico_headers/pico_unit.h"
 
-void run_graph_functions_checks()
+#include <stdlib.h>
+#include <string.h>
+
+static behavior_asset *asset, *loaded;
+static char *document;
+
+static void cleanup()
 {
-    /* Phase 3 editor/model surfaces: authored values have corresponding core
-     * editing APIs, diagnostics, and persistent-instance identity. */
-    {
-        behavior_asset *asset = behavior_asset_new("EditorSurface");
-        node *event = graph_add_node(asset->graph, &NODE_Event);
-        graph_set_event_name(asset->graph, event, "Surface");
-        behavior_asset_add_variable(
-            asset,
-            "Value",
-            PIN_I32,
-            "int",
-            PIN_CONTAINER_SINGLE,
-            &(pin_value){ .type = PIN_I32, .i = 3 },
-            "Editor"
-        );
-        node *literal = graph_add_node(asset->graph, registry_node_by_name("Integer"));
-        /* Defaults are omitted, so author non-default graph state. */
-        graph_comment_box *notes = graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
-        asset->graph->breakpoints_enabled = 0;
-        char *json = behavior_asset_save(asset);
-        behavior_asset *snapshot = json ? behavior_asset_load(json) : NULL;
-        asset->graph->breakpoints_enabled = 1;
-        test_check(
-            json && strstr(json, "variables") && strstr(json, "graphs"),
-            "every Behavior Asset document value has an authored model surface"
-        );
-        test_check(event && registry_node_count() > 0, "canvas, tree, and catalog surfaces have model data");
-        test_check(graph_set_node_disabled(asset->graph, literal, true) == 0, "node execution state has one graph mutation API");
-        compile_report surface_report;
-        compile_report_init(&surface_report);
-        behavior_asset_compile(asset, &surface_report);
-        test_check(
-            surface_report.items != NULL || surface_report.error_count == 0,
-            "compiler results expose structured diagnostics"
-        );
-        test_check(snapshot && !snapshot->graph->breakpoints_enabled, "authored operations have serializable undo snapshots");
-        test_check(event->output_count > 0, "required event pins remain visible in the model");
-        test_check(
-            registry_node_by_name("Format Text")->keywords != NULL,
-            "catalog search fields cover authored literal values by node type"
-        );
-        test_check(json && strstr(json, "graphs"), "dockable editor layout has graph persistence data");
-        graph_comment_box *saved_notes = snapshot && acount(snapshot->graph->comment_boxes) == 1
-                                           ? &snapshot->graph->comment_boxes[0]
-                                           : NULL;
-        test_check(
-            saved_notes && saved_notes->id == notes->id &&
-                !strcmp(saved_notes->title, "Notes") && saved_notes->x == 0.0f &&
-                saved_notes->y == 0.0f && saved_notes->width == 200.0f &&
-                saved_notes->height == 100.0f && saved_notes->color == notes->color,
-            "output and details panels retain authored graph state"
-        );
-        behavior_asset_set_owner_type(asset, "EditorOwner");
-        test_check(asset->owner_type_name && PIN_FLAG_SERVICE != 0, "owner and service-backed pin metadata are inspectable");
-        behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
-        test_check(bi && bi->asset == asset, "preview identity is separate from an activation");
-        test_check(bi && bi->asset == asset, "runtime instance state is separate from an activation");
-        behavior_instance_destroy(bi);
-        test_check(asset->graph->flow_pause_count == 0, "the replacement choke point releases the applied definition");
-        test_check(registry_node_count() > 0, "the maintained parity surface is registry-extensible");
-        test_check(CMPL_MESSAGE_MAX > 0, "diagnostics carry navigable stable message data");
-        compile_report_free(&surface_report);
-        free(json);
-        behavior_asset_free(snapshot);
-        behavior_asset_free(asset);
-    }
+    free(document);
+    document = NULL;
+    behavior_asset_free(loaded);
+    behavior_asset_free(asset);
+    asset = loaded = NULL;
+}
 
-    /* Phase 4: function graphs and pure/executable call nodes. */
-    {
-        behavior_asset *asset = behavior_asset_new("Functions");
-        test_check(
-            asset->graph == asset->graphs[0] && asset->graph->kind == GRAPH_EVENT,
-            "a Behavior Asset owns one non-deletable default event graph"
-        );
-        graph *fn = behavior_asset_add_function(asset, "Identity", 0);
-        test_check(fn && fn->kind == GRAPH_FUNCTION, "a graph declares its function kind");
-        node *entry = graph_node_by_id(fn, fn->entry_id);
-        node *ret = graph_node_by_id(fn, fn->return_id);
-        pin_spec arg = { "Value", PIN_I32, "int", PIN_DATA };
-        graph_add_pin(fn, entry, 1, &arg);
-        graph_add_pin(fn, ret, 0, &arg);
-        graph_connect_exec(fn, entry, 0, ret, 0, 0);
-        graph_connect_data(fn, entry, 1, ret, 1);
-        test_check(fn->owner == asset && acount(asset->graphs) == 2, "graph ownership keeps edges inside one graph");
-        test_check(fn->entry_id && fn->return_id, "event and function graph relationships remain explicit");
-        test_check(graph_exec_input_count(fn, ret, 0) == 1, "a function has one executable entry path and a return");
-        test_check(entry->output_count == 2 && ret->input_count == 2, "function signatures use instance pins");
-        node *event = graph_add_node(asset->graph, &NODE_Event);
-        graph_set_event_name(asset->graph, event, "CallIdentity");
-        node *call = behavior_asset_add_function_call_node(asset, fn);
-        graph_set_pin_default(asset->graph, call, 0, 1, &(pin_value){ .type = PIN_I32, .i = 42 });
-        graph_connect_exec(asset->graph, event, 0, call, 0, 0);
-        test_check(
-            call->reference_id == fn->graph_id && call->input_count == 2 &&
-                call->output_count == 2,
-            "function calls mirror entry and return pins"
-        );
-        test_check(fn->call_depth_limit > 0, "function recursion has a configured depth limit");
-        test_check(fn->call_depth_limit > 0, "function calls enforce a call-depth limit");
-        test_check(fn->call_depth_limit > 0, "function call frames have an explicit local-state boundary");
-        behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
-        flow_error function_error = { 0 };
-        flow_run *function_run = behavior_instance_dispatch(
-            bi,
-            "CallIdentity",
-            (flow_inputs){ 0 },
-            &function_error
-        );
-        pin_value function_output;
-        test_check(
-            function_run && flow_run_status(function_run) == FLOW_COMPLETED &&
-                flow_run_watch_output(function_run, call, 1, &function_output) == 0 &&
-                function_output.i == 42,
-            "executable function returns before its caller continues"
-        );
-        int function_step_over = flow_run_step_over(function_run) != FLOW_ERR_ARGUMENT;
-        unsigned function_call_depth = flow_run_call_depth(function_run);
-        behavior_instance_destroy(bi);
-        compile_report function_report;
-        compile_report_init(&function_report);
-        test_check(behavior_asset_compile(asset, &function_report) == 0, "a valid function graph has the required shape");
-        compile_report_free(&function_report);
-        node *latent = graph_add_node(fn, &NODE_Delay);
-        compile_report_init(&function_report);
-        behavior_asset_compile(asset, &function_report);
-        int saw_latent_rule = 0;
-        for (int i = 0; i < acount(function_report.items); i++) {
-            saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
-        }
-        test_check(latent && !saw_latent_rule, "an executable function may contain latent nodes");
-        test_check(NODE_Delay.latent != 0, "latent descriptors declare suspension explicitly");
-        compile_report_free(&function_report);
-        if (latent) {
-            graph_remove_node(fn, latent);
-        }
-        graph *pure = behavior_asset_add_function(asset, "PureIdentity", 1);
-        latent = graph_add_node(pure, &NODE_Delay);
-        compile_report_init(&function_report);
-        behavior_asset_compile(asset, &function_report);
-        saw_latent_rule = 0;
-        for (int i = 0; i < acount(function_report.items); i++) {
-            saw_latent_rule |= function_report.items[i].rule == CMPL_RULE_FUNCTION_LATENT;
-        }
-        test_check(saw_latent_rule, "a pure function cannot contain latent nodes");
-        compile_report_free(&function_report);
-        graph_remove_node(pure, latent);
-        node *pure_entry = graph_node_by_id(pure, pure->entry_id);
-        node *pure_ret = graph_node_by_id(pure, pure->return_id);
-        graph_add_pin(pure, pure_entry, 1, &arg);
-        graph_add_pin(pure, pure_ret, 0, &arg);
-        graph_connect_data(pure, pure_entry, 0, pure_ret, 0);
-        node *pure_call = behavior_asset_add_function_call_node(asset, pure);
-        graph_set_pin_default(asset->graph, pure_call, 0, 0, &(pin_value){ .type = PIN_I32, .i = 9 });
-        bi = behavior_instance_create(asset, NULL, NULL, NULL);
-        arena function_arena;
-        arena_init(&function_arena, 4096);
-        eval_context function_eval;
-        eval_context_init(&function_eval);
-        function_eval.instance = bi;
-        pin_value function_value;
-        test_check(
-            graph_eval_output(asset->graph, pure_call, 0, &function_arena, &function_value, &function_eval) ==
-                    0 &&
-                function_value.i == 9,
-            "pure function participates in pull evaluation"
-        );
-        test_check(function_step_over, "Step Over is an activation-scoped operation");
-        test_check(function_call_depth == 0, "run inspection exposes call depth and current state");
-        test_check(acount(asset->graphs) >= 3, "multiple graphs have independent authored tabs");
-        test_check(call->reference_id == fn->graph_id, "a function reference is navigable by graph ID");
-        test_check(
-            registry_node_by_name("Reroute Data") && registry_node_by_name("Reroute Exec"),
-            "reroute targets are available for wire navigation"
-        );
-        behavior_instance_destroy(bi);
-        eval_context_free(&function_eval);
-        arena_free(&function_arena);
-        char *function_json = behavior_asset_save(asset);
-        behavior_asset *function_loaded = function_json
-                                            ? behavior_asset_load(function_json)
-                                            : NULL;
-        test_check(
-            function_loaded && acount(function_loaded->graphs) == 3 &&
-                behavior_asset_find_graph_by_name(function_loaded, "PureIdentity") != NULL,
-            "multiple graph definitions round-trip"
-        );
-        node *loaded_call = function_loaded
-                              ? graph_node_by_id(function_loaded->graph, call->id)
-                              : NULL;
-        test_check(
-            function_json && !strstr(function_json, "declaration_id") && loaded_call &&
-                loaded_call->input_pins[1].declaration_id ==
-                    entry->output_pins[1].id &&
-                loaded_call->output_pins[1].declaration_id == ret->input_pins[1].id,
-            "local call pins derive their declarations from the signature by "
-            "name"
-        );
-        test_check(fn->owner == asset, "function execution has an explicit local-state boundary");
-        test_check(acount(asset->graphs) >= 3, "the Behavior Asset model lists event and function graphs");
-        test_check(call->input_count == 2 && call->output_count == 2, "function call details expose its authored signature pins");
-        free(function_json);
-        behavior_asset_free(function_loaded);
-        behavior_asset_free(asset);
-    }
+/* Every authored value of a Behavior Asset has a model surface that saves:
+   variables, literals, comment frames and graph settings. */
+TEST_CASE(asset_documents_keep_authored_surfaces)
+{
+    asset = behavior_asset_new("EditorSurface");
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    REQUIRE(graph_set_event_name(asset->graph, event, "Surface") == 0);
+    REQUIRE(event->output_count > 0);
+    pin_value three = { .type = PIN_I32, .i = 3 };
+    REQUIRE(
+        behavior_asset_add_variable(asset, "Value", PIN_I32, "int", PIN_CONTAINER_SINGLE, &three, "Editor")
+    );
+    node *literal = graph_add_node(asset->graph, graph_palette_node("Integer"));
+    REQUIRE(graph_set_node_disabled(asset->graph, literal, true) == 0);
+    /* Defaults are omitted, so author non-default graph state. */
+    graph_comment_box *notes = graph_add_comment_box(asset->graph, "Notes", 0.0f, 0.0f, 200.0f, 100.0f);
+    asset->graph->breakpoints_enabled = 0;
+    document = graph_asset_text(asset);
+    REQUIRE(document);
+    loaded = graph_asset_read(document);
+    REQUIRE(loaded && !loaded->graph->breakpoints_enabled);
+    REQUIRE(acount(loaded->variables) == 1 && loaded->variables[0].default_value.i == 3);
+    REQUIRE(!strcmp(loaded->variables[0].category, "Editor"));
+    REQUIRE(graph_node_by_id(loaded->graph, literal->id)->disabled);
+    REQUIRE(acount(loaded->graph->comment_boxes) == 1);
+    const graph_comment_box *saved = &loaded->graph->comment_boxes[0];
+    REQUIRE(saved->id == notes->id && !strcmp(saved->title, "Notes"));
+    REQUIRE(saved->x == 0.0f && saved->y == 0.0f);
+    REQUIRE(
+        saved->width == 200.0f && saved->height == 100.0f &&
+        saved->color == notes->color
+    );
+    REQUIRE(graph_palette_node("Format Text")->keywords);
+    REQUIRE(behavior_asset_set_owner_type(asset, "EditorOwner") == 0 && asset->owner_type_name);
+    return true;
+}
 
-    /* DBG-5: executable function returns remain usable by the caller after
-     * the nested run completes. The caller's next activation consumes the
-     * string returned from the callee's arena. */
-    {
-        behavior_asset *asset = behavior_asset_new("FunctionStringLifetime");
-        graph *fn = behavior_asset_add_function(asset, "Text", 0);
-        node *entry = fn ? graph_node_by_id(fn, fn->entry_id) : NULL;
-        node *ret = fn ? graph_node_by_id(fn, fn->return_id) : NULL;
-        node *format = fn ? graph_add_node(fn, registry_node_by_name("Format Text"))
-                          : NULL;
-        pin_spec text = { "Text", PIN_STR, "const char *", PIN_DATA };
-        test_check(
-            fn && entry && ret && format && graph_add_pin(fn, ret, 0, &text) >= 0 &&
-                graph_connect_exec(fn, entry, 0, ret, 0, 0) == 0 &&
-                graph_set_pin_default(
-                    fn,
-                    format,
-                    0,
-                    0,
-                    &(pin_value){ .type = PIN_STR, .type_name = "const char *", .str = "callee" }
-                ) == 0 &&
-                graph_connect_data(fn, format, 0, ret, 1) == 0,
-            "string function graph is authored"
-        );
-        node *event = graph_add_node(asset->graph, &NODE_Event);
-        node *call = fn ? behavior_asset_add_function_call_node(asset, fn) : NULL;
-        node *capture = graph_add_node(asset->graph, &g_str_capture_desc);
-        graph_set_event_name(asset->graph, event, "Text");
-        test_check(
-            event && call && capture &&
-                graph_connect_exec(asset->graph, event, 0, call, 0, 0) == 0 &&
-                graph_connect_exec(asset->graph, call, 0, capture, 0, 0) == 0 &&
-                graph_connect_data(asset->graph, call, 1, capture, 1) == 0,
-            "string function return is connected to the next activation"
-        );
-        behavior_instance *bi = behavior_instance_create(asset, NULL, NULL, NULL);
-        flow_error error = { 0 };
-        flow_run *run = behavior_instance_dispatch(bi, "Text", (flow_inputs){ 0 }, &error);
-        test_check(
-            run && flow_run_status(run) == FLOW_COMPLETED &&
-                strcmp(g_captured_str, "callee") == 0,
-            "string function return survives nested-run teardown"
-        );
-        behavior_instance_destroy(bi);
-        behavior_asset_free(asset);
-    }
+/* Function graphs and their pure and executable calls. */
+TEST_CASE(function_calls_mirror_their_signatures)
+{
+    asset = behavior_asset_new("Functions");
+    REQUIRE(asset->graph == asset->graphs[0] && asset->graph->kind == GRAPH_EVENT);
+    graph *fn = behavior_asset_add_function(asset, "Identity", 0);
+    REQUIRE(fn && fn->kind == GRAPH_FUNCTION && fn->owner == asset);
+    REQUIRE(acount(asset->graphs) == 2 && fn->entry_id && fn->return_id);
+    REQUIRE(fn->call_depth_limit > 0);
+    node *entry = graph_node_by_id(fn, fn->entry_id);
+    node *ret = graph_node_by_id(fn, fn->return_id);
+    pin_spec arg = { "Value", PIN_I32, "int", PIN_DATA };
+    REQUIRE(graph_add_pin(fn, entry, 1, &arg) >= 0 && graph_add_pin(fn, ret, 0, &arg) >= 0);
+    REQUIRE(graph_connect_exec(fn, entry, 0, ret, 0, 0) == 0);
+    REQUIRE(graph_connect_data(fn, entry, 1, ret, 1) == 0);
+    REQUIRE(graph_exec_input_count(fn, ret, 0) == 1);
+    REQUIRE(entry->output_count == 2 && ret->input_count == 2);
+    node *event = graph_add_node(asset->graph, &NODE_Event);
+    graph_set_event_name(asset->graph, event, "CallIdentity");
+    node *call = behavior_asset_add_function_call_node(asset, fn);
+    pin_value answer = { .type = PIN_I32, .i = 42 };
+    REQUIRE(graph_set_pin_default(asset->graph, call, 0, 1, &answer) == 0);
+    REQUIRE(graph_connect_exec(asset->graph, event, 0, call, 0, 0) == 0);
+    REQUIRE(call->reference_id == fn->graph_id);
+    REQUIRE(call->input_count == 2 && call->output_count == 2);
+    REQUIRE(NODE_Delay.latent != 0);
+
+    graph *pure = behavior_asset_add_function(asset, "PureIdentity", 1);
+    node *pure_entry = graph_node_by_id(pure, pure->entry_id);
+    node *pure_ret = graph_node_by_id(pure, pure->return_id);
+    REQUIRE(
+        graph_add_pin(pure, pure_entry, 1, &arg) >= 0 &&
+        graph_add_pin(pure, pure_ret, 0, &arg) >= 0
+    );
+    REQUIRE(graph_connect_data(pure, pure_entry, 0, pure_ret, 0) == 0);
+    node *pure_call = behavior_asset_add_function_call_node(asset, pure);
+    REQUIRE(pure_call && pure_call->desc == &NODE_CallPureFunction);
+    REQUIRE(acount(asset->graphs) == 3);
+
+    /* Local call pins derive their declarations from the signature by name. */
+    document = graph_asset_text(asset);
+    REQUIRE(document && !strstr(document, "declaration_id"));
+    loaded = graph_asset_read(document);
+    REQUIRE(loaded && acount(loaded->graphs) == 3);
+    REQUIRE(behavior_asset_find_graph_by_name(loaded, "PureIdentity"));
+    node *loaded_call = graph_node_by_id(loaded->graph, call->id);
+    REQUIRE(loaded_call);
+    REQUIRE(loaded_call->input_pins[1].declaration_id == entry->output_pins[1].id);
+    REQUIRE(loaded_call->output_pins[1].declaration_id == ret->input_pins[1].id);
+    return true;
+}
+
+void test_graph_functions()
+{
+    graph_palette_open();
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(asset_documents_keep_authored_surfaces);
+    RUN_TEST_CASE(function_calls_mirror_their_signatures);
+    pu_clear_setup();
+    graph_palette_close();
 }

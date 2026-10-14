@@ -23,6 +23,12 @@ enum
     SCRIPT_TYPE_GENERIC = 1u << 5,
     /* A task handle; its nominal names the function that started it, if known. */
     SCRIPT_TYPE_TASK = 1u << 6,
+    /* A named capability scope; only its fields produce executable values. */
+    SCRIPT_TYPE_NAMESPACE = 1u << 7,
+    SCRIPT_TYPE_UNION = 1u << 8,
+    SCRIPT_TYPE_SINGLETON = 1u << 9,
+    SCRIPT_TYPE_LITERAL = 1u << 10,
+    SCRIPT_TYPE_BOXED_OPTIONAL = 1u << 11,
 };
 enum
 {
@@ -41,12 +47,28 @@ typedef struct
     size_t offset;
     /* Getter and setter capabilities; a getter takes the receiver. */
     uint64_t read, write;
+    /* A keyed getter takes this static name instead of receiver storage. */
+    const char *read_key;
     bool writable;
     /* Reads as its own name, a string constant, with no receiver storage. */
     bool constant;
     /* Measure, such as "u/s"; NULL without one. Checked, never stored. */
     const char *unit;
+    /* Stored-value contract. A compiler may use these bounds only for values
+     * produced by a validating boundary, never an unchecked native pointer. */
+    bool range_contract;
+    double min, max;
 } script_catalog_field;
+typedef struct
+{
+    uint64_t tag;
+    const char *name;
+    script_type type; /* Raw alternative type; tagged cases use their union type. */
+    const script_catalog_field *fields;
+    int field_count;
+    pin_value literal;
+    bool tagged, is_literal;
+} script_catalog_variant;
 typedef struct
 {
     uint64_t id;
@@ -60,6 +82,9 @@ typedef struct
     bool component;
     /* Computed by the engine: scripts read it but never write, add or remove it. */
     bool derived;
+    const script_catalog_variant *variants;
+    int variant_count;
+    bool internal; /* Structural metadata without a source-visible type name. */
 } script_catalog_type;
 typedef enum
 {
@@ -70,6 +95,7 @@ typedef enum
 typedef struct
 {
     const char *name;
+    const char *unit; /* Erased dimensional contract; NULL means unknown. */
     script_type type;
     script_reference_kind reference_kind;
     uint64_t member; /* Reflected field identity for aggregate make/break ports. */
@@ -154,6 +180,20 @@ typedef struct
     bool writable;
     const char *unit; /* NULL without one */
 } script_catalog_global;
+typedef struct
+{
+    uint64_t id;
+    const char *name;
+    bool exclusive, traversable;
+} script_catalog_relationship;
+/* Stable built-in storage identity, shared with the ECS ChildOf contract. */
+#define SCRIPT_CHILD_OF UINT64_C(0x84771d550890f1a1)
+typedef enum
+{
+    SCRIPT_SOURCE_SELF,
+    SCRIPT_SOURCE_ANCESTOR,
+    SCRIPT_SOURCE_SELF_OR_ANCESTOR,
+} script_query_source;
 /* Immutable borrowed declaration catalog. Analysis copies resolved identities
  * and types; callers can release this catalog after analysis completes. */
 typedef struct
@@ -166,6 +206,8 @@ typedef struct
     int global_count;
     uint64_t entity_type;
     uint64_t tick_event;
+    const script_catalog_relationship *relationships;
+    int relationship_count;
 } script_catalog;
 
 uint64_t script_catalog_id(const char *domain, const char *name);
@@ -188,5 +230,7 @@ bool script_catalog_type_assignable(const script_catalog *, script_type expected
 bool script_type_equal(script_type a, script_type b);
 bool script_type_numeric(script_type type);
 bool script_type_assignable(script_type expected, script_type actual);
+uint64_t script_type_tag(script_type);
+script_type script_cancelled_type();
 const char *script_scalar_name(pin_type storage);
 #endif

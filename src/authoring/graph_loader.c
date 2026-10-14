@@ -20,7 +20,7 @@ static void load_error(const char *path, const char *stage, const char *message)
     fprintf(stderr, "Could not load graph asset %s (%s): %s\n", path, stage, message);
 }
 
-int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *preview, const char *content_root)
+int authoring_graphs_prepare(preview_world *world, prototype_preview *preview, const char *content_root)
 {
     if (!world || !content_root || !content_root[0]) {
         return -1;
@@ -29,15 +29,15 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
     if (!authoring_graph_sources_load(content_root, &sources)) {
         return -1;
     }
-    game_preview_definition **pending = NULL;
+    preview_definition **pending = NULL;
     int loaded = 0;
     bool failed = false;
     for (int i = 0; i < acount(sources); i++) {
         behavior_asset *asset = sources[i].asset;
-        game_preview_definition *definition = game_preview_definition_new(asset->name, asset);
+        preview_definition *definition = preview_definition_new(asset->name, asset);
         if (definition) {
             sources[i].asset = NULL;
-            game_preview_definition_set_path(definition, sources[i].path);
+            preview_definition_set_path(definition, sources[i].path);
             apush(pending, definition);
         } else {
             load_error(sources[i].path, "create editable definition", graph_last_error());
@@ -63,7 +63,7 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
             }
         }
         for (int i = 0; i < acount(pending); i++) {
-            game_preview_definition *definition = pending[i];
+            preview_definition *definition = pending[i];
             if (!definition) {
                 continue;
             }
@@ -81,7 +81,7 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
             if (stage != pass) {
                 continue;
             }
-            if (game_preview_add_definition(world, definition) != 0) {
+            if (preview_add_definition(world, definition) != 0) {
                 const compile_diagnostic *error = compile_report_first_error(
                     &definition->diagnostics
                 );
@@ -90,13 +90,13 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
                 continue;
             }
             pending[i] = NULL;
-            if (preview && game_prototype_preview_register_behavior(
+            if (preview && prototype_preview_register_behavior(
                                preview,
                                definition->name,
                                definition->working
                            ) != 0) {
                 load_error(definition->path, "preview", "registration rejected; see preview diagnostic above");
-                game_preview_remove_definition(world, definition->name);
+                preview_remove_definition(world, definition->name);
                 failed = true;
                 continue;
             }
@@ -105,7 +105,7 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
     }
     afree(models);
     for (int i = 0; i < acount(pending); i++) {
-        game_preview_definition_free(pending[i]);
+        preview_definition_free(pending[i]);
     }
     afree(pending);
     if (failed) {
@@ -114,7 +114,7 @@ int authoring_graphs_prepare(game_preview_world *world, game_prototype_preview *
     return loaded;
 }
 
-int authoring_graph_fixtures_prepare(game_preview_world *world, const char *root)
+int authoring_graph_fixtures_prepare(preview_world *world, const char *root)
 {
     return authoring_graphs_prepare(world, NULL, root);
 }

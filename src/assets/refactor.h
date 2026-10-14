@@ -18,7 +18,7 @@ typedef struct
 {
     const reference_index *index;
     const char *const *texts;
-    const game_prototype_registry *registry; /* loads prototypes and systems */
+    const prototype_registry *registry; /* loads prototypes and systems */
     const char *const *metadata; /* optional parallel executable identity snapshots */
 } refactor_project;
 
@@ -88,7 +88,7 @@ int refactor_delete(
 );
 
 /* A reference's place, for messages and previews: "Asset", "Asset > Graph",
- * "Scene > Object" or "Prototype > GameUi.document". */
+ * "Scene > Object" or "Prototype > Ui.document". */
 void refactor_describe(const reference_index *index, const reference *r, char *out, size_t size);
 
 void refactor_plan_free(refactor_plan *plan);

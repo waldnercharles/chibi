@@ -8,19 +8,25 @@ typedef struct ecs_world ecs_world;
 typedef struct execution_program execution_program;
 typedef struct execution_instance execution_instance;
 typedef struct execution_module execution_module;
+typedef struct task_system task_system;
 typedef struct
 {
-    const uint64_t *reads, *writes;
-    int read_count, write_count;
+    const uint64_t *reads, *writes, *reduces;
+    int read_count, write_count, reduce_count;
     bool declared, structural, host_sink, world_read, deterministic, parallel_safe;
     /* First instruction whose effects could not be proved; -1 when absent. */
     int unknown_operation, unknown_instruction;
     uint64_t unknown_capability, unknown_function;
 } execution_effect_summary;
 /* Immutable verified effects, rederived after prepared linking. parallel_safe
- * proves a synchronous SYSTEM closure with disjoint owning-entity writes.
+ * proves a synchronous SYSTEM closure with disjoint owning-entity writes or
+ * private reduction contributions. Reduced components are published in order
+ * at the system boundary and conflict with ordinary readers and writers.
  * Unknown effects retain conservative flags and cannot enter worker execution. */
 execution_effect_summary execution_module_effects(const execution_module *);
+/* Includes module entry points, binding bodies, and imported modules. For one
+ * entry point use behavior_function_costs(info.body), which follows only calls. */
+execution_cost_summary execution_module_costs(const execution_module *);
 
 /* Owned canonical storage including arena/vector capacities and nested tables.
  * Imports, backend code/cache allocations and live instance banks are excluded.
@@ -32,9 +38,39 @@ bool execution_module_components_valid(const execution_module *, const ecs_world
 typedef struct
 {
     size_t payload_bytes, payload_capacity;
+    int task_slots, retained_tasks;
+    size_t task_result_bytes;
+    uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */
+    int instance_count;
+    size_t instance_bytes, state_bank_bytes, activation_bytes;
+    size_t activation_cache_bytes;
+    size_t query_history_bytes, query_index_bytes, ecs_change_bytes;
+    size_t query_cache_bytes;
+    size_t binding_schedule_bytes;
+    size_t reduction_bytes, reduction_capacity;
+    size_t system_row_bytes, system_row_capacity;
+    size_t row_worker_capacity;
+    int row_parallel_jobs, row_parallel_workers;
+    uint64_t reduction_contributions, reduction_records;
+    size_t reduction_peak_bytes;
+    uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
- * capacity includes reusable allocation slots. Control banks are excluded. */
+ * capacity includes reusable allocation slots. Task result bytes include their
+ * owned snapshots; task slots include reusable slots. Instance/activation headers,
+ * fixed state banks, query history and index slots are logical byte counts and
+ * exclude allocator overhead and nested buffers. activation_cache_bytes counts
+ * owned idle activation storage, including retired payload backing, separately
+ * from live payload_capacity, bounded to 64 KiB per program.
+ * query_cache_bytes counts idle predicate evaluators, independently bounded to
+ * 64 KiB per program, including fixed host, helper and arena storage.
+ * row_worker_capacity counts private row execution scratch, bounded to 1 MiB
+ * when idle and at most the executor worker budget (maximum 32 chunks).
+ * ecs_change_bytes is shared
+ * world-owned storage (do not sum across programs); query counters describe the
+ * latest refresh. Stateless streaming retains no instance headers. Binding
+ * schedule bytes include retained buffers and an upper bound for shared
+ * generation keys, which may also belong to another program's cache. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);
 /* Owned snapshot. Copying the record preserves all text and source coordinates.
  * The first failure is retained until explicitly cleared. The borrowed getter
@@ -142,9 +178,20 @@ bool execution_program_service_bind_valid(const execution_program *, const char 
 void execution_program_free(execution_program *program);
 /* Disabling retires automatic query attachments. Explicit attachments remain active. */
 void execution_program_set_enabled(execution_program *program, bool enabled);
+/* Multi-target systems attach their tuples automatically; owner-only attach
+ * returns NULL for those modules. */
 execution_instance *execution_program_attach(execution_program *program, uint64_t owner);
 void execution_program_detach(execution_program *program, uint64_t owner);
 execution_instance *execution_program_instance(execution_program *program, uint64_t owner);
+/* Exact tuple lookup. Variables are numbered from one; count excludes root.
+ * The owner-only lookup returns the first attached row; detach removes all
+ * rows of the owner. This accessor preserves generation-bearing handles. */
+execution_instance *execution_program_row(
+    execution_program *,
+    uint64_t owner,
+    const uint64_t *variables,
+    int count
+);
 /* Queued payloads are snapshotted. Dispatch and structural effects occur at the
  * caller's event boundary, preserving stable iteration membership. */
 /* Nested dispatch appends to the next event boundary; outer dispatch pumps the
@@ -170,10 +217,21 @@ int execution_program_update(execution_program *program, double now, double delt
 /* Serial preparation refreshes query membership, Begin, queued events and
  * ready continuations, then owns the system activations for one update.
  * run_system performs no query refresh. The caller keeps world membership and
- * services fixed until serial finish_system consumes the prepared update. */
+ * services fixed until serial finish_system consumes the prepared update.
+ * Create an inspector before preparation; an existing inspector remains usable
+ * while its prepared update is paused. */
 int execution_program_prepare_system(execution_program *, double now, double delta, unsigned budget);
 int execution_program_run_system(execution_program *);
+/* Submitting-thread entry. Inferred independent reducer rows may use the
+ * borrowed executor; other bodies and small dispatches run serially. */
+int execution_program_run_system_parallel(execution_program *, const task_system *);
 int execution_program_finish_system(execution_program *);
+/* Cancel publication before finish, for a successful worker after an earlier
+ * scheduler peer failed. Collection storage retains at most 64 KiB when idle. */
+void execution_program_discard_reductions(execution_program *);
+/* Cancel a quiescent prepared dispatch, including a retained debugger pause.
+ * Discards contributions and releases pending activations without publication. */
+void execution_program_cancel_system(execution_program *);
 /* Orders all attached entity bindings by overlapping normalized ECS fields.
  * A cycle is rejected before any binding output is committed. */
 int execution_program_bindings_all(

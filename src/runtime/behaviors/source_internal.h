@@ -22,15 +22,15 @@ typedef struct
 } source_attachment;
 typedef struct
 {
-    game_source_profile_row row;
+    source_profile_row row;
     execution_module *module;
     const behavior_function *function;
     char *name;
 } source_profile;
-struct game_source_registry
+struct source_registry
 {
     ecs_world *world;
-    game_event_catalog *events;
+    event_catalog *events;
     source_record *records;
     source_attachment *attachments;
     service_binding *services; /* Owned names, borrowed host values. */
@@ -40,9 +40,9 @@ struct game_source_registry
     bool explicit_systems, profiling;
     source_profile *profiles;
     uint64_t profile_dropped;
-    game_source_staging *staging;
+    source_staging *staging;
 };
-void source_profile_bind(game_source_registry *);
+void source_profile_bind(source_registry *);
 
 static inline bool source_module_system(const execution_module *module)
 {
@@ -53,11 +53,11 @@ static inline bool source_module_system(const execution_module *module)
     }
     return false;
 }
-static inline bool source_record_active(const game_source_registry *r, const source_record *record)
+static inline bool source_record_active(const source_registry *r, const source_record *record)
 {
     return !r->explicit_systems || !record->system || record->selected;
 }
-static inline int record_index(const game_source_registry *r, const char *name)
+static inline int record_index(const source_registry *r, const char *name)
 {
     for (int i = 0; i < acount(r->records); i++) {
         if (!strcmp(r->records[i].name, name)) {

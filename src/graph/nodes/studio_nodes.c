@@ -185,6 +185,16 @@ EFFECT_NODE(
     "assigns an asset its fields name, as one Undo step."
 );
 EFFECT_NODE(
+    MOVE_OBJECTS,
+    STUDIO_NODE_MOVE_OBJECTS,
+    STUDIO_MOVE_OBJECTS_NAME,
+    "move reparent reorder hierarchy selection",
+    "Moves the dragged Object and its selected group before, inside or after "
+    "Target, or to the root with an empty Target and Zone root. Preserves "
+    "world "
+    "transforms and stable identity in one Undo step."
+);
+EFFECT_NODE(
     SET_FILTER,
     STUDIO_NODE_SET_FILTER,
     STUDIO_SET_FILTER_NAME,
@@ -199,11 +209,11 @@ EFFECT_NODE(
     "Turns Break When Spawned on or off for Prototype."
 );
 static node_desc *const NODES[] = {
-    &SCENE_OBJECTS,     &SCENE_INFO,    &SELECTION,          &OBJECT_SELECTED,
-    &OBJECT_ROW,        &RENAMING,      &EDITOR_STATE,       &SPAWN_BREAK,
-    &PROTOTYPE_CHOICES, &SELECT_OBJECT, &RENAME_OBJECT,      &END_RENAME,
-    &SET_HIDDEN,        &SET_LOCKED,    &ISOLATE_OBJECT,     &ADD_OBJECT,
-    &DROP_ON_OBJECT,    &SET_FILTER,    &TOGGLE_SPAWN_BREAK,
+    &SCENE_OBJECTS,     &SCENE_INFO,    &SELECTION,      &OBJECT_SELECTED,
+    &OBJECT_ROW,        &RENAMING,      &EDITOR_STATE,   &SPAWN_BREAK,
+    &PROTOTYPE_CHOICES, &SELECT_OBJECT, &RENAME_OBJECT,  &END_RENAME,
+    &SET_HIDDEN,        &SET_LOCKED,    &ISOLATE_OBJECT, &ADD_OBJECT,
+    &DROP_ON_OBJECT,    &MOVE_OBJECTS,  &SET_FILTER,     &TOGGLE_SPAWN_BREAK,
 };
 static const type_desc *const TYPES[] = { &STUDIO_OBJECT_ROW_LAYOUT,
                                           &STUDIO_CHOICE_LAYOUT };

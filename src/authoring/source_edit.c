@@ -42,6 +42,25 @@ static const source_presentation_origin *origin(
     }
     return NULL;
 }
+const source_presentation_origin *source_edit_statement_origin(
+    const authoring_source_presentation *presentation,
+    const source_presentation_origin *selected
+)
+{
+    if (!selected || selected->pin || !selected->node ||
+        selected->kind != SOURCE_PRESENTATION_EXPRESSION) {
+        return selected;
+    }
+    for (int i = 0; i < authoring_source_presentation_origin_count(presentation); i++) {
+        const source_presentation_origin
+            *o = authoring_source_presentation_origin_at(presentation, i);
+        if (!o->pin && o->kind == SOURCE_PRESENTATION_STATEMENT &&
+            o->graph == selected->graph && o->node == selected->node) {
+            return o;
+        }
+    }
+    return selected;
+}
 static char *slice(const char *text, script_range range)
 {
     size_t size = (size_t)(range.end - range.start);
@@ -608,6 +627,27 @@ static bool remap_range(script_range *range, const offset_edit *edits, int count
     range->end = end;
     return end > start;
 }
+static bool remap_candidate(
+    const source_presentation_origin *before,
+    const source_presentation_origin *after,
+    script_range range
+)
+{
+    return after->node && before->kind == after->kind &&
+           before->owner == after->owner && before->output == after->output &&
+           before->flow == after->flow && before->port_index == after->port_index &&
+           !!before->pin == !!after->pin && range.start == after->range.start &&
+           range.end == after->range.end;
+}
+static bool remap_claimed(const source_presentation_identity_map *map, uint64_t identity)
+{
+    for (int i = 0; i < acount(map); i++) {
+        if (map[i].current == identity) {
+            return true;
+        }
+    }
+    return false;
+}
 static bool remap_layout(
     const authoring_source_presentation *old,
     authoring_source_presentation *current,
@@ -638,14 +678,24 @@ static bool remap_layout(
                 continue;
             }
         }
+        bool same_role = false;
+        if (!before->pin) {
+            for (int j = 0; j < authoring_source_presentation_origin_count(current);
+                 j++) {
+                const source_presentation_origin
+                    *after = authoring_source_presentation_origin_at(current, j);
+                if (remap_candidate(before, after, range) &&
+                    before->display_class == after->display_class) {
+                    same_role = true;
+                    break;
+                }
+            }
+        }
         for (int j = 0; j < authoring_source_presentation_origin_count(current); j++) {
             const source_presentation_origin
                 *after = authoring_source_presentation_origin_at(current, j);
-            if (!after->node || before->kind != after->kind ||
-                before->owner != after->owner || before->output != after->output ||
-                before->flow != after->flow || before->port_index != after->port_index ||
-                !!before->pin != !!after->pin || range.start != after->range.start ||
-                range.end != after->range.end) {
+            if (!remap_candidate(before, after, range) ||
+                remap_claimed(map, after->identity)) {
                 continue;
             }
             if (before->pin) {
@@ -676,9 +726,10 @@ static bool remap_layout(
             if (!a || !b) {
                 break;
             }
-            /* Entry and Return share their function record and source range.
-             * Keep the two presentation roles distinct during reconciliation. */
-            if (before->kind == SOURCE_PRESENTATION_FUNCTION &&
+            /* Prefer the same role when reads and writes share a range. An
+             * expression replacement can change role, but Entry/Return cannot. */
+            if (!before->pin &&
+                (same_role || before->kind == SOURCE_PRESENTATION_FUNCTION) &&
                 a->desc->display_class != b->desc->display_class) {
                 continue;
             }
@@ -743,6 +794,8 @@ static bool build_changes(
         case AUTHORING_EDIT_DISCONNECT:
         case AUTHORING_EDIT_RECONNECT:
             return source_edit_arguments(a, c, p, r, changes, error, size);
+        case AUTHORING_EDIT_CREATE_VARIABLE_GET:
+        case AUTHORING_EDIT_CREATE_VARIABLE_SET:
         case AUTHORING_EDIT_CREATE_CAPABILITY:
         case AUTHORING_EDIT_CREATE_EVENT:
             return source_edit_capability(a, c, p, r, changes, error, size);
@@ -750,6 +803,7 @@ static bool build_changes(
         case AUTHORING_EDIT_CREATE_MACRO:
         case AUTHORING_EDIT_CREATE_EXPRESSION:
         case AUTHORING_EDIT_RENAME_DECLARATION:
+        case AUTHORING_EDIT_RETYPE_VARIABLE:
         case AUTHORING_EDIT_SET_DISABLED:
         case AUTHORING_EDIT_NAME_VALUE:
             return source_edit_declarations(a, c, p, r, changes, error, size);
@@ -779,6 +833,22 @@ bool authoring_source_edit(
     *result = (authoring_edit_result){ 0 };
     authoring_edit_request typed = *request;
     const source_presentation_origin *selected = origin(presentation, typed.origin);
+    if (typed.kind == AUTHORING_EDIT_DELETE_STATEMENT ||
+        typed.kind == AUTHORING_EDIT_MOVE_BEFORE ||
+        typed.kind == AUTHORING_EDIT_MOVE_AFTER) {
+        selected = source_edit_statement_origin(presentation, selected);
+        if (selected) {
+            typed.origin = selected->identity;
+        }
+        const source_presentation_origin *sibling = source_edit_statement_origin(
+            presentation,
+            origin(presentation, typed.producer)
+        );
+        if (sibling) {
+            typed.producer = sibling->identity;
+        }
+    }
+    request = &typed;
     if (selected && selected->kind == SOURCE_PRESENTATION_SYMBOL &&
         selected->record >= 0 && selected->record < analysis->symbol_count &&
         (typed.kind == AUTHORING_EDIT_CONNECT || typed.kind == AUTHORING_EDIT_EXPRESSION ||

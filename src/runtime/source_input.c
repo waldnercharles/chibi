@@ -5,13 +5,13 @@
 
 static bool has_event(void *context, const char *event)
 {
-    game_source_input *host = context;
-    return game_source_has_event(host->sources, event);
+    source_input *host = context;
+    return source_has_event(host->sources, event);
 }
-static int result(game_source_input *host, int status, char *message, size_t size)
+static int result(source_input *host, int status, char *message, size_t size)
 {
     if (status < 0) {
-        snprintf(message, size, "%s", game_source_error(host->sources));
+        snprintf(message, size, "%s", source_error(host->sources));
     }
     return status;
 }
@@ -24,10 +24,10 @@ static int dispatch(
     size_t size
 )
 {
-    game_source_input *host = context;
+    source_input *host = context;
     return result(
         host,
-        game_source_dispatch(
+        source_dispatch(
             host->sources,
             entity,
             event,
@@ -40,7 +40,7 @@ static int dispatch(
         size
     );
 }
-engine_input_host game_source_input_host(game_source_input *host)
+engine_input_host source_input_host(source_input *host)
 {
     assert(host && host->sources);
     return (engine_input_host){ .context = host,

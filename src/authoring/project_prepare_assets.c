@@ -78,7 +78,7 @@ static int compare(const void *a, const void *b)
 }
 bool project_prepare_prototypes(
     const char *root,
-    game_prototype_registry *registry,
+    prototype_registry *registry,
     project_prototype **result,
     char *error,
     size_t size
@@ -112,7 +112,7 @@ bool project_prepare_prototypes(
         av_doc *document = text ? av_doc_read(text, error, size) : NULL;
         av_value *name = document ? av_obj_get(av_doc_root(document), "name") : NULL;
         if (!name || !av_is_str(name) || !av_get_len(name) ||
-            av_get_len(name) > GAME_PROTOTYPE_NAME_MAX) {
+            av_get_len(name) > PROTOTYPE_NAME_MAX) {
             free(text);
             av_doc_free(document);
             valid = fail(error, size, "Prototype declaration has no bounded name");
@@ -137,47 +137,42 @@ bool project_prepare_prototypes(
     registry->include_user = *result;
     project_expansion expanded = { 0 };
     for (int i = 0; i < acount(*result); i++) {
-        (*result)[i].prototype = game_prototype_load((*result)[i].text, registry, error, size);
+        (*result)[i].prototype = prototype_load((*result)[i].text, registry, error, size);
         if (!(*result)[i].prototype ||
             !project_prepare_expand(&expanded, (*result)[i].prototype, error, size)) {
             return false;
         }
-        const char *identity = game_prototype_identity((*result)[i].prototype);
+        const char *identity = prototype_identity((*result)[i].prototype);
         for (int j = 0; j < i; j++) {
-            if (!strcmp(identity, game_prototype_identity((*result)[j].prototype))) {
+            if (!strcmp(identity, prototype_identity((*result)[j].prototype))) {
                 return fail(error, size, "Duplicate prototype runtime identity");
             }
         }
     }
     return true;
 }
-bool project_prepare_expand(
-    project_expansion *expansion,
-    const game_prototype *prototype,
-    char *error,
-    size_t size
-)
+bool project_prepare_expand(project_expansion *expansion, const prototype *prototype, char *error, size_t size)
 {
     expansion->documents += 1 + prototype->expanded;
     expansion->bytes += prototype->read;
-    bool documents = expansion->documents >= GAME_PROTOTYPE_EXPANSION_MAX;
-    if (!documents && expansion->bytes < GAME_PROTOTYPE_READ_MAX) {
+    bool documents = expansion->documents >= PROTOTYPE_EXPANSION_MAX;
+    if (!documents && expansion->bytes < PROTOTYPE_READ_MAX) {
         return true;
     }
     if (size && documents) {
-        snprintf(error, size, "Prototypes read more than %d prototypes through their includes and children", GAME_PROTOTYPE_EXPANSION_MAX);
+        snprintf(error, size, "Prototypes read more than %d prototypes through their includes and children", PROTOTYPE_EXPANSION_MAX);
     } else if (size) {
         snprintf(
             error,
             size,
             "Prototypes read more than %d MiB of prototypes through their "
             "includes and children",
-            GAME_PROTOTYPE_READ_MAX >> 20
+            PROTOTYPE_READ_MAX >> 20
         );
     }
     return false;
 }
-const game_prototype *project_prepare_prototype(const project_prototype *values, const char *name)
+const prototype *project_prepare_prototype(const project_prototype *values, const char *name)
 {
     for (int i = 0; i < acount(values); i++) {
         if (!strcmp(values[i].name, name)) {
@@ -186,14 +181,14 @@ const game_prototype *project_prepare_prototype(const project_prototype *values,
     }
     return NULL;
 }
-game_prototype *project_prepare_object(
-    const game_scene_entity *entity,
+prototype *project_prepare_object(
+    const scene_entity *entity,
     const project_prototype *values,
     char *error,
     size_t size
 )
 {
-    const game_prototype *base = project_prepare_prototype(values, entity->prototype);
+    const prototype *base = project_prepare_prototype(values, entity->prototype);
     if (!base) {
         fail(error, size, "Scene references an unknown prototype");
         return NULL;
@@ -210,17 +205,17 @@ game_prototype *project_prepare_object(
     } while (project_prepare_prototype(values, overlay));
     av_obj_add_str(doc, root, "name", overlay);
     /* Keep the base's stable tag identity for native prototype selectors. */
-    av_obj_add_str(doc, root, "identity", game_prototype_identity(base));
+    av_obj_add_str(doc, root, "identity", prototype_identity(base));
     av_value *includes = av_obj_add_arr(doc, root, "includes");
     av_arr_add_str(doc, includes, base->name);
-    game_prototype *object = game_prototype_load_value(root, base->registry, error, size);
+    prototype *object = prototype_load_value(root, base->registry, error, size);
     av_doc_free(doc);
     if (!object) {
         return NULL;
     }
     if (entity->components &&
-        game_prototype_apply_entity_components(object, entity->components, error, size)) {
-        game_prototype_free(object);
+        prototype_apply_entity_components(object, entity->components, error, size)) {
+        prototype_free(object);
         return NULL;
     }
     free(object->name);
@@ -230,14 +225,14 @@ game_prototype *project_prepare_object(
     }
     aclear(object->graphs);
     for (int i = 0; i < acount(entity->behaviors); i++) {
-        game_prototype_add_graph(object, entity->behaviors[i]);
+        prototype_add_graph(object, entity->behaviors[i]);
     }
     return object;
 }
 void project_prepare_prototypes_free(project_prototype *values)
 {
     for (int i = 0; i < acount(values); i++) {
-        game_prototype_free(values[i].prototype);
+        prototype_free(values[i].prototype);
         free(values[i].name);
         free(values[i].text);
     }

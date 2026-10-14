@@ -1,4 +1,4 @@
 name "Antenna"
 components {
-    GAME.GameTransform y=4.0
+    Transform y=4.0
 }

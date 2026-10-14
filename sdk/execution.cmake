@@ -1,11 +1,11 @@
 set(CHIBI_EXECUTION_SOURCES
-    artifact.c backend.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
+    artifact.c backend.c borrow.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
-    jit_suspend.c jit_system.c jit_watch.c log.c module.c module_effects.c opt.c parallel.c
+    jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     preparation_budget.c prepared.c prepared_function.c program.c program_inspection.c program_activation.c
     program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
-    program_tasks.c reads.c request.c source_debug.c state.c storage.c suspend.c time.c vm.c
-    update_jit.c wasm.c)
+    program_tasks.c range_opt.c reads.c request.c runner.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
+    update_jit.c wasm_emit.c wasm_jit.c)
 list(TRANSFORM CHIBI_EXECUTION_SOURCES PREPEND "${CHIBI_SDK_ROOT}/src/execution/")
 
 # Private implementation headers are available only to this package. A graph
@@ -31,11 +31,12 @@ chibi_sdk_headers(chibi_execution PUBLIC execution/function_builder.h execution/
     execution/module.h execution/module_builder.h execution/intrinsics.h
     execution/delay.h execution/task.h execution/inspection.h execution/prepared.h execution/ecs_reader.h)
 target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution")
-target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs)
+target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs chibi_tasks)
 
 option(CHIBI_ENABLE_SJLIT "Build the native execution backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CHIBI_ENABLE_SJLIT OFF)
+    target_link_options(chibi_execution INTERFACE -sALLOW_TABLE_GROWTH=1)
 endif()
 target_compile_definitions(chibi_execution PRIVATE CHIBI_HAVE_SJLIT=$<BOOL:${CHIBI_ENABLE_SJLIT}>)
 if(CHIBI_ENABLE_SJLIT)
@@ -51,7 +52,25 @@ if(CHIBI_ENABLE_SJLIT)
         FetchContent_MakeAvailable(chibi_execution_sljit_source)
         set(execution_sljit_source "${chibi_execution_sljit_source_SOURCE_DIR}")
     endif()
-    add_library(chibi_execution_sljit STATIC "${execution_sljit_source}/sljit_src/sljitLir.c")
+    # Keep dependency caches read-only. The copied entry point resolves its
+    # ARM64 backend locally; other includes still use the original source.
+    set(sljit_patch "${CHIBI_SDK_ROOT}/cmake/patches/sljit-arm64-immediate-negation.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sljit_patch}")
+    set(sljit_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/sljit")
+    foreach(source sljitLir.c sljitNativeARM_64.c)
+        configure_file("${execution_sljit_source}/sljit_src/${source}"
+            "${sljit_patched_root}/${source}" COPYONLY)
+    endforeach()
+    find_package(Git REQUIRED)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
+            "--directory=${sljit_patched_root}" "${sljit_patch}"
+        RESULT_VARIABLE sljit_patch_result
+        ERROR_VARIABLE sljit_patch_error)
+    if(NOT sljit_patch_result EQUAL 0)
+        message(FATAL_ERROR "Could not patch SLJIT ARM64 immediates: ${sljit_patch_error}")
+    endif()
+    add_library(chibi_execution_sljit STATIC "${sljit_patched_root}/sljitLir.c")
     set_target_properties(chibi_execution_sljit PROPERTIES EXPORT_NAME execution_sljit)
     target_include_directories(chibi_execution_sljit PRIVATE "${execution_sljit_source}/sljit_src")
     target_compile_definitions(chibi_execution_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)

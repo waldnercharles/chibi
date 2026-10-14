@@ -24,15 +24,15 @@ enum
 typedef struct
 {
     enkiTaskSet *set;
-    game_task_range *run;
+    task_range *run;
     void *user;
     bool active;
 } pool_task;
 #endif
 
-struct game_task_pool
+struct task_pool
 {
-    game_task_system tasks;
+    task_system tasks;
     int references, pending;
     bool open, parallel, started;
 #ifdef CHIBI_HAS_ENKITS
@@ -41,7 +41,7 @@ struct game_task_pool
 #endif
 };
 
-static game_task_pool *shared[GAME_TASK_WORKER_MAX + 1];
+static task_pool *shared[TASK_WORKER_MAX + 1];
 
 #ifdef CHIBI_HAS_ENKITS
 static int default_workers(int available)
@@ -82,7 +82,7 @@ static void run_range(uint32_t start, uint32_t end, uint32_t worker, void *user)
     CHIBI_TRACE_ZONE_END(zone);
 }
 
-static void start_workers(game_task_pool *pool)
+static void start_workers(task_pool *pool)
 {
     if (pool->started) {
         return;
@@ -95,9 +95,9 @@ static void start_workers(game_task_pool *pool)
 }
 #endif
 
-static void *enqueue(game_task_range *run, int count, int minimum, void *context, void *user)
+static void *enqueue(task_range *run, int count, int minimum, void *context, void *user)
 {
-    game_task_pool *pool = user;
+    task_pool *pool = user;
     assert(pool->open && count > 0 && minimum > 0);
     (void)pool;
     (void)minimum;
@@ -128,7 +128,7 @@ static void *enqueue(game_task_range *run, int count, int minimum, void *context
 
 static void finish(void *handle, void *user)
 {
-    game_task_pool *pool = user;
+    task_pool *pool = user;
     assert(pool->open);
     (void)pool;
     if (!handle) {
@@ -148,14 +148,14 @@ static void finish(void *handle, void *user)
 #endif
 }
 
-game_task_pool *game_task_pool_acquire()
+task_pool *task_pool_acquire()
 {
-    return game_task_pool_acquire_workers(0);
+    return task_pool_acquire_workers(0);
 }
 
-game_task_pool *game_task_pool_acquire_workers(int requested)
+task_pool *task_pool_acquire_workers(int requested)
 {
-    assert(requested >= 0 && requested <= GAME_TASK_WORKER_MAX);
+    assert(requested >= 0 && requested <= TASK_WORKER_MAX);
     (void)requested;
     int workers = 1;
 #ifdef CHIBI_HAS_ENKITS
@@ -179,12 +179,12 @@ game_task_pool *game_task_pool_acquire_workers(int requested)
         shared[workers]->references++;
         return shared[workers];
     }
-    game_task_pool *pool = xcalloc(1, sizeof *pool);
+    task_pool *pool = xcalloc(1, sizeof *pool);
     pool->references = 1;
 #ifdef CHIBI_HAS_ENKITS
     pool->scheduler = scheduler;
 #endif
-    pool->tasks = (game_task_system){ workers, pool, enqueue, finish };
+    pool->tasks = (task_system){ workers, pool, enqueue, finish };
     shared[workers] = pool;
 #ifdef CHIBI_WEB_WORKERS
     if (workers > 1) {
@@ -194,7 +194,7 @@ game_task_pool *game_task_pool_acquire_workers(int requested)
     return pool;
 }
 
-void game_task_pool_release(game_task_pool *pool)
+void task_pool_release(task_pool *pool)
 {
     int workers = pool->tasks.workers;
     assert(pool == shared[workers] && pool->references > 0 && !pool->open && !pool->pending);
@@ -214,17 +214,17 @@ void game_task_pool_release(game_task_pool *pool)
     shared[workers] = NULL;
 }
 
-const game_task_system *game_task_pool_tasks(const game_task_pool *pool)
+const task_system *task_pool_tasks(const task_pool *pool)
 {
     return &pool->tasks;
 }
 
-bool game_task_pool_started(const game_task_pool *pool)
+bool task_pool_started(const task_pool *pool)
 {
     return pool->started;
 }
 
-void game_task_pool_begin(game_task_pool *pool, bool parallel)
+void task_pool_begin(task_pool *pool, bool parallel)
 {
     assert(!pool->open && !pool->pending);
     (void)pool;
@@ -232,7 +232,7 @@ void game_task_pool_begin(game_task_pool *pool, bool parallel)
     pool->parallel = parallel && pool->tasks.workers > 1;
 }
 
-void game_task_pool_end(game_task_pool *pool)
+void task_pool_end(task_pool *pool)
 {
     assert(pool->open && !pool->pending);
     (void)pool;

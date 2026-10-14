@@ -38,13 +38,13 @@ records what the deployment establishes and what remains unknown.
 
 ## Implemented behavior
 
-Attach `MaterialThermal` to a `GameFluidVolume` or a fluid `GameParticleEmitter`:
+Attach `MaterialThermal` to a `FluidVolume` or a fluid `ParticleEmitter`:
 
 - `capacity` is specific heat capacity per unit particle mass. Zero disables
   thermal exchange. Effective heat capacity is `mass * capacity`.
 - `conductivity` is an authored local exchange rate; zero insulates. Values must
   be finite and nonnegative, with positive capacity for conductive material.
-- `GameCombustion.extinction` enables extinguishing when positive and below
+- `Combustion.extinction` enables extinguishing when positive and below
   `ignition`. Its default of zero preserves the previous combustion behavior.
 
 Heat is a gameplay temperature-like value, not Kelvin; conductivity is not an SI
@@ -112,7 +112,7 @@ neighborhoods change mixing and thermal diffusion, so the fine scene is evaluate
 against its own sealed control rather than expecting identical motion or cooling
 to the coarse scene.
 
-`GameFluidVolume.grain_radius` enables individual antialiased discs when positive.
+`FluidVolume.grain_radius` enables individual antialiased discs when positive.
 Zero retains the continuous liquid/gas presentation. The physical radius remains
 1.5 while the demo draws grains at radius 0.22, about two pixels across at
 1280×720. Heat, fuel, pressure and collisions still operate on all 4,024 particles.

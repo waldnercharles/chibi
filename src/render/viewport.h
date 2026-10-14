@@ -64,6 +64,9 @@ typedef struct engine_viewport_pointer
     float world_x;
     float world_y;
     float world_per_pixel;
+    /* world_x and world_y hold the pointer's point: always in a 2D view, and
+       in perspective where its ray meets the ground plane. */
+    bool grounded;
     float ndc_x, ndc_y;
     float press_ndc_x, press_ndc_y;
     bool hovered;
@@ -76,14 +79,18 @@ typedef struct engine_viewport_pointer
 } engine_viewport_pointer;
 
 /* Copied from the most recent draw. A left gesture starts inside the image and
- * remains captured outside it through release. Hidden panes or blocked input
- * cancel the gesture. World coordinates use the rendered Y-up projection. */
+ * remains captured outside it through release, above a perspective view's
+ * horizon too. Hidden panes or blocked input cancel the gesture. World
+ * coordinates use the rendered Y-up projection. */
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
 /* Sample this frame's mouse against the last displayed image rectangle. */
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
+/* The pointer's world-space ray uses the camera and rectangle of the last
+ * displayed 3D image, even when a resize or view change is pending. */
+bool engine_viewport_mouse_ray(const engine_viewport *viewport, CF_Ray3 *ray);
 /* The runtime whose audio plays while a session is shown. */
 void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime);
-/* Shows `world`'s GameUi documents from content_root/ui over the scene
+/* Shows `world`'s Ui documents from content_root/ui over the scene
  * (render/ui.h). */
 void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
 /* The host's frame time in seconds, which the documents' transitions follow,

@@ -22,6 +22,13 @@ void behavior_function_builder_signature(
 );
 int behavior_function_builder_slot(behavior_function_builder *builder, pin_type type);
 int behavior_function_builder_local(behavior_function_builder *builder, pin_value initial);
+/* Logical aggregate shape of an address saved in a scalar slot or local. */
+void behavior_function_builder_root(
+    behavior_function_builder *,
+    behavior_value_bank,
+    int index,
+    pin_value shape
+);
 /* Declare provenance explicitly; pointer-width numeric types never imply it. */
 bool behavior_function_builder_kind(behavior_function_builder *, behavior_value_bank, int index, behavior_value_kind);
 int behavior_function_builder_origin(behavior_function_builder *builder, behavior_function_source source);

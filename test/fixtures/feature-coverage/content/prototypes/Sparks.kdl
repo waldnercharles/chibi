@@ -1,6 +1,6 @@
 name "Sparks"
 components {
-    GAME.GameParticleEmitter {
+    ParticleEmitter {
         active #true
         burst_count 4
         direction x=1.0
@@ -14,6 +14,6 @@ components {
         speed x=20.0 y=40.0
         spread 1.0
     }
-    GAME.GameTrail lifetime=0.5 width=2.0
-    (object)GAME.GameTransform
+    Trail lifetime=0.5 width=2.0
+    (object)Transform
 }

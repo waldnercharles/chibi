@@ -22,18 +22,18 @@ typedef struct
     bool streamed_mask;
 } material_record;
 
-struct game_materials
+struct materials
 {
     ecs_world *world;
-    struct game_entities *entities;
-    struct game_particles *particles;
+    struct entities *entities;
+    struct particles *particles;
     material_fluid *fluid;
     material_fields *fields;
     char error[256];
-    game_task_pool *pool;
+    task_pool *pool;
     MaterialFluidWorld settings;
-    fluid_vec gravity; /* The scene's, from game_materials_set_gravity. */
-    GameCombustion combustion;
+    fluid_vec gravity; /* The scene's, from materials_set_gravity. */
+    Combustion combustion;
     material_record *records;
     uint64_t next_mask_generation;
     material_destruction *destruction;
@@ -46,13 +46,13 @@ struct game_materials
     struct material_debris_tile *debris_tiles;
     /* Preparation scratch; synchronous consumers borrow only during the call. */
     material_stream_view *terrain_views;
-    /* Views a host adds, in game coordinates (game_materials_set_stream_views). */
+    /* Views a host adds, in game coordinates (materials_set_stream_views). */
     material_stream_view *host_views;
-    bool stream_deferred; /* game_materials_set_stream_deferred */
+    bool stream_deferred; /* materials_set_stream_deferred */
     material_debris_blast *debris_blasts;
 };
 
-material_record *material_ecs_record(game_materials *materials, ecs_entity entity);
+material_record *material_ecs_record(materials *materials, ecs_entity entity);
 void material_ecs_release_record(material_record *record);
 void material_ecs_add_component(
     ecs_world *world,
@@ -60,14 +60,14 @@ void material_ecs_add_component(
     const ecs_component_desc *component,
     const void *value
 );
-MaterialBreakProfile material_ecs_break_profile(game_materials *materials, ecs_entity entity);
-const char *material_ecs_generate_terrains(game_materials *materials);
-const char *material_ecs_configure_fluid(game_materials *materials);
-const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity);
-void material_ecs_fade_fragments(game_materials *materials, float delta);
+MaterialBreakProfile material_ecs_break_profile(materials *materials, ecs_entity entity);
+const char *material_ecs_generate_terrains(materials *materials);
+const char *material_ecs_configure_fluid(materials *materials);
+const char *material_ecs_fill_volume(materials *materials, ecs_entity entity);
+void material_ecs_fade_fragments(materials *materials, float delta);
 /* Seeds a crater's chunks; source names the entity whose material they show. */
 void material_ecs_throw_chunks(
-    game_materials *materials,
+    materials *materials,
     fluid_vec point,
     fluid_vec normal,
     int cells,
@@ -76,7 +76,7 @@ void material_ecs_throw_chunks(
     MaterialBreakProfile profile
 );
 void material_ecs_tick_debris(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -84,7 +84,7 @@ void material_ecs_tick_debris(
     int obstacle_count
 );
 void material_ecs_tick_fluid(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -92,7 +92,7 @@ void material_ecs_tick_fluid(
     int obstacle_count
 );
 void material_ecs_tick_fluid_profiled(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,

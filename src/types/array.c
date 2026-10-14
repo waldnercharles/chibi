@@ -4,6 +4,7 @@
 #include "support/xalloc.h"
 #include "types/catalog.h"
 #include "types/trace.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -169,6 +170,15 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
             }
             const char *text = *(const char **)member;
             *(const char **)member = arena_string(a, text);
+        } else if (field->type == PIN_UNION) {
+            if (field->size != sizeof(void *)) {
+                return -1;
+            }
+            pin_value source = { .type = PIN_UNION, .ptr = *(void **)member }, copy;
+            if (pin_value_snapshot_to_arena(a, &copy, &source)) {
+                return -1;
+            }
+            *(void **)member = copy.ptr;
         }
     }
     return 0;
@@ -196,6 +206,13 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
     if (value_string(src->type)) {
         dst->str = arena_string(a, src->str);
         return 0;
+    }
+    if (src->type == PIN_UNION && src->ptr) {
+        const pin_union *value = src->ptr;
+        const char *name = dst->type_name;
+        int result = pin_union_value(a, value->tag, value->values, value->count, dst);
+        dst->type_name = name;
+        return result;
     }
     if (src->type != PIN_STRUCT || !src->ptr) {
         return 0;
@@ -264,6 +281,9 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
         dst->ptr = pin_array_clone((const pin_array *)src->ptr);
         return !src->ptr || dst->ptr ? 0 : -1;
     }
+    if (src->type == PIN_UNION) {
+        return pin_union_copy(dst, src);
+    }
     if (value_string(src->type) && src->str) {
         dst->str = xstrdup(src->str);
         return 0;
@@ -280,6 +300,9 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return -1;
     }
     *dst = *src;
+    if (src->type == PIN_UNION && src->container == PIN_CONTAINER_SINGLE) {
+        return pin_value_snapshot_to_arena(a, dst, src);
+    }
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone_to_arena(a, (const pin_array *)src->ptr);
         if (src->container == PIN_CONTAINER_SET) {
@@ -302,6 +325,8 @@ void pin_value_destroy(pin_value *value)
         pin_array_free((pin_array *)value->ptr);
     } else if (value_string(value->type)) {
         free((void *)value->str);
+    } else if (value->type == PIN_UNION) {
+        pin_union_destroy(value->ptr);
     }
     /* Struct values are borrowed until a type-specific copy callback exists.
      * Their storage may belong to an arena, graph, or host object. */
@@ -318,6 +343,21 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
     }
     if (value_string(a->type)) {
         return strcmp(a->str ? a->str : "", b->str ? b->str : "") == 0;
+    }
+    if (a->type == PIN_UNION) {
+        const pin_union *left = a->ptr, *right = b->ptr;
+        if (!left || !right) {
+            return left == right;
+        }
+        if (left->tag != right->tag || left->count != right->count) {
+            return 0;
+        }
+        for (int i = 0; i < left->count; i++) {
+            if (!pin_value_equal(&left->values[i], &right->values[i])) {
+                return 0;
+            }
+        }
+        return 1;
     }
     if (a->type == PIN_STRUCT) {
         if (strcmp(a->type_name ? a->type_name : "", b->type_name ? b->type_name : "")) {
@@ -352,6 +392,7 @@ int pin_value_equal(const pin_value *a, const pin_value *b)
         case PIN_U32: return a->u == b->u;
         case PIN_I64: return a->i64 == b->i64;
         case PIN_U64: return a->u64 == b->u64;
+        case PIN_TASK: return a->u64 == b->u64;
         case PIN_F32: return a->f == b->f;
         case PIN_F64: return a->d == b->d;
         case PIN_ENUM:

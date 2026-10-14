@@ -1,4 +1,6 @@
+#include "execution/borrow.h"
 #include "execution/definition.h"
+#include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "support/arena.h"
@@ -8,14 +10,18 @@
 
 #include <stdlib.h>
 
-typedef struct
+#define CALL_CACHE_BYTES (64 * 1024)
+
+typedef struct invocation_frame
 {
     const behavior_function *function;
     behavior_function_invocation invocation;
     behavior_function_context context;
     behavior_function_activation activation;
+    behavior_data_storage *data;
     arena storage;
     bool entered;
+    struct invocation_frame *next;
 } invocation_frame;
 
 struct behavior_function_calls
@@ -23,24 +29,100 @@ struct behavior_function_calls
     /* Frames have stable addresses. A growing pointer array never invalidates
      * context.parent or arguments retained by a pending host operation. */
     invocation_frame **frames;
+    /* Completed frames, matched by immutable function generation. Their whole
+     * retained allocation set is bounded and never forms a live value root. */
+    invocation_frame *spare;
     int result;
 };
 
-static void frame_free(invocation_frame *frame, int result)
+static void frame_leave(invocation_frame *frame, int result)
 {
     if (frame->entered && frame->context.call_leave) {
         frame->context.call_leave(&frame->context, result);
     }
+    frame->entered = false;
+}
+
+static void frame_free(invocation_frame *frame, int result)
+{
+    frame_leave(frame, result);
     behavior_function_release_host(&frame->context);
+    behavior_function_free_data(frame->data);
     behavior_function_activation_free(&frame->activation);
     arena_free(&frame->storage);
     free(frame);
+}
+
+static size_t frame_bytes(const invocation_frame *frame)
+{
+    return sizeof *frame + arena_storage_bytes(&frame->storage) +
+           behavior_function_host_storage_bytes(&frame->context) +
+           behavior_function_activation_storage_bytes(frame->function, &frame->activation);
+}
+size_t behavior_function_calls_storage_bytes(const struct behavior_function_calls *calls)
+{
+    if (!calls) {
+        return 0;
+    }
+    size_t bytes = sizeof *calls;
+    if (calls->frames) {
+        bytes += sizeof(dyna_hdr) + (size_t)acap(calls->frames) * sizeof *calls->frames;
+    }
+    for (int i = 0; i < acount(calls->frames); i++) {
+        bytes += frame_bytes(calls->frames[i]);
+    }
+    for (const invocation_frame *frame = calls->spare; frame; frame = frame->next) {
+        bytes += frame_bytes(frame);
+    }
+    return bytes;
+}
+void behavior_function_calls_reset(struct behavior_function_calls *calls)
+{
+    if (calls) {
+        assert(!acount(calls->frames) && calls->result == FLOW_OK);
+        /* A deeper live call can grow this vector after older spare frames
+         * were retained. Trim against their combined idle allocation size. */
+        if (behavior_function_calls_storage_bytes(calls) > CALL_CACHE_BYTES) {
+            afree(calls->frames);
+        } else if (calls->frames) {
+            memset(calls->frames, 0, (size_t)acap(calls->frames) * sizeof *calls->frames);
+        }
+        calls->result = FLOW_OK;
+    }
+}
+
+static void frame_retire(struct behavior_function_calls *calls, invocation_frame *frame)
+{
+    frame_leave(frame, FLOW_OK);
+    behavior_function_reset_host(&frame->context);
+    behavior_function_reset_activation(frame->function, &frame->activation);
+    arena_reset(&frame->storage);
+    frame->invocation = (behavior_function_invocation){ 0 };
+    /* Live frames are an execution requirement, not an idle-retention budget.
+     * Count the reusable list and its vector capacity before adding this one. */
+    size_t bytes = sizeof *calls + sizeof(dyna_hdr) +
+                   (size_t)acap(calls->frames) * sizeof *calls->frames +
+                   frame_bytes(frame);
+    for (invocation_frame *spare = calls->spare; spare; spare = spare->next) {
+        bytes += frame_bytes(spare);
+    }
+    if (bytes > CALL_CACHE_BYTES) {
+        frame_free(frame, FLOW_OK);
+        return;
+    }
+    frame->next = calls->spare;
+    calls->spare = frame;
 }
 
 void behavior_function_calls_free(struct behavior_function_calls *calls)
 {
     if (!calls) {
         return;
+    }
+    while (calls->spare) {
+        invocation_frame *frame = calls->spare;
+        calls->spare = frame->next;
+        frame_free(frame, FLOW_OK);
     }
     for (int i = acount(calls->frames) - 1; i >= 0; i--) {
         frame_free(calls->frames[i], FLOW_ERR_STATE);
@@ -60,6 +142,9 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
 static int settle_calls(struct behavior_function_calls *calls, int result)
 {
     calls->result = result;
+    if (result == FLOW_OK) {
+        behavior_function_calls_reset(calls);
+    }
     if (result >= 0) {
         return result;
     }
@@ -137,7 +222,11 @@ static const behavior_function_invocation *invocation(
     assert(i->op == BF_INVOKE && i->left >= 0 && i->left < acount(function->calls));
     return &function->calls[i->left];
 }
-static invocation_frame *frame_new(const behavior_function *function, behavior_function_context *parent)
+static invocation_frame *frame_new(
+    struct behavior_function_calls *calls,
+    const behavior_function *function,
+    behavior_function_context *parent
+)
 {
     const behavior_function_instruction
         *i = &function->instructions[parent->activation->pc - 1];
@@ -149,14 +238,34 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         call_error(function, parent, BEHAVIOR_FUNCTION_DEPTH, "function recursion depth exceeded");
         return NULL;
     }
-    invocation_frame *frame = xcalloc(1, sizeof *frame);
+    invocation_frame **available = &calls->spare;
+    while (*available && (*available)->function != call.function) {
+        available = &(*available)->next;
+    }
+    invocation_frame *frame = *available;
+    if (frame) {
+        *available = frame->next;
+        frame->next = NULL;
+    }
+    if (!frame) {
+        frame = xcalloc(1, sizeof *frame);
+        arena_init(&frame->storage, 4096);
+    }
     frame->function = call.function;
     frame->invocation = call;
+    behavior_function_prepare_data(call.function, parent->services, &frame->data);
     frame->context = (behavior_function_context){
         .parent = parent,
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
+        .variables = parent->variables,
+        .data = frame->data,
+        .queries = frame->context.queries,
+        .commands = frame->context.commands,
+        .command_arguments = frame->context.command_arguments,
+        .command_results = frame->context.command_results,
+        .services = parent->services,
         .budget = parent->budget,
         .call_depth = depth,
         .inspection_user = parent->inspection_user,
@@ -175,14 +284,25 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
         .request_action_break = parent->request_action_break,
         .take_action_break = parent->take_action_break,
         .store_component = parent->store_component,
+        .reduce_component = parent->reduce_component,
         .component_membership = parent->component_membership,
         .failure_observer = parent->failure_observer,
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
-    arena_init(&frame->storage, 4096);
+    bool views = call.function->readonly_collections &&
+                 !behavior_function_inspection_required(function, parent) &&
+                 program_call_views_allowed(parent);
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
+        if (views && behavior_function_borrow_argument(
+                         call.function,
+                         &frame->context,
+                         &parent->data->values[call.first + p],
+                         &arguments[p]
+                     )) {
+            continue;
+        }
         if (pin_value_snapshot_to_arena(
                 &frame->storage,
                 &arguments[p],
@@ -202,7 +322,7 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
     for (int p = 0; p < call.result_count; p++) {
         frame->context.results[p] = parent->data->values[call.result_first + p];
     }
-    if (behavior_function_resumable(call.function)) {
+    if (behavior_function_resumable(call.function) && !frame->activation.values) {
         behavior_function_activation_init(call.function, &frame->activation);
     }
     arena *payload = parent->value_storage;
@@ -219,6 +339,9 @@ static invocation_frame *frame_new(const behavior_function *function, behavior_f
     if (size) {
         frame->context.watch_storage = arena_alloc(&frame->storage, size);
     }
+    /* Supplied host banks live with the frame, so run_once must not release
+     * their allocations before successful retirement can reset them. */
+    behavior_function_prepare_host(call.function, &frame->context);
     return frame;
 }
 
@@ -235,6 +358,7 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->retrigger = root->retrigger;
     context->variable_storage = root->variable_storage;
     context->value_owner = root->value_owner;
+    context->query_variables = root->query_variables;
     context->store_value = root->store_value;
     context->add_set_value = root->add_set_value;
     context->own_type_name = root->own_type_name;
@@ -282,7 +406,7 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
 int behavior_function_run_calls(
     const behavior_function *function,
     behavior_function_context *root,
-    bool native
+    bool compiled
 )
 {
     assert(root->activation && root->activation->values);
@@ -303,7 +427,7 @@ int behavior_function_run_calls(
             context = &frame->context;
             refresh(frame, root);
         }
-        int result = behavior_function_run_once(active, context, native);
+        int result = behavior_function_run_once(active, context, compiled);
         if (context->commit_instance) {
             context->commit_instance(context);
         }
@@ -317,7 +441,7 @@ int behavior_function_run_calls(
                 root->wake_time = context->wake_time;
                 return settle_calls(calls, result);
             }
-            invocation_frame *frame = frame_new(active, context);
+            invocation_frame *frame = frame_new(calls, active, context);
             if (!frame) {
                 return settle_calls(
                     calls,
@@ -337,7 +461,11 @@ int behavior_function_run_calls(
                                                 ? calls->frames[count - 2]->function
                                                 : function;
             result = return_values(calls->frames[count - 1], parent);
-            frame_free(calls->frames[count - 1], result);
+            if (result) {
+                frame_free(calls->frames[count - 1], result);
+            } else {
+                frame_retire(calls, calls->frames[count - 1]);
+            }
             asetlen(calls->frames, count - 1);
             if (!result) {
                 continue;
@@ -386,7 +514,8 @@ static void trace_context(
                                           : f->locals[value - slots].initial.type;
             behavior_value_kind kind = value < slots ? f->slot_kinds[value]
                                                      : f->locals[value - slots].kind;
-            if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME) {
+            if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME ||
+                type == PIN_UNION) {
                 mark(user, (const void *)(uintptr_t)a->values[value]);
             }
         }
@@ -421,6 +550,79 @@ void behavior_function_trace_values(
                                                     : NULL;
     for (int i = 0; calls && i < acount(calls->frames); i++) {
         trace_context(calls->frames[i]->function, &calls->frames[i]->context, mark, user);
+    }
+}
+static void visit_bank(
+    const pin_value *values,
+    int count,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    for (int i = 0; i < count; i++) {
+        visit(user, &values[i]);
+    }
+}
+static void visit_context(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    const behavior_function_activation *a = ctx->activation;
+    if (a && a->values && a->pc > 0) {
+        const behavior_function_suspension
+            *s = &f->suspensions[f->instructions[a->pc - 1].target];
+        int slots = acount(f->slots);
+        for (int i = 0; i < acount(s->roots); i++) {
+            pin_value value = s->roots[i].shape;
+            value.ptr = (void *)(uintptr_t)a->values[s->roots[i].index];
+            visit(user, &value);
+        }
+        for (int i = 0; i < acount(s->values); i++) {
+            int index = s->values[i];
+            pin_type type = index < slots ? f->slots[index]
+                                          : f->locals[index - slots].initial.type;
+            if (type == PIN_TASK || type == PIN_UNION) {
+                pin_value value = { .type = type, .u64 = a->values[index] };
+                if (type == PIN_UNION) {
+                    value.ptr = (void *)(uintptr_t)a->values[index];
+                }
+                visit(user, &value);
+            }
+        }
+    }
+    visit_bank(ctx->arguments, ctx->argument_count, visit, user);
+    visit_bank(ctx->results, f->result_count, visit, user);
+    visit_bank(ctx->variables, f->variable_count, visit, user);
+    visit_bank(ctx->command_arguments, acount(f->command_arguments), visit, user);
+    visit_bank(ctx->command_results, acount(f->command_results), visit, user);
+    if (!ctx->data) {
+        return;
+    }
+    visit_bank(ctx->data->values, acount(f->data_values), visit, user);
+    for (int i = 0; i < acount(f->data_values); i++) {
+        if (f->data_values[i].size) {
+            pin_value value = f->data_values[i].initial;
+            value.ptr = ctx->data->buffers[i];
+            visit(user, &value);
+        }
+    }
+}
+void behavior_function_visit_values(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    visit_context(f, ctx, visit, user);
+    const struct behavior_function_calls *calls = ctx->activation
+                                                    ? ctx->activation->calls
+                                                    : NULL;
+    for (int i = 0; calls && i < acount(calls->frames); i++) {
+        visit_context(calls->frames[i]->function, &calls->frames[i]->context, visit, user);
     }
 }
 typedef struct

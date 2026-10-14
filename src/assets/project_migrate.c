@@ -15,9 +15,51 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <yyjson.h>
+
+/* Historical migration steps parse their source contract, independently of
+ * the current language accepted by compilation and authoring. */
+const TSLanguage *tree_sitter_chibi_project23();
+
+static script_syntax *parse23(const char *text)
+{
+    script_syntax *syntax = xcalloc(1, sizeof *syntax);
+    syntax->text = xstrdup(text);
+    TSParser *parser = ts_parser_new();
+    bool compatible = ts_parser_set_language(parser, tree_sitter_chibi_project23());
+    assert(compatible);
+    (void)compatible;
+    syntax->tree = ts_parser_parse_string(parser, NULL, text, (uint32_t)strlen(text));
+    ts_parser_delete(parser);
+    assert(syntax->tree);
+    TSNode problem = ts_tree_root_node(syntax->tree);
+    if (ts_node_has_error(problem)) {
+        for (;;) {
+            TSNode child = { 0 };
+            for (uint32_t i = 0; i < ts_node_child_count(problem); i++) {
+                TSNode candidate = ts_node_child(problem, i);
+                if (ts_node_has_error(candidate)) {
+                    child = candidate;
+                    break;
+                }
+            }
+            if (ts_node_is_null(child) || ts_node_is_error(problem)) {
+                break;
+            }
+            problem = child;
+        }
+        script_diagnostic diagnostic = {
+            .range = script_node_range(problem),
+            .message = "Invalid version 23 source syntax"
+        };
+        apush(syntax->diagnostics, diagnostic);
+        syntax->diagnostic_count = 1;
+    }
+    return syntax;
+}
 
 typedef struct
 {
@@ -92,13 +134,14 @@ static bool is_name(TSNode node)
 {
     return is(node, "identifier") || is(node, "string");
 }
-static void collect(TSNode node, int file, TSNode library, function **functions)
+static void collect(TSNode node, int file, TSNode library, bool macros, function **functions)
 {
     if (is(node, "library")) {
         library = ts_node_child_by_field_name(node, "name", 4);
     }
     /* An action has no body; it never waits and shadows functions. */
-    if (is(node, "function_declaration") || is(node, "action_declaration")) {
+    if (is(node, "function_declaration") || is(node, "action_declaration") ||
+        (macros && is(node, "macro_declaration"))) {
         apush(
             *functions,
             ((function){ .file = file,
@@ -109,7 +152,7 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
         );
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        collect(ts_node_named_child(node, i), file, library, functions);
+        collect(ts_node_named_child(node, i), file, library, macros, functions);
     }
 }
 static TSNode outer(TSNode node)
@@ -241,8 +284,8 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
     corpus c = { .sources = sources };
     script_syntax **syntax = xmalloc((size_t)(count + 1) * sizeof *syntax);
     for (int i = 0; i < count; i++) {
-        syntax[i] = script_parse(sources[i]);
-        collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, &c.functions);
+        syntax[i] = parse23(sources[i]);
+        collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, false, &c.functions);
     }
     for (bool changed = true; changed;) {
         changed = false;
@@ -831,7 +874,7 @@ char *chibi_migrate_results(const char *source)
         afree(all);
         return NULL;
     }
-    script_syntax *syntax = script_parse(stripped);
+    script_syntax *syntax = parse23(stripped);
     TSNode root = ts_tree_root_node(syntax->tree);
     insertion *inserts = NULL;
     char **texts = NULL;
@@ -1241,7 +1284,7 @@ int chibi_migrate_values(const char *source, char **migrated, char *error, size_
         afree(all);
         return 0;
     }
-    script_syntax *syntax = script_parse(text);
+    script_syntax *syntax = parse23(text);
     TSNode root = ts_tree_root_node(syntax->tree);
     for (int i = 0; i < acount(all); i++) {
         TSNode node = ts_node_descendant_for_byte_range(
@@ -2007,7 +2050,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
         afree(all);
         return 0;
     }
-    script_syntax *syntax = script_parse(text);
+    script_syntax *syntax = parse23(text);
     TSNode root = ts_tree_root_node(syntax->tree);
     int status = 0;
     for (int i = 0; i < acount(all); i++) {
@@ -2145,7 +2188,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
             apush(result, text[from]);
         }
         apush(result, '\0');
-        script_syntax *check = script_parse(result);
+        script_syntax *check = parse23(result);
         if (ts_node_has_error(ts_tree_root_node(check->tree))) {
             status = -1;
             if (error_size) {
@@ -2556,6 +2599,36 @@ static const char *quoted_use(const char *source, const char *const *words, size
     }
     return use;
 }
+/* KDL names and prose may mention the removed feature without depending on
+ * its reflected component or graph types. Only semantic references block. */
+static bool motion_asset_use(const av_value *value, bool semantic)
+{
+    if (av_is_str(value)) {
+        return semantic && strstr(av_get_str(value), "SdfMotion");
+    }
+    for (size_t i = 0; i < av_obj_size(value); i++) {
+        const char *key = av_get_str(av_obj_key_at(value, i));
+        if (!strcmp(key, "GameSdfMotion") || !strcmp(key, "GAME.GameSdfMotion")) {
+            return true;
+        }
+        bool reference = !strcmp(key, "component") ||
+                         !strcmp(key, "component_type") ||
+                         !strcmp(key, "component_name") ||
+                         !strcmp(key, "Component") || !strcmp(key, "type") ||
+                         !strcmp(key, "type_name") ||
+                         !strcmp(key, "split_type_name") ||
+                         !strcmp(key, "owner_type");
+        if (motion_asset_use(av_obj_value_at(value, i), semantic || reference)) {
+            return true;
+        }
+    }
+    for (size_t i = 0; i < av_arr_size(value); i++) {
+        if (motion_asset_use(av_arr_get(value, i), semantic)) {
+            return true;
+        }
+    }
+    return false;
+}
 /* Version 18 removes GameSdfMotion from every scene and prototype. Any other
  * use, by name or in a string in a script or as text left in another asset,
  * stops the migration for a person to remove it. */
@@ -2570,9 +2643,10 @@ static char **migrate_motions(char **sources, char **paths, int count, char *err
             use = use ? use : quoted_use(sources[i], words, 3);
         } else {
             migrated[i] = drop_motions(sources[i]);
-            use = strstr(migrated[i] ? migrated[i] : sources[i], "SdfMotion")
-                    ? words[1]
-                    : NULL;
+            char message[128];
+            av_doc *document = asset_text_read(migrated[i] ? migrated[i] : sources[i], message, sizeof message);
+            use = motion_asset_use(av_doc_root(document), false) ? words[1] : NULL;
+            av_doc_free(document);
         }
         if (use) {
             snprintf(error, error_size, "%s uses %s, which version 18 removes; remove that use, then migrate", paths[i], use);
@@ -2665,7 +2739,7 @@ char *chibi_migrate_component(const char *kdl, char *error, size_t error_size)
     char *migrated = xstrdup(out);
     afree(out);
     /* A name KDL allowed may be a reserved word in .chibi. */
-    script_syntax *syntax = script_parse(migrated);
+    script_syntax *syntax = parse23(migrated);
     if (syntax->diagnostic_count) {
         const char *line = migrated;
         for (int i = 1; i < syntax->diagnostics[0].range.line; i++) {
@@ -2899,6 +2973,775 @@ static char *surface_outputs(const char *asset)
     av_doc_free(document);
     return migrated;
 }
+/* Version 23 removes the native Game type prefix and the component namespace.
+ * Keep the historical names here: future catalog changes must not change what
+ * this migration recognizes, and authored types may themselves start in Game. */
+static const char *unprefixed_native(const char *text, size_t length)
+{
+    static const char *const names[] = {
+        "GameAim",
+        "GamePadControl",
+        "GameGlobalIllumination",
+        "GameAppearance",
+        "GameBody",
+        "GameBody3D",
+        "GameBodyType",
+        "GameCamera",
+        "GameCharacter3D",
+        "GameCollider",
+        "GameCollider3D",
+        "GameCollider3DShape",
+        "GameColliderShape",
+        "GameCombustion",
+        "GameControl",
+        "GameDash",
+        "GameDestructible",
+        "GameDirectionalLight",
+        "GameDrive",
+        "GameEncounter",
+        "GameEncounterMember",
+        "GameEnvironment",
+        "GameExperience",
+        "GameFluidKind",
+        "GameFluidVolume",
+        "GameFog",
+        "GameFragmentGlow",
+        "GameFuel",
+        "GameGeometry3D",
+        "GameGlobalBinding",
+        "GameGlobalTransform2D",
+        "GameGlobalTransform3D",
+        "GameGravity",
+        "GameGravity3D",
+        "GameHRC2D",
+        "GameHRCColor",
+        "GameHRCDebugView",
+        "GameHRCDepthEmitters",
+        "GameHRCDepthQuality",
+        "GameHRCDepthVisibility",
+        "GameHRCGather",
+        "GameHRCShadowMode",
+        "GameHRCSurfaceMode",
+        "GameHRCToneMapping",
+        "GameHRCUpscale",
+        "GameHealth",
+        "GameIgniter",
+        "GameInput",
+        "GameJoint",
+        "GameJoint3D",
+        "GameJoint3DKind",
+        "GameJointKind",
+        "GameMaterial",
+        "GameMaterialCavity",
+        "GameMaterialFrame",
+        "GameMeshAsset",
+        "GameMeshParts",
+        "GameMeshSurface2D",
+        "GameMovement",
+        "GameOcclusion",
+        "GameOrientation",
+        "GameParticleCurve",
+        "GameParticleEmitter",
+        "GameParticleShape",
+        "GamePickup",
+        "GamePointLight",
+        "GameProjectile",
+        "GameReflection",
+        "GameRenderState",
+        "GameRhythm",
+        "GameSdfNormalMode",
+        "GameSdfSurface3D",
+        "GameSensorContact",
+        "GameShader",
+        "GameShape",
+        "GameSpawnRequest",
+        "GameSpotLight",
+        "GameSprite",
+        "GameStarfield2D",
+        "GameSubstance",
+        "GameSurfaceInfluence",
+        "GameSurfaceQuality",
+        "GameSurfaceResolution",
+        "GameTilemap",
+        "GameToneMapping",
+        "GameTrail",
+        "GameTransform",
+        "GameTransform3D",
+        "GameUi",
+        "GameVelocity",
+        "GameVision",
+        "GameVisualMotion",
+        "GameVisualTransform",
+        "GameWeapon",
+    };
+    char name[128];
+    if (length >= sizeof name) {
+        return NULL;
+    }
+    memcpy(name, text, length);
+    name[length] = '\0';
+    for (size_t i = 0; i < sizeof names / sizeof *names; i++) {
+        if (names_match(names[i], name)) {
+            return names[i] + 4;
+        }
+    }
+    return NULL;
+}
+static bool prefixed_native(const char *text, size_t length)
+{
+    return unprefixed_native(text, length) != NULL;
+}
+static bool native_source_call(const char *text)
+{
+    static const char *const native[] = { "game_move_transform",
+                                          "game_transform_to_cf",
+                                          "game_transform_from_cf",
+                                          "game_transform_visual_offset",
+                                          "game_visual_primitive_part" };
+    for (size_t i = 0; i < sizeof native / sizeof *native; i++) {
+        if (names_match(text, native[i])) {
+            return true;
+        }
+    }
+    static const char *const operations[] = {
+        "getentity", "setentity", "hasentity", "get",   "set",  "has",
+        "add",       "remove",    "make",      "break", "wrap", "unwrap"
+    };
+    char *normalized = xmalloc(strlen(text) + 1), *at = normalized;
+    for (const char *p = text; *p; p++) {
+        if (*p != '_' && *p != ' ' && *p != '-') {
+            *at++ = (char)tolower((unsigned char)*p);
+        }
+    }
+    *at = '\0';
+    bool found = false;
+    for (size_t i = 0; !found && i < sizeof operations / sizeof *operations; i++) {
+        size_t length = strlen(operations[i]);
+        if (strncmp(normalized, operations[i], length)) {
+            continue;
+        }
+        const char *name = normalized + length;
+        for (size_t end = strlen(name); end > 4; end--) {
+            if (prefixed_native(name, end)) {
+                found = true;
+                break;
+            }
+        }
+    }
+    free(normalized);
+    return found;
+}
+/* These are the version 22 reflected type categories, not the live catalog. */
+static bool native_type_operation(const char *type, const char *operation)
+{
+    static const char *const enums[] = { "BodyType",
+                                         "Collider3DShape",
+                                         "ColliderShape",
+                                         "Control",
+                                         "FluidKind",
+                                         "GlobalIllumination",
+                                         "HRCColor",
+                                         "HRCDebugView",
+                                         "HRCDepthEmitters",
+                                         "HRCDepthQuality",
+                                         "HRCDepthVisibility",
+                                         "HRCGather",
+                                         "HRCShadowMode",
+                                         "HRCSurfaceMode",
+                                         "HRCToneMapping",
+                                         "HRCUpscale",
+                                         "Joint3DKind",
+                                         "JointKind",
+                                         "Occlusion",
+                                         "PadControl",
+                                         "ParticleShape",
+                                         "SdfNormalMode",
+                                         "Shape",
+                                         "SurfaceResolution",
+                                         "ToneMapping" };
+    for (size_t i = 0; i < sizeof enums / sizeof *enums; i++) {
+        if (!strcmp(type, enums[i])) {
+            return false;
+        }
+    }
+    if (!strcmp(operation, "Make_") || !strcmp(operation, "Break_")) {
+        return true;
+    }
+    if (!strcmp(type, "ParticleCurve")) {
+        return false;
+    }
+    if (!strcmp(operation, "Unwrap_")) {
+        static const char *const wrappers[] = {
+            "EncounterMember", "Experience", "Fuel",      "GlobalBinding",
+            "Gravity",         "Gravity3D",  "Igniter",   "Input",
+            "MaterialCavity",  "MeshAsset",  "MeshParts", "MeshSurface2D",
+            "Movement",        "Orientation"
+        };
+        for (size_t i = 0; i < sizeof wrappers / sizeof *wrappers; i++) {
+            if (!strcmp(type, wrappers[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (!strcmp(type, "GlobalTransform2D") || !strcmp(type, "GlobalTransform3D")) {
+        return !strcmp(operation, "Get_") || !strcmp(operation, "GetEntity_") ||
+               !strcmp(operation, "Has_") || !strcmp(operation, "HasEntity_");
+    }
+    return true;
+}
+static bool native_canonical_call(const char *name)
+{
+    static const char *const calls[] = { "game_move_transform",
+                                         "game_transform_to_cf",
+                                         "game_transform_from_cf" };
+    for (size_t i = 0; i < sizeof calls / sizeof *calls; i++) {
+        if (!strcmp(name, calls[i])) {
+            return true;
+        }
+    }
+    static const char *const operations[] = {
+        "GetEntity_", "SetEntity_", "HasEntity_", "Get_",   "Set_",   "Has_",
+        "Add_",       "Remove_",    "Make_",      "Break_", "Unwrap_"
+    };
+    for (size_t i = 0; i < sizeof operations / sizeof *operations; i++) {
+        size_t length = strlen(operations[i]);
+        if (strncmp(name, operations[i], length) || strncmp(name + length, "Game", 4)) {
+            continue;
+        }
+        const char *type = unprefixed_native(name + length, strlen(name + length));
+        if (type && !strcmp(name + length + 4, type)) {
+            return native_type_operation(type, operations[i]);
+        }
+    }
+    return false;
+}
+static bool name_byte(char c)
+{
+    return isalnum((unsigned char)c) || c == '_';
+}
+/* Rewrites reflected names inside type and capability spellings, including
+ * Get_GameTransform and struct<GameTransform>. The caller selects semantic
+ * names, so descriptions, comments, and ordinary string data stay untouched. */
+static char *unprefix_name(const char *text)
+{
+    char *out = xmalloc(strlen(text) + 1), *next = out;
+    const char *literal = text + (*text == '"');
+    char *call = xstrdup(literal);
+    size_t length = strlen(call);
+    if (length && call[length - 1] == '"') {
+        call[length - 1] = '\0';
+    }
+    const char *type_name = !strncmp(call, "GAME.", 5) ? call + 5 : call;
+    const char *type = unprefixed_native(type_name, strlen(type_name));
+    if (type) {
+        if (*text == '"') {
+            snprintf(out, strlen(text) + 1, "\"%s\"", type);
+        } else {
+            strcpy(out, type);
+        }
+        free(call);
+        return out;
+    }
+    bool native = native_source_call(call);
+    free(call);
+    for (const char *p = text; *p;) {
+        bool boundary = p == text || !isalnum((unsigned char)p[-1]);
+        if (boundary && !strncmp(p, "GAME.", 5) && name_byte(p[5])) {
+            p += 5;
+            continue;
+        }
+        if ((boundary || native) && !strncasecmp(p, "Game", 4)) {
+            const char *end = p + 4;
+            while (isalnum((unsigned char)*end)) {
+                end++;
+            }
+            if (prefixed_native(p, (size_t)(end - p))) {
+                p += 4;
+                continue;
+            }
+        }
+        if (native && !strncasecmp(p, "game", 4)) {
+            p += 4;
+            while (*p == '_' || *p == ' ' || *p == '-') {
+                p++;
+            }
+            continue;
+        }
+        *next++ = *p++;
+    }
+    *next = '\0';
+    if (!strcmp(out, text)) {
+        free(out);
+        return NULL;
+    }
+    return out;
+}
+static void prefix_edit(const char *text, size_t start, size_t end, replacement **out)
+{
+    assert(start <= end && end <= strlen(text));
+    char *part = xmalloc(end - start + 1);
+    memcpy(part, text + start, end - start);
+    part[end - start] = '\0';
+    char *renamed = unprefix_name(part);
+    free(part);
+    if (renamed) {
+        apush(*out, ((replacement){ (int)start, (int)end, renamed, 0 }));
+    }
+}
+static char *prefix_apply(const char *text, replacement *edits)
+{
+    if (!acount(edits)) {
+        return NULL;
+    }
+    qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
+    size_t size = strlen(text) + 1;
+    for (int i = 0; i < acount(edits); i++) {
+        size += strlen(edits[i].text);
+        size -= (size_t)(edits[i].end - edits[i].start);
+    }
+    char *out = xmalloc(size), *next = out;
+    int from = 0;
+    for (int i = 0; i < acount(edits); i++) {
+        assert(from <= edits[i].start);
+        next = stpncpy(next, text + from, (size_t)(edits[i].start - from));
+        next = stpcpy(next, edits[i].text);
+        from = edits[i].end;
+    }
+    strcpy(next, text + from);
+    return out;
+}
+static void prefix_edits_free(replacement *edits)
+{
+    for (int i = 0; i < acount(edits); i++) {
+        free(edits[i].text);
+    }
+    afree(edits);
+}
+static bool component_call(const char *text, TSNode call)
+{
+    TSNode target = ts_node_child_by_field_name(call, "function", 8);
+    if (!is_name(target)) {
+        return false;
+    }
+    char *name = name_text(text, target);
+    static const char *const calls[] = { "component",
+                                         "get_component",
+                                         "set_component",
+                                         "has_component",
+                                         "add_component",
+                                         "remove_component",
+                                         "find_entities_with_component",
+                                         "has_entities_with_component",
+                                         "make_entity_condition" };
+    bool found = false;
+    for (size_t i = 0; i < sizeof calls / sizeof *calls; i++) {
+        found |= names_match(name, calls[i]);
+    }
+    free(name);
+    return found;
+}
+static bool component_argument(const char *text, TSNode node)
+{
+    TSNode parent = ts_node_parent(node), argument = node;
+    if (is(parent, "struct_field")) {
+        TSNode field = ts_node_child_by_field_name(parent, "name", 4);
+        char *name = name_text(text, field);
+        bool component = names_match(name, "component");
+        free(name);
+        for (TSNode scope = ts_node_parent(parent);
+             component && !ts_node_is_null(scope);
+             scope = ts_node_parent(scope)) {
+            if (!is(scope, "call_expression")) {
+                continue;
+            }
+            TSNode target = ts_node_child_by_field_name(scope, "function", 8);
+            if (!is_name(target)) {
+                continue;
+            }
+            name = name_text(text, target);
+            bool condition = names_match(name, "count_matching_entities");
+            free(name);
+            if (condition) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (is(parent, "named_argument") || is(parent, "typed_argument")) {
+        TSNode name = ts_node_child_by_field_name(parent, "name", 4);
+        char *value = name_text(text, name);
+        bool component = names_match(value, "Component");
+        free(value);
+        if (!component) {
+            return false;
+        }
+        argument = parent;
+        parent = ts_node_parent(parent);
+    }
+    if (!is(parent, "argument_list") || !component_call(text, ts_node_parent(parent))) {
+        return false;
+    }
+    return !ts_node_eq(argument, node) ||
+           ts_node_eq(ts_node_named_child(parent, 0), node);
+}
+static bool prefix_callee(const corpus *context, int file, TSNode target)
+{
+    if (callee(context, file, target)) {
+        return true;
+    }
+    if (is_name(target)) {
+        char *name = name_text(context->sources[file], target);
+        bool native = native_canonical_call(name);
+        free(name);
+        /* Exact native catalog keys win over imported short-name aliases. */
+        if (native) {
+            return false;
+        }
+    }
+    /* The authored catalog also exposes library callables by their short
+     * names. Local declarations keep callee's lexical scope rules. */
+    for (int i = 0; is_name(target) && i < acount(context->functions); i++) {
+        const function *f = &context->functions[i];
+        if (!ts_node_is_null(f->library) && !ts_node_is_null(f->body) &&
+            similar_name(context->sources[file], target, context->sources[f->file], f->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+static void source_prefix_edits(const corpus *context, int file, TSNode node, replacement **out)
+{
+    const char *text = context->sources[file];
+    TSNode parent = ts_node_parent(node);
+    bool call_target = !ts_node_is_null(parent) && is(parent, "call_expression") &&
+                       ts_node_eq(node, ts_node_child_by_field_name(parent, "function", 8));
+    if (call_target && prefix_callee(context, file, node)) {
+        return;
+    }
+    bool type = is(node, "type_name");
+    bool target = is_name(node) && call_target;
+    bool selector = is(node, "string") && component_argument(text, node);
+    bool member = is_name(node) && is(parent, "member_expression") &&
+                  ts_node_eq(node, ts_node_child_by_field_name(parent, "member", 6));
+    if (type || target || selector || member) {
+        prefix_edit(text, ts_node_start_byte(node), ts_node_end_byte(node), out);
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        source_prefix_edits(context, file, ts_node_named_child(node, i), out);
+    }
+}
+static void collect_prefix_edits(const char *text, TSNode root, replacement **out)
+{
+    const char *sources[] = { text };
+    corpus context = { .sources = sources };
+    collect(root, 0, (TSNode){ 0 }, true, &context.functions);
+    source_prefix_edits(&context, 0, root, out);
+    afree(context.functions);
+}
+static bool prefix_field(const char *name)
+{
+    return !strcmp(name, "type") || !strcmp(name, "type_name") ||
+           !strcmp(name, "split_type_name") || !strcmp(name, "owner_type") ||
+           !strcmp(name, "component") || !strcmp(name, "component_type") ||
+           !strcmp(name, "component_name") || !strcmp(name, "Component");
+}
+static void asset_prefix_edits(
+    const char *text,
+    const av_value *value,
+    bool semantic,
+    bool components,
+    replacement **out
+)
+{
+    if (av_is_str(value) && semantic) {
+        av_source source = av_get_source(value);
+        prefix_edit(text, source.start, source.end, out);
+        return;
+    }
+    for (size_t i = 0; i < av_obj_size(value); i++) {
+        const av_value *key = av_obj_key_at(value, i),
+                       *child = av_obj_value_at(value, i);
+        const char *name = av_get_str(key);
+        av_source source = av_get_source(child);
+        if (!strncmp(name, "GAME.", 5) ||
+            (components && prefixed_native(name, strlen(name)))) {
+            prefix_edit(text, source.name_start, source.name_end, out);
+        }
+        asset_prefix_edits(
+            text,
+            child,
+            prefix_field(name) || semantic,
+            !strcmp(name, "components") || !strcmp(name, "component_overrides") ||
+                !strcmp(name, "retained_components") ||
+                !strcmp(name, "detached_components") ||
+                !strcmp(name, "inputs") || !strcmp(name, "outputs"),
+            out
+        );
+    }
+    for (size_t i = 0; i < av_arr_size(value); i++) {
+        asset_prefix_edits(text, av_arr_get(value, i), semantic, false, out);
+    }
+}
+char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t error_size)
+{
+    replacement *edits = NULL;
+    if (source) {
+        script_syntax *syntax = parse23(text);
+        collect_prefix_edits(text, ts_tree_root_node(syntax->tree), &edits);
+        script_syntax_free(syntax);
+    } else {
+        av_doc *document = asset_text_read(text, error, error_size);
+        if (!document) {
+            return NULL;
+        }
+        asset_prefix_edits(text, av_doc_root(document), false, false, &edits);
+        av_doc_free(document);
+    }
+    char *out = prefix_apply(text, edits);
+    prefix_edits_free(edits);
+    if (out && !source) {
+        av_doc *document = asset_text_read(out, error, error_size);
+        if (!document) {
+            free(out);
+            return NULL;
+        }
+        av_doc_free(document);
+    }
+    return out;
+}
+
+static void prefix_hash(const char *text, char out[17])
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        hash = (hash ^ *p) * UINT64_C(1099511628211);
+    }
+    snprintf(out, 17, "%016llx", (unsigned long long)hash);
+}
+static bool aggregate_pins(const char *type)
+{
+    if (!type) {
+        return false;
+    }
+    const char *aggregate = !strncmp(type, "Make_", 5)  ? type + 5
+                          : !strncmp(type, "Break_", 6) ? type + 6
+                                                        : NULL;
+    if (!aggregate) {
+        return false;
+    }
+    if (prefixed_native(aggregate, strlen(aggregate))) {
+        return true;
+    }
+    char name[128];
+    snprintf(name, sizeof name, "Game%s", aggregate);
+    return prefixed_native(name, strlen(name));
+}
+static bool metadata_edge_prefixes(yyjson_mut_doc *document, yyjson_mut_val *graph)
+{
+    yyjson_mut_val *nodes = yyjson_mut_obj_get(graph, "nodes"),
+                   *edges = yyjson_mut_obj_get(graph, "edges"), *edge;
+    bool changed = false;
+    size_t i, count;
+    yyjson_mut_arr_foreach(edges, i, count, edge)
+    {
+        static const char *const endpoints[] = { "from", "to" };
+        for (size_t j = 0; j < sizeof endpoints / sizeof *endpoints; j++) {
+            yyjson_mut_val *value = yyjson_mut_obj_get(edge, endpoints[j]);
+            const char *text = yyjson_mut_get_str(value);
+            if (!text) {
+                continue;
+            }
+            char *end;
+            uint64_t id = strtoull(text, &end, 10);
+            if (end == text || *end != '.') {
+                continue;
+            }
+            size_t n, node_count;
+            yyjson_mut_val *node;
+            yyjson_mut_arr_foreach(nodes, n, node_count, node)
+            {
+                if (yyjson_mut_get_uint(yyjson_mut_obj_get(node, "id")) != id ||
+                    !aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(node, "type")))) {
+                    continue;
+                }
+                char *renamed = unprefix_name(text);
+                if (renamed) {
+                    yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, renamed)));
+                    free(renamed);
+                    changed = true;
+                }
+                break;
+            }
+        }
+    }
+    return changed;
+}
+static bool metadata_prefixes(yyjson_mut_doc *document, yyjson_mut_val *value, bool semantic, bool pins)
+{
+    if (yyjson_mut_is_str(value) && semantic) {
+        char *name = unprefix_name(yyjson_mut_get_str(value));
+        if (!name) {
+            return false;
+        }
+        yyjson_mut_set_str(value, yyjson_mut_get_str(yyjson_mut_strcpy(document, name)));
+        free(name);
+        return true;
+    }
+    bool changed = false;
+    size_t i, count;
+    yyjson_mut_val *key, *child;
+    yyjson_mut_obj_foreach(value, i, count, key, child)
+    {
+        const char *name = yyjson_mut_get_str(key);
+        bool selector = false;
+        const char *pin = yyjson_mut_get_str(yyjson_mut_obj_get(value, "name"));
+        if (!strcmp(name, "value") && pin && names_match(pin, "Component")) {
+            selector = true;
+        }
+        bool pin_name = pins && (!strcmp(name, "name") || !strcmp(name, "parents"));
+        changed |= metadata_prefixes(
+            document,
+            child,
+            semantic || prefix_field(name) || selector || pin_name,
+            (!strcmp(name, "inputs") || !strcmp(name, "outputs")) &&
+                aggregate_pins(yyjson_mut_get_str(yyjson_mut_obj_get(value, "type")))
+        );
+    }
+    yyjson_mut_arr_foreach(value, i, count, child)
+    {
+        changed |= metadata_prefixes(document, child, semantic, pins);
+    }
+    return metadata_edge_prefixes(document, value) || changed;
+}
+/* Moving a function keyword past its name changes the declaration's start,
+ * particularly when a comment separates the old keyword and name. */
+static int declaration_anchor(TSNode node, int offset)
+{
+    if (is(node, "function_declaration") &&
+        ts_node_start_byte(node) == (uint32_t)offset) {
+        return (int)ts_node_start_byte(ts_node_child_by_field_name(node, "name", 4));
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (ts_node_start_byte(child) <= (uint32_t)offset &&
+            ts_node_end_byte(child) > (uint32_t)offset) {
+            return declaration_anchor(child, offset);
+        }
+    }
+    return offset;
+}
+/* Source-bound graph IDs and layout survive the rename. Only metadata bound
+ * to the old source gets a new hash; already stale metadata stays stale. */
+static char *migrate_source_metadata(
+    const char *json,
+    const char *before,
+    const char *after,
+    replacement *edits,
+    bool prefixes
+)
+{
+    yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
+    if (!parsed || !yyjson_is_obj(yyjson_doc_get_root(parsed))) {
+        yyjson_doc_free(parsed);
+        return NULL;
+    }
+    yyjson_mut_doc *document = yyjson_doc_mut_copy(parsed, NULL);
+    yyjson_mut_val *root = yyjson_mut_doc_get_root(document);
+    bool changed = prefixes && metadata_prefixes(document, root, false, false);
+    char old_hash[17], new_hash[17];
+    prefix_hash(before, old_hash);
+    prefix_hash(after, new_hash);
+    const char *bound = yyjson_mut_get_str(yyjson_mut_obj_get(root, "source_hash"));
+    if (strcmp(before, after) && bound && !strcmp(bound, old_hash)) {
+        script_syntax *syntax = prefixes ? NULL : parse23(before);
+        yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
+        size_t i, count;
+        yyjson_mut_arr_foreach(anchors, i, count, anchor)
+        {
+            yyjson_mut_val *start = yyjson_mut_obj_get(anchor, "start");
+            int offset = (int)yyjson_mut_get_uint(start), shift = 0;
+            if (syntax) {
+                offset = declaration_anchor(ts_tree_root_node(syntax->tree), offset);
+            }
+            for (int j = 0; j < acount(edits) && edits[j].end <= offset; j++) {
+                shift += (int)strlen(edits[j].text) - (edits[j].end - edits[j].start);
+            }
+            if (yyjson_mut_is_uint(start)) {
+                yyjson_mut_set_uint(start, (uint64_t)(offset + shift));
+            }
+        }
+        script_syntax_free(syntax);
+        yyjson_mut_obj_put(
+            root,
+            yyjson_mut_str(document, "source_hash"),
+            yyjson_mut_strcpy(document, new_hash)
+        );
+        changed = true;
+    }
+    char *out = changed ? yyjson_mut_write(document, 0, NULL) : NULL;
+    yyjson_mut_doc_free(document);
+    yyjson_doc_free(parsed);
+    return out;
+}
+
+static char **migrate_prefixes(char **sources, char **paths, int count, char *error, size_t error_size)
+{
+    corpus context = { .sources = (const char *const *)sources };
+    script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
+    replacement **edits = xcalloc((size_t)count, sizeof *edits);
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi")) {
+            syntax[i] = parse23(sources[i]);
+            collect(
+                ts_tree_root_node(syntax[i]->tree),
+                i,
+                (TSNode){ 0 },
+                true,
+                &context.functions
+            );
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (syntax[i]) {
+            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits[i]);
+            migrated[i] = prefix_apply(sources[i], edits[i]);
+        } else if (!has_suffix(paths[i], ".chibi.meta")) {
+            migrated[i] = chibi_migrate_prefixes(sources[i], false, error, error_size);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi.meta")) {
+            continue;
+        }
+        size_t length = strlen(paths[i]) - strlen(".meta");
+        for (int j = 0; j < count; j++) {
+            if (strlen(paths[j]) == length && !memcmp(paths[i], paths[j], length)) {
+                migrated[i] = migrate_source_metadata(
+                    sources[i],
+                    sources[j],
+                    migrated[j] ? migrated[j] : sources[j],
+                    edits[j],
+                    true
+                );
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (syntax[i]) {
+            script_syntax_free(syntax[i]);
+        }
+        prefix_edits_free(edits[i]);
+    }
+    free(syntax);
+    free(edits);
+    afree(context.functions);
+    return migrated;
+}
+
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
@@ -2939,6 +3782,197 @@ static bool collected(char **paths, const char *path)
     }
     return false;
 }
+/* Removes the GameHRC2D fields version 22 moves out of authoring from the
+ * component under each of `components`' names, and from the field list of a
+ * component presentation. Returns whether any were there. */
+static bool drop_lab_fields(av_value *components)
+{
+    static const char *const names[] = { "GAME.GameHRC2D", "GameHRC2D" };
+    static const char *const fields[] = {
+        "color_resolution",       "gather_resolution",
+        "min_resolution",         "upscale_mode",
+        "upscale_threshold",      "debug_view",
+        "particle_focal_length",  "trace_levels",
+        "surface_depth_emitters", "surface_depth_near_detail",
+        "horizon_fuse_relief",    "horizon_cache",
+        "horizon_reproject",      "horizon_hierarchy",
+    };
+    bool changed = false;
+    for (size_t i = 0; av_is_obj(components) && i < sizeof names / sizeof *names; i++) {
+        av_value *component = av_obj_get(components, names[i]);
+        av_value *presented = av_is_obj(component) ? av_obj_get(component, "fields")
+                                                   : NULL;
+        for (size_t j = 0; av_is_obj(component) && j < sizeof fields / sizeof *fields;
+             j++) {
+            changed |= av_obj_remove_key(component, fields[j]);
+            changed |= av_is_obj(presented) &&
+                       av_obj_remove_key(presented, fields[j]);
+        }
+    }
+    return changed;
+}
+/* Scene children use the same component and retained-component schema. */
+static bool drop_entity_lab_fields(av_value *entities)
+{
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        if (!av_is_obj(entity)) {
+            continue;
+        }
+        changed |= drop_lab_fields(av_obj_get(entity, "components"));
+        changed |= drop_lab_fields(av_obj_get(entity, "retained_components"));
+        changed |= drop_entity_lab_fields(av_obj_get(entity, "children"));
+    }
+    return changed;
+}
+/* Returns an owned copy of a scene, prototype or component presentation
+ * `asset` without the GameHRC2D fields version 22 removes, or NULL when it
+ * has none. */
+static char *drop_lab_settings(const char *asset)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    if (!av_is_obj(root)) {
+        av_doc_free(document);
+        return NULL;
+    }
+    bool changed = drop_lab_fields(av_obj_get(root, "components"));
+    changed |= drop_lab_fields(av_obj_get(root, "detached_components"));
+    changed |= drop_entity_lab_fields(av_obj_get(root, "entities"));
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+/* Replace only syntax tokens, preserving comments, strings and each name. */
+static void declaration_edits(const char *text, TSNode node, replacement **edits)
+{
+    if (is(node, "function_declaration")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        bool pure = false;
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (!is(child, "pure") && !is(child, "function")) {
+                continue;
+            }
+            pure |= is(child, "pure");
+            int end = (int)ts_node_end_byte(child);
+            while (text[end] == ' ' || text[end] == '\t') {
+                end++;
+            }
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(child),
+                                .end = end,
+                                .text = xstrdup("") })
+            );
+        }
+        int end = (int)ts_node_end_byte(name);
+        apush(
+            *edits,
+            ((replacement){ .start = end,
+                            .end = end,
+                            .text = xstrdup(pure ? " :: pure fn" : " :: fn") })
+        );
+    }
+    if (is(node, "match_statement")) {
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (is(child, "match") || is(child, "enum") || is(child, "name")) {
+                apush(
+                    *edits,
+                    ((replacement){ .start = (int)ts_node_start_byte(child),
+                                    .end = (int)ts_node_end_byte(child),
+                                    .text = xstrdup(is(child, "match") ? "switch" : "") })
+                );
+            }
+        }
+    }
+    if (is(node, "match_arm")) {
+        TSNode value = ts_node_child_by_field_name(node, "value", 5);
+        if (!ts_node_is_null(value)) {
+            int end = (int)ts_node_end_byte(value);
+            apush(*edits, ((replacement){ .start = end, .end = end, .text = xstrdup(":") }));
+        } else {
+            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+                TSNode child = ts_node_child(node, i);
+                if (is(child, "default")) {
+                    apush(
+                        *edits,
+                        ((replacement){ .start = (int)ts_node_start_byte(child),
+                                        .end = (int)ts_node_end_byte(child),
+                                        .text = xstrdup("case:") })
+                    );
+                }
+            }
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        declaration_edits(text, ts_node_named_child(node, i), edits);
+    }
+}
+
+int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *current = script_parse(source);
+    bool done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
+    script_syntax *syntax = parse23(source);
+    if (syntax->diagnostic_count) {
+        snprintf(error, size, "Cannot migrate invalid version 23 source");
+        script_syntax_free(syntax);
+        return -1;
+    }
+    replacement *edits = NULL;
+    declaration_edits(source, ts_tree_root_node(syntax->tree), &edits);
+    char *result = prefix_apply(source, edits);
+    prefix_edits_free(edits);
+    script_syntax_free(syntax);
+    script_syntax *check = script_parse(result ? result : source);
+    bool valid = !check->diagnostic_count;
+    script_syntax_free(check);
+    if (!valid) {
+        snprintf(error, size, "Declaration migration produced invalid source");
+        free(result);
+        return -1;
+    }
+    *migrated = result;
+    return 0;
+}
+
+static char **migrate_declarations(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size) ||
+            !migrated[i]) {
+            continue;
+        }
+        script_syntax *syntax = parse23(sources[i]);
+        replacement *edits = NULL;
+        declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
+        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
+        size_t length = strlen(paths[i]);
+        for (int j = 0; j < count; j++) {
+            if (!strncmp(paths[j], paths[i], length) &&
+                !strcmp(paths[j] + length, ".meta")) {
+                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, false);
+            }
+        }
+        prefix_edits_free(edits);
+        script_syntax_free(syntax);
+    }
+    return migrated;
+}
+
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -2951,20 +3985,27 @@ int chibi_project_migrate_content(
         return migrate_components(content, error, error_size);
     }
     char **paths = NULL;
-    /* Versions 15, 16, 18 and 19 change scenes and prototypes, and version 21
-     * changes materials, wherever the project keeps them; every other step
-     * changes scripts. */
+    /* Versions 15, 16, 18, 19 and 22 change scenes and prototypes, and
+     * version 21 changes materials, wherever the project keeps them; every
+     * other step changes scripts. */
     bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
-                       from == 20;
+                       from == 20 || from == 21 || from == 22;
     int status = collect_sources(
         content,
-        declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
+        (from == 22 || from == 23) ? ".chibi.meta"
+        : declarative              ? DECLARATIVE_ASSET_EXTENSION
+                                   : ".chibi",
         &paths,
         error,
         error_size
     );
+    /* Replace sidecars before their sources so interrupted source migrations
+     * can rerun without losing the old hash needed to remap anchors. */
+    if (!status && from == 22) {
+        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
+    }
     /* Versions 16 and 18 also check scripts for names they remove. */
-    if (!status && (from == 15 || from == 17)) {
+    if (!status && (from == 15 || from == 17 || from == 22 || from == 23)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -3062,6 +4103,22 @@ int chibi_project_migrate_content(
                 for (int i = 0; i < count; i++) {
                     migrated[i] = surface_outputs(sources[i]);
                 }
+                break;
+            case 21:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = drop_lab_settings(sources[i]);
+                }
+                break;
+            case 22:
+                error[0] = '\0';
+                migrated = migrate_prefixes(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 23:
+                error[0] = '\0';
+                migrated = migrate_declarations(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
                 break;
             default: assert(false);
         }

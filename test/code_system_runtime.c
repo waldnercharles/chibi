@@ -2,6 +2,7 @@
 #include "authoring/preview_runtime.h"
 #include "authoring/source_format.h"
 #include "authoring/source_prepare.h"
+#include "execution/inspection.h"
 #include "execution/status.h"
 #include "host/native_default.h"
 #include "runtime/component_catalog.h"
@@ -21,7 +22,7 @@
 typedef struct
 {
     ecs_world *world;
-    game_preview_runtime *live;
+    preview_runtime *live;
     authoring_language_catalog *catalog;
     authoring_source *source;
     execution_program *program;
@@ -30,28 +31,47 @@ typedef struct
 static system_fixture active;
 static char *formatted;
 static ecs_world *input_world;
-static game_source_registry *input_sources;
-static engine_input *source_input;
+static source_registry *input_sources;
+static engine_input *test_source_input;
 static authoring_language_catalog *input_catalog;
 static authoring_source *input_source;
+static execution_program *query_other_program;
+static execution_inspector *query_debugger;
+static const ecs_relationship_desc query_targets = {
+    .id = 100002,
+    .key = "test.query.targets",
+    .name = "Targets"
+};
 
 static system_fixture fixture_new()
 {
     system_fixture f = { .world = ecs_world_new() };
+    assert(!ecs_world_register_relationship(f.world, &query_targets, NULL));
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameHealth,   &GAME_COMPONENT_GameAim,
-        &GAME_COMPONENT_GameCollider, &GAME_COMPONENT_GameTransform,
-        &GAME_COMPONENT_GameMovement, &GAME_COMPONENT_GameInput
+        &COMPONENT_Health,    &COMPONENT_Aim,      &COMPONENT_Collider,
+        &COMPONENT_Transform, &COMPONENT_Movement, &COMPONENT_Input
     };
     for (int i = 0; i < 6; i++) {
         assert(!ecs_world_register_component(f.world, components[i], NULL));
     }
-    f.live = game_preview_runtime_new(f.world);
+    f.live = preview_runtime_new(f.world);
     const script_catalog_capability child = { .id = 100001,
                                               .name = "Child",
                                               .kind = SCRIPT_CAPABILITY_PROTOTYPE,
                                               .completion_outcome = -1 };
-    const script_catalog project = { .capabilities = &child, .capability_count = 1 };
+    const script_catalog_relationship targets = { .id = 100002, .name = "Targets" };
+    const script_catalog_type disabled = { .id = 100003,
+                                           .name = "Disabled",
+                                           .type = { .storage = PIN_STRUCT,
+                                                     .nominal = 100003 },
+                                           .component = true,
+                                           .component_id = ECS_DISABLED };
+    const script_catalog project = { .capabilities = &child,
+                                     .capability_count = 1,
+                                     .relationships = &targets,
+                                     .relationship_count = 1,
+                                     .types = &disabled,
+                                     .type_count = 1 };
     char error[256];
     native_capabilities *table = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
     assert(table);
@@ -94,11 +114,11 @@ static bool prepare(system_fixture *f, const char *text, behavior_backend backen
     service_binding *services = NULL;
     apush(services, ((service_binding){ "game.entities", f->live->entities }));
     apush(services, ((service_binding){ "ecs.world", f->world }));
-    int result = game_source_register(f->live->sources, "System", f->source->module, services);
+    int result = source_register(f->live->sources, "System", f->source->module, services);
     afree(services);
     if (result) {
-        fprintf(stderr, "system publication: %s\n", game_source_error(f->live->sources));
-        fprintf(stderr, "system registry: %s\n", game_source_error(f->live->sources));
+        fprintf(stderr, "system publication: %s\n", source_error(f->live->sources));
+        fprintf(stderr, "system registry: %s\n", source_error(f->live->sources));
         int count = 0;
         const char *const *services = execution_module_services(f->source->module, &count);
         for (int i = 0; i < count; i++) {
@@ -109,19 +129,19 @@ static bool prepare(system_fixture *f, const char *text, behavior_backend backen
         return false;
     }
     const char *selected[] = { "System" };
-    result = game_source_is_system(f->live->sources, "System")
-               ? game_source_select_systems(f->live->sources, selected, 1)
+    result = source_is_system(f->live->sources, "System")
+               ? source_select_systems(f->live->sources, selected, 1)
                : 0;
     if (result < 0) {
-        fprintf(stderr, "system selection: %s\n", game_source_error(f->live->sources));
+        fprintf(stderr, "system selection: %s\n", source_error(f->live->sources));
         return false;
     }
-    f->program = game_source_program(f->live->sources, "System");
+    f->program = source_program(f->live->sources, "System");
     return f->program != NULL;
 }
 static void fixture_free(system_fixture *f)
 {
-    game_preview_runtime_free(f->live);
+    preview_runtime_free(f->live);
     authoring_source_free(f->source);
     authoring_language_catalog_free(f->catalog);
     ecs_world_free(f->world);
@@ -167,9 +187,9 @@ static double state(system_fixture *f, ecs_entity owner, const char *name)
 static ecs_entity health(system_fixture *f)
 {
     ecs_entity owner = ecs_world_create_entity(f->world);
-    assert(!GAME_GameHealth_add(f->world, owner, 0));
+    assert(!Health_add(f->world, owner, 0));
     assert(!ecs_world_apply_commands(f->world));
-    GAME_GameHealth_get(f->world, owner)->current = 0;
+    Health_get(f->world, owner)->current = 0;
     return owner;
 }
 
@@ -194,11 +214,11 @@ static bool persistent_wait_membership(behavior_backend backend)
     REQUIRE(state(&f, b, "total") == 2);
     REQUIRE(tick(&f, .25));
     REQUIRE(state(&f, b, "total") == 2);
-    REQUIRE(!GAME_GameHealth_remove(f.world, a, 0));
+    REQUIRE(!Health_remove(f.world, a, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(tick(&f, .5));
     REQUIRE(!instance(&f, a));
-    REQUIRE(!GAME_GameHealth_add(f.world, a, 0));
+    REQUIRE(!Health_add(f.world, a, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(tick(&f, .75));
     REQUIRE(state(&f, a, "count") == 1 && state(&f, b, "total") == 3);
@@ -217,12 +237,12 @@ static bool persistent_wait_membership(behavior_backend backend)
 static bool register_child(system_fixture *f)
 {
     char error[256];
-    const game_scene_object object = { .name = "Child" };
-    game_scene *child = game_scene_prepare(
-        &(game_scene_spec){ .name = "Child",
-                            .physics = game_physics_defaults(),
-                            .objects = &object,
-                            .object_count = 1 },
+    const scene_object object = { .name = "Child" };
+    scene *child = scene_prepare(
+        &(scene_spec){ .name = "Child",
+                       .physics = physics_defaults(),
+                       .objects = &object,
+                       .object_count = 1 },
         error,
         sizeof error
     );
@@ -230,14 +250,14 @@ static bool register_child(system_fixture *f)
         fprintf(stderr, "system prototype preparation: %s\n", error);
     }
     bool registered = child &&
-                      !game_entities_register_prepared(f->live->entities, "Child", child);
-    game_scene_free(child);
+                      !entities_register_prepared(f->live->entities, "Child", child);
+    scene_free(child);
     return registered;
 }
 static int live_children(system_fixture *f)
 {
     ecs_entity *children = NULL;
-    game_entities_copy_live(f->live->entities, &children);
+    entities_copy_live(f->live->entities, &children);
     int count = 0;
     for (int i = 0; i < acount(children); i++) {
         count += ecs_entity_is_alive(f->world, children[i]);
@@ -260,17 +280,17 @@ static bool host_spawn_resume(behavior_backend backend)
     REQUIRE(tick(&f, 0));
     REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
     REQUIRE(state(&f, owner, "completed") == 0);
-    REQUIRE(game_entities_flush(f.live->entities) >= 0);
-    REQUIRE(game_entities_flush_initializers(f.live->entities, 0) >= 0);
+    REQUIRE(entities_flush(f.live->entities) >= 0);
+    REQUIRE(entities_flush_initializers(f.live->entities, 0) >= 0);
     REQUIRE(execution_program_pump(f.program, .1, .1, 10000) >= 0);
     REQUIRE(state(&f, owner, "completed") == 1 && state(&f, owner, "total") == 1);
     REQUIRE(tick(&f, .2));
     REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
-    REQUIRE(!GAME_GameHealth_remove(f.world, owner, 0));
+    REQUIRE(!Health_remove(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(tick(&f, .3));
     REQUIRE(!instance(&f, owner));
-    REQUIRE(game_entities_flush(f.live->entities) >= 0);
+    REQUIRE(entities_flush(f.live->entities) >= 0);
     REQUIRE(live_children(&f) == 1);
     fixture_free(&f);
     return true;
@@ -285,7 +305,7 @@ static bool nested_spawn_outlives_frame(behavior_backend backend)
         &f,
         "behavior Spawner {\n"
         "    made := 0.0\n"
-        "    function Make() {\n"
+        "    Make :: fn() {\n"
         "        await spawn(Child)\n"
         "        made += 1\n"
         "    }\n"
@@ -298,11 +318,11 @@ static bool nested_spawn_outlives_frame(behavior_backend backend)
     ));
     ecs_entity owner = ecs_world_create_entity(f.world);
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(!game_source_attach(f.live->sources, owner, "System", false, 0, 0));
-    REQUIRE(game_entities_flush(f.live->entities) >= 0);
-    REQUIRE(game_entities_flush_initializers(f.live->entities, 0) >= 0);
+    REQUIRE(!source_attach(f.live->sources, owner, "System", false, 0, 0));
+    REQUIRE(entities_flush(f.live->entities) >= 0);
+    REQUIRE(entities_flush_initializers(f.live->entities, 0) >= 0);
     REQUIRE(state(&f, owner, "made") == 2);
-    REQUIRE(game_entities_flush(f.live->entities) >= 0);
+    REQUIRE(entities_flush(f.live->entities) >= 0);
     REQUIRE(live_children(&f) == 1);
     fixture_free(&f);
     return true;
@@ -311,7 +331,7 @@ static bool live_component_resume(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity owner = health(&f);
-    GAME_GameHealth_get(f.world, owner)->current = 2;
+    Health_get(f.world, owner)->current = 2;
     REQUIRE(prepare(
         &f,
         "system ReadHealth(health:Health) { state observed:double=0; "
@@ -319,7 +339,7 @@ static bool live_component_resume(behavior_backend backend)
         backend
     ));
     REQUIRE(tick(&f, 0));
-    GAME_GameHealth_get(f.world, owner)->current = 7;
+    Health_get(f.world, owner)->current = 7;
     REQUIRE(tick(&f, 1.1));
     REQUIRE(state(&f, owner, "observed") == 7);
     fixture_free(&f);
@@ -341,22 +361,22 @@ static bool optional_membership_roundtrip(behavior_backend backend)
     for (int pass = 0; pass < 2; pass++) {
         system_fixture f = fixture_new();
         ecs_entity present = health(&f), absent = health(&f), excluded = health(&f);
-        REQUIRE(!GAME_GameAim_add(f.world, present, 0));
-        REQUIRE(!GAME_GameCollider_add(f.world, excluded, 0));
+        REQUIRE(!Aim_add(f.world, present, 0));
+        REQUIRE(!Collider_add(f.world, excluded, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
-        GAME_GameAim_get(f.world, present)->firing = true;
+        Aim_get(f.world, present)->firing = true;
         REQUIRE(prepare(&f, pass ? saved : text, backend));
         REQUIRE(tick(&f, 0));
         REQUIRE(instance(&f, present) && instance(&f, absent) && !instance(&f, excluded));
-        REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 7);
-        REQUIRE(GAME_GameHealth_get_const(f.world, absent)->current == 2);
-        REQUIRE(GAME_GameHealth_get_const(f.world, excluded)->current == 0);
-        REQUIRE(!GAME_GameAim_remove(f.world, present, 0));
+        REQUIRE(Health_get_const(f.world, present)->current == 7);
+        REQUIRE(Health_get_const(f.world, absent)->current == 2);
+        REQUIRE(Health_get_const(f.world, excluded)->current == 0);
+        REQUIRE(!Aim_remove(f.world, present, 0));
         REQUIRE(!ecs_world_apply_commands(f.world));
         REQUIRE(tick(&f, .1));
-        REQUIRE(GAME_GameHealth_get_const(f.world, present)->current == 9);
-        REQUIRE(GAME_GameHealth_get_const(f.world, absent)->current == 4);
-        REQUIRE(GAME_GameHealth_get_const(f.world, excluded)->current == 0);
+        REQUIRE(Health_get_const(f.world, present)->current == 9);
+        REQUIRE(Health_get_const(f.world, absent)->current == 4);
+        REQUIRE(Health_get_const(f.world, excluded)->current == 0);
         fixture_free(&f);
     }
     free(saved);
@@ -368,9 +388,9 @@ static bool any_query_membership(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity bare = health(&f), aimed = health(&f), collider = health(&f);
-    REQUIRE(!GAME_GameAim_add(f.world, aimed, 0));
-    REQUIRE(!GAME_GameAim_add(f.world, collider, 0));
-    REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
+    REQUIRE(!Aim_add(f.world, aimed, 0));
+    REQUIRE(!Aim_add(f.world, collider, 0));
+    REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
@@ -381,9 +401,9 @@ static bool any_query_membership(behavior_backend backend)
     ));
     REQUIRE(tick(&f, 0));
     REQUIRE(instance(&f, bare) && !instance(&f, aimed) && instance(&f, collider));
-    REQUIRE(GAME_GameHealth_get_const(f.world, bare)->current == 1);
-    REQUIRE(GAME_GameHealth_get_const(f.world, aimed)->current == 0);
-    REQUIRE(GAME_GameHealth_get_const(f.world, collider)->current == 1);
+    REQUIRE(Health_get_const(f.world, bare)->current == 1);
+    REQUIRE(Health_get_const(f.world, aimed)->current == 0);
+    REQUIRE(Health_get_const(f.world, collider)->current == 1);
     fixture_free(&f);
     return true;
 }
@@ -391,7 +411,7 @@ static bool empty_any_query(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity bare = health(&f), collider = health(&f);
-    REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
+    REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
@@ -409,18 +429,18 @@ static bool reactive_checkpoint(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity owner = ecs_world_create_entity(f.world);
-    REQUIRE(!GAME_GameAim_add(f.world, owner, 0));
+    REQUIRE(!Aim_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(&f, "system Watch(aim:Aim) { bind aim.Manual=!aim.Firing; }", backend));
     REQUIRE(tick(&f, 0));
-    REQUIRE(GAME_GameAim_get(f.world, owner)->manual);
-    GAME_GameAim_get(f.world, owner)->firing = true;
+    REQUIRE(Aim_get(f.world, owner)->manual);
+    Aim_get(f.world, owner)->firing = true;
     REQUIRE(tick(&f, .1));
-    REQUIRE(!GAME_GameAim_get(f.world, owner)->manual);
-    GAME_GameAim_get(f.world, owner)->firing = false;
+    REQUIRE(!Aim_get(f.world, owner)->manual);
+    Aim_get(f.world, owner)->firing = false;
     REQUIRE(tick(&f, .2));
-    REQUIRE(GAME_GameAim_get(f.world, owner)->manual);
-    REQUIRE(!GAME_GameAim_remove(f.world, owner, 0));
+    REQUIRE(Aim_get(f.world, owner)->manual);
+    REQUIRE(!Aim_remove(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(tick(&f, .3));
     REQUIRE(!instance(&f, owner));
@@ -431,9 +451,9 @@ static bool synchronous_batch_path(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity owner = ecs_world_create_entity(f.world);
-    REQUIRE(!GAME_GameTransform_add(f.world, owner, 0));
-    REQUIRE(!GAME_GameMovement_add(f.world, owner, 0));
-    REQUIRE(!GAME_GameInput_add(f.world, owner, 0));
+    REQUIRE(!Transform_add(f.world, owner, 0));
+    REQUIRE(!Movement_add(f.world, owner, 0));
+    REQUIRE(!Input_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
@@ -441,10 +461,10 @@ static bool synchronous_batch_path(behavior_backend backend)
         "position.X+=input.Move.X*movement.Speed*dt; }",
         backend
     ));
-    GAME_GameInput_get(f.world, owner)->move.x = 2;
-    GAME_GameMovement_get(f.world, owner)->speed = 3;
+    Input_get(f.world, owner)->move.x = 2;
+    Movement_get(f.world, owner)->speed = 3;
     REQUIRE(tick(&f, 0));
-    REQUIRE(fabs(GAME_GameTransform_get_const(f.world, owner)->x - .6) < .00001);
+    REQUIRE(fabs(Transform_get_const(f.world, owner)->x - .6) < .00001);
     fixture_free(&f);
     return true;
 }
@@ -457,26 +477,26 @@ static bool camera_follow_runtime(behavior_backend backend)
     free(text);
     REQUIRE(prepared);
     ecs_entity camera = ecs_world_create_entity(f.world), players[2];
-    REQUIRE(!GAME_GameTransform_add(f.world, camera, 0));
+    REQUIRE(!Transform_add(f.world, camera, 0));
     for (int i = 0; i < 2; i++) {
         players[i] = ecs_world_create_entity(f.world);
-        REQUIRE(!GAME_GameTransform_add(f.world, players[i], 0));
+        REQUIRE(!Transform_add(f.world, players[i], 0));
     }
     REQUIRE(!ecs_world_apply_commands(f.world));
-    game_source_registry *registry = f.live->sources;
-    REQUIRE(!game_source_attach(registry, camera, "System", false, 0, 0));
+    source_registry *registry = f.live->sources;
+    REQUIRE(!source_attach(registry, camera, "System", false, 0, 0));
     const float deltas[] = { 0, 1.f / 60, .1f, .025f };
     double x = 0, y = 0;
     for (int step = 0; step < 4; step++) {
         ecs_entity player = players[step < 2 ? 0 : 1];
-        GameTransform target = { .x = step < 2 ? 20 : -7, .y = 3 + step * 2 };
-        *GAME_GameTransform_get(f.world, player) = target;
+        Transform target = { .x = step < 2 ? 20 : -7, .y = 3 + step * 2 };
+        *Transform_get(f.world, player) = target;
         pin_value value = { .type = PIN_HANDLE,
                             .type_name = "ecs.entity",
                             .u64 = ecs_entity_to_u64(player) };
-        REQUIRE(!game_entities_set_global_value(f.live->entities, "Player", &value));
+        REQUIRE(!entities_set_global_value(f.live->entities, "Player", &value));
         pin_value delta = { .type = PIN_F32, .f = deltas[step] };
-        int dispatched = game_source_dispatch(
+        int dispatched = source_dispatch(
             registry,
             camera,
             "Tick",
@@ -486,13 +506,13 @@ static bool camera_follow_runtime(behavior_backend backend)
             delta.f
         );
         if (dispatched < 0) {
-            fprintf(stderr, "CameraFollow dispatch: %d %s\n", dispatched, game_source_error(registry));
+            fprintf(stderr, "CameraFollow dispatch: %d %s\n", dispatched, source_error(registry));
         }
         REQUIRE(dispatched == 1);
         double weight = 1 - exp(-6 * (double)deltas[step]);
         x += (target.x - x) * weight;
         y += (target.y - y) * weight;
-        const GameTransform *actual = GAME_GameTransform_get_const(f.world, camera);
+        const Transform *actual = Transform_get_const(f.world, camera);
         REQUIRE(fabs(actual->x - x) < .00001 && fabs(actual->y - y) < .00001);
     }
     fixture_free(&f);
@@ -500,12 +520,16 @@ static bool camera_follow_runtime(behavior_backend backend)
 }
 static void cleanup()
 {
-    if (source_input) {
-        engine_input_free(source_input);
+    execution_inspector_free(query_debugger);
+    query_debugger = NULL;
+    execution_program_free(query_other_program);
+    query_other_program = NULL;
+    if (test_source_input) {
+        engine_input_free(test_source_input);
     }
-    source_input = NULL;
+    test_source_input = NULL;
     if (input_sources) {
-        game_source_registry_free(input_sources);
+        source_registry_free(input_sources);
     }
     input_sources = NULL;
     authoring_source_free(input_source);
@@ -607,9 +631,9 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
     for (int b = 0; b < 2; b++) {
         cleanup();
         input_world = ecs_world_new();
-        REQUIRE(!ecs_world_register_component(input_world, &GAME_COMPONENT_GameInput, NULL));
+        REQUIRE(!ecs_world_register_component(input_world, &COMPONENT_Input, NULL));
         ecs_entity owner = ecs_world_create_entity(input_world);
-        REQUIRE(!GAME_GameInput_add(input_world, owner, 0));
+        REQUIRE(!Input_add(input_world, owner, 0));
         REQUIRE(!ecs_world_apply_commands(input_world));
         const script_catalog_capability pulse = {
             .id = script_catalog_id("event", "Pulse"),
@@ -641,31 +665,341 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
             fprintf(stderr, "input source: %s\n", input_source->diagnostics[i].message);
         }
         REQUIRE(input_source->valid);
-        input_sources = game_source_registry_new(input_world);
+        input_sources = source_registry_new(input_world);
         REQUIRE(
-            game_source_register(input_sources, "InputWatch", input_source->module, NULL) == FLOW_OK
+            source_register(input_sources, "InputWatch", input_source->module, NULL) == FLOW_OK
         );
-        REQUIRE(game_source_step(input_sources, 0, .1) == FLOW_OK);
+        REQUIRE(source_step(input_sources, 0, .1) == FLOW_OK);
         system_fixture f = { .world = input_world,
                              .source = input_source,
-                             .program = game_source_program(input_sources, "InputWatch") };
+                             .program = source_program(input_sources, "InputWatch") };
         REQUIRE(f.program && state(&f, owner, "pulses") == 0);
-        game_source_input bridge = { .sources = input_sources, .now = .1, .delta = .1 };
-        const engine_input_host host = game_source_input_host(&bridge);
-        source_input = engine_input_new(input_world, &host);
-        REQUIRE(engine_input_action(source_input, "Missing", true) == FLOW_ERR_UNKNOWN_EVENT);
-        REQUIRE(engine_input_action(source_input, "Pulse", true) == 1);
-        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        source_input bridge = { .sources = input_sources, .now = .1, .delta = .1 };
+        const engine_input_host host = source_input_host(&bridge);
+        test_source_input = engine_input_new(input_world, &host);
+        REQUIRE(engine_input_action(test_source_input, "Missing", true) == FLOW_ERR_UNKNOWN_EVENT);
+        REQUIRE(engine_input_action(test_source_input, "Pulse", true) == 1);
+        REQUIRE(engine_input_apply(test_source_input) == FLOW_OK);
         REQUIRE(state(&f, owner, "pulses") == 1);
         bridge.now = .3;
-        REQUIRE(engine_input_action(source_input, "Pulse", true) == 0);
-        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        REQUIRE(engine_input_action(test_source_input, "Pulse", true) == 0);
+        REQUIRE(engine_input_apply(test_source_input) == FLOW_OK);
         bridge.now = .4;
-        REQUIRE(engine_input_action(source_input, "Pulse", false) == 1);
-        REQUIRE(engine_input_apply(source_input) == FLOW_OK);
+        REQUIRE(engine_input_action(test_source_input, "Pulse", false) == 1);
+        REQUIRE(engine_input_apply(test_source_input) == FLOW_OK);
         REQUIRE(state(&f, owner, "pulses") == 1);
     }
     return true;
+}
+
+static uint64_t query_state_id(system_fixture *f, const char *name)
+{
+    for (int i = 0; i < f->source->analysis->symbol_count; i++) {
+        const script_symbol *symbol = &f->source->analysis->symbols[i];
+        if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, name)) {
+            return symbol->id;
+        }
+    }
+    return 0;
+}
+static execution_instance *query_row(system_fixture *f, ecs_entity owner, ecs_entity target)
+{
+    uint64_t variable = ecs_entity_to_u64(target);
+    return execution_program_row(f->program, ecs_entity_to_u64(owner), &variable, 1);
+}
+static double row_number(system_fixture *f, execution_instance *row, const char *name)
+{
+    const pin_value *value = row ? execution_instance_state(row, query_state_id(f, name))
+                                 : NULL;
+    return value ? value->d : NAN;
+}
+static ecs_entity aim_target(system_fixture *f, ecs_entity owner, bool firing)
+{
+    ecs_entity target = ecs_world_create_entity(f->world);
+    assert(!Aim_add(f->world, target, 0));
+    assert(!ecs_world_record_add_pair(f->world, owner, query_targets.id, target, 0));
+    assert(!ecs_world_apply_commands(f->world));
+    Aim_get(f->world, target)->firing = firing;
+    return target;
+}
+TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        ecs_entity first = aim_target(&f, owner, true),
+                   second = aim_target(&f, owner, false);
+        REQUIRE(prepare(
+            &f,
+            "system Rows query h:Health join target in self.Targets join a:Aim "
+            "from target { "
+            "state starts:double=0; starts+=1; await delay(Duration:1); "
+            "if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        REQUIRE(query_row(&f, owner, first) != query_row(&f, owner, second));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 1);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(!execution_instance_set_state(
+            query_row(&f, owner, first),
+            query_state_id(&f, "starts"),
+            (pin_value){ .type = PIN_F64, .d = 7 }
+        ));
+        REQUIRE(!execution_program_replace(f.program, f.source->module, false));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 7);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 8);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 2);
+        REQUIRE(!ecs_world_destroy_entity(f.world, first));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!query_row(&f, owner, first));
+        REQUIRE(execution_instance_pending(query_row(&f, owner, second)) == 1);
+        ecs_entity replacement = aim_target(&f, owner, true);
+        REQUIRE(
+            replacement.slot == first.slot && replacement.generation != first.generation
+        );
+        REQUIRE(tick(&f, .3));
+        REQUIRE(row_number(&f, query_row(&f, owner, replacement), "starts") == 1);
+        REQUIRE(tick(&f, 1.2));
+        REQUIRE(Health_get_const(f.world, owner)->current == 1);
+        execution_program_detach(f.program, ecs_entity_to_u64(owner));
+        REQUIRE(!query_row(&f, owner, second) && !query_row(&f, owner, replacement));
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_changed_consumers_preserve_busy_writes)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        REQUIRE(prepare(
+            &f,
+            "system Changed query h:Health where changed(h) { state "
+            "calls:double=0; "
+            "calls+=1; await delay(Duration:1); }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        execution_program *other = execution_program_new(f.source->module, f.world, NULL);
+        query_other_program = other;
+        REQUIRE(other);
+        REQUIRE(!execution_program_step(other, 0, .1, 10000));
+        REQUIRE(!ecs_component_modified(f.world, owner, COMPONENT_Health.id));
+        REQUIRE(tick(&f, .1));
+        REQUIRE(state(&f, owner, "calls") == 1);
+        REQUIRE(tick(&f, 1.1));
+        REQUIRE(state(&f, owner, "calls") == 2);
+        REQUIRE(!execution_program_step(other, 1.1, .1, 10000));
+        REQUIRE(
+            execution_instance_state(
+                execution_program_instance(other, ecs_entity_to_u64(owner)),
+                query_state_id(&f, "calls")
+            )
+                ->d == 2
+        );
+        Health_get(f.world, owner)->current = 7;
+        REQUIRE(tick(&f, 2.2));
+        REQUIRE(state(&f, owner, "calls") == 2);
+        REQUIRE(!ecs_component_modified(f.world, owner, COMPONENT_Health.id));
+        REQUIRE(tick(&f, 2.3));
+        REQUIRE(state(&f, owner, "calls") == 3);
+        REQUIRE(!execution_program_step(other, 2.3, .1, 10000));
+        REQUIRE(
+            execution_instance_state(
+                execution_program_instance(other, ecs_entity_to_u64(owner)),
+                query_state_id(&f, "calls")
+            )
+                ->d == 3
+        );
+        execution_program_free(other);
+        query_other_program = NULL;
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_changed_provider_and_pure_helper)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity one = health(&f), two = health(&f), child = health(&f);
+        REQUIRE(!Aim_add(f.world, child, 0));
+        REQUIRE(!ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, one, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(prepare(
+            &f,
+            "system Providers query h:Health, a:Aim, base:Health from "
+            "ancestor(ChildOf) "
+            "where changed(base) and Accept(h) { state calls:double=0; "
+            "calls+=1; "
+            "Accept :: (value:Health)->bool { return value.Current>=0; } }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        REQUIRE(state(&f, child, "calls") == 1);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(state(&f, child, "calls") == 1);
+        REQUIRE(!ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, two, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(state(&f, child, "calls") == 2);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_value_snapshot_streams_without_instances)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        for (int i = 0; i < 32; i++) {
+            aim_target(&f, owner, true);
+        }
+        REQUIRE(prepare(
+            &f,
+            "system Stream query h:Health join target in self.Targets join "
+            "a:Aim from target "
+            "where h.Current==0 and a.Firing { h.Current+=1; }",
+            backends[backend]
+        ));
+        REQUIRE(!execution_program_prepare_system(f.program, 0, .1, 10000));
+        execution_memory_usage memory = execution_program_memory_usage(f.program);
+        int run = execution_program_run_system(f.program);
+        int finish = execution_program_finish_system(f.program);
+        REQUIRE(memory.instance_count == 0 && memory.activation_bytes == 0);
+        REQUIRE(memory.query_rows == 32 && memory.query_history_bytes == sizeof(uint64_t));
+        REQUIRE(!run && !finish);
+        REQUIRE(Health_get_const(f.world, owner)->current == 32);
+        memory = execution_program_memory_usage(f.program);
+        REQUIRE(memory.instance_count == 0 && memory.query_history_bytes == 0);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(Health_get_const(f.world, owner)->current == 32);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_filters_gate_both_binding_paths)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        REQUIRE(!Aim_add(f.world, owner, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        Health_get(f.world, owner)->current = 1;
+        REQUIRE(
+            prepare(&f, "system Gate query h:Health, a:Aim where h.Current>0 or has(Disabled) { bind a.Manual=!a.Firing; }", backends[backend])
+        );
+        REQUIRE(tick(&f, 0));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        Health_get(f.world, owner)->current = 0;
+        Aim_get(f.world, owner)->firing = true;
+        REQUIRE(tick(&f, .1));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        char error[256];
+        REQUIRE(!execution_program_bindings_all(&f.program, 1, .1, .1, 10000, error, sizeof error));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        REQUIRE(!ecs_world_record_add(f.world, owner, ECS_DISABLED, NULL, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!Aim_get_const(f.world, owner)->manual);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        ecs_entity middle[2], leaf[2];
+        for (int i = 0; i < 2; i++) {
+            middle[i] = ecs_world_create_entity(f.world);
+            REQUIRE(
+                !ecs_world_record_add_pair(f.world, owner, query_targets.id, middle[i], 0)
+            );
+            REQUIRE(!ecs_world_apply_commands(f.world));
+            leaf[i] = aim_target(&f, middle[i], i != 0);
+        }
+        REQUIRE(prepare(
+            &f,
+            "system Chains query h:Health join middle in self.Targets join "
+            "target in middle.Targets "
+            "join a:Aim from target { state ticks:double=0; state "
+            "pulses:double=0; "
+            "on Begin { pulses+=1; } ticks+=1; if a.Firing { h.Current+=10; } "
+            "else { h.Current+=1; } }",
+            backends[backend]
+        ));
+        query_debugger = execution_program_inspector(f.program);
+        REQUIRE(query_debugger);
+        REQUIRE(tick(&f, 0));
+        uint64_t variables[2][2];
+        execution_instance *rows[2];
+        for (int i = 0; i < 2; i++) {
+            variables[i][0] = ecs_entity_to_u64(middle[i]);
+            variables[i][1] = ecs_entity_to_u64(leaf[i]);
+            rows[i] = execution_program_row(f.program, ecs_entity_to_u64(owner), variables[i], 2);
+            REQUIRE(row_number(&f, rows[i], "ticks") == 1);
+            REQUIRE(row_number(&f, rows[i], "pulses") == 1);
+        }
+        REQUIRE(Health_get_const(f.world, owner)->current == 11);
+        bool watched[2] = { false, false };
+        for (int i = 0; i < execution_inspector_watch_count(query_debugger); i++) {
+            const execution_debug_watch *watch = execution_inspector_watch_at(query_debugger, i);
+            for (int row = 0; row < 2; row++) {
+                watched[row] |= watch->owner == ecs_entity_to_u64(owner) &&
+                                watch->query_variables[0] == variables[row][0] &&
+                                watch->query_variables[1] == variables[row][1];
+            }
+        }
+        REQUIRE(watched[0] && watched[1]);
+        uint64_t begin = execution_module_event(f.source->module, "Begin");
+        REQUIRE(
+            begin &&
+            !execution_program_dispatch(f.program, begin, ecs_entity_to_u64(owner), NULL, 0, .1, .1, 10000)
+        );
+        REQUIRE(row_number(&f, rows[0], "pulses") == 2);
+        REQUIRE(row_number(&f, rows[1], "pulses") == 2);
+        REQUIRE(
+            !ecs_world_record_remove_pair(f.world, middle[0], query_targets.id, leaf[0], 0)
+        );
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!execution_program_row(f.program, ecs_entity_to_u64(owner), variables[0], 2));
+        REQUIRE(row_number(&f, rows[1], "ticks") == 2);
+        execution_debug_cursor cursor;
+        REQUIRE(
+            execution_inspector_owner_cursor(query_debugger, ecs_entity_to_u64(owner), &cursor)
+        );
+        REQUIRE(!cursor.retired && cursor.query_variables[0] == variables[1][0]);
+        REQUIRE(!Aim_remove(f.world, leaf[1], 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .3));
+        REQUIRE(!execution_program_row(f.program, ecs_entity_to_u64(owner), variables[1], 2));
+        execution_inspector_free(query_debugger);
+        query_debugger = NULL;
+        fixture_free(&f);
+    }
+    return true;
+}
+void test_code_query_rows()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_query_tuple_state_wait_reload_and_generation);
+    RUN_TEST_CASE(source_query_changed_consumers_preserve_busy_writes);
+    RUN_TEST_CASE(source_query_changed_provider_and_pure_helper);
+    RUN_TEST_CASE(source_query_value_snapshot_streams_without_instances);
+    RUN_TEST_CASE(source_query_filters_gate_both_binding_paths);
+    RUN_TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct);
+    pu_clear_setup();
 }
 
 void test_code_system_runtime()

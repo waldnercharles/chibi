@@ -26,11 +26,30 @@ kernel, query, command and service implementations. Names resolve during
 analysis; prepared linking validates identities and ABI requirements. Graph
 registration is not a capability-discovery mechanism for source execution.
 
-`Chibi::execution` owns verified instructions, VM and optional SLJIT backends,
+`Chibi::execution` owns verified instructions, the diagnostic VM, native SLJIT
+and browser WebAssembly backends,
 linked programs, activations, state, suspension and inspection. Immutable modules
 retain imports and source origins independently of syntax and editor objects.
 Backend code and mutable instances have separate lifetimes. Persistent formats
 store identities and compatibility requirements, not process callback pointers.
+
+Native builds select SLJIT when enabled. Emscripten builds select `BEHAVIOR_WASM`.
+Publication emits complete Wasm functions and synchronously asks the browser to
+compile them before adopting the new immutable program. Arithmetic and branches
+execute in generated Wasm; engine operations, managed values and continuations
+use shared C runtime helpers imported directly from the engine's Wasm instance.
+No JavaScript bridge runs on steady-state helper calls. Compilation failure
+rejects publication; BYTECODE is an explicit diagnostic choice.
+
+Prepared exports retain verified, target-specific IR. The web export compiler
+already runs as wasm32 under Node, so its offsets match the browser runtime.
+The browser generates code again on load or source replacement. Each thread
+installs entries against its own function table and shared engine memory, and
+retains entries for live artifacts. Workers compile their entries on first use.
+Retiring artifacts releases their entries on the owning thread's next call or
+at thread exit, without recompiling unrelated live functions. Active generations
+retain constant payloads until calls finish. Loading is synchronous in this
+version. Fields keep their separate evaluator.
 
 Authoring graphs project resolved source records. Graph edits produce source
 edits, followed by analysis and preparation before adoption. Optional

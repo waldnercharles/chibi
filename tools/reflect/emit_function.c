@@ -95,10 +95,10 @@ void emit_execution_host(FILE *out, const fn_info *f, bool external)
 {
     fprintf(
         out,
-        "static const char *__execution_%s_%s(const behavior_function_context "
+        "static const char *__execution_%s%s(const behavior_function_context "
         "*ctx, void *service, const pin_value *args, pin_value *out) {\n    "
         "(void)ctx; (void)service; (void)args; (void)out;\n",
-        g_prefix,
+        symbol_prefix(),
         f->name
     );
     int input = 0;
@@ -171,12 +171,12 @@ void emit_execution_host(FILE *out, const fn_info *f, bool external)
     }
     fprintf(
         out,
-        "    return NULL;\n}\n%sconst node_host_call %s_%s_execution = { "
-        ".context = __execution_%s_%s",
+        "    return NULL;\n}\n%sconst node_host_call %s%s_execution = { "
+        ".context = __execution_%s%s",
         external ? "" : "static ",
-        g_prefix,
+        symbol_prefix(),
         f->name,
-        g_prefix,
+        symbol_prefix(),
         f->name
     );
     if (service_name) {

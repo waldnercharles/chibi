@@ -4,6 +4,6 @@ behavior "ProjectileEffects" {
         spawn_prototype()
     }
     after spawn_prototype {
-        set_game_particle_emitter_parent(self, spawn_prototype.Entity)
+        set_particle_emitter_parent(self, spawn_prototype.Entity)
     }
 }

@@ -13,40 +13,40 @@
 
 #define PARTICLE_SEED UINT32_C(0x9e3779b9)
 
-struct game_particles
+struct particles
 {
-    game_particle *items;
+    particle *items;
     uint32_t random;
 };
 
-float game_particle_curve_value(float start, float end, float exponent, float age)
+float particle_curve_value(float start, float end, float exponent, float age)
 {
     float t = exponent > 0 ? powf(fminf(1, fmaxf(0, age)), exponent) : 0;
     return start + (end - start) * t;
 }
 
-game_particles *game_particles_new()
+particles *particles_new()
 {
-    game_particles *particles = xcalloc(1, sizeof *particles);
+    particles *particles = xcalloc(1, sizeof *particles);
     particles->random = PARTICLE_SEED;
     return particles;
 }
 
-void game_particles_clear(game_particles *particles)
+void particles_clear(particles *particles)
 {
     assert(particles);
     aclear(particles->items);
     particles->random = PARTICLE_SEED;
 }
 
-void game_particles_free(game_particles *particles)
+void particles_free(particles *particles)
 {
     assert(particles);
     afree(particles->items);
     free(particles);
 }
 
-static float random_unit(game_particles *particles)
+static float random_unit(particles *particles)
 {
     uint32_t value = particles->random;
     value ^= value << 13;
@@ -56,7 +56,7 @@ static float random_unit(game_particles *particles)
     return (float)(value >> 8) * (1.0f / 16777216.0f);
 }
 
-static bool valid_burst(const game_particle_burst *burst)
+static bool valid_burst(const particle_burst *burst)
 {
     if (!isfinite(burst->position.x) || !isfinite(burst->position.y) ||
         !isfinite(burst->speed) || !isfinite(burst->lifetime) ||
@@ -68,25 +68,25 @@ static bool valid_burst(const game_particle_burst *burst)
            fabs((double)burst->position.y) + travel <= FLT_MAX;
 }
 
-int game_particles_emit(game_particles *particles, const game_particle_burst *burst)
+int particles_emit(particles *particles, const particle_burst *burst)
 {
     assert(particles && burst);
     if (!valid_burst(burst)) {
         return -1;
     }
-    int count = GAME_PARTICLE_LIMIT - acount(particles->items);
+    int count = PARTICLE_LIMIT - acount(particles->items);
     if (count > burst->count) {
         count = burst->count;
     }
     if (!count) {
         return 0;
     }
-    asetcap(particles->items, GAME_PARTICLE_LIMIT);
+    asetcap(particles->items, PARTICLE_LIMIT);
     for (int i = 0; i < count; i++) {
         float angle = random_unit(particles) * 6.2831853071795864769f;
         float speed = burst->speed * (0.4f + 0.6f * random_unit(particles));
         cos_sin direction = cos_sin_compute(angle);
-        game_particle particle = {
+        particle particle = {
             .position = burst->position,
             .velocity = { direction.c * speed, direction.s * speed },
             .color = burst->color,
@@ -98,7 +98,7 @@ int game_particles_emit(game_particles *particles, const game_particle_burst *bu
             .angle = angle,
             .antialias = 1.5f,
             .absorption = .01f,
-            .shape = GAME_PARTICLE_STREAK,
+            .shape = PARTICLE_STREAK,
         };
         apush(particles->items, particle);
     }
@@ -110,19 +110,19 @@ static bool range(float low, float high)
     return isfinite(low) && isfinite(high) && low >= 0 && high >= low;
 }
 
-static float sample(game_particles *particles, float low, float high)
+static float sample(particles *particles, float low, float high)
 {
     return low + (high - low) * random_unit(particles);
 }
 
-int game_particles_emit_directed(game_particles *particles, const game_particle_spray *spray)
+int particles_emit_directed(particles *particles, const particle_spray *spray)
 {
     assert(particles && spray);
     float direction = hypotf(spray->direction.x, spray->direction.y);
-    game_particle_burst bound = { .position = spray->position,
-                                  .count = spray->count,
-                                  .speed = spray->speed_max,
-                                  .lifetime = spray->lifetime_max };
+    particle_burst bound = { .position = spray->position,
+                             .count = spray->count,
+                             .speed = spray->speed_max,
+                             .lifetime = spray->lifetime_max };
     if (!valid_burst(&bound) || !isfinite(direction) || direction <= 0 ||
         !range(spray->speed_min, spray->speed_max) ||
         !range(spray->lifetime_min, spray->lifetime_max) ||
@@ -132,23 +132,23 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
         !range(0, spray->spread) || !range(0, spray->size_exponent) ||
         !range(0, spray->emission_exponent) || !range(0, spray->stretch) ||
         !range(0, spray->antialias) || !isfinite(spray->elevation) ||
-        spray->shape < 0 || spray->shape >= GAME_PARTICLE_SHAPE_COUNT) {
+        spray->shape < 0 || spray->shape >= PARTICLE_SHAPE_COUNT) {
         return -1;
     }
-    int count = GAME_PARTICLE_LIMIT - acount(particles->items);
+    int count = PARTICLE_LIMIT - acount(particles->items);
     if (count > spray->count) {
         count = spray->count;
     }
     if (!count) {
         return 0;
     }
-    asetcap(particles->items, GAME_PARTICLE_LIMIT);
+    asetcap(particles->items, PARTICLE_LIMIT);
     float facing = cos_sin_atan2(spray->direction.y, spray->direction.x);
     for (int i = 0; i < count; i++) {
         float angle = facing + (random_unit(particles) - 0.5f) * spray->spread;
         float speed = sample(particles, spray->speed_min, spray->speed_max);
         cos_sin direction = cos_sin_compute(angle);
-        game_particle particle = {
+        particle particle = {
             .position = spray->position,
             .velocity = { direction.c * speed, direction.s * speed },
             .color = spray->color,
@@ -171,7 +171,7 @@ int game_particles_emit_directed(game_particles *particles, const game_particle_
     return count;
 }
 
-int game_particles_emit_particle(game_particles *particles, const game_particle *particle)
+int particles_emit_particle(particles *particles, const particle *particle)
 {
     assert(particles && particle);
     double remaining = (double)particle->lifetime - particle->age;
@@ -183,7 +183,7 @@ int game_particles_emit_particle(game_particles *particles, const game_particle 
         !isfinite(particle->size) || particle->size <= 0 ||
         !range(0, particle->size_exponent) || !range(0, particle->drag) ||
         !range(0, particle->emission) || !isfinite(particle->angle) ||
-        particle->shape < 0 || particle->shape >= GAME_PARTICLE_SHAPE_COUNT ||
+        particle->shape < 0 || particle->shape >= PARTICLE_SHAPE_COUNT ||
         fabs((double)particle->position.x) + fabs((double)particle->velocity.x) * remaining >
             FLT_MAX ||
         fabs((double)particle->position.y) + fabs((double)particle->velocity.y) * remaining >
@@ -193,14 +193,14 @@ int game_particles_emit_particle(game_particles *particles, const game_particle 
             FLT_MAX) {
         return -1;
     }
-    if (acount(particles->items) == GAME_PARTICLE_LIMIT) {
+    if (acount(particles->items) == PARTICLE_LIMIT) {
         return 0;
     }
     apush(particles->items, *particle);
     return 1;
 }
 
-static double drag_integral(const game_particle *p, double age, double delta)
+static double drag_integral(const particle *p, double age, double delta)
 {
     double power = p->drag_exponent + 1.0;
     return p->drag * delta + (p->drag_end - p->drag) *
@@ -210,7 +210,7 @@ static double drag_integral(const game_particle *p, double age, double delta)
 
 /* Constant drag has a closed-form displacement. For age-varying drag, velocity
  * uses the exact integral and eight-point Gaussian quadrature integrates travel. */
-static double curved_drag_travel(const game_particle *p, double delta)
+static double curved_drag_travel(const particle *p, double delta)
 {
     static const double nodes[] = { .1834346424956498,
                                     .5255324099163290,
@@ -230,7 +230,7 @@ static double curved_drag_travel(const game_particle *p, double delta)
     return travel * delta * .5;
 }
 
-void game_particle_advance(game_particle *particle, double delta)
+void particle_advance(particle *particle, double delta)
 {
     double travel = delta;
     float decay = 1;
@@ -254,7 +254,7 @@ void game_particle_advance(game_particle *particle, double delta)
     particle->age += (float)delta;
 }
 
-int game_particles_tick(game_particles *particles, double delta)
+int particles_tick(particles *particles, double delta)
 {
     assert(particles);
     if (!isfinite(delta) || delta < 0) {
@@ -265,25 +265,25 @@ int game_particles_tick(game_particles *particles, double delta)
     }
     int keep = 0;
     for (int i = 0; i < acount(particles->items); i++) {
-        game_particle particle = particles->items[i];
+        particle particle = particles->items[i];
         double age = particle.age + delta;
         if (age >= particle.lifetime) {
             continue;
         }
-        game_particle_advance(&particle, delta);
+        particle_advance(&particle, delta);
         particles->items[keep++] = particle;
     }
     asetlen(particles->items, keep);
     return 0;
 }
 
-const game_particle *game_particles_data(const game_particles *particles)
+const particle *particles_data(const particles *particles)
 {
     assert(particles);
     return particles->items;
 }
 
-int game_particles_count(const game_particles *particles)
+int particles_count(const particles *particles)
 {
     assert(particles);
     return acount(particles->items);

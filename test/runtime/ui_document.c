@@ -1,7 +1,7 @@
 #include "assets/ui_document.h"
 
 #include "support/array.h"
-#include "test/suite_internal.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static void composed_document()
+TEST_CASE(ui_composed_document)
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
@@ -24,22 +24,23 @@ static void composed_document()
         sizeof error
     );
     char *text = ok ? ui_document_compose(&d, "body { font-family: Inter; }") : NULL;
-    test_check(
+    /* A ui asset composes its RCSS and markup into one RML document. */
+    REQUIRE(
         ok && text &&
-            strcmp(
-                text,
-                "<rml><head><style>body { font-family: Inter; }\n"
-                "#score { font-size: 24dp; }\n"
-                "</style></head><body><div id=\"score\">0</div>\n"
-                "</body></rml>"
-            ) == 0,
-        "a ui asset composes its RCSS and markup into one RML document"
+        strcmp(
+            text,
+            "<rml><head><style>body { font-family: Inter; }\n"
+            "#score { font-size: 24dp; }\n"
+            "</style></head><body><div id=\"score\">0</div>\n"
+            "</body></rml>"
+        ) == 0
     );
     free(text);
     ui_document_free(&d);
+    return true;
 }
 
-static void rejected_documents()
+TEST_CASE(ui_rejected_documents)
 {
     static const struct
     {
@@ -57,18 +58,20 @@ static void rejected_documents()
         ui_document d = { 0 };
         char error[256] = { 0 };
         bool ok = ui_document_read(cases[i].rml, cases[i].rcss, NULL, NULL, &d, error, sizeof error);
-        test_check(!ok && strstr(error, cases[i].error) && !d.rml, cases[i].error);
+        REQUIRE(!ok && strstr(error, cases[i].error) && !d.rml);
     }
     ui_document d = { 0 };
     char error[256] = { 0 };
     bool ok = ui_document_read("<header><nav/></header>", NULL, NULL, NULL, &d, error, sizeof error);
-    test_check(ok, "a <header> is markup, not the document's <head>");
+    /* A <header> is markup, not the document's <head>. */
+    REQUIRE(ok);
     ui_document_free(&d);
+    return true;
 }
 
 /* A scene's root document may wrap its markup in <body ...>, and its RCSS
  * may import stylesheets beside it. */
-static void page_document()
+TEST_CASE(ui_page_document)
 {
     char root[] = "/tmp/chibi-ui-page-XXXXXX", path[128];
     assert(mkdtemp(root));
@@ -89,13 +92,12 @@ static void page_document()
         sizeof error
     );
     char *composed = ok ? ui_document_compose(&d, "") : NULL;
-    test_check(
+    /* A root document's <body> holds the page body's attributes and its RCSS imports stylesheets. */
+    REQUIRE(
         ok && !strcmp(d.body, "class=\"page\" data-class-dark=\"system.dark\"") &&
-            !strcmp(d.rml, "<slot/>") && strstr(d.rcss, "body { --a: 1; }") &&
-            acount(imports) == 1 &&
-            strstr(composed, "<body class=\"page\" data-class-dark=\"system.dark\"><slot/></body>"),
-        "a root document's <body> holds the page body's attributes and its "
-        "RCSS imports stylesheets"
+        !strcmp(d.rml, "<slot/>") && strstr(d.rcss, "body { --a: 1; }") &&
+        acount(imports) == 1 &&
+        strstr(composed, "<body class=\"page\" data-class-dark=\"system.dark\"><slot/></body>")
     );
     free(composed);
     for (int i = 0; i < acount(imports); i++) {
@@ -105,10 +107,11 @@ static void page_document()
     ui_document_free(&d);
     unlink(path);
     rmdir(root);
+    return true;
 }
 
 /* Nested RCSS flattens before the document scopes it. */
-static void nested_rcss()
+TEST_CASE(ui_nested_rcss)
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
@@ -123,17 +126,18 @@ static void nested_rcss()
         sizeof error
     );
     char *scoped = ok ? ui_document_scope(d.rcss, "Menu") : NULL;
-    test_check(
+    /* A ui asset's nested RCSS flattens, then scopes to the asset. */
+    REQUIRE(
         scoped && strstr(scoped, "[data-ui=\"Menu\"] .menu .item { margin: 0; }") &&
-            strstr(scoped, "[data-ui=\"Menu\"] .menu .item:hover { color: var(--fg); }"),
-        "a ui asset's nested RCSS flattens, then scopes to the asset"
+        strstr(scoped, "[data-ui=\"Menu\"] .menu .item:hover { color: var(--fg); }")
     );
     free(scoped);
     ui_document_free(&d);
+    return true;
 }
 
 /* An invalid edit keeps the last valid document; a valid one replaces it. */
-static void last_valid_document()
+TEST_CASE(ui_last_valid_document)
 {
     ui_document d = { 0 };
     char error[256] = { 0 };
@@ -141,11 +145,10 @@ static void last_valid_document()
     bool rejected = !ui_document_read("", NULL, NULL, NULL, &d, error, sizeof error);
     bool kept = d.rml && strcmp(d.rml, "<p>one</p>") == 0;
     bool replaced = ui_document_read("<p>two</p>", NULL, NULL, NULL, &d, error, sizeof error);
-    test_check(
-        first && rejected && kept && replaced && strcmp(d.rml, "<p>two</p>") == 0,
-        "an invalid ui asset keeps the last valid document"
-    );
+    /* An invalid ui asset keeps the last valid document. */
+    REQUIRE(first && rejected && kept && replaced && strcmp(d.rml, "<p>two</p>") == 0);
     ui_document_free(&d);
+    return true;
 }
 
 static void write_text(const char *path, const char *text)
@@ -200,7 +203,7 @@ static bool expand_text(const char *root, const char *rml, char *out, size_t siz
     return ok;
 }
 
-static void expanded_widgets()
+TEST_CASE(ui_expanded_widgets)
 {
     char root[] = "/tmp/chibi-ui-widgets-XXXXXX";
     assert(mkdtemp(root));
@@ -211,18 +214,17 @@ static void expanded_widgets()
     char text[512];
     char **uses = NULL;
     bool ok = expand_text(root, "<use ui=\"Meter\" id=\"hull\" class=\"wide\"/>", text, sizeof text, &uses);
-    test_check(
+    /* A used widget becomes a div with its markup, and its RCSS precedes the host's. */
+    REQUIRE(
         ok &&
-            !strcmp(
-                text,
-                "<div data-ui=\"Meter\" id=\"hull\" class=\"wide\"><div "
-                "class=\"fill\"/></div>"
-                "|[data-ui=\"Meter\"] .fill { height: 4dp; "
-                "}\n[data-ui=\"Host\"] #host {}\n"
-            ) &&
-            acount(uses) == 1 && !strcmp(uses[0], "Meter"),
-        "a used widget becomes a div with its markup, and its RCSS precedes "
-        "the host's"
+        !strcmp(
+            text,
+            "<div data-ui=\"Meter\" id=\"hull\" class=\"wide\"><div "
+            "class=\"fill\"/></div>"
+            "|[data-ui=\"Meter\"] .fill { height: 4dp; "
+            "}\n[data-ui=\"Host\"] #host {}\n"
+        ) &&
+        acount(uses) == 1 && !strcmp(uses[0], "Meter")
     );
     free_names(uses);
     uses = NULL;
@@ -233,7 +235,8 @@ static void expanded_widgets()
         sizeof text,
         &uses
     );
-    test_check(
+    /* Children fill a widget's slot, widgets nest, and each widget's RCSS appears once. */
+    REQUIRE(
         ok && !strcmp(
                   text,
                   "<div data-ui=\"Row\"><span><div data-ui=\"Meter\"><div "
@@ -242,9 +245,7 @@ static void expanded_widgets()
                   "class=\"fill\"/></div>"
                   "|[data-ui=\"Meter\"] .fill { height: 4dp; "
                   "}\n[data-ui=\"Host\"] #host {}\n"
-              ),
-        "children fill a widget's slot, widgets nest, and each widget's RCSS "
-        "appears once"
+              )
     );
     free_names(uses);
     uses = NULL;
@@ -256,7 +257,8 @@ static void expanded_widgets()
         sizeof text,
         &uses
     );
-    test_check(
+    /* A widget element marked attrs takes the use element's attributes. */
+    REQUIRE(
         ok && !strncmp(
                   text,
                   "<div data-ui=\"Option\"><label><input type=\"radio\" "
@@ -269,8 +271,7 @@ static void expanded_widgets()
                       "data-checked=\"save.theme\" "
                       "value=\"dark\"/>Dark</label></div>|"
                   )
-              ),
-        "a widget element marked attrs takes the use element's attributes"
+              )
     );
     free_names(uses);
     static const struct
@@ -285,18 +286,17 @@ static void expanded_widgets()
     for (size_t i = 0; i < sizeof failures / sizeof *failures; i++) {
         uses = NULL;
         ok = expand_text(root, failures[i].rml, text, sizeof text, &uses);
-        test_check(!ok && strstr(text, failures[i].error), failures[i].error);
+        REQUIRE(!ok && strstr(text, failures[i].error));
         free_names(uses);
     }
     char **names = NULL;
     ui_document_use_names("<use ui=\"Row\"><use ui=\"Meter\"/></use><p/>", &names);
-    test_check(
-        acount(names) == 2 && !strcmp(names[0], "Row") && !strcmp(names[1], "Meter"),
-        "a ui asset names the widgets its markup uses"
-    );
+    /* A ui asset names the widgets its markup uses. */
+    REQUIRE(acount(names) == 2 && !strcmp(names[0], "Row") && !strcmp(names[1], "Meter"));
     free_names(names);
     static const char *const files[] = { "Meter", "Row", "Loop", "Option" };
     remove_widgets(root, files, sizeof files / sizeof *files);
+    return true;
 }
 
 /* Whether line `line` of the map came from the file ending in `file` at
@@ -323,7 +323,7 @@ static int count_of(const char *text, const char *part)
 
 /* An expanded document traces each element and each line of RCSS to the
  * asset that wrote it: a widget's to the widget, the rest to the document. */
-static void expanded_sources()
+TEST_CASE(ui_expanded_sources)
 {
     char root[] = "/tmp/chibi-ui-sources-XXXXXX";
     assert(mkdtemp(root));
@@ -363,32 +363,30 @@ static void expanded_sources()
               ) &&
               ui_document_expand(&d, "Hud", root, true, &uses, error, sizeof error);
     const char *rml = ok ? d.rml : "";
-    test_check(
+    /* An expanded element carries the asset and .rml line that wrote it, a widget's its widget's. */
+    REQUIRE(
         ok && strstr(rml, "<div data-src=\"Hud:1\" id=\"hud\">") &&
-            strstr(rml, "<div data-src=\"Hud:2\" data-ui=\"Meter\"><div data-src=\"Meter:1\" class=\"meter\">") &&
-            strstr(rml, "<div data-src=\"Meter:2\" class=\"fill\" id=\"hull\"") &&
-            strstr(rml, "<span data-src=\"Hud:4\">Hull</span>") &&
-            strstr(rml, "<div data-src=\"Hud:6\" data-ui=\"Row\" id=\"row\"><p data-src=\"Row:1\" class=\"row\"></p></div>") &&
-            count_of(rml, "data-src") == 7 && !strstr(rml, "<slot"),
-        "an expanded element carries the asset and .rml line that wrote it, a "
-        "widget's its widget's"
+        strstr(rml, "<div data-src=\"Hud:2\" data-ui=\"Meter\"><div data-src=\"Meter:1\" class=\"meter\">") &&
+        strstr(rml, "<div data-src=\"Meter:2\" class=\"fill\" id=\"hull\"") &&
+        strstr(rml, "<span data-src=\"Hud:4\">Hull</span>") &&
+        strstr(rml, "<div data-src=\"Hud:6\" data-ui=\"Row\" id=\"row\"><p data-src=\"Row:1\" class=\"row\"></p></div>") &&
+        count_of(rml, "data-src") == 7 && !strstr(rml, "<slot")
     );
-    test_check(
+    /* An expanded document's RCSS lines trace to each widget's .rcss, then the document's. */
+    REQUIRE(
         ok &&
-            !strcmp(
-                d.rcss,
-                "[data-ui=\"Meter\"] .meter { height: 4dp; "
-                "}\n[data-ui=\"Meter\"] "
-                ".fill { width: 50%; }\n"
-                "[data-ui=\"Hud\"] #hud { display: block; }\n[data-ui=\"Hud\"] "
-                "#hull { "
-                "color: red; }\n"
-            ) &&
-            acount(d.map.lines) == 4 && traced(&d.map, 1, "/Meter.rcss", 1) &&
-            traced(&d.map, 2, "/Meter.rcss", 3) &&
-            traced(&d.map, 3, "/Hud.rcss", 1) && traced(&d.map, 4, "/Hud.rcss", 2),
-        "an expanded document's RCSS lines trace to each widget's .rcss, then "
-        "the document's"
+        !strcmp(
+            d.rcss,
+            "[data-ui=\"Meter\"] .meter { height: 4dp; "
+            "}\n[data-ui=\"Meter\"] "
+            ".fill { width: 50%; }\n"
+            "[data-ui=\"Hud\"] #hud { display: block; }\n[data-ui=\"Hud\"] "
+            "#hull { "
+            "color: red; }\n"
+        ) &&
+        acount(d.map.lines) == 4 && traced(&d.map, 1, "/Meter.rcss", 1) &&
+        traced(&d.map, 2, "/Meter.rcss", 3) &&
+        traced(&d.map, 3, "/Hud.rcss", 1) && traced(&d.map, 4, "/Hud.rcss", 2)
     );
     ui_document_free(&d);
     free_names(uses);
@@ -404,12 +402,11 @@ static void expanded_sources()
         sizeof error
     );
     char *marked = ok ? ui_document_sources(d.rml, "Page", d.rml_line) : NULL;
-    test_check(
+    /* A page's markup counts its lines from its file's, past its <body>, and marks no comment or attribute value. */
+    REQUIRE(
         marked && d.rml_line == 2 &&
-            strstr(marked, "<p data-src=\"Page:4\" data-if=\"a <b\"/>") &&
-            count_of(marked, "data-src") == 1,
-        "a page's markup counts its lines from its file's, past its <body>, "
-        "and marks no comment or attribute value"
+        strstr(marked, "<p data-src=\"Page:4\" data-if=\"a <b\"/>") &&
+        count_of(marked, "data-src") == 1
     );
     free(marked);
     ui_document_free(&d);
@@ -418,18 +415,19 @@ static void expanded_sources()
                                   "  <b>{{ save.ekX > 0 ? save.ekX : 0 }}</b>\n"
                                   "</div>\n";
     marked = ui_document_sources(TERNARY, "Hearth", 1);
-    test_check(
+    /* Source markers preserve comparison operators inside text bindings. */
+    REQUIRE(
         strstr(marked, "{{ save.ekX > 0 ? save.ekX : 0 }}") != NULL &&
-            strstr(marked, "<b data-src=\"Hearth:2\">") != NULL,
-        "source markers preserve comparison operators inside text bindings"
+        strstr(marked, "<b data-src=\"Hearth:2\">") != NULL
     );
     free(marked);
 
     static const char *const files[] = { "Meter", "Row" };
     remove_widgets(root, files, sizeof files / sizeof *files);
+    return true;
 }
 
-static void scoped_styles()
+TEST_CASE(ui_scoped_styles)
 {
     static const struct
     {
@@ -475,17 +473,19 @@ static void scoped_styles()
     };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         char *scoped = ui_document_scope(cases[i].rcss, "Hud");
-        test_check(!strcmp(scoped, cases[i].scoped), cases[i].check);
-        if (strcmp(scoped, cases[i].scoped) != 0) {
-            printf("  got: %s\n", scoped);
+        bool same = !strcmp(scoped, cases[i].scoped);
+        if (!same) {
+            printf("  %s, got: %s\n", cases[i].check, scoped);
         }
         free(scoped);
+        REQUIRE(same);
     }
+    return true;
 }
 
 /* Each event a handler emits and each data-keys binding, with the element
  * that names it. */
-static void named_events()
+TEST_CASE(ui_named_events)
 {
     ui_document_event *events = NULL;
     ui_document_events(
@@ -519,14 +519,16 @@ static void named_events()
                     : !events[i].key) &&
                events[i].input == expected[i].input;
     }
-    test_check(same, "a ui asset names the events its elements send and the elements that send them");
+    /* A ui asset names the events its elements send and the elements that send them. */
+    REQUIRE(same);
     ui_document_events_free(events);
+    return true;
 }
 
 /* A document's self bindings: lists data-for repeats with the fields their
    rows use, then values, each once; save keys and longer paths are not
    self's. */
-static void bound_values()
+TEST_CASE(ui_bound_values)
 {
     ui_document_binding *found = NULL;
     ui_document_bindings(
@@ -545,20 +547,22 @@ static void bound_values()
             printf("  %s %d '%s'\n", found[i].name, found[i].list, found[i].fields);
         }
     }
-    test_check(listed, "a document's self bindings list data-for's lists with their rows' fields, then its values, once each");
+    /* A document's self bindings list data-for's lists with their rows' fields, then its values, once each. */
+    REQUIRE(listed);
     afree(found);
+    return true;
 }
 
 void test_ui_document()
 {
-    bound_values();
-    composed_document();
-    rejected_documents();
-    last_valid_document();
-    nested_rcss();
-    page_document();
-    expanded_widgets();
-    expanded_sources();
-    scoped_styles();
-    named_events();
+    RUN_TEST_CASE(ui_bound_values);
+    RUN_TEST_CASE(ui_composed_document);
+    RUN_TEST_CASE(ui_rejected_documents);
+    RUN_TEST_CASE(ui_last_valid_document);
+    RUN_TEST_CASE(ui_nested_rcss);
+    RUN_TEST_CASE(ui_page_document);
+    RUN_TEST_CASE(ui_expanded_widgets);
+    RUN_TEST_CASE(ui_expanded_sources);
+    RUN_TEST_CASE(ui_scoped_styles);
+    RUN_TEST_CASE(ui_named_events);
 }

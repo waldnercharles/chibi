@@ -92,7 +92,9 @@ bool shader_detail_validate(const shader_graph *g, const shader_node *n, shader_
         case SHADER_NORMAL_MAP:
             valid = n->width == 3 && a == 3 && b == 2 && c == 1 &&
                     g->nodes[n->input[3]].width == 1 &&
-                    (n->value[0] == 0 || n->value[0] == 1);
+                    (n->value[0] == SHADER_NORMAL_DIRECTX ||
+                     n->value[0] == SHADER_NORMAL_OPENGL ||
+                     n->value[0] == SHADER_NORMAL_OPENGL_TANGENT);
             break;
         case SHADER_BUMP:
             valid = n->width == 3 && a == 1 && b == 1 && c == 1 &&
@@ -309,9 +311,24 @@ bool shader_detail_eval(
             du[i] /= largest;
             dv[i] /= largest;
         }
+        if (n->value[0] == SHADER_NORMAL_OPENGL_TANGENT) {
+            const float zero[3] = { 0 };
+            float bitangent[3];
+            normalize(du, zero, du);
+            cross(normal, du, bitangent);
+            float sign = dot(bitangent, dv) < 0 ? -1 : 1;
+            for (int i = 0; i < 3; i++) {
+                dv[i] = bitangent[i] * sign;
+            }
+        }
         float scale = sqrtf(fmaxf(dot(du, du), dot(dv, dv)));
+        if (scale == 0) {
+            memcpy(out, normal, sizeof normal);
+            return true;
+        }
         float x = (2 * a[0] - 1) * c[0],
-              y = (2 * a[1] - 1) * c[0] * (n->value[0] == 1 ? -1 : 1);
+              y = (2 * a[1] - 1) * c[0] *
+                  (n->value[0] != SHADER_NORMAL_DIRECTX ? -1 : 1);
         for (int i = 0; i < 3; i++) {
             tangent[i] = (du[i] * x + dv[i] * y) / scale + normal[i] * (2 * a[2] - 1);
         }
@@ -434,8 +451,12 @@ static const char *common_glsl =
     "float "
     "largest=max(max(abs(du.x),max(abs(du.y),abs(du.z))),max(abs(dv.x),max(abs("
     "dv.y),abs(dv.z)))); "
-    "if(largest==0.0)return normal;du/=largest;dv/=largest;float "
+    "if(largest==0.0)return normal;du/=largest;dv/=largest;"
+    "if(convention==2.0){du=sgd_normal(du,vec3(0));vec3 "
+    "bitangent=cross(normal,du);"
+    "dv=bitangent*(dot(bitangent,dv)<0.0?-1.0:1.0);}float "
     "scale=sqrt(max(dot(du,du),dot(dv,dv))); "
+    "if(scale==0.0)return normal;"
     "vec3 p=color*2.0-1.0;p.xy*=strength;if(convention>0.5)p.y=-p.y; "
     "return sgd_normal((du*p.x+dv*p.y)/scale+normal*p.z,normal); }\n"
     "#endif\n";

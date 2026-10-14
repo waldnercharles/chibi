@@ -3,7 +3,7 @@
 
 #include "assets/ui_document.h"
 
-/* An event ui documents send the GameUi entity showing them, words to find
+/* An event ui documents send the Ui entity showing them, words to find
  * it by, and when, without the period: "Sent when the player clicks #go in
  * Hud". Native search_nodes and Studio's Add menu offer these as Event
  * nodes. */

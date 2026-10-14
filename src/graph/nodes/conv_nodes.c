@@ -186,7 +186,7 @@ int conversion_matches_pins(const pin_spec *from, const pin_spec *to, const node
 
 const node_desc *conversion_for_pins(const pin_spec *from, const pin_spec *to)
 {
-    /* Pins that connect as they are need none: GameTransform is an alias of
+    /* Pins that connect as they are need none: Transform is an alias of
      * CF_V2, so its conversion would otherwise match a CF_V2 pair. */
     if (!conversion_scalar_pins(from, to) || pin_compatible(from, to)) {
         return NULL;

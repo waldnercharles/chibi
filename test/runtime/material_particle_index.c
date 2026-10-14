@@ -1,6 +1,7 @@
 #include "runtime/material_particle_index.h"
 
 #include "support/array.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -16,7 +17,7 @@ static void expect(material_particle_index *index, fluid_region region, const in
     afree(ids);
 }
 
-static void boundaries_and_removal()
+TEST_CASE(boundaries_and_removal)
 {
     material_particle_index *index = material_particle_index_new(16);
     material_particle_index_add(index, 0, (fluid_vec){ -16, -16 });
@@ -38,9 +39,10 @@ static void boundaries_and_removal()
     material_particle_index_swap_remove(index, 0, 0);
     expect(index, (fluid_region){ -100, -100, 200, 200 }, NULL, 0);
     material_particle_index_free(index);
+    return true;
 }
 
-static void sparse_regions_and_rebuild()
+TEST_CASE(sparse_regions_and_rebuild)
 {
     material_particle_index *index = material_particle_index_new(64);
     int *ids = NULL;
@@ -55,29 +57,30 @@ static void sparse_regions_and_rebuild()
                                    { -100000008, 99999992, 16, 16 },
                                    { 0, 0, 64, 64 } };
         material_particle_index_query(index, regions, 3, &ids);
-        assert(acount(ids) == 2 && ids[0] == 12000 && ids[1] == 12001);
+        REQUIRE(acount(ids) == 2 && ids[0] == 12000 && ids[1] == 12001);
         material_particle_index_query(
             index,
             &(fluid_region){ -200000000, -200000000, 400000000, 400000000 },
             1,
             &ids
         );
-        assert(acount(ids) == 12002);
+        REQUIRE(acount(ids) == 12002);
         for (int i = 0; i < 12002; i++) {
-            assert(ids[i] == i);
+            REQUIRE(ids[i] == i);
         }
         /* Repeated single-particle travel must reuse empty chunks and hash slots. */
         for (int i = 0; i < 1000; i++) {
             material_particle_index_move(index, 12001, (fluid_vec){ -5000 - i * 64, 5000 });
         }
         material_particle_index_query(index, NULL, 0, &ids);
-        assert(acount(ids) == 0);
+        REQUIRE(acount(ids) == 0);
     }
     afree(ids);
     material_particle_index_free(index);
+    return true;
 }
 
-static void moving_population()
+TEST_CASE(moving_population)
 {
     material_particle_index *index = material_particle_index_new(8);
     fluid_vec *positions = NULL;
@@ -103,19 +106,20 @@ static void moving_population()
         for (int i = 0; i < acount(positions); i++) {
             float x = floorf(positions[i].x / 8), y = floorf(positions[i].y / 8);
             if (x >= -3 && x <= 3 && y >= -3 && y <= 3) {
-                assert(found < acount(ids) && ids[found++] == i);
+                REQUIRE(found < acount(ids) && ids[found++] == i);
             }
         }
-        assert(found == acount(ids));
+        REQUIRE(found == acount(ids));
     }
     afree(ids);
     afree(positions);
     material_particle_index_free(index);
+    return true;
 }
 
 void test_material_particle_index()
 {
-    boundaries_and_removal();
-    sparse_regions_and_rebuild();
-    moving_population();
+    RUN_TEST_CASE(boundaries_and_removal);
+    RUN_TEST_CASE(sparse_regions_and_rebuild);
+    RUN_TEST_CASE(moving_population);
 }

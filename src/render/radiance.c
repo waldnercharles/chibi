@@ -22,6 +22,8 @@
 #define HRC_MIN_TRACE_LEVELS 1
 #define HRC_MAX_TRACE_LEVELS 5
 #define HRC_MAX_CASCADES 16
+/* Adaptive halves the resolution no lower than this. */
+#define HRC_MIN_ADAPTIVE_RESOLUTION .25f
 #define SURFACE_EMISSION_LEVELS 6
 /* Adaptive resolution steps between rungs: frames averaged per decision,
  * frames skipped after a step while history refills, windows over budget
@@ -51,11 +53,11 @@ struct render_radiance
     int canvas_w, canvas_h, radiance_w, radiance_h, work_w, work_h, world_w,
         world_h, N;
     float falloff, bounce_intensity, bounce_hysteresis, radiance_hysteresis;
-    int upscale_mode, radiance_ping, frame_count;
+    int radiance_ping, frame_count;
     CF_Aabb screen;
     int capacity_w, capacity_h;
-    float upscale_threshold;
-    GameHRC2D lighting;
+    HRC2D lighting;
+    render_radiance_lab lab;
     bool authored_lighting;
     bool work_resources_ready;
     int allocated_levels, allocated_stored_from;
@@ -123,7 +125,7 @@ struct render_radiance
     bool depth_has_history;
     CF_Canvas surface_emission[SURFACE_EMISSION_LEVELS];
     int surface_w, surface_h, surface_block, surface_ping, surface_emission_block;
-    GameHRCSurfaceMode surface_resource_mode;
+    HRCSurfaceMode surface_resource_mode;
     bool surface_has_history;
     render_surface_work surface_work;
     CF_Canvas relief_canvas[2], horizon_canvas[2], dirty_canvas[2], relief_levels[3];
@@ -131,7 +133,6 @@ struct render_radiance
     bool horizon_history, horizon_packed;
     render_view_2d horizon_view;
     render_material_textures horizon_inputs;
-    render_emitter_textures emitter_inputs;
     render_horizon_work horizon_work;
 };
 typedef render_radiance HRC;
@@ -616,6 +617,15 @@ static void s_dispatch_prefilter(HRC *hrc, HRC *target)
     );
 }
 
+/* The sky's light as linear RGB; black until lighting is authored. */
+static CF_V3 s_sky(const HRC *hrc)
+{
+    unsigned color = hrc->authored_lighting ? hrc->lighting.sky : 0;
+    return (CF_V3){ (float)(color >> 24) / 255.0f,
+                    (float)((color >> 16) & 255u) / 255.0f,
+                    (float)((color >> 8) & 255u) / 255.0f };
+}
+
 static CF_Texture s_radiance(const HRC *hrc)
 {
     return cf_canvas_get_target(hrc->radiance_canvas[hrc->radiance_ping]);
@@ -653,22 +663,19 @@ static void s_dispatch_gather(HRC *hrc)
         cf_material_set_texture_fs(mat, quadrant_names[q], cf_canvas_get_target(hrc->quadrant_image[q]));
     }
 
-    int params[10] = {
-        hrc->canvas_w,    hrc->canvas_h,   detail->work_w,
-        detail->work_h,   hrc->work_w,     hrc->work_h,
-        hrc->radiance_w,  hrc->radiance_h, hrc->luminance != NULL,
-        hrc->upscale_mode
-    };
-    const char *names[10] = { "u_canvas_w",    "u_canvas_h", "u_work_w",
-                              "u_work_h",      "u_color_w",  "u_color_h",
-                              "u_out_w",       "u_out_h",    "u_split",
-                              "u_upscale_mode" };
-    s_set_ints(mat, names, params, 10);
-    cf_material_set_uniform_fs(mat, "u_upscale_threshold", &hrc->upscale_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
+    int params[9] = { hrc->canvas_w,   hrc->canvas_h,   detail->work_w,
+                      detail->work_h,  hrc->work_w,     hrc->work_h,
+                      hrc->radiance_w, hrc->radiance_h, hrc->luminance != NULL };
+    const char *names[9] = { "u_canvas_w", "u_canvas_h", "u_work_w",
+                             "u_work_h",   "u_color_w",  "u_color_h",
+                             "u_out_w",    "u_out_h",    "u_split" };
+    s_set_ints(mat, names, params, 9);
     cf_material_set_uniform_fs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
+    CF_V3 sky = s_sky(hrc);
+    cf_material_set_uniform_fs(mat, "u_sky", &sky, CF_UNIFORM_TYPE_FLOAT3, 1);
     bool near = hrc->canvas_w != detail->work_w || hrc->canvas_h != detail->work_h;
     if (near) {
-        if (hrc->horizon_w && hrc->lighting.horizon_fuse_relief) {
+        if (hrc->horizon_w && hrc->lab.horizon_fuse_relief) {
             s_relief_inputs(hrc);
             s_draw_region(
                 hrc,
@@ -772,10 +779,10 @@ static bool s_prepare_horizon(HRC *hrc, render_material_textures inputs, int dir
         s_destroy_horizon(hrc);
         return true;
     }
-    GameHRC2D lighting = hrc->lighting;
-    int options = (lighting.horizon_cache ? HORIZON_CACHE : 0) |
-                  (lighting.horizon_fuse_relief ? HORIZON_FUSE : 0) |
-                  (lighting.horizon_hierarchy ? HORIZON_HIERARCHY : 0);
+    render_radiance_lab lab = hrc->lab;
+    int options = (lab.horizon_cache ? HORIZON_CACHE : 0) |
+                  (lab.horizon_fuse_relief ? HORIZON_FUSE : 0) |
+                  (lab.horizon_hierarchy ? HORIZON_HIERARCHY : 0);
     if (hrc->horizon_w != hrc->canvas_w || hrc->horizon_h != hrc->canvas_h ||
         options != hrc->horizon_options || directions != hrc->horizon_directions) {
         s_destroy_horizon(hrc);
@@ -870,7 +877,7 @@ static bool s_horizon_offset(HRC *hrc, render_view_2d view, int offset[2])
     }
     if ((offset[0] || offset[1]) &&
         (view.yaw != 0 || view.pitch != 0 || view.roll != 0 ||
-         view.focal_distance > 0 || !hrc->lighting.horizon_reproject)) {
+         view.focal_distance > 0 || !hrc->lab.horizon_reproject)) {
         return false;
     }
     // Coarse summaries remain aligned only for whole level-3 cells.
@@ -1009,7 +1016,7 @@ static void s_destroy_surface(HRC *hrc)
     hrc->surface_w = hrc->surface_h = hrc->surface_block = 0;
 }
 
-static bool s_surface_resources(HRC *hrc, int width, int height, int block, GameHRCSurfaceMode mode)
+static bool s_surface_resources(HRC *hrc, int width, int height, int block, HRCSurfaceMode mode)
 {
     if (hrc->surface_w == width && hrc->surface_h == height &&
         hrc->surface_block == block && hrc->surface_resource_mode == mode) {
@@ -1017,20 +1024,19 @@ static bool s_surface_resources(HRC *hrc, int width, int height, int block, Game
     }
     s_destroy_surface(hrc);
     for (int i = 0; i < 2; i++) {
-        if (i == 0 || mode != GAME_HRC_SURFACE_GATHER) {
+        if (i == 0 || mode != HRC_SURFACE_GATHER) {
             hrc->surface_canvas[i] = s_make_targets(width, height, 4, CF_FILTER_LINEAR);
         }
-        if (mode != GAME_HRC_SURFACE_DEPTH) {
+        if (mode != HRC_SURFACE_DEPTH) {
             hrc->surface_history[i] = s_make_targets(width, height, 4, CF_FILTER_LINEAR);
         }
-        if (((i == 0 || mode != GAME_HRC_SURFACE_GATHER) &&
-             !hrc->surface_canvas[i].id) ||
-            (mode != GAME_HRC_SURFACE_DEPTH && !hrc->surface_history[i].id)) {
+        if (((i == 0 || mode != HRC_SURFACE_GATHER) && !hrc->surface_canvas[i].id) ||
+            (mode != HRC_SURFACE_DEPTH && !hrc->surface_history[i].id)) {
             s_destroy_surface(hrc);
             return false;
         }
     }
-    if (mode == GAME_HRC_SURFACE_BLUR && block >= 4) {
+    if (mode == HRC_SURFACE_BLUR && block >= 4) {
         int half = block / 2;
         hrc->surface_half = s_make_targets(width * half, height * half, 4, CF_FILTER_LINEAR);
         if (!hrc->surface_half.id) {
@@ -1038,7 +1044,7 @@ static bool s_surface_resources(HRC *hrc, int width, int height, int block, Game
             return false;
         }
     }
-    if (mode == GAME_HRC_SURFACE_DEPTH) {
+    if (mode == HRC_SURFACE_DEPTH) {
         /* The coarsest level fits the lowest four-tile source budget. */
         int base = 4;
         while (base * 128 < cf_max(hrc->canvas_w, hrc->canvas_h)) {
@@ -1125,22 +1131,17 @@ static void s_dispatch_surface_emission(HRC *hrc)
     CF_Material mat = hrc->pass_material;
     int base = hrc->surface_emission_block;
     int w = s_ceil_div(hrc->canvas_w, base), h = s_ceil_div(hrc->canvas_h, base);
-    int source_block = hrc->emitter_inputs.source.id ? base / 4 : base;
-    cf_material_set_uniform_fs(mat, "u_base_block", &source_block, CF_UNIFORM_TYPE_INT, 1);
+    cf_material_set_uniform_fs(mat, "u_base_block", &base, CF_UNIFORM_TYPE_INT, 1);
     for (int i = 0; i < SURFACE_EMISSION_LEVELS; i++) {
         s_clear_texture_bindings(hrc);
         CF_Texture light = i ? cf_canvas_get_target2(hrc->surface_emission[i - 1], 0)
-                         : hrc->emitter_inputs.source.id ? hrc->emitter_inputs.source
-                                                         : hrc->source;
+                             : hrc->source;
         CF_Texture geometry = i ? cf_canvas_get_target2(hrc->surface_emission[i - 1], 1)
-                            : hrc->emitter_inputs.source.id
-                                ? hrc->emitter_inputs.moments
                                 : hrc->horizon_inputs.albedo;
         cf_material_set_texture_fs(mat, "u_source", light);
         cf_material_set_texture_fs(mat, "u_geometry", geometry);
         cf_material_set_texture_fs(mat, "u_cover", hrc->horizon_inputs.cover);
-        int first = i == 0 ? (hrc->emitter_inputs.source.id ? 2 : 1)
-                           : (hrc->emitter_inputs.source.id ? 3 : 0);
+        int first = i == 0;
         cf_material_set_uniform_fs(mat, "u_first_level", &first, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_emission_shd, hrc->surface_emission[i], w, h);
         w = s_ceil_div(w, 2);
@@ -1261,7 +1262,7 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     while (*block < 8 && sigma / (float)(*block * 2) >= 2) {
         *block *= 2;
     }
-    if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH) {
+    if (hrc->lighting.surface_mode == HRC_SURFACE_DEPTH) {
         *block = 4;
         if (hrc->lighting.surface_depth_radius <= 0 ||
             hrc->lighting.surface_depth_gain <= 0) {
@@ -1289,20 +1290,14 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
     hrc->surface_work.cells = width * height;
     hrc->surface_work.block = *block;
     hrc->surface_work.visibility = hrc->lighting.surface_depth_visibility;
-    hrc->surface_work.emitter_sources = hrc->emitter_inputs.sources;
-    hrc->surface_work.emitter_pixels = hrc->emitter_inputs.width *
-                                       hrc->emitter_inputs.height;
-    hrc->surface_work.emitter_bytes = (size_t)hrc->surface_work.emitter_pixels * 16;
     hrc->surface_work.mode = hrc->lighting.surface_mode;
-    if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH) {
+    if (hrc->lighting.surface_mode == HRC_SURFACE_DEPTH) {
         CF_Material mat = hrc->pass_material;
         s_dispatch_surface_emission(hrc);
         int axis = 4 + 2 * hrc->lighting.surface_depth_quality;
-        int near_detail = hrc->lighting.surface_depth_near_detail;
+        int near_detail = hrc->lab.surface_depth_near_detail;
         int visibility = hrc->lighting.surface_depth_visibility;
-        int independent = hrc->emitter_inputs.source.id != 0;
         cf_material_set_uniform_fs(mat, "u_visibility_mode", &visibility, CF_UNIFORM_TYPE_INT, 1);
-        cf_material_set_uniform_fs(mat, "u_independent_emitters", &independent, CF_UNIFORM_TYPE_INT, 1);
         cf_material_set_uniform_fs(mat, "u_source_axis", &axis, CF_UNIFORM_TYPE_INT, 1);
         cf_material_set_uniform_fs(mat, "u_near_detail", &near_detail, CF_UNIFORM_TYPE_INT, 1);
         cf_material_set_uniform_fs(
@@ -1326,15 +1321,25 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         cf_material_set_uniform_fs(mat, "u_radius", &hrc->lighting.surface_depth_radius, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_thickness", &hrc->lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_specular", &hrc->lighting.specular, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_material_set_uniform_fs(mat, "u_relief", &hrc->lighting.surface_relief, CF_UNIFORM_TYPE_FLOAT, 1);
+        /* The merge's falloff per canvas pixel. It dims light over the
+         * cascade intervals before the one that reaches it, which start at
+         * powers of two: on average over 1 / (2 ln 2) of its distance. */
+        float diagonal = hypotf((float)hrc->canvas_w, (float)hrc->canvas_h);
+        float falloff = hrc->falloff * 2.0f / diagonal / (2.0f * logf(2.0f));
+        cf_material_set_uniform_fs(mat, "u_falloff", &falloff, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_block", block, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_depth_shd, hrc->surface_canvas[0], width, height);
         hrc->surface_work.candidates = (size_t)width * height * (axis + 1) *
                                        (axis + 1);
-        hrc->surface_work.visibility_taps = visibility == GAME_HRC_DEPTH_VISIBILITY_SEGMENTS
-                                              ? hrc->surface_work.candidates *
-                                                    (size_t)(32 +
-                                                             16 * hrc->lighting.surface_depth_quality)
-                                              : (size_t)width * height * 96;
+        /* Every receiver walks 96 radial taps for ambient occlusion, and in
+         * radial mode for visibility too; segments walk each candidate. */
+        size_t segment_taps = (size_t)(32 + 16 * hrc->lighting.surface_depth_quality);
+        hrc->surface_work.visibility_taps = (size_t)width * height * 96;
+        if (visibility == HRC_DEPTH_VISIBILITY_SEGMENTS) {
+            hrc->surface_work.visibility_taps += hrc->surface_work.candidates *
+                                                 segment_taps;
+        }
         render_gpu_timing_detail("Surface depth thickness");
         s_clear_texture_bindings(hrc);
         s_surface_inputs(hrc, hrc->surface_canvas[0], 0);
@@ -1350,7 +1355,7 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         s_dispatch_depth_history(hrc, view, depth_sigma);
         return sigma / (float)*block;
     }
-    if (hrc->lighting.surface_mode == GAME_HRC_SURFACE_GATHER) {
+    if (hrc->lighting.surface_mode == HRC_SURFACE_GATHER) {
         CF_Material mat = hrc->pass_material;
         s_surface_inputs(hrc, hrc->gather_canvas, 2);
         cf_material_set_texture_fs(mat, "u_source", hrc->source);
@@ -1549,8 +1554,7 @@ static render_radiance *s_new(hrc_role role)
     hrc->feedback = true;
     hrc->falloff = hrc->bounce_intensity = 1;
     hrc->bounce_hysteresis = hrc->radiance_hysteresis = 0.8f;
-    hrc->upscale_mode = 1;
-    hrc->upscale_threshold = 0.1f;
+    hrc->lab = render_radiance_lab_defaults();
     if (!ok) {
         render_radiance_free(hrc);
         return NULL;
@@ -1744,63 +1748,63 @@ bool render_radiance_resize(render_radiance *hrc, int width, int height)
 typedef struct
 {
     float resolution;
-    GameHRCColor color;
+    render_radiance_color color;
     bool gather_half;
 } hrc_rung;
 
 /* Adaptive halves gather first when it is Auto. */
-static int s_gather_steps(GameHRC2D lighting)
+static int s_gather_steps(HRC2D lighting, render_radiance_lab lab)
 {
-    return lighting.adaptive && lighting.gather_resolution == GAME_HRC_GATHER_AUTO;
+    return lighting.adaptive && lab.gather_resolution == RENDER_RADIANCE_GATHER_AUTO;
 }
 
 /* Then it coarsens color up to Quarter at the authored resolution, which
  * costs less than halving the resolution and changes the image less. Below
  * that resolution the transport is a small part of the frame, so halvings
  * keep the authored color. */
-static int s_color_steps(GameHRC2D lighting)
+static int s_color_steps(HRC2D lighting, render_radiance_lab lab)
 {
     return lighting.adaptive
-             ? cf_max(GAME_HRC_COLOR_QUARTER - (int)lighting.color_resolution, 0)
+             ? cf_max(RENDER_RADIANCE_COLOR_QUARTER - (int)lab.color_resolution, 0)
              : 0;
 }
 
 /* Rung 0 is the authored lighting; each later one is cheaper. */
-static int s_rung_count(GameHRC2D lighting)
+static int s_rung_count(HRC2D lighting, render_radiance_lab lab)
 {
     if (!lighting.adaptive) {
         return 1;
     }
-    int steps = s_gather_steps(lighting) + s_color_steps(lighting);
+    int steps = s_gather_steps(lighting, lab) + s_color_steps(lighting, lab);
     int halvings = 0;
     while (steps + halvings + 2 < HRC_MAX_RUNGS &&
            lighting.resolution / (float)(2 << halvings) >=
-               lighting.min_resolution - 1e-4f) {
+               HRC_MIN_ADAPTIVE_RESOLUTION - 1e-4f) {
         halvings++;
     }
     return 1 + steps + halvings;
 }
 
-static hrc_rung s_rung(GameHRC2D lighting, int rung)
+static hrc_rung s_rung(HRC2D lighting, render_radiance_lab lab, int rung)
 {
-    int gather = s_gather_steps(lighting);
-    int colors = s_color_steps(lighting);
+    int gather = s_gather_steps(lighting, lab);
+    int colors = s_color_steps(lighting, lab);
     int coarser = cf_min(cf_max(rung - gather, 0), colors);
     int halvings = cf_max(rung - gather - colors, 0);
     return (hrc_rung){
         .resolution = lighting.resolution / (float)(1 << halvings),
-        .color = lighting.color_resolution + (halvings ? 0 : coarser),
-        .gather_half = lighting.gather_resolution == GAME_HRC_GATHER_HALF ||
+        .color = lab.color_resolution + (halvings ? 0 : coarser),
+        .gather_half = lab.gather_resolution == RENDER_RADIANCE_GATHER_HALF ||
                        (gather && rung >= gather),
     };
 }
 
 /* Color's coarsest grid over the rungs, which the view reserves room for. */
-static float s_min_scale(GameHRC2D lighting)
+static float s_min_scale(HRC2D lighting, render_radiance_lab lab)
 {
     float scale = HRC_MAX_SCALE;
-    for (int i = 0; i < s_rung_count(lighting); i++) {
-        hrc_rung rung = s_rung(lighting, i);
+    for (int i = 0; i < s_rung_count(lighting, lab); i++) {
+        hrc_rung rung = s_rung(lighting, lab, i);
         scale = fminf(scale, rung.resolution / (float)(1 << rung.color));
     }
     return scale;
@@ -1813,8 +1817,9 @@ render_radiance_settings render_radiance_get_settings(const render_radiance *rad
     }
     return (render_radiance_settings){
         .scale = radiance->scale,
-        .min_scale = radiance->authored_lighting ? s_min_scale(radiance->lighting)
-                                                 : radiance->scale,
+        .min_scale = radiance->authored_lighting
+                       ? s_min_scale(radiance->lighting, radiance->lab)
+                       : radiance->scale,
         .trace_levels = radiance->trace_levels,
         .feedback = radiance->feedback,
         .available = true,
@@ -1858,62 +1863,38 @@ typedef struct
     const char *name;
 } s_int_range;
 
-/* The ranges each independent GameHRC2D field supports. */
+/* The ranges each independent HRC2D field supports. */
 static const s_float_range s_float_ranges[] = {
-    { offsetof(GameHRC2D, resolution), HRC_MIN_RESOLUTION, HRC_MAX_SCALE, "resolution" },
-    { offsetof(GameHRC2D, target_fps), 1, 1000, "target_fps" },
-    { offsetof(GameHRC2D, min_resolution), HRC_MIN_RESOLUTION, HRC_MAX_SCALE, "min_resolution" },
-    { offsetof(GameHRC2D, ambient), 0, 100, "ambient" },
-    { offsetof(GameHRC2D, intensity), 0, 100, "intensity" },
-    { offsetof(GameHRC2D, fog), 0, 100, "fog" },
-    { offsetof(GameHRC2D, shadow_floor), 0, 100, "shadow_floor" },
-    { offsetof(GameHRC2D, falloff), 0, 100, "falloff" },
-    { offsetof(GameHRC2D, lighting_margin), 0, 256, "lighting_margin" },
-    { offsetof(GameHRC2D, bounce_intensity), 0, 100, "bounce_intensity" },
-    { offsetof(GameHRC2D, bounce_hysteresis), 0, 1, "bounce_hysteresis" },
-    { offsetof(GameHRC2D, radiance_hysteresis), 0, 1, "radiance_hysteresis" },
-    { offsetof(GameHRC2D, upscale_threshold), 0, 100, "upscale_threshold" },
-    { offsetof(GameHRC2D, particle_focal_length), 1, 100000, "particle_focal_length" },
-    { offsetof(GameHRC2D, surface_radius), 0, 1024, "surface_radius" },
-    { offsetof(GameHRC2D, surface_depth_radius), 0, 1024, "surface_depth_radius" },
-    { offsetof(GameHRC2D, surface_depth_gain), 0, 100, "surface_depth_gain" },
-    { offsetof(GameHRC2D, surface_depth_shadow_softness), 0, 1, "surface_depth_shadow_softness" },
-    { offsetof(GameHRC2D, surface_depth_history), 0, .95f, "surface_depth_history" },
-    { offsetof(GameHRC2D, surface_thickness), 0, 1024, "surface_thickness" },
-    { offsetof(GameHRC2D, surface_relief), 0, 100, "surface_relief" },
-    { offsetof(GameHRC2D, surface_bevel), 0, 100, "surface_bevel" },
-    { offsetof(GameHRC2D, specular), 0, 100, "specular" },
-    { offsetof(GameHRC2D, exposure), -16, 16, "exposure" },
-    { offsetof(GameHRC2D, bloom), 0, 1, "bloom" },
+    { offsetof(HRC2D, resolution), HRC_MIN_RESOLUTION, HRC_MAX_SCALE, "resolution" },
+    { offsetof(HRC2D, target_fps), 1, 1000, "target_fps" },
+    { offsetof(HRC2D, ambient), 0, 100, "ambient" },
+    { offsetof(HRC2D, intensity), 0, 100, "intensity" },
+    { offsetof(HRC2D, fog), 0, 100, "fog" },
+    { offsetof(HRC2D, shadow_floor), 0, 100, "shadow_floor" },
+    { offsetof(HRC2D, falloff), 0, 100, "falloff" },
+    { offsetof(HRC2D, lighting_margin), 0, 256, "lighting_margin" },
+    { offsetof(HRC2D, bounce_intensity), 0, 100, "bounce_intensity" },
+    { offsetof(HRC2D, bounce_hysteresis), 0, 1, "bounce_hysteresis" },
+    { offsetof(HRC2D, radiance_hysteresis), 0, 1, "radiance_hysteresis" },
+    { offsetof(HRC2D, surface_radius), 0, 1024, "surface_radius" },
+    { offsetof(HRC2D, surface_depth_radius), 0, 1024, "surface_depth_radius" },
+    { offsetof(HRC2D, surface_depth_gain), 0, 100, "surface_depth_gain" },
+    { offsetof(HRC2D, surface_depth_shadow_softness), 0, 1, "surface_depth_shadow_softness" },
+    { offsetof(HRC2D, surface_depth_history), 0, .95f, "surface_depth_history" },
+    { offsetof(HRC2D, surface_thickness), 0, 1024, "surface_thickness" },
+    { offsetof(HRC2D, surface_relief), 0, 100, "surface_relief" },
+    { offsetof(HRC2D, surface_bevel), 0, 100, "surface_bevel" },
+    { offsetof(HRC2D, specular), 0, 100, "specular" },
+    { offsetof(HRC2D, exposure), -16, 16, "exposure" },
+    { offsetof(HRC2D, bloom), 0, 1, "bloom" },
 };
 
 static const s_int_range s_int_ranges[] = {
-    { offsetof(GameHRC2D, color_resolution),
-      GAME_HRC_COLOR_FULL,
-      GAME_HRC_COLOR_EIGHTH,
-      "color_resolution" },
-    { offsetof(GameHRC2D, gather_resolution),
-      GAME_HRC_GATHER_FULL,
-      GAME_HRC_GATHER_AUTO,
-      "gather_resolution" },
-    { offsetof(GameHRC2D, upscale_mode), 0, 3, "upscale_mode" },
-    { offsetof(GameHRC2D, debug_view), 0, 9, "debug_view" },
-    { offsetof(GameHRC2D, trace_levels), HRC_MIN_TRACE_LEVELS, HRC_MAX_TRACE_LEVELS, "trace_levels" },
-    { offsetof(GameHRC2D, tone_mapping), 0, 1, "tone_mapping" },
-    { offsetof(GameHRC2D, surface_shadow_mode), 0, 2, "surface_shadow_mode" },
-    { offsetof(GameHRC2D, surface_mode), 0, GAME_HRC_SURFACE_DEPTH, "surface_mode" },
-    { offsetof(GameHRC2D, surface_depth_quality),
-      GAME_HRC_DEPTH_LOW,
-      GAME_HRC_DEPTH_HIGH,
-      "surface_depth_quality" },
-    { offsetof(GameHRC2D, surface_depth_visibility),
-      0,
-      GAME_HRC_DEPTH_VISIBILITY_SEGMENTS,
-      "surface_depth_visibility" },
-    { offsetof(GameHRC2D, surface_depth_emitters),
-      0,
-      GAME_HRC_DEPTH_EMITTERS_PROXIES,
-      "surface_depth_emitters" },
+    { offsetof(HRC2D, tone_mapping), 0, 1, "tone_mapping" },
+    { offsetof(HRC2D, surface_shadow_mode), 0, 2, "surface_shadow_mode" },
+    { offsetof(HRC2D, surface_mode), 0, HRC_SURFACE_DEPTH, "surface_mode" },
+    { offsetof(HRC2D, surface_depth_quality), HRC_DEPTH_LOW, HRC_DEPTH_HIGH, "surface_depth_quality" },
+    { offsetof(HRC2D, surface_depth_visibility), 0, HRC_DEPTH_VISIBILITY_SEGMENTS, "surface_depth_visibility" },
 };
 
 static void s_note(char *notes, size_t size, const char *name, double from, double to)
@@ -1924,11 +1905,11 @@ static void s_note(char *notes, size_t size, const char *name, double from, doub
     }
 }
 
-GameHRC2D render_radiance_normalize(GameHRC2D lighting, char *notes, size_t size)
+HRC2D render_radiance_normalize(HRC2D lighting, char *notes, size_t size)
 {
     assert(size > 0);
     notes[0] = '\0';
-    GameHRC2D defaults = game_hrc2d_defaults();
+    HRC2D defaults = hrc2d_defaults();
     for (size_t i = 0; i < sizeof s_float_ranges / sizeof *s_float_ranges; i++) {
         const s_float_range *range = &s_float_ranges[i];
         float *value = (float *)((char *)&lighting + range->offset);
@@ -1957,8 +1938,7 @@ GameHRC2D render_radiance_normalize(GameHRC2D lighting, char *notes, size_t size
  * coarser, brightness at its resolution. */
 static bool s_apply_rung(HRC *hrc)
 {
-    const GameHRC2D *lighting = &hrc->lighting;
-    hrc_rung rung = s_rung(*lighting, hrc->rung);
+    hrc_rung rung = s_rung(hrc->lighting, hrc->lab, hrc->rung);
     float reconstruction = rung.gather_half ? .5f : 1;
     int shift = rung.color;
     bool layout_changed = hrc->reconstruction_scale != reconstruction ||
@@ -1967,8 +1947,8 @@ static bool s_apply_rung(HRC *hrc)
     hrc->luminance_shift = shift;
     render_radiance_settings settings = {
         .scale = rung.resolution / (float)(1 << shift),
-        .trace_levels = lighting->trace_levels,
-        .feedback = lighting->feedback,
+        .trace_levels = hrc->lab.trace_levels,
+        .feedback = hrc->lighting.feedback,
     };
     if (!render_radiance_set_settings(hrc, settings)) {
         return false;
@@ -1977,22 +1957,41 @@ static bool s_apply_rung(HRC *hrc)
            render_radiance_resize(hrc, hrc->canvas_w, hrc->canvas_h);
 }
 
-static bool s_ladder_changed(GameHRC2D a, GameHRC2D b)
+static bool s_ladder_changed(const HRC *hrc, HRC2D lighting, render_radiance_lab lab)
 {
-    return a.resolution != b.resolution || a.color_resolution != b.color_resolution ||
-           a.gather_resolution != b.gather_resolution ||
-           a.adaptive != b.adaptive || a.min_resolution != b.min_resolution;
+    return hrc->lighting.resolution != lighting.resolution ||
+           hrc->lighting.adaptive != lighting.adaptive ||
+           hrc->lab.color_resolution != lab.color_resolution ||
+           hrc->lab.gather_resolution != lab.gather_resolution;
 }
 
-bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
+render_radiance_lab render_radiance_lab_defaults()
+{
+    return (render_radiance_lab){ .trace_levels = 3 };
+}
+
+bool render_radiance_set_lighting(render_radiance *radiance, HRC2D lighting, render_radiance_lab lab)
 {
     assert(radiance);
+    assert(
+        lab.color_resolution >= RENDER_RADIANCE_COLOR_FULL &&
+        lab.color_resolution <= RENDER_RADIANCE_COLOR_EIGHTH
+    );
+    assert(
+        lab.gather_resolution >= RENDER_RADIANCE_GATHER_FULL &&
+        lab.gather_resolution <= RENDER_RADIANCE_GATHER_AUTO
+    );
+    assert(lab.trace_levels >= HRC_MIN_TRACE_LEVELS && lab.trace_levels <= HRC_MAX_TRACE_LEVELS);
+    assert(
+        lab.debug_view >= RENDER_RADIANCE_DEBUG_NORMAL &&
+        lab.debug_view <= RENDER_RADIANCE_DEBUG_SHADING_NORMALS
+    );
     char notes[256];
     render_radiance_normalize(lighting, notes, sizeof notes);
     if (notes[0]) {
         return false;
     }
-    if (!radiance->authored_lighting || s_ladder_changed(radiance->lighting, lighting)) {
+    if (!radiance->authored_lighting || s_ladder_changed(radiance, lighting, lab)) {
         radiance->rung = radiance->settle = radiance->window_count = 0;
         radiance->over = radiance->rise = 0;
         radiance->window_sum = radiance->cost_above = 0;
@@ -2003,34 +2002,31 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting)
         radiance->lighting.surface_relief != lighting.surface_relief) {
         radiance->surface_has_history = false;
     }
-    GameHRC2D prior = radiance->lighting;
-    if (prior.surface_mode != lighting.surface_mode ||
+    HRC2D prior = radiance->lighting;
+    if (prior.falloff != lighting.falloff || prior.surface_mode != lighting.surface_mode ||
         prior.surface_radius != lighting.surface_radius ||
         prior.surface_depth_radius != lighting.surface_depth_radius ||
         prior.surface_thickness != lighting.surface_thickness ||
         prior.surface_depth_gain != lighting.surface_depth_gain ||
         prior.surface_depth_quality != lighting.surface_depth_quality ||
         prior.surface_depth_visibility != lighting.surface_depth_visibility ||
-        prior.surface_depth_emitters != lighting.surface_depth_emitters ||
-        prior.surface_depth_near_detail != lighting.surface_depth_near_detail ||
+        radiance->lab.surface_depth_near_detail != lab.surface_depth_near_detail ||
         prior.surface_depth_shadow_softness != lighting.surface_depth_shadow_softness ||
         prior.surface_depth_temporal != lighting.surface_depth_temporal ||
         prior.surface_depth_history != lighting.surface_depth_history ||
         prior.specular != lighting.specular) {
         radiance->depth_has_history = false;
     }
-    if (!lighting.surface_depth_temporal ||
-        lighting.surface_mode != GAME_HRC_SURFACE_DEPTH) {
+    if (!lighting.surface_depth_temporal || lighting.surface_mode != HRC_SURFACE_DEPTH) {
         s_destroy_depth_history(radiance);
     }
     radiance->lighting = lighting;
+    radiance->lab = lab;
     radiance->authored_lighting = true;
     radiance->falloff = lighting.falloff;
     radiance->bounce_intensity = lighting.feedback ? lighting.bounce_intensity : 0;
     radiance->bounce_hysteresis = lighting.bounce_hysteresis;
     radiance->radiance_hysteresis = lighting.radiance_hysteresis;
-    radiance->upscale_mode = lighting.upscale_mode;
-    radiance->upscale_threshold = lighting.upscale_threshold;
     return s_apply_rung(radiance);
 }
 
@@ -2038,7 +2034,7 @@ void render_radiance_frame_time(render_radiance *hrc, double gpu_ms)
 {
     assert(hrc);
     hrc->gpu_ms = gpu_ms;
-    if (!hrc->authored_lighting || s_rung_count(hrc->lighting) < 2 ||
+    if (!hrc->authored_lighting || s_rung_count(hrc->lighting, hrc->lab) < 2 ||
         !isfinite(gpu_ms) || gpu_ms < 0) {
         return;
     }
@@ -2061,7 +2057,8 @@ void render_radiance_frame_time(render_radiance *hrc, double gpu_ms)
      * spike does not keep lighting down. */
     double budget = 1000 / hrc->lighting.target_fps;
     double ratio = hrc->rung_ratio[hrc->rung];
-    bool over = average > budget && hrc->rung + 1 < s_rung_count(hrc->lighting);
+    bool over = average > budget &&
+                hrc->rung + 1 < s_rung_count(hrc->lighting, hrc->lab);
     bool room = hrc->rung > 0 && ratio > 0 && average * ratio < budget * HRC_ADAPT_ROOM;
     hrc->over_cost = !over     ? 0
                    : hrc->over ? fmin(hrc->over_cost, average)
@@ -2093,9 +2090,9 @@ void render_radiance_frame_interval(render_radiance *hrc, double ms)
 render_radiance_status render_radiance_get_status(const render_radiance *radiance)
 {
     assert(radiance);
-    GameHRC2D lighting = radiance->authored_lighting ? radiance->lighting
-                                                     : game_hrc2d_defaults();
-    hrc_rung rung = s_rung(lighting, radiance->rung);
+    HRC2D lighting = radiance->authored_lighting ? radiance->lighting
+                                                 : hrc2d_defaults();
+    hrc_rung rung = s_rung(lighting, radiance->lab, radiance->rung);
     return (render_radiance_status){
         .resolution = rung.resolution,
         .color = rung.color,
@@ -2104,7 +2101,7 @@ render_radiance_status render_radiance_get_status(const render_radiance *radianc
         .budget_ms = 1000 / lighting.target_fps,
         .adaptive = lighting.adaptive,
         .rung = radiance->rung,
-        .rungs = s_rung_count(lighting),
+        .rungs = s_rung_count(lighting, radiance->lab),
     };
 }
 
@@ -2245,14 +2242,12 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
         cf_generate_mipmaps(inputs.material.source);
         render_gpu_timing_mark("Emission mipmaps");
     }
-    GameHRC2D lighting = hrc->authored_lighting ? hrc->lighting
-                                                : game_hrc2d_defaults();
-    int horizon_directions = lighting.surface_mode != GAME_HRC_SURFACE_DEPTH &&
+    HRC2D lighting = hrc->authored_lighting ? hrc->lighting : hrc2d_defaults();
+    int horizon_directions = lighting.surface_mode != HRC_SURFACE_DEPTH &&
                                      lighting.surface_radius > 0 &&
                                      lighting.surface_relief > 0
-                               ? (lighting.surface_shadow_mode == GAME_HRC_SHADOW_HORIZON4
-                                      ? 4
-                                  : lighting.surface_shadow_mode == GAME_HRC_SHADOW_HORIZON8
+                               ? (lighting.surface_shadow_mode == HRC_SHADOW_HORIZON4 ? 4
+                                  : lighting.surface_shadow_mode == HRC_SHADOW_HORIZON8
                                       ? 8
                                       : 0)
                                : 0;
@@ -2263,9 +2258,6 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     }
     int block = 1;
     s_push_hrc_label(hrc, "surface");
-    hrc->emitter_inputs = lighting.surface_depth_emitters == GAME_HRC_DEPTH_EMITTERS_PROXIES
-                            ? inputs.emitters
-                            : (render_emitter_textures){ 0 };
     float surface_sigma = s_dispatch_surface(hrc, view, &block);
     cf_pop_gpu_label();
     render_gpu_timing_mark("Surface light");
@@ -2279,7 +2271,7 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     float intensity = lighting.intensity;
     float shadow_floor = lighting.shadow_floor;
     float fog = lighting.fog;
-    float debug = (float)lighting.debug_view;
+    float debug = (float)hrc->lab.debug_view;
     float phase = (float)(hrc->frame_count & 63);
     float crop[] = { view.crop_min_u, view.crop_min_v, view.crop_max_u, view.crop_max_v };
     cf_push_gpu_label("HRC composite");
@@ -2314,7 +2306,7 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
             surface_names[i],
             surface_sigma > 0
                 ? cf_canvas_get_target2(
-                      lighting.surface_mode == GAME_HRC_SURFACE_DEPTH
+                      lighting.surface_mode == HRC_SURFACE_DEPTH
                           ? (hrc->depth_has_history && lighting.surface_depth_temporal
                                  ? hrc->depth_history[hrc->depth_ping]
                                  : hrc->surface_canvas[1])
@@ -2333,8 +2325,6 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     float surface_spacing[] = { view.width / hrc->canvas_w, view.height / hrc->canvas_h };
     cf_draw_set_uniform("surface_projection", surface_projection, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw_set_uniform("surface_world_per_px", surface_spacing, CF_UNIFORM_TYPE_FLOAT2, 1);
-    float reconstruction_threshold = lighting.upscale_threshold;
-    cf_draw_set_uniform("reconstruction_threshold", &reconstruction_threshold, CF_UNIFORM_TYPE_FLOAT, 1);
     float surface_params[4] = { surface_sigma > 0,
                                 lighting.surface_relief,
                                 lighting.surface_bevel,
@@ -2366,6 +2356,8 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_uniform("intensity", &intensity, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("shadow_floor", &shadow_floor, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("fog", &fog, CF_UNIFORM_TYPE_FLOAT, 1);
+    CF_V3 sky = s_sky(hrc);
+    cf_draw_set_uniform("sky", &sky, CF_UNIFORM_TYPE_FLOAT3, 1);
     cf_draw_set_uniform("debug_view", &debug, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("dither_phase", &phase, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);

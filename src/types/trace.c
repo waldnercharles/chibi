@@ -14,7 +14,8 @@ static void struct_fields(const type_desc *type, const void *data, arena_marker 
         if (field->type == PIN_STRUCT) {
             struct_fields(type_catalog_find(field->type_name), member, mark, user, depth + 1);
         }
-        if (field->type == PIN_STR || field->type == PIN_NAME) {
+        if (field->type == PIN_STR || field->type == PIN_NAME ||
+            field->type == PIN_UNION) {
             const char *value;
             memcpy(&value, member, sizeof value);
             mark(user, value);
@@ -25,7 +26,7 @@ void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
 {
     mark(user, value->type_name);
     if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
-        value->type == PIN_STR || value->type == PIN_NAME) {
+        value->type == PIN_STR || value->type == PIN_NAME || value->type == PIN_UNION) {
         mark(user, value->ptr);
     }
     if (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
@@ -48,6 +49,17 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     for (int i = 0; i < array->count; i++) {
         pin_value_trace(&array->items[i], mark, user);
     }
+}
+static void trace_union(const void *data, const void *, arena_marker mark, void *user)
+{
+    const pin_union *value = data;
+    for (int i = 0; i < value->count; i++) {
+        pin_value_trace(&value->values[i], mark, user);
+    }
+}
+void pin_arena_trace_union(arena *storage, pin_union *value)
+{
+    arena_set_trace(storage, value, trace_union, NULL);
 }
 void pin_arena_trace_struct(arena *storage, void *data, const type_desc *type)
 {

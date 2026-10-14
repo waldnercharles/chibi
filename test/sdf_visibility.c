@@ -100,29 +100,29 @@ static behavior_asset *cutout()
 static ecs_entity actor(ecs_world *world, const char *shape_name, float elevation)
 {
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = 24,
-                                .depth = 24,
-                                .height = 24,
-                                .elevation = elevation };
-    GameVisualTransform transform = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMaterial material = { .scene = shape_name ? 0xff0000ff : 0x0000ffff,
-                              .albedo = shape_name ? 0xff0000ff : 0x0000ffff,
-                              .absorption = 1,
-                              .edge_light = 1 };
-    GameShader shader = { .shape = shape_name };
-    GameSdfSurface3D sdf = { .enabled = shape_name != NULL };
-    GameMeshSurface2D mesh = { .enabled = shape_name == NULL };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX,
+                            .width = 24,
+                            .depth = 24,
+                            .height = 24,
+                            .elevation = elevation };
+    VisualTransform transform = { .scale = 1 };
+    Orientation orientation = { 0 };
+    Material material = { .scene = shape_name ? 0xff0000ff : 0x0000ffff,
+                          .albedo = shape_name ? 0xff0000ff : 0x0000ffff,
+                          .absorption = 1,
+                          .edge_light = 1 };
+    Shader shader = { .shape = shape_name };
+    SdfSurface3D sdf = { .enabled = shape_name != NULL };
+    MeshSurface2D mesh = { .enabled = shape_name == NULL };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_##type.id, &(value), 0) == ECS_OK)
-    ADD(GameGeometry3D, geometry);
-    ADD(GameVisualTransform, transform);
-    ADD(GameOrientation, orientation);
-    ADD(GameMaterial, material);
-    ADD(GameShader, shader);
-    ADD(GameSdfSurface3D, sdf);
-    ADD(GameMeshSurface2D, mesh);
+    assert(ecs_world_record_add(world, e, COMPONENT_##type.id, &(value), 0) == ECS_OK)
+    ADD(Geometry3D, geometry);
+    ADD(VisualTransform, transform);
+    ADD(Orientation, orientation);
+    ADD(Material, material);
+    ADD(Shader, shader);
+    ADD(SdfSurface3D, sdf);
+    ADD(MeshSurface2D, mesh);
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
@@ -133,7 +133,7 @@ static void publish_indexed_box(const char *source)
 {
     render_mesh_surface_vertex *box = NULL;
     char error[128];
-    assert(render_mesh_surface_vertices(GAME_PRIMITIVE_BOX, &box, error, sizeof error));
+    assert(render_mesh_surface_vertices(PRIMITIVE_BOX, &box, error, sizeof error));
     render_mesh_asset asset = { .min = { -.5f, -.5f, -.5f }, .max = { .5f, .5f, .5f } };
     for (int i = 0; i < acount(box); i++) {
         int found = 0;
@@ -178,8 +178,8 @@ static ecs_entity indexed_box(ecs_world *world)
 {
     publish_indexed_box("content/meshes/box.mesh");
     ecs_entity e = actor(world, NULL, 24);
-    GameMeshAsset imported = { .source = "content/meshes/box.mesh" };
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_GameMeshAsset.id, &imported, 0) == ECS_OK);
+    MeshAsset imported = { .source = "content/meshes/box.mesh" };
+    assert(ecs_world_record_add(world, e, COMPONENT_MeshAsset.id, &imported, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
 }
@@ -327,7 +327,7 @@ static bool indexed_copy(
     render_material_view view
 )
 {
-    *GAME_GameGeometry3D_get(world, copy) = *GAME_GameGeometry3D_get(world, box);
+    *Geometry3D_get(world, copy) = *Geometry3D_get(world, box);
     render_mesh_material_actor actors[] = { { box, { 0, 0 } }, { copy, { 0, 0 } } };
     snapshot a = { 0 }, b = { 0 };
     bool ok = raw_draw(pass, world, actors, 1, view, false, &a) &&
@@ -419,7 +419,7 @@ static bool pair(
          raw_draw(pass, world, actors, count, view, true, &b) &&
          matches(&a, &b, label);
     render_mesh_material_work on = render_mesh_material_last_work(pass);
-    if (count == 2 && GAME_GameSdfSurface3D_get(world, actors[1].entity)->enabled &&
+    if (count == 2 && SdfSurface3D_get(world, actors[1].entity)->enabled &&
         on.depth_copies < 1) {
         fprintf(stderr, "Visibility %s did not submit depth copy\n", label);
         ok = false;
@@ -713,11 +713,11 @@ bool test_sdf_visibility()
                    *ring = shape("Visibility ring", true), *material = cutout();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,    &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation,   &GAME_COMPONENT_GameMaterial,
-        &GAME_COMPONENT_GameShader,        &GAME_COMPONENT_GameSdfSurface3D,
-        &GAME_COMPONENT_GameMeshSurface2D, &GAME_COMPONENT_GameMeshParts,
-        &GAME_COMPONENT_GameMeshAsset
+        &COMPONENT_Geometry3D,    &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation,   &COMPONENT_Material,
+        &COMPONENT_Shader,        &COMPONENT_SdfSurface3D,
+        &COMPONENT_MeshSurface2D, &COMPONENT_MeshParts,
+        &COMPONENT_MeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
@@ -725,13 +725,13 @@ bool test_sdf_visibility()
     ecs_entity mesh = actor(world, NULL, 24), rear = actor(world, sphere->name, 0),
                solid = actor(world, front->name, 24),
                torus = actor(world, ring->name, 24), copy = indexed_box(world);
-    GameGeometry3D *bounds = GAME_GameGeometry3D_get(world, mesh);
+    Geometry3D *bounds = Geometry3D_get(world, mesh);
     bounds->width = bounds->depth = 60;
     bounds->height = 4;
     render_mesh_material *pass = render_mesh_material_new();
     render_material_raster *r = render_material_raster_new();
-    GameSurfaceQuality quality = { .resolution = GAME_SURFACE_FULL,
-                                   .sdf_normal_mode = GAME_SDF_NORMAL_TETRAHEDRAL };
+    SurfaceQuality quality = { .resolution = SURFACE_FULL,
+                               .sdf_normal_mode = SDF_NORMAL_TETRAHEDRAL };
     render_mesh_material_set_quality(pass, quality);
     render_material_raster_set_quality(r, quality);
     bool backend_ok = depth_snapshot_backend();
@@ -742,23 +742,23 @@ bool test_sdf_visibility()
     ok &= pair(pass, r, world, actors, 2, view, false, "mesh fully hides sphere");
     ok &= diagnostic(pass, world, actors, false);
     ok &= indexed_copy(pass, world, mesh, copy, view);
-    GAME_GameShader_get(world, mesh)->material = material->name;
+    Shader_get(world, mesh)->material = material->name;
     ok &= pair(pass, r, world, actors, 2, view, false, "material cutout");
     ok &= diagnostic(pass, world, actors, true);
-    GAME_GameShader_get(world, mesh)->material = NULL;
+    Shader_get(world, mesh)->material = NULL;
     actors[0].entity = solid;
     ok &= pair(pass, r, world, actors, 2, view, false, "SDF occluder");
     ok &= diagnostic(pass, world, actors, false);
-    GAME_GameShader_get(world, solid)->shape = sphere->name;
-    GAME_GameGeometry3D_get(world, solid)->elevation = 28;
+    Shader_get(world, solid)->shape = sphere->name;
+    Geometry3D_get(world, solid)->elevation = 28;
     ok &= same_graph_pair(pass, r, world, actors, view, "same graph hidden SDF");
     ok &= diagnostic(pass, world, actors, false);
     actors[0].entity = rear;
     actors[1].entity = solid;
     ok &= same_graph_pair(pass, r, world, actors, view, "same graph reversed hidden SDF");
     ok &= diagnostic(pass, world, actors, false);
-    GAME_GameShader_get(world, solid)->shape = front->name;
-    GAME_GameGeometry3D_get(world, solid)->elevation = 24;
+    Shader_get(world, solid)->shape = front->name;
+    Geometry3D_get(world, solid)->elevation = 24;
     actors[1].entity = rear;
     actors[0].entity = torus;
     ok &= pair(pass, r, world, actors, 2, view, false, "SDF hole");
@@ -771,21 +771,19 @@ bool test_sdf_visibility()
     ok &= pair(pass, r, world, actors, 2, view, false, "back to front order");
     actors[0].entity = solid;
     actors[1].entity = rear;
-    GAME_GameGeometry3D_get(world, solid)->elevation = 0;
-    GAME_GameMaterial_get(world, solid)
-        ->scene = GAME_GameMaterial_get(world, solid)->albedo = 0x0000ffff;
+    Geometry3D_get(world, solid)->elevation = 0;
+    Material_get(world, solid)->scene = Material_get(world, solid)->albedo = 0x0000ffff;
     ok &= pair(pass, r, world, actors, 2, view, false, "equal depth caller order");
-    GAME_GameMaterial_get(world, solid)
-        ->scene = GAME_GameMaterial_get(world, solid)->albedo = 0x0000ffff;
+    Material_get(world, solid)->scene = Material_get(world, solid)->albedo = 0x0000ffff;
     actors[0].entity = rear;
     actors[1].entity = solid;
     ok &= pair(pass, r, world, actors, 2, view, false, "equal depth reversed order");
     actors[0].entity = mesh;
     actors[1].entity = rear;
-    GAME_GameVisualTransform_get(world, mesh)->pitch = .3f;
-    GAME_GameVisualTransform_get(world, rear)->scale = .8f;
-    GAME_GameVisualTransform_get(world, rear)->yaw = .4f;
-    actors[1].position = (GameTransform){ 3, -2 };
+    VisualTransform_get(world, mesh)->pitch = .3f;
+    VisualTransform_get(world, rear)->scale = .8f;
+    VisualTransform_get(world, rear)->yaw = .4f;
+    actors[1].position = (Transform){ 3, -2 };
     view.focal_distance = 64;
     ok &= pair(pass, r, world, actors, 2, view, false, "perspective transformed surfaces");
     view.focal_distance = 32;
@@ -793,9 +791,9 @@ bool test_sdf_visibility()
     ok &= pair(pass, r, world, actors, 2, view, false, "near clipping");
     view.focal_distance = 0;
     bounds->elevation = 24;
-    GAME_GameVisualTransform_get(world, mesh)->pitch = 0;
-    GAME_GameVisualTransform_get(world, rear)->scale = 1;
-    actors[1].position = (GameTransform){ 0 };
+    VisualTransform_get(world, mesh)->pitch = 0;
+    VisualTransform_get(world, rear)->scale = 1;
+    actors[1].position = (Transform){ 0 };
     ok &= pair(pass, r, world, actors, 2, view, true, "mixed 2D layer");
     /* Same retained pass after a frame with an occluder must clear sampled depth. */
     actors[0] = actors[1];

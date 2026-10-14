@@ -1,0 +1,15 @@
+// Display the first frame beam beside its source, using the same visual pose.
+behavior RenderFrameProbe {
+    on Begin {
+        part := primitive_part(self.Geometry3D, 0)
+        offset := transform_visual_offset(part.Center, part.Elevation, 0.0, self.VisualTransform)
+        beam := await spawn_prototype(RenderPart)
+        beam.Transform = self.Transform + offset.Offset + vec2(0, 80)
+        beam.Geometry3D.primitive = part.Primitive
+        beam.Geometry3D.width = part.Width
+        beam.Geometry3D.height = part.Height
+        beam.Geometry3D.depth = part.Depth
+        beam.Geometry3D.elevation = self.Geometry3D.elevation + offset.Elevation
+        trigger_visual_reaction(vec3(0.3, 0, 0), 12.0)
+    }
+}

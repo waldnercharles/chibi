@@ -93,7 +93,7 @@ These are our decisions, drawing on the references above. Distances are screen d
 
 Settings under Graph Nodes (all on by default):
 
-- **Short Bindings:** component values read "Aim › Manual" with a component icon, since a component binding always reads the node's owner. Variables, locals, event values and Delta Time get their own icons. Off, chips spell out `Self.GameAim.manual`. Unreal's member getters also omit "self"; its "self" and Unity's "This" appear only as the default of a call's Target pin.
+- **Short Bindings:** component values read "Aim › Manual" with a component icon, since a component binding always reads the node's owner. Variables, locals, event values and Delta Time get their own icons. Off, chips spell out `Self.Aim.manual`. Unreal's member getters also omit "self"; its "self" and Unity's "This" appear only as the default of a call's Target pin.
 - **Flow in Titles:** an unlabeled execution pin (Exec, Then, In, Out) sits on the title's edge (Unity Visual Scripting). Named branches such as True and False keep their rows, and a node with no other rows is just its title.
 - **Compact Nodes:** an operator with a symbol draws it between its stacked inputs and its vertically centered output, without a title or pin labels (Unreal's compact nodes). A node that only reads one value is a pill with its socket on the title, without "Get" (Unreal's variable getters).
 

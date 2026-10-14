@@ -1,8 +1,13 @@
+#include "execution/borrow.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/trace.h"
+#include "types/union.h"
 #include "types/value_document.h"
+#include "types/value_wire.h"
 
 #include <assert.h>
 #include <math.h>
@@ -133,6 +138,12 @@ bool test_model_import_active();
 type_catalog_pack test_model_import_types(int index);
 #endif
 
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+/* Model and shader graphs keep vectors and colors in shader-typed defaults,
+ * and their render cases read game-typed components. */
+bool test_graph_types_active();
+type_catalog_pack test_graph_types(int index);
+#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 #include "authoring/studio_schema.h"
 bool test_shader_parameters_active();
@@ -140,6 +151,11 @@ type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return 2;
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return 2;
@@ -170,6 +186,11 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     assert(index >= 0 && index < type_catalog_pack_count());
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return test_graph_types(index);
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return test_model_import_types(index);
@@ -190,7 +211,7 @@ type_catalog_pack type_catalog_pack_at(int index)
             return test_shader_parameters_types();
         }
 #endif
-        return index ? TEST_REFLECTED_TYPES_PACK : GAME_TYPE_PACK;
+        return index ? TEST_REFLECTED_TYPES_PACK : TYPE_PACK;
     }
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
@@ -294,6 +315,183 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
     REQUIRE(!strcmp(snapshot->type_name, "test.text"));
     REQUIRE(!strcmp(snapshot->items[0].type_name, "test.text"));
     REQUIRE(!strcmp(snapshot->items[0].str, "original"));
+    return true;
+}
+
+TEST_CASE(types_collection_follows_values_across_arenas)
+{
+    /* A root may point inside a value, and a value may reach another arena's
+     * values; whatever no root reaches is swept. */
+    arena first, second;
+    arena_init_collectable(&first);
+    arena_init_collectable(&second);
+    char *text = arena_alloc(&first, sizeof "kept");
+    memcpy(text, "kept", sizeof "kept");
+    arena_alloc(&first, 32);
+    pin_array *array = pin_array_snapshot_allocate(&second, PIN_STR, NULL, 1);
+    array->items[0] = (pin_value){ .type = PIN_STR, .str = text };
+    arena_alloc(&second, 32);
+    arena *arenas[] = { &first, &second };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 2);
+    arena_collect_mark(&collection, &array->items[0]);
+    arena_collect_mark(&collection, NULL);
+    arena_collect_end(&collection);
+    size_t text_bytes, array_bytes, capacity;
+    arena_usage(&first, &text_bytes, &capacity);
+    arena_usage(&second, &array_bytes, &capacity);
+    REQUIRE(text_bytes == sizeof "kept" && !strcmp(text, "kept"));
+    REQUIRE(array_bytes == sizeof *array + sizeof array->items[0]);
+    REQUIRE(first.kept == text_bytes && second.kept == array_bytes);
+    REQUIRE(first.allocated == 0 && second.allocated == 0);
+    arena_free(&first);
+    arena_free(&second);
+    return true;
+}
+
+TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values)
+{
+    arena producer = { 0 };
+    char text[] = "retained", name[] = "payload.name";
+    pin_value field = { .type = PIN_STR, .str = text, .type_name = name };
+    pin_value inner, outer, copied, snapshot;
+    REQUIRE(pin_union_value(&producer, 7, &field, 1, &inner) == 0);
+    REQUIRE(pin_union_value(&producer, 9, &inner, 1, &outer) == 0);
+    REQUIRE(pin_value_copy(&copied, &outer) == 0);
+    REQUIRE((uintptr_t)copied.ptr % _Alignof(pin_union) == 0);
+    REQUIRE(pin_value_snapshot_to_arena(&snapshots, &snapshot, &outer) == 0);
+    text[0] = name[0] = 'X';
+    arena_free(&producer);
+    REQUIRE(pin_value_equal(&copied, &snapshot));
+    const pin_union *outer_copy = copied.ptr;
+    const pin_union *inner_copy = outer_copy->values[0].ptr;
+    REQUIRE(outer_copy->tag == 9 && inner_copy->tag == 7);
+    REQUIRE(!strcmp(inner_copy->values[0].str, "retained"));
+    REQUIRE(!strcmp(inner_copy->values[0].type_name, "payload.name"));
+    pin_value_destroy(&copied);
+    outer_copy = snapshot.ptr;
+    inner_copy = outer_copy->values[0].ptr;
+    REQUIRE(!strcmp(inner_copy->values[0].str, "retained"));
+    pin_union_cancelled(&outer);
+    REQUIRE(pin_value_copy(&copied, &outer) == 0);
+    REQUIRE(pin_value_equal(&copied, &outer));
+    pin_value_destroy(&copied);
+    /* A failed clone must be safely destroyable, with no ownership of source. */
+    pin_union *invalid = arena_alloc(&snapshots, sizeof *invalid + sizeof(pin_value));
+    *invalid = (pin_union){ .tag = 11, .count = 1 };
+    invalid->values[0] = (pin_value){ .type = PIN_STRUCT,
+                                      .type_name = "unregistered.union.payload",
+                                      .ptr = text };
+    outer = (pin_value){ .type = PIN_UNION, .ptr = invalid };
+    REQUIRE(pin_value_copy(&copied, &outer) != 0);
+    REQUIRE(!copied.ptr);
+    pin_value_destroy(&copied);
+    REQUIRE(invalid->tag == 11);
+    return true;
+}
+
+TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays)
+{
+    arena decoded;
+    arena_init_collectable(&decoded);
+    pin_array *array = pin_array_snapshot_allocate(&snapshots, PIN_STR, NULL, 1);
+    array->items[0] = (pin_value){ .type = PIN_STR, .str = "wire-retained" };
+    pin_value payload = { .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+    pin_value original, restored;
+    REQUIRE(pin_union_value(&snapshots, 7, &payload, 1, &original) == 0);
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &original);
+    REQUIRE(!writer.error && writer.size);
+    execution_wire reader = { .reading = true,
+                              .data = writer.data,
+                              .size = writer.size,
+                              .storage = &decoded };
+    execution_wire_value(&reader, &restored);
+    REQUIRE(!reader.error && reader.offset == reader.size);
+    REQUIRE(pin_value_equal(&original, &restored));
+    arena_free(&snapshots);
+    afree(writer.data);
+    arena_alloc(&decoded, 4096);
+    arena *arenas[] = { &decoded };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 1);
+    pin_value_trace(&restored, arena_collect_mark, &collection);
+    arena_collect_end(&collection);
+    const pin_union *value = restored.ptr;
+    const pin_array *items = value->values[0].ptr;
+    REQUIRE(value->tag == 7 && value->count == 1 && items->count == 1);
+    REQUIRE(!strcmp(items->items[0].str, "wire-retained"));
+    size_t bytes, capacity;
+    arena_usage(&decoded, &bytes, &capacity);
+    REQUIRE(bytes < 4096);
+    arena_collect_begin(&collection, arenas, 1);
+    arena_collect_end(&collection);
+    arena_usage(&decoded, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    arena_free(&decoded);
+    return true;
+}
+
+TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth)
+{
+    pin_value item = { .type = PIN_I32, .i = 3 }, value;
+    REQUIRE(pin_union_value(&snapshots, 7, &item, 1, &value) == 0);
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &value);
+    REQUIRE(!writer.error);
+    /* Read the public field format to locate the union tag and payload count. */
+    execution_wire cursor = { .reading = true,
+                              .data = writer.data,
+                              .size = writer.size,
+                              .storage = &snapshots };
+    int type = 0, container = 0;
+    const char *name = NULL;
+    bool present = false;
+    execution_wire_int(&cursor, &type);
+    execution_wire_int(&cursor, &container);
+    execution_wire_string(&cursor, &name);
+    execution_wire_bool(&cursor, &present);
+    REQUIRE(!cursor.error && type == PIN_UNION && present);
+    size_t tag_offset = cursor.offset;
+    uint64_t tag = 0;
+    execution_wire_u64(&cursor, &tag);
+    REQUIRE(tag == 7);
+    size_t count_offset = cursor.offset;
+    for (int invalid = 0; invalid < 3; invalid++) {
+        writer.data[tag_offset] = invalid == 0 ? 0 : 7;
+        writer.data[count_offset] = invalid == 1 ? 1 : 2; /* zigzag -1 or 1 */
+        execution_wire reader = { .reading = true,
+                                  .data = writer.data,
+                                  .size = writer.size - (invalid == 2),
+                                  .storage = &snapshots };
+        pin_value restored;
+        execution_wire_value(&reader, &restored);
+        REQUIRE(reader.error);
+    }
+    afree(writer.data);
+    /* Source values are valid; wire depth limits still bound hostile nesting. */
+    for (int i = 0; i < EXECUTION_WIRE_MAX_DEPTH; i++) {
+        pin_union *nested = arena_alloc(&snapshots, sizeof *nested + sizeof(pin_value));
+        *nested = (pin_union){ .tag = 9, .count = 1 };
+        nested->values[0] = value;
+        value = (pin_value){ .type = PIN_UNION, .ptr = nested };
+    }
+    writer = (execution_wire){ 0 };
+    execution_wire_value(&writer, &value);
+    REQUIRE(writer.error && strstr(writer.error, "nesting"));
+    afree(writer.data);
+    pin_union_cancelled(&value);
+    writer = (execution_wire){ 0 };
+    execution_wire_value(&writer, &value);
+    REQUIRE(!writer.error);
+    execution_wire reader = { .reading = true,
+                              .data = writer.data,
+                              .size = writer.size,
+                              .storage = &snapshots };
+    pin_value restored;
+    execution_wire_value(&reader, &restored);
+    REQUIRE(!reader.error && pin_value_equal(&value, &restored));
+    afree(writer.data);
     return true;
 }
 
@@ -492,6 +690,10 @@ void test_tool_types()
     RUN_TEST_CASE(types_catalog_composes_ordered_packs);
     RUN_TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout);
     RUN_TEST_CASE(types_array_snapshot_owns_strings_and_names);
+    RUN_TEST_CASE(types_collection_follows_values_across_arenas);
+    RUN_TEST_CASE(types_union_snapshots_and_heap_copies_own_nested_values);
+    RUN_TEST_CASE(types_union_wire_roundtrip_traces_nested_arrays);
+    RUN_TEST_CASE(types_union_wire_rejects_invalid_tags_counts_and_depth);
     RUN_TEST_CASE(types_struct_array_snapshot_retains_nested_payload);
     RUN_TEST_CASE(types_document_snapshot_survives_source_release);
     RUN_TEST_CASE(types_document_rejects_invalid_values_without_publication);

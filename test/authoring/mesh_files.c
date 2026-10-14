@@ -323,26 +323,18 @@ TEST_CASE(mesh_files_prepare_once_from_mounted_content)
  * wraps, and not one a collider of another shape names. */
 TEST_CASE(mesh_files_come_from_drawn_meshes_and_mesh_colliders)
 {
-    GameMeshAsset drawn = { .source = "content/meshes/quad.mesh" };
-    REQUIRE(
-        authoring_component_mesh(&GAME_COMPONENT_GameMeshAsset, &drawn) == drawn.source
-    );
-    GameCollider3D collider = { .shape = GAME_COLLIDER3D_HULL, .mesh = drawn.source };
-    REQUIRE(
-        authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider) ==
-        drawn.source
-    );
-    collider.shape = GAME_COLLIDER3D_MESH;
-    REQUIRE(
-        authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider) ==
-        drawn.source
-    );
-    collider.shape = GAME_COLLIDER3D_BOX;
-    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider));
-    collider = (GameCollider3D){ .shape = GAME_COLLIDER3D_HULL, .mesh = "" };
-    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider));
+    MeshAsset drawn = { .source = "content/meshes/quad.mesh" };
+    REQUIRE(authoring_component_mesh(&COMPONENT_MeshAsset, &drawn) == drawn.source);
+    Collider3D collider = { .shape = COLLIDER3D_HULL, .mesh = drawn.source };
+    REQUIRE(authoring_component_mesh(&COMPONENT_Collider3D, &collider) == drawn.source);
+    collider.shape = COLLIDER3D_MESH;
+    REQUIRE(authoring_component_mesh(&COMPONENT_Collider3D, &collider) == drawn.source);
+    collider.shape = COLLIDER3D_BOX;
+    REQUIRE(!authoring_component_mesh(&COMPONENT_Collider3D, &collider));
+    collider = (Collider3D){ .shape = COLLIDER3D_HULL, .mesh = "" };
+    REQUIRE(!authoring_component_mesh(&COMPONENT_Collider3D, &collider));
     drawn.source = NULL;
-    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameMeshAsset, &drawn));
+    REQUIRE(!authoring_component_mesh(&COMPONENT_MeshAsset, &drawn));
     return true;
 }
 

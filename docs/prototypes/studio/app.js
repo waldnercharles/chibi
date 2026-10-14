@@ -151,13 +151,13 @@ function applyToPrototype(s, comp, path) {
   App.refresh('docs');
 }
 function position(e) {
-  return { x: read({ kind: 'scene', entity: e }, 'GameTransform', 'x') ?? 0, y: read({ kind: 'scene', entity: e }, 'GameTransform', 'y') ?? 0 };
+  return { x: read({ kind: 'scene', entity: e }, 'Transform', 'x') ?? 0, y: read({ kind: 'scene', entity: e }, 'Transform', 'y') ?? 0 };
 }
 function moveEntities(list, before, after, label) {
   record({
     label, doc: 'scene:Sandbox', what: 'values',
-    redo: () => list.forEach((e, i) => { e.overrides.GameTransform ??= {}; Object.assign(e.overrides.GameTransform, after[i]); }),
-    undo: () => list.forEach((e, i) => { e.overrides.GameTransform ??= {}; Object.assign(e.overrides.GameTransform, before[i]); }),
+    redo: () => list.forEach((e, i) => { e.overrides.Transform ??= {}; Object.assign(e.overrides.Transform, after[i]); }),
+    undo: () => list.forEach((e, i) => { e.overrides.Transform ??= {}; Object.assign(e.overrides.Transform, before[i]); }),
   });
 }
 function renameEntity(e, name) {
@@ -175,7 +175,7 @@ function deleteEntities(list) {
   });
 }
 function addEntity(prototype, at, name) {
-  const e = { id: nextId++, name: name || uniqueName(prototype), prototype, overrides: { GameTransform: { x: Math.round(at.x), y: Math.round(at.y) } }, behaviors: [], hidden: false, locked: false };
+  const e = { id: nextId++, name: name || uniqueName(prototype), prototype, overrides: { Transform: { x: Math.round(at.x), y: Math.round(at.y) } }, behaviors: [], hidden: false, locked: false };
   record({
     label: `Add ${e.name}`, doc: 'scene:Sandbox', what: 'all',
     redo: () => { entities.push(e); State.selection = [e.id]; },
@@ -185,7 +185,7 @@ function addEntity(prototype, at, name) {
 }
 function duplicateEntities(list) {
   const copies = list.map((e) => ({ ...clone(e), id: nextId++, name: uniqueName(e.name.replace(/\s\d+$/, '')) }));
-  copies.forEach((c) => { c.overrides.GameTransform ??= {}; const p = position(list[copies.indexOf(c)]); c.overrides.GameTransform.x = p.x + 24; c.overrides.GameTransform.y = p.y - 24; });
+  copies.forEach((c) => { c.overrides.Transform ??= {}; const p = position(list[copies.indexOf(c)]); c.overrides.Transform.x = p.x + 24; c.overrides.Transform.y = p.y - 24; });
   record({
     label: `Duplicate ${list.length === 1 ? list[0].name : `${list.length} objects`}`, doc: 'scene:Sandbox', what: 'all',
     redo: () => { entities.push(...copies); State.selection = copies.map((c) => c.id); },
@@ -220,7 +220,7 @@ const State = {
   propTab: 'object',
   propSearch: '',
   outlinerFilter: '',
-  openPanels: { GameTransform: true, GameOrientation: true, GameAppearance: true, GameMovement: true, GameBody: true, GameCollider: true, GameMaterial: false, GameHealth: true, GameWeapon: true, GameCamera: true, GameFluidVolume: true, scenePhysics: true, behaviors: true, sceneSettings: true },
+  openPanels: { Transform: true, Orientation: true, Appearance: true, Movement: true, Body: true, Collider: true, Material: false, Health: true, Weapon: true, Camera: true, FluidVolume: true, scenePhysics: true, behaviors: true, sceneSettings: true },
 };
 const selected = () => entities.filter((e) => State.selection.includes(e.id));
 const activeEntity = () => entities.find((e) => e.id === State.selection[State.selection.length - 1]);
@@ -267,14 +267,14 @@ function step(dt = 1 / 60) {
     if (!e.start) continue;
     const t = r.time;
     let p = { ...e.start };
-    if (e === player) { p = { x: e.start.x + Math.sin(t * 0.9) * 140, y: e.start.y + Math.sin(t * 1.8) * 60 }; e.runtime.GameOrientation = { radians: Math.atan2(Math.cos(t * 1.8) * 108, Math.cos(t * 0.9) * 126) }; }
-    else if (e.prototype === 'Swarmer' && player?.runtime.GameTransform) {
-      const cur = e.runtime.GameTransform || e.start, tp = player.runtime.GameTransform;
+    if (e === player) { p = { x: e.start.x + Math.sin(t * 0.9) * 140, y: e.start.y + Math.sin(t * 1.8) * 60 }; e.runtime.Orientation = { radians: Math.atan2(Math.cos(t * 1.8) * 108, Math.cos(t * 0.9) * 126) }; }
+    else if (e.prototype === 'Swarmer' && player?.runtime.Transform) {
+      const cur = e.runtime.Transform || e.start, tp = player.runtime.Transform;
       const dx = tp.x - cur.x, dy = tp.y - cur.y, d = Math.hypot(dx, dy) || 1, sp = Math.min(d - 40, 90 * dt);
       p = { x: cur.x + dx / d * Math.max(sp, 0), y: cur.y + dy / d * Math.max(sp, 0) };
     } else if (e.prototype === 'DriftingMarker') p = { x: e.start.x + 12 * t, y: e.start.y };
-    else if (e.prototype === 'Camera' && player?.runtime.GameTransform) p = { ...player.runtime.GameTransform };
-    e.runtime.GameTransform = p;
+    else if (e.prototype === 'Camera' && player?.runtime.Transform) p = { ...player.runtime.Transform };
+    e.runtime.Transform = p;
   }
   App.refresh('runtime-tick');
 }
@@ -504,7 +504,7 @@ const MENUS = {
     { label: 'Reset Layout', run: () => { layout.sideWidth = 372; layout.mainSplit = 0.6; layout.sideSplit = 0.36; areas.forEach((a) => a.el.removeAttribute('data-maximized')); layout.apply(); } },
   ],
   object: () => [
-    { label: 'Add', icon: 'add', kbd: 'Shift+A', items: Object.keys(prototypes).filter((p) => prototypes[p].GameTransform).map((p) => ({ label: p, icon: protoIcon(p), run: () => addEntity(p, App.viewCenter?.() || { x: 0, y: 0 }) })) },
+    { label: 'Add', icon: 'add', kbd: 'Shift+A', items: Object.keys(prototypes).filter((p) => prototypes[p].Transform).map((p) => ({ label: p, icon: protoIcon(p), run: () => addEntity(p, App.viewCenter?.() || { x: 0, y: 0 }) })) },
     { label: 'Duplicate', kbd: 'Shift+D', disabled: !selected().length, run: () => duplicateEntities(selected()) },
     { label: 'Delete', icon: 'trash', kbd: 'X', disabled: !selected().length, run: () => deleteEntities(selected()) },
     '-',
@@ -556,7 +556,7 @@ function assetItems() {
     return { id: `asset${i}`, group: 'Assets', label: file, icon: iconName, meta: folder, keywords: [folder], run: () => (kind ? openDoc(kind, file) : App.report(`${file} opens in its asset editor`, 'info')) };
   });
 }
-function addObjectItems() { return Object.keys(prototypes).filter((p) => prototypes[p].GameTransform).map((p) => ({ id: `add${p}`, group: 'Prototypes', label: p, icon: protoIcon(p), action: 'Add', run: () => addEntity(p, App.viewCenter?.() || { x: 0, y: 0 }) })); }
+function addObjectItems() { return Object.keys(prototypes).filter((p) => prototypes[p].Transform).map((p) => ({ id: `add${p}`, group: 'Prototypes', label: p, icon: protoIcon(p), action: 'Add', run: () => addEntity(p, App.viewCenter?.() || { x: 0, y: 0 }) })); }
 function behaviorItems() {
   const e = activeEntity();
   return Object.keys(F.behaviors).map((b) => ({ id: `beh${b}`, group: 'Behaviors', label: b, icon: 'graph', meta: e?.behaviors.includes(b) ? 'Attached' : '', action: e?.behaviors.includes(b) ? 'Detach' : 'Attach', run: () => e && toggleBehavior(e, b) }));

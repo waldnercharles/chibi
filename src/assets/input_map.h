@@ -4,12 +4,17 @@
 
 #include <stddef.h>
 
-/* A project's input map, content/input.kdl. Each action names the GameControl
+/* A project's input map, content/input.kdl. Each action names the Control
  * labels that hold it, and may also hold Aim firing:
  *
  *     Fire {
  *         (array)sources "Mouse Left" "Pad Right Trigger"
  *         firing #true
+ *     }
+ *     P2Left {
+ *         (array)sources "J"
+ *         controller 1
+ *         (array)buttons "Dpad Left" "Left Stick Left"
  *     }
  *     Jump {
  *         (array)sources "Space"

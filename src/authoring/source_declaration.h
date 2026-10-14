@@ -16,6 +16,9 @@ typedef struct
     const char *name, *path, *text;
     script_range range;
     source_text_kind text_kind;
+    /* A project field definition, rather than a callable or prototype. */
+    bool field;
+    uint64_t owner;
 } source_catalog_definition;
 typedef enum
 {

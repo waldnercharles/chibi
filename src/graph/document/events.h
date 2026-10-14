@@ -8,7 +8,7 @@
 extern node_desc NODE_CallEvent;
 extern const registry_pack CORE_EVENT_PACK;
 
-pin_spec graph_event_payload_pin(const game_event_field *);
+pin_spec graph_event_payload_pin(const event_field *);
 
 /* Event-definition variables declare payload fields. Existing connected fields
  * retain IDs; incompatible/removal edits are rejected atomically. */

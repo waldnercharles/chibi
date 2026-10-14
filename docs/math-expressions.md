@@ -73,7 +73,7 @@ expression uses as a bool, as in `a && !b`, stays a bool. `flag * 8` is 8 or 0.
 
 Inputs and the result infer their connected graph types. Numeric operators support
 scalar broadcasting across reflected numeric structs such as `CF_V2` and
-`GameTransform`; the result keeps the aggregate type. Use member access such as
+`Transform`; the result keeps the aggregate type. Use member access such as
 `pos.x + pos.y` to project scalar fields from a connected struct input. The input
 must be connected before a field expression can regenerate successfully. Integer-to-Real and explicit Real-to-integer conversions are
 available. A Real result can feed Byte, Integer, or Integer64 through a conversion edge. Finite
@@ -105,7 +105,7 @@ definition and calls together; source edits also support Undo/Redo.
 To replace an existing calculation, select its connected pure numeric math nodes,
 open the node context menu, and choose **Convert to Behavior Expression**. The editor
 preserves incoming wires and component or variable bindings, including reflected
-numeric structs such as `GameTransform`, reconnects the new call to the selected
+numeric structs such as `Transform`, reconnects the new call to the selected
 result's consumers, and selects the replacement call. A selection may also end at
 one terminal result before it has a consumer. Keep state, component reads,
 execution nodes, and time reads at the boundary of the selection.

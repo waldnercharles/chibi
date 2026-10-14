@@ -18,7 +18,7 @@ enum
     COMBUSTION_BLAST_RADIUS_MAX = 1024
 };
 
-bool game_materials_emit(game_materials *materials, fluid_particle particle)
+bool materials_emit(materials *materials, fluid_particle particle)
 {
     if (materials->settings.solver == MATERIAL_SOLVER_MPM && particle.kind != FLUID_GAS &&
         !material_fluid_constitutive_valid(particle.constitutive)) {
@@ -29,15 +29,15 @@ bool game_materials_emit(game_materials *materials, fluid_particle particle)
     return added;
 }
 
-void game_materials_set_gravity(game_materials *materials, fluid_vec gravity)
+void materials_set_gravity(materials *materials, fluid_vec gravity)
 {
     assert(isfinite(gravity.x) && isfinite(gravity.y));
     materials->gravity = gravity;
 }
 
-const char *material_ecs_configure_fluid(game_materials *materials)
+const char *material_ecs_configure_fluid(materials *materials)
 {
-    ecs_component_id id = GAME_COMPONENT_MaterialFluidWorld.id;
+    ecs_component_id id = COMPONENT_MaterialFluidWorld.id;
     if (!ecs_world_component(materials->world, id)) {
         return NULL;
     }
@@ -51,10 +51,10 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     fluid_vec gravity = materials->gravity;
     bool reactive = false;
     while (ecs_query_next(&query, &entity)) {
-        settings = *GAME_MaterialFluidWorld_get_const(materials->world, entity);
-        const GameCombustion *reaction = GAME_GameCombustion_get_const(materials->world, entity);
+        settings = *MaterialFluidWorld_get_const(materials->world, entity);
+        const Combustion *reaction = Combustion_get_const(materials->world, entity);
         reactive = reaction != NULL;
-        materials->combustion = reaction ? *reaction : (GameCombustion){ 0 };
+        materials->combustion = reaction ? *reaction : (Combustion){ 0 };
         count++;
     }
     ecs_query_end(&query);
@@ -142,7 +142,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
                "positive values";
     }
     materials->settings = settings;
-    GameCombustion r = materials->combustion;
+    Combustion r = materials->combustion;
     if (reactive &&
         (!isfinite(
              r.ignition + r.cooling + r.burn_rate + r.heat_release +
@@ -160,10 +160,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     }
     if (!materials->fluid) {
         materials->fluid = material_fluid_new(settings.kernel, settings.particle_limit);
-        material_fluid_set_tasks(
-            materials->fluid,
-            game_task_pool_tasks(materials->pool)
-        );
+        material_fluid_set_tasks(materials->fluid, task_pool_tasks(materials->pool));
     }
     material_fluid_set_flow(
         materials->fluid,
@@ -204,7 +201,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     return NULL;
 }
 
-static float volume_density(GameFluidVolume v, float x, float y)
+static float volume_density(FluidVolume v, float x, float y)
 {
     float nx = 2 * x / v.width, ny = 2 * y / v.height;
     float radius = hypotf(nx, ny);
@@ -217,15 +214,14 @@ static float volume_density(GameFluidVolume v, float x, float y)
     return fmaxf(0, fminf(1, (edge - radius) / .22f));
 }
 
-static bool in_solid(game_materials *materials, fluid_vec point)
+static bool in_solid(materials *materials, fluid_vec point)
 {
     for (int i = 0; i < acount(materials->records); i++) {
         material_record record = materials->records[i];
         if (!record.mask) {
             continue;
         }
-        GameGlobalTransform2D
-            pose = game_transform_world_2d(materials->world, record.entity);
+        GlobalTransform2D pose = transform_world_2d(materials->world, record.entity);
         float c = cosf(pose.radians), s = sinf(pose.radians);
         float x = point.x - pose.position.x, y = point.y - pose.position.y;
         if (material_mask_contains(record.mask, c * x + s * y, -s * x + c * y)) {
@@ -235,14 +231,13 @@ static bool in_solid(game_materials *materials, fluid_vec point)
     return false;
 }
 
-const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entity)
+const char *material_ecs_fill_volume(materials *materials, ecs_entity entity)
 {
-    GameFluidVolume v = *GAME_GameFluidVolume_get_const(materials->world, entity);
-    const GameFuel *fuel = GAME_GameFuel_get_const(materials->world, entity);
-    const GameIgniter *igniter = GAME_GameIgniter_get_const(materials->world, entity);
-    const MaterialThermal *thermal = GAME_MaterialThermal_get_const(materials->world, entity);
-    const MaterialConstitutive
-        *model = GAME_MaterialConstitutive_get_const(materials->world, entity);
+    FluidVolume v = *FluidVolume_get_const(materials->world, entity);
+    const Fuel *fuel = Fuel_get_const(materials->world, entity);
+    const Igniter *igniter = Igniter_get_const(materials->world, entity);
+    const MaterialThermal *thermal = MaterialThermal_get_const(materials->world, entity);
+    const MaterialConstitutive *model = MaterialConstitutive_get_const(materials->world, entity);
     fluid_constitutive constitutive = model
                                         ? (fluid_constitutive){ model->density,
                                                                 model->bulk_modulus,
@@ -267,10 +262,10 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
         (igniter && (!isfinite(igniter->heat) || igniter->heat < 0))) {
         return "Fuel and heat must be finite and nonnegative";
     }
-    if (!GAME_GameTransform_get_const(materials->world, entity)) {
+    if (!Transform_get_const(materials->world, entity)) {
         return "Fluid volume needs Transform";
     }
-    GameGlobalTransform2D pose = game_transform_world_2d(materials->world, entity);
+    GlobalTransform2D pose = transform_world_2d(materials->world, entity);
     CF_V2 origin = pose.position;
     if (!isfinite(origin.x + origin.y) ||
         (v.kind != FLUID_GAS && v.kind != FLUID_LIQUID) ||
@@ -366,11 +361,10 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
     return NULL;
 }
 
-static void camera_regions(game_materials *materials)
+static void camera_regions(materials *materials)
 {
     aclear(materials->regions);
-    ecs_component_id ids[] = { GAME_COMPONENT_GameCamera.id,
-                               GAME_COMPONENT_GameTransform.id };
+    ecs_component_id ids[] = { COMPONENT_Camera.id, COMPONENT_Transform.id };
     if (!ecs_world_component(materials->world, ids[0]) ||
         !ecs_world_component(materials->world, ids[1])) {
         return;
@@ -381,11 +375,11 @@ static void camera_regions(game_materials *materials)
     (void)result;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameCamera *camera = GAME_GameCamera_get_const(materials->world, entity);
+        const Camera *camera = Camera_get_const(materials->world, entity);
         if (camera->disabled) {
             continue;
         }
-        CF_V2 position = game_transform_world_2d(materials->world, entity).position;
+        CF_V2 position = transform_world_2d(materials->world, entity).position;
         float buffer = materials->settings.buffer;
         apush(
             materials->regions,
@@ -399,7 +393,7 @@ static void camera_regions(game_materials *materials)
 }
 
 static void blasts(
-    game_materials *materials,
+    materials *materials,
     fluid_body *bodies,
     int body_count,
     const fluid_obstacle *obstacles,
@@ -411,7 +405,7 @@ static void blasts(
     if (!count) {
         return;
     }
-    GameCombustion settings = materials->combustion;
+    Combustion settings = materials->combustion;
     /* The push each body takes from one blast: it moves once, as its part
      * nearest the blast that the blast reaches. */
     fluid_vec *push = xcalloc(body_count, sizeof *push);
@@ -447,7 +441,7 @@ static void blasts(
                 *moved = (fluid_vec){ dx / distance * impulse, dy / distance * impulse };
             }
             ecs_entity entity = ecs_entity_from_u64(b->owner);
-            if (!game_materials_mask(materials, entity)) {
+            if (!materials_mask(materials, entity)) {
                 material_destruction_emit_event(
                     materials->destruction,
                     (material_event){
@@ -479,15 +473,15 @@ static void blasts(
                         !ecs_entity_is_alive(materials->world, record.entity)) {
                         continue;
                     }
-                    GameGlobalTransform2D
-                        pose = game_transform_world_2d(materials->world, record.entity);
+                    GlobalTransform2D
+                        pose = transform_world_2d(materials->world, record.entity);
                     float c = cosf(pose.radians), s = sinf(pose.radians);
                     float x = point.x - pose.position.x,
                           y = point.y - pose.position.y;
                     if (!material_mask_contains(record.mask, c * x + s * y, -s * x + c * y)) {
                         continue;
                     }
-                    game_materials_damage(
+                    materials_damage(
                         materials,
                         record.entity,
                         point,
@@ -526,7 +520,7 @@ static int contact_count(int maximum, float intensity)
     return count > maximum ? maximum : count;
 }
 
-static void emit_contact_effects(game_materials *materials)
+static void emit_contact_effects(materials *materials)
 {
     if (!materials->particles) {
         return;
@@ -559,7 +553,7 @@ static void emit_contact_effects(game_materials *materials)
             continue;
         }
         float speed = contact.closing_speed * strength;
-        game_particle_spray spray = {
+        particle_spray spray = {
             .position = { contact.point.x, contact.point.y },
             .direction = { contact.normal.x, contact.normal.y },
             .count = particles,
@@ -580,18 +574,18 @@ static void emit_contact_effects(game_materials *materials)
             .emission_exponent = 1,
             .stretch = gas ? 0 : .004f,
             .antialias = 1.5f,
-            .shape = GAME_PARTICLE_ROUND,
+            .shape = PARTICLE_ROUND,
         };
         spray.count = spray.count < FLUID_CONTACT_PARTICLE_LIMIT - emitted
                         ? spray.count
                         : FLUID_CONTACT_PARTICLE_LIMIT - emitted;
-        int emitted_now = game_particles_emit_directed(materials->particles, &spray);
+        int emitted_now = particles_emit_directed(materials->particles, &spray);
         emitted += emitted_now > 0 ? emitted_now : 0;
     }
 }
 
 void material_ecs_tick_fluid(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -603,7 +597,7 @@ void material_ecs_tick_fluid(
 }
 
 void material_ecs_tick_fluid_profiled(
-    game_materials *materials,
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -626,7 +620,7 @@ void material_ecs_tick_fluid_profiled(
             );
         }
     }
-    game_task_pool_begin(materials->pool, true);
+    task_pool_begin(materials->pool, true);
     material_fluid_tick_profiled(
         materials->fluid,
         delta,
@@ -639,7 +633,7 @@ void material_ecs_tick_fluid_profiled(
         obstacle_count,
         profile
     );
-    game_task_pool_end(materials->pool);
+    task_pool_end(materials->pool);
     CHIBI_TRACE_ZONE_BEGIN(contact_zone, "Fluid contact effects");
     emit_contact_effects(materials);
     CHIBI_TRACE_ZONE_END(contact_zone);

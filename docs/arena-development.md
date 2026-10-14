@@ -40,7 +40,7 @@ Arena3D remains available as a visual and gameplay reference scene.
 
 Arena2D's desktop renderer uses the physical HRC channels `scene`, `emission`,
 `absorption` and `albedo`, plus SDF-derived planar normals. The Inspector's
-`GameHRC2D` fields tune transport and composition. The Performance pane reports
+`HRC2D` fields tune transport and composition. The Performance pane reports
 frame history and lighting's GPU time against its budget. HRC transport
 uses a fixed work grid, so its dispatch cost does not grow with the number of
 entities. The 2D path feeds material emission directly into HRC.
@@ -62,8 +62,8 @@ their restrictions. Review each new mechanic for readable event flow and useful
 functions, and extend engine capabilities when graphs expose a real missing
 operation.
 
-Local input owns entities with `GameInput`; adding `GameAim` alone does not make
-an AI-controlled actor listen to the mouse. `GameWeapon` exposes damage and
+Local input owns entities with `Input`; adding `Aim` alone does not make
+an AI-controlled actor listen to the mouse. `Weapon` exposes damage and
 cooldown. The unused projectile-count field was removed, and the twin-stick
 weapon root shows its projectile prototype choice.
 
@@ -255,7 +255,7 @@ Reference-level motion, contact shadows, composed enemy bodies, trails, impacts
 and crowded-combat finish remain open in M4.
 
 The behavior cleanup also restricts the local Fire action to entities with
-GameInput in both scene and prototype Play. Directed AI events remain available.
+Input in both scene and prototype Play. Directed AI events remain available.
 The older unknown-action input fallback still broadcasts a zero-movement Input
 event; replacing that fallback with an explicit action contract belongs to M3.
 
@@ -411,24 +411,24 @@ Amount as material parameters. Surface Influence still provides the spatial
 activity signal; Inner Radius permits an annular pulse. `ArenaWaveBehavior`
 spawns a red expanding ring for each group of eight enemy arrivals.
 `ArenaSpawnMarker` displays the actual formation positions for one second before
-`SpawnTelegraphBehavior` resolves each `GameSpawnRequest`. The encounter alternates
+`SpawnTelegraphBehavior` resolves each `SpawnRequest`. The encounter alternates
 edge rows, arcs and pincers; pending markers count toward encounter completion.
 Delay and the incoming prototype are ordinary editable fields.
 
-`GameRhythm` on the environment supplies a shared 120 BPM clock with a 0.18-second
+`Rhythm` on the environment supplies a shared 120 BPM clock with a 0.18-second
 pulse window. Scene Rhythm exposes phase, pulse, period and duration to behavior
 graphs; Beat Phase and Beat Pulse expose the same simulation clock to Surface
 materials. Pause freezes both. This is a configurable tempo, not music analysis
 or an audio transport; connecting actual music remains later work.
 
-`GameMeshParts` composes ordinary solid primitives with local size, position,
+`MeshParts` composes ordinary solid primitives with local size, position,
 rotation and optional material overrides. The component Inspector edits these
-as rows with Add/remove controls. `GameVisualTransform` adds visual pitch, yaw,
+as rows with Add/remove controls. `VisualTransform` adds visual pitch, yaw,
 roll and scale; movement, aim and colliders stay independently authored.
 `ArenaShipMotionBehavior` rolls gradually between the pyramid's faces while
 strafing relative to aim. Release settles onto the nearest face; reversing lifts
 the nose slightly. Rotation and angular velocity remain continuous.
-`GameParticleEmitter` follows the interpolated visual pose at its local nozzle
+`ParticleEmitter` follows the interpolated visual pose at its local nozzle
 offset, including heading and roll. Emitted particles retain their own trail.
 Rate, size, lifetime, velocity inheritance, color and shape are editable fields.
 Heading Only keeps a projectile nozzle behind its flight direction while the
@@ -438,7 +438,7 @@ Attached emitters currently render through the Arena3D presentation. The shared
 particle lifecycle still supports behavior-triggered bursts.
 Cube projectiles use a second authored emitter with shrinking flat triangles.
 
-XP uses `GamePickup`, `GameExperience`, `GameVisualTransform` and `GameTrail`.
+XP uses `Pickup`, `Experience`, `VisualTransform` and `Trail`.
 `ArenaPickupBehavior` owns the twelve-second wait, final two-second expiration,
 beat spin and the collection trajectory. Each pickup has a random initial rotation. One eased revolution spans the whole
 beat while scale moves gently from 1 to 0.8 and back. The pickup is a small, flat
@@ -552,7 +552,7 @@ Under Variables → Motion, tune Roll Speed (36 degrees/second), Face Rocking
 (1 Hz), Settle Damping (1) and Reverse Nose Lift (3 degrees). Save and restart
 Play to use changed defaults.
 
-Enemy rotation integrates in the native `GameVisualMotion` ECS system. The
+Enemy rotation integrates in the native `VisualMotion` ECS system. The
 component Inspector exposes Speed (1.6 by default) and Reaction Duration (0.32
 seconds). ArenaEnemyVisualBehavior chooses random initial angles and rates and
 triggers a finite contact/damage reaction; its Bump Lift remains authored. The

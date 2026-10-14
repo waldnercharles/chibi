@@ -11,10 +11,10 @@ float sdf_circle_stroked(vec2 p, float r, float t)
     return abs(length(p) - r) - t * 0.5;
 }
 
-float sdf_box(vec2 p, vec2 half_ext, float r)
+float sdf_box(vec2 p, vec2 half_ext)
 {
-    vec2 d = abs(p) - half_ext + r;
-    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - r;
+    vec2 d = abs(p) - half_ext;
+    return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
 }
 
 float sdf_segment(vec2 p, vec2 a, vec2 b)
@@ -40,7 +40,7 @@ float cross2(vec2 a, vec2 b)
     return a.x * b.y - a.y * b.x;
 }
 
-float sdf_triangle(vec2 p, vec2 a, vec2 b, vec2 c, float r)
+float sdf_triangle(vec2 p, vec2 a, vec2 b, vec2 c)
 {
     vec2 e0 = b - a, e1 = c - b, e2 = a - c;
     vec2 v0 = p - a, v1 = p - b, v2 = p - c;
@@ -55,8 +55,7 @@ float sdf_triangle(vec2 p, vec2 a, vec2 b, vec2 c, float r)
     vec2 d2 = vec2(dot(pq2, pq2), s * cross2(v2, e2));
 
     vec2 dm = min(min(d0, d1), d2);
-    float dist = -sqrt(dm.x) * sign(dm.y);
-    return dist - r;
+    return -sqrt(dm.x) * sign(dm.y);
 }
 
 float smin(float a, float b, float k)

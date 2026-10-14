@@ -75,18 +75,18 @@ static inline test_source_fixture test_source_prepare(const char *path, const ch
     );
     return fixture;
 }
-static inline void test_source_register(game_preview_runtime *world, const test_source_fixture *fixture)
+static inline void test_source_register(preview_runtime *world, const test_source_fixture *fixture)
 {
     char error[256];
     const authoring_source *source = fixture->source;
-    game_source_publication entry = {
+    source_publication entry = {
         .name = source->analysis->name,
-        .previous_name = game_source_registered(world->sources, source->analysis->name)
+        .previous_name = source_registered(world->sources, source->analysis->name)
                            ? source->analysis->name
                            : NULL,
         .module = source->module,
     };
-    assert(!game_source_publish(world->sources, &entry, 1, NULL, error, sizeof error));
+    assert(!source_publish(world->sources, &entry, 1, NULL, error, sizeof error));
 }
 /* Owned authoring view for structural assertions only. Executable fixtures
  * must register the canonical module via test_source_register instead. */

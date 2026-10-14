@@ -81,7 +81,7 @@ The setting implies each pin's type, so documents write only the key or type, th
     - {
         id 4
         type "Get Component"
-        inputs Component="GAME.GameVelocity"
+        inputs Component="Velocity"
         outputs {
             (object)Value.x
         }
@@ -90,7 +90,7 @@ The setting implies each pin's type, so documents write only the key or type, th
         id 10
         type "Set Component"
         inputs {
-            Component "GAME.GameTransform"
+            Component "Transform"
             x id=18
         }
     }
@@ -98,7 +98,7 @@ The setting implies each pin's type, so documents write only the key or type, th
         id 19
         type "Set Component"
         inputs {
-            Component "GAME.GameHealth"
+            Component "Health"
             Value {
                 default current=5 maximum=9
             }
@@ -107,7 +107,7 @@ The setting implies each pin's type, so documents write only the key or type, th
     - {
         id 24
         type "Make Struct"
-        inputs current=5 maximum=9 Type="GameHealth"
+        inputs current=5 maximum=9 Type="Health"
     }
 }
 ```

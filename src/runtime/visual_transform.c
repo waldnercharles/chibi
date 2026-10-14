@@ -4,7 +4,7 @@
 
 #include <math.h>
 
-CF_Quat game_visual_rotation(float heading, CF_V3 rotation)
+CF_Quat visual_rotation(float heading, CF_V3 rotation)
 {
     float yaw_half = (-heading - rotation.y) * .5f;
     float pitch_half = rotation.x * .5f;
@@ -20,11 +20,11 @@ CF_Quat game_visual_rotation(float heading, CF_V3 rotation)
 
 /* The NODE_READ declaration in runtime/interface.h generates the graph
  * adapter. This function keeps only the spatial policy and validation. */
-const char *game_transform_visual_offset(
+const char *transform_visual_offset(
     CF_V2 offset,
     float elevation,
     float heading,
-    GameVisualTransform visual,
+    VisualTransform visual,
     CF_V2 *result_offset,
     float *result_elevation
 )
@@ -39,7 +39,7 @@ const char *game_transform_visual_offset(
     }
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ 0 },
-        game_visual_rotation(heading, (CF_V3){ visual.pitch, visual.yaw, visual.roll }),
+        visual_rotation(heading, (CF_V3){ visual.pitch, visual.yaw, visual.roll }),
         (CF_V3){ visual.scale, visual.scale, visual.scale }
     );
     CF_V3 transformed = cf_m4_transform_point(

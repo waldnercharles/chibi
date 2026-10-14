@@ -32,7 +32,7 @@ static execution_log_service logger;
 static execution_module *module, *library, *wrong_library;
 static execution_program *program;
 static execution_inspector *debugger;
-static game_source_registry *registry;
+static source_registry *registry;
 static ecs_world *world;
 static struct
 {
@@ -47,7 +47,7 @@ static uint64_t declared_event_ids[3], declared_event_abis[3];
 static void cleanup()
 {
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
     execution_program_free(program);
@@ -383,7 +383,7 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
         char error[192];
         module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
         REQUIRE(module);
-        game_package_module records[] = {
+        package_module records[] = {
             { .name = "Persist", .id = execution_module_id(module), .data = bytes, .length = length },
             { .name = "Depot",
               .id = execution_module_id(library),
@@ -392,7 +392,7 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
         };
         const size_t collection_budget = 64 * 1024 * 1024;
         size_t collection_remaining = collection_budget;
-        game_package_collection *collection = game_package_read_budget(
+        package_collection *collection = package_read_budget(
             records,
             2,
             &link,
@@ -403,71 +403,44 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
             sizeof error
         );
         REQUIRE(collection);
-        bool named = game_package_collection_count(collection) == 2 &&
-                     !strcmp(game_package_collection_name(collection, 0), "Persist") &&
-                     !strcmp(game_package_collection_name(collection, 1), "Depot");
+        bool named = package_collection_count(collection) == 2 &&
+                     !strcmp(package_collection_name(collection, 0), "Persist") &&
+                     !strcmp(package_collection_name(collection, 1), "Depot");
         size_t modules_bytes = named
                                  ? execution_module_storage_bytes(
-                                       game_package_collection_module(collection, 0)
+                                       package_collection_module(collection, 0)
                                    ) +
                                        execution_module_storage_bytes(
-                                           game_package_collection_module(collection, 1)
+                                           package_collection_module(collection, 1)
                                        )
                                  : 0;
         size_t collection_bytes = collection_budget - collection_remaining;
         if (collection) {
-            game_package_collection_free(collection);
+            package_collection_free(collection);
         }
         REQUIRE(named);
         REQUIRE(collection_bytes > modules_bytes && collection_bytes - modules_bytes < 4096);
         collection_remaining = collection_budget;
-        collection = game_package_read_budget(
-            records,
-            2,
-            &link,
-            NULL,
-            backends[b],
-            &collection_remaining,
-            error,
-            sizeof error
-        );
+        collection = package_read_budget(records, 2, &link, NULL, backends[b], &collection_remaining, error, sizeof error);
         bool repeated = collection && collection_remaining ==
                                           collection_budget - collection_bytes;
         if (collection) {
-            game_package_collection_free(collection);
+            package_collection_free(collection);
         }
         REQUIRE(repeated);
         collection_remaining = collection_bytes - 1;
-        collection = game_package_read_budget(
-            records,
-            2,
-            &link,
-            NULL,
-            backends[b],
-            &collection_remaining,
-            error,
-            sizeof error
-        );
+        collection = package_read_budget(records, 2, &link, NULL, backends[b], &collection_remaining, error, sizeof error);
         bool rejected = !collection && error[0] &&
                         collection_remaining == collection_bytes - 1;
         if (collection) {
-            game_package_collection_free(collection);
+            package_collection_free(collection);
         }
         REQUIRE(rejected);
         collection_remaining = 0;
-        collection = game_package_read_budget(
-            records,
-            2,
-            &link,
-            NULL,
-            backends[b],
-            &collection_remaining,
-            error,
-            sizeof error
-        );
+        collection = package_read_budget(records, 2, &link, NULL, backends[b], &collection_remaining, error, sizeof error);
         rejected = !collection && error[0] && collection_remaining == 0;
         if (collection) {
-            game_package_collection_free(collection);
+            package_collection_free(collection);
         }
         REQUIRE(rejected);
         world = ecs_world_new();
@@ -475,9 +448,9 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
         logger = (execution_log_service){ .emit = log_message };
         service_binding *services = NULL;
         apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &logger }));
-        registry = game_source_registry_new(world);
+        registry = source_registry_new(world);
         size_t budget = 64 * 1024 * 1024, remaining = budget;
-        game_source_staging *stage = game_package_stage_budget(
+        source_staging *stage = package_stage_budget(
             registry,
             records,
             2,
@@ -489,34 +462,31 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
             sizeof error
         );
         REQUIRE(stage);
-        game_source_commit(stage);
+        source_commit(stage);
         REQUIRE(
             remaining == budget - execution_module_storage_bytes(module) -
                              execution_module_storage_bytes(library)
         );
         afree(services);
         REQUIRE(registry);
-        REQUIRE(
-            game_source_registered(registry, "Persist") &&
-            game_source_registered(registry, "Depot")
-        );
+        REQUIRE(source_registered(registry, "Persist") && source_registered(registry, "Depot"));
         ecs_entity entity = ecs_world_create_entity(world);
         REQUIRE(
             ecs_world_record_add(world, entity, prepared_counter_component.id, NULL, 0) == ECS_OK
         );
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-        REQUIRE(game_source_attach(registry, entity, "Persist", false, 0, 0) == FLOW_OK);
-        REQUIRE(game_source_step(registry, 0, 0) == FLOW_OK);
+        REQUIRE(source_attach(registry, entity, "Persist", false, 0, 0) == FLOW_OK);
+        REQUIRE(source_step(registry, 0, 0) == FLOW_OK);
         const prepared_counter *counter = ecs_component_data(
             world,
             entity,
             prepared_counter_component.id
         );
         REQUIRE(counter && counter->value == 1);
-        game_source_registry_free(registry);
+        source_registry_free(registry);
         registry = NULL;
         for (int failure = 0; failure < 3; failure++) {
-            game_package_module invalid[] = { records[0], records[1] };
+            package_module invalid[] = { records[0], records[1] };
             if (failure == 0) {
                 invalid[1].id = invalid[0].id;
             } else if (failure == 1) {
@@ -526,7 +496,7 @@ TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
             }
             error[0] = 0;
             apush(services, ((service_binding){ EXECUTION_LOG_SERVICE, &logger }));
-            registry = game_package_load(world, invalid, 2, &link, services, backends[b], error, sizeof error);
+            registry = package_load(world, invalid, 2, &link, services, backends[b], error, sizeof error);
             afree(services);
             REQUIRE(!registry && error[0]);
         }
@@ -646,7 +616,7 @@ TEST_CASE(prepared_package_validates_complete_external_closure)
             );
             REQUIRE(execution_module_import_at(closure_middles[i], 0) == closure_leaves[i]);
         }
-        game_package_module records[4];
+        package_module records[4];
         const char *names[] = { "Closure", "GoodClosure", "BadClosure", "EventClosure" };
         for (int i = 0; i < 4; i++) {
             module = execution_prepared_read(
@@ -658,7 +628,7 @@ TEST_CASE(prepared_package_validates_complete_external_closure)
                 sizeof error
             );
             REQUIRE(module && execution_module_import_count(module) == 1);
-            records[i] = (game_package_module){
+            records[i] = (package_module){
                 .name = names[i],
                 .id = execution_module_id(module),
                 .data = closure_bytes[7 + i].data,
@@ -668,17 +638,17 @@ TEST_CASE(prepared_package_validates_complete_external_closure)
             module = NULL;
         }
         world = ecs_world_new();
-        registry = game_package_load(world, records, 2, &link, NULL, backends[b], error, sizeof error);
+        registry = package_load(world, records, 2, &link, NULL, backends[b], error, sizeof error);
         REQUIRE(
-            registry && game_source_registered(registry, "Closure") &&
-            game_source_registered(registry, "GoodClosure")
+            registry && source_registered(registry, "Closure") &&
+            source_registered(registry, "GoodClosure")
         );
-        game_source_registry_free(registry);
+        source_registry_free(registry);
         registry = NULL;
         for (int i = 2; i < 4; i++) {
-            game_package_module conflicting[] = { records[0], records[i] };
+            package_module conflicting[] = { records[0], records[i] };
             error[0] = 0;
-            registry = game_package_load(world, conflicting, 2, &link, NULL, backends[b], error, sizeof error);
+            registry = package_load(world, conflicting, 2, &link, NULL, backends[b], error, sizeof error);
             REQUIRE(!registry);
             REQUIRE(strstr(error, i == 2 ? "conflicting generations" : "conflicting declarations"));
         }

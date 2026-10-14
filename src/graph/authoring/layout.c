@@ -57,13 +57,13 @@ int graph_layout_band(const node *n)
         return LAYOUT_BAND_OTHER;
     }
     const char *name = graph_event_name(n);
-    if (game_host_event_is(name, GAME_HOST_EVENT_BEGIN)) {
+    if (host_event_is(name, HOST_EVENT_BEGIN)) {
         return LAYOUT_BAND_BEGIN;
     }
-    if (game_host_event_is(name, GAME_HOST_EVENT_TICK)) {
+    if (host_event_is(name, HOST_EVENT_TICK)) {
         return LAYOUT_BAND_TICK;
     }
-    return game_host_event_reserved(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
+    return host_event_reserved(name) ? LAYOUT_BAND_HOST : LAYOUT_BAND_CUSTOM;
 }
 
 bool graph_pin_visible(const graph *g, const node *n, bool output, int pin)

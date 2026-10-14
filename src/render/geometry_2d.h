@@ -7,13 +7,13 @@
 #include <stdbool.h>
 
 /* Project a 3D authored primitive onto the gameplay plane. Physics dimensions
- * remain owned by GameCollider; this helper only creates visual SDF geometry. */
+ * remain owned by Collider; this helper only creates visual SDF geometry. */
 bool render_geometry_2d_project(
-    const GameGeometry3D *geometry,
-    const GameAppearance *fallback,
-    const GameVisualTransform *visual,
+    const Geometry3D *geometry,
+    const Appearance *fallback,
+    const VisualTransform *visual,
     float heading,
-    GameAppearance *appearance,
+    Appearance *appearance,
     float *angle
 );
 
@@ -22,7 +22,7 @@ bool render_geometry_2d_project(
 bool render_geometry_2d_mesh_bounds(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
+    const Transform *position,
     CF_V2 *min,
     CF_V2 *max,
     char *error,

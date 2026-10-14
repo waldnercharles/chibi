@@ -1,6 +1,6 @@
 name "Sun"
 components {
-    GAME.GameDirectionalLight {
+    DirectionalLight {
         angular_diameter 3.0
         color 0xffffffff
         direction x=0.45 y=-0.85 z=-0.4

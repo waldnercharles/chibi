@@ -351,7 +351,7 @@ static void add_symbol(const navigation *nav, yyjson_mut_doc *doc, yyjson_mut_va
     if (symbol.asset >= 0 && symbol.kind != REFERENCE_SYMBOL_EVENT) {
         add_asset(nav, doc, value, symbol.asset, true);
     }
-    if (symbol.kind == REFERENCE_SYMBOL_EVENT && game_host_event_reserved(symbol.name)) {
+    if (symbol.kind == REFERENCE_SYMBOL_EVENT && host_event_reserved(symbol.name)) {
         yyjson_mut_obj_add_bool(doc, value, "host", true);
     }
 }
@@ -524,7 +524,7 @@ static void add_item_identity(
     yyjson_mut_obj_add_str(doc, object, "kind", CALL_KINDS[item->kind]);
     if (item->kind == CALL_EVENT) {
         add_text(doc, object, "name", item->name);
-        if (game_host_event_reserved(item->name)) {
+        if (host_event_reserved(item->name)) {
             yyjson_mut_obj_add_bool(doc, object, "host", true);
         }
         if (item->asset >= 0) {

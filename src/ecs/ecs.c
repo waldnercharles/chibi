@@ -123,7 +123,8 @@ static void update_execution_column(ecs_world *world, int index)
         .data = c->desc.column_base,
         .occupancy = c->occupancy,
         .count = c->count,
-        .singleton = c->singleton
+        .singleton = c->singleton,
+        .type = c->desc.type
     };
     world->execution.columns = world->execution_columns;
     world->execution.lookup = world->component_lookup;
@@ -213,6 +214,9 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
                 sizeof *c->modified
             );
         }
+        if (c->versions) {
+            c->versions = ecs_grow_storage(c->versions, old, count, sizeof *c->versions);
+        }
         update_execution_column(world, i);
     }
     for (int i = 0; i < acount(world->relationships); i++) {
@@ -254,6 +258,7 @@ static int reserve_component(ecs_world *world, ecs_component *component, uint32_
 
 static void occupancy_count(ecs_world *world, ecs_component *component, uint32_t slot, int change)
 {
+    query_revision_change(&component->query_revision);
     component->count += change;
     component->singleton ^= slot;
     ecs_execution_column *column = &world->execution_columns[component - world->components];
@@ -378,6 +383,18 @@ static bool world_observes(const ecs_world *world, ecs_event event)
 /* Writers of one component may run on several threads, so marks are atomic. */
 static void mark_modified(ecs_component *component, uint32_t slot)
 {
+    if (component->versions) {
+        uint64_t previous = __atomic_load_n(&component->versions[slot], __ATOMIC_RELAXED);
+        while (previous < UINT64_MAX && !__atomic_compare_exchange_n(
+                                            &component->versions[slot],
+                                            &previous,
+                                            previous + 1,
+                                            false,
+                                            __ATOMIC_RELAXED,
+                                            __ATOMIC_RELAXED
+                                        )) {
+        }
+    }
     if (component->modified) {
         __atomic_fetch_or(&component->modified[slot / 64u], UINT64_C(1) << (slot % 64u), __ATOMIC_RELAXED);
         __atomic_store_n(&component->dirty, true, __ATOMIC_RELAXED);
@@ -495,6 +512,7 @@ static int apply_create(ecs_world *world, const ecs_command *command)
     world->occupied[slot] = 1;
     world->pending_destroy[slot] = DESTROY_NONE;
     world->live_count++;
+    query_revision_change(&world->query_revision);
     return ECS_OK;
 }
 
@@ -611,6 +629,7 @@ static void retire_entity(ecs_world *world, ecs_entity entity)
     world->depth[entity.slot] = 0;
     world->pending_destroy[entity.slot] = DESTROY_APPLIED;
     world->live_count--;
+    query_revision_change(&world->query_revision);
     advance_generation(world, entity.slot);
     trim_high_water(world);
 }
@@ -659,7 +678,11 @@ static int add_component(ecs_world *world, ecs_component *component, ecs_entity 
     if (value) {
         memcpy(address, value, component->desc.element_size);
     }
+    type_validate_ranges(component->desc.type, address);
     occupancy_add(world, component, entity.slot);
+    if (component->versions && !value) {
+        query_revision_change(&component->versions[entity.slot]);
+    }
     for (int i = 0; result == ECS_OK && i < acount(component->with); i++) {
         ecs_component *implied = find_component(world, component->with[i]);
         if (!component_matches(implied, entity.slot)) {
@@ -695,6 +718,10 @@ static int apply_add(ecs_world *world, const ecs_command *command)
             component_address(component, command->entity.slot),
             command->value,
             component->desc.element_size
+        );
+        type_validate_ranges(
+            component->desc.type,
+            component_address(component, command->entity.slot)
         );
         mark_modified(component, command->entity.slot);
     }
@@ -896,11 +923,43 @@ static const ecs_relationship_desc CHILD_OF_DESC = {
     .on_delete_target = ECS_CLEANUP_DELETE,
 };
 
+static uint64_t execution_query_source(
+    const ecs_execution_view *view,
+    uint64_t owner,
+    uint64_t component,
+    uint64_t relationship,
+    int traversal
+)
+{
+    return ecs_entity_to_u64(ecs_query_source(
+        (const ecs_world *)view,
+        ecs_entity_from_u64(owner),
+        component,
+        relationship,
+        (ecs_trav)traversal
+    ));
+}
+static uint64_t execution_query_target(
+    const ecs_execution_view *view,
+    uint64_t owner,
+    uint64_t relationship,
+    int index
+)
+{
+    const ecs_world *world = (const ecs_world *)view;
+    ecs_entity entity = ecs_entity_from_u64(owner);
+    return index >= 0 && index < ecs_pair_target_count(world, entity, relationship)
+             ? ecs_entity_to_u64(ecs_pair_target(world, entity, relationship, index))
+             : 0;
+}
+
 ecs_world *ecs_world_new()
 {
     ecs_world *world = (ecs_world *)xcalloc(1, sizeof *world);
     world->free_hint = 1;
     world->execution.intern_string = execution_intern;
+    world->execution.query_source = execution_query_source;
+    world->execution.query_target = execution_query_target;
     int result = ecs_world_reserve_entities(world, INITIAL_ENTITY_SLOTS - 1);
     assert(!result);
     for (int i = 0; i < (int)(sizeof BUILTIN_COMPONENTS / sizeof *BUILTIN_COMPONENTS);
@@ -950,6 +1009,7 @@ void ecs_world_free(ecs_world *world)
         free(world->components[i].occupancy);
         afree(world->components[i].dense);
         free(world->components[i].modified);
+        free(world->components[i].versions);
         afree(world->components[i].with);
     }
     afree(world->components);
@@ -1033,6 +1093,36 @@ static bool id_taken(ecs_world *world, const ecs_component_desc *desc, ecs_compo
     return false;
 }
 
+/* Follow precisely the nested layouts that owning range validation visits.
+ * Component rows have no owner for task handles or tagged union payloads. */
+static bool component_fields_valid(const type_desc *type, const type_desc **parents, int depth)
+{
+    if (depth >= TYPE_MAX_NESTING) {
+        return false;
+    }
+    for (int i = 0; i < depth; i++) {
+        if (parents[i] == type) {
+            return false;
+        }
+    }
+    parents[depth] = type;
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (!type_field_range_valid(field) || field->type == PIN_TASK ||
+            field->type == PIN_UNION) {
+            return false;
+        }
+        if (field->type == PIN_STRUCT) {
+            const type_desc *nested = type_catalog_find(field->type_name);
+            if (nested && nested->size == field->size &&
+                !component_fields_valid(nested, parents, depth + 1)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id)
 {
     if (!world || !desc || !desc->name || !desc->name[0] || !desc->element_size ||
@@ -1042,6 +1132,10 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     }
     if (world->iteration_depth || world->applying) {
         return ECS_ERR_ITERATING;
+    }
+    const type_desc *parents[TYPE_MAX_NESTING];
+    if (!component_fields_valid(desc->type, parents, 0)) {
+        return ECS_ERR_ARGUMENT;
     }
     if (desc->id &&
         (find_component(world, desc->id) || world_relationship(world, desc->id))) {
@@ -1613,17 +1707,53 @@ int ecs_component_read_field(
     return ECS_OK;
 }
 
+static unsigned string_hash(const char *text)
+{
+    unsigned hash = 2166136261u;
+    for (const unsigned char *p = (const unsigned char *)text; *p; p++) {
+        hash = (hash ^ *p) * 16777619u;
+    }
+    return hash;
+}
+
+static int string_bucket(char *const *strings, int capacity, const char *text)
+{
+    unsigned mask = (unsigned)capacity - 1;
+    unsigned bucket = string_hash(text) & mask;
+    while (strings[bucket] && strcmp(strings[bucket], text)) {
+        bucket = (bucket + 1) & mask;
+    }
+    return (int)bucket;
+}
+
 const char *ecs_world_intern_string(ecs_world *world, const char *text)
 {
     assert(world);
     text = text ? text : "";
-    for (int i = 0; i < acount(world->field_strings); i++) {
-        if (!strcmp(world->field_strings[i], text)) {
-            return world->field_strings[i];
+    int capacity = acount(world->field_strings);
+    int bucket = capacity ? string_bucket(world->field_strings, capacity, text) : 0;
+    if (capacity && world->field_strings[bucket]) {
+        return world->field_strings[bucket];
+    }
+    if (world->field_string_count >= capacity - capacity / 4) {
+        assert(capacity <= INT_MAX / 2);
+        int next = capacity ? capacity * 2 : 16;
+        char **strings = NULL;
+        asetlen(strings, next);
+        memset(strings, 0, (size_t)next * sizeof *strings);
+        for (int i = 0; i < capacity; i++) {
+            char *entry = world->field_strings[i];
+            if (entry) {
+                strings[string_bucket(strings, next, entry)] = entry;
+            }
         }
+        afree(world->field_strings);
+        world->field_strings = strings;
+        bucket = string_bucket(strings, next, text);
     }
     char *owned = xstrdup(text);
-    apush(world->field_strings, owned);
+    world->field_strings[bucket] = owned;
+    world->field_string_count++;
     return owned;
 }
 
@@ -1689,7 +1819,9 @@ static bool field_size_valid(const type_field *field)
             const type_desc *type = type_catalog_find(field->type_name);
             return type && type->size && type->size == field->size;
         }
-        case PIN_FLOW: return false;
+        case PIN_FLOW:
+        case PIN_TASK:
+        case PIN_UNION: return false;
     }
     return field->size == size;
 }
@@ -1807,7 +1939,12 @@ static int write_value(
                               : *field;
     target.offset = offset;
     if (!managed) {
-        pin_write_field(row, &target, value);
+        if (whole) {
+            memmove(row, value.ptr, type->size);
+            type_validate_ranges(type, row);
+        } else {
+            pin_write_field(row, &target, value);
+        }
         return ECS_OK;
     }
     bool owned = entity.slot < (uint32_t)acount(component->owned_rows) &&
@@ -1816,6 +1953,7 @@ static int write_value(
     pin_read_field(row, &target, &previous);
     if (owned && (whole ? row_equal(type, row, value.ptr)
                         : pin_value_equal(&previous, &value))) {
+        type_validate_ranges(type, row);
         return ECS_OK;
     }
     if (entity.slot >= INT_MAX) {
@@ -1825,11 +1963,16 @@ static int write_value(
     arena next = { 0 };
     void *snapshot = arena_alloc(&next, type->size);
     memcpy(snapshot, row, type->size);
-    pin_write_field(snapshot, &target, value);
+    if (whole) {
+        memcpy(snapshot, value.ptr, type->size);
+    } else {
+        pin_write_field(snapshot, &target, value);
+    }
     if (pin_struct_snapshot_fields(&next, type, snapshot)) {
         arena_free(&next);
         return ECS_ERR_ARGUMENT;
     }
+    type_validate_ranges(type, snapshot);
     if (entity.slot >= (uint32_t)acount(component->owned_rows)) {
         int before = acount(component->owned_rows);
         asetlen(component->owned_rows, slot + 1);
@@ -1874,8 +2017,50 @@ int ecs_component_modified(ecs_world *world, ecs_entity entity, ecs_component_id
         !component_matches(component, entity.slot)) {
         return ECS_ERR_COMPONENT;
     }
+    type_validate_ranges(
+        component->desc.type,
+        component_address(component, entity.slot)
+    );
     mark_modified(component, entity.slot);
     return ECS_OK;
+}
+
+int ecs_component_track_changes(ecs_world *world, ecs_component_id id)
+{
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    if (!component) {
+        return ECS_ERR_COMPONENT;
+    }
+    if (world->iteration_depth || world->applying) {
+        return ECS_ERR_ITERATING;
+    }
+    if (!component->versions) {
+        component
+            ->versions = xcalloc(world->execution.slot_count, sizeof *component->versions);
+    }
+    return ECS_OK;
+}
+
+uint64_t ecs_component_version(const ecs_world *world, ecs_entity entity, ecs_component_id id)
+{
+    const ecs_component *component = world ? find_component((ecs_world *)world, id)
+                                           : NULL;
+    if (!component || !component->versions || !entity_matches(world, entity) ||
+        !component_matches(component, entity.slot)) {
+        return 0;
+    }
+    return __atomic_load_n(&component->versions[entity.slot], __ATOMIC_RELAXED);
+}
+
+size_t ecs_world_change_tracking_bytes(const ecs_world *world)
+{
+    size_t bytes = 0;
+    for (int i = 0; i < acount(world->components); i++) {
+        if (world->components[i].versions) {
+            bytes += (size_t)world->execution.slot_count * sizeof(uint64_t);
+        }
+    }
+    return bytes;
 }
 
 int ecs_world_iteration_begin(ecs_world *world)

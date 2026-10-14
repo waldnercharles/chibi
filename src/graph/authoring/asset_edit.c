@@ -541,7 +541,13 @@ static node *behavior_asset_add_call_node(behavior_asset *asset, graph *caller, 
     if (!call) {
         return NULL;
     }
-    if (graph_set_node_reference(caller, call, target->graph_id, target->name) != 0) {
+    bool named = target->owner != asset && target->owner->transient_function_ids;
+    if (graph_set_node_reference(
+            caller,
+            call,
+            named ? 0 : target->graph_id,
+            target->name
+        ) != 0) {
         graph_remove_node(caller, call);
         return NULL;
     }
@@ -569,6 +575,15 @@ static node *behavior_asset_add_call_node(behavior_asset *asset, graph *caller, 
             behavior_asset_add_call_pin(caller, call, 1, &ret->input_pins[i]) != 0) {
             graph_remove_node(caller, call);
             return NULL;
+        }
+    }
+    if (named) {
+        for (int side = 0; side < 2; side++) {
+            pin_spec *pins = side ? call->output_pins : call->input_pins;
+            int count = side ? call->output_count : call->input_count;
+            for (int i = 0; i < count; i++) {
+                pins[i].declaration_id = 0;
+            }
         }
     }
     return call;

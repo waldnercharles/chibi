@@ -53,8 +53,8 @@ static bool reference_run_contains(const uint64_t *nodes, uint64_t id)
     return false;
 }
 
-/* GameMeshParts.parts holds code parts, each naming its material. */
-#define MESH_PARTS "GameMeshParts"
+/* MeshParts.parts holds code parts, each naming its material. */
+#define MESH_PARTS "MeshParts"
 
 reference_asset_kind reference_domain_kind(behavior_domain domain)
 {
@@ -300,7 +300,7 @@ static bool set_field(const node *n, int input, const ecs_component_desc *c, cha
            component_node_split(n) && input >= component_node_setting(n) + 2;
 }
 
-/* A field's text default that names an asset, as a Set of GameUi.document. */
+/* A field's text default that names an asset, as a Set of Ui.document. */
 static void add_field_default(const site *s, const char *component, const char *field, const pin_spec *pin)
 {
     int named = reference_named_field(component, field);
@@ -358,7 +358,7 @@ static void add_component_access(const site *s)
 }
 
 /* A struct default of a component type whose fields name assets, as a
- * GameShader value's material. */
+ * Shader value's material. */
 static void add_struct_default(const site *s, const pin_spec *pin)
 {
     const pin_value *value = &pin->default_value;
@@ -641,26 +641,17 @@ static av_value *override_components(av_value *root)
     return components ? components : root;
 }
 
-/* An override names a component by name, or by its GAME. key. */
-static av_value *override_component(av_value *components, const char *name)
-{
-    char key[128];
-    snprintf(key, sizeof key, "GAME.%s", name);
-    av_value *value = av_obj_get(components, name);
-    return value ? value : av_obj_get(components, key);
-}
-
 /* An override that sets the field, or removes its component. */
 static bool overridden(av_value *components, const char *component, const char *field)
 {
-    av_value *value = override_component(components, component);
+    av_value *value = av_obj_get(components, component);
     return av_is_null(value) || av_obj_get(value, field);
 }
 
 static void add_prototype_fields(
     reference_index *index,
     reference at,
-    const game_prototype *prototype,
+    const prototype *prototype,
     av_value *overrides
 )
 {
@@ -671,7 +662,7 @@ static void add_prototype_fields(
                 reference_named_field_at(i).component,
                 reference_named_field_at(i).field
             ) &&
-            game_prototype_read_field(
+            prototype_read_field(
                 prototype,
                 reference_named_field_at(i).component,
                 reference_named_field_at(i).field,
@@ -682,7 +673,7 @@ static void add_prototype_fields(
         }
     }
     if (!overridden(overrides, MESH_PARTS, "parts") &&
-        game_prototype_read_field(prototype, MESH_PARTS, "parts", &value) == 0 &&
+        prototype_read_field(prototype, MESH_PARTS, "parts", &value) == 0 &&
         value.str && value.str[0]) {
         add_mesh_parts(index, at, value.str);
     }
@@ -691,10 +682,7 @@ static void add_prototype_fields(
 static void add_override_fields(reference_index *index, reference at, av_value *components)
 {
     for (int i = 0; i < reference_named_field_count(); i++) {
-        av_value *component = override_component(
-            components,
-            reference_named_field_at(i).component
-        );
+        av_value *component = av_obj_get(components, reference_named_field_at(i).component);
         const char *value = av_get_str(
             av_obj_get(component, reference_named_field_at(i).field)
         );
@@ -702,9 +690,7 @@ static void add_override_fields(reference_index *index, reference at, av_value *
             reference_add_named(index, at, i, value);
         }
     }
-    const char *parts = av_get_str(
-        av_obj_get(override_component(components, MESH_PARTS), "parts")
-    );
+    const char *parts = av_get_str(av_obj_get(av_obj_get(components, MESH_PARTS), "parts"));
     if (parts && parts[0]) {
         add_mesh_parts(index, at, parts);
     }
@@ -719,7 +705,7 @@ static void add_behavior(reference_index *index, reference at, const char *behav
     reference_index_add_reference(index, at);
 }
 
-void reference_index_add_prototype(reference_index *index, int source, const game_prototype *prototype)
+void reference_index_add_prototype(reference_index *index, int source, const prototype *prototype)
 {
     reference at = { .source = source };
     reference use = at;
@@ -736,10 +722,10 @@ void reference_index_add_prototype(reference_index *index, int source, const gam
         add_behavior(index, at, prototype->graphs[i]);
     }
     add_prototype_fields(index, at, prototype, NULL);
-    const game_scene_document *children = prototype->children;
+    const scene_document *children = prototype->children;
     for (int i = 0; children && i < acount(children->entities); i++) {
-        const game_scene_entity *child = &children->entities[i];
-        char *path = game_scene_document_entity_path(children, i);
+        const scene_entity *child = &children->entities[i];
+        char *path = scene_document_entity_path(children, i);
         reference_object object = {
             .name = path,
             .prototype = child->prototype,

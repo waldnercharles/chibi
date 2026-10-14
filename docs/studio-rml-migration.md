@@ -10,6 +10,29 @@
 > are historical records, not current workflows. Measurements and source hashes
 > describe the recorded revisions; see [testing](testing.md) for current C tooling.
 
+## Current scope, 2026-10-11
+
+[Current status](status.md) owns the active backlog and parallel task boundaries.
+Studio code and acceptance cases now live in
+[chibi-studio](https://github.com/waldnercharles/chibi-studio).
+Nested scenes, parent-relative transforms, picking and hierarchy undo are
+implemented. Interactive Outliner reparenting/reordering now uses the shared
+[scene-move contract](scene-authoring.md), with grouped history, persistence and
+collaboration coverage. Studio #54's authored parent/path preservation is included
+through merged #60. The combined candidate's final execution evidence belongs in
+the integration PR.
+
+The hold on converting the other panels to behaviors remains in force. Approval
+of Outliner hierarchy editing or visible-panel performance work does not release
+that hold. The October 5 checklist below is a historical audit, including its
+retired MCP operations and former source paths. Use
+[Studio's acceptance inventory](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/README.md)
+for current undo, dirty-prompt, selection, keyboard and viewport cases; their
+existence is not a fresh execution result. Other old bug reports need reproduction
+before they become current work.
+
+## Migration record
+
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
@@ -18,7 +41,7 @@ Outliner runs on KDL behaviors over editor nodes (Behavior-driven panels, a spik
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
-## Remaining work
+## Historical remaining work, 2026-10-05
 
 Reconciled against merged `main` at `de73cb85652f43694957377dfc3607d2e15da386`
 on 2026-10-05 under [CUT-58](https://linear.app/cute-engine/issue/CUT-58).
@@ -79,9 +102,10 @@ Wave 2; re-measure with `uptime` below 4 first)
   shows, even closed.
 - [ ] Stencil clip edges aren't anti-aliased (GPU backend).
 
-**Postponed** (Postponed): graph node bodies and their literals, Zep's
-surface, per-frame geometry, toasts, tooltips' controller, Outliner
-reorder/reparent (needs scene hierarchy first).
+**Postponed at this audit** (Postponed): graph node bodies and their literals,
+Zep's surface, per-frame geometry, toasts, tooltips' controller, Outliner
+reorder/reparent. The former scene-hierarchy prerequisite is implemented;
+the current Outliner implementation is recorded above.
 
 **Open questions** (Open questions): 1, 2, 4, 6 and 7.
 
@@ -113,9 +137,10 @@ implementation; they do not establish current browser acceptance.
 
 ### Audit and implementation slices (CUT-58)
 
-The unchecked items above remain open; listing a held item does not release it.
-These are bounded follow-ups, not permission for a UI redesign. No work here
-changes CUT-50's native test selectors or production performance paths.
+The unchecked items above record the October 5 audit; current status and later
+evidence determine which remain open. Listing a held item does not release it.
+These are bounded follow-ups, not permission for a UI redesign. Historical results below do not validate the combined candidate. The current
+visible-panel changes and their bounded coverage are recorded in [current status](status.md).
 
 | Checklist item | Status, evidence and next slice |
 |---|---|
@@ -130,9 +155,9 @@ changes CUT-50's native test selectors or production performance paths.
 | EnumField width, hidden data-for template/last-child, use-wrapper margins | Open layout slices. EnumField still sizes its dropdown with `--anchor-width`; the D1 reports have not been freshly rendered/reproduced here. Separate anchor geometry from structural-selector and margin semantics. |
 | Two-area Members/Assets/Output/Inspector window state | Open, decision-dependent on question 7. `studio_members.c`, `studio_output.c`, `studio_assets.c` and `studio_inspect.c` still pass panel/cache-owned list state to `ui_list_window`. Resolve supported area semantics before expanding state ownership. |
 | Output stationary-pointer hover | Open Output slice; historical P4 observation, not freshly reproduced here. Keep follow-scroll and pointer-hit behavior covered together. |
-| Closed debug-target-list updates | Open header-source slice. `studio_sources.c` registers `graph_targets` against BehaviorHeader; `studio_graph_targets_sync` builds choices when the graph/target shows, without checking menu-open state. Coordinate any profiling with CUT-50. |
+| Closed debug-target-list updates | The combined candidate constructs choices only when the menu is open, with revision invalidation and immediate refresh on reopen. Studio's panel-idle case covers closed/open work counts and runtime detach/attach. Historical CUT-50 measurements do not establish current elapsed-time speedup. |
 | Stencil edge antialiasing | Open renderer slice in `rml_backend.c`; needs bounded render evidence, not a CPU-only pass or a new clipping design. |
-| Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller, Outliner reorder/reparent | Explicitly postponed; retain the Postponed table's reasons and dependencies. |
+| Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller | Postponed at this audit; retain the Postponed table's reasons. Outliner reorder/reparent now has reviewed implementation and checked-in coverage in [current status](status.md). |
 | Open questions 1, 2, 4, 6, 7; graph zoom/pan; terrain LOD | User decisions remain unresolved. No parity tolerance, native-surface permanence, widget ownership, layout policy or terrain threshold chosen here. |
 | Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
 | Historical active-checkout web Studio assets | Implemented by the retired engine development server. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
@@ -250,11 +275,11 @@ properties: { mode, live, locked, lockTip, query,
   tabs: [{ id, icon, tip, on, sep }],
   identity: { name, prototype, chips: [{ label, count }] },
   panels: [{ key, title, icon, badge, open, menu,
-    rows: [{ id: "e12/GameTransform.position", label, about,
+    rows: [{ id: "e12/Transform.position", label, about,
              overridden, mixed, readonly, invalid,
              number: [], vector: [{ axes: [{ key, label, value, step, precision, min, max, unit }] }],
              bool: [], choice: [], color: [], text: [], asset: [], entity: [] }] }] }
-choices: { fields: { GameBody: { type: TABLE } }, assets: { prototype: TABLE },
+choices: { fields: { Body: { type: TABLE } }, assets: { prototype: TABLE },
   editors: TABLE, panels: { label, icon, tools: [], others: [] } }
 TABLE: { label, icon, groups: [{ label, options: [{ value, label, icon }] }] }
 Outliner's self (its behaviors' Set UI Data): { root: { key, label, icon, parent, open, depth },
@@ -422,7 +447,7 @@ pack, registered only in the editor targets' registry (`EDITOR_REGISTRY`:
 chibi, chibi_ctl, the UI bench, test_suite), so games' runtimes never list
 it. Its nodes run on the `studio` service, Studio and one call
 (`studio_node_run`, a switch in `studio_node_calls.c`), which only Studio's
-own world binds (`game_behavior_bind_service`); elsewhere they fail with
+own world binds (`behavior_bind_service`); elsewhere they fail with
 "Editor nodes require Studio". Only the Studio project offers them
 (category Studio): searchNodes, and the graph editor's node search (the Add
 menu, the palette's add-node search and a dragged wire's, all
@@ -457,7 +482,7 @@ Add list.
 
 **Events.** Studio runs a panel's UI events on its entity's behaviors in the
 frame that sent them (`dispatch` in `studio_ui.c`, over
-`game_behavior_dispatch`), then `Refresh` when it is due (next paragraph),
+`behavior_dispatch`), then `Refresh` when it is due (next paragraph),
 as a source syncs, then the events behaviors sent each other (Send Event),
 shows what they set and applies their UI effects before RmlUi lays the
 frame out; an effect that sends events of its own (a focus move blurs a
@@ -476,7 +501,7 @@ activations to its entity's behaviors with `ui_activation_send`, the call
 Studio's `dispatch` makes, before it shows what behaviors set, so a click's
 result is on screen in the frame after the pointer reached the document (the
 player, the editor's Scene and Play, and the web build alike); before, the
-activation queued for the next simulation step (`game_entities_request_event`)
+activation queued for the next simulation step (`entities_request_event`)
 and showed a step later still. The payload is the same: the event asset of
 its name in the world's definitions (`ui_world.live`), the pointer's
 modifier keys (the viewport hosts pass them, traded on a Mac as for keys, so
@@ -556,7 +581,7 @@ effect rounds (studio_ui.c, render/ui.c's `ui_activation_send` and
 `ui_mount_pending`), which games' documents share; native list windows with `window` events and one-shot
 reveal (render/ui.c); Show UI Popover and Reveal UI List Row (game.ui); area
 keys (`ui_mount_area_key`); events reaching the innermost mount
-(studio_ui.c); host services for behavior worlds (`game_behavior_bind_service`);
+(studio_ui.c); host services for behavior worlds (`behavior_bind_service`);
 Text Equal (expressions cannot compare text); flow nodes' outputs in the
 run's arena (`flow_context_scratch`).
 
@@ -564,9 +589,9 @@ run's arena (`flow_context_scratch`).
 when a batch adds a second Behavior Expression with the same source; a
 `connect` from a bool to a number input is dropped without a diagnostic;
 `add_variable_node` ignores `inputs` (use `set_input`); a `connect` from an
-event's `CF_V2` payload to a `CF_V2` input chose a GameTransform-to-CF_V2
-conversion (`game_transform_to_cf`), which ran right only because a
-GameTransform starts with its position (removed by hand); a bool cannot feed
+event's `CF_V2` payload to a `CF_V2` input chose a Transform-to-CF_V2
+conversion (`transform_to_cf`), which ran right only because a
+Transform starts with its position (removed by hand); a bool cannot feed
 arithmetic or Select (no bool to number conversion), so folds are Branches.
 buildGraph does not refuse a studio node in another project's behavior; its
 validateAsset says so.
@@ -586,7 +611,7 @@ frames, medians:
 | Rename in place: Enter until the row shows it | 4.716 / 4.569 / 4.533 | 4.941 / 4.852 / 5.053 | 1.07× | 1 / 1 | 1,189 / 1,190 | 2 / 2 | 0.40 |
 | A filter keystroke, "Marker 5" to "Marker 51" | 4.699 / 4.918 / 4.650 | 5.198 / 5.183 / 5.343 | 1.10× | 1 / 1 | 607 / 653 | 2 / 2 | 0.89 |
 
-Behavior time is `game_behavior_profile`'s inclusive time over the step's
+Behavior time is `behavior_profile`'s inclusive time over the step's
 frames. The C source shows a click's selection a frame late (it syncs
 before the click's intent runs), so its click takes two UI frames; the
 behaviors show it in the frame of the click. Every refresh re-runs Scene
@@ -2653,7 +2678,7 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
 | Chart, wire and grid geometry; color plane; drag ghost; Inspector and Designer highlights | Per-frame geometry with no document structure |
 | Toasts | Springs and swipe need native motion; revisit after W3 |
 | Tooltips | Already attribute-driven; the controller stays native, as a browser's `title` does |
-| Reordering and reparenting objects by dragging Outliner rows | Scenes have no hierarchy, and object order has no Undo step, collaboration action or checkpoint record; it is a scene-authoring feature to add first. TreeRow's drop zones and the insertion line (F4) are ready for it |
+| Reordering and reparenting objects by dragging Outliner rows | Originally postponed for missing hierarchy. Nested scenes, transforms, picking and undo now exist; interactive move/reparent with ordering, grouped history, collaboration and checkpoints is implemented in the combined review candidate described by [current status](status.md). TreeRow's drop zones and insertion line do not establish that interaction's acceptance. |
 
 ## Risks
 

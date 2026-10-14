@@ -35,6 +35,9 @@ typedef struct
     const char *image;
     shader_image_filter filter;
     shader_image_wrap wrap;
+    /* Scale, then counterclockwise rotation in radians about (0, 0), then
+     * offset. Identity requires scale = { 1, 1 }; zero scale is supported. */
+    float offset[2], scale[2], rotation;
 } standard_texture;
 
 /* glTF 2.0's metallic-roughness material. Base color and emission are linear;

@@ -16,6 +16,10 @@
  *           movement x=1 y=0
  *           aim x=0 y=1
  *           (array)controls "Mouse Left"
+ *           (array)controllers {
+ *               - connected=#true { (array)buttons "Dpad Left"; }
+ *               - connected=#true { (array)buttons "A"; }
+ *           }
  *       }
  *       - frame=90 { movement x=0 y=-1; }
  *   }

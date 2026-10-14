@@ -34,8 +34,9 @@ the same. Analytic shapes without a destructible mask keep their existing render
 
 - `src/render/material.c` and `.h`: narrow border geometry helper and scratch lifetime.
 - `src/render/scene_renderer.c`: consume those rectangles instead of row boxes.
-- `test/material_sampling.c`: independent occupancy/no-overlap checks and GPU
-  comparisons over rotations, subpixel phases and irregular masks.
+- `test/render/material_borders.c`: independent occupancy/no-overlap checks
+  (`render-resources`), and `test/render/material_sampling.c`: GPU comparisons
+  over rotations, subpixel phases and irregular masks (`material-sampling`).
 
 ## Matched native results
 

@@ -1,10 +1,10 @@
-#ifndef CHIBI_GAME_VISUAL_REACTION_DEFINITION_H
-#define CHIBI_GAME_VISUAL_REACTION_DEFINITION_H
+#ifndef CHIBI_VISUAL_REACTION_DEFINITION_H
+#define CHIBI_VISUAL_REACTION_DEFINITION_H
 #include "runtime/native_definitions.h"
 
-#define GAME_VISUAL_REACTION_TRIGGER_NAME "Trigger Visual Reaction"
-#define GAME_VISUAL_REACTION_TRIGGER_SOURCE "trigger_visual_reaction"
-#define GAME_VISUAL_REACTION_TRIGGER_INPUTS(X)                                 \
+#define VISUAL_REACTION_TRIGGER_NAME "Trigger Visual Reaction"
+#define VISUAL_REACTION_TRIGGER_SOURCE "trigger_visual_reaction"
+#define VISUAL_REACTION_TRIGGER_INPUTS(X)                                      \
     X("Exec",                                                                  \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -45,7 +45,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       true,                                                                    \
       ((pin_value){ .type = PIN_HANDLE }))
-#define GAME_VISUAL_REACTION_TRIGGER_OUTPUTS(X)                                \
+#define VISUAL_REACTION_TRIGGER_OUTPUTS(X)                                     \
     X("Then",                                                                  \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -57,14 +57,14 @@
       false,                                                                   \
       ((pin_value){ .type = PIN_FLOW }))
 
-#define GAME_VISUAL_REACTION_NAME GAME_VISUAL_REACTION_TRIGGER_NAME
-#define GAME_VISUAL_REACTION_SOURCE GAME_VISUAL_REACTION_TRIGGER_SOURCE
-#define GAME_VISUAL_REACTION_INPUTS(X) GAME_VISUAL_REACTION_TRIGGER_INPUTS(X)
-#define GAME_VISUAL_REACTION_OUTPUTS(X) GAME_VISUAL_REACTION_TRIGGER_OUTPUTS(X)
+#define VISUAL_REACTION_NAME VISUAL_REACTION_TRIGGER_NAME
+#define VISUAL_REACTION_SOURCE VISUAL_REACTION_TRIGGER_SOURCE
+#define VISUAL_REACTION_INPUTS(X) VISUAL_REACTION_TRIGGER_INPUTS(X)
+#define VISUAL_REACTION_OUTPUTS(X) VISUAL_REACTION_TRIGGER_OUTPUTS(X)
 
-extern const native_definition_pack GAME_VISUAL_REACTION_DEFINITION_PACK;
+extern const native_definition_pack VISUAL_REACTION_DEFINITION_PACK;
 
-#define GAME_VISUAL_REACTION_TRIGGER_PRESENTATION                              \
+#define VISUAL_REACTION_TRIGGER_PRESENTATION                                   \
     .category = "Visual/Motion",                                               \
     .keywords = "trigger visual reaction bump recoil hit lift rotation",       \
     .description = "Pulses Target's visual rotation by Rotation and height "   \

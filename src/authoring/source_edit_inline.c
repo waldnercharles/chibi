@@ -30,6 +30,91 @@ static bool owned_symbol(const script_analysis *a, int function, int symbol)
     }
     return false;
 }
+static bool identifier_name(const char *name)
+{
+    static const char prefix[] = "behavior Inline { value := ";
+    size_t length = strlen(name);
+    char *text = xmalloc(sizeof prefix + length + 4);
+    snprintf(text, sizeof prefix + length + 4, "%s%s; }", prefix, name);
+    script_syntax *syntax = script_parse(text);
+    TSNode expression = ts_node_named_descendant_for_byte_range(
+        ts_tree_root_node(syntax->tree),
+        sizeof prefix - 1,
+        (uint32_t)(sizeof prefix - 1 + length)
+    );
+    bool valid = !syntax->diagnostic_count &&
+                 !strcmp(ts_node_type(expression), "identifier");
+    script_syntax_free(syntax);
+    free(text);
+    return valid;
+}
+static char *inline_name(const script_analysis *a, int function, const char *base, char **names)
+{
+    size_t length = strlen(base);
+    char *identifier = xmalloc(length + 3);
+    int count = 0;
+    if (!length || !((base[0] >= 'a' && base[0] <= 'z') ||
+                     (base[0] >= 'A' && base[0] <= 'Z') || base[0] == '_')) {
+        identifier[count++] = '_';
+    }
+    for (size_t i = 0; i < length; i++) {
+        char c = base[i];
+        identifier[count++] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                      (c >= '0' && c <= '9') || c == '_'
+                                ? c
+                                : '_';
+    }
+    identifier[count] = '\0';
+    if (!identifier_name(identifier)) {
+        memmove(identifier + 1, identifier, (size_t)count + 1);
+        identifier[0] = '_';
+    }
+    size_t size = strlen(identifier) + 32;
+    char *name = xmalloc(size);
+    for (int ordinal = 1;; ordinal++) {
+        if (ordinal == 1) {
+            snprintf(name, size, "%s", identifier);
+        } else {
+            snprintf(name, size, "%s_%d", identifier, ordinal);
+        }
+        bool collision = false;
+        for (int i = 0; i < a->symbol_count; i++) {
+            collision |= (!owned_symbol(a, function, i) &&
+                          !strcmp(a->symbols[i].name, name)) ||
+                         (names[i] && !strcmp(names[i], name));
+        }
+        if (!collision) {
+            free(identifier);
+            return name;
+        }
+    }
+}
+static bool retained_annotations(const authoring_source_presentation *p, script_range call, script_range definition)
+{
+    for (int i = 0; i < authoring_source_presentation_origin_count(p); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(p, i);
+        if (!o->node || o->pin ||
+            (!source_refactor_contains(call, o->range) &&
+             !source_refactor_contains(definition, o->range))) {
+            continue;
+        }
+        const graph *g = behavior_asset_find_graph(authoring_source_presentation_view(p), o->graph);
+        const node *n = graph_node_by_id(g, o->node);
+        if (n->breakpoint || (n->comment && n->comment[0])) {
+            return true;
+        }
+        for (int output = 0; output < 2; output++) {
+            const pin_spec *pins = output ? n->output_pins : n->input_pins;
+            int count = output ? n->output_count : n->input_count;
+            for (int j = 0; j < count; j++) {
+                if (pins[j].flags & PIN_FLAG_WATCH) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 static char *renamed(const script_analysis *a, script_range range, char **names)
 {
     text_edit *patches = NULL;
@@ -194,6 +279,9 @@ bool source_edit_inline(
         return source_refactor_fail(error, size, "Inline a whole call statement or complete assigned call result");
     }
     const script_statement *site = &a->statements[statement_index];
+    if (retained_annotations(p, site->range, function->range)) {
+        return source_refactor_fail(error, size, "Expansion would discard a breakpoint or watched value, or a node comment, on the call or authored definition");
+    }
     /* Free names retain their resolved meaning when moved into the caller.
      * Quoting a name changes its spelling, not its lexical binding. */
     for (int i = 0; i < a->use_count; i++) {
@@ -239,23 +327,11 @@ bool source_edit_inline(
             return source_refactor_fail(error, size, "Inlining must retain deferred result initializer evaluation");
         }
     }
-    char prefix[64];
-    int ordinal = 0;
-    bool collision;
-    do {
-        snprintf(prefix, sizeof prefix, "inline_%d_", ++ordinal);
-        collision = false;
-        for (int i = 0; i < a->symbol_count; i++) {
-            collision |= !strncmp(a->symbols[i].name, prefix, strlen(prefix));
-        }
-    } while (collision);
     char **names = xcalloc((size_t)a->symbol_count, sizeof *names);
     for (int i = 0; i < a->symbol_count; i++) {
         if (source_refactor_contains(function->range, a->symbols[i].declaration) &&
             a->symbols[i].kind != SCRIPT_FUNCTION) {
-            char name[96];
-            snprintf(name, sizeof name, "%ssymbol_%d", prefix, i);
-            names[i] = xstrdup(name);
+            names[i] = inline_name(a, call->right, a->symbols[i].name, names);
         }
     }
     if (selected_entry >= 0) {
@@ -348,6 +424,23 @@ bool source_edit_inline(
         free(value);
     }
     script_range body = a->statements[function->body].range;
+    const script_statement *block = &a->statements[function->body];
+    int final_return = !macro && block->child_count
+                         ? block->children[block->child_count - 1]
+                         : -1;
+    if (final_return >= 0 && a->statements[final_return].kind != SCRIPT_STMT_RETURN) {
+        final_return = -1;
+    }
+    char *exit_base = NULL;
+    source_refactor_append(
+        &exit_base,
+        "%s Completed",
+        a->symbols[function->symbol].name
+    );
+    char *exit_text = source_refactor_take(&exit_base);
+    char *exit_name = inline_name(a, call->right, exit_text, names);
+    free(exit_text);
+    bool needs_exit = false;
     body.start++;
     body.end--;
     text_edit *returns = NULL;
@@ -435,7 +528,10 @@ bool source_edit_inline(
             source_refactor_append(&text, "%s = %s;\n", names[store->symbol], value);
             free(value);
         }
-        source_refactor_append(&text, "goto %sexit;", prefix);
+        if (i != final_return) {
+            source_refactor_append(&text, "goto %s;", exit_name);
+            needs_exit = true;
+        }
         apush(
             returns,
             ((text_edit){ s->range.start - body.start,
@@ -501,7 +597,10 @@ bool source_edit_inline(
         /* A label immediately followed by an identifier assignment can parse as
          * a typed declaration. An empty sequence is an inert statement with
          * an unambiguous reserved token after the label. */
-        source_refactor_append(&replacement, "%s\n%sexit:\nsequence {}\n", new_body, prefix);
+        source_refactor_append(&replacement, "%s\n", new_body);
+        if (needs_exit) {
+            source_refactor_append(&replacement, "%s:\nsequence {}\n", exit_name);
+        }
     }
     if (valid && function->result_count && site->kind != SCRIPT_STMT_EXPRESSION) {
         char *original = source_refactor_slice(a->text, site->range);
@@ -533,6 +632,7 @@ bool source_edit_inline(
         free(names[i]);
     }
     free(names);
+    free(exit_name);
     afree(replacement);
     return valid;
 }

@@ -7,13 +7,13 @@
 #include <math.h>
 #include <string.h>
 
-const node_access GAME_MATERIAL_WRITE_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
-const node_access GAME_MATERIAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access MATERIAL_WRITE_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
+const node_access MATERIAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 
 static const char *damage_material(void *service, const pin_value *arguments, pin_value *)
 {
-    game_entities *entities = service;
-    game_materials *materials = game_entities_materials(entities);
+    entities *entities = service;
+    materials *materials = entities_materials(entities);
     if (!materials) {
         return "Damage Material requires a live world";
     }
@@ -30,15 +30,15 @@ static const char *damage_material(void *service, const pin_value *arguments, pi
     }
     /* The striking entity's light color and heat shape the impact. */
     material_impact impact = { 0 };
-    ecs_world *world = game_entities_world(entities);
+    ecs_world *world = entities_world(entities);
     ecs_entity striker = ecs_entity_from_u64(source.u64);
     if (world && source.u64 && ecs_entity_is_alive(world, striker)) {
-        const GameMaterial *light = GAME_GameMaterial_get_const(world, striker);
-        const GameIgniter *igniter = GAME_GameIgniter_get_const(world, striker);
+        const Material *light = Material_get_const(world, striker);
+        const Igniter *igniter = Igniter_get_const(world, striker);
         impact.color = light ? light->emission_color : 0;
         impact.heat = igniter && isfinite(igniter->heat) ? fmaxf(igniter->heat, 0) : 0;
     }
-    game_materials_damage(
+    materials_damage(
         materials,
         ecs_entity_from_u64(target.u64),
         (fluid_vec){ position.x, position.y },
@@ -49,30 +49,27 @@ static const char *damage_material(void *service, const pin_value *arguments, pi
     );
     return NULL;
 }
-const node_host_call GAME_MATERIAL_DAMAGE_CALL = {
+const node_host_call MATERIAL_DAMAGE_CALL = {
     .service = "game.entities",
     .invoke = damage_material,
     .missing_service = "Damage Material requires a live world",
 };
 static const char *fragment_host(void *service, const pin_value *arguments, pin_value *out)
 {
-    game_materials *materials = game_entities_materials(service);
+    materials *materials = entities_materials(service);
     if (!materials) {
         return "Is Material Fragment requires a live world";
     }
-    out[0].b = game_materials_is_fragment(
-        materials,
-        ecs_entity_from_u64(arguments[0].u64)
-    );
+    out[0].b = materials_is_fragment(materials, ecs_entity_from_u64(arguments[0].u64));
     return NULL;
 }
 static const char *pierceable_host(void *service, const pin_value *arguments, pin_value *out)
 {
-    game_materials *materials = game_entities_materials(service);
+    materials *materials = entities_materials(service);
     if (!materials) {
         return "Is Pierceable Material Fragment requires a live world";
     }
-    out[0].b = game_materials_is_pierceable_fragment(
+    out[0].b = materials_is_pierceable_fragment(
         materials,
         ecs_entity_from_u64(arguments[0].u64)
     );
@@ -80,24 +77,24 @@ static const char *pierceable_host(void *service, const pin_value *arguments, pi
 }
 static const char *release_host(void *service, const pin_value *arguments, pin_value *)
 {
-    game_materials *materials = game_entities_materials(service);
+    materials *materials = entities_materials(service);
     if (!materials) {
         return "Release Material requires a live world";
     }
-    game_materials_release(materials, ecs_entity_from_u64(arguments[0].u64));
+    materials_release(materials, ecs_entity_from_u64(arguments[0].u64));
     return NULL;
 }
-const node_host_call GAME_MATERIAL_FRAGMENT_CALL = {
+const node_host_call MATERIAL_FRAGMENT_CALL = {
     .service = "game.entities",
     .invoke = fragment_host,
     .missing_service = "Is Material Fragment requires a live world",
 };
-const node_host_call GAME_MATERIAL_PIERCEABLE_CALL = {
+const node_host_call MATERIAL_PIERCEABLE_CALL = {
     .service = "game.entities",
     .invoke = pierceable_host,
     .missing_service = "Is Pierceable Material Fragment requires a live world",
 };
-const node_host_call GAME_MATERIAL_RELEASE_CALL = {
+const node_host_call MATERIAL_RELEASE_CALL = {
     .service = "game.entities",
     .invoke = release_host,
     .missing_service = "Release Material requires a live world",

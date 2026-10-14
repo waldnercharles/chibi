@@ -48,7 +48,7 @@
       false,                                                                   \
       ((pin_value){ .type = PIN_BOOL, .type_name = "bool" }))
 
-extern const native_definition_pack GAME_VISIBILITY_DEFINITION_PACK;
+extern const native_definition_pack VISIBILITY_DEFINITION_PACK;
 
 #define VISIBILITY_SAMPLE_PRESENTATION                                         \
     .category = "Visibility", .keywords = "fog sight explored terrain memory", \

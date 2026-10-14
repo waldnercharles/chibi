@@ -8,6 +8,7 @@ typedef enum
     BEHAVIOR_SLJIT,
     BEHAVIOR_BYTECODE,
     BEHAVIOR_ORACLE,
+    BEHAVIOR_WASM,
 } behavior_backend;
 
 /* Thread-local override for newly prepared programs/instances. UNAVAILABLE

@@ -1,30 +1,30 @@
-#ifndef CHIBI_GAME_PARTICLES_H
-#define CHIBI_GAME_PARTICLES_H
+#ifndef CHIBI_PARTICLES_H
+#define CHIBI_PARTICLES_H
 
 #include "runtime/components.h"
 
-#define GAME_PARTICLE_LIMIT 2048
+#define PARTICLE_LIMIT 2048
 
-typedef struct game_particles game_particles;
+typedef struct particles particles;
 
 typedef struct
 {
     float x;
     float y;
-} game_particle_position;
+} particle_position;
 
 typedef struct
 {
-    game_particle_position position;
+    particle_position position;
     unsigned color; /* 0xRRGGBBAA */
     int count;
     float speed; /* maximum initial speed */
     float lifetime;
-} game_particle_burst;
+} particle_burst;
 
 typedef struct
 {
-    game_particle_position position, direction;
+    particle_position position, direction;
     int count;
     unsigned color, end_color;
     float speed_min, speed_max, lifetime_min, lifetime_max;
@@ -38,12 +38,12 @@ typedef struct
     float antialias;
     float elevation; /* Zero rests on the ground; otherwise center height in 3D. */
     int shape;
-} game_particle_spray;
+} particle_spray;
 
 typedef struct
 {
-    game_particle_position position;
-    game_particle_position velocity;
+    particle_position position;
+    particle_position velocity;
     unsigned color;
     float age;
     float lifetime;
@@ -57,26 +57,26 @@ typedef struct
     float elevation_velocity, angle;
     int velocity_align;
     int shape;
-} game_particle;
+} particle;
 
-float game_particle_curve_value(float start, float end, float exponent, float age);
-game_particles *game_particles_new();
-void game_particles_free(game_particles *particles);
+float particle_curve_value(float start, float end, float exponent, float age);
+particles *particles_new();
+void particles_free(particles *particles);
 /* Retains capacity and resets the deterministic local random sequence. */
-void game_particles_clear(game_particles *particles);
+void particles_clear(particles *particles);
 /* Returns the emitted count, limited by available capacity, or -1 for invalid
  * values. Rejection leaves storage and random state unchanged. */
-int game_particles_emit(game_particles *particles, const game_particle_burst *burst);
+int particles_emit(particles *particles, const particle_burst *burst);
 /* Directed particles with authored shape, ranges and lifetime appearance.
  * Direction is normalized; spread is the full cone angle in radians. */
-int game_particles_emit_directed(game_particles *particles, const game_particle_spray *spray);
+int particles_emit_directed(particles *particles, const particle_spray *spray);
 /* Copies one fully specified particle. Returns 1, 0 at capacity, or -1 without mutation. */
-int game_particles_emit_particle(game_particles *particles, const game_particle *particle);
+int particles_emit_particle(particles *particles, const particle *particle);
 /* Nonnegative finite simulation time only. Returns 0, or -1 without mutation. */
-void game_particle_advance(game_particle *particle, double delta);
-int game_particles_tick(game_particles *particles, double delta);
+void particle_advance(particle *particle, double delta);
+int particles_tick(particles *particles, double delta);
 /* Borrowed until emit, tick, clear or free. age / lifetime is normalized age. */
-const game_particle *game_particles_data(const game_particles *particles);
-int game_particles_count(const game_particles *particles);
+const particle *particles_data(const particles *particles);
+int particles_count(const particles *particles);
 
 #endif

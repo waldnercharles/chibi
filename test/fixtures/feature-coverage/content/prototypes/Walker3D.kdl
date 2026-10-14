@@ -1,9 +1,9 @@
 name "Walker3D"
 components {
-    GAME.GameBody3D type="Kinematic"
-    (object)GAME.GameCharacter3D
-    GAME.GameCollider3D category=1 height=48.0 mask=1 radius=12.0 shape="Capsule"
-    GAME.GameTransform3D {
+    Body3D type="Kinematic"
+    (object)Character3D
+    Collider3D category=1 height=48.0 mask=1 radius=12.0 shape="Capsule"
+    Transform3D {
         position x=96.0 y=24.0
         scale x=1.0 y=1.0 z=1.0
     }

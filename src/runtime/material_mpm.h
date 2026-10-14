@@ -36,7 +36,7 @@ bool material_mpm_step_colliders(
     fluid_particle *particles,
     const int *active,
     int count,
-    const game_task_system *tasks,
+    const task_system *tasks,
     fluid_mpm_colliders colliders
 );
 
@@ -51,7 +51,7 @@ bool material_mpm_step(
     fluid_particle *particles,
     const int *active,
     int count,
-    const game_task_system *tasks
+    const task_system *tasks
 );
 int material_mpm_node_count(const material_mpm *mpm);
 

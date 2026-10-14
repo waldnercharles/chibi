@@ -6,7 +6,7 @@
 typedef struct
 {
     const native_capabilities *native;
-    const game_event_catalog *events;
+    const event_catalog *events;
 } native_prepared_context;
 /* Explicit native implementations and original project event declarations.
  * Context is borrowed during read; table kernels/layouts and application type

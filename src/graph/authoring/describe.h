@@ -15,7 +15,7 @@ typedef struct
     const node_desc *desc;
     const char *setting; /* a component node's component or struct type */
     const char *field;   /* the one field a Set writes */
-    const game_host_event_desc *host; /* an engine event */
+    const host_event_desc *host;      /* an engine event */
     const behavior_asset *definition; /* an event definition */
 } node_subject;
 

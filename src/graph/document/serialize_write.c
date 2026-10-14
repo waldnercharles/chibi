@@ -989,6 +989,9 @@ behavior_asset *behavior_asset_clone(const behavior_asset *asset)
     av_doc *doc = av_doc_new();
     av_value *value = behavior_asset_to_value(doc, asset);
     behavior_asset *copy = value ? behavior_asset_from_value(value) : NULL;
+    if (copy) {
+        copy->transient_function_ids = asset->transient_function_ids;
+    }
     av_doc_free(doc);
     return copy;
 }

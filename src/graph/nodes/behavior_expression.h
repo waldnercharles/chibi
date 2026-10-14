@@ -104,7 +104,7 @@ typedef struct behavior_expression_read
 } behavior_expression_read;
 
 /* Writes the value input `pin` of target receives, as Behavior Expression
- * grammar with typographic operators, such as `Self.GameMovement.speed × 2`:
+ * grammar with typographic operators, such as `Self.Movement.speed × 2`:
  * its wired source with the inline tree behind it, or its binding or literal.
  * Edge conversions appear as calls. Truncated to cap. The text presents graph
  * data for reading; it is never parsed back. When reads is not NULL, the

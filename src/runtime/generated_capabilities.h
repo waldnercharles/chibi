@@ -3,6 +3,6 @@
 
 #include "runtime/native_capabilities.h"
 
-extern const native_capability_pack GAME_NATIVE_PACK;
+extern const native_capability_pack NATIVE_PACK;
 
 #endif

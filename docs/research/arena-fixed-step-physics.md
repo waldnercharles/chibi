@@ -17,7 +17,7 @@ The engine owns one **60 Hz simulation clock**, with zero or several ticks follo
 
 Box2D steps at 1/60 second with four substeps. A display frame completes at most eight simulation ticks. Incoming elapsed time is capped at 250 ms; the remaining accumulator is also bounded. Excess time is reported through `engine_frame_timing.dropped_seconds`. A 100 ms stall retains its six ticks. Pause excludes wall time and clears accumulated time; Step advances exactly one tick. Stop/restart/reload clear input, clock and physics state. [Box2D simulation guidance](https://box2d.org/documentation/md_simulation.html)
 
-Movement and aim samples persist across catch-up ticks. Fire/Dash press and release transitions queue until a tick consumes them, including taps entirely between ticks. Only entities with GameInput receive local actions; losing control sends one zero movement sample. Unknown action names are rejected. Directed authored events remain available to AI and other entities.
+Movement and aim samples persist across catch-up ticks. Fire/Dash press and release transitions queue until a tick consumes them, including taps entirely between ticks. Only entities with Input receive local actions; losing control sends one zero movement sample. Unknown action names are rejected. Directed authored events remain available to AI and other entities.
 
 Spawn initialization can wait on simulation time while ordinary Tick/physics is held. Debugger pauses freeze that clock. The pipeline retains its current phase across a pause so resuming a contact handler cannot step physics twice.
 
@@ -37,9 +37,9 @@ The implementation uses **32 project units per meter**, seconds and radians. Box
 
 This replaces the handoff's proposed 1/32 migration of every visual asset. The arena remains 640×360 project units (20×11.25 m); player speed 180 units/s is 5.625 m/s. Gravity is zero. We deliberately author density/friction in the physics module; unit configuration does not automatically scale them.
 
-Movement graphs now set `GameVelocity`; `GameBody` selects Static, Dynamic or Kinematic and continuous motion. `GameCollider` selects Circle/Box, category/mask, sensor and a typed runtime owner exclusion. Visual dimensions are independent. Decorative inner rails use their own visual prototype; physical boundary walls have static box colliders. Owner handles save as null and are supplied by the shared Fire Projectile graph at runtime. Projectiles spawn at the shooter origin so a muzzle offset cannot bypass a thin wall.
+Movement graphs now set `Velocity`; `Body` selects Static, Dynamic or Kinematic and continuous motion. `Collider` selects Circle/Box, category/mask, sensor and a typed runtime owner exclusion. Visual dimensions are independent. Decorative inner rails use their own visual prototype; physical boundary walls have static box colliders. Owner handles save as null and are supplied by the shared Fire Projectile graph at runtime. Projectiles spawn at the shooter origin so a muzzle offset cannot bypass a thin wall.
 
-`GameProjectile.direction_x/y`, graph position integration and ArenaBoundsBehavior were removed from supplied content. Projectile velocity controls flight and facing. Enemy pursuit computes arrival speed in its graph and clears velocity when its target disappears.
+`Projectile.direction_x/y`, graph position integration and ArenaBoundsBehavior were removed from supplied content. Projectile velocity controls flight and facing. Enemy pursuit computes arrival speed in its graph and clears velocity when its target disappears.
 
 ## Implementation ownership
 
@@ -71,7 +71,7 @@ The full M3 gates above remain open where they require dash, enemy variants, phy
 
 ## Encounter outcomes remaining in M3
 
-[ArenaWave](../../content/behaviors/ArenaWaveBehavior.json) stops after 40 spawns but never detects cleared enemies; Elapsed continues increasing. Its player-life guard is GameInput existence. [HealthBehavior](../../content/behaviors/HealthBehavior.json) destroys at zero without an outcome signal. [Standalone presentation](../../src/editor/workspace/game_presentation.c) has pause/restart/quit but no victory/defeat. Restart already restores authored state.
+[ArenaWave](../../content/behaviors/ArenaWaveBehavior.json) stops after 40 spawns but never detects cleared enemies; Elapsed continues increasing. Its player-life guard is Input existence. [HealthBehavior](../../content/behaviors/HealthBehavior.json) destroys at zero without an outcome signal. [Standalone presentation](../../src/editor/workspace/presentation.c) has pause/restart/quit but no victory/defeat. Restart already restores authored state.
 
 Recommend an authored Active/Cleared/Defeated component readable by presentation, plus explicit enemy membership. For one encounter, existing Has Entities With Component can answer whether enemies remain; scoped membership can follow when multiple encounters require it. Keep wave/death transitions authored, stop elapsed accumulation after completion, and release input on the resulting outcome. End is a lifecycle event, not necessarily death. Presentation must not infer outcomes from prototype names or duplicate health rules.
 

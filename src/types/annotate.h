@@ -53,9 +53,14 @@
 
 /* Unit an editor shows after a numeric field's value, such as "u/s". */
 #define NODE_UNIT(TEXT) __attribute__((annotate("node:unit:" TEXT)))
-/* Range an editor offers a numeric field as a slider; values outside it stay
- * valid. */
+/* Inclusive stored-value contract. Owning writes clamp to these endpoints. */
 #define NODE_RANGE(MIN, MAX)                                                   \
     __attribute__((annotate("node:range:" #MIN " " #MAX)))
+/* Slider suggestion for fields whose valid domain extends beyond it. */
+#define NODE_RANGE_HINT(MIN, MAX)                                              \
+    __attribute__((annotate("node:range-hint:" #MIN " " #MAX)))
+/* Finite fallback for NaN; omitted means zero clamped into the range. */
+#define NODE_RANGE_DEFAULT(VALUE)                                              \
+    __attribute__((annotate("node:range-default:" #VALUE)))
 
 #endif

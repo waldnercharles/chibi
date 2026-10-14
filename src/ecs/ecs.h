@@ -11,6 +11,7 @@
 
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
+typedef struct ecs_query_plan ecs_query_plan;
 struct ecs_execution_view;
 
 typedef struct
@@ -166,6 +167,7 @@ typedef struct
     int target_var;    /* Variable, ECS_WILDCARD, or zero. */
     ecs_entity src;    /* Fixed source, unless src_var is set. */
     int src_var;       /* Variable source; zero with no src means $this. */
+    ecs_component_id src_rel; /* Follow one exclusive relationship before testing. */
     ecs_trav trav;
     ecs_component_id trav_rel;
     bool cascade;
@@ -188,7 +190,8 @@ struct ecs_query
     const void *refs[ECS_QUERY_INLINE];
     const void *disabled; /* Disabled column to skip, unless a term names it. */
     ecs_entity current;
-    void *plan; /* Term plan, or NULL for inline components. */
+    void *plan;               /* Term plan, or NULL for inline components. */
+    ecs_query_plan *prepared; /* Borrowed reusable plan during iteration. */
 };
 
 /* Entity storage grows automatically. Component rows remain contiguous, but a
@@ -320,13 +323,40 @@ bool ecs_component_accepts_value(const ecs_world *, ecs_component_id, size_t off
 /* Retain reflected string values until the world is freed. */
 const char *ecs_world_intern_string(ecs_world *world, const char *text);
 
-/* Queries visit results in a deterministic order: ascending slot, the
- * smallest dense component list, or a pair target's sources in the order they
+/* Queries visit results in a deterministic order: ascending slot through a
+ * selected component index, or a pair target's sources in the order they
  * were added, then by depth under cascade. They skip Disabled entities unless
  * a term names ECS_DISABLED. ecs_query_begin is the AND of components on
  * $this. Terms are copied, so they may be freed after begin. */
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count);
 int ecs_query_begin_terms(ecs_world *, ecs_query *, const ecs_term *terms, int term_count);
+/* A reusable, world-bound plan. The world must outlive it. Only one iterator
+ * can use it at a time. Fully consumed iterations cache membership and source
+ * bindings, never component values. Relevant membership/relationship/lifetime
+ * changes invalidate them. Row payload retention is bounded to 1 MiB per plan;
+ * larger results stream normally. Single-component queries without Disabled
+ * filtering use their direct index. Partial iterations never publish a cache. */
+int ecs_query_plan_new(ecs_world *, const ecs_term *, int term_count, ecs_query_plan **out);
+void ecs_query_plan_free(ecs_query_plan *);
+int ecs_query_begin_plan(ecs_query_plan *, ecs_query *);
+typedef struct
+{
+    uint64_t cache_hits, cache_builds, cache_overflows;
+    uint64_t candidates, node_tests, source_resolutions, binding_steps;
+    size_t retained_bytes;
+    int cached_rows;
+} ecs_query_stats;
+/* Cumulative operation counts; no wall-clock estimates or component values. */
+ecs_query_stats ecs_query_plan_stats(const ecs_query_plan *);
+/* Resolve a component on self, one exclusive relationship target, or the
+ * nearest ancestor. Missing entities, pairs and components return zero. */
+ecs_entity ecs_query_source(
+    const ecs_world *,
+    ecs_entity,
+    ecs_component_id component,
+    ecs_component_id relationship,
+    ecs_trav traversal
+);
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity);
 /* The current result's variable binding, or zero when unbound. */
 ecs_entity ecs_query_var(const ecs_query *, int var);
@@ -358,8 +388,18 @@ int ecs_world_iteration_end(ecs_world *world);
  * Returns a positive observer id or a negative ecs_result. */
 int ecs_world_observe(ecs_world *, ecs_event, ecs_component_id, ecs_observer, void *user);
 int ecs_world_unobserve(ecs_world *, int observer);
-/* Queue ON_SET for a row written in place. */
+/* Validate range contracts, then queue ON_SET for a row written in place.
+ * Mutable row/execution pointers bypass validation until this commit call.
+ * Consumers must not assume ranges for uncommitted native pointer writes. */
 int ecs_component_modified(ecs_world *, ecs_entity, ecs_component_id);
+/* Enable per-row publication versions. Writes (including equal values) and
+ * component additions advance the version; borrowed pointer writes require
+ * ecs_component_modified. Tracking belongs to the world and survives removals.
+ * UINT64_MAX is saturated and must always be treated as changed. */
+int ecs_component_track_changes(ecs_world *, ecs_component_id);
+uint64_t ecs_component_version(const ecs_world *, ecs_entity, ecs_component_id);
+/* Shared world-owned counter storage, excluding allocator overhead. */
+size_t ecs_world_change_tracking_bytes(const ecs_world *);
 uint64_t ecs_world_hash(const ecs_world *world);
 uint32_t ecs_world_live_count(const ecs_world *world);
 uint32_t ecs_world_high_water_mark(const ecs_world *world);

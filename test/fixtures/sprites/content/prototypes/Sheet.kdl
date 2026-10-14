@@ -1,5 +1,5 @@
 name "Sheet"
 components {
-    GAME.GameSprite image="content/images/props.png" layer=1
-    (object)GAME.GameTransform
+    Sprite image="content/images/props.png" layer=1
+    (object)Transform
 }

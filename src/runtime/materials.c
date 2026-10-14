@@ -1,7 +1,7 @@
 #include "runtime/material_ecs.h"
 
-void game_materials_tick(
-    game_materials *materials,
+void materials_tick(
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,
@@ -9,11 +9,11 @@ void game_materials_tick(
     int obstacle_count
 )
 {
-    game_materials_tick_profiled(materials, delta, bodies, body_count, obstacles, obstacle_count, NULL);
+    materials_tick_profiled(materials, delta, bodies, body_count, obstacles, obstacle_count, NULL);
 }
 
-void game_materials_tick_profiled(
-    game_materials *materials,
+void materials_tick_profiled(
+    materials *materials,
     float delta,
     fluid_body *bodies,
     int body_count,

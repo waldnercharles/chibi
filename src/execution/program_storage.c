@@ -5,21 +5,26 @@
 
 #include <assert.h>
 
-static void add_activation(execution_activation ***values, execution_activation *a)
+/* Collect once the payload allocated since the last collection outgrows what
+ * it kept, so many live tasks don't each trace every task on every run. */
+#define PAYLOAD_COLLECT_MIN_BYTES ((size_t)4 * 1024)
+
+/* Each activation is listed by its own instance once it has run. */
+static bool listed(const execution_activation *a)
 {
-    for (int i = 0; i < acount(*values); i++) {
-        if ((*values)[i] == a) {
-            return;
+    for (int i = 0; i < acount(a->instance->activations); i++) {
+        if (a->instance->activations[i] == a) {
+            return true;
         }
     }
-    apush(*values, a);
+    return false;
 }
 static void scope_activations(const execution_program *p, execution_activation ***values)
 {
     for (int i = 0; i < acount(p->instances); i++) {
         const execution_instance *instance = p->instances[i];
         for (int j = 0; j < acount(instance->activations); j++) {
-            add_activation(values, instance->activations[j]);
+            apush(*values, instance->activations[j]);
         }
     }
 }
@@ -30,17 +35,46 @@ static execution_activation **activations(const execution_program *p, execution_
     for (int i = 0; i < acount(p->imports); i++) {
         scope_activations(p->imports[i], &values);
     }
-    if (extra) {
-        add_activation(&values, extra);
+    if (extra && !listed(extra)) {
+        apush(values, extra);
     }
     return values;
 }
-static void mark(void *user, const void *address)
+typedef struct
 {
-    execution_activation **values = user;
-    for (int i = 0; i < acount(values); i++) {
-        arena_mark(&values[i]->payload, address);
+    size_t allocated, kept;
+    bool running;
+} payload_totals;
+static void add_totals(payload_totals *totals, const execution_activation *a)
+{
+    totals->allocated += a->payload.allocated;
+    totals->kept += a->payload.kept;
+    totals->running |= a->running;
+}
+static void scope_totals(const execution_program *p, payload_totals *totals)
+{
+    totals->running |= p->running != NULL;
+    for (int i = 0; i < acount(p->instances); i++) {
+        const execution_instance *instance = p->instances[i];
+        for (int j = 0; j < acount(instance->activations); j++) {
+            add_totals(totals, instance->activations[j]);
+        }
     }
+}
+/* Whether the payload has outgrown the last collection while nothing runs: a
+ * nested synchronous invocation has not saved its live slots. */
+static bool collection_due(const execution_program *p, const execution_activation *extra)
+{
+    payload_totals totals = { 0 };
+    scope_totals(p, &totals);
+    for (int i = 0; i < acount(p->imports); i++) {
+        scope_totals(p->imports[i], &totals);
+    }
+    if (extra && !listed(extra)) {
+        add_totals(&totals, extra);
+    }
+    return !totals.running && totals.allocated >= PAYLOAD_COLLECT_MIN_BYTES &&
+           totals.allocated >= totals.kept;
 }
 static void trace_action_values(const execution_activation *a, arena_marker marker, void *user)
 {
@@ -59,38 +93,22 @@ static void trace_action_values(const execution_activation *a, arena_marker mark
 void program_collect_payloads(execution_program *p, execution_activation *extra)
 {
     p = p->owner_program;
-    if (p->running) {
-        return; /* A nested synchronous invocation has not saved its live slots. */
-    }
-    for (int i = 0; i < acount(p->imports); i++) {
-        if (p->imports[i]->running) {
-            return;
-        }
+    if (!collection_due(p, extra)) {
+        return;
     }
     execution_activation **values = activations(p, extra);
+    arena **arenas = NULL;
     for (int i = 0; i < acount(values); i++) {
-        if (values[i]->running) {
-            afree(values);
-            return;
-        }
+        apush(arenas, &values[i]->payload);
     }
+    arena_collection c;
+    arena_collect_begin(&c, arenas, acount(arenas));
     for (int i = 0; i < acount(values); i++) {
-        arena_collect_begin(&values[i]->payload);
+        behavior_function_trace_values(values[i]->function, &values[i]->context, arena_collect_mark, &c);
+        trace_action_values(values[i], arena_collect_mark, &c);
     }
-    for (int i = 0; i < acount(values); i++) {
-        behavior_function_trace_values(values[i]->function, &values[i]->context, mark, values);
-        trace_action_values(values[i], mark, values);
-    }
-    bool progress;
-    do {
-        progress = false;
-        for (int i = 0; i < acount(values); i++) {
-            progress |= arena_trace_marked(&values[i]->payload, mark, values);
-        }
-    } while (progress);
-    for (int i = 0; i < acount(values); i++) {
-        arena_sweep(&values[i]->payload);
-    }
+    arena_collect_end(&c);
+    afree(arenas);
     afree(values);
 }
 execution_memory_usage execution_program_memory_usage(const execution_program *p)
@@ -98,6 +116,7 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     assert(p && !p->owner_program->running);
     execution_memory_usage result = { 0 };
     execution_activation **values = activations(p->owner_program, NULL);
+    result.activation_bytes = (size_t)acount(values) * sizeof(execution_activation);
     for (int i = 0; i < acount(values); i++) {
         size_t bytes, capacity;
         arena_usage(&values[i]->payload, &bytes, &capacity);
@@ -105,5 +124,74 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
         result.payload_capacity += capacity;
     }
     afree(values);
+    p = p->owner_program;
+    result.task_lookup_steps = p->task_lookup_steps;
+    result.query_rows = p->query_rows;
+    result.query_lookup_steps = p->query_lookup_steps;
+    result.ecs_change_bytes = p->world ? ecs_world_change_tracking_bytes(p->world) : 0;
+    for (int scope = -1; scope < acount(p->imports); scope++) {
+        const execution_program *program = scope < 0 ? p : p->imports[scope];
+        result.activation_cache_bytes += program_activation_cache_bytes(program);
+        result.row_worker_capacity += program_row_worker_bytes(program);
+        result.row_parallel_jobs += program->row_parallel_jobs;
+        result.row_parallel_workers += program->row_parallel_workers;
+        result.query_cache_bytes += program->query_cache_bytes;
+        result.reduction_bytes += (size_t)acount(program->reductions) *
+                                  sizeof *program->reductions;
+        result.reduction_capacity += program->reductions
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reductions) *
+                                                 sizeof *program->reductions
+                                       : 0;
+        result.reduction_capacity += program->reduction_table
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reduction_table) *
+                                                 sizeof *program->reduction_table
+                                       : 0;
+        result.reduction_contributions += program->reduction_contributions;
+        result.reduction_records += program->reduction_records;
+        result.reduction_peak_bytes += program->reduction_peak_bytes;
+        result.system_row_bytes += (size_t)acount(program->system_rows) *
+                                   sizeof *program->system_rows;
+        result.system_row_capacity += program->system_rows
+                                        ? sizeof(dyna_hdr) +
+                                              (size_t)acap(program->system_rows) *
+                                                  sizeof *program->system_rows
+                                        : 0;
+        for (int i = 0; i < acount(program->system_activations); i++) {
+            const execution_activation *activation = program->system_activations[i];
+            if (activation) {
+                result.activation_bytes += sizeof *activation;
+                size_t bytes, capacity;
+                arena_usage(&activation->payload, &bytes, &capacity);
+                result.payload_bytes += bytes;
+                result.payload_capacity += capacity;
+            }
+        }
+        result.instance_count += acount(program->instances);
+        result.instance_bytes += (size_t)acount(program->instances) *
+                                 sizeof(execution_instance);
+        result.query_index_bytes += (size_t)acount(program->row_table) *
+                                    sizeof *program->row_table;
+        result.binding_schedule_bytes += program_binding_storage_bytes(program);
+        result.query_history_bytes += (size_t)acount(program->instances) *
+                                      (size_t)acount(program->change_queries) *
+                                      2 * sizeof(query_change);
+        result.query_history_bytes += (size_t)acount(program->query_admissions) *
+                                      sizeof(uint64_t);
+        result.state_bank_bytes += (size_t)acount(program->instances) *
+                                   (size_t)program->module->plan.state_count *
+                                   (sizeof(state_value) + sizeof(pin_value) +
+                                    sizeof(behavior_variable_storage));
+        for (int i = 0; i < acount(program->instances); i++) {
+            const execution_instance *instance = program->instances[i];
+            result.task_slots += acount(instance->tasks);
+            for (int j = 0; j < acount(instance->tasks); j++) {
+                const execution_task *task = &instance->tasks[j];
+                result.retained_tasks += task->generation && !task->activation;
+                result.task_result_bytes += arena_storage_bytes(&task->storage);
+            }
+        }
+    }
     return result;
 }

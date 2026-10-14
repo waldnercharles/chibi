@@ -1,4 +1,5 @@
 #include "reflect_internal.h"
+#include "types/type.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -360,6 +361,20 @@ static bool field_presentation(CXCursor c, field_info *f)
     f->unit = annotation_value(c, "node:unit:");
     f->min = f->max = 0;
     char *range = annotation_value(c, "node:range:");
+    char *hint = annotation_value(c, "node:range-hint:");
+    char *fallback = annotation_value(c, "node:range-default:");
+    f->range_contract = range != NULL;
+    f->range_default = 0;
+    if ((range && hint) || (fallback && !range)) {
+        reflect_error(c, "range hint and contract are exclusive; default requires a contract");
+        free(range);
+        free(hint);
+        free(fallback);
+        return false;
+    }
+    if (!range) {
+        range = hint;
+    }
     if (!f->unit && !range) {
         return true;
     }
@@ -379,7 +394,34 @@ static bool field_presentation(CXCursor c, field_info *f)
             reflect_error(c, "range requires a minimum below its maximum");
         }
     }
+    if (fallback) {
+        char *end;
+        f->range_default = strtod(fallback, &end);
+        if (end == fallback || *end || !isfinite(f->range_default)) {
+            reflect_error(c, "range default requires a finite number");
+            ok = false;
+        }
+    }
+    if (ok && f->range_contract) {
+        pin_type storage = PIN_FLOW;
+#define MATCH(PIN, NAME)                                                       \
+    if (!strcmp(f->pin, #PIN)) {                                               \
+        storage = PIN;                                                         \
+    }
+        PIN_TYPE_LIST(MATCH)
+#undef MATCH
+        type_field field = { .type = storage,
+                             .min = f->min,
+                             .max = f->max,
+                             .range_contract = true,
+                             .range_default = f->range_default };
+        if (!type_field_range_valid(&field)) {
+            reflect_error(c, "range endpoints must fit the field's numeric storage");
+            ok = false;
+        }
+    }
     free(range);
+    free(fallback);
     return ok;
 }
 

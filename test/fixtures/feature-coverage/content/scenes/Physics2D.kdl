@@ -11,7 +11,7 @@ name "Physics2D"
         name "Spinner"
         prototype "Spinner"
         components {
-            GAME.GameJoint other="Wall"
+            Joint other="Wall"
         }
     }
     - name="Gravity" prototype="Gravity"

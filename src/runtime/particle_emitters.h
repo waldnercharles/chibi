@@ -5,27 +5,24 @@
 #include "runtime/particles.h"
 
 struct engine;
-typedef struct game_particle_emitters game_particle_emitters;
-struct game_materials;
+typedef struct particle_emitters particle_emitters;
+struct materials;
 
-game_particle_emitters *game_particle_emitters_new(game_particles *destination);
-void game_particle_emitters_bind_materials(
-    game_particle_emitters *emitters,
-    struct game_materials *materials
-);
-void game_particle_emitters_free(game_particle_emitters *emitters);
-void game_particle_emitters_reset(game_particle_emitters *emitters);
+particle_emitters *particle_emitters_new(particles *destination);
+void particle_emitters_bind_materials(particle_emitters *emitters, struct materials *materials);
+void particle_emitters_free(particle_emitters *emitters);
+void particle_emitters_reset(particle_emitters *emitters);
 /* Emission and aging use interpolated simulation time alongside the rendered
  * entity pose. Without a runtime, time supplies that presentation clock. */
-bool game_particle_emitters_collect(
-    game_particle_emitters *emitters,
+bool particle_emitters_collect(
+    particle_emitters *emitters,
     ecs_world *world,
     const struct engine *runtime,
     double time,
     char *error,
     size_t error_size
 );
-const game_particles *game_particle_emitters_particles(const game_particle_emitters *emitters);
-const game_particle *game_particle_emitters_heads(const game_particle_emitters *emitters, int *count);
+const particles *particle_emitters_particles(const particle_emitters *emitters);
+const particle *particle_emitters_heads(const particle_emitters *emitters, int *count);
 
 #endif

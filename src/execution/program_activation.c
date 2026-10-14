@@ -19,6 +19,36 @@
 #include <string.h>
 #include <time.h>
 
+#define ACTIVATION_CACHE_BYTES ((size_t)64 * 1024)
+
+static size_t cache_bytes(const execution_activation *a)
+{
+    return sizeof *a + arena_storage_bytes(&a->storage) +
+           arena_storage_bytes(&a->payload) +
+           behavior_function_host_storage_bytes(&a->context) +
+           behavior_function_activation_storage_bytes(a->function, &a->activation);
+}
+size_t program_activation_cache_bytes(const execution_program *p)
+{
+    return p->spare_activation ? cache_bytes(p->spare_activation) : 0;
+}
+/* Only use after task ownership has been released, or before binding. */
+static void discard(execution_activation *a)
+{
+    behavior_function_release_host(&a->context);
+    behavior_function_activation_free(&a->activation);
+    arena_free(&a->storage);
+    arena_free(&a->payload);
+    free(a);
+}
+void program_activation_cache_free(execution_program *p)
+{
+    execution_activation *a = p->spare_activation;
+    p->spare_activation = NULL;
+    if (a) {
+        discard(a);
+    }
+}
 static void unlink_continuation(execution_activation *a)
 {
     if (!a->continuation_context) {
@@ -53,6 +83,7 @@ static void cancel_continuations(behavior_function_context *ctx)
 }
 void program_activation_cancel(execution_activation *a)
 {
+    a->cacheable = false;
     behavior_function_visit_contexts(&a->context, cancel_continuations);
     while (acount(a->requests)) {
         execution_request_detach(a->requests[0]->request);
@@ -62,6 +93,14 @@ void program_activation_cancel(execution_activation *a)
 }
 void program_activation_free(execution_activation *activation)
 {
+    execution_program *p = activation->instance->program;
+    bool keep = activation->cacheable && activation->has_run &&
+                activation->finished && activation->status == FLOW_OK &&
+                !activation->stopping && !activation->task &&
+                !activation->origin_action && !activation->continuation_owner &&
+                !activation->context.pending_commands &&
+                !acount(activation->requests) && !p->owner_program->inspector &&
+                !p->spare_activation;
     program_task_finished(activation, true);
     program_boxes_free(activation);
     program_inspection_release(activation);
@@ -72,11 +111,32 @@ void program_activation_free(execution_activation *activation)
     }
     afree(activation->requests);
     afree(activation->actions);
-    behavior_function_activation_free(&activation->activation);
-    behavior_function_release_host(&activation->context);
-    arena_free(&activation->storage);
-    arena_free(&activation->payload);
-    free(activation);
+    if (keep) {
+        behavior_function_reset_host(&activation->context);
+        behavior_function_reset_activation(activation->function, &activation->activation);
+        /* All escaping values already have their own storage. Retire payload
+         * roots only after callbacks and host/call scratch have released them. */
+        arena_reset(&activation->payload);
+    } else {
+        behavior_function_clear_calls(&activation->activation);
+    }
+    if (keep && !p->spare_activation &&
+        cache_bytes(activation) <= ACTIVATION_CACHE_BYTES) {
+        arena storage = activation->storage;
+        arena payload = activation->payload;
+        behavior_function_activation saved = activation->activation;
+        behavior_function_context host = activation->context;
+        const behavior_function *function = activation->function;
+        arena_reset(&storage);
+        *activation = (execution_activation){ .function = function,
+                                              .storage = storage,
+                                              .payload = payload,
+                                              .activation = saved,
+                                              .context = host };
+        p->spare_activation = activation;
+        return;
+    }
+    discard(activation);
 }
 static void leave_context(behavior_function_context *ctx, int result)
 {
@@ -101,6 +161,13 @@ static void leave_context(behavior_function_context *ctx, int result)
         execution_request_detach(wait->request);
     }
 }
+bool program_call_views_allowed(const behavior_function_context *ctx)
+{
+    return !ctx->inspect && !ctx->watch && !ctx->trace && !ctx->source_pause &&
+           !ctx->source_capture && !ctx->call_enter &&
+           (!ctx->call_leave || ctx->call_leave == leave_context) &&
+           program_world_views_allowed(ctx);
+}
 execution_activation *program_activation_new(
     execution_instance *instance,
     const behavior_function *function,
@@ -111,25 +178,32 @@ execution_activation *program_activation_new(
     unsigned budget
 )
 {
-    execution_activation *a = xcalloc(1, sizeof *a);
-    a->instance = instance;
-    a->function = function;
     int declared = 0, result_count = 0;
     const pin_value *defaults = behavior_function_arguments(function, &declared);
     const pin_value *result_defaults = behavior_function_results(function, &result_count);
     if (count < 0 || count > declared) {
-        free(a);
         return NULL;
     }
-    arena_init_collectable(&a->payload);
+    execution_program *p = instance->program;
+    if (p->spare_activation && (p->spare_activation->function != function ||
+                                p->owner_program->inspector)) {
+        program_activation_cache_free(p);
+    }
+    execution_activation *a = p->spare_activation;
+    p->spare_activation = NULL; /* Reentrant work cannot borrow this live frame. */
+    if (!a) {
+        a = xcalloc(1, sizeof *a);
+        arena_init_collectable(&a->payload);
+    }
+    a->instance = instance;
+    a->function = function;
+    a->cacheable = true;
     pin_value *args = arena_alloc(&a->storage, (size_t)(declared + 1) * sizeof *args);
     for (int i = 0; i < declared; i++) {
         const pin_value *value = i < count ? &arguments[i] : &defaults[i];
         if (!program_same_type(defaults[i], *value) ||
             pin_value_snapshot_to_arena(&a->payload, &args[i], value)) {
-            arena_free(&a->storage);
-            arena_free(&a->payload);
-            free(a);
+            discard(a);
             return NULL;
         }
     }
@@ -141,31 +215,38 @@ execution_activation *program_activation_new(
     }
     behavior_function_prepare_results(function, results, &a->storage);
     bool resumable = behavior_function_resumable(function);
-    if (resumable) {
+    if (resumable && !a->activation.values) {
         behavior_function_activation_init(function, &a->activation);
     }
-    a->context = (behavior_function_context){ .activation = resumable ? &a->activation
-                                                                      : NULL,
-                                              .variables = instance->values,
-                                              .states = instance->node_states,
-                                              .variable_storage = instance->layouts,
-                                              .value_owner = instance,
-                                              .value_storage = &a->payload,
+    a->context = (behavior_function_context){
+        .activation = resumable ? &a->activation : NULL,
+        .data = a->context.data,
+        .owned_data = a->context.owned_data,
+        .queries = a->context.queries,
+        .commands = a->context.commands,
+        .command_arguments = a->context.command_arguments,
+        .command_results = a->context.command_results,
+        .variables = instance->values,
+        .states = instance->node_states,
+        .variable_storage = instance->layouts,
+        .value_owner = instance,
+        .value_storage = &a->payload,
 
-                                              .arguments = args,
-                                              .argument_count = declared,
-                                              .results = results,
-                                              .now = now,
-                                              .delta_seconds = delta,
-                                              .instance_time = &instance->time,
-                                              .budget = budget,
-                                              .services = instance->program->services,
-                                              .owner = instance->owner,
-                                              .owner_type_name = "ecs.entity",
+        .arguments = args,
+        .argument_count = declared,
+        .results = results,
+        .now = now,
+        .delta_seconds = delta,
+        .instance_time = &instance->time,
+        .budget = budget,
+        .services = instance->program->services,
+        .owner = instance->owner,
+        .owner_type_name = "ecs.entity",
 
-                                              .call_leave = leave_context,
+        .call_leave = leave_context,
 
-                                              .inspection_user = a };
+        .inspection_user = a
+    };
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);
@@ -211,6 +292,10 @@ void program_continuation_finish(execution_activation *a)
 }
 int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
 {
+    a->cacheable &= !a->has_run && !a->instance->program->owner_program->inspector;
+    if (program_task_due(a, now)) {
+        program_tasks_tick(a->instance, now);
+    }
     if (a->finished) {
         return a->status;
     }
@@ -240,7 +325,8 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         int completed = program_complete_action(
             wait->context,
             command->node_id,
-            wait->context->command_results + command->result_first,
+            command->result_count ? wait->context->command_results + command->result_first
+                                  : NULL,
             command->result_count
         );
         wait->delivered = true;
@@ -289,8 +375,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     a->status = behavior_function_run(
         a->function,
         &a->context,
-        a->instance->program->module->backend == BEHAVIOR_SLJIT
+        a->instance->program->module->backend != BEHAVIOR_BYTECODE
     );
+    a->cacheable &= a->status == FLOW_OK && !acount(a->requests);
     if (observed->observer) {
         clock_t end = clock();
         bool available = start != (clock_t)-1 && end != (clock_t)-1 && end >= start;
@@ -312,9 +399,10 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         a->instance->running = before;
     }
     for (int i = 0; i < acount(a->instance->program->imports); i++) {
-        execution_instance *instance = execution_program_instance(
+        execution_instance *instance = program_instance_row(
             a->instance->program->imports[i],
-            a->instance->owner
+            a->instance->owner,
+            a->instance->query_variables
         );
         if (instance && instance->running == a) {
             instance->running = before;
@@ -331,6 +419,10 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     program_inspection_finish(a);
     program_continuation_finish(a);
-    program_collect_payloads(a->instance->program, a);
+    /* Completed calls retire their payload values. Collect only calls
+     * that can retain values across another resume or outstanding request. */
+    if (!a->finished || acount(a->requests)) {
+        program_collect_payloads(a->instance->program, a);
+    }
     return a->status;
 }

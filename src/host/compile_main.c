@@ -12,9 +12,9 @@ static bool additional_pack(int index)
 {
     const registry_pack *pack = registry_pack_at(index);
     if ((!pack->type_count && !pack->enum_count) ||
-        (pack->types == GAME_TYPE_PACK.types && pack->enums == GAME_TYPE_PACK.enums &&
-         pack->type_count == GAME_TYPE_PACK.type_count &&
-         pack->enum_count == GAME_TYPE_PACK.enum_count)) {
+        (pack->types == TYPE_PACK.types && pack->enums == TYPE_PACK.enums &&
+         pack->type_count == TYPE_PACK.type_count &&
+         pack->enum_count == TYPE_PACK.enum_count)) {
         return false;
     }
     for (int i = 0; i < index; i++) {
@@ -38,7 +38,7 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     if (!index) {
-        return GAME_TYPE_PACK;
+        return TYPE_PACK;
     }
     for (int i = 0; index > 0 && i < registry_pack_count(); i++) {
         if (additional_pack(i) && !--index) {

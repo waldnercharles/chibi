@@ -49,8 +49,8 @@ typedef struct
     b2Transform start, end;
     b2Transform offset; /* Where its shapes sit on the body: identity on its own. */
     b2AABB tree_bounds;
-    GameCollider collider;
-    GameBody settings;
+    Collider collider;
+    Body settings;
     int proxy;
     float angle, stop_fraction;
     bool seen, pierceable_fragment, masked;
@@ -87,7 +87,7 @@ typedef struct
 {
     ecs_entity entity;
     b2JointId joint;
-    GameJoint settings; /* As the joint was made. */
+    Joint settings;     /* As the joint was made. */
     b2BodyId a, b;      /* Other's body or the ground, and the entity's. */
     unsigned owners[2]; /* The slots owning a (0 for the ground) and b. */
     b2Transform frame;  /* The entity on body b. */
@@ -102,13 +102,13 @@ typedef struct
     bool impulse;
 } push;
 
-struct game_physics
+struct physics
 {
     ecs_world *world;
-    game_entities *entities;
+    entities *entities;
     b2WorldId simulation;
     b2DynamicTree sweeps;
-    game_physics_settings configuration;
+    physics_settings configuration;
     physics_body *bodies;
     mask_shape *shape_scratch;
     contact_pair *previous, *current, *sort_scratch, *begun;
@@ -123,9 +123,9 @@ struct game_physics
     fluid_obstacle *fluid_obstacles;
     b2BodyId *fluid_ids;
     bool profiling;
-    game_physics_profile profile;
-    game_task_system tasks;
-    game_task_pool *pool;
+    physics_profile profile;
+    task_system tasks;
+    task_pool *pool;
     int body_count, active_workers;
     pair_buffer *workers;
     char error[256];
@@ -140,7 +140,7 @@ static double clock_ms()
     return now.tv_sec * 1000.0 + now.tv_nsec * 1e-6;
 }
 
-static void profile_phase(game_physics *physics, double *start, double *elapsed)
+static void profile_phase(physics *physics, double *start, double *elapsed)
 {
     if (!physics->profiling) {
         return;
@@ -150,13 +150,13 @@ static void profile_phase(game_physics *physics, double *start, double *elapsed)
     *start = now;
 }
 
-void game_physics_set_profiling(game_physics *physics, bool enabled)
+void physics_set_profiling(physics *physics, bool enabled)
 {
     physics->profiling = enabled;
-    physics->profile = (game_physics_profile){ 0 };
+    physics->profile = (physics_profile){ 0 };
 }
 
-const game_physics_profile *game_physics_last_profile(const game_physics *physics)
+const physics_profile *physics_last_profile(const physics *physics)
 {
     return &physics->profile;
 }
@@ -184,10 +184,10 @@ static uint64_t physics_hash_float(uint64_t hash, float value)
     return hash;
 }
 
-game_physics_hashes game_physics_hash(const game_physics *physics)
+physics_hashes physics_hash(const physics *physics)
 {
     const uint64_t seed = UINT64_C(14695981039346656037);
-    game_physics_hashes hashes = { seed, seed, seed };
+    physics_hashes hashes = { seed, seed, seed };
     uint64_t body_count = 0;
     for (int i = 0; i < acount(physics->bodies); i++) {
         const physics_body *body = &physics->bodies[i];
@@ -248,18 +248,18 @@ static bool eligible(const physics_body *a, const physics_body *b)
            b->collider.ignore_entity != ecs_entity_to_u64(a->entity);
 }
 
-static physics_body *shape_body(game_physics *physics, b2ShapeId shape)
+static physics_body *shape_body(physics *physics, b2ShapeId shape)
 {
     return &physics->bodies[(uintptr_t)b2Shape_GetUserData(shape)];
 }
 
 static bool collision_filter(b2ShapeId first, b2ShapeId second, void *user)
 {
-    game_physics *physics = user;
+    physics *physics = user;
     return eligible(shape_body(physics, first), shape_body(physics, second));
 }
 
-static void create_world(game_physics *physics)
+static void create_world(physics *physics)
 {
     b2WorldDef def = b2DefaultWorldDef();
     def.gravity = (b2Vec2){ 0 };
@@ -278,7 +278,7 @@ static void create_world(game_physics *physics)
     b2World_SetCustomFilterCallback(physics->simulation, collision_filter, physics);
 }
 
-static void free_workers(game_physics *physics)
+static void free_workers(physics *physics)
 {
     for (int i = 0; i < acount(physics->workers); i++) {
         afree(physics->workers[i].pairs);
@@ -288,10 +288,10 @@ static void free_workers(game_physics *physics)
     afree(physics->workers);
 }
 
-static void configure_tasks(game_physics *physics, const game_task_system *tasks)
+static void configure_tasks(physics *physics, const task_system *tasks)
 {
     free_workers(physics);
-    physics->tasks = tasks ? *tasks : (game_task_system){ 0 };
+    physics->tasks = tasks ? *tasks : (task_system){ 0 };
     if (tasks && tasks->workers > 1) {
         asetlen(physics->workers, tasks->workers);
         memset(physics->workers, 0, (size_t)tasks->workers * sizeof *physics->workers);
@@ -299,26 +299,26 @@ static void configure_tasks(game_physics *physics, const game_task_system *tasks
     physics->active_workers = 1;
 }
 
-game_physics *game_physics_new(ecs_world *world, game_entities *entities)
+physics *physics_new(ecs_world *world, entities *entities)
 {
     assert(world && entities);
     /* Box2D's unit configuration is process-wide, and precedes all defaults. */
     static bool initialized;
     if (!initialized) {
-        b2SetLengthUnitsPerMeter(GAME_UNITS_PER_METER);
+        b2SetLengthUnitsPerMeter(UNITS_PER_METER);
         initialized = true;
     }
-    game_physics *physics = xcalloc(1, sizeof *physics);
+    physics *physics = xcalloc(1, sizeof *physics);
     physics->world = world;
     physics->entities = entities;
-    physics->configuration = game_physics_defaults();
-    physics->pool = game_task_pool_acquire();
-    configure_tasks(physics, game_task_pool_tasks(physics->pool));
+    physics->configuration = physics_defaults();
+    physics->pool = task_pool_acquire();
+    configure_tasks(physics, task_pool_tasks(physics->pool));
     create_world(physics);
     return physics;
 }
 
-void game_physics_free(game_physics *physics)
+void physics_free(physics *physics)
 {
     if (!physics) {
         return;
@@ -346,14 +346,14 @@ void game_physics_free(game_physics *physics)
     afree(physics->fluid_ids);
     free_workers(physics);
     if (physics->pool) {
-        game_task_pool_release(physics->pool);
+        task_pool_release(physics->pool);
     }
     free(physics);
 }
 
-void game_physics_reset(game_physics *physics)
+void physics_reset(physics *physics)
 {
-    physics->profile = (game_physics_profile){ 0 };
+    physics->profile = (physics_profile){ 0 };
     b2DestroyWorld(physics->simulation);
     b2DynamicTree_Destroy(&physics->sweeps);
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -373,14 +373,14 @@ void game_physics_reset(game_physics *physics)
     create_world(physics);
 }
 
-const char *game_physics_error(const game_physics *physics)
+const char *physics_error(const physics *physics)
 {
     return physics->error;
 }
 
-int game_physics_configure(game_physics *physics, game_physics_settings settings)
+int physics_configure(physics *physics, physics_settings settings)
 {
-    if (!game_physics_settings_valid(settings)) {
+    if (!physics_settings_valid(settings)) {
         snprintf(physics->error, sizeof physics->error, "Invalid physics settings: workers 0..32, substeps 1..16, contact frequency 0..240 Hz, damping ratio 0..100.");
         return FLOW_ERR_ARGUMENT;
     }
@@ -389,12 +389,12 @@ int game_physics_configure(game_physics *physics, game_physics_settings settings
             snprintf(physics->error, sizeof physics->error, "Physics worker changes require a reset world with the runtime executor.");
             return FLOW_ERR_ARGUMENT;
         }
-        game_task_pool *previous = physics->pool;
-        physics->pool = game_task_pool_acquire_workers(settings.workers);
-        configure_tasks(physics, game_task_pool_tasks(physics->pool));
+        task_pool *previous = physics->pool;
+        physics->pool = task_pool_acquire_workers(settings.workers);
+        configure_tasks(physics, task_pool_tasks(physics->pool));
         physics->configuration = settings;
-        game_physics_reset(physics);
-        game_task_pool_release(previous);
+        physics_reset(physics);
+        task_pool_release(previous);
     }
     physics->configuration = settings;
     b2World_EnableSleeping(physics->simulation, settings.sleep);
@@ -409,47 +409,42 @@ int game_physics_configure(game_physics *physics, game_physics_settings settings
     return FLOW_OK;
 }
 
-game_physics_settings game_physics_configuration(const game_physics *physics)
+physics_settings physics_configuration(const physics *physics)
 {
     return physics->configuration;
 }
 
-void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks)
+void physics_set_tasks(physics *physics, const task_system *tasks)
 {
     assert(!acount(physics->bodies));
     assert(!tasks || (tasks->workers > 0 && tasks->enqueue && tasks->finish));
-    game_task_pool *pool = physics->pool;
+    task_pool *pool = physics->pool;
     physics->pool = NULL;
     configure_tasks(physics, tasks);
-    game_physics_reset(physics);
+    physics_reset(physics);
     if (pool) {
-        game_task_pool_release(pool);
+        task_pool_release(pool);
     }
 }
 
-int game_physics_workers(const game_physics *physics)
+int physics_workers(const physics *physics)
 {
     return physics->active_workers;
 }
 
-bool game_physics_interpolation_offset(
-    const game_physics *physics,
-    ecs_entity entity,
-    float alpha,
-    CF_V2 *out
-)
+bool physics_interpolation_offset(const physics *physics, ecs_entity entity, float alpha, CF_V2 *out)
 {
     assert(out && isfinite(alpha));
     if (!entity.slot || entity.slot >= (unsigned)acount(physics->bodies) ||
         !ecs_entity_is_alive(physics->world, entity) ||
-        game_entities_is_retiring(physics->entities, entity)) {
+        entities_is_retiring(physics->entities, entity)) {
         return false;
     }
     const physics_body *body = &physics->bodies[entity.slot];
     if (!body->body.index1 || !same_entity(body->entity, entity) || body->follower) {
         return false;
     }
-    const GameTransform *authored = GAME_GameTransform_get_const(physics->world, entity);
+    const Transform *authored = Transform_get_const(physics->world, entity);
     if (!authored) {
         return false;
     }
@@ -462,7 +457,7 @@ bool game_physics_interpolation_offset(
     return true;
 }
 
-bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out)
+bool physics_inspect_body(const physics *physics, ecs_entity entity, physics_body_state *out)
 {
     assert(out);
     if (!ecs_entity_is_alive(physics->world, entity) ||
@@ -474,56 +469,48 @@ bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, g
         return false;
     }
     b2MassData mass = b2Body_GetMassData(body->body);
-    *out = (game_physics_body_state){
-        .mass = mass.mass,
-        .local_center = { mass.center.x, mass.center.y },
-        .inertia = mass.rotationalInertia,
-        .awake = b2Body_IsAwake(body->body),
-        .shape_count = b2Body_GetShapeCount(body->body)
-    };
+    *out = (physics_body_state){ .mass = mass.mass,
+                                 .local_center = { mass.center.x, mass.center.y },
+                                 .inertia = mass.rotationalInertia,
+                                 .awake = b2Body_IsAwake(body->body),
+                                 .shape_count = b2Body_GetShapeCount(body->body) };
     return true;
 }
 
 /* Bodies live in world space. Returns whether a parent places the entity, so
  * its body follows that parent and never writes its pose back. */
-static bool world_pose(const ecs_world *world, ecs_entity entity, GameTransform *position, float *angle)
+static bool world_pose(const ecs_world *world, ecs_entity entity, Transform *position, float *angle)
 {
-    GameGlobalTransform2D pose = game_transform_world_2d(world, entity);
+    GlobalTransform2D pose = transform_world_2d(world, entity);
     *position = pose.position;
     *angle = pose.radians;
-    return game_transform_parent(world, entity).slot != 0;
+    return transform_parent(world, entity).slot != 0;
 }
 
-static bool valid(
-    const GameTransform *position,
-    float angle,
-    const GameCollider *shape,
-    const GameBody *body,
-    CF_V2 velocity
-)
+static bool valid(const Transform *position, float angle, const Collider *shape, const Body *body, CF_V2 velocity)
 {
     /* Match Box2D's large-coordinate bound before creating any proxies. */
-    float maximum = 100000 * GAME_UNITS_PER_METER;
-    float extent = shape->shape == GAME_COLLIDER_CIRCLE
+    float maximum = 100000 * UNITS_PER_METER;
+    float extent = shape->shape == COLLIDER_CIRCLE
                      ? shape->radius
                      : fmaxf(shape->width, shape->height);
     return isfinite(position->x) && isfinite(position->y) && isfinite(angle) &&
            fabsf(position->x) + extent < maximum &&
            fabsf(position->y) + extent < maximum && isfinite(velocity.x) &&
-           isfinite(velocity.y) && body->type >= GAME_BODY_STATIC &&
-           body->type <= GAME_BODY_KINEMATIC &&
-           isfinite(body->angular_velocity) && isfinite(shape->restitution) &&
-           shape->restitution >= 0 && shape->restitution <= 1 &&
-           isfinite(shape->friction) && shape->friction >= 0 &&
-           ((shape->shape == GAME_COLLIDER_CIRCLE && isfinite(shape->radius) &&
+           isfinite(velocity.y) && body->type >= BODY_STATIC &&
+           body->type <= BODY_KINEMATIC && isfinite(body->angular_velocity) &&
+           isfinite(shape->restitution) && shape->restitution >= 0 &&
+           shape->restitution <= 1 && isfinite(shape->friction) &&
+           shape->friction >= 0 &&
+           ((shape->shape == COLLIDER_CIRCLE && isfinite(shape->radius) &&
              shape->radius >= 0) ||
-            (shape->shape == GAME_COLLIDER_BOX && isfinite(shape->width) &&
+            (shape->shape == COLLIDER_BOX && isfinite(shape->width) &&
              shape->width > 0 && isfinite(shape->height) && shape->height > 0));
 }
 
-static bool same_configuration(const physics_body *body, const GameCollider *shape, const GameBody *settings)
+static bool same_configuration(const physics_body *body, const Collider *shape, const Body *settings)
 {
-    const GameCollider *old = &body->collider;
+    const Collider *old = &body->collider;
     return body->settings.type == settings->type &&
            body->settings.continuous == settings->continuous &&
            body->settings.allow_rotation == settings->allow_rotation &&
@@ -561,7 +548,7 @@ static int compare_slot_pairs(const void *left, const void *right)
 
 /* Whether a joint without collide joins the bodies a and b ride, so they
  * report no contact, as Box2D keeps them from touching. */
-static bool kept_apart(const game_physics *physics, const physics_body *a, const physics_body *b)
+static bool kept_apart(const physics *physics, const physics_body *a, const physics_body *b)
 {
     if (!acount(physics->apart)) {
         return false;
@@ -577,7 +564,7 @@ static int own_shape_count(const physics_body *body)
 
 /* Forgets the shapes a destroyed body took with it and leaves the swept
  * tree, until the record is placed again. */
-static void unplace(game_physics *physics, physics_body *body)
+static void unplace(physics *physics, physics_body *body)
 {
     if (body->proxy >= 0) {
         b2DynamicTree_DestroyProxy(&physics->sweeps, body->proxy);
@@ -590,7 +577,7 @@ static void unplace(game_physics *physics, physics_body *body)
 }
 
 /* Takes a carried collider's shapes and their mass off its carrier. */
-static void remove_shapes(game_physics *physics, physics_body *body)
+static void remove_shapes(physics *physics, physics_body *body)
 {
     if (physics->profiling) {
         physics->profile.shape_removals += own_shape_count(body);
@@ -608,7 +595,7 @@ static void remove_shapes(game_physics *physics, physics_body *body)
 
 /* Destroying a body destroys the shapes it carries, which placing the
  * followers puts back. */
-static void destroy_body(game_physics *physics, physics_body *body)
+static void destroy_body(physics *physics, physics_body *body)
 {
     if (physics->profiling) {
         physics->profile.shape_removals += b2Body_GetShapeCount(body->body);
@@ -625,7 +612,7 @@ static void destroy_body(game_physics *physics, physics_body *body)
     unplace(physics, body);
 }
 
-static void remove_body(game_physics *physics, physics_body *body)
+static void remove_body(physics *physics, physics_body *body)
 {
     if (body->body.index1 && carried(body)) {
         remove_shapes(physics, body);
@@ -704,7 +691,7 @@ static b2ShapeDef shape_definition(const physics_body *body)
     /* A carried sensor adds no mass to its carrier. */
     shape.density = carried(body) && body->collider.sensor
                       ? 0
-                      : 1.0f / (GAME_UNITS_PER_METER * GAME_UNITS_PER_METER);
+                      : 1.0f / (UNITS_PER_METER * UNITS_PER_METER);
     shape.filter.categoryBits = body->collider.category;
     shape.filter.maskBits = body->collider.mask;
     shape.isSensor = body->collider.sensor;
@@ -727,7 +714,7 @@ static int compare_shape_center(const void *left, const void *right)
     return a->x != b->x ? (a->x < b->x ? -1 : 1) : 0;
 }
 
-static void update_mask_shapes(game_physics *physics, physics_body *body, const material_mask *mask)
+static void update_mask_shapes(physics *physics, physics_body *body, const material_mask *mask)
 {
     material_collision_view collision = material_mask_collision(mask);
     asetlen(physics->shape_scratch, collision.count);
@@ -826,12 +813,12 @@ static void update_mask_shapes(game_physics *physics, physics_body *body, const 
 }
 
 /* Puts the collider's shapes on its body where its offset places them. */
-static void create_shapes(game_physics *physics, physics_body *body)
+static void create_shapes(physics *physics, physics_body *body)
 {
     b2ShapeDef shape = shape_definition(body);
-    game_materials *materials = game_entities_materials(physics->entities);
-    const material_mask *mask = game_materials_mask(materials, body->entity);
-    body->mask_generation = game_materials_mask_generation(materials, body->entity);
+    materials *materials = entities_materials(physics->entities);
+    const material_mask *mask = materials_mask(materials, body->entity);
+    body->mask_generation = materials_mask_generation(materials, body->entity);
     body->masked = mask != NULL;
     body->mask_revision = mask ? mask->revision : 0;
     aclear(body->shapes);
@@ -849,7 +836,7 @@ static void create_shapes(game_physics *physics, physics_body *body)
         }
         b2Body_ApplyMassFromShapes(body->body);
         count = collision.count;
-    } else if (body->collider.shape == GAME_COLLIDER_CIRCLE) {
+    } else if (body->collider.shape == COLLIDER_CIRCLE) {
         b2Circle circle = { .center = body->offset.p, .radius = body->collider.radius };
         body->shape = b2CreateCircleShape(body->body, &shape, &circle);
         body->geometry = b2MakeProxy(&b2Vec2_zero, 1, circle.radius);
@@ -874,13 +861,13 @@ static void create_shapes(game_physics *physics, physics_body *body)
 }
 
 /* A body of the record's own, with its collider at the body's origin. */
-static void create_body(game_physics *physics, physics_body *body, b2Vec2 position, float angle)
+static void create_body(physics *physics, physics_body *body, b2Vec2 position, float angle)
 {
     b2BodyDef def = b2DefaultBodyDef();
     switch (body->settings.type) {
-        case GAME_BODY_STATIC: def.type = b2_staticBody; break;
-        case GAME_BODY_DYNAMIC: def.type = b2_dynamicBody; break;
-        case GAME_BODY_KINEMATIC: def.type = b2_kinematicBody; break;
+        case BODY_STATIC: def.type = b2_staticBody; break;
+        case BODY_DYNAMIC: def.type = b2_dynamicBody; break;
+        case BODY_KINEMATIC: def.type = b2_kinematicBody; break;
     }
     /* A follower with no anchor moves only when its parents do. A static and
      * a kinematic body touch the same bodies. */
@@ -889,12 +876,11 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     }
     def.position = position;
     def.rotation = b2MakeRot(angle);
-    def.fixedRotation = !body->follower &&
-                        body->settings.type != GAME_BODY_KINEMATIC &&
+    def.fixedRotation = !body->follower && body->settings.type != BODY_KINEMATIC &&
                         !body->settings.allow_rotation;
     /* Box2D excludes bullet targets from CCD, so static/kinematic colliders
      * must stay eligible even when their authored Continuous flag is set. */
-    def.isBullet = body->settings.type == GAME_BODY_DYNAMIC &&
+    def.isBullet = body->settings.type == BODY_DYNAMIC &&
                    body->settings.continuous && !body->collider.sensor;
     body->body = b2CreateBody(physics->simulation, &def);
     if (physics->profiling) {
@@ -905,18 +891,18 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
     body->start = body->end = b2Body_GetTransform(body->body);
 }
 
-static int sync_entity(game_physics *physics, ecs_entity entity)
+static int sync_entity(physics *physics, ecs_entity entity)
 {
     ecs_world *world = physics->world;
-    GameTransform position;
+    Transform position;
     float angle;
     bool follower = world_pose(world, entity, &position, &angle);
-    GameCollider collider = *GAME_GameCollider_get_const(world, entity);
-    const GameBody *authored = GAME_GameBody_get_const(world, entity);
-    GameBody settings = authored ? *authored : (GameBody){ .type = GAME_BODY_STATIC };
-    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-    const GameVelocity *velocity = GAME_GameVelocity_get_const(world, entity);
-    const GameDrive *drive = follower ? NULL : GAME_GameDrive_get_const(world, entity);
+    Collider collider = *Collider_get_const(world, entity);
+    const Body *authored = Body_get_const(world, entity);
+    Body settings = authored ? *authored : (Body){ .type = BODY_STATIC };
+    const Orientation *orientation = Orientation_get_const(world, entity);
+    const Velocity *velocity = Velocity_get_const(world, entity);
+    const Drive *drive = follower ? NULL : Drive_get_const(world, entity);
     CF_V2 movement = velocity && !follower ? *velocity : (CF_V2){ 0 };
     if (!valid(&position, angle, &collider, &settings, movement)) {
         snprintf(
@@ -927,7 +913,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
         );
         return FLOW_ERR_ARGUMENT;
     }
-    if (follower && settings.type == GAME_BODY_DYNAMIC) {
+    if (follower && settings.type == BODY_DYNAMIC) {
         snprintf(
             physics->error,
             sizeof physics->error,
@@ -937,7 +923,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
         return FLOW_ERR_ARGUMENT;
     }
     if (settings.angular_velocity != 0 &&
-        (settings.type != GAME_BODY_KINEMATIC || !orientation || follower)) {
+        (settings.type != BODY_KINEMATIC || !orientation || follower)) {
         snprintf(
             physics->error,
             sizeof physics->error,
@@ -957,13 +943,9 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
         );
     }
     physics_body *body = &physics->bodies[entity.slot];
-    const material_mask
-        *mask = game_materials_mask(game_entities_materials(physics->entities), entity);
+    const material_mask *mask = materials_mask(entities_materials(physics->entities), entity);
     unsigned revision = mask ? mask->revision : 0;
-    uint64_t generation = game_materials_mask_generation(
-        game_entities_materials(physics->entities),
-        entity
-    );
+    uint64_t generation = materials_mask_generation(entities_materials(physics->entities), entity);
     if (body->entity.slot && (!same_entity(body->entity, entity) ||
                               body->masked != (mask != NULL) || body->follower != follower ||
                               !same_configuration(body, &collider, &settings))) {
@@ -982,8 +964,8 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
     body->settings = settings;
     body->seen = true;
     body->follower = follower;
-    body->pierceable_fragment = game_materials_is_pierceable_fragment(
-        game_entities_materials(physics->entities),
+    body->pierceable_fragment = materials_is_pierceable_fragment(
+        entities_materials(physics->entities),
         entity
     );
     body->stop_fraction = 1;
@@ -1001,7 +983,7 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
         b2Body_SetTransform(body->body, point, b2MakeRot(angle));
     }
     body->angle = angle;
-    if (settings.type == GAME_BODY_KINEMATIC) {
+    if (settings.type == BODY_KINEMATIC) {
         b2Body_SetAngularVelocity(body->body, settings.angular_velocity);
     }
     body->start = b2Body_GetTransform(body->body);
@@ -1010,12 +992,12 @@ static int sync_entity(game_physics *physics, ecs_entity entity)
 
 /* Sets a root's velocity, or queues the force that brings it to its Drive
  * target, once its followers have added their mass. */
-static int set_motion(game_physics *physics, physics_body *body, float delta)
+static int set_motion(physics *physics, physics_body *body, float delta)
 {
-    const GameVelocity *velocity = GAME_GameVelocity_get_const(physics->world, body->entity);
-    const GameDrive *drive = GAME_GameDrive_get_const(physics->world, body->entity);
+    const Velocity *velocity = Velocity_get_const(physics->world, body->entity);
+    const Drive *drive = Drive_get_const(physics->world, body->entity);
     CF_V2 movement = velocity ? *velocity : (CF_V2){ 0 };
-    bool dynamic = body->settings.type == GAME_BODY_DYNAMIC && delta > 0;
+    bool dynamic = body->settings.type == BODY_DYNAMIC && delta > 0;
     if (drive && dynamic) {
         if (!isfinite(drive->target.x + drive->target.y + drive->acceleration) ||
             drive->acceleration < 0) {
@@ -1063,7 +1045,7 @@ static int set_motion(game_physics *physics, physics_body *body, float delta)
 
 /* The body a follower moves with: its nearest ancestor body that is not a
  * follower itself, or NULL when no body places its parents. */
-static physics_body *anchor(game_physics *physics, ecs_entity entity)
+static physics_body *anchor(physics *physics, ecs_entity entity)
 {
     for (ecs_entity at = ecs_parent(physics->world, entity); at.slot;
          at = ecs_parent(physics->world, at)) {
@@ -1095,10 +1077,10 @@ static b2Transform carried_offset(const ecs_world *world, ecs_entity entity, ecs
 {
     b2Transform offset = b2Transform_identity;
     for (ecs_entity at = entity; !same_entity(at, anchor);
-         at = game_transform_parent(world, at)) {
+         at = transform_parent(world, at)) {
         assert(at.slot);
-        const GameTransform *local = GAME_GameTransform_get_const(world, at);
-        const GameOrientation *orientation = GAME_GameOrientation_get_const(world, at);
+        const Transform *local = Transform_get_const(world, at);
+        const Orientation *orientation = Orientation_get_const(world, at);
         b2Transform placed = { { local->x, local->y },
                                b2MakeRot(orientation ? orientation->radians : 0) };
         offset = b2MulTransforms(placed, offset);
@@ -1109,7 +1091,7 @@ static b2Transform carried_offset(const ecs_world *world, ecs_entity entity, ecs
 /* Puts the follower's shapes on its anchor's body, so the solver moves them
  * with that body, they add their mass, and what they touch pushes it. A
  * changed placement below the anchor gets new shapes. */
-static void carry(game_physics *physics, physics_body *body, physics_body *with)
+static void carry(physics *physics, physics_body *body, physics_body *with)
 {
     b2Transform offset = carried_offset(physics->world, body->entity, with->entity);
     if (!body->body.index1 || !B2_ID_EQUALS(body->body, with->body) ||
@@ -1131,9 +1113,9 @@ static void carry(game_physics *physics, physics_body *body, physics_body *with)
 
 /* A follower without an anchor has a kinematic body of its own, which
  * teleports when its parents move. */
-static void place_alone(game_physics *physics, physics_body *body)
+static void place_alone(physics *physics, physics_body *body)
 {
-    GameTransform position;
+    Transform position;
     float angle;
     world_pose(physics->world, body->entity, &position, &angle);
     b2Vec2 point = { position.x, position.y };
@@ -1155,7 +1137,7 @@ static void place_alone(game_physics *physics, physics_body *body)
 /* Places each follower once every root has its body. A continuous sensor
  * stops where it first meets a blocker, after what it carries was tested at
  * its full sweep, so it may carry nothing. */
-static int place_followers(game_physics *physics)
+static int place_followers(physics *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
@@ -1183,7 +1165,7 @@ static int place_followers(game_physics *physics)
     return FLOW_OK;
 }
 
-static int joint_error(game_physics *physics, ecs_entity entity, const char *problem)
+static int joint_error(physics *physics, ecs_entity entity, const char *problem)
 {
     snprintf(
         physics->error,
@@ -1197,10 +1179,10 @@ static int joint_error(game_physics *physics, ecs_entity entity, const char *pro
 
 /* Whether the entity or one of its parents is being destroyed, which
  * releases a joint on or under it. */
-static bool released(const game_physics *physics, ecs_entity entity)
+static bool released(const physics *physics, ecs_entity entity)
 {
     for (ecs_entity at = entity; at.slot; at = ecs_parent(physics->world, at)) {
-        if (game_entities_is_retiring(physics->entities, at)) {
+        if (entities_is_retiring(physics->entities, at)) {
             return true;
         }
     }
@@ -1209,10 +1191,9 @@ static bool released(const game_physics *physics, ecs_entity entity)
 
 /* The body a joint on or under entity holds: the nearest at or above it
  * that no other body carries, or NULL. */
-static const physics_body *joined_body(const game_physics *physics, ecs_entity entity)
+static const physics_body *joined_body(const physics *physics, ecs_entity entity)
 {
-    for (ecs_entity at = entity; at.slot;
-         at = game_transform_parent(physics->world, at)) {
+    for (ecs_entity at = entity; at.slot; at = transform_parent(physics->world, at)) {
         const physics_body *body = at.slot < (unsigned)acount(physics->bodies)
                                      ? &physics->bodies[at.slot]
                                      : NULL;
@@ -1224,9 +1205,9 @@ static const physics_body *joined_body(const game_physics *physics, ecs_entity e
     return NULL;
 }
 
-static const char *invalid_joint(const GameJoint *joint)
+static const char *invalid_joint(const Joint *joint)
 {
-    if ((unsigned)joint->kind > GAME_JOINT_DISTANCE) {
+    if ((unsigned)joint->kind > JOINT_DISTANCE) {
         return "Unknown Joint kind";
     }
     if (!isfinite(
@@ -1241,18 +1222,18 @@ static const char *invalid_joint(const GameJoint *joint)
     if (joint->limit && joint->lower > joint->upper) {
         return "A Joint limit needs lower at most upper";
     }
-    if (joint->limit && joint->kind == GAME_JOINT_DISTANCE && joint->lower < 0) {
+    if (joint->limit && joint->kind == JOINT_DISTANCE && joint->lower < 0) {
         return "A distance Joint limit needs lower at least 0";
     }
     /* Box2D keeps a hinge's limits within 0.99 pi. */
-    if (joint->limit && joint->kind == GAME_JOINT_HINGE &&
+    if (joint->limit && joint->kind == JOINT_HINGE &&
         (joint->lower < -.99f * B2_PI || joint->upper > .99f * B2_PI)) {
         return "A hinge Joint limit needs lower and upper within 0.99 pi";
     }
     return NULL;
 }
 
-static bool same_joint(const GameJoint *a, const GameJoint *b)
+static bool same_joint(const Joint *a, const Joint *b)
 {
     return a->kind == b->kind && a->other == b->other && a->collide == b->collide &&
            a->limit == b->limit && a->lower == b->lower &&
@@ -1261,7 +1242,7 @@ static bool same_joint(const GameJoint *a, const GameJoint *b)
            a->hertz == b->hertz && a->damping == b->damping;
 }
 
-static b2BodyId ground(game_physics *physics)
+static b2BodyId ground(physics *physics)
 {
     if (B2_IS_NULL(physics->ground)) {
         b2BodyDef def = b2DefaultBodyDef();
@@ -1272,10 +1253,10 @@ static b2BodyId ground(game_physics *physics)
 
 /* Made from the bodies' current poses, with its anchors where the entity is
  * now, except that a distance joint's anchor on a is other's origin. */
-static b2JointId create_joint(game_physics *physics, const joint_record *record, b2Vec2 other)
+static b2JointId create_joint(physics *physics, const joint_record *record, b2Vec2 other)
 {
     /* Box2D checks a hinge's and a slider's limits even when they are off. */
-    GameJoint joint = record->settings;
+    Joint joint = record->settings;
     if (!joint.limit) {
         joint.lower = joint.upper = 0;
     }
@@ -1286,7 +1267,7 @@ static b2JointId create_joint(game_physics *physics, const joint_record *record,
     float reference = b2RelativeAngle(b.q, a.q);
     b2WorldId world = physics->simulation;
     switch (joint.kind) {
-        case GAME_JOINT_HINGE: {
+        case JOINT_HINGE: {
             b2RevoluteJointDef def = b2DefaultRevoluteJointDef();
             def.bodyIdA = record->a;
             def.bodyIdB = record->b;
@@ -1305,7 +1286,7 @@ static b2JointId create_joint(game_physics *physics, const joint_record *record,
             def.dampingRatio = joint.damping;
             return b2CreateRevoluteJoint(world, &def);
         }
-        case GAME_JOINT_SLIDER: {
+        case JOINT_SLIDER: {
             b2PrismaticJointDef def = b2DefaultPrismaticJointDef();
             def.bodyIdA = record->a;
             def.bodyIdB = record->b;
@@ -1325,7 +1306,7 @@ static b2JointId create_joint(game_physics *physics, const joint_record *record,
             def.dampingRatio = joint.damping;
             return b2CreatePrismaticJoint(world, &def);
         }
-        case GAME_JOINT_WELD: {
+        case JOINT_WELD: {
             b2WeldJointDef def = b2DefaultWeldJointDef();
             def.bodyIdA = record->a;
             def.bodyIdB = record->b;
@@ -1338,7 +1319,7 @@ static b2JointId create_joint(game_physics *physics, const joint_record *record,
             def.linearDampingRatio = def.angularDampingRatio = joint.damping;
             return b2CreateWeldJoint(world, &def);
         }
-        case GAME_JOINT_DISTANCE: {
+        case JOINT_DISTANCE: {
             b2DistanceJointDef def = b2DefaultDistanceJointDef();
             def.bodyIdA = record->a;
             def.bodyIdB = record->b;
@@ -1374,11 +1355,11 @@ static void remove_joint(joint_record *record)
 /* Makes the entity's joint when it has none, its bodies were remade, or its
  * fields or place on its body changed. A joint whose other is gone holds
  * nothing until it names a living one. */
-static int sync_joint(game_physics *physics, ecs_entity entity)
+static int sync_joint(physics *physics, ecs_entity entity)
 {
     ecs_world *world = physics->world;
-    const GameJoint *joint = GAME_GameJoint_get_const(world, entity);
-    const char *problem = GAME_GameTransform_get_const(world, entity)
+    const Joint *joint = Joint_get_const(world, entity);
+    const char *problem = Transform_get_const(world, entity)
                             ? invalid_joint(joint)
                             : "A Joint needs a Transform";
     if (problem) {
@@ -1394,7 +1375,7 @@ static int sync_joint(game_physics *physics, ecs_entity entity)
     if (other.slot && !alive) {
         return FLOW_OK;
     }
-    const physics_body *a = alive && GAME_GameTransform_get_const(world, other)
+    const physics_body *a = alive && Transform_get_const(world, other)
                               ? joined_body(physics, other)
                               : NULL;
     if (alive && !a) {
@@ -1403,10 +1384,10 @@ static int sync_joint(game_physics *physics, ecs_entity entity)
     if (a == b) {
         return joint_error(physics, entity, "A Joint must join two different bodies");
     }
-    if (!alive && joint->kind == GAME_JOINT_DISTANCE) {
+    if (!alive && joint->kind == JOINT_DISTANCE) {
         return joint_error(physics, entity, "A distance Joint needs another body");
     }
-    GameTransform here, there = { 0 };
+    Transform here, there = { 0 };
     float angle, other_angle = 0;
     world_pose(world, entity, &here, &angle);
     if (alive) {
@@ -1445,12 +1426,12 @@ static int sync_joint(game_physics *physics, ecs_entity entity)
     return FLOW_OK;
 }
 
-static int sync_joints(game_physics *physics)
+static int sync_joints(physics *physics)
 {
     for (int i = 0; i < acount(physics->joints); i++) {
         physics->joints[i].seen = false;
     }
-    ecs_component_id id = GAME_COMPONENT_GameJoint.id;
+    ecs_component_id id = COMPONENT_Joint.id;
     int result = FLOW_OK;
     if (ecs_world_component(physics->world, id)) {
         ecs_query query;
@@ -1483,15 +1464,14 @@ static int sync_joints(game_physics *physics)
     return FLOW_OK;
 }
 
-static int synchronize(game_physics *physics, float delta)
+static int synchronize(physics *physics, float delta)
 {
     aclear(physics->forces);
     physics->body_count = 0;
     for (int i = 0; i < acount(physics->bodies); i++) {
         physics->bodies[i].seen = false;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameCollider.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
     int result = FLOW_OK;
     if (ecs_world_component(physics->world, required[0]) &&
         ecs_world_component(physics->world, required[1])) {
@@ -1502,7 +1482,7 @@ static int synchronize(game_physics *physics, float delta)
         }
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            if (game_entities_is_retiring(physics->entities, entity)) {
+            if (entities_is_retiring(physics->entities, entity)) {
                 continue;
             }
             result = sync_entity(physics, entity);
@@ -1579,37 +1559,35 @@ static float distance(const physics_body *a, b2Transform first, const physics_bo
 
 /* The group a step gives the entity, read from the ECS: the topmost placed
  * entity it moves with, when that one has a collider. */
-static unsigned read_group(const ecs_world *world, game_entities *entities, ecs_entity entity)
+static unsigned read_group(const ecs_world *world, entities *entities, ecs_entity entity)
 {
     ecs_entity top = entity;
-    for (ecs_entity at = game_transform_parent(world, top); at.slot;
-         at = game_transform_parent(world, top)) {
+    for (ecs_entity at = transform_parent(world, top); at.slot;
+         at = transform_parent(world, top)) {
         top = at;
     }
-    return GAME_GameCollider_has(world, top) &&
-                   !game_entities_is_retiring(entities, top)
-             ? top.slot
-             : 0;
+    return Collider_has(world, top) && !entities_is_retiring(entities, top) ? top.slot
+                                                                            : 0;
 }
 
-static bool read_geometry(ecs_world *world, game_entities *entities, ecs_entity entity, physics_body *body)
+static bool read_geometry(ecs_world *world, entities *entities, ecs_entity entity, physics_body *body)
 {
-    const GameCollider *collider = GAME_GameCollider_get_const(world, entity);
-    if (!GAME_GameTransform_has(world, entity) || !collider) {
+    const Collider *collider = Collider_get_const(world, entity);
+    if (!Transform_has(world, entity) || !collider) {
         return false;
     }
-    GameTransform position;
+    Transform position;
     float angle;
     world_pose(world, entity, &position, &angle);
-    if (!valid(&position, angle, collider, &(GameBody){ 0 }, (CF_V2){ 0 })) {
+    if (!valid(&position, angle, collider, &(Body){ 0 }, (CF_V2){ 0 })) {
         return false;
     }
     body->entity = entity;
     body->group = read_group(world, entities, entity);
     body->collider = *collider;
-    body->mask = game_materials_mask(game_entities_materials(entities), entity);
+    body->mask = materials_mask(entities_materials(entities), entity);
     body->end = (b2Transform){ { position.x, position.y }, b2MakeRot(angle) };
-    if (collider->shape == GAME_COLLIDER_CIRCLE) {
+    if (collider->shape == COLLIDER_CIRCLE) {
         b2Vec2 center = { 0 };
         body->geometry = b2MakeProxy(&center, 1, collider->radius);
         return true;
@@ -1627,32 +1605,31 @@ typedef struct
     b2Circle disk;
     b2Polygon box;
 } ray_shape;
-struct game_ray_scene
+struct ray_scene
 {
     ray_shape *shapes;
     b2DynamicTree tree;
 };
 
-game_ray_scene *game_ray_scene_new()
+ray_scene *ray_scene_new()
 {
-    game_ray_scene *scene = xcalloc(1, sizeof *scene);
+    ray_scene *scene = xcalloc(1, sizeof *scene);
     scene->tree = b2DynamicTree_Create();
     return scene;
 }
-void game_ray_scene_free(game_ray_scene *scene)
+void ray_scene_free(ray_scene *scene)
 {
     b2DynamicTree_Destroy(&scene->tree);
     afree(scene->shapes);
     free(scene);
 }
 
-int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entities *entities)
+int ray_scene_refresh(ray_scene *scene, ecs_world *world, entities *entities)
 {
     aclear(scene->shapes);
     b2DynamicTree_Destroy(&scene->tree);
     scene->tree = b2DynamicTree_Create();
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameCollider.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
     if (!ecs_world_component(world, required[0]) ||
         !ecs_world_component(world, required[1])) {
         return FLOW_OK;
@@ -1664,7 +1641,7 @@ int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entitie
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        if (game_entities_is_retiring(entities, entity)) {
+        if (entities_is_retiring(entities, entity)) {
             continue;
         }
         physics_body body = { 0 };
@@ -1674,8 +1651,7 @@ int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entitie
         }
         for (int i = 0; i < geometry_count(&body); i++) {
             ray_shape shape = { .entity = entity,
-                                .circle = !body.mask && body.collider.shape ==
-                                                            GAME_COLLIDER_CIRCLE,
+                                .circle = !body.mask && body.collider.shape == COLLIDER_CIRCLE,
                                 .sensor = body.collider.sensor,
                                 .transform = body.end };
             if (shape.circle) {
@@ -1704,11 +1680,11 @@ int game_ray_scene_refresh(game_ray_scene *scene, ecs_world *world, game_entitie
 
 typedef struct
 {
-    const game_ray_scene *scene;
+    const ray_scene *scene;
     ecs_entity exclude;
     bool sensors;
     float length, nearest;
-    game_ray_hit *out;
+    ray_hit *out;
 } ray_query;
 static float cast_shape(const b2RayCastInput *ray, int, uint64_t index, void *user)
 {
@@ -1732,7 +1708,7 @@ static float cast_shape(const b2RayCastInput *ray, int, uint64_t index, void *us
                               .point = local.origin,
                               .normal = b2Neg(b2Normalize(local.translation)) };
     }
-    game_ray_hit *out = query->out;
+    ray_hit *out = query->out;
     if (!hit.hit || hit.fraction > query->nearest ||
         (out->found && hit.fraction == query->nearest &&
          ecs_entity_to_u64(shape->entity) > ecs_entity_to_u64(out->entity))) {
@@ -1741,31 +1717,31 @@ static float cast_shape(const b2RayCastInput *ray, int, uint64_t index, void *us
     query->nearest = hit.fraction;
     b2Vec2 point = b2TransformPoint(shape->transform, hit.point),
            normal = b2RotateVector(shape->transform.q, hit.normal);
-    *out = (game_ray_hit){ .found = true,
-                           .entity = shape->entity,
-                           .point = { point.x, point.y },
-                           .normal = { normal.x, normal.y },
-                           .distance = hit.fraction * query->length };
+    *out = (ray_hit){ .found = true,
+                      .entity = shape->entity,
+                      .point = { point.x, point.y },
+                      .normal = { normal.x, normal.y },
+                      .distance = hit.fraction * query->length };
     /* Keep searching at fraction zero so overlapping origin hits have stable
      * handle ordering regardless of tree insertion order. */
     return fmaxf(hit.fraction, 0.0000001f);
 }
 
-int game_ray_scene_cast(
-    const game_ray_scene *scene,
+int ray_scene_cast(
+    const ray_scene *scene,
     CF_V2 start,
     CF_V2 end,
     unsigned categories,
     ecs_entity exclude,
     bool sensors,
-    game_ray_hit *out
+    ray_hit *out
 )
 {
-    *out = (game_ray_hit){ .point = end };
+    *out = (ray_hit){ .point = end };
     b2RayCastInput ray = { .origin = { start.x, start.y },
                            .translation = { end.x - start.x, end.y - start.y },
                            .maxFraction = 1 };
-    float maximum = 100000 * GAME_UNITS_PER_METER;
+    float maximum = 100000 * UNITS_PER_METER;
     if (!b2IsValidRay(&ray) || fabsf(start.x) >= maximum || fabsf(start.y) >= maximum ||
         fabsf(end.x) >= maximum || fabsf(end.y) >= maximum) {
         return FLOW_ERR_ARGUMENT;
@@ -1779,33 +1755,33 @@ int game_ray_scene_cast(
     return FLOW_OK;
 }
 
-int game_physics_raycast(
+int physics_raycast(
     ecs_world *world,
-    game_entities *entities,
+    entities *entities,
     CF_V2 start,
     CF_V2 end,
     unsigned categories,
     ecs_entity exclude,
     bool sensors,
-    game_ray_hit *out
+    ray_hit *out
 )
 {
-    game_ray_scene *scene = game_ray_scene_new();
-    int result = game_ray_scene_refresh(scene, world, entities);
+    ray_scene *scene = ray_scene_new();
+    int result = ray_scene_refresh(scene, world, entities);
     if (result >= 0) {
-        result = game_ray_scene_cast(scene, start, end, categories, exclude, sensors, out);
+        result = ray_scene_cast(scene, start, end, categories, exclude, sensors, out);
     }
-    game_ray_scene_free(scene);
+    ray_scene_free(scene);
     return result;
 }
 
 /* The slot of the body a joint on or under entity holds, read from its
  * components as sync places it: the nearest collider at or above it, or the
  * root collider carrying that one. */
-static unsigned read_owner(const ecs_world *world, game_entities *entities, ecs_entity entity)
+static unsigned read_owner(const ecs_world *world, entities *entities, ecs_entity entity)
 {
-    for (ecs_entity at = entity; at.slot; at = game_transform_parent(world, at)) {
-        if (GAME_GameCollider_has(world, at)) {
+    for (ecs_entity at = entity; at.slot; at = transform_parent(world, at)) {
+        if (Collider_has(world, at)) {
             unsigned group = read_group(world, entities, at);
             return group ? group : at.slot;
         }
@@ -1814,9 +1790,9 @@ static unsigned read_owner(const ecs_world *world, game_entities *entities, ecs_
 }
 
 /* Collects the bodies joints without collide join to owner's body. */
-static int read_joined(ecs_world *world, game_entities *entities, unsigned owner, unsigned **out)
+static int read_joined(ecs_world *world, entities *entities, unsigned owner, unsigned **out)
 {
-    ecs_component_id id = GAME_COMPONENT_GameJoint.id;
+    ecs_component_id id = COMPONENT_Joint.id;
     if (!ecs_world_component(world, id)) {
         return FLOW_OK;
     }
@@ -1827,13 +1803,12 @@ static int read_joined(ecs_world *world, game_entities *entities, unsigned owner
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameJoint *joint = GAME_GameJoint_get_const(world, entity);
+        const Joint *joint = Joint_get_const(world, entity);
         ecs_entity other = ecs_entity_from_u64(joint->other);
         if (joint->collide || !other.slot || !ecs_entity_is_alive(world, other) ||
-            game_entities_is_retiring(entities, entity) ||
-            game_entities_is_retiring(entities, other) ||
-            !GAME_GameTransform_has(world, entity) ||
-            !GAME_GameTransform_has(world, other)) {
+            entities_is_retiring(entities, entity) ||
+            entities_is_retiring(entities, other) ||
+            !Transform_has(world, entity) || !Transform_has(world, other)) {
             continue;
         }
         unsigned a = read_owner(world, entities, entity),
@@ -1858,9 +1833,9 @@ static bool has_slot(const unsigned *slots, unsigned slot)
     return false;
 }
 
-int game_physics_contact_entities(
+int physics_contact_entities(
     ecs_world *world,
-    game_entities *entities,
+    entities *entities,
     ecs_entity entity,
     unsigned categories,
     ecs_entity **out
@@ -1868,7 +1843,7 @@ int game_physics_contact_entities(
 {
     aclear(*out);
     if (!categories || !ecs_entity_is_alive(world, entity) ||
-        game_entities_is_retiring(entities, entity)) {
+        entities_is_retiring(entities, entity)) {
         return FLOW_OK;
     }
     physics_body source = { 0 };
@@ -1882,8 +1857,7 @@ int game_physics_contact_entities(
         source.group ? source.group : entity.slot,
         &joined
     );
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameCollider.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
     ecs_query query;
     if (result == FLOW_OK) {
         result = ecs_query_begin(world, &query, required, 2);
@@ -1895,10 +1869,10 @@ int game_physics_contact_entities(
     ecs_entity candidate;
     while (ecs_query_next(&query, &candidate)) {
         if (same_entity(entity, candidate) ||
-            game_entities_is_retiring(entities, candidate)) {
+            entities_is_retiring(entities, candidate)) {
             continue;
         }
-        const GameCollider *collider = GAME_GameCollider_get_const(world, candidate);
+        const Collider *collider = Collider_get_const(world, candidate);
         if (!(collider->category & categories)) {
             continue;
         }
@@ -1915,7 +1889,7 @@ int game_physics_contact_entities(
          * and reads ECS directly to include unsynchronized spawns/teleports. */
         float tolerance = source.collider.sensor || target.collider.sensor
                             ? 0
-                            : .02f * GAME_UNITS_PER_METER;
+                            : .02f * UNITS_PER_METER;
         if (distance(&source, source.end, &target, target.end) <= tolerance) {
             apush(*out, candidate);
         }
@@ -1930,7 +1904,7 @@ int game_physics_contact_entities(
 
 typedef struct
 {
-    game_physics *physics;
+    physics *physics;
     physics_body *body, *nearest;
     contact_pair **pairs;
     unsigned **visited;
@@ -2038,13 +2012,13 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
 
 typedef struct
 {
-    game_physics *physics;
+    physics *physics;
     bool solved;
 } collect_context;
 
 static void collect_solved_contacts(pair_query *query, pair_buffer *buffer)
 {
-    game_physics *physics = query->physics;
+    physics *physics = query->physics;
     physics_body *body = query->body;
     /* Solved solids may have a small separation within Box2D's tolerance.
      * These pairs already use the same midpoint and fraction as overlaps. */
@@ -2072,7 +2046,7 @@ static void collect_solved_contacts(pair_query *query, pair_buffer *buffer)
 
 static void collect_body(const collect_context *context, int index, pair_buffer *buffer)
 {
-    game_physics *physics = context->physics;
+    physics *physics = context->physics;
     physics_body *body = &physics->bodies[index];
     if (!body->body.index1) {
         return;
@@ -2126,7 +2100,7 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
     }
 }
 
-static void collect_pairs(game_physics *physics, bool solved, double *start)
+static void collect_pairs(physics *physics, bool solved, double *start)
 {
     collect_context context = { physics, solved };
     int count = acount(physics->bodies);
@@ -2177,7 +2151,7 @@ static int compare_pairs(const void *left, const void *right)
 
 /* Contact Begin or Contact End to both entities of pair; only Begin carries
  * the point. */
-static int queue_contact(game_physics *physics, game_host_event event, contact_pair pair)
+static int queue_contact(physics *physics, host_event event, contact_pair pair)
 {
     const uint64_t targets[] = { pair.first, pair.second };
     CF_V2 position = { pair.point.x, pair.point.y };
@@ -2187,12 +2161,12 @@ static int queue_contact(game_physics *physics, game_host_event event, contact_p
             { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = targets[1 - i] },
             { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
         };
-        int queued = game_entities_request_event(
+        int queued = entities_request_event(
             physics->entities,
             ecs_entity_from_u64(targets[i]),
-            game_host_event_name(event),
+            host_event_name(event),
             (execution_arguments){ .values = values,
-                                   .count = event == GAME_HOST_EVENT_CONTACT_BEGIN ? 2 : 1 }
+                                   .count = event == HOST_EVENT_CONTACT_BEGIN ? 2 : 1 }
         );
         if (queued < 0 && result == FLOW_OK) {
             result = queued;
@@ -2201,7 +2175,7 @@ static int queue_contact(game_physics *physics, game_host_event event, contact_p
     return result;
 }
 
-static void sort_pairs(game_physics *physics)
+static void sort_pairs(physics *physics)
 {
     int count = acount(physics->current);
     if (count < 64) {
@@ -2258,7 +2232,7 @@ static int compare_hit_times(const void *left, const void *right)
 
 /* Queues Contact End for the previous step's pairs that stopped touching,
  * then Contact Begin for this step's new pairs in travel order. */
-static int dispatch_pairs(game_physics *physics)
+static int dispatch_pairs(physics *physics)
 {
     CHIBI_TRACE_ZONE_BEGIN(sort_zone, "Physics sort pairs");
     if (acount(physics->current) > 1) {
@@ -2283,7 +2257,7 @@ static int dispatch_pairs(game_physics *physics)
             j++;
         }
         if (j == count || compare_pairs(&after[j], &before[i])) {
-            int queued = queue_contact(physics, GAME_HOST_EVENT_CONTACT_END, before[i]);
+            int queued = queue_contact(physics, HOST_EVENT_CONTACT_END, before[i]);
             result = result == FLOW_OK ? queued : result;
         }
     }
@@ -2302,11 +2276,7 @@ static int dispatch_pairs(game_physics *physics)
         asort(physics->begun, compare_hit_times);
     }
     for (int i = 0; i < acount(physics->begun); i++) {
-        int queued = queue_contact(
-            physics,
-            GAME_HOST_EVENT_CONTACT_BEGIN,
-            physics->begun[i]
-        );
+        int queued = queue_contact(physics, HOST_EVENT_CONTACT_BEGIN, physics->begun[i]);
         result = result == FLOW_OK ? queued : result;
     }
     contact_pair *old = physics->previous;
@@ -2317,7 +2287,7 @@ static int dispatch_pairs(game_physics *physics)
     return result;
 }
 
-static void update_poses(game_physics *physics)
+static void update_poses(physics *physics)
 {
     bool swept = false;
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -2375,10 +2345,10 @@ static void update_poses(game_physics *physics)
     b2DynamicTree_Rebuild(&physics->sweeps, false);
 }
 
-static void solve_fluid(game_physics *physics, float delta, double *start)
+static void solve_fluid(physics *physics, float delta, double *start)
 {
-    game_materials *materials = game_entities_materials(physics->entities);
-    if (!game_materials_enabled(materials) || delta <= 0) {
+    materials *materials = entities_materials(physics->entities);
+    if (!materials_enabled(materials) || delta <= 0) {
         return;
     }
     aclear(physics->fluid_bodies);
@@ -2391,14 +2361,14 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1 ||
             (body->collider.sensor &&
-             !GAME_GameProjectile_get_const(physics->world, body->entity))) {
+             !Projectile_get_const(physics->world, body->entity))) {
             continue;
         }
         /* A carried collider moves with its carrier's body, so what fluid
          * does to it pushes and turns that body as its carrier allows, and
          * every collider on that body shares one response. */
         physics_body *rigid = carried(body) ? &physics->bodies[body->group] : body;
-        const GameBody *settings = &rigid->settings;
+        const Body *settings = &rigid->settings;
         b2Vec2 p = body->end.p, v = b2Body_GetLinearVelocity(body->body);
         b2Vec2 previous = body->start.p;
         float angle = b2Rot_GetAngle(body->end.q),
@@ -2408,7 +2378,7 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
         float mass = b2Body_GetMass(body->body);
         float inertia = b2Body_GetRotationalInertia(body->body);
         b2Vec2 center = b2Body_GetWorldCenterOfMass(body->body);
-        const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
+        const Igniter *igniter = Igniter_get_const(physics->world, body->entity);
         int index = acount(physics->fluid_bodies), part_of = rigid->fluid_part;
         rigid->fluid_part = part_of ? part_of : index + 1;
         apush(physics->fluid_ids, body->body);
@@ -2426,11 +2396,11 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
                 .owner = ecs_entity_to_u64(body->entity),
                 .swept = delta > 0 &&
                          (dx * dx + dy * dy > 1e-6f || fabsf(angle_delta) > 1e-4f),
-                .inverse_inertia = settings->type == GAME_BODY_DYNAMIC &&
+                .inverse_inertia = settings->type == BODY_DYNAMIC &&
                                            settings->allow_rotation && inertia > 0
                                      ? 1 / inertia
                                      : 0,
-                .inverse_mass = settings->type == GAME_BODY_DYNAMIC && mass > 0 ? 1 / mass : 0,
+                .inverse_mass = settings->type == BODY_DYNAMIC && mass > 0 ? 1 / mass : 0,
                 .part_of = part_of })
         );
         for (int part = 0; part < geometry_count(body); part++) {
@@ -2456,7 +2426,7 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     }
     profile_phase(physics, start, &physics->profile.fluid_prepare_ms);
     CHIBI_TRACE_ZONE_BEGIN(fluid_zone, "Fluid simulation");
-    game_materials_tick_profiled(
+    materials_tick_profiled(
         materials,
         delta,
         physics->fluid_bodies,
@@ -2483,30 +2453,30 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     profile_phase(physics, start, &physics->profile.fluid_impulse_ms);
 }
 
-static int queue_push(game_physics *physics, ecs_entity entity, CF_V2 amount, bool impulse)
+static int queue_push(physics *physics, ecs_entity entity, CF_V2 amount, bool impulse)
 {
-    const GameBody *body = ecs_entity_is_alive(physics->world, entity)
-                             ? GAME_GameBody_get_const(physics->world, entity)
-                             : NULL;
-    if (!body || body->type != GAME_BODY_DYNAMIC || !isfinite(amount.x + amount.y)) {
+    const Body *body = ecs_entity_is_alive(physics->world, entity)
+                         ? Body_get_const(physics->world, entity)
+                         : NULL;
+    if (!body || body->type != BODY_DYNAMIC || !isfinite(amount.x + amount.y)) {
         return FLOW_ERR_ARGUMENT;
     }
     apush(physics->pushes, ((push){ entity, { amount.x, amount.y }, impulse }));
     return FLOW_OK;
 }
 
-int game_physics_apply_impulse(game_physics *physics, ecs_entity entity, CF_V2 impulse)
+int physics_apply_impulse(physics *physics, ecs_entity entity, CF_V2 impulse)
 {
     return queue_push(physics, entity, impulse, true);
 }
 
-int game_physics_apply_force(game_physics *physics, ecs_entity entity, CF_V2 force)
+int physics_apply_force(physics *physics, ecs_entity entity, CF_V2 force)
 {
     return queue_push(physics, entity, force, false);
 }
 
 /* Applies the queued pushes to the dynamic bodies they still name. */
-static void apply_pushes(game_physics *physics)
+static void apply_pushes(physics *physics)
 {
     for (int i = 0; i < acount(physics->pushes); i++) {
         push queued = physics->pushes[i];
@@ -2517,7 +2487,7 @@ static void apply_pushes(game_physics *physics)
         if (!body ||
             ecs_entity_to_u64(body->entity) != ecs_entity_to_u64(queued.entity) ||
             !body->body.index1 || body->follower ||
-            body->settings.type != GAME_BODY_DYNAMIC) {
+            body->settings.type != BODY_DYNAMIC) {
             continue;
         }
         if (queued.impulse) {
@@ -2530,10 +2500,10 @@ static void apply_pushes(game_physics *physics)
 }
 
 /* The scene's gravity: one entity's Gravity, or none. */
-static int gravity(game_physics *physics, b2Vec2 *out)
+static int gravity(physics *physics, b2Vec2 *out)
 {
     *out = (b2Vec2){ 0 };
-    ecs_component_id id = GAME_COMPONENT_GameGravity.id;
+    ecs_component_id id = COMPONENT_Gravity.id;
     if (!ecs_world_component(physics->world, id)) {
         return FLOW_OK;
     }
@@ -2545,7 +2515,7 @@ static int gravity(game_physics *physics, b2Vec2 *out)
     int count = 0;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        CF_V2 acceleration = GAME_GameGravity_get_const(physics->world, entity)->acceleration;
+        CF_V2 acceleration = Gravity_get_const(physics->world, entity)->acceleration;
         *out = (b2Vec2){ acceleration.x, acceleration.y };
         count++;
     }
@@ -2562,7 +2532,7 @@ static int gravity(game_physics *physics, b2Vec2 *out)
 }
 
 /* Box2D leaves sleeping bodies asleep through a gravity change. */
-static void set_gravity(game_physics *physics, b2Vec2 acceleration)
+static void set_gravity(physics *physics, b2Vec2 acceleration)
 {
     b2Vec2 current = b2World_GetGravity(physics->simulation);
     if (current.x == acceleration.x && current.y == acceleration.y) {
@@ -2571,19 +2541,18 @@ static void set_gravity(game_physics *physics, b2Vec2 acceleration)
     b2World_SetGravity(physics->simulation, acceleration);
     for (int i = 0; i < acount(physics->bodies); i++) {
         const physics_body *body = &physics->bodies[i];
-        if (body->body.index1 && !body->follower &&
-            body->settings.type == GAME_BODY_DYNAMIC) {
+        if (body->body.index1 && !body->follower && body->settings.type == BODY_DYNAMIC) {
             b2Body_SetAwake(body->body, true);
         }
     }
 }
 
-int game_physics_tick(game_physics *physics, float delta_seconds)
+int physics_tick(physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
     double start = 0;
     if (physics->profiling) {
-        physics->profile = (game_physics_profile){ 0 };
+        physics->profile = (physics_profile){ 0 };
         start = clock_ms();
     }
     if (!isfinite(delta_seconds) || delta_seconds < 0) {
@@ -2595,15 +2564,15 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     if (result < 0) {
         return result;
     }
-    game_materials *materials = game_entities_materials(physics->entities);
+    materials *materials = entities_materials(physics->entities);
     CHIBI_TRACE_ZONE_BEGIN(material_zone, "Material edits");
     const char *material_error = NULL;
     if (materials) {
-        game_materials_set_gravity(
+        materials_set_gravity(
             materials,
             (fluid_vec){ acceleration.x, acceleration.y }
         );
-        material_error = game_materials_prepare(materials);
+        material_error = materials_prepare(materials);
     }
     CHIBI_TRACE_ZONE_END(material_zone);
     if (material_error) {
@@ -2623,7 +2592,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     }
     bool parallel = physics->body_count >= PARALLEL_BODY_MINIMUM;
     if (physics->pool) {
-        game_task_pool_begin(physics->pool, parallel);
+        task_pool_begin(physics->pool, parallel);
     }
     physics->active_workers = physics->tasks.workers > 1 && (!physics->pool || parallel)
                                 ? physics->tasks.workers
@@ -2633,7 +2602,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     CHIBI_TRACE_ZONE_END(solve_zone);
     if (physics->profiling) {
         b2Profile profile = b2World_GetProfile(physics->simulation);
-        physics->profile.box2d = (game_physics_box2d_profile){
+        physics->profile.box2d = (physics_box2d_profile){
             .step_ms = profile.step,
             .pairs_ms = profile.pairs,
             .collide_ms = profile.collide,
@@ -2667,7 +2636,7 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     double pairs_start = physics->profiling ? clock_ms() : 0;
     collect_pairs(physics, delta_seconds > 0, &start);
     if (physics->pool) {
-        game_task_pool_end(physics->pool);
+        task_pool_end(physics->pool);
     }
     CHIBI_TRACE_ZONE_END(pairs_zone);
     if (physics->profiling) {
@@ -2698,11 +2667,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         if (!body->body.index1 || body->follower) {
             continue;
         }
-        *GAME_GameTransform_get(physics->world, body->entity) = (GameTransform){
-            body->end.p.x,
-            body->end.p.y
-        };
-        GameOrientation *orientation = GAME_GameOrientation_get(physics->world, body->entity);
+        *Transform_get(physics->world, body->entity) = (Transform){ body->end.p.x,
+                                                                    body->end.p.y };
+        Orientation *orientation = Orientation_get(physics->world, body->entity);
         if (orientation && (body->settings.angular_velocity != 0 ||
                             body->settings.allow_rotation)) {
             orientation->radians = body->angle +
@@ -2711,13 +2678,13 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
              * round trip through a rotation is inexact and would drift. */
             body->angle = orientation->radians;
         }
-        GameVelocity *velocity = GAME_GameVelocity_get(physics->world, body->entity);
+        Velocity *velocity = Velocity_get(physics->world, body->entity);
         if (velocity) {
             b2Vec2 solved = b2Body_GetLinearVelocity(body->body);
-            *velocity = (GameVelocity){ solved.x, solved.y };
+            *velocity = (Velocity){ solved.x, solved.y };
         }
-        if (body->settings.type == GAME_BODY_DYNAMIC) {
-            GAME_GameBody_get(physics->world, body->entity)->mass = b2Body_GetMass(body->body);
+        if (body->settings.type == BODY_DYNAMIC) {
+            Body_get(physics->world, body->entity)->mass = b2Body_GetMass(body->body);
         }
     }
     CHIBI_TRACE_ZONE_END(writeback_zone);

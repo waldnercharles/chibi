@@ -51,7 +51,7 @@ static render_mesh_surface_vertex sdf_proxy[] = {
     { .position = { -0.5, 0.5, 0.5 }, .normal = { 0, 0, 1 } },
 };
 
-const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pixels, bool disabled)
+const char *render_mesh_surface_lod_shape(const SdfSurface3D *sdf, float pixels, bool disabled)
 {
     if (disabled || !sdf || !sdf->enabled || !sdf->low_detail_shape ||
         !*sdf->low_detail_shape) {
@@ -116,7 +116,7 @@ bool render_mesh_surface_vertices(
         return true;
     }
     switch (primitive) {
-        case GAME_PRIMITIVE_BOX: {
+        case PRIMITIVE_BOX: {
             CF_V3 p[8];
             for (int i = 0; i < 8; i++) {
                 p[i] = (CF_V3){ i & 1 ? .5f : -.5f,
@@ -132,7 +132,7 @@ bool render_mesh_surface_vertices(
             }
             return true;
         }
-        case GAME_PRIMITIVE_TRIANGLE_PRISM: {
+        case PRIMITIVE_TRIANGLE_PRISM: {
             static const CF_V3 p[] = {
                 { -.5f, -.5f, -.5f }, { .5f, -.5f, 0 }, { -.5f, -.5f, .5f },
                 { -.5f, .5f, -.5f },  { .5f, .5f, 0 },  { -.5f, .5f, .5f }
@@ -143,7 +143,7 @@ bool render_mesh_surface_vertices(
             faces(vertices, p, t, 8);
             return true;
         }
-        case GAME_PRIMITIVE_OCTAHEDRON: {
+        case PRIMITIVE_OCTAHEDRON: {
             static const CF_V3 p[] = { { .5f, 0, 0 },  { 0, 0, .5f },
                                        { -.5f, 0, 0 }, { 0, 0, -.5f },
                                        { 0, .5f, 0 },  { 0, -.5f, 0 } };
@@ -153,7 +153,7 @@ bool render_mesh_surface_vertices(
             faces(vertices, p, t, 8);
             return true;
         }
-        case GAME_PRIMITIVE_TETRAHEDRON: {
+        case PRIMITIVE_TETRAHEDRON: {
             static const CF_V3 p[] = { { -.5f, -.5f, -.5f },
                                        { .5f, -.5f, -.5f },
                                        { -.5f, .5f, -.5f },
@@ -235,8 +235,8 @@ static void add_mesh_asset(
 bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     const model_bounds *override,
     render_mesh_surface *surface,
     char *error,
@@ -244,24 +244,24 @@ bool render_mesh_surface_build_with_bounds(
 )
 {
     clear_surface(surface);
-    if (!GAME_GameGeometry3D_get_const(world, entity) ||
-        (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
+    if (!Geometry3D_get_const(world, entity) ||
+        (!transform && !position && !Transform_get_const(world, entity))) {
         snprintf(error, size, "Mesh Surface 2D requires Geometry3D and Transform.");
         return false;
     }
-    const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+    const SdfSurface3D *sdf = SdfSurface3D_get_const(world, entity);
     if (sdf && sdf->enabled) {
         if (sdf->low_detail_shape && *sdf->low_detail_shape &&
             (!isfinite(sdf->low_detail_pixels) || sdf->low_detail_pixels <= 0)) {
             snprintf(error, size, "SDF low-detail graph requires a finite positive pixel cutoff.");
             return false;
         }
-        const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
+        const Geometry3D *shape = Geometry3D_get_const(world, entity);
         CF_M4x4 frame;
         scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
         CF_V3 dimensions = { shape->width, shape->height, shape->depth };
         CF_V3 center = { 0 };
-        const GameShader *binding = GAME_GameShader_get_const(world, entity);
+        const Shader *binding = Shader_get_const(world, entity);
         int id = binding ? render_shader_find(binding->shape) : 0;
         if (override) {
             if (override->empty) {
@@ -310,7 +310,7 @@ bool render_mesh_surface_build_with_bounds(
             return true;
         }
         render_mesh_surface_part part = {
-            .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX, .dimensions = dimensions },
+            .visual = { .part = { .primitive = PRIMITIVE_BOX, .dimensions = dimensions },
                         .frame = cf_mul_m4(frame, cf_m4_translate(center)) },
             .sdf_center = center,
         };
@@ -373,7 +373,7 @@ bool render_mesh_surface_build_with_bounds(
 bool render_mesh_surface_build(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
+    const Transform *position,
     render_mesh_surface *surface,
     char *error,
     size_t size
@@ -385,7 +385,7 @@ bool render_mesh_surface_build(
 bool render_mesh_surface_bounds(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
+    const Transform *position,
     CF_V2 *min,
     CF_V2 *max,
     char *error,

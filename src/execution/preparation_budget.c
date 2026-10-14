@@ -66,6 +66,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     }
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
     retained = sum(retained, product(pauses, bank(values, sizeof(int))));
+    /* Every live aggregate can contribute one logical shape per suspension.
+     * Shapes borrow decoded metadata; only the derived vectors grow here. */
+    retained = sum(retained, product(pauses, bank(acount(f->value_roots), sizeof(behavior_value_root))));
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
@@ -78,6 +81,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     size_t scratch = product(count + 1, product(words, sizeof(uint64_t)));
     scratch = sum(scratch, product(count, 2 * sizeof(bool) + 3 * sizeof(int)));
     scratch = sum(scratch, product(slots, sizeof(int)));
+    if (acount(f->value_roots)) {
+        scratch = sum(scratch, product(values + 1, sizeof(bool)));
+    }
     /* Suspension liveness uses a separate matrix+row. Summing phases is a
      * conservative peak bound; none of these counts comes from file size. */
     words = (values + 63) / 64 + 1;
@@ -87,6 +93,41 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     scratch = sum(scratch, product(count, sizeof(int) + 2 * sizeof(bool)));
     scratch = sum(scratch, product(slots + 1, 2 * sizeof(int) + 3 * sizeof(bool)));
     scratch = sum(scratch, product(data + 1, sizeof(int) + sizeof(bool)));
+    /* Numeric interval facts (two doubles, three ints, a bool and padding),
+     * definition versions and control-entry marks. */
+    scratch = sum(scratch, product(slots + 1, 3 * sizeof(max_align_t) + sizeof(int)));
+    scratch = sum(scratch, product(count + 1, sizeof(bool)));
+    /* Read-only array borrowing keeps one kind/bank fact per scalar slot and
+     * a logical-array marker per local. */
+    scratch = sum(scratch, product(slots + 1, 2 * sizeof(int)));
+    scratch = sum(scratch, product(locals + 1, sizeof(bool)));
+    /* Union scalar replacement keeps facts for slots, banks, locals and PCs,
+     * plus one candidate per constructor and its immutable scalar payloads. */
+    if (acount(f->host_calls)) {
+        scratch = sum(scratch, behavior_function_scalarize_scratch(f));
+        size_t fact = sizeof(pin_value) + 3 * sizeof(int) + sizeof(max_align_t);
+        size_t object = sizeof(uint64_t) + sizeof(void *) + 2 * sizeof(int) +
+                        sizeof(max_align_t);
+        scratch = sum(scratch, product(count, fact + 2 * sizeof(int) + sizeof(bool)));
+        scratch = sum(scratch, product(slots + 1, fact + 2 * sizeof(int) + 2 * sizeof(bool)));
+        scratch = sum(scratch, product(data + 1, fact + sizeof(int) + 2 * sizeof(bool)));
+        scratch = sum(scratch, product(locals + 1, fact + sizeof(int) + sizeof(bool)));
+        scratch = sum(scratch, bank(count, object));
+        for (int pc = 0; pc < acount(f->instructions); pc++) {
+            const behavior_function_instruction *i = &f->instructions[pc];
+            if (i->op == BF_HOST_CALL) {
+                if (i->target < 0 || i->target >= acount(f->host_calls)) {
+                    return SIZE_MAX;
+                }
+                const behavior_function_host_call *h = &f->host_calls[i->target];
+                if (h->first < 0 || h->result_first < h->first ||
+                    h->result_first > acount(f->data_values)) {
+                    return SIZE_MAX;
+                }
+                scratch = sum(scratch, bank((size_t)(h->result_first - h->first), fact));
+            }
+        }
+    }
     /* parallel proof origin is two bools + two ints, padded no larger than
      * two ints and two max_align_t units. Count its actual target bool bank. */
     scratch = sum(scratch, product(slots + 1, 2 * sizeof(int) + 2 * sizeof(max_align_t)));
@@ -218,10 +259,10 @@ static bool owned_functions(const behavior_function *f, unsigned depth, size_t *
 static bool module_functions(const execution_module_plan *p, unsigned depth, size_t *count)
 {
     if (depth == PREPARATION_CLOSURE_DEPTH || p->function_count < 0 ||
-        p->binding_count < 0 || p->import_count < 0 ||
+        p->binding_count < 0 || p->import_count < 0 || p->query_count < 0 ||
         p->function_count > acount(p->functions) ||
         p->binding_count > acount(p->bindings) ||
-        p->import_count > acount(p->imports)) {
+        p->import_count > acount(p->imports) || p->query_count > acount(p->queries)) {
         return false;
     }
     if (*count == PREPARATION_CLOSURE_FUNCTIONS) {
@@ -241,6 +282,11 @@ static bool module_functions(const execution_module_plan *p, unsigned depth, siz
             return false;
         }
     }
+    for (int i = 0; i < p->query_count; i++) {
+        if (!owned_functions(p->queries[i].predicate, 0, count)) {
+            return false;
+        }
+    }
     /* Repeated import DAG paths deliberately overcount. Bound traversal before
      * any scratch allocation; no visited table is needed to establish safety. */
     for (int i = 0; i < p->import_count; i++) {
@@ -256,8 +302,11 @@ size_t execution_module_preparation_bytes(const execution_module_plan *p)
     if (p->query_count < 0 || !module_functions(p, 0, &count)) {
         return SIZE_MAX;
     }
-    /* The service requirement walk's seen vector can reach every retained
-     * imported body. Query validation owns one query_count+1 byte row. These phases do not
-     * overlap, but summing them avoids depending on publication ordering. */
-    return sum(bank(count, sizeof(const behavior_function *)), (size_t)p->query_count + 1);
+    /* Service, predicate purity and predicate-effect walks each own a seen
+     * vector bounded by the retained closure. Query validation owns one byte
+     * per node. Sum phases conservatively rather than relying on their order. */
+    return sum(
+        product(3, bank(count, sizeof(const behavior_function *))),
+        (size_t)p->query_count + 1
+    );
 }

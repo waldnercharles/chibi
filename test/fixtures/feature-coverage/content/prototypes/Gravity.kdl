@@ -1,6 +1,6 @@
 name "Gravity"
 components {
-    GAME.GameGravity {
+    Gravity {
         acceleration y=-320.0
     }
 }

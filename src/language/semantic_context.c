@@ -115,6 +115,9 @@ int script_analyzer_lookup_storage(analyzer *a, TSNode node, script_symbol_kind 
 }
 static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind, script_type type, bool writable)
 {
+    if (!strcmp(name, "Cancelled")) {
+        script_analyzer_diagnostic(a, node, "'Cancelled' is reserved for the cancellation singleton");
+    }
     int existing = script_analyzer_lookup_name(a, name);
     if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
         existing = -1;
@@ -162,10 +165,12 @@ int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind
 {
     return declare(a, node, script_analyzer_name_copy(a, node), kind, type, writable);
 }
-/* A result named by the language rather than the source, declared at `node`. */
+/* Implicit result names have no authored token for navigation or rename. */
 int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type)
 {
-    return declare(a, node, xstrdup(name), SCRIPT_RESULT, type, true);
+    int symbol = declare(a, node, xstrdup(name), SCRIPT_RESULT, type, true);
+    a->out->symbols[symbol].declaration = (script_range){ .start = -1, .end = -1 };
+    return symbol;
 }
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member)
 {
@@ -175,7 +180,8 @@ bool script_analyzer_present(const analyzer *a, int symbol)
 {
     for (int i = acount(a->narrowed) - 1; i >= 0; i--) {
         if (a->narrowed[i].symbol == symbol) {
-            return a->narrowed[i].present;
+            return a->narrowed[i].present &&
+                   a->narrowed[i].mutations == a->out->symbols[symbol].mutations;
         }
     }
     return false;
@@ -206,6 +212,10 @@ const script_expression *script_analyzer_result_source(const analyzer *a, int in
 {
     for (int depth = 0; index >= 0 && depth < SCRIPT_MAX_DEPTH; depth++) {
         const script_expression *value = &a->out->expressions[index];
+        if (value->kind == SCRIPT_EXPR_UNWRAP) {
+            index = value->left;
+            continue;
+        }
         if (value->result_count) {
             return value;
         }
@@ -250,6 +260,14 @@ static void type_use(analyzer *a, TSNode node, int symbol, uint64_t nominal)
         }
     }
     script_analyzer_use(a, node, symbol, SCRIPT_TYPE_USE, nominal);
+}
+static script_type optional_storage(const analyzer *a, script_type type)
+{
+    const script_catalog_type *definition = script_catalog_type_by_id(a->catalog, type.nominal);
+    if ((type.flags & SCRIPT_TYPE_OPTIONAL) && (!definition || !definition->component)) {
+        type.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
+    }
+    return type;
 }
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source)
 {
@@ -315,7 +333,8 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
     script_type type = script_builtin_type(name);
     if (type.flags & SCRIPT_TYPE_ERROR) {
         int symbol = script_analyzer_lookup_name(a, name);
-        if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER) {
+        if (symbol >= 0 && (a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER ||
+                            a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
             type = a->out->symbols[symbol].type;
         } else {
             int index = script_catalog_find_type(a->catalog, name);
@@ -340,7 +359,7 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
         type_use(a, node, symbol, symbol < 0 ? type.nominal : 0);
     }
     free(name);
-    return type;
+    return optional_storage(a, type);
 }
 script_type script_analyzer_type_node(analyzer *a, TSNode node)
 {
@@ -348,6 +367,12 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
         return (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
     }
     if (script_analyzer_is(node, "type")) {
+        for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+            TSNode child = ts_node_named_child(node, i);
+            if (script_analyzer_is(child, "union_type")) {
+                return script_analyzer_type_node(a, child);
+            }
+        }
         TSNode name_node = script_analyzer_field(node, "name"),
                arguments = script_analyzer_field(node, "arguments");
         char *name = script_analyzer_name_copy(a, name_node);
@@ -356,7 +381,15 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
         bool nominal = !strcmp(name, "struct") || !strcmp(name, "enum") ||
                        !strcmp(name, "handle");
         script_type type;
-        if (collection || nominal) {
+        if (!strcmp(name, "task") && !ts_node_is_null(arguments)) {
+            if (script_analyzer_named_count(arguments) != 1) {
+                script_analyzer_diagnostic(a, node, "task requires one result type");
+                type = script_analyzer_bad_type();
+            } else {
+                script_type result = script_analyzer_type_node(a, ts_node_named_child(arguments, 0));
+                type = script_analyzer_task_type(a, result, 0);
+            }
+        } else if (collection || nominal) {
             TSNode argument = ts_node_named_child(arguments, 0);
             if (ts_node_is_null(argument)) {
                 script_analyzer_diagnostic(a, node, "Type '%s' requires a type argument", name);
@@ -376,7 +409,8 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
         } else {
             type = script_builtin_type(name);
             int symbol = script_analyzer_lookup_name(a, name);
-            if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER) {
+            if (symbol >= 0 && (a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER ||
+                                a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
                 type = a->out->symbols[symbol].type;
             } else if (type.flags & SCRIPT_TYPE_ERROR) {
                 int index = script_catalog_find_type(a->catalog, name);
@@ -413,6 +447,18 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
             }
         }
         free(name);
+        return optional_storage(a, type);
+    }
+    if (script_analyzer_is(node, "union_type")) {
+        script_type *members = NULL;
+        for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+            TSNode child = ts_node_named_child(node, i);
+            if (!ts_node_is_extra(child)) {
+                apush(members, script_analyzer_type_node(a, child));
+            }
+        }
+        script_type type = script_analyzer_union_type(a, node, members, acount(members));
+        afree(members);
         return type;
     }
     char *text = script_analyzer_text_copy(a, node);
@@ -451,6 +497,44 @@ static bool starts_empty(script_type type)
 {
     return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
            type.container != PIN_CONTAINER_SINGLE;
+}
+/* A compile-time value cannot read invocation or mutable storage. Calls are
+ * excluded: being pure does not by itself promise compile-time evaluation. */
+static bool compile_time_value(const analyzer *a, int index, int depth)
+{
+    if (index < 0 || depth >= SCRIPT_MAX_DEPTH) {
+        return false;
+    }
+    const script_expression *value = &a->out->expressions[index];
+    if (value->effects) {
+        return false;
+    }
+    switch (value->kind) {
+        case SCRIPT_EXPR_CONSTANT:
+        case SCRIPT_EXPR_NIL: return true;
+        case SCRIPT_EXPR_SYMBOL:
+            return value->symbol >= 0 &&
+                   a->out->symbols[value->symbol].kind == SCRIPT_CONSTANT &&
+                   compile_time_value(a, a->out->symbols[value->symbol].initializer, depth + 1);
+        case SCRIPT_EXPR_UNARY:
+        case SCRIPT_EXPR_CAST:
+        case SCRIPT_EXPR_MEMBER:
+            return compile_time_value(a, value->left, depth + 1);
+        case SCRIPT_EXPR_BINARY:
+        case SCRIPT_EXPR_INDEX:
+            return compile_time_value(a, value->left, depth + 1) &&
+                   compile_time_value(a, value->right, depth + 1);
+        case SCRIPT_EXPR_ARRAY:
+        case SCRIPT_EXPR_STRUCT:
+        case SCRIPT_EXPR_UNION:
+            for (int i = 0; i < acount(value->arguments); i++) {
+                if (!compile_time_value(a, value->arguments[i].value, depth + 1)) {
+                    return false;
+                }
+            }
+            return true;
+        default: return false;
+    }
 }
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {
@@ -513,6 +597,9 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     if (expected.flags & SCRIPT_TYPE_UNTYPED) {
         record->type = script_analyzer_expr_type(a, value);
         record->type.flags &= ~SCRIPT_TYPE_UNTYPED;
+        if (record->kind != SCRIPT_CONSTANT) {
+            record->type.flags &= ~SCRIPT_TYPE_LITERAL;
+        }
     } else {
         script_analyzer_require(
             a,
@@ -526,6 +613,12 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
                                       .nominal = record->capability,
                                       .flags = SCRIPT_TYPE_RESULTS };
     }
+    if (record->kind == SCRIPT_CONSTANT &&
+        (!compile_time_value(a, value, 0) || record->type.storage == PIN_FLOW ||
+         (record->type.flags &
+          (SCRIPT_TYPE_TASK | SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)))) {
+        script_analyzer_diagnostic(a, node, "Constant initializer requires compile-time values and operators");
+    }
     if ((record->kind == SCRIPT_STATE || record->kind == SCRIPT_SHARED_STATE) &&
         script_analyzer_expr_effects(a, value)) {
         script_analyzer_diagnostic(a, a->initializers[index].value, "State defaults must be constant and deterministic");
@@ -538,20 +631,22 @@ script_operator script_analyzer_operator_node(analyzer *a, TSNode node)
         const char *text;
         script_operator op;
     } entries[] = {
-        { "+", SCRIPT_OP_ADD },          { "-", SCRIPT_OP_SUB },
-        { "*", SCRIPT_OP_MUL },          { "/", SCRIPT_OP_DIV },
-        { "%", SCRIPT_OP_MOD },          { "!", SCRIPT_OP_NOT },
-        { "&&", SCRIPT_OP_AND },         { "||", SCRIPT_OP_OR },
-        { "==", SCRIPT_OP_EQ },          { "!=", SCRIPT_OP_NE },
-        { "<", SCRIPT_OP_LT },           { "<=", SCRIPT_OP_LE },
-        { ">", SCRIPT_OP_GT },           { ">=", SCRIPT_OP_GE },
-        { "&", SCRIPT_OP_BIT_AND },      { "|", SCRIPT_OP_BIT_OR },
-        { "^", SCRIPT_OP_BIT_XOR },      { "<<", SCRIPT_OP_SHIFT_LEFT },
-        { ">>", SCRIPT_OP_SHIFT_RIGHT }, { "~", SCRIPT_OP_BIT_NOT },
-        { "&=", SCRIPT_OP_BIT_AND },     { "|=", SCRIPT_OP_BIT_OR },
-        { "^=", SCRIPT_OP_BIT_XOR },     { "+=", SCRIPT_OP_ADD },
-        { "-=", SCRIPT_OP_SUB },         { "*=", SCRIPT_OP_MUL },
-        { "/=", SCRIPT_OP_DIV },         { "%=", SCRIPT_OP_MOD }
+        { "+", SCRIPT_OP_ADD },         { "-", SCRIPT_OP_SUB },
+        { "*", SCRIPT_OP_MUL },         { "/", SCRIPT_OP_DIV },
+        { "%", SCRIPT_OP_MOD },         { "!", SCRIPT_OP_NOT },
+        { "&&", SCRIPT_OP_AND },        { "||", SCRIPT_OP_OR },
+        { "and", SCRIPT_OP_AND },       { "or", SCRIPT_OP_OR },
+        { "not", SCRIPT_OP_NOT },       { "==", SCRIPT_OP_EQ },
+        { "!=", SCRIPT_OP_NE },         { "<", SCRIPT_OP_LT },
+        { "<=", SCRIPT_OP_LE },         { ">", SCRIPT_OP_GT },
+        { ">=", SCRIPT_OP_GE },         { "&", SCRIPT_OP_BIT_AND },
+        { "|", SCRIPT_OP_BIT_OR },      { "^", SCRIPT_OP_BIT_XOR },
+        { "<<", SCRIPT_OP_SHIFT_LEFT }, { ">>", SCRIPT_OP_SHIFT_RIGHT },
+        { "~", SCRIPT_OP_BIT_NOT },     { "&=", SCRIPT_OP_BIT_AND },
+        { "|=", SCRIPT_OP_BIT_OR },     { "^=", SCRIPT_OP_BIT_XOR },
+        { "+=", SCRIPT_OP_ADD },        { "-=", SCRIPT_OP_SUB },
+        { "*=", SCRIPT_OP_MUL },        { "/=", SCRIPT_OP_DIV },
+        { "%=", SCRIPT_OP_MOD }
     };
     for (size_t i = 0; i < sizeof entries / sizeof *entries; i++) {
         if (script_analyzer_text_is(a, node, entries[i].text)) {

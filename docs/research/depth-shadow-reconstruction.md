@@ -297,7 +297,7 @@ objects use a radius derived from their world bounds; this can retain self-shado
 or exclude nearby blockers that fall inside the approximate source volume.
 
 Both new selectors are opt-in. The proxy mode replaces the Depth term's visible
-emission field and supports uniform GameMaterial mesh/SDF emitters and plain 2D
+emission field and supports uniform Material mesh/SDF emitters and plain 2D
 circles. It excludes shader-authored emission and per-part shader materials.
 Those excluded sources retain their original visible HRC contribution. Hidden
 proxy emission is not injected into a separate HRC bounce solve. HRC still runs,

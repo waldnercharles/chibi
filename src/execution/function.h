@@ -12,6 +12,13 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+typedef enum
+{
+    EXECUTION_REDUCTION_ADD,
+    EXECUTION_REDUCTION_MIN,
+    EXECUTION_REDUCTION_MAX,
+    EXECUTION_REDUCTION_ADD_UNORDERED
+} execution_reduction_op;
 behavior_value_kind behavior_function_kind(const behavior_function *, behavior_value_bank, int index);
 const compile_diagnostic *behavior_function_query_diagnostics(
     const behavior_function *function,
@@ -63,6 +70,36 @@ typedef struct
     const char *asset_name;
     int start, end, line, column;
 } behavior_function_source;
+enum
+{
+    EXECUTION_COST_ALLOCATE = 1u << 0,
+    EXECUTION_COST_COPY = 1u << 1,
+    EXECUTION_COST_ESCAPE = 1u << 2,
+    EXECUTION_COST_KINDS = 3,
+};
+typedef struct
+{
+    const behavior_function *function;
+    int instruction;
+    uint64_t capability;
+    const char *reason;
+} execution_cost_site;
+typedef struct
+{
+    unsigned proven, possible;
+    bool complete;
+    /* First evidence for each bit above; borrowed from the owning generation. */
+    execution_cost_site proven_sites[EXECUTION_COST_KINDS];
+    execution_cost_site possible_sites[EXECUTION_COST_KINDS];
+} execution_cost_summary;
+/* Derived from normal finalized instructions and transitive linked callees.
+ * Proven means an operation exists, not that every branch executes it. Allocate
+ * means a dynamic storage request (possibly satisfied by an arena/pool); copy
+ * excludes scalar moves; escape means retention beyond the producing frame or
+ * expression. Possible covers nullable values, caches, and unknown native code.
+ * This bounded structural analysis does not estimate time, counts, complexity,
+ * or backend/activation setup costs. No authored annotations are required. */
+execution_cost_summary behavior_function_costs(const behavior_function *);
 typedef enum
 {
     BEHAVIOR_FUNCTION_BUDGET,
@@ -200,6 +237,16 @@ typedef struct behavior_function_context
         pin_value declared,
         pin_value value
     );
+    int (*reduce_component)(
+        struct behavior_function_context *,
+        uint64_t entity,
+        uint64_t component,
+        uint64_t layout,
+        size_t offset,
+        pin_value declared,
+        pin_value value,
+        execution_reduction_op
+    );
     double delta_seconds;
     uintptr_t steps;
     uintptr_t budget;
@@ -230,6 +277,7 @@ typedef struct behavior_function_context
     void (*release_local)(struct behavior_function_context *context, pin_value *local);
     int error_status;
     uint64_t owner;
+    const uint64_t *query_variables; /* Current tuple; borrowed instance storage. */
     const char *owner_type_name;
     const struct ecs_execution_view *world, *binding_world;
     /* Optional column table for a synchronous span with stable ECS storage. */
@@ -292,6 +340,16 @@ void behavior_function_prepare_data(
     behavior_data_storage **storage
 );
 void behavior_function_free_data(behavior_data_storage *storage);
+/* Begin a fresh invocation while retaining this function's backing buffers. */
+void behavior_function_reset_data(behavior_data_storage *storage);
+size_t behavior_function_data_storage_bytes(const behavior_data_storage *storage);
+/* Successful completed invocations only: clear saved values and control state,
+ * retaining scratch and idle nested calls for this immutable function. */
+void behavior_function_reset_activation(const behavior_function *, behavior_function_activation *);
+size_t behavior_function_activation_storage_bytes(
+    const behavior_function *,
+    const behavior_function_activation *
+);
 void behavior_function_copy_activation(
     const behavior_function *function,
     behavior_function_activation *target,
@@ -308,6 +366,11 @@ void behavior_function_rebind_services(
 const char *behavior_function_host_action(behavior_function_context *, int target, uint64_t node_id);
 void behavior_function_prepare_host(const behavior_function *function, behavior_function_context *ctx);
 void behavior_function_release_host(behavior_function_context *ctx);
+/* End a completed invocation, retaining fixed host allocations. Clears the
+ * entire context except data/owned_data and empty query/command banks; callers
+ * must bind fresh invocation metadata and call prepare_host before running. */
+void behavior_function_reset_host(behavior_function_context *ctx);
+size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx);
 size_t behavior_function_watch_size(const behavior_function *function);
 /* Checks the live saved values, value banks and outlined call frames. Used by
  * a managed state owner to release overwritten storage after suspension. */
@@ -325,6 +388,13 @@ void behavior_function_trace_values(
     const behavior_function *,
     const behavior_function_context *,
     arena_marker,
+    void *user
+);
+/* Typed roots for owner-managed values such as task handles. */
+void behavior_function_visit_values(
+    const behavior_function *,
+    const behavior_function_context *,
+    void (*visit)(void *, const pin_value *),
     void *user
 );
 bool behavior_function_resumable(const behavior_function *function);
@@ -381,8 +451,10 @@ void behavior_function_activation_free(behavior_function_activation *activation)
 void behavior_function_clear_calls(behavior_function_activation *activation);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
-int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);
-/* Thread-local count of VM scratch initializations, for allocation profiling. */
+/* Compiled execution selects the platform backend: SLJIT or WebAssembly. */
+int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool compiled);
+/* Thread-local scratch-bank initializations for allocation profiling; shared
+ * by bytecode and WebAssembly execution. */
 uint64_t behavior_function_vm_allocations();
 /* The exported C function has the same ABI as the SLJIT entry. */
 /* Batchable Tick body embedded in an ordered native row loop. */

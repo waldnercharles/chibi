@@ -82,18 +82,15 @@ int render_scene3d_mesh_triangles(int primitive, CF_V3 out[SCENE3D_MESH_TRIANGLE
 {
     int count = 0;
     switch (primitive) {
-        case GAME_PRIMITIVE_BOX_FRAME: {
-            GameGeometry3D shape = { .primitive = primitive,
-                                     .width = 1,
-                                     .height = 1,
-                                     .depth = 1 };
-            for (int i = 0; i < game_visual_part_count(primitive); i++) {
-                game_visual_part part = game_visual_part_at(shape, i);
+        case PRIMITIVE_BOX_FRAME: {
+            Geometry3D shape = { .primitive = primitive, .width = 1, .height = 1, .depth = 1 };
+            for (int i = 0; i < visual_part_count(primitive); i++) {
+                visual_part part = visual_part_at(shape, i);
                 beam(out, &count, part.center, part.dimensions);
             }
             break;
         }
-        case GAME_PRIMITIVE_CHEVRON_PYRAMID:
+        case PRIMITIVE_CHEVRON_PYRAMID:
             for (int face = 0; face < 4; face++) {
                 /* Filled NeonSwarm chevron faces share the +X pyramid tip.
                  * The tip-to-notch diagonal preserves the concave rear cutout. */
@@ -110,13 +107,13 @@ int render_scene3d_mesh_triangles(int primitive, CF_V3 out[SCENE3D_MESH_TRIANGLE
                 quad(out, &count, p[0], p[1], p[2], p[3], true);
             }
             break;
-        case GAME_PRIMITIVE_TRIANGLE:
-        case GAME_PRIMITIVE_TRIANGLE_OUTLINE: {
+        case PRIMITIVE_TRIANGLE:
+        case PRIMITIVE_TRIANGLE_OUTLINE: {
             /* Unit width/depth with the triangle centroid at its rotation origin. */
             CF_V3 p[] = { { 2.0f / 3, 0, 0 },
                           { -1.0f / 3, 0, .5f },
                           { -1.0f / 3, 0, -.5f } };
-            if (primitive == GAME_PRIMITIVE_TRIANGLE) {
+            if (primitive == PRIMITIVE_TRIANGLE) {
                 triangle(out, &count, p[0], p[1], p[2]);
                 triangle(out, &count, p[2], p[1], p[0]);
                 break;

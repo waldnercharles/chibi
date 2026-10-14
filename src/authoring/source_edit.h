@@ -38,6 +38,11 @@ typedef enum
     AUTHORING_EDIT_EXTRACT_FUNCTION,
     AUTHORING_EDIT_EXTRACT_MACRO,
     AUTHORING_EDIT_INLINE_CALL,
+    /* symbol is a declared state ID. origin selects its executable body;
+     * Get previous binds an input, and Set accepts producer or a typed value. */
+    AUTHORING_EDIT_CREATE_VARIABLE_GET,
+    AUTHORING_EDIT_CREATE_VARIABLE_SET,
+    AUTHORING_EDIT_RETYPE_VARIABLE,
 } authoring_edit_kind;
 typedef enum
 {

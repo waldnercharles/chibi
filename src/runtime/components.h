@@ -1,5 +1,5 @@
-#ifndef CHIBI_GAME_COMPONENTS_H
-#define CHIBI_GAME_COMPONENTS_H
+#ifndef CHIBI_COMPONENTS_H
+#define CHIBI_COMPONENTS_H
 
 #include "types/annotate.h"
 
@@ -8,35 +8,35 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameTransform;
-typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 GameVelocity;
+typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 Transform;
+typedef NODE_COMPONENT_ALIAS(CF_V2) CF_V2 Velocity;
 
 /* Publishes this entity as a named global entity value. Behaviors can resolve
  * it without knowing how the entity was instantiated. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameGlobalBinding)
+typedef NODE_COMPONENT_TYPE_DENSE(GlobalBinding)
 {
     const char *name;
 }
-GameGlobalBinding;
+GlobalBinding;
 
 typedef enum
 {
-    GAME_BODY_STATIC,
-    GAME_BODY_DYNAMIC,
-    GAME_BODY_KINEMATIC
-} GameBodyType;
+    BODY_STATIC,
+    BODY_DYNAMIC,
+    BODY_KINEMATIC
+} BodyType;
 typedef enum
 {
-    GAME_COLLIDER_CIRCLE,
-    GAME_COLLIDER_BOX
-} GameColliderShape;
+    COLLIDER_CIRCLE,
+    COLLIDER_BOX
+} ColliderShape;
 
 /* All spatial values use project units. There are 32 project units per meter. */
-#define GAME_UNITS_PER_METER 32.0f
+#define UNITS_PER_METER 32.0f
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
+typedef NODE_COMPONENT_TYPE_DENSE(Body)
 {
-    GameBodyType type;
+    BodyType type;
     bool continuous;
     float angular_velocity NODE_UNIT("rad/s"); /* Kinematic radians/second; requires Orientation. */
     bool allow_rotation;
@@ -44,47 +44,47 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
      * solid colliders it carries; physics writes it after each step. */
     float mass NODE_UNIT("kg");
 }
-GameBody;
+Body;
 
 /* The scene's 2D gravity in units/second^2, on at most one entity. It pulls
  * dynamic bodies and material fluids; without one, nothing falls. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameGravity)
+typedef NODE_COMPONENT_TYPE_DENSE(Gravity)
 {
     CF_V2 acceleration;
 }
-GameGravity;
+Gravity;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
+typedef NODE_COMPONENT_TYPE_DENSE(Collider)
 {
     float radius NODE_UNIT("u");
     unsigned category;
     unsigned mask;
-    GameColliderShape shape;
+    ColliderShape shape;
     float width;
     float height;
     bool sensor;
     bool pierce_fragments; /* Continuous sensors report debris hits without stopping. */
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
     float restitution NODE_RANGE(0, 1);
-    float friction NODE_RANGE(0, 1);
+    float friction NODE_RANGE_HINT(0, 1);
 }
-GameCollider;
+Collider;
 
 /* Target velocity with finite acceleration; physics owns actual velocity. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
+typedef NODE_COMPONENT_TYPE_DENSE(Drive)
 {
     CF_V2 target;
     float acceleration NODE_UNIT("u/s²");
 }
-GameDrive;
+Drive;
 
 typedef enum
 {
-    GAME_JOINT_HINGE,
-    GAME_JOINT_SLIDER,
-    GAME_JOINT_WELD,
-    GAME_JOINT_DISTANCE
-} GameJointKind;
+    JOINT_HINGE,
+    JOINT_SLIDER,
+    JOINT_WELD,
+    JOINT_DISTANCE
+} JointKind;
 
 /* Joins the body at or above the entity, the nearest one with a Body or a
  * static collider of its own, to other's (zero: the world), at the entity's
@@ -99,9 +99,9 @@ typedef enum
  * weld back to where it was made at hertz and damping, and makes a distance
  * joint elastic: its limit and motor act only then. collide lets the two
  * bodies touch and report contacts. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameJoint)
+typedef NODE_COMPONENT_TYPE_DENSE(Joint)
 {
-    GameJointKind kind;
+    JointKind kind;
     uint64_t other NODE_HANDLE(ecs.entity);
     bool collide;
     bool limit;
@@ -114,7 +114,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameJoint)
     float hertz NODE_UNIT("Hz");
     float damping;
 }
-GameJoint;
+Joint;
 
 /* A Scene-owned reference to a standalone System document. */
 typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
@@ -212,7 +212,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
 MaterialBreakProfile;
 
 /* Optional local combustion. Heat is a gameplay quantity, not kelvin. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
+typedef NODE_COMPONENT_TYPE_DENSE(Combustion)
 {
     float ignition;
     float cooling;
@@ -232,7 +232,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
      * Zero disables extinguishing; positive values must be below ignition. */
     float extinction;
 }
-GameCombustion;
+Combustion;
 
 /* Optional fluid heat exchange. Capacity is specific heat per unit mass;
  * conductivity is the local exchange rate. Zero conductivity is insulating. */
@@ -253,45 +253,45 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialConstitutive)
 }
 MaterialConstitutive;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameFuel)
+typedef NODE_COMPONENT_TYPE_DENSE(Fuel)
 {
     float amount;
 }
-GameFuel;
+Fuel;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameIgniter)
+typedef NODE_COMPONENT_TYPE_DENSE(Igniter)
 {
     float heat;
 }
-GameIgniter;
+Igniter;
 
-/* Damage per surviving cell. Optical properties remain in GameMaterial. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSubstance)
+/* Damage per surviving cell. Optical properties remain in Material. */
+typedef NODE_COMPONENT_TYPE_DENSE(Substance)
 {
     float hardness;
     float blast_multiplier;
     bool retain_chips;
 }
-GameSubstance;
+Substance;
 
 /* Optional circular void in a destructible mask, for finite sealed pockets. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialCavity)
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialCavity)
 {
     float radius NODE_UNIT("u");
 }
-GameMaterialCavity;
+MaterialCavity;
 
 /* Stylized planar reflection; angle is the local mirror tangent in radians. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameReflection)
+typedef NODE_COMPONENT_TYPE_DENSE(Reflection)
 {
     float strength;
     float roughness;
     float angle;
     float offset;
 }
-GameReflection;
+Reflection;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
+typedef NODE_COMPONENT_TYPE_DENSE(Destructible)
 {
     float cell_size;
     int min_fragment_cells;
@@ -300,26 +300,26 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDestructible)
     /* Detached fragments may be passed through by continuous sensors. */
     bool pierceable_fragments;
 }
-GameDestructible;
+Destructible;
 
 /* Detached material keeps its collision but gradually loses emitted light. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameFragmentGlow)
+typedef NODE_COMPONENT_TYPE_DENSE(FragmentGlow)
 {
     float duration;
     float flicker;
 }
-GameFragmentGlow;
+FragmentGlow;
 
 /* Where an entity's local frame sat when its material was laid out. Fragments
  * keep their source's frame, so world-space material patterns stay attached to
  * a broken piece as it moves and rotates. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialFrame)
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialFrame)
 {
     float x;
     float y;
     float radians NODE_UNIT("rad");
 }
-GameMaterialFrame;
+MaterialFrame;
 
 /* Authored, axis-aligned procedural terrain. Appearance and Material on the
  * source style its chunks; collision and destruction use the generated cells. */
@@ -350,20 +350,20 @@ MaterialTerrain;
 
 typedef enum
 {
-    GAME_FLUID_GAS,
-    GAME_FLUID_LIQUID,
-} GameFluidKind;
+    FLUID_KIND_GAS,
+    FLUID_KIND_LIQUID,
+} FluidKind;
 
 /* A one-time, elliptical fill in local space; its matter then lives freely. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
+typedef NODE_COMPONENT_TYPE_DENSE(FluidVolume)
 {
-    GameFluidKind kind;
+    FluidKind kind;
     float width;
     float height;
     float spacing;
     float mass;
     unsigned color NODE_COLOR;
-    float absorption NODE_RANGE(0, 1);
+    float absorption NODE_RANGE_HINT(0, 1);
     float emission;
     /* Camera-only minimum visibility; contributes no radiance or bounce. */
     float visibility;
@@ -374,76 +374,85 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float grain_radius NODE_UNIT("u");
     CF_V2 velocity;
 }
-GameFluidVolume;
+FluidVolume;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameHealth)
+typedef NODE_COMPONENT_TYPE_DENSE(Health)
 {
     int current;
     int maximum;
 }
-GameHealth;
+Health;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameMovement)
+typedef NODE_COMPONENT_TYPE_DENSE(Movement)
 {
     float speed NODE_UNIT("u/s");
 }
-GameMovement;
+Movement;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameInput)
+typedef NODE_COMPONENT_TYPE_DENSE(Input)
 {
     CF_V2 move;
 }
-GameInput;
+Input;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameWeapon)
+typedef NODE_COMPONENT_TYPE_DENSE(Weapon)
 {
     int damage;
     float cooldown NODE_UNIT("s");
 }
-GameWeapon;
+Weapon;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
+typedef NODE_COMPONENT_TYPE_DENSE(Projectile)
 {
     float speed NODE_UNIT("u/s");
     float lifetime NODE_UNIT("s");
     int damage;
     float age;
 }
-GameProjectile;
+Projectile;
 
 typedef enum
 {
-    GAME_SHAPE_BOX = 0,
-    GAME_SHAPE_CIRCLE,
-    GAME_SHAPE_DIAMOND,
-    GAME_SHAPE_CHEVRON,
-    GAME_SHAPE_STROKED_CHEVRON,
-    GAME_SHAPE_CAPSULE,
-    GAME_SHAPE_TRIANGLE,
-    GAME_SHAPE_STROKED_TRIANGLE,
-} GameShape;
+    SHAPE_BOX = 0,
+    SHAPE_CIRCLE,
+    SHAPE_DIAMOND,
+    SHAPE_CHEVRON,
+    SHAPE_STROKED_CHEVRON,
+    SHAPE_CAPSULE,
+    SHAPE_TRIANGLE,
+    SHAPE_STROKED_TRIANGLE,
+} Shape;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
+typedef NODE_COMPONENT_TYPE_DENSE(Appearance)
 {
     float width;
     float height;
     unsigned color NODE_COLOR;
-    GameShape shape;
+    Shape shape;
     float border_width;
     unsigned border_color NODE_COLOR;
     float glow_radius;
     unsigned glow_color NODE_COLOR;
     float stroke_width;
-    float antialias NODE_RANGE(0, 1);
+    float antialias NODE_RANGE_HINT(0, 1);
     int layer;
+    /* World units the shape stands above the plane where its scene color
+     * covers, as a Sprite's relief; a material graph's Height adds to it. In
+     * Depth thickness lighting, a light standing higher passes over lower
+     * shapes and reaches raised surfaces. */
+    float relief NODE_UNIT("u");
 }
-GameAppearance;
+Appearance;
 
 /* Draws one frame of an image instead of an Appearance, one world unit per
  * texel, centred on the Transform. Frames are frame_width by frame_height
  * cells numbered left to right, then top to bottom; zero sizes use the whole
- * image. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
+ * image. normal_map holds tangent-space normals laid out like the image, red
+ * right and green up, and each texel stands relief world units above the
+ * plane, times the red of height_map when there is one. 2D lighting shades
+ * them through surface light, which a Material's edge_light scales; without a
+ * Material, a sprite with a map takes it in full. */
+typedef NODE_COMPONENT_TYPE_DENSE(Sprite)
 {
     const char *image;
     int frame;
@@ -451,13 +460,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
     int frame_height;
     bool flip_x;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
-GameSprite;
+Sprite;
 
 /* One atlas-backed grid, anchored at Transform's local top-left corner.
  * Cells are row-major whitespace-separated frame indices; -1 is empty.
- * Frame dimensions are both atlas texels and world units. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
+ * Frame dimensions are both atlas texels and world units. normal_map,
+ * height_map and relief shade and raise the tiles as they do a Sprite. */
+typedef NODE_COMPONENT_TYPE_DENSE(Tilemap)
 {
     const char *image;
     const char *cells;
@@ -466,37 +479,42 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
     int frame_width;
     int frame_height;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
-GameTilemap;
+Tilemap;
 
 /* Radians from gameplay +X toward +Y: atan2(direction.y, direction.x).
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)
+typedef NODE_COMPONENT_TYPE_DENSE(Orientation)
 {
     float radians NODE_UNIT("rad");
 }
-GameOrientation;
+Orientation;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
+typedef NODE_COMPONENT_TYPE_DENSE(Material)
 {
     unsigned scene NODE_COLOR;
     unsigned albedo NODE_COLOR;
     unsigned filter NODE_COLOR;
     unsigned emission_color NODE_COLOR;
-    float emission_intensity NODE_RANGE(0, 4);
+    float emission_intensity NODE_RANGE_HINT(0, 4);
     float emission_multiplier;
-    float absorption NODE_RANGE(0, 1);
+    float absorption NODE_RANGE_HINT(0, 1);
     unsigned border_scene NODE_COLOR;
     unsigned border_emission_color NODE_COLOR;
     unsigned border_albedo NODE_COLOR;
     unsigned border_filter NODE_COLOR;
     /* Gain of light received near the surface of a solid, reaching
-     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
-    float edge_light NODE_RANGE(0, 1);
+     * HRC2D.surface_radius into it. Zero disables; no unlit outline.
+     * With Depth thickness, a solid that absorbs nothing instead takes its
+     * HRC light shaded by its facing and by heights in the way, this much. */
+    float edge_light NODE_RANGE_HINT(0, 1);
 }
-GameMaterial;
+Material;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameShader)
+typedef NODE_COMPONENT_TYPE_DENSE(Shader)
 {
     const char *material;
     const char *shape;
@@ -504,26 +522,26 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameShader)
     float bounds_x;
     float bounds_y;
 }
-GameShader;
+Shader;
 
 enum
 {
-    GAME_PRIMITIVE_BOX,
-    GAME_PRIMITIVE_SPHERE,
-    GAME_PRIMITIVE_CAPSULE,
-    GAME_PRIMITIVE_CONE,
-    GAME_PRIMITIVE_TRIANGLE_PRISM,
-    GAME_PRIMITIVE_OCTAHEDRON,
-    GAME_PRIMITIVE_TETRAHEDRON,
-    GAME_PRIMITIVE_CHEVRON_PYRAMID,
-    GAME_PRIMITIVE_BOX_FRAME,
-    GAME_PRIMITIVE_TRIANGLE_OUTLINE,
-    GAME_PRIMITIVE_TRIANGLE,
-    GAME_PRIMITIVE_COUNT,
+    PRIMITIVE_BOX,
+    PRIMITIVE_SPHERE,
+    PRIMITIVE_CAPSULE,
+    PRIMITIVE_CONE,
+    PRIMITIVE_TRIANGLE_PRISM,
+    PRIMITIVE_OCTAHEDRON,
+    PRIMITIVE_TETRAHEDRON,
+    PRIMITIVE_CHEVRON_PYRAMID,
+    PRIMITIVE_BOX_FRAME,
+    PRIMITIVE_TRIANGLE_OUTLINE,
+    PRIMITIVE_TRIANGLE,
+    PRIMITIVE_COUNT,
 };
 
 /* Full visual extents. Gameplay x/y is world x/z; elevation is center Y without a Transform3D. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameGeometry3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Geometry3D)
 {
     int primitive;
     float width;
@@ -531,17 +549,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameGeometry3D)
     float height;
     float elevation;
 }
-GameGeometry3D;
+Geometry3D;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameAim)
+typedef NODE_COMPONENT_TYPE_DENSE(Aim)
 {
     CF_V2 direction;
     bool firing;
     bool manual;
 }
-GameAim;
+Aim;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameDash)
+typedef NODE_COMPONENT_TYPE_DENSE(Dash)
 {
     float speed NODE_UNIT("u/s");
     float duration NODE_UNIT("s");
@@ -551,61 +569,71 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDash)
     float cooldown_remaining;
     CF_V2 direction;
 }
-GameDash;
+Dash;
 
 enum
 {
-    GAME_ENCOUNTER_ACTIVE,
-    GAME_ENCOUNTER_CLEARED,
-    GAME_ENCOUNTER_DEFEATED,
+    ENCOUNTER_ACTIVE,
+    ENCOUNTER_CLEARED,
+    ENCOUNTER_DEFEATED,
 };
 enum
 {
-    GAME_ENCOUNTER_PLAYER,
-    GAME_ENCOUNTER_ENEMY,
+    ENCOUNTER_PLAYER,
+    ENCOUNTER_ENEMY,
 };
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameSpawnRequest)
+typedef NODE_COMPONENT_TYPE_DENSE(SpawnRequest)
 {
     const char *prototype;
     float delay NODE_UNIT("s");
 }
-GameSpawnRequest;
+SpawnRequest;
 
 /* One encounter owns the current arena. Behaviors update these counters. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameEncounter)
+typedef NODE_COMPONENT_TYPE_DENSE(Encounter)
 {
     int status;
     int total;
     int spawned;
     int alive;
 }
-GameEncounter;
+Encounter;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameEncounterMember)
+typedef NODE_COMPONENT_TYPE_DENSE(EncounterMember)
 {
     int role;
 }
-GameEncounterMember;
+EncounterMember;
 
 /* Display transform from scene-linear HDR. AgX is filmic and desaturates
  * highlights; Neutral keeps base colors close to their authored values. */
 typedef enum
 {
-    GAME_TONE_MAPPING_AGX NODE_NAME("AgX"),
-    GAME_TONE_MAPPING_NEUTRAL NODE_NAME("Neutral"),
-} GameToneMapping;
+    TONE_MAPPING_AGX NODE_NAME("AgX"),
+    TONE_MAPPING_NEUTRAL NODE_NAME("Neutral"),
+} ToneMapping;
 
 /* How finely screen-space ambient occlusion searches the 3D view. Low and
  * Medium work at half resolution; High works at full resolution with the
  * most samples. */
 typedef enum
 {
-    GAME_OCCLUSION_OFF NODE_NAME("Off"),
-    GAME_OCCLUSION_LOW NODE_NAME("Low"),
-    GAME_OCCLUSION_MEDIUM NODE_NAME("Medium"),
-    GAME_OCCLUSION_HIGH NODE_NAME("High"),
-} GameOcclusion;
+    OCCLUSION_OFF NODE_NAME("Off"),
+    OCCLUSION_LOW NODE_NAME("Low"),
+    OCCLUSION_MEDIUM NODE_NAME("Medium"),
+    OCCLUSION_HIGH NODE_NAME("High"),
+} Occlusion;
+
+/* How many probes and rays global illumination spends on the 3D scene's
+ * bounced light. Off lights it with the ambient colors or sky alone. */
+typedef enum
+{
+    GLOBAL_ILLUMINATION_OFF NODE_NAME("Off"),
+    GLOBAL_ILLUMINATION_LOW NODE_NAME("Low"),
+    GLOBAL_ILLUMINATION_MEDIUM NODE_NAME("Medium"),
+    GLOBAL_ILLUMINATION_HIGH NODE_NAME("High"),
+} GlobalIllumination;
 
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
  * of viewport height. Zero strength disables bloom. The 3D ambient light blends
@@ -621,8 +649,11 @@ typedef enum
  * -20 to 20. Occlusion darkens the ambient and sky light where nearby 3D
  * surfaces hide the sky from each other, such as creases and the ground
  * beneath objects, searching up to occlusion radius world units, which must
- * be positive while it is on; direct light is left alone. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
+ * be positive while it is on; direct light is left alone. Global
+ * illumination replaces the ambient and sky light on 3D surfaces with the
+ * light that reaches them from the scene's opaque solids, lights, emissive
+ * surfaces and sky, bounced between surfaces. */
+typedef NODE_COMPONENT_TYPE_DENSE(Environment)
 {
     float exposure NODE_UNIT("EV");
     float bloom_strength;
@@ -631,28 +662,29 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     unsigned ambient_sky NODE_COLOR;
     unsigned ambient_ground NODE_COLOR;
     float ambient_intensity;
-    GameToneMapping tone_mapping;
+    ToneMapping tone_mapping;
     bool auto_exposure;
     float adaptation_speed;
     const char *sky;
     float sky_rotation;
     float sky_exposure NODE_UNIT("EV");
-    GameOcclusion occlusion;
+    Occlusion occlusion;
     float occlusion_radius NODE_UNIT("u");
+    GlobalIllumination global_illumination;
 }
-GameEnvironment;
+Environment;
 
-static inline GameEnvironment game_environment_defaults()
+static inline Environment environment_defaults()
 {
-    return (GameEnvironment){ .bloom_strength = .18f,
-                              .bloom_threshold = 1,
-                              .bloom_radius = .012f,
-                              .ambient_sky = 0x2b3345ffu,
-                              .ambient_ground = 0x0f121affu,
-                              .ambient_intensity = 1,
-                              .adaptation_speed = 2,
-                              .occlusion = GAME_OCCLUSION_MEDIUM,
-                              .occlusion_radius = 1 };
+    return (Environment){ .bloom_strength = .18f,
+                          .bloom_threshold = 1,
+                          .bloom_radius = .012f,
+                          .ambient_sky = 0x2b3345ffu,
+                          .ambient_ground = 0x0f121affu,
+                          .ambient_intensity = 1,
+                          .adaptation_speed = 2,
+                          .occlusion = OCCLUSION_MEDIUM,
+                          .occlusion_radius = 1 };
 }
 
 /* Light from an infinitely distant source, such as the sun. Direction is the
@@ -661,7 +693,7 @@ static inline GameEnvironment game_environment_defaults()
  * block it. Angular diameter is the light's apparent size in degrees, 0 to
  * 20: its shadows soften with distance from their caster, and zero keeps
  * them hard. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameDirectionalLight)
+typedef NODE_COMPONENT_TYPE_DENSE(DirectionalLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
@@ -669,22 +701,22 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDirectionalLight)
     bool shadows;
     float angular_diameter;
 }
-GameDirectionalLight;
+DirectionalLight;
 
-static inline GameDirectionalLight game_directional_light_defaults()
+static inline DirectionalLight directional_light_defaults()
 {
-    return (GameDirectionalLight){ .color = 0xffffffffu,
-                                   .intensity = 2.8f,
-                                   .direction = { .45f, -.85f, -.4f },
-                                   .shadows = true,
-                                   .angular_diameter = 3 };
+    return (DirectionalLight){ .color = 0xffffffffu,
+                               .intensity = 2.8f,
+                               .direction = { .45f, -.85f, -.4f },
+                               .shadows = true,
+                               .angular_diameter = 3 };
 }
 
 /* Local scene-linear light. Radius and center elevation use project units;
  * color is 0xRRGGBBAA, matching other authored color fields. Shadows lets
  * opaque solids within its radius block it, for up to four lights a view
  * ranks highest. */
-typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
+typedef NODE_COMPONENT_TYPE_DENSE(PointLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
@@ -692,7 +724,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
     float elevation;
     bool shadows;
 }
-GamePointLight;
+PointLight;
 
 /* A cone of local scene-linear light. Radius and center elevation use project
  * units, and color is 0xRRGGBBAA like a Point Light's. Direction is the world
@@ -700,7 +732,7 @@ GamePointLight;
  * cone's full width in degrees, and the light fades from full strength at the
  * inner angle to none at the outer one. Shadows lets opaque solids within its
  * cone and radius block it. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSpotLight)
+typedef NODE_COMPONENT_TYPE_DENSE(SpotLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
@@ -711,22 +743,22 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSpotLight)
     float outer_angle;
     bool shadows;
 }
-GameSpotLight;
+SpotLight;
 
-static inline GameSpotLight game_spot_light_defaults()
+static inline SpotLight spot_light_defaults()
 {
-    return (GameSpotLight){ .color = 0xffffffffu,
-                            .intensity = 6,
-                            .radius = 400,
-                            .elevation = 160,
-                            .direction = { 0, -1, 0 },
-                            .inner_angle = 40,
-                            .outer_angle = 60,
-                            .shadows = true };
+    return (SpotLight){ .color = 0xffffffffu,
+                        .intensity = 6,
+                        .radius = 400,
+                        .elevation = 160,
+                        .direction = { 0, -1, 0 },
+                        .inner_angle = 40,
+                        .outer_angle = 60,
+                        .shadows = true };
 }
 
 /* A colored activity signal for material effects, independent of lighting. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
+typedef NODE_COMPONENT_TYPE_DENSE(SurfaceInfluence)
 {
     unsigned color NODE_COLOR;
     float strength;
@@ -734,29 +766,29 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
     float linger;
     float inner_radius;
 }
-GameSurfaceInfluence;
+SurfaceInfluence;
 
 /* Shared simulation rhythm. Pulse width is measured in seconds. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameRhythm)
+typedef NODE_COMPONENT_TYPE_DENSE(Rhythm)
 {
     float bpm NODE_UNIT("bpm");
     float pulse_width;
 }
-GameRhythm;
+Rhythm;
 
 /* Visual-only local rotations in radians; gameplay heading remains independent. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameVisualTransform)
+typedef NODE_COMPONENT_TYPE_DENSE(VisualTransform)
 {
     float pitch;
     float yaw;
     float roll;
     float scale;
 }
-GameVisualTransform;
+VisualTransform;
 
 /* Optional native visual integration. Rotation axes are pitch/yaw/roll in
    radians; angular velocity is radians/second. Physics heading stays separate. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameVisualMotion)
+typedef NODE_COMPONENT_TYPE_DENSE(VisualMotion)
 {
     CF_V3 rotation;
     CF_V3 angular_velocity;
@@ -767,17 +799,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameVisualMotion)
     float reaction_age;
     float reaction_duration;
 }
-GameVisualMotion;
+VisualMotion;
 
 /* Opts a 3D visual into the planar material renderer; collision remains 2D. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMeshSurface2D)
+typedef NODE_COMPONENT_TYPE_DENSE(MeshSurface2D)
 {
     bool enabled;
 }
-GameMeshSurface2D;
+MeshSurface2D;
 
 /* Bounded 3D distance graph evaluated in authored units; lighting stays planar. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSdfSurface3D)
+typedef NODE_COMPONENT_TYPE_DENSE(SdfSurface3D)
 {
     bool enabled;
     /* Optional simpler Shape graph below the projected pixel span. Both
@@ -785,85 +817,85 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSdfSurface3D)
     const char *low_detail_shape;
     float low_detail_pixels;
 }
-GameSdfSurface3D;
+SdfSurface3D;
 
 typedef enum
 {
-    GAME_SURFACE_SUPERSAMPLED,
-    GAME_SURFACE_FULL,
-} GameSurfaceResolution;
+    SURFACE_SUPERSAMPLED,
+    SURFACE_FULL,
+} SurfaceResolution;
 
 typedef enum
 {
-    GAME_SDF_NORMAL_CENTRAL,
-    GAME_SDF_NORMAL_TETRAHEDRAL,
-    GAME_SDF_NORMAL_ANALYTIC,
-} GameSdfNormalMode;
+    SDF_NORMAL_CENTRAL,
+    SDF_NORMAL_TETRAHEDRAL,
+    SDF_NORMAL_ANALYTIC,
+} SdfNormalMode;
 
 /* Optional scene surface quality. Zero initialization preserves the reference
  * renderer. Place one on the camera or another scene settings entity. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceQuality)
+typedef NODE_COMPONENT_TYPE_DENSE(SurfaceQuality)
 {
     /* Supersampled uses twice each canvas dimension; Full uses one sample. */
-    GameSurfaceResolution resolution;
+    SurfaceResolution resolution;
     /* Projected pixel tolerance for refined SDF tracing; zero uses the
      * original distance-bound tolerance. Supported range is zero to one. */
     float sdf_pixel_error NODE_RANGE(0, 1);
     /* Central uses six field samples; Tetrahedral uses four. */
-    GameSdfNormalMode sdf_normal_mode;
+    SdfNormalMode sdf_normal_mode;
     /* Reference comparison retaining each object's full-detail graph. */
     bool disable_sdf_lod;
 }
-GameSurfaceQuality;
+SurfaceQuality;
 
 /* Optional imported triangle geometry; Surface graphs read its exported UVs. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameMeshAsset)
+typedef NODE_COMPONENT_TYPE_DENSE(MeshAsset)
 {
     const char *source;
 }
-GameMeshAsset;
+MeshAsset;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameMeshParts)
+typedef NODE_COMPONENT_TYPE_DENSE(MeshParts)
 {
     const char *parts;
 }
-GameMeshParts;
+MeshParts;
 
 /* Independent random endpoints; exponent zero holds the sampled start value. */
-typedef NODE_TYPE(GameParticleCurve)
+typedef NODE_TYPE(ParticleCurve)
 {
     CF_V2 start;
     CF_V2 end;
     float exponent;
 }
-GameParticleCurve;
+ParticleCurve;
 
 /* A parent is optional. Each child emitter owns an independent seed and rate. */
 typedef enum
 {
-    GAME_PARTICLE_ROUND,
-    GAME_PARTICLE_TRIANGLE,
-    GAME_PARTICLE_TRIANGLE_OUTLINE,
-    GAME_PARTICLE_RING,
-    GAME_PARTICLE_STREAK,
-} GameParticleShape;
-#define GAME_PARTICLE_SHAPE_COUNT (GAME_PARTICLE_STREAK + 1)
+    PARTICLE_ROUND,
+    PARTICLE_TRIANGLE,
+    PARTICLE_TRIANGLE_OUTLINE,
+    PARTICLE_RING,
+    PARTICLE_STREAK,
+} ParticleShape;
+#define PARTICLE_SHAPE_COUNT (PARTICLE_STREAK + 1)
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
+typedef NODE_COMPONENT_TYPE_DENSE(ParticleEmitter)
 {
-    GameParticleShape shape;
+    ParticleShape shape;
     unsigned color NODE_COLOR;
     unsigned end_color NODE_COLOR;
     float rate;
     int burst_count;
     CF_V2 lifetime;
     CF_V2 speed;
-    GameParticleCurve size;
+    ParticleCurve size;
     float spread;
-    GameParticleCurve drag;
-    GameParticleCurve emission;
-    GameParticleCurve antialias;
-    float absorption NODE_RANGE(0, 1);
+    ParticleCurve drag;
+    ParticleCurve emission;
+    ParticleCurve antialias;
+    float absorption NODE_RANGE_HINT(0, 1);
     int metaball_group;
     float metaball_blend;
     bool velocity_align;
@@ -876,45 +908,59 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     bool planar;
     bool heading_only;
     bool fluid;
-    GameFluidKind fluid_kind;
+    FluidKind fluid_kind;
     float fluid_mass;
 }
-GameParticleEmitter;
+ParticleEmitter;
 
-static inline GameParticleEmitter game_particle_emitter_defaults()
+static inline ParticleEmitter particle_emitter_defaults()
 {
-    return (GameParticleEmitter){ .color = 0xffffffffu,
-                                  .end_color = 0xffffff00u,
-                                  .rate = 90,
-                                  .lifetime = { .3f, .3f },
-                                  .speed = { 70, 70 },
-                                  .size = { { 2, 2 }, { 0, 0 }, .8f },
-                                  .spread = .3f,
-                                  .drag = { { 1, 1 }, { 0, 0 }, 0 },
-                                  .emission = { { .7f, .7f }, { 0, 0 }, 0 },
-                                  .antialias = { { 1.5f, 1.5f }, { 0, 0 }, 0 },
-                                  .absorption = .01f,
-                                  .velocity_inherit = 1,
-                                  .direction = { -1, 0, 0 },
-                                  .active = true };
+    return (ParticleEmitter){ .color = 0xffffffffu,
+                              .end_color = 0xffffff00u,
+                              .rate = 90,
+                              .lifetime = { .3f, .3f },
+                              .speed = { 70, 70 },
+                              .size = { { 2, 2 }, { 0, 0 }, .8f },
+                              .spread = .3f,
+                              .drag = { { 1, 1 }, { 0, 0 }, 0 },
+                              .emission = { { .7f, .7f }, { 0, 0 }, 0 },
+                              .antialias = { { 1.5f, 1.5f }, { 0, 0 }, 0 },
+                              .absorption = .01f,
+                              .velocity_inherit = 1,
+                              .direction = { -1, 0, 0 },
+                              .active = true };
 }
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameTrail)
+/* Instanced 3D particles evaluated by Shader.material's pure shader function.
+ * The function owns position, size and HDR color. Geometry3D supplies one
+ * tetrahedron or octahedron; no particle owns an entity or simulation state. */
+typedef NODE_COMPONENT_TYPE_DENSE(ParticleField3D)
+{
+    int count NODE_RANGE(0, 1048576);
+    int seed;
+    /* An authored clock lets a field pause independently of scene time. */
+    float time NODE_UNIT("s");
+    /* Additive fields test solid depth without writing depth or sorting. */
+    bool additive;
+}
+ParticleField3D;
+
+typedef NODE_COMPONENT_TYPE_DENSE(Trail)
 {
     unsigned color NODE_COLOR;
     float width;
     float lifetime NODE_UNIT("s");
     float emission;
 }
-GameTrail;
+Trail;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameExperience)
+typedef NODE_COMPONENT_TYPE_DENSE(Experience)
 {
     int current;
 }
-GameExperience;
+Experience;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
+typedef NODE_COMPONENT_TYPE_DENSE(Pickup)
 {
     int value;
     float lifetime NODE_UNIT("s");
@@ -924,12 +970,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
     uint64_t target NODE_HANDLE(ecs.entity);
     CF_V2 origin;
 }
-GamePickup;
+Pickup;
 
 /* An optional camera follows its entity's Transform, or its Transform3D. The
  * authored span is expanded for the viewport aspect; offsets and spans use
  * project units. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
+typedef NODE_COMPONENT_TYPE_DENSE(Camera)
 {
     float width;
     float height;
@@ -956,90 +1002,115 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     float near_clip NODE_UNIT("u");
     float far_clip NODE_UNIT("u");
 }
-GameCamera;
+Camera;
 
 /* Sources are grouped by device: mouse, keyboard, then controller. Escape is
  * not a source: hosts reserve it to pause play. */
 typedef enum
 {
-    GAME_CONTROL_NONE,
-    GAME_CONTROL_MOUSE_LEFT,
-    GAME_CONTROL_MOUSE_RIGHT,
-    GAME_CONTROL_MOUSE_MIDDLE,
-    GAME_CONTROL_SPACE,
-    GAME_CONTROL_SHIFT,
-    GAME_CONTROL_CONTROL,
-    GAME_CONTROL_ALT,
-    GAME_CONTROL_TAB,
-    GAME_CONTROL_ENTER,
-    GAME_CONTROL_BACKSPACE,
-    GAME_CONTROL_ARROW_UP,
-    GAME_CONTROL_ARROW_DOWN,
-    GAME_CONTROL_ARROW_LEFT,
-    GAME_CONTROL_ARROW_RIGHT,
-    GAME_CONTROL_A,
-    GAME_CONTROL_B,
-    GAME_CONTROL_C,
-    GAME_CONTROL_D,
-    GAME_CONTROL_E,
-    GAME_CONTROL_F,
-    GAME_CONTROL_G,
-    GAME_CONTROL_H,
-    GAME_CONTROL_I,
-    GAME_CONTROL_J,
-    GAME_CONTROL_K,
-    GAME_CONTROL_L,
-    GAME_CONTROL_M,
-    GAME_CONTROL_N,
-    GAME_CONTROL_O,
-    GAME_CONTROL_P,
-    GAME_CONTROL_Q,
-    GAME_CONTROL_R,
-    GAME_CONTROL_S,
-    GAME_CONTROL_T,
-    GAME_CONTROL_U,
-    GAME_CONTROL_V,
-    GAME_CONTROL_W,
-    GAME_CONTROL_X,
-    GAME_CONTROL_Y,
-    GAME_CONTROL_Z,
-    GAME_CONTROL_0,
-    GAME_CONTROL_1,
-    GAME_CONTROL_2,
-    GAME_CONTROL_3,
-    GAME_CONTROL_4,
-    GAME_CONTROL_5,
-    GAME_CONTROL_6,
-    GAME_CONTROL_7,
-    GAME_CONTROL_8,
-    GAME_CONTROL_9,
-    GAME_CONTROL_PAD_A,
-    GAME_CONTROL_PAD_B,
-    GAME_CONTROL_PAD_X,
-    GAME_CONTROL_PAD_Y,
-    GAME_CONTROL_PAD_LEFT_SHOULDER,
-    GAME_CONTROL_PAD_RIGHT_SHOULDER,
-    GAME_CONTROL_PAD_LEFT_TRIGGER,
-    GAME_CONTROL_PAD_RIGHT_TRIGGER,
-    GAME_CONTROL_AIM_STICK,
-    GAME_CONTROL_COUNT,
-} GameControl;
+    CONTROL_NONE,
+    CONTROL_MOUSE_LEFT,
+    CONTROL_MOUSE_RIGHT,
+    CONTROL_MOUSE_MIDDLE,
+    CONTROL_SPACE,
+    CONTROL_SHIFT,
+    CONTROL_CONTROL,
+    CONTROL_ALT,
+    CONTROL_TAB,
+    CONTROL_ENTER,
+    CONTROL_BACKSPACE,
+    CONTROL_ARROW_UP,
+    CONTROL_ARROW_DOWN,
+    CONTROL_ARROW_LEFT,
+    CONTROL_ARROW_RIGHT,
+    CONTROL_A,
+    CONTROL_B,
+    CONTROL_C,
+    CONTROL_D,
+    CONTROL_E,
+    CONTROL_F,
+    CONTROL_G,
+    CONTROL_H,
+    CONTROL_I,
+    CONTROL_J,
+    CONTROL_K,
+    CONTROL_L,
+    CONTROL_M,
+    CONTROL_N,
+    CONTROL_O,
+    CONTROL_P,
+    CONTROL_Q,
+    CONTROL_R,
+    CONTROL_S,
+    CONTROL_T,
+    CONTROL_U,
+    CONTROL_V,
+    CONTROL_W,
+    CONTROL_X,
+    CONTROL_Y,
+    CONTROL_Z,
+    CONTROL_0,
+    CONTROL_1,
+    CONTROL_2,
+    CONTROL_3,
+    CONTROL_4,
+    CONTROL_5,
+    CONTROL_6,
+    CONTROL_7,
+    CONTROL_8,
+    CONTROL_9,
+    CONTROL_PAD_A,
+    CONTROL_PAD_B,
+    CONTROL_PAD_X,
+    CONTROL_PAD_Y,
+    CONTROL_PAD_LEFT_SHOULDER,
+    CONTROL_PAD_RIGHT_SHOULDER,
+    CONTROL_PAD_LEFT_TRIGGER,
+    CONTROL_PAD_RIGHT_TRIGGER,
+    CONTROL_AIM_STICK,
+    CONTROL_COUNT,
+} Control;
+
+/* Per-controller action sources. Independent of the shared keyboard bitset. */
+typedef enum
+{
+    PAD_NONE,
+    PAD_A,
+    PAD_B,
+    PAD_X,
+    PAD_Y,
+    PAD_BACK,
+    PAD_START,
+    PAD_LEFT_SHOULDER,
+    PAD_RIGHT_SHOULDER,
+    PAD_DPAD_UP,
+    PAD_DPAD_DOWN,
+    PAD_DPAD_LEFT,
+    PAD_DPAD_RIGHT,
+    PAD_LEFT_STICK_UP,
+    PAD_LEFT_STICK_DOWN,
+    PAD_LEFT_STICK_LEFT,
+    PAD_LEFT_STICK_RIGHT,
+    PAD_LEFT_TRIGGER,
+    PAD_RIGHT_TRIGGER,
+    PAD_COUNT,
+} PadControl;
 
 /* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an
  * emitting input's value is read with Get UI Value and `#id`. UI nodes set
  * text, classes and values on the elements an RCSS selector matches. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameUi)
+typedef NODE_COMPONENT_TYPE_DENSE(Ui)
 {
     const char *document;
     int order;
     bool hidden;
 }
-GameUi;
+Ui;
 
 /* One optional finite visibility grid. The main view conceals unseen space. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameFog)
+typedef NODE_COMPONENT_TYPE_DENSE(Fog)
 {
     CF_V2 origin;
     int columns;
@@ -1049,12 +1120,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFog)
     unsigned color NODE_COLOR;
     bool disabled;
 }
-GameFog;
+Fog;
 
 /* Vision sources share current sight. Obstacles in occluders block sight.
  * A positive duration shrinks a temporary clearing to zero over its lifetime;
  * duration <= 0 is permanent. Only remembering sources update terrain memory. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameVision)
+typedef NODE_COMPONENT_TYPE_DENSE(Vision)
 {
     float radius NODE_UNIT("u");
     unsigned occluders;
@@ -1063,28 +1134,28 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameVision)
     bool remember;
     bool disabled;
 }
-GameVision;
+Vision;
 
 /* A sensor observation owns its last detected position, independently of the
  * observed actor. Behaviors decide what it detects and when it refreshes. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameSensorContact)
+typedef NODE_COMPONENT_TYPE_DENSE(SensorContact)
 {
     CF_V2 position;
     float remaining;
     unsigned color NODE_COLOR;
 }
-GameSensorContact;
+SensorContact;
 
-typedef NODE_COMPONENT_TYPE_DENSE(GameRenderState)
+typedef NODE_COMPONENT_TYPE_DENSE(RenderState)
 {
     bool hidden;
     bool visibility_culled;
 }
-GameRenderState;
+RenderState;
 
 /* Optional 2D radiance composition; values are nonnegative scene-linear gains. */
 /* Cell size, radius, density and brightness for each procedural star layer. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
+typedef NODE_COMPONENT_TYPE_DENSE(Starfield2D)
 {
     CF_V4 far_layer, middle_layer, near_layer;
     CF_V3 parallax;
@@ -1093,120 +1164,80 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
     unsigned color_c NODE_COLOR;
     unsigned color_d NODE_COLOR;
 }
-GameStarfield2D;
-
-/* Color detail of HRC lighting relative to its resolution. */
-typedef enum
-{
-    GAME_HRC_COLOR_FULL,
-    GAME_HRC_COLOR_HALF,
-    GAME_HRC_COLOR_QUARTER,
-    GAME_HRC_COLOR_EIGHTH,
-} GameHRCColor;
-
-/* Resolution of HRC's received-light image relative to the canvas. */
-typedef enum
-{
-    GAME_HRC_GATHER_FULL,
-    GAME_HRC_GATHER_HALF,
-    GAME_HRC_GATHER_AUTO,
-} GameHRCGather;
+Starfield2D;
 
 typedef enum
 {
-    GAME_HRC_UPSCALE_PLAIN_BILINEAR NODE_NAME("Plain bilinear"),
-    GAME_HRC_UPSCALE_EDGE_AWARE NODE_NAME("Edge aware"),
-    GAME_HRC_UPSCALE_JOINT_BILATERAL NODE_NAME("Joint bilateral"),
-    GAME_HRC_UPSCALE_FIVE_TAP_CROSS NODE_NAME("Five tap cross"),
-} GameHRCUpscale;
+    HRC_TONE_CLAMP,
+    HRC_TONE_AGX NODE_NAME("AgX"),
+} HRCToneMapping;
 
 typedef enum
 {
-    GAME_HRC_DEBUG_NORMAL,
-    GAME_HRC_DEBUG_SCENE,
-    GAME_HRC_DEBUG_EMISSION,
-    GAME_HRC_DEBUG_ABSORPTION,
-    GAME_HRC_DEBUG_ALBEDO,
-    GAME_HRC_DEBUG_FLUENCE,
-    GAME_HRC_DEBUG_NORMALS,
-    GAME_HRC_DEBUG_SURFACE_LIGHT NODE_NAME("Surface light"),
-    GAME_HRC_DEBUG_LIGHT_DIRECTION NODE_NAME("Light direction"),
-    GAME_HRC_DEBUG_SHADING_NORMALS NODE_NAME("Shading normals"),
-} GameHRCDebugView;
+    HRC_SHADOW_REFERENCE,
+    HRC_SHADOW_HORIZON4,
+    HRC_SHADOW_HORIZON8,
+} HRCShadowMode;
 
 typedef enum
 {
-    GAME_HRC_TONE_CLAMP,
-    GAME_HRC_TONE_AGX NODE_NAME("AgX"),
-} GameHRCToneMapping;
-
-typedef enum
-{
-    GAME_HRC_SHADOW_REFERENCE,
-    GAME_HRC_SHADOW_HORIZON4,
-    GAME_HRC_SHADOW_HORIZON8,
-} GameHRCShadowMode;
-
-typedef enum
-{
-    GAME_HRC_SURFACE_BLUR,
-    GAME_HRC_SURFACE_GATHER,
-    GAME_HRC_SURFACE_DEPTH NODE_NAME("Depth thickness"),
-} GameHRCSurfaceMode;
+    HRC_SURFACE_BLUR,
+    HRC_SURFACE_GATHER,
+    HRC_SURFACE_DEPTH NODE_NAME("Depth thickness"),
+} HRCSurfaceMode;
 
 /* Maximum source tiles per axis before bounded child refinement. */
 typedef enum
 {
-    GAME_HRC_DEPTH_LOW NODE_NAME("Low"),
-    GAME_HRC_DEPTH_BALANCED NODE_NAME("Balanced"),
-    GAME_HRC_DEPTH_HIGH NODE_NAME("High"),
-} GameHRCDepthQuality;
+    HRC_DEPTH_LOW NODE_NAME("Low"),
+    HRC_DEPTH_BALANCED NODE_NAME("Balanced"),
+    HRC_DEPTH_HIGH NODE_NAME("High"),
+} HRCDepthQuality;
 
 typedef enum
 {
-    GAME_HRC_DEPTH_VISIBILITY_MASK NODE_NAME("Angular masks"),
-    GAME_HRC_DEPTH_VISIBILITY_SEGMENTS NODE_NAME("Bounded segments"),
-} GameHRCDepthVisibility;
+    HRC_DEPTH_VISIBILITY_MASK NODE_NAME("Angular masks"),
+    HRC_DEPTH_VISIBILITY_SEGMENTS NODE_NAME("Bounded segments"),
+} HRCDepthVisibility;
 
-typedef enum
-{
-    GAME_HRC_DEPTH_EMITTERS_VISIBLE NODE_NAME("Visible surfaces"),
-    GAME_HRC_DEPTH_EMITTERS_PROXIES NODE_NAME("Uniform material proxies"),
-} GameHRCDepthEmitters;
-
-typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
+/* 2D lighting by holographic radiance cascades: light from emissive
+ * materials, with shadows, bounce and fog. The first entity's settings light
+ * the scene; a scene without one draws its materials unlit. HRC's
+ * experiments and internal tuning are not authored here; tests and the HRC
+ * lab set them (docs/hrc-lab.md). */
+typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
      * probe per 2x2 pixels. Brightness keeps this detail, and most lighting
      * cost scales with its area. 1, 0.5, 0.25 and 0.125 give whole-pixel
      * cells. With adaptive on, the highest resolution it uses. */
-    float resolution NODE_RANGE(0.1, 1);
-    /* Color detail relative to resolution. Below Full, a brightness-only
-     * transport solves at resolution and color on a grid 2, 4 or 8 times
-     * coarser; color then blurs where differently colored lights meet. */
-    GameHRCColor color_resolution;
-    /* Received-light image: gather, temporal filtering and bounce, at the full
-     * canvas or half of it. Half saves about 2 ms at 1080p and softens sharp
-     * shadow edges. Auto lets adaptive choose, before it lowers resolution. */
-    GameHRCGather gather_resolution;
+    float resolution NODE_RANGE(0.1, 1) NODE_RANGE_DEFAULT(.5);
     /* Steps lighting down while the scene's GPU time misses target_fps, first
-     * gather when Auto, then resolution by halves down to min_resolution, and
-     * back up when there is room. It measures GPU time, so frames limited by
-     * the CPU or vsync keep their lighting. Needs Metal's GPU timestamps. */
+     * color detail, then resolution by halves down to 0.25, and back up when
+     * there is room. Where the GPU reports its time (Metal, and
+     * WebGL with timer queries), frames limited by the CPU or vsync keep their
+     * lighting; elsewhere it judges the whole frame's interval. */
     bool adaptive;
     /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps NODE_UNIT("fps");
-    /* Lowest resolution adaptive may choose. */
-    float min_resolution NODE_RANGE(0.1, 1);
-    /* Gain of the unlit scene color added to the frame. */
+    /* Gain of the unlit scene color added to the frame. 1 shows materials as
+     * drawn, and lower values darken what light does not reach. In Depth
+     * thickness, taller surfaces nearby hide part of it, as they would hide
+     * the sky. */
     float ambient;
+    /* Light from the sky above a side view: open ground receives this color.
+     * Solids that absorb light block it like any light, so overhangs shade
+     * the ground beneath them and caves stay dark; falloff never dims it.
+     * In Depth thickness, heights nearby hide part of it, as for ambient.
+     * Black, the default, has no sky. */
+    unsigned sky NODE_COLOR;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
     float intensity;
     /* Brightness of light seen in open air: the glow around lights. */
     float fog;
     /* Fraction of a solid's albedo that stays visible where no light reaches
-     * it. */
+     * it. Depth thickness hides part of it like ambient. */
     float shadow_floor;
     /* How quickly light dims with distance; zero keeps it at full strength
      * across the view. */
@@ -1219,106 +1250,91 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float bounce_intensity;
     /* Current-frame weight of bounce light: 1 disables temporal smoothing, not
      * bounce, and lower values retain more history. Camera movement resets it. */
-    float bounce_hysteresis NODE_RANGE(0, 1);
+    float bounce_hysteresis NODE_RANGE(0, 1) NODE_RANGE_DEFAULT(.8);
     /* Current-frame weight of received light: 1 disables temporal smoothing,
      * and lower values retain more history. */
-    float radiance_hysteresis NODE_RANGE(0, 1);
-    /* How received light is upsampled from the transport grid: 0 bilinear,
-     * 1 bilinear that turns nearest at absorption edges, 2 joint bilateral on
-     * absorption, 3 five-tap cross. Ignored with a luminance transport. */
-    GameHRCUpscale upscale_mode;
-    /* Absorption difference that upscale modes 1 and 2 treat as an edge. */
-    float upscale_threshold;
-    /* 0 draws the lit frame; 1 scene, 2 emission, 3 transmittance, 4 albedo,
-     * 5 received light, 6 normals, 7 surface light, 8 dominant light
-     * direction, 9 shading normals. */
-    GameHRCDebugView debug_view;
-    /* Perspective distance for particles: raised particles scale by
-     * focal / (focal + elevation). */
-    float particle_focal_length;
-    /* Cascade levels traced through the scene. Higher levels are extended
-     * from the ones below, which is cheaper but less exact. */
-    int trace_levels NODE_RANGE(1, 5);
+    float radiance_hysteresis NODE_RANGE(0, 1) NODE_RANGE_DEFAULT(.8);
     /* Feeds light reflected by lit surfaces back into the transport as bounce
      * light. */
     bool feedback;
     /* World units that light received near a solid's surface reaches into it,
-     * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
+     * scaled by Material.edge_light. Zero disables surface lighting. */
     float surface_radius NODE_UNIT("u");
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
-     * Depth thickness gathers visible emission with finite-depth occluders. */
-    GameHRCSurfaceMode surface_mode;
-    /* Screen-plane reach in project units for Depth thickness mode. */
+     * Depth thickness is the 2.5D mode: it gathers visible emission past
+     * anything with height, and on solids that absorb nothing shades the HRC
+     * light by their facing and those heights, counting each light as much
+     * as HRC brings it. Solids that absorb light, where HRC's light stops, take
+     * the light HRC brings open ground from the lights they see above them,
+     * so a side view's tiles catch the light of lanterns in front of them.
+     * Light passes over a prop that absorbs nothing where the prop is lower
+     * than the light. Heights within the depth radius also hide ambient
+     * light, darkening the foot of a wall and the floor around a prop. */
+    HRCSurfaceMode surface_mode;
+    /* Screen-plane reach in project units for Depth thickness mode. Solids
+     * that absorb light take light only from the lights within reach, and a
+     * solid that absorbs nothing shades the light HRC brings it from them,
+     * and all its HRC light where they bring at least half of it, so it
+     * should reach the lights that matter. */
     float surface_depth_radius;
-    /* Gain of the visible Depth contribution added to HRC. Zero disables it. */
+    /* Gain of the Depth light solids that absorb light take, which at 1
+     * matches HRC's light on open ground, and of Depth highlights. Zero
+     * disables Depth thickness. */
     float surface_depth_gain;
     /* Source sampling budget; all levels preserve integrated emission. */
-    GameHRCDepthQuality surface_depth_quality;
+    HRCDepthQuality surface_depth_quality;
     /* Segments share one bounded visibility query per coarse source tile. */
-    GameHRCDepthVisibility surface_depth_visibility;
-    /* Independent proxies preserve camera-hidden uniform material emitters;
-     * shader-authored emission is excluded in this experimental source mode. */
-    GameHRCDepthEmitters surface_depth_emitters;
-    /* Refine nearby sources whose directions differ across a source tile. */
-    bool surface_depth_near_detail;
+    HRCDepthVisibility surface_depth_visibility;
     /* Blend visibility bins and reconstruction boundaries, in [0, 1]. */
     float surface_depth_shadow_softness NODE_RANGE(0, 1);
     /* Reproject and validate a short history of the Depth contribution. */
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
     float surface_depth_history;
-    /* Assumed camera-depth thickness of visible surfaces in project units. */
+    /* How far below its visible top a surface blocks Depth light and ambient
+     * light, in project units. A light that absorbs nothing never blocks. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */
     float surface_relief;
     /* Local heightfield visibility; horizons store four or eight azimuths. */
-    GameHRCShadowMode surface_shadow_mode;
-    /* Independent horizon experiments. False keeps the reference submission. */
-    bool horizon_fuse_relief;
-    bool horizon_cache;
-    bool horizon_reproject;
-    bool horizon_hierarchy;
+    HRCShadowMode surface_shadow_mode;
     /* Outward tilt of solid normals near silhouettes, which catches rim light. */
     float surface_bevel;
     /* Gain of glossy highlights on solids with low material roughness. */
     float specular;
     /* 0 clamps the composite to the display range. 1 keeps it in HDR and
      * presents it with bloom, exposure and AgX tone mapping. */
-    GameHRCToneMapping tone_mapping;
+    HRCToneMapping tone_mapping;
     /* Exposure in EV before tone mapping. */
     float exposure NODE_UNIT("EV");
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
     float bloom NODE_RANGE(0, 1);
 }
-GameHRC2D;
+HRC2D;
 
-static inline GameHRC2D game_hrc2d_defaults()
+static inline HRC2D hrc2d_defaults()
 {
-    return (GameHRC2D){ .resolution = 1,
-                        .adaptive = true,
-                        .target_fps = 60,
-                        .min_resolution = .25f,
-                        .intensity = 7.5f,
-                        .fog = 1,
-                        .falloff = 1,
-                        .bounce_intensity = 1,
-                        .bounce_hysteresis = .8f,
-                        .radiance_hysteresis = .8f,
-                        .upscale_mode = GAME_HRC_UPSCALE_EDGE_AWARE,
-                        .upscale_threshold = .1f,
-                        .particle_focal_length = 300,
-                        .trace_levels = 3,
-                        .feedback = true,
-                        .surface_radius = 24,
-                        .surface_depth_radius = 128,
-                        .surface_depth_gain = 1,
-                        .surface_depth_quality = GAME_HRC_DEPTH_BALANCED,
-                        .surface_depth_history = .65f,
-                        .surface_thickness = 12,
-                        .surface_relief = 1.5f,
-                        .surface_bevel = 1,
-                        .specular = 1 };
+    return (HRC2D){ .resolution = .5f,
+                    .adaptive = true,
+                    .target_fps = 60,
+                    .ambient = 1,
+                    .intensity = 1,
+                    .fog = 1,
+                    .falloff = 1,
+                    .bounce_intensity = 1,
+                    .bounce_hysteresis = .8f,
+                    .radiance_hysteresis = .8f,
+                    .feedback = true,
+                    .surface_radius = 24,
+                    .surface_depth_radius = 128,
+                    .surface_depth_gain = 1,
+                    .surface_depth_quality = HRC_DEPTH_BALANCED,
+                    .surface_depth_history = .65f,
+                    .surface_thickness = 12,
+                    .surface_relief = 1.5f,
+                    .surface_bevel = 1,
+                    .specular = 1 };
 }
 
 /* Count Matching Entities combines these conditions with AND. Presence tests
@@ -1341,31 +1357,31 @@ EntityCondition;
 
 /* Local 3D placement in project units. rotation is a unit quaternion; a zero
  * one reads as identity. KDL loads omitted fields as zero, so author scale. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameTransform3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Transform3D)
 {
     CF_V3 position;
     CF_Quat rotation;
     CF_V3 scale;
 }
-GameTransform3D;
+Transform3D;
 
 /* World placement of a Transform3D: the columns of an affine matrix. */
-typedef NODE_DERIVED_COMPONENT(GameGlobalTransform3D, GameTransform3D)
+typedef NODE_DERIVED_COMPONENT(GlobalTransform3D, Transform3D)
 {
     CF_V3 x_axis;
     CF_V3 y_axis;
     CF_V3 z_axis;
     CF_V3 position;
 }
-GameGlobalTransform3D;
+GlobalTransform3D;
 
 /* World placement of a Transform and its Orientation. */
-typedef NODE_DERIVED_COMPONENT(GameGlobalTransform2D, GameTransform)
+typedef NODE_DERIVED_COMPONENT(GlobalTransform2D, Transform)
 {
     CF_V2 position;
     float radians;
 }
-GameGlobalTransform2D;
+GlobalTransform2D;
 
 /* 3D physics. Entities with Transform3D and Collider3D collide in one Box3D
  * world per ECS world, created when the first one appears. Lengths are project
@@ -1380,12 +1396,12 @@ GameGlobalTransform2D;
 
 typedef enum
 {
-    GAME_COLLIDER3D_BOX,
-    GAME_COLLIDER3D_SPHERE,
-    GAME_COLLIDER3D_CAPSULE,
-    GAME_COLLIDER3D_HULL,
-    GAME_COLLIDER3D_MESH
-} GameCollider3DShape;
+    COLLIDER3D_BOX,
+    COLLIDER3D_SPHERE,
+    COLLIDER3D_CAPSULE,
+    COLLIDER3D_HULL,
+    COLLIDER3D_MESH
+} Collider3DShape;
 
 /* A shape centered on the entity and scaled by its world scale. A box uses
  * size, its full extents; a sphere uses radius; a capsule uses radius and
@@ -1396,9 +1412,9 @@ typedef enum
  * when each one's category shares a bit with the other's mask, so zero masks
  * touch nothing. Sensors report contacts without pushing. Friction and
  * restitution of zero are frictionless and inelastic. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Collider3D)
 {
-    GameCollider3DShape shape;
+    Collider3DShape shape;
     CF_V3 size;
     float radius NODE_UNIT("u");
     float height NODE_UNIT("u");
@@ -1406,31 +1422,31 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
     unsigned category;
     unsigned mask;
     bool sensor;
-    float friction NODE_RANGE(0, 1);
-    float restitution NODE_RANGE(0, 1);
+    float friction NODE_RANGE_HINT(0, 1);
+    float restitution NODE_RANGE_HINT(0, 1);
 }
-GameCollider3D;
+Collider3D;
 
 /* World-space velocities: linear in units/second, angular in radians/second.
  * Kinematic bodies move at them. Dynamic bodies start from them, and physics
  * writes the solved values back each step, with the body's mass: 1000 kg per
  * cubic meter of its collider and the solid colliders it carries. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameBody3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Body3D)
 {
-    GameBodyType type;
+    BodyType type;
     CF_V3 linear_velocity;
     CF_V3 angular_velocity;
     float mass NODE_UNIT("kg");
 }
-GameBody3D;
+Body3D;
 
 /* The scene's 3D gravity in units/second^2, on at most one entity. Without
  * one, gravity is 9.81 meters/second^2 along -Y. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameGravity3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Gravity3D)
 {
     CF_V3 acceleration;
 }
-GameGravity3D;
+Gravity3D;
 
 /* Makes a kinematic body with a solid capsule collider, at least 2 cm in
  * radius, a character that slides. Each step, physics moves it by its Body3D
@@ -1439,24 +1455,27 @@ GameGravity3D;
  * into it, so gravity a script adds does not build up while it stands. on_floor
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
- * stops at dynamic bodies and other characters as at walls, does not ride
- * moving platforms, and carries only sensor colliders under it. It turns by
- * its Transform3D; physics keeps its Body3D angular velocity at zero. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
+ * rides the translation and rotation of its supporting collider's body, with
+ * carry swept against other solids. Carry does not add to linear_velocity;
+ * moving away from the floor releases it without inherited momentum. It stops
+ * at dynamic bodies and other characters as at walls, and carries only sensor
+ * colliders under it. It turns by its Transform3D; platform rotation moves its
+ * position without turning it, and physics keeps angular velocity at zero. */
+typedef NODE_COMPONENT_TYPE_DENSE(Character3D)
 {
     bool on_floor;
     CF_V3 floor_normal;
 }
-GameCharacter3D;
+Character3D;
 
 typedef enum
 {
-    GAME_JOINT3D_HINGE,
-    GAME_JOINT3D_SLIDER,
-    GAME_JOINT3D_BALL,
-    GAME_JOINT3D_WELD,
-    GAME_JOINT3D_DISTANCE
-} GameJoint3DKind;
+    JOINT3D_HINGE,
+    JOINT3D_SLIDER,
+    JOINT3D_BALL,
+    JOINT3D_WELD,
+    JOINT3D_DISTANCE
+} Joint3DKind;
 
 /* Joins the body at or above the entity, the nearest one with a Body3D or a
  * static collider of its own, to other's (zero: the world), at the entity's
@@ -1470,9 +1489,9 @@ typedef enum
  * strength. spring pulls a hinge, slider, ball or weld back to where it was
  * made at hertz and damping, and makes a distance joint elastic: its limit
  * and motor act only then. collide lets the two bodies touch. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameJoint3D)
+typedef NODE_COMPONENT_TYPE_DENSE(Joint3D)
 {
-    GameJoint3DKind kind;
+    Joint3DKind kind;
     uint64_t other NODE_HANDLE(ecs.entity);
     bool collide;
     bool limit;
@@ -1485,6 +1504,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameJoint3D)
     float hertz NODE_UNIT("Hz");
     float damping;
 }
-GameJoint3D;
+Joint3D;
 
 #endif

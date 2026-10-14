@@ -22,14 +22,15 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c")
 add_library(chibi_project_compilation STATIC)
 foreach(unit component_declarations project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
-    graph_sources native_graph_prepare material_prepare scene_prepare sound_prepare ui_prepare ui_prepare_assets)
+    graph_sources native_graph_prepare source_graph_library material_prepare scene_prepare sound_prepare ui_prepare
+    ui_prepare_assets)
     target_sources(chibi_project_compilation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::project_compilation ALIAS chibi_project_compilation)
 set_target_properties(chibi_project_compilation PROPERTIES EXPORT_NAME project_compilation)
 chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/component_declarations.h authoring/project_compile.h authoring/renderer_catalog.h
     authoring/project_prepare.h authoring/prototype_prepare.h authoring/material_prepare.h authoring/scene_prepare.h
-    authoring/sound_prepare.h)
+    authoring/sound_prepare.h authoring/source_graph_library.h)
 foreach(header project_prepare_internal graph_sources native_graph_prepare ui_prepare)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/project_compilation/authoring/${header}.h" COPYONLY)
@@ -38,7 +39,7 @@ target_include_directories(chibi_project_compilation PRIVATE "${CMAKE_CURRENT_BI
 target_include_directories(chibi_project_compilation SYSTEM PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation")
 target_link_libraries(chibi_project_compilation PUBLIC chibi_source_catalog chibi_prototype_document
     chibi_scene_document chibi_player chibi_native_prepared chibi_shader_preparation
-    PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_asset_authoring
+    PRIVATE chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_graph_authoring chibi_asset_authoring
     chibi_asset_text chibi_project_document chibi_ui_authoring chibi_builtin_fonts chibi_image_preparation chibi_json)
 list(APPEND CHIBI_SDK_TARGETS chibi_shader_preparation chibi_project_compilation)
 

@@ -65,7 +65,7 @@ struct material_fluid
     int capacity, buckets;
     float kernel, delta;
     fluid_contact_settings contact_settings;
-    game_task_system tasks;
+    task_system tasks;
     material_flow *flow;
     fluid_flow_settings flow_settings;
     material_mpm *mpm;
@@ -381,9 +381,9 @@ const fluid_blast *material_fluid_blasts(const material_fluid *fluid, int *count
     return fluid->blasts;
 }
 
-void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks)
+void material_fluid_set_tasks(material_fluid *fluid, const task_system *tasks)
 {
-    fluid->tasks = tasks ? *tasks : (game_task_system){ 0 };
+    fluid->tasks = tasks ? *tasks : (task_system){ 0 };
 }
 
 bool material_fluid_thermal_valid(fluid_thermal value)
@@ -628,7 +628,7 @@ static void relax(int start, int end, uint32_t, void *context)
     }
 }
 
-static void run(material_fluid *fluid, game_task_range *fn, void *context, int grain)
+static void run(material_fluid *fluid, task_range *fn, void *context, int grain)
 {
     int count = acount(fluid->active);
     if (fluid->tasks.workers > 1 && count >= 2048) {
@@ -1663,7 +1663,7 @@ void material_fluid_tick_profiled(
             }
             if (p->style.duration > 0) {
                 float age = 1 - p->lifetime / p->style.duration;
-                float drag = game_particle_curve_value(
+                float drag = particle_curve_value(
                     p->style.drag,
                     p->style.drag_end,
                     p->style.drag_exponent,

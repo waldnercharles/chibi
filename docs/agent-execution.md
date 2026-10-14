@@ -53,6 +53,10 @@ or explicitly leave the device unknown. They also include image dimensions,
 planned frame counts, elapsed wall time, and time/RSS budgets. Native render results
 carry the same execution metadata. Full checks remain explicitly pending.
 
+Shared GPU assertion fixtures use native hidden windows on macOS and Windows.
+On Linux they prefer SDL's offscreen driver while honoring explicit
+`SDL_VIDEO_DRIVER` or legacy `SDL_VIDEODRIVER` settings.
+
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
 Other selectors are GPU/mixed or unclassified, and are blocked with an outstanding
@@ -292,8 +296,34 @@ The `--studio-source-edit` GPU route accepts explicit absolute
 `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and
 `CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. It verifies the compiled acceptance
 binary, recorded source files, SDK configuration and the exact three-file,
-212-byte fixture. It copies that fixture to disposable scratch, isolates
+210-byte fixture. It copies that fixture to disposable scratch, isolates
 preferences and thumbnail cache there, and removes scratch after execution.
 Four hidden 1920×1080 frames at fixed 1/60 dt must report exactly one accepted
 edit, undo and redo. UI initialization or runtime-frame diagnostics reject the
 run. The ordinary startup route remains separate.
+
+The Studio interaction routes use the same provenance checks and disposable
+fixture. Each runs independently under the shared 60-second supervisor deadline:
+
+| Agent selector | Hidden frames | Accepted interaction |
+| --- | ---: | --- |
+| `--studio-scene-collider3d` | 26 | Scaled box, sphere and capsule handles, typed history, parallel/nonfinite and hidden-handle rejection, Escape/H cancellation; three actors |
+| `--studio-scene-gizmo3d` | 42 | World/local move, snapping, rotation/scaling, history and cancellation; six prototypes/eight actors |
+| `--studio-graph-pointer` | 19 | SDL node selection, wire navigation, Find keys and pointer selection, Escape focus, Home framing |
+| `--studio-asset-pointer` | 20 | SDL filter typing, list/grid clicks with modifiers, exact visible identities and selection |
+| `--studio-debugger-source-history` | 47 | SDL source breakpoint, play, invalid draft, undo/redo, retained paused cursor and value, step and stop |
+
+The acceptance source manifest must enumerate every file under
+`tests/acceptance`, with 8–32 files, no file or directory symlinks, at most 256 KiB per file,
+and exact recorded sizes and hashes. C-owned tooling cases reject missing,
+unrecorded, changed, linked and oversized files. The resource pin covers the
+Studio source project at consumer base `d10222dc`; these routes require a Studio
+build containing the matching new selectors.
+
+Restore `projects/studio/project.kdl` from `CHIBI_STUDIO_SOURCE` into
+`$CHIBI_STUDIO_BUILD/share/chibi/studio/project.kdl` before each invocation.
+Studio migrates the build copy on startup, so a second invocation otherwise fails
+the unchanged-resource preflight. The engine route removes its disposable user
+project after every run. See Studio's `tests/acceptance/README.md` for the exact
+interactions. These admissions do not enable the held acceptance suite, establish
+web input coverage or assert a particular GPU backend.

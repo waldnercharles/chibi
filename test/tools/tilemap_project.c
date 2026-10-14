@@ -78,9 +78,9 @@ TEST_CASE(authored_grid_matches_previous_scene)
     scene = read_asset(path, 4 * 1024);
     REQUIRE(before && room && scene);
     const av_value *components = av_obj_get(av_doc_root(room), "components");
-    const av_value *map = av_obj_get(components, "GAME.GameTilemap");
+    const av_value *map = av_obj_get(components, "Tilemap");
     REQUIRE(av_is_obj(map));
-    const av_value *origin = av_obj_get(components, "GAME.GameTransform");
+    const av_value *origin = av_obj_get(components, "Transform");
     REQUIRE(av_is_obj(origin));
     REQUIRE(av_get_num(av_obj_get(origin, "x")) == 0);
     REQUIRE(av_get_num(av_obj_get(origin, "y")) == 0);
@@ -109,7 +109,7 @@ TEST_CASE(authored_grid_matches_previous_scene)
             continue;
         }
         components = av_obj_get(entity, "components");
-        const av_value *at = av_obj_get(components, "GAME.GameTransform");
+        const av_value *at = av_obj_get(components, "Transform");
         REQUIRE(av_is_num(av_obj_get(at, "x")) && av_is_num(av_obj_get(at, "y")));
         double x = av_get_num(av_obj_get(at, "x")),
                y = av_get_num(av_obj_get(at, "y"));
@@ -121,7 +121,7 @@ TEST_CASE(authored_grid_matches_previous_scene)
         REQUIRE(x == column * TILE_SIZE + TILE_SIZE / 2);
         REQUIRE(y == row * TILE_SIZE + TILE_SIZE / 2);
         REQUIRE(expected[row * COLUMNS + column] == -1);
-        const av_value *sprite = av_obj_get(components, "GAME.GameSprite");
+        const av_value *sprite = av_obj_get(components, "Sprite");
         REQUIRE(av_is_num(av_obj_get(sprite, "frame")));
         int frame = av_get_int(av_obj_get(sprite, "frame"));
         REQUIRE(frame >= 0);

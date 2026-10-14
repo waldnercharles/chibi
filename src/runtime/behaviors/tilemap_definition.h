@@ -3,9 +3,9 @@
 
 #include "runtime/native_definitions.h"
 
-#define GAME_TILEMAP_FRAME_NAME "Tilemap Frame At"
-#define GAME_TILEMAP_BOX_NAME "Tilemap Occupied In Box"
-#define GAME_TILEMAP_ENTITY(X)                                                 \
+#define TILEMAP_FRAME_NAME "Tilemap Frame At"
+#define TILEMAP_BOX_NAME "Tilemap Occupied In Box"
+#define TILEMAP_ENTITY(X)                                                      \
     X("Tilemap",                                                               \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_HANDLE,                                                              \
@@ -16,7 +16,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ 0 }))
-#define GAME_TILEMAP_VECTOR(X, NAME)                                           \
+#define TILEMAP_VECTOR(X, NAME)                                                \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_STRUCT,                                                              \
@@ -27,12 +27,11 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ 0 }))
-#define GAME_TILEMAP_FRAME_INPUTS(X)                                           \
-    GAME_TILEMAP_ENTITY(X) GAME_TILEMAP_VECTOR(X, "Point")
-#define GAME_TILEMAP_BOX_INPUTS(X)                                             \
-    GAME_TILEMAP_ENTITY(X)                                                     \
-    GAME_TILEMAP_VECTOR(X, "Minimum") GAME_TILEMAP_VECTOR(X, "Maximum")
-#define GAME_TILEMAP_OUTPUT(X, NAME)                                           \
+#define TILEMAP_FRAME_INPUTS(X) TILEMAP_ENTITY(X) TILEMAP_VECTOR(X, "Point")
+#define TILEMAP_BOX_INPUTS(X)                                                  \
+    TILEMAP_ENTITY(X)                                                          \
+    TILEMAP_VECTOR(X, "Minimum") TILEMAP_VECTOR(X, "Maximum")
+#define TILEMAP_OUTPUT(X, NAME)                                                \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_I32,                                                                 \
@@ -44,5 +43,5 @@
       false,                                                                   \
       ((pin_value){ 0 }))
 
-extern const native_definition_pack GAME_TILEMAP_DEFINITION_PACK;
+extern const native_definition_pack TILEMAP_DEFINITION_PACK;
 #endif

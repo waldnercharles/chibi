@@ -52,8 +52,8 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   light instead of masking small changes. Neither exposure nor the visibility
   floor enters bounce history. Global light haze is reduced to 0.15.
 - **Solid surfaces:** rock is shaded as a relief facing the camera. Light
-  received in the open space around a solid reaches `GameHRC2D.surface_radius`
-  world units into it, scaled by `GameMaterial.edge_light`. The HRC pass averages light over open space at a
+  received in the open space around a solid reaches `HRC2D.surface_radius`
+  world units into it, scaled by `Material.edge_light`. The HRC pass averages light over open space at a
   coarse block size and blurs it; concave corners receive less. HRC keeps the
   light arriving from each of its four quadrants, so several lights shade relief
   from their own directions instead of cancelling. Material normals brighten
@@ -61,10 +61,10 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   casts short shadows toward the strongest light by marching the relief. Near a
   silhouette the surface turns toward the open side (`surface_bevel`) to catch
   rim light. Diffuse is Lambertian and the highlight is a GGX dielectric with
-  Smith visibility and Schlick Fresnel; `GameHRC2D.specular` of one is
+  Smith visibility and Schlick Fresnel; `HRC2D.specular` of one is
   physically scaled. Internal contour seams do not create edges, and no incoming
   light means no surface light. Basalt remains nonemissive.
-- **HDR presentation:** with `GameHRC2D.tone_mapping`, the composite stays in
+- **HDR presentation:** with `HRC2D.tone_mapping`, the composite stays in
   linear HDR. A seven-level bloom (a 13-tap downsample that suppresses single
   bright pixels, then tent upsampling) is mixed in by `bloom`, then `exposure`
   and AgX tone mapping map it to the display. Highlights keep their colour
@@ -74,14 +74,14 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   floor, while ordinary fog remains cooler and dimmer. These are camera-only
   artistic adjustments, with zero cold-material emission into HRC.
   Near-surface normals redistribute incoming light and offset background/light
-  sampling. `GameFluidVolume.refraction` controls that offset in output pixels;
+  sampling. `FluidVolume.refraction` controls that offset in output pixels;
   the authored liquid uses eight. Opacity is reduced to show the background.
 - **Enemy damage:** three projectile hits exhaust health; falling below 30% of
   the original hull area releases the remaining body sooner. Released debris
   retains material and collision but has no pursuit behavior or health.
-- **Debris penetration:** optional `GameCollider.pierce_fragments` lets continuous
+- **Debris penetration:** optional `Collider.pierce_fragments` lets continuous
   sensors report contacts from fragments authored with
-  `GameDestructible.pierceable_fragments` while continuing to the first blocking
+  `Destructible.pierceable_fragments` while continuing to the first blocking
   body.
   `Contact Begin` carries the world-space Point (`CF_V2`); the projectile carves there,
   then remains alive for debris hits. Swept events are delivered in travel order,
@@ -89,7 +89,7 @@ coarser gas simulation. Its population control is not verified as FPS-driven.
   on live enemies, ordinary debris, and intact terrain. This is an authored
   penetration rule,
   without energy loss or a ballistics model.
-- **Fragment power:** optional `GameFragmentGlow` fades emitted light over 3.5
+- **Fragment power:** optional `FragmentGlow` fades emitted light over 3.5
   seconds with staggered flicker. Dark fragments keep their collision and motion.
 
 ## Cost and limits

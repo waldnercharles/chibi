@@ -3,9 +3,9 @@
 #include <assert.h>
 #include <string.h>
 
-bool game_physics_settings_read(av_value *object, game_physics_settings *out)
+bool physics_settings_read(av_value *object, physics_settings *out)
 {
-    game_physics_settings settings = game_physics_defaults();
+    physics_settings settings = physics_defaults();
     if (!object) {
         *out = settings;
         return true;
@@ -45,18 +45,18 @@ bool game_physics_settings_read(av_value *object, game_physics_settings *out)
             return false;
         }
     }
-    if (!game_physics_settings_valid(settings)) {
+    if (!physics_settings_valid(settings)) {
         return false;
     }
     *out = settings;
     return true;
 }
 
-av_value *game_physics_settings_write(av_doc *doc, game_physics_settings settings)
+av_value *physics_settings_write(av_doc *doc, physics_settings settings)
 {
-    assert(game_physics_settings_valid(settings));
+    assert(physics_settings_valid(settings));
     /* Reading starts from the defaults, so only differences are written. */
-    game_physics_settings defaults = game_physics_defaults();
+    physics_settings defaults = physics_defaults();
     av_value *object = av_obj(doc);
     if (settings.workers != defaults.workers) {
         av_obj_add_int(doc, object, "workers", settings.workers);

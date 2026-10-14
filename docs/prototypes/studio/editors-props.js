@@ -5,10 +5,10 @@ const { $, $$, h, clamp } = Kit;
 
 /* Component → Properties context. Native: reflected components declare a category. */
 const CATEGORY = {
-  GameTransform: 'object', GameOrientation: 'object', GameAppearance: 'object', GameGlobalBinding: 'object', GameCamera: 'object', GameShader: 'object',
-  GameBody: 'physics', GameCollider: 'physics', GameVelocity: 'physics', GameDrive: 'physics', GameFluidVolume: 'physics', GameDestructible: 'physics', MaterialBreakProfile: 'physics', GameSubstance: 'physics', EngineSystem: 'physics',
-  GameMaterial: 'material', GameReflection: 'material', GameFragmentGlow: 'material', MaterialTerrain: 'material', GameHRC2D: 'material', GameStarfield2D: 'material', MaterialFluidWorld: 'material', MaterialDestructionWorld: 'material',
-  GameHealth: 'gameplay', GameMovement: 'gameplay', GameWeapon: 'gameplay', GameAim: 'gameplay', GameInput: 'gameplay', GameActionBinding: 'gameplay', GameFuel: 'gameplay', GameCombustion: 'gameplay',
+  Transform: 'object', Orientation: 'object', Appearance: 'object', GlobalBinding: 'object', Camera: 'object', Shader: 'object',
+  Body: 'physics', Collider: 'physics', Velocity: 'physics', Drive: 'physics', FluidVolume: 'physics', Destructible: 'physics', MaterialBreakProfile: 'physics', Substance: 'physics', EngineSystem: 'physics',
+  Material: 'material', Reflection: 'material', FragmentGlow: 'material', MaterialTerrain: 'material', HRC2D: 'material', Starfield2D: 'material', MaterialFluidWorld: 'material', MaterialDestructionWorld: 'material',
+  Health: 'gameplay', Movement: 'gameplay', Weapon: 'gameplay', Aim: 'gameplay', Input: 'gameplay', ActionBinding: 'gameplay', Fuel: 'gameplay', Combustion: 'gameplay',
 };
 const TABS = [
   { id: 'scene', icon: 'sceneSettings', label: 'Scene' },
@@ -20,10 +20,10 @@ const TABS = [
   { id: 'node', icon: 'fn', label: 'Node' },
 ];
 const ENUMS = {
-  'GameBody.type': ['Static', 'Dynamic', 'Kinematic'],
-  'GameCollider.shape': ['Circle', 'Box'],
-  'GameAppearance.shape': ['Box', 'Circle', 'Diamond', 'Chevron', 'Stroked chevron', 'Capsule', 'Triangle', 'Stroked triangle'],
-  'GameActionBinding.source': ['None', 'Mouse left', 'Mouse right', 'Space', 'Shift', 'Tab', 'Enter', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
+  'Body.type': ['Static', 'Dynamic', 'Kinematic'],
+  'Collider.shape': ['Circle', 'Box'],
+  'Appearance.shape': ['Box', 'Circle', 'Diamond', 'Chevron', 'Stroked chevron', 'Capsule', 'Triangle', 'Stroked triangle'],
+  'ActionBinding.source': ['None', 'Mouse left', 'Mouse right', 'Space', 'Shift', 'Tab', 'Enter', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'],
 };
 const COLORS = /(^|_)(color|albedo)$/;
 const BOUNDED = { antialias: [0, 1], absorption: [0, 1], friction: [0, 1], restitution: [0, 1], edge_light: [0, 1], emission_intensity: [0, 4], emission_multiplier: [0, 4] };
@@ -31,9 +31,9 @@ const INTS = /^(current|maximum|damage|layer|category|mask|filter|border_filter|
 const UNITS = { speed: 'u/s', acceleration: 'u/s²', cooldown: 's', lifetime: 's', contact_hertz: 'Hz', radius: 'u', glow_radius: 'u' };
 const u32ToColor = (u) => ({ r: (u >>> 24) & 255, g: (u >>> 16) & 255, b: (u >>> 8) & 255, a: (u & 255) / 255 });
 const colorToU32 = (c) => ((Math.round(c.r) << 24) | (Math.round(c.g) << 16) | (Math.round(c.b) << 8) | Math.round(c.a * 255)) >>> 0;
-const ORDER = ['GameTransform', 'GameOrientation', 'GameAppearance', 'GameCamera', 'GameBody', 'GameCollider', 'GameVelocity', 'GameDrive', 'GameMovement', 'GameHealth', 'GameWeapon', 'GameAim'];
+const ORDER = ['Transform', 'Orientation', 'Appearance', 'Camera', 'Body', 'Collider', 'Velocity', 'Drive', 'Movement', 'Health', 'Weapon', 'Aim'];
 const rank = (c) => { const i = ORDER.indexOf(c); return i < 0 ? 99 : i; };
-const VECTOR_LABEL = { GameTransform: 'Position', GameVelocity: 'Velocity' };
+const VECTOR_LABEL = { Transform: 'Position', Velocity: 'Velocity' };
 const LABEL = { radians: 'Rotation', angular_velocity: 'Angular velocity' };
 const label = (k) => LABEL[k] || App.human(k);
 const isVectorComponent = (obj) => obj && Object.keys(obj).length === 2 && 'x' in obj && 'y' in obj;
@@ -365,7 +365,7 @@ App.EDITORS.assets = (area, head, body) => {
     grid.innerHTML = list.map((p) => {
       const name = p.split('/').pop().replace(/\.json$/, ''), f = p.split('/')[0];
       const ic = f === 'prototypes' ? App.protoIcon(name) : FOLDER_ICON[f] || 'json';
-      return `<div class="asset-tile" data-path="${p}" ${p === selectedAsset ? 'data-selected' : ''} draggable="${f === 'prototypes' && App.prototypes[name]?.GameTransform ? 'true' : 'false'}" data-tip="${p}"><span class="thumb">${icon(ic)}</span><span class="label">${name}</span></div>`;
+      return `<div class="asset-tile" data-path="${p}" ${p === selectedAsset ? 'data-selected' : ''} draggable="${f === 'prototypes' && App.prototypes[name]?.Transform ? 'true' : 'false'}" data-tip="${p}"><span class="thumb">${icon(ic)}</span><span class="label">${name}</span></div>`;
     }).join('') || '<div class="prop-empty" style="width:100%">No assets</div>';
   }
   const open = (p) => {
@@ -380,7 +380,7 @@ App.EDITORS.assets = (area, head, body) => {
   grid.addEventListener('contextmenu', (e) => {
     const t = e.target.closest('.asset-tile');
     if (!t) { e.preventDefault(); return; }
-    const p = t.dataset.path, name = p.split('/').pop().replace(/\.json$/, ''), proto = p.startsWith('prototypes/') && App.prototypes[name]?.GameTransform;
+    const p = t.dataset.path, name = p.split('/').pop().replace(/\.json$/, ''), proto = p.startsWith('prototypes/') && App.prototypes[name]?.Transform;
     Kit.contextMenu(e, [{ label: 'Open', run: () => open(p) }, { label: 'Add to Scene', icon: 'add', disabled: !proto || !!App.State.runtime, run: () => App.addEntity(name, App.viewCenter?.() || { x: 0, y: 0 }) }, '-', { label: 'Copy Path', icon: 'copy', run: () => App.report(`Copied ${p}`) }]);
   });
   input.addEventListener('input', render);

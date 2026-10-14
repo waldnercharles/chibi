@@ -59,7 +59,7 @@ Counts exclude generated expression implementation graphs.
 | Shard | 56 | 51 | 28 |
 | Drop | 52 | 52 | 21 |
 
-Behavior simplification and input bindings reduce these selected behaviors from 551 to 389 visible nodes. Generic range, spring, angle and easing operations replace repeated math plumbing. Trigger Visual Reaction restarts the existing visual-motion pulse; continuous rotation stays in GameVisualMotion. Gameplay formation and pickup rules remain authored behavior logic.
+Behavior simplification and input bindings reduce these selected behaviors from 551 to 389 visible nodes. Generic range, spring, angle and easing operations replace repeated math plumbing. Trigger Visual Reaction restarts the existing visual-motion pulse; continuous rotation stays in VisualMotion. Gameplay formation and pickup rules remain authored behavior logic.
 
 Ship uses Advance Rolling Motion and Apply Ship Pose functions. Shard initializer inputs name actual state (Pitch Rate, Roll Rate, Lift). Expressions must be refreshed after connecting typed inputs so their generated signatures remain valid. Preserve data dependencies: continuous velocity differs from quantized face angle, and shard fade uses the current age and Birth Scale.
 
@@ -83,7 +83,7 @@ The previously uncalled checkpoint tests now run in an initialized hidden Cute/I
 
 Use a focused typed in-memory reference index owned by app_scene_authoring. Identity includes kind plus canonical path and stable session identity where no path exists. Same-name Prototype and Material must not collide. Edges retain graph/node/pin/component-field/scene-actor provenance for reveal.
 
-Read authored working definitions before library linking, which replaces external reference provenance. Include prototype attachments, scene instance attachments and replacement semantics, GameShader material/shape, GameMeshParts materials, spawn targets, Event consumption/emission and external Library calls. Include retained inactive scenes/systems and pending active edits. HostTick/Begin are not external assets.
+Read authored working definitions before library linking, which replaces external reference provenance. Include prototype attachments, scene instance attachments and replacement semantics, Shader material/shape, MeshParts materials, spawn targets, Event consumption/emission and external Library calls. Include retained inactive scenes/systems and pending active edits. HostTick/Begin are not external assets.
 
 Invalidate from actual revisions/generation or query on demand. A dirty bool or topology revision alone misses name/default edits. Do not serialize/rebuild the project every UI frame. Reserve integration for #45 binding references.
 
@@ -116,7 +116,7 @@ Core and native binding tests pass locally. Primary accepted the rendered picker
 
 ### Whole component binding correction
 
-MovementActions.Movement Velocity accepts a complete GameMovement value on Speed. The original picker enumerated component fields only, leaving that struct input without the corresponding Self source. Whole component bindings use an explicit component kind and stable component key. The picker offers Self.Movement and also matches the familiar Get Movement name. Field bindings remain distinct. Runtime reads copy the component value at evaluation time; conversion creates the normal getter directly. The native regression reproduced the omission with the whole-component option disabled, then passed after restoration, including getter conversion and Undo. Normal make build/test and the native UI suite pass; runtime coverage includes copied snapshots, type errors, missing components, serialization and wire precedence. Logs: /tmp/chibi-movement-test-final.log and /tmp/chibi-movement-ui.log.
+MovementActions.Movement Velocity accepts a complete Movement value on Speed. The original picker enumerated component fields only, leaving that struct input without the corresponding Self source. Whole component bindings use an explicit component kind and stable component key. The picker offers Self.Movement and also matches the familiar Get Movement name. Field bindings remain distinct. Runtime reads copy the component value at evaluation time; conversion creates the normal getter directly. The native regression reproduced the omission with the whole-component option disabled, then passed after restoration, including getter conversion and Undo. Normal make build/test and the native UI suite pass; runtime coverage includes copied snapshots, type errors, missing components, serialization and wire precedence. Logs: /tmp/chibi-movement-test-final.log and /tmp/chibi-movement-ui.log.
 
 ### Generic source correction
 
@@ -142,9 +142,9 @@ Verify preview pixels and zero numeric-drag compile deltas; topology recompilati
 
 ## #42 appearance and renderer scope
 
-The Arena3D renderer selects components generically and has no Arena prototype-name rendering branches. Remove redundant GameAppearance from Enemy, Floor, Player, Projectile and WallHorizontal and six Arena3D boundary overrides. Remove Enemy's unused GameSdfMotion.
+The Arena3D renderer selects components generically and has no Arena prototype-name rendering branches. Remove redundant Appearance from Enemy, Floor, Player, Projectile and WallHorizontal and six Arena3D boundary overrides. Remove Enemy's unused SdfMotion.
 
-Rename GameSpatialAppearance directly to GameGeometry3D throughout reflection, assets, registered node contracts, code and tests, with no alias. Inspector labels: 3D Geometry and 2D Appearance. Keep GameShader shared; do not combine incompatible dimensional geometry. Preserve native Experience, lights/influences, trails, emitters, mesh parts, visual motion and EncounterMember dependencies. Add fixture-only 2D Appearance where old 2D tests intentionally reuse Arena prototypes.
+Rename SpatialAppearance directly to Geometry3D throughout reflection, assets, registered node contracts, code and tests, with no alias. Inspector labels: 3D Geometry and 2D Appearance. Keep Shader shared; do not combine incompatible dimensional geometry. Preserve native Experience, lights/influences, trails, emitters, mesh parts, visual motion and EncounterMember dependencies. Add fixture-only 2D Appearance where old 2D tests intentionally reuse Arena prototypes.
 
 Verify rendering, picking, fit, preview/effects, physics, serialization and 2D fixtures.
 

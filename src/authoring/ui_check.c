@@ -261,7 +261,7 @@ static char **check_markup(rml_context *context, const ui_document *document, ui
     return warnings;
 }
 
-/* The markup a GameUi shows, each element marked with the asset and line
+/* The markup a Ui shows, each element marked with the asset and line
  * that wrote it, for what the markup alone, which logged `shown`, did not
  * show. */
 static void check_expanded(
@@ -401,7 +401,7 @@ bool ui_check_in(
     ui_data_init(&data, context, NULL, ignore_emit, NULL);
     char **shown = check_markup(context, &document, messages);
     check_style(context, document.rcss, &document.map, messages);
-    /* A scene's page shows its markup as written; a GameUi expands widgets. */
+    /* A scene's page shows its markup as written; a Ui expands widgets. */
     bool ok = document.body ||
               check_widgets(context, &document, name, directory, shown, messages, error, error_size);
     free_names(shown);

@@ -26,39 +26,39 @@ typedef struct
     bool seen;
 } emitter_source;
 
-struct game_particle_emitters
+struct particle_emitters
 {
     const ecs_world *world;
     double time, simulation_time;
-    game_particles *particles;
-    game_materials *materials;
+    particles *particles;
+    materials *materials;
     bool borrowed;
     emitter_source sources[EMITTER_LIMIT];
-    game_particle heads[EMITTER_LIMIT];
+    particle heads[EMITTER_LIMIT];
     int head_count;
     bool reported_capacity;
 };
 
-game_particle_emitters *game_particle_emitters_new(game_particles *destination)
+particle_emitters *particle_emitters_new(particles *destination)
 {
-    game_particle_emitters *emitters = xcalloc(1, sizeof *emitters);
+    particle_emitters *emitters = xcalloc(1, sizeof *emitters);
     emitters->borrowed = destination != NULL;
-    emitters->particles = destination ? destination : game_particles_new();
+    emitters->particles = destination ? destination : particles_new();
     return emitters;
 }
 
-void game_particle_emitters_bind_materials(game_particle_emitters *emitters, game_materials *materials)
+void particle_emitters_bind_materials(particle_emitters *emitters, materials *materials)
 {
     emitters->materials = materials;
 }
 
-void game_particle_emitters_reset(game_particle_emitters *emitters)
+void particle_emitters_reset(particle_emitters *emitters)
 {
-    game_particles *particles = emitters->particles;
+    particles *particles = emitters->particles;
     bool borrowed = emitters->borrowed;
-    game_materials *materials = emitters->materials;
+    materials *materials = emitters->materials;
     if (!borrowed) {
-        game_particles_clear(particles);
+        particles_clear(particles);
     }
     memset(emitters, 0, sizeof *emitters);
     emitters->particles = particles;
@@ -66,10 +66,10 @@ void game_particle_emitters_reset(game_particle_emitters *emitters)
     emitters->materials = materials;
 }
 
-void game_particle_emitters_free(game_particle_emitters *emitters)
+void particle_emitters_free(particle_emitters *emitters)
 {
     if (!emitters->borrowed) {
-        game_particles_free(emitters->particles);
+        particles_free(emitters->particles);
     }
     free(emitters);
 }
@@ -80,18 +80,18 @@ static bool valid_range(CF_V2 range)
            range.y >= range.x;
 }
 
-static bool valid_curve(GameParticleCurve curve)
+static bool valid_curve(ParticleCurve curve)
 {
     return valid_range(curve.start) && valid_range(curve.end) &&
            isfinite(curve.exponent) && curve.exponent >= 0;
 }
 
-static bool valid(const GameParticleEmitter *style)
+static bool valid(const ParticleEmitter *style)
 {
     return (!style->fluid ||
             ((style->fluid_kind == FLUID_GAS || style->fluid_kind == FLUID_LIQUID) &&
              isfinite(style->fluid_mass) && style->fluid_mass > 0)) &&
-           style->shape >= 0 && style->shape < GAME_PARTICLE_SHAPE_COUNT &&
+           style->shape >= 0 && style->shape < PARTICLE_SHAPE_COUNT &&
            valid_range(style->lifetime) && style->lifetime.x > 0 &&
            valid_range(style->speed) && valid_curve(style->size) &&
            style->size.start.x > 0 && valid_curve(style->drag) &&
@@ -103,7 +103,7 @@ static bool valid(const GameParticleEmitter *style)
                style->offset.y + style->offset.z + style->direction.x +
                style->direction.y + style->direction.z
            ) &&
-           style->burst_count >= 0 && style->burst_count <= GAME_PARTICLE_LIMIT &&
+           style->burst_count >= 0 && style->burst_count <= PARTICLE_LIMIT &&
            style->rate >= 0 && style->spread >= 0 &&
            style->spread <= 6.2831853072f && style->velocity_inherit >= 0 &&
            style->absorption >= 0 && style->metaball_blend >= 0 &&
@@ -111,7 +111,7 @@ static bool valid(const GameParticleEmitter *style)
            cf_dot_v3(style->direction, style->direction) > 0;
 }
 
-static emitter_source *source_for(game_particle_emitters *emitters, ecs_entity entity)
+static emitter_source *source_for(particle_emitters *emitters, ecs_entity entity)
 {
     emitter_source *empty = NULL;
     for (int i = 0; i < EMITTER_LIMIT; i++) {
@@ -172,48 +172,48 @@ static float sample(emitter_source *source, CF_V2 range)
                               : range.x + (range.y - range.x) * random_unit(source);
 }
 
-static game_particle particle_at(
+static particle particle_at(
     emitter_source *source,
-    const GameParticleEmitter *style,
+    const ParticleEmitter *style,
     CF_V3 position,
     CF_V3 velocity,
     float angle
 )
 {
-    return (game_particle){ .position = { position.x, position.z },
-                            .velocity = { velocity.x, velocity.z },
-                            .elevation = position.y,
-                            .elevation_velocity = velocity.y,
-                            .angle = style->velocity_align
-                                       ? cos_sin_atan2(velocity.z, velocity.x)
-                                       : angle,
-                            .shape = style->shape,
-                            .color = style->color,
-                            .end_color = style->end_color,
-                            .lifetime = sample(source, style->lifetime),
-                            .size = sample(source, style->size.start),
-                            .size_end = sample(source, style->size.end),
-                            .size_exponent = style->size.exponent,
-                            .drag = sample(source, style->drag.start),
-                            .drag_end = sample(source, style->drag.end),
-                            .drag_exponent = style->drag.exponent,
-                            .emission = sample(source, style->emission.start),
-                            .emission_end = sample(source, style->emission.end),
-                            .emission_exponent = style->emission.exponent,
-                            .antialias = sample(source, style->antialias.start),
-                            .antialias_end = sample(source, style->antialias.end),
-                            .antialias_exponent = style->antialias.exponent,
-                            .absorption = style->absorption,
-                            .metaball_group = style->metaball_group,
-                            .metaball_blend = style->metaball_blend,
-                            .velocity_align = style->velocity_align,
-                            .stretch = sample(source, style->stretch) };
+    return (particle){ .position = { position.x, position.z },
+                       .velocity = { velocity.x, velocity.z },
+                       .elevation = position.y,
+                       .elevation_velocity = velocity.y,
+                       .angle = style->velocity_align
+                                  ? cos_sin_atan2(velocity.z, velocity.x)
+                                  : angle,
+                       .shape = style->shape,
+                       .color = style->color,
+                       .end_color = style->end_color,
+                       .lifetime = sample(source, style->lifetime),
+                       .size = sample(source, style->size.start),
+                       .size_end = sample(source, style->size.end),
+                       .size_exponent = style->size.exponent,
+                       .drag = sample(source, style->drag.start),
+                       .drag_end = sample(source, style->drag.end),
+                       .drag_exponent = style->drag.exponent,
+                       .emission = sample(source, style->emission.start),
+                       .emission_end = sample(source, style->emission.end),
+                       .emission_exponent = style->emission.exponent,
+                       .antialias = sample(source, style->antialias.start),
+                       .antialias_end = sample(source, style->antialias.end),
+                       .antialias_exponent = style->antialias.exponent,
+                       .absorption = style->absorption,
+                       .metaball_group = style->metaball_group,
+                       .metaball_blend = style->metaball_blend,
+                       .velocity_align = style->velocity_align,
+                       .stretch = sample(source, style->stretch) };
 }
 
 static bool emit_source(
-    game_particle_emitters *emitters,
+    particle_emitters *emitters,
     emitter_source *source,
-    const GameParticleEmitter *style,
+    const ParticleEmitter *style,
     CF_V3 position,
     CF_V3 direction,
     CF_V3 inherited_velocity,
@@ -230,7 +230,7 @@ static bool emit_source(
     double delta = time - source->time;
     double births = delta * style->rate + source->phase;
     int burst = first ? style->burst_count : 0;
-    int count = (int)fmin(floor(births) + burst, GAME_PARTICLE_LIMIT);
+    int count = (int)fmin(floor(births) + burst, PARTICLE_LIMIT);
     source->phase = births - floor(births);
     bool turned = cf_dot_v3(source->direction, direction) < .8660254f;
     /* Chronological births keep random samples identical across display rates. */
@@ -256,7 +256,7 @@ static bool emit_source(
             direction = cone_direction(source, forward, style->spread);
         }
         CF_V3 velocity = cf_add_v3(cf_mul_v3_f(direction, sample(source, style->speed)), inherited_velocity);
-        game_particle particle = particle_at(
+        particle particle = particle_at(
             source,
             style,
             origin,
@@ -266,20 +266,16 @@ static bool emit_source(
         if (age >= particle.lifetime) {
             continue;
         }
-        game_particle_advance(&particle, age);
+        particle_advance(&particle, age);
         int emitted;
         if (style->fluid && emitters->materials) {
-            const GameIgniter
-                *igniter = GAME_GameIgniter_get_const(emitters->world, source->entity);
-            const GameFuel
-                *fuel = GAME_GameFuel_get_const(emitters->world, source->entity);
-            const MaterialThermal *
-                thermal = GAME_MaterialThermal_get_const(emitters->world, source->entity);
-            const MaterialConstitutive *model = GAME_MaterialConstitutive_get_const(
-                emitters->world,
-                source->entity
-            );
-            emitted = game_materials_emit(
+            const Igniter *igniter = Igniter_get_const(emitters->world, source->entity);
+            const Fuel *fuel = Fuel_get_const(emitters->world, source->entity);
+            const MaterialThermal
+                *thermal = MaterialThermal_get_const(emitters->world, source->entity);
+            const MaterialConstitutive
+                *model = MaterialConstitutive_get_const(emitters->world, source->entity);
+            emitted = materials_emit(
                 emitters->materials,
                 (fluid_particle){
                     .position = { particle.position.x, particle.position.y },
@@ -312,7 +308,7 @@ static bool emit_source(
                                .end_color = particle.end_color } }
             );
         } else {
-            emitted = game_particles_emit_particle(emitters->particles, &particle);
+            emitted = particles_emit_particle(emitters->particles, &particle);
         }
         if (emitted < 0) {
             return false;
@@ -325,7 +321,7 @@ static bool emit_source(
         return true;
     }
     emitter_source head_source = *source;
-    game_particle head = particle_at(
+    particle head = particle_at(
         &head_source,
         style,
         position,
@@ -344,8 +340,8 @@ static bool emit_source(
     return true;
 }
 
-bool game_particle_emitters_collect(
-    game_particle_emitters *emitters,
+bool particle_emitters_collect(
+    particle_emitters *emitters,
     ecs_world *world,
     const engine *runtime,
     double time,
@@ -364,13 +360,13 @@ bool game_particle_emitters_collect(
         time = fmax(0, simulation_time - (1 - timing->alpha) * ENGINE_FIXED_SECONDS);
     }
     if (emitters->world != world || simulation_time < emitters->simulation_time) {
-        game_particle_emitters_reset(emitters);
+        particle_emitters_reset(emitters);
     }
     /* Pause presents the solved pose (alpha=1). Resuming interpolation can
      * briefly lag that pose; retain its tail until presentation catches up. */
     time = fmax(time, emitters->time);
     if (!emitters->borrowed) {
-        game_particles_tick(emitters->particles, time - emitters->time);
+        particles_tick(emitters->particles, time - emitters->time);
     }
     emitters->world = world;
     emitters->time = time;
@@ -379,8 +375,8 @@ bool game_particle_emitters_collect(
     for (int i = 0; i < EMITTER_LIMIT; i++) {
         emitters->sources[i].seen = false;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameParticleEmitter.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id,
+                                    COMPONENT_ParticleEmitter.id };
     ecs_query query;
     bool ok = true;
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
@@ -389,13 +385,13 @@ bool game_particle_emitters_collect(
             if (!engine_entity_visible(runtime, world, entity)) {
                 continue;
             }
-            const GameParticleEmitter *style = GAME_GameParticleEmitter_get_const(world, entity);
-            const GameFuel *fuel = GAME_GameFuel_get_const(world, entity);
-            const GameIgniter *igniter = GAME_GameIgniter_get_const(world, entity);
-            const MaterialThermal *thermal = GAME_MaterialThermal_get_const(world, entity);
-            const MaterialConstitutive *model = GAME_MaterialConstitutive_get_const(world, entity);
+            const ParticleEmitter *style = ParticleEmitter_get_const(world, entity);
+            const Fuel *fuel = Fuel_get_const(world, entity);
+            const Igniter *igniter = Igniter_get_const(world, entity);
+            const MaterialThermal *thermal = MaterialThermal_get_const(world, entity);
+            const MaterialConstitutive *model = MaterialConstitutive_get_const(world, entity);
             const material_fluid *fluid = emitters->materials
-                                            ? game_materials_fluid(emitters->materials)
+                                            ? materials_fluid(emitters->materials)
                                             : NULL;
             bool needs_model = style->fluid_kind != FLUID_GAS && fluid &&
                                material_fluid_solver(fluid) == FLUID_SOLVER_MPM;
@@ -434,14 +430,13 @@ bool game_particle_emitters_collect(
             }
             ecs_entity owner = style->parent ? ecs_entity_from_u64(style->parent)
                                              : entity;
-            if (!ecs_entity_is_alive(world, owner) ||
-                !GAME_GameTransform_has(world, owner)) {
+            if (!ecs_entity_is_alive(world, owner) || !Transform_has(world, owner)) {
                 continue;
             }
-            GameGlobalTransform2D shown = engine_render_transform(runtime, world, owner);
-            GameTransform position = shown.position;
-            const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, owner);
-            const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, owner);
+            GlobalTransform2D shown = engine_render_transform(runtime, world, owner);
+            Transform position = shown.position;
+            const Geometry3D *shape = Geometry3D_get_const(world, owner);
+            const VisualTransform *visual = VisualTransform_get_const(world, owner);
             float scale = visual ? visual->scale : 1;
             if (scale == 0) {
                 continue;
@@ -460,7 +455,7 @@ bool game_particle_emitters_collect(
             }
             CF_M4x4 frame = cf_m4_from_trs(
                 (CF_V3){ position.x, elevation, position.y },
-                game_visual_rotation(yaw, rotation),
+                visual_rotation(yaw, rotation),
                 (CF_V3){ scale, scale, scale }
             );
             CF_V3 origin = cf_m4_transform_point(frame, style->offset);
@@ -473,7 +468,7 @@ bool game_particle_emitters_collect(
                 }
                 continue;
             }
-            const GameVelocity *velocity = GAME_GameVelocity_get_const(world, owner);
+            const Velocity *velocity = Velocity_get_const(world, owner);
             CF_V3 inherited = velocity ? (CF_V3){ velocity->x, 0, velocity->y }
                                        : (CF_V3){ 0 };
             if (!velocity && source->time >= 0 && time > source->time) {
@@ -510,12 +505,12 @@ bool game_particle_emitters_collect(
     return ok;
 }
 
-const game_particles *game_particle_emitters_particles(const game_particle_emitters *emitters)
+const particles *particle_emitters_particles(const particle_emitters *emitters)
 {
     return emitters->particles;
 }
 
-const game_particle *game_particle_emitters_heads(const game_particle_emitters *emitters, int *count)
+const particle *particle_emitters_heads(const particle_emitters *emitters, int *count)
 {
     *count = emitters->head_count;
     return emitters->heads;

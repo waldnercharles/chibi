@@ -114,7 +114,7 @@ is present but absent from the shipped-content allowlist.
 ## Authored-example dry runs
 
 The following graph copies were analyzed without modifying content assets.
-The selection covers Get_GameEncounter, Get_GamePickup, Delta Time,
+The selection covers Get_Encounter, Get_Pickup, Delta Time,
 Call Pure Function, and Spawn Prototype. Counts reflect the snapshot used during
 implementation; existing source debug flags and routes can prevent rewrites.
 

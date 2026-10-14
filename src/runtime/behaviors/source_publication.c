@@ -15,8 +15,8 @@ static int publication_error(char *error, size_t size, const char *message)
     return -1;
 }
 static void program_rejection(
-    const game_source_registry *r,
-    const game_source_publication *entry,
+    const source_registry *r,
+    const source_publication *entry,
     const service_binding *services,
     bool replacing,
     char *error,
@@ -59,16 +59,16 @@ static void program_rejection(
             : "component/query/binding"
     );
 }
-struct game_source_staging
+struct source_staging
 {
-    game_source_registry *registry;
-    game_source_publication *entries;
+    source_registry *registry;
+    source_publication *entries;
     int count, old_count;
     int *changes, *targets;
     execution_program **programs;
     source_record *final;
 };
-static void free_stage(game_source_staging *stage)
+static void free_stage(source_staging *stage)
 {
     for (int i = 0; i < stage->count; i++) {
         execution_program_free(stage->programs ? stage->programs[i] : NULL);
@@ -86,9 +86,9 @@ static void free_stage(game_source_staging *stage)
     free(stage);
 }
 
-game_source_staging *game_source_stage(
-    game_source_registry *r,
-    const game_source_publication *entries,
+source_staging *source_stage(
+    source_registry *r,
+    const source_publication *entries,
     int count,
     const service_binding *services,
     char *error,
@@ -102,11 +102,11 @@ game_source_staging *game_source_stage(
     if (size) {
         error[0] = '\0';
     }
-    if (count > GAME_MODULE_SET_MAX_MODULES * 2) {
+    if (count > MODULE_SET_MAX_MODULES * 2) {
         publication_error(error, size, "source publication entry count exceeds limit");
         return NULL;
     }
-    game_source_staging *stage = xcalloc(1, sizeof *stage);
+    source_staging *stage = xcalloc(1, sizeof *stage);
     stage->registry = r;
     r->staging = stage;
     stage->count = count;
@@ -131,7 +131,7 @@ game_source_staging *game_source_stage(
         changes[i] = -1;
     }
     for (int i = 0; i < count; i++) {
-        const game_source_publication *entry = &entries[i];
+        const source_publication *entry = &entries[i];
         targets[i] = entry->previous_name ? record_index(r, entry->previous_name)
                                           : -1;
         if ((entry->previous_name && targets[i] < 0) ||
@@ -184,8 +184,8 @@ game_source_staging *game_source_stage(
         apush(modules, final[i].module);
     }
     bool valid_events = r->events
-                          ? game_event_catalog_validate(r->events, modules, acount(modules), error, size)
-                          : game_module_set_validate(modules, acount(modules), 0, error, size);
+                          ? event_catalog_validate(r->events, modules, acount(modules), error, size)
+                          : module_set_validate(modules, acount(modules), 0, error, size);
     if (!valid_events) {
         goto done;
     }
@@ -248,21 +248,21 @@ done:
     free_stage(stage);
     return NULL;
 }
-void game_source_discard(game_source_staging *stage)
+void source_discard(source_staging *stage)
 {
     if (!stage) {
         return;
     }
     assert(stage->registry->staging == stage && !stage->registry->executing);
-    game_source_registry *r = stage->registry;
+    source_registry *r = stage->registry;
     free_stage(stage);
     r->staging = NULL;
 }
-void game_source_commit(game_source_staging *stage)
+void source_commit(source_staging *stage)
 {
     assert(stage && stage->registry->staging == stage && !stage->registry->executing);
-    game_source_registry *r = stage->registry;
-    const game_source_publication *entries = stage->entries;
+    source_registry *r = stage->registry;
+    const source_publication *entries = stage->entries;
     int count = stage->count, old_count = stage->old_count;
     int *changes = stage->changes, *targets = stage->targets;
     execution_program **staged = stage->programs;
@@ -315,19 +315,19 @@ void game_source_commit(game_source_staging *stage)
     source_profile_bind(r);
     free_stage(stage);
 }
-int game_source_publish(
-    game_source_registry *r,
-    const game_source_publication *entries,
+int source_publish(
+    source_registry *r,
+    const source_publication *entries,
     int count,
     const service_binding *services,
     char *error,
     size_t size
 )
 {
-    game_source_staging *stage = game_source_stage(r, entries, count, services, error, size);
+    source_staging *stage = source_stage(r, entries, count, services, error, size);
     if (!stage) {
         return -1;
     }
-    game_source_commit(stage);
+    source_commit(stage);
     return 0;
 }

@@ -348,6 +348,18 @@ static const char *managed_text(arena *storage, const pin_value *, int count, pi
              : NULL;
 }
 static const node_host_call managed_call = { .value = managed_text };
+static const char *instance_clock(
+    const behavior_function_context *context,
+    void *,
+    const pin_value *,
+    pin_value *out
+)
+{
+    assert(context->instance_time);
+    *out = (pin_value){ .type = PIN_F64, .d = *context->instance_time };
+    return NULL;
+}
+static const node_host_call clock_call = { .context = instance_clock };
 static bool jump_held, jump_pressed;
 static const char *action_held(arena *, const pin_value *in, int count, pin_value *out)
 {
@@ -377,6 +389,10 @@ static const char *scene_binding(arena *, const pin_value *in, int count, pin_va
 static const node_host_call scene_binding_call = { .value = scene_binding };
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == 61) {
+        *out = (script_lower_host){ .call = &clock_call };
+        return true;
+    }
     if (id == script_catalog_id("capability", "Get Global Variable")) {
         *out = (script_lower_host){ .call = &scene_binding_call };
         return true;
@@ -1176,9 +1192,18 @@ TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
             prepare();
             ecs_entity owner = positioned(2, false);
             REQUIRE(compile(sources[order], backends[backend]));
+            if (!order) {
+                program_position *position = ecs_component_data(world, owner, 501);
+                position->x = 0;
+                REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+                REQUIRE(execution_program_memory_usage(program).query_cache_bytes > 0);
+                position->x = 2;
+                REQUIRE(ecs_component_modified(world, owner, 501) == ECS_OK);
+            }
             int status = execution_program_step(program, 0, 0, 1000);
             if (!order) {
                 REQUIRE(status < 0);
+                REQUIRE(execution_program_memory_usage(program).query_cache_bytes == 0);
                 const execution_program_failure *failure = execution_program_error(program);
                 REQUIRE(
                     failure && failure->status == status &&
@@ -1189,6 +1214,75 @@ TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
                 REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(owner)));
             }
         }
+    }
+    return true;
+}
+
+TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity owners[4];
+        for (int i = 0; i < 4; i++) {
+            owners[i] = positioned(2 * i - 1, false);
+        }
+        REQUIRE(compile(
+            "system Filter query p:Position where Above(p.x) and Below(p.x) "
+            "and p.x<100 { "
+            "Above :: (value:double)->bool { return Positive(value); } "
+            "Positive :: (value:double)->bool { return value>0; } "
+            "Below :: (value:double)->bool { return value<4; } "
+            "p.y+=1; }",
+            backends[backend]
+        ));
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        execution_memory_usage memory = execution_program_memory_usage(program);
+        REQUIRE(memory.query_cache_bytes > 0 && memory.query_cache_bytes <= 64 * 1024);
+        uint64_t allocations = behavior_function_data_allocations();
+        uint64_t vm_allocations = behavior_function_vm_allocations();
+        for (int step = 1; step <= 3; step++) {
+            for (int i = 0; i < 4; i++) {
+                program_position *position = ecs_component_data(world, owners[i], 501);
+                double expected = i == 1 || i == 2 ? 1 : 0;
+                if (step > 1) {
+                    expected += i == 0 || i == 3 ? step - 1 : 0;
+                }
+                REQUIRE(position->y == expected);
+                position->x = i == 0 || i == 3 ? 2 : -2;
+                REQUIRE(ecs_component_modified(world, owners[i], 501) == ECS_OK);
+            }
+            REQUIRE(execution_program_step(program, step, 0, 1000) == FLOW_OK);
+            REQUIRE(behavior_function_data_allocations() == allocations);
+            REQUIRE(behavior_function_vm_allocations() == vm_allocations);
+            execution_memory_usage next = execution_program_memory_usage(program);
+            REQUIRE(next.query_cache_bytes == memory.query_cache_bytes);
+        }
+        prior_module = module;
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(compile_module(
+            "system Filter query p:Position where Above(p.x) and Below(p.x) { "
+            "Above :: (value:double)->bool { return Negative(value); } "
+            "Negative :: (value:double)->bool { return value<0; } "
+            "Below :: (value:double)->bool { return value<4; } "
+            "p.y+=1; }",
+            backends[backend]
+        ));
+        REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).query_cache_bytes == 0);
+        execution_module_free(prior_module);
+        prior_module = NULL;
+        REQUIRE(execution_program_step(program, 4, 0, 1000) == FLOW_OK);
+        for (int i = 0; i < 4; i++) {
+            const program_position *position = ecs_component_data_const(world, owners[i], 501);
+            REQUIRE(position->y == (i == 0 || i == 3 ? 3 : 2));
+        }
+        memory = execution_program_memory_usage(program);
+        REQUIRE(memory.query_cache_bytes > 0 && memory.query_cache_bytes <= 64 * 1024);
     }
     return true;
 }
@@ -6753,9 +6847,160 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     return true;
 }
 
+TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
+{
+    enum
+    {
+        COUNT = sizeof capabilities / sizeof *capabilities
+    };
+    script_catalog_capability with_clock[COUNT + 1];
+    memcpy(with_clock, capabilities, sizeof capabilities);
+    with_clock[COUNT] = (script_catalog_capability){ .id = 61,
+                                                     .name = "InstanceClock",
+                                                     .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                                     .results = &failed_result,
+                                                     .result_count = 1,
+                                                     .effects = SCRIPT_EFFECT_READ };
+    script_catalog active = catalog;
+    active.capabilities = with_clock;
+    active.capability_count = COUNT + 1;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    /* Ordinary update, reducing update, reducing step, and a paused update. */
+    for (int backend = 0; backend < 2; backend++) {
+        for (int mode = 0; mode < 4; mode++) {
+            prepare();
+            ecs_entity entity = positioned(0, true);
+            uint64_t owner = ecs_entity_to_u64(entity);
+            char source[PROGRAM_SOURCE_CAPACITY];
+            snprintf(
+                source,
+                sizeof source,
+                "system Ordered(p:Position,v:Velocity) { "
+                "state resumed:double=0; state event_clock:double=0; "
+                "state queued_value:double=0; state finished:double=0; "
+                "on Impulse(amount,enabled) { "
+                "if enabled { await Delay(1); resumed=InstanceClock(); v.x=7; "
+                "} "
+                "else { event_clock=InstanceClock(); queued_value=p.x; "
+                "v.x=100; } } "
+                "%sp.x+=v.x; finished+=1; }",
+                mode ? "reduce " : ""
+            );
+            REQUIRE(compile_catalog(source, backends[backend], &active));
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(program);
+            REQUIRE(execution_program_pump(program, 0, 0, 1000) == FLOW_OK);
+            execution_instance *instance = execution_program_instance(program, owner);
+            REQUIRE(instance);
+            pin_value arguments[] = { { .type = PIN_F64 },
+                                      { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, arguments, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 1);
+            arguments[1].b = false;
+            REQUIRE(execution_program_emit(program, 11, owner, arguments, 2) == FLOW_OK);
+            uint64_t function = 0, point = 0;
+            if (mode == 3) {
+                debugger = execution_program_inspector(program);
+                REQUIRE(debugger);
+                for (int i = 0; i < execution_module_function_count(module); i++) {
+                    execution_module_function_info info = execution_module_function_at(module, i);
+                    if (info.kind == EXECUTION_FUNCTION_SYSTEM) {
+                        function = info.id;
+                    }
+                }
+                for (int i = 0; i < analysis->statement_count; i++) {
+                    const script_statement *s = &analysis->statements[i];
+                    if (s->kind == SCRIPT_STMT_ASSIGN && s->expression >= 0 &&
+                        analysis->expressions[s->expression].symbol >= 0 &&
+                        !strcmp(
+                            analysis
+                                ->symbols[analysis->expressions[s->expression].symbol]
+                                .name,
+                            "finished"
+                        )) {
+                        point = script_record_id(analysis, SCRIPT_RECORD_STATEMENT, i);
+                    }
+                }
+                REQUIRE(function && point);
+                REQUIRE(
+                    execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, true)
+                );
+            }
+            int status = mode == 2 ? execution_program_step(program, 1, .5, 1000)
+                                   : execution_program_update(program, 1, .5, 1000);
+            if (mode == 3) {
+                REQUIRE(status == FLOW_PAUSED_RESULT);
+                REQUIRE(number_state(instance, "resumed", .5));
+                REQUIRE(number_state(instance, "event_clock", 0));
+                REQUIRE(
+                    ((const program_position *)ecs_component_data_const(world, entity, 501))
+                        ->x == 0
+                );
+                REQUIRE(execution_program_memory_usage(program).reduction_contributions == 1);
+                REQUIRE(execution_program_update(program, 20, 5, 1000) == FLOW_PAUSED_RESULT);
+                REQUIRE(number_state(instance, "event_clock", 0));
+                REQUIRE(
+                    execution_inspector_breakpoint(debugger, execution_module_id(module), function, point, false)
+                );
+                REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_OK);
+                status = execution_program_update(program, 30, 7, 1000);
+            }
+            REQUIRE(status == FLOW_OK);
+            REQUIRE(number_state(instance, "resumed", .5));
+            REQUIRE(number_state(instance, "event_clock", .5));
+            REQUIRE(number_state(instance, "queued_value", 7));
+            REQUIRE(number_state(instance, "finished", 1));
+            REQUIRE(
+                ((const program_position *)ecs_component_data_const(world, entity, 501))
+                    ->x == 7
+            );
+            REQUIRE(
+                ((const program_velocity *)ecs_component_data_const(world, entity, 502))
+                    ->x == 100
+            );
+        }
+    }
+    return true;
+}
+TEST_CASE(program_reduction_query_rows_count_filtered_candidates)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity entities[3];
+        for (int i = 0; i < 3; i++) {
+            entities[i] = positioned(0, true);
+            ((program_velocity *)ecs_component_data(world, entities[i], 502))->x = i - 1;
+        }
+        REQUIRE(compile_module(
+            "system Count query p:Position,v:Velocity where v.x>0 { "
+            "reduce p.x+=v.x; }",
+            backends[backend]
+        ));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_prepare_system(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).query_rows == 3);
+        REQUIRE(execution_program_run_system(program) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).query_rows == 3);
+        REQUIRE(execution_program_finish_system(program) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).query_rows == 3);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).query_rows == 3);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(
+                ((const program_position *)ecs_component_data_const(world, entities[i], 501))
+                    ->x == (i == 2 ? 2 : 0)
+            );
+        }
+    }
+    return true;
+}
 void test_language_query_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
+    RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
     RUN_TEST_CASE(program_query_required_path_keeps_one_instance_per_root);
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
@@ -6765,12 +7010,15 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
+    RUN_TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values);
     pu_clear_setup();
 }
 
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_reduction_updates_preserve_clock_and_event_order);
+    RUN_TEST_CASE(program_reduction_query_rows_count_filtered_candidates);
     RUN_TEST_CASE(program_pattern_bindings_share_and_spellings);
     RUN_TEST_CASE(program_switches_use_narrowed_union_tags);
     RUN_TEST_CASE(program_general_unions_construct_match_and_extract);
@@ -6789,6 +7037,7 @@ void test_language_program()
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
     RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
+    RUN_TEST_CASE(program_query_predicates_reuse_bounded_scratch_and_fresh_values);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);
     RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);

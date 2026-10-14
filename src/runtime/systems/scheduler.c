@@ -115,7 +115,8 @@ static bool same(const schedule_desc *a, const schedule_desc *b)
            a->structural == b->structural && a->host_sink == b->host_sink &&
            a->world_read == b->world_read && a->deterministic == b->deterministic &&
            a->parallel_safe == b->parallel_safe && a->identity == b->identity &&
-           a->run == b->run && a->prepare == b->prepare && a->finish == b->finish &&
+           a->run == b->run && a->run_parallel == b->run_parallel &&
+           a->prepare == b->prepare && a->finish == b->finish &&
            a->parallel_ready == b->parallel_ready && a->maintain == b->maintain &&
            a->field_changed == b->field_changed && a->user == b->user &&
            (!a->read_count ||
@@ -467,12 +468,24 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
         }
         if (safe) {
             batch b = { s, items, time, delta };
+            const schedule_desc *single = &s->entries[first].desc;
+            bool rows = n == 1 && s->parallel && s->tasks &&
+                        !barrier(&s->entries[first]) && single->run_parallel &&
+                        (!single->parallel_ready ||
+                         single->parallel_ready(single->user));
             bool parallel = s->parallel && s->tasks && n > 1;
             for (int j = 0; j < n && parallel; j++) {
                 const schedule_desc *desc = &s->entries[items[j].index].desc;
                 parallel = !desc->parallel_ready || desc->parallel_ready(desc->user);
             }
-            if (parallel) {
+            if (rows) {
+                items[0].ran = true;
+                items[0].result = single->run_parallel(
+                    single->user,
+                    s->tasks,
+                    &items[0].error
+                );
+            } else if (parallel) {
                 int result = ecs_world_iteration_begin(s->world);
                 assert(result == ECS_OK);
                 (void)result;

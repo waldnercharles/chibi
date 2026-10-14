@@ -8,6 +8,7 @@ typedef struct ecs_world ecs_world;
 typedef struct execution_program execution_program;
 typedef struct execution_instance execution_instance;
 typedef struct execution_module execution_module;
+typedef struct task_system task_system;
 typedef struct
 {
     const uint64_t *reads, *writes, *reduces;
@@ -44,9 +45,12 @@ typedef struct
     size_t instance_bytes, state_bank_bytes, activation_bytes;
     size_t activation_cache_bytes;
     size_t query_history_bytes, query_index_bytes, ecs_change_bytes;
+    size_t query_cache_bytes;
     size_t binding_schedule_bytes;
     size_t reduction_bytes, reduction_capacity;
     size_t system_row_bytes, system_row_capacity;
+    size_t row_worker_capacity;
+    int row_parallel_jobs, row_parallel_workers;
     uint64_t reduction_contributions, reduction_records;
     size_t reduction_peak_bytes;
     uint64_t query_rows, query_lookup_steps;
@@ -57,6 +61,10 @@ typedef struct
  * fixed state banks, query history and index slots are logical byte counts and
  * exclude allocator overhead and nested buffers. activation_cache_bytes counts
  * owned idle activation storage separately, bounded to 64 KiB per program.
+ * query_cache_bytes counts idle predicate evaluators, independently bounded to
+ * 64 KiB per program, including fixed host, helper and arena storage.
+ * row_worker_capacity counts private row execution scratch, bounded to 1 MiB
+ * when idle and at most the executor worker budget (maximum 32 chunks).
  * ecs_change_bytes is shared
  * world-owned storage (do not sum across programs); query counters describe the
  * latest refresh. Stateless streaming retains no instance headers. Binding
@@ -213,6 +221,9 @@ int execution_program_update(execution_program *program, double now, double delt
  * while its prepared update is paused. */
 int execution_program_prepare_system(execution_program *, double now, double delta, unsigned budget);
 int execution_program_run_system(execution_program *);
+/* Submitting-thread entry. Inferred independent reducer rows may use the
+ * borrowed executor; other bodies and small dispatches run serially. */
+int execution_program_run_system_parallel(execution_program *, const task_system *);
 int execution_program_finish_system(execution_program *);
 /* Cancel publication before finish, for a successful worker after an earlier
  * scheduler peer failed. Collection storage retains at most 64 KiB when idle. */

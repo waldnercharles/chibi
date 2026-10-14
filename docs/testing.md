@@ -927,6 +927,39 @@ recorded passes. The original cases, assertions, sanitizers and 60-second limits
 remain intact. Separate semantic, syntax, formatting and prepared-boundary checks
 still cover their affected contracts; these selectors do not imply a full-suite pass.
 
+The execution-storage and row-worker follow-up adds these reviewed bounds:
+
+- Existing `language-query-program` / `wasm-query-program` cases add three-filter,
+  nested-helper scratch reuse on four owners over four steps, then one module
+  replacement per backend. A failing predicate first warms its cache. Two further
+  cases cover update clocks, queued handlers, a delayed continuation and debugger
+  retry (eight tiny runs), plus two three-row filtered query refreshes. No real
+  waits, files, children, engine frames or GPU work are added.
+- Existing activation-cache checks use two ordinary helper levels and add a
+  4,096-value host-bank cap variant, two executions per backend. The execution
+  selector adds four fixed-struct host calls to check clearing and service
+  rebinding. The full program selector retains the query regressions.
+- The SDK reduction selector adds four scalar-helper proof cases on each
+  backend, with two input rows and one destination per case. A reachable
+  numeric helper chain qualifies; component-reading, array-argument and unused
+  helpers stay conservative. Eight small compilations and updates use a
+  4,096-step budget, without an executor or additional processes. The positive
+  case also passes through the existing bounded prepared-artifact buffer. One
+  two-row public-IR case per backend preserves mixed-mode serial failure owner
+  and source diagnostics without publishing partial results.
+- `source-execution-benchmark` measures one program on 16 light rows, 1,024 light
+  rows and 1,024 rows with 64 integer-mixing iterations, serially and with a
+  requested two-worker executor. An ordered heavy pair complements the unordered
+  modes: eight fixtures, one warmup and five trials of four passes each. It
+  reports exact results, published revisions, actual row jobs/worker participation,
+  warm allocation traffic and idle retained bytes. Timing never determines a pass.
+  Workers are joined; there are no files, children, engine frames or GPU work.
+- Source-reduction correctness adds stable row-order and failed-dispatch checks,
+  inspection/profile fallbacks and metadata-cache invalidation controls for
+  component-column relocation and entity generation changes. The scheduler
+  fixture checks the singleton row hook and keeps multi-system work on its
+  existing executor path.
+
 Configure/build separately and report that time separately from test execution:
 
 ```sh

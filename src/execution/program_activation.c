@@ -21,49 +21,20 @@
 
 #define ACTIVATION_CACHE_BYTES ((size_t)64 * 1024)
 
-static int vm_slots(const behavior_function *f)
-{
-    int count = acount(f->slots) + acount(f->locals) + 1;
-    if (f->fast) {
-        int fast = acount(f->fast->slots) + acount(f->fast->locals) + 1;
-        if (fast > count) {
-            count = fast;
-        }
-    }
-    return count;
-}
-static int vm_frames(const behavior_function *f)
-{
-    int count = acount(f->frames);
-    return f->fast && acount(f->fast->frames) > count ? acount(f->fast->frames) : count;
-}
 static size_t cache_bytes(const execution_activation *a)
 {
-    const behavior_function *f = a->function;
-    size_t bytes = sizeof *a + arena_storage_bytes(&a->storage);
-    if (a->activation.values) {
-        bytes += ((size_t)acount(f->slots) + acount(f->locals) + acount(f->frames)) *
-                 sizeof *a->activation.values;
-    }
-    if (a->activation.wake_times) {
-        bytes += (size_t)acount(f->frames) * sizeof *a->activation.wake_times;
-    }
-    if (a->activation.vm) {
-        bytes += sizeof *a->activation.vm;
-        bytes += (size_t)vm_slots(f) * sizeof *a->activation.vm->values;
-        if (a->activation.vm->parents) {
-            bytes += (size_t)vm_frames(f) * sizeof *a->activation.vm->parents;
-        }
-    }
-    return bytes;
+    return sizeof *a + arena_storage_bytes(&a->storage) +
+           behavior_function_host_storage_bytes(&a->context) +
+           behavior_function_activation_storage_bytes(a->function, &a->activation);
 }
 size_t program_activation_cache_bytes(const execution_program *p)
 {
     return p->spare_activation ? cache_bytes(p->spare_activation) : 0;
 }
-/* Only use after host/call/task ownership has been released, or before binding. */
+/* Only use after task ownership has been released, or before binding. */
 static void discard(execution_activation *a)
 {
+    behavior_function_release_host(&a->context);
     behavior_function_activation_free(&a->activation);
     arena_free(&a->storage);
     arena_free(&a->payload);
@@ -76,32 +47,6 @@ void program_activation_cache_free(execution_program *p)
     if (a) {
         discard(a);
     }
-}
-static void reset_scratch(execution_activation *a)
-{
-    const behavior_function *f = a->function;
-    behavior_function_activation *saved = &a->activation;
-    assert(!saved->calls);
-    if (saved->values) {
-        size_t count = (size_t)acount(f->slots) + acount(f->locals) + acount(f->frames);
-        memset(saved->values, 0, count * sizeof *saved->values);
-    }
-    if (saved->wake_times) {
-        memset(saved->wake_times, 0, (size_t)acount(f->frames) * sizeof *saved->wake_times);
-    }
-    if (saved->vm) {
-        memset(saved->vm->values, 0, (size_t)vm_slots(f) * sizeof *saved->vm->values);
-        if (saved->vm->parents) {
-            memset(
-                saved->vm->parents,
-                0,
-                (size_t)vm_frames(f) * sizeof *saved->vm->parents
-            );
-        }
-    }
-    *saved = (behavior_function_activation){ .values = saved->values,
-                                             .wake_times = saved->wake_times,
-                                             .vm = saved->vm };
 }
 static void unlink_continuation(execution_activation *a)
 {
@@ -165,18 +110,24 @@ void program_activation_free(execution_activation *activation)
     }
     afree(activation->requests);
     afree(activation->actions);
-    behavior_function_clear_calls(&activation->activation);
-    behavior_function_release_host(&activation->context);
+    if (keep) {
+        behavior_function_reset_host(&activation->context);
+        behavior_function_reset_activation(activation->function, &activation->activation);
+    } else {
+        behavior_function_clear_calls(&activation->activation);
+    }
     arena_free(&activation->payload);
     if (keep && !p->spare_activation &&
         cache_bytes(activation) <= ACTIVATION_CACHE_BYTES) {
         arena storage = activation->storage;
         behavior_function_activation saved = activation->activation;
+        behavior_function_context host = activation->context;
         const behavior_function *function = activation->function;
         arena_reset(&storage);
         *activation = (execution_activation){ .function = function,
                                               .storage = storage,
-                                              .activation = saved };
+                                              .activation = saved,
+                                              .context = host };
         p->spare_activation = activation;
         return;
     }
@@ -235,9 +186,7 @@ execution_activation *program_activation_new(
     }
     execution_activation *a = p->spare_activation;
     p->spare_activation = NULL; /* Reentrant work cannot borrow this live frame. */
-    if (a) {
-        reset_scratch(a);
-    } else {
+    if (!a) {
         a = xcalloc(1, sizeof *a);
     }
     a->instance = instance;
@@ -264,28 +213,35 @@ execution_activation *program_activation_new(
     if (resumable && !a->activation.values) {
         behavior_function_activation_init(function, &a->activation);
     }
-    a->context = (behavior_function_context){ .activation = resumable ? &a->activation
-                                                                      : NULL,
-                                              .variables = instance->values,
-                                              .states = instance->node_states,
-                                              .variable_storage = instance->layouts,
-                                              .value_owner = instance,
-                                              .value_storage = &a->payload,
+    a->context = (behavior_function_context){
+        .activation = resumable ? &a->activation : NULL,
+        .data = a->context.data,
+        .owned_data = a->context.owned_data,
+        .queries = a->context.queries,
+        .commands = a->context.commands,
+        .command_arguments = a->context.command_arguments,
+        .command_results = a->context.command_results,
+        .variables = instance->values,
+        .states = instance->node_states,
+        .variable_storage = instance->layouts,
+        .value_owner = instance,
+        .value_storage = &a->payload,
 
-                                              .arguments = args,
-                                              .argument_count = declared,
-                                              .results = results,
-                                              .now = now,
-                                              .delta_seconds = delta,
-                                              .instance_time = &instance->time,
-                                              .budget = budget,
-                                              .services = instance->program->services,
-                                              .owner = instance->owner,
-                                              .owner_type_name = "ecs.entity",
+        .arguments = args,
+        .argument_count = declared,
+        .results = results,
+        .now = now,
+        .delta_seconds = delta,
+        .instance_time = &instance->time,
+        .budget = budget,
+        .services = instance->program->services,
+        .owner = instance->owner,
+        .owner_type_name = "ecs.entity",
 
-                                              .call_leave = leave_context,
+        .call_leave = leave_context,
 
-                                              .inspection_user = a };
+        .inspection_user = a
+    };
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);

@@ -12,7 +12,7 @@ typedef void task_range(int start, int end, uint32_t worker, void *user);
  * have distinct worker indices below workers. Submit/wait run on worker zero.
  * A NULL task means execution finished inside enqueue. finish must wait for
  * execution to finish, not merely for the work queue to become empty. */
-typedef struct
+typedef struct task_system
 {
     int workers;
     void *user;

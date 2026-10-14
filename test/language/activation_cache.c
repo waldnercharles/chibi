@@ -22,6 +22,7 @@ enum
     WAIT_EVENT,
     DELAY_ACTION,
     REENTER_EVENT,
+    WIDE_VALUES = 4096,
     CACHE_LIMIT = 64 * 1024
 };
 static const script_catalog_parameter amount = { .name = "amount",
@@ -186,7 +187,9 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
             "behavior Cache { state total:double=0; "
             "Work :: (value:double) { total+=value; if value<0 { await "
             "Delay(1); } } "
-            "on Run(amount:double) { total+=amount; } "
+            "Leaf :: fn(value:double)->double { return value; } "
+            "Forward :: fn(value:double)->double { return Leaf(value); } "
+            "on Run(amount:double) { total+=Forward(amount); } "
             "on Reenter(amount:double) { total+=amount; child:task=Work(7); "
             "total+=amount; } }",
             backends[backend]
@@ -309,51 +312,68 @@ TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
     }
     return true;
 }
+static const char *fill_wide_host(void *, const pin_value *, pin_value *results)
+{
+    for (int i = 0; i < WIDE_VALUES; i++) {
+        results[i].d = i;
+    }
+    return NULL;
+}
 TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
-        enum
-        {
-            ARGUMENT_COUNT = 4096
-        };
-        pin_value *arguments = xcalloc(ARGUMENT_COUNT, sizeof *arguments);
-        for (int i = 0; i < ARGUMENT_COUNT; i++) {
-            arguments[i].type = PIN_F64;
+        for (int host_bank = 0; host_bank < 2; host_bank++) {
+            pin_value *arguments = xcalloc(WIDE_VALUES, sizeof *arguments);
+            for (int i = 0; i < WIDE_VALUES; i++) {
+                arguments[i].type = PIN_F64;
+            }
+            behavior_function_builder *builder = behavior_function_builder_new();
+            if (host_bank) {
+                static const node_host_call host = { .invoke = fill_wide_host };
+                static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+                int call = behavior_function_builder_host(builder, &host, &access, NULL, 0, arguments, WIDE_VALUES);
+                behavior_function_builder_emit(
+                    builder,
+                    (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                                     .target = call,
+                                                     .left = BEHAVIOR_FUNCTION_HOST_DATA }
+                );
+            } else {
+                behavior_function_builder_signature(builder, arguments, WIDE_VALUES, NULL, 0, NULL, 0);
+            }
+            behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
+            behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+            char error[256];
+            behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
+            behavior_function_builder_free(builder);
+            free(arguments);
+            REQUIRE(function);
+            wide_plan = execution_module_plan_new();
+            wide_plan->valid = true;
+            wide_plan->id = 42;
+            apush(
+                wide_plan->functions,
+                ((execution_module_function){ .id = 43,
+                                              .kind = EXECUTION_FUNCTION_SYSTEM,
+                                              .body = function })
+            );
+            wide_plan->function_count = 1;
+            module = execution_module_finish(&wide_plan, backends[backend], error, sizeof error);
+            REQUIRE(module);
+            world = ecs_world_new();
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(program);
+            REQUIRE(
+                execution_program_attach(program, ecs_entity_to_u64(ecs_world_create_entity(world)))
+            );
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(execution_program_step(program, i, 0, 1000) == FLOW_OK);
+                execution_memory_usage usage = execution_program_memory_usage(program);
+                REQUIRE(usage.activation_bytes == 0 && usage.activation_cache_bytes == 0);
+            }
+            cleanup();
         }
-        behavior_function_builder *builder = behavior_function_builder_new();
-        behavior_function_builder_signature(builder, arguments, ARGUMENT_COUNT, NULL, 0, NULL, 0);
-        behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
-        behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
-        char error[256];
-        behavior_function *function = behavior_function_builder_finish(builder, error, sizeof error);
-        behavior_function_builder_free(builder);
-        free(arguments);
-        REQUIRE(function);
-        wide_plan = execution_module_plan_new();
-        wide_plan->valid = true;
-        wide_plan->id = 42;
-        apush(
-            wide_plan->functions,
-            ((execution_module_function){ .id = 43,
-                                          .kind = EXECUTION_FUNCTION_SYSTEM,
-                                          .body = function })
-        );
-        wide_plan->function_count = 1;
-        module = execution_module_finish(&wide_plan, backends[backend], error, sizeof error);
-        REQUIRE(module);
-        world = ecs_world_new();
-        program = execution_program_new(module, world, NULL);
-        REQUIRE(program);
-        REQUIRE(
-            execution_program_attach(program, ecs_entity_to_u64(ecs_world_create_entity(world)))
-        );
-        for (int i = 0; i < 2; i++) {
-            REQUIRE(execution_program_step(program, i, 0, 1000) == FLOW_OK);
-            execution_memory_usage usage = execution_program_memory_usage(program);
-            REQUIRE(usage.activation_bytes == 0 && usage.activation_cache_bytes == 0);
-        }
-        cleanup();
     }
     return true;
 }

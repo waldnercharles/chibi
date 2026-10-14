@@ -732,7 +732,7 @@ bool source_systems_parallel(const source_system_batch *batch, int index)
     assert(batch && index >= 0 && index < batch->count);
     return batch->results[index].parallel && batch->results[index].prepared;
 }
-int source_systems_run(source_system_batch *batch, int index, char *error, size_t size)
+static int run_system(source_system_batch *batch, int index, const task_system *tasks, char *error, size_t size)
 {
     assert(batch && index >= 0 && index < batch->count && (!size || error));
     system_result *result = &batch->results[index];
@@ -740,7 +740,9 @@ int source_systems_run(source_system_batch *batch, int index, char *error, size_
     result->ran = true;
     if (result->status >= 0) {
         result->status = result->prepared
-                           ? execution_program_run_system(result->program)
+                           ? tasks
+                               ? execution_program_run_system_parallel(result->program, tasks)
+                               : execution_program_run_system(result->program)
                            : execution_program_update(
                                  result->program,
                                  batch->now,
@@ -749,6 +751,20 @@ int source_systems_run(source_system_batch *batch, int index, char *error, size_
                              );
     }
     return system_error(result, error, size);
+}
+int source_systems_run(source_system_batch *batch, int index, char *error, size_t size)
+{
+    return run_system(batch, index, NULL, error, size);
+}
+int source_systems_run_parallel(
+    source_system_batch *batch,
+    int index,
+    const task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    return run_system(batch, index, tasks, error, size);
 }
 int source_systems_finish_index(source_system_batch *batch, int index, bool commit, char *error, size_t size)
 {

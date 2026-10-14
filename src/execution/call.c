@@ -12,7 +12,7 @@
 
 #define CALL_CACHE_BYTES (64 * 1024)
 
-typedef struct
+typedef struct invocation_frame
 {
     const behavior_function *function;
     behavior_function_invocation invocation;
@@ -21,6 +21,7 @@ typedef struct
     behavior_data_storage *data;
     arena storage;
     bool entered;
+    struct invocation_frame *next;
 } invocation_frame;
 
 struct behavior_function_calls
@@ -28,7 +29,8 @@ struct behavior_function_calls
     /* Frames have stable addresses. A growing pointer array never invalidates
      * context.parent or arguments retained by a pending host operation. */
     invocation_frame **frames;
-    /* Only a completed frame may be reused. It is never a live value root. */
+    /* Completed frames, matched by immutable function generation. Their whole
+     * retained allocation set is bounded and never forms a live value root. */
     invocation_frame *spare;
     int result;
 };
@@ -39,79 +41,76 @@ static void frame_leave(invocation_frame *frame, int result)
         frame->context.call_leave(&frame->context, result);
     }
     frame->entered = false;
-    behavior_function_release_host(&frame->context);
 }
 
 static void frame_free(invocation_frame *frame, int result)
 {
     frame_leave(frame, result);
+    behavior_function_release_host(&frame->context);
     behavior_function_free_data(frame->data);
     behavior_function_activation_free(&frame->activation);
     arena_free(&frame->storage);
     free(frame);
 }
 
-static bool cacheable(const invocation_frame *frame)
+static size_t frame_bytes(const invocation_frame *frame)
 {
-    const behavior_function *f = frame->function;
-    const behavior_function_activation *a = &frame->activation;
-    size_t remaining = CALL_CACHE_BYTES;
-#define KEEP(bytes)                                                            \
-    do {                                                                       \
-        size_t size = (bytes);                                                 \
-        if (size > remaining) {                                                \
-            return false;                                                      \
-        }                                                                      \
-        remaining -= size;                                                     \
-    } while (0)
-#define VECTOR(values)                                                         \
-    KEEP((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
-    KEEP(sizeof *frame);
-    KEEP(arena_storage_bytes(&frame->storage));
-    size_t slots = (size_t)acount(f->slots) + acount(f->locals);
-    if (a->values) {
-        KEEP((slots + acount(f->frames)) * sizeof *a->values);
+    return sizeof *frame + arena_storage_bytes(&frame->storage) +
+           behavior_function_host_storage_bytes(&frame->context) +
+           behavior_function_activation_storage_bytes(frame->function, &frame->activation);
+}
+size_t behavior_function_calls_storage_bytes(const struct behavior_function_calls *calls)
+{
+    if (!calls) {
+        return 0;
     }
-    if (a->wake_times) {
-        KEEP((size_t)acount(f->frames) * sizeof *a->wake_times);
+    size_t bytes = sizeof *calls;
+    if (calls->frames) {
+        bytes += sizeof(dyna_hdr) + (size_t)acap(calls->frames) * sizeof *calls->frames;
     }
-    if (a->vm) {
-        KEEP(sizeof *a->vm);
-        KEEP((slots + 1) * sizeof *a->vm->values);
-        if (a->vm->parents) {
-            KEEP((size_t)acount(f->frames) * sizeof *a->vm->parents);
+    for (int i = 0; i < acount(calls->frames); i++) {
+        bytes += frame_bytes(calls->frames[i]);
+    }
+    for (const invocation_frame *frame = calls->spare; frame; frame = frame->next) {
+        bytes += frame_bytes(frame);
+    }
+    return bytes;
+}
+void behavior_function_calls_reset(struct behavior_function_calls *calls)
+{
+    if (calls) {
+        assert(!acount(calls->frames) && calls->result == FLOW_OK);
+        /* A deeper live call can grow this vector after older spare frames
+         * were retained. Trim against their combined idle allocation size. */
+        if (behavior_function_calls_storage_bytes(calls) > CALL_CACHE_BYTES) {
+            afree(calls->frames);
+        } else if (calls->frames) {
+            memset(calls->frames, 0, (size_t)acap(calls->frames) * sizeof *calls->frames);
         }
+        calls->result = FLOW_OK;
     }
-    if (frame->data) {
-        KEEP(sizeof *frame->data);
-        VECTOR(frame->data->values);
-        VECTOR(frame->data->buffers);
-        VECTOR(frame->data->calls);
-        for (int i = 0; i < acount(f->data_values); i++) {
-            KEEP(f->data_values[i].size);
-        }
-    }
-#undef VECTOR
-#undef KEEP
-    return true;
 }
 
 static void frame_retire(struct behavior_function_calls *calls, invocation_frame *frame)
 {
     frame_leave(frame, FLOW_OK);
-    /* VM scratch follows the selected body, which inspection may change. */
-    if (frame->function->fast) {
-        behavior_function_activation_free(&frame->activation);
+    behavior_function_reset_host(&frame->context);
+    behavior_function_reset_activation(frame->function, &frame->activation);
+    arena_reset(&frame->storage);
+    frame->invocation = (behavior_function_invocation){ 0 };
+    /* Live frames are an execution requirement, not an idle-retention budget.
+     * Count the reusable list and its vector capacity before adding this one. */
+    size_t bytes = sizeof *calls + sizeof(dyna_hdr) +
+                   (size_t)acap(calls->frames) * sizeof *calls->frames +
+                   frame_bytes(frame);
+    for (invocation_frame *spare = calls->spare; spare; spare = spare->next) {
+        bytes += frame_bytes(spare);
     }
-    if (!cacheable(frame)) {
+    if (bytes > CALL_CACHE_BYTES) {
         frame_free(frame, FLOW_OK);
         return;
     }
-    if (calls->spare) {
-        frame_free(calls->spare, FLOW_OK);
-    }
-    arena_reset(&frame->storage);
-    frame->context = (behavior_function_context){ 0 };
+    frame->next = calls->spare;
     calls->spare = frame;
 }
 
@@ -120,8 +119,10 @@ void behavior_function_calls_free(struct behavior_function_calls *calls)
     if (!calls) {
         return;
     }
-    if (calls->spare) {
-        frame_free(calls->spare, FLOW_OK);
+    while (calls->spare) {
+        invocation_frame *frame = calls->spare;
+        calls->spare = frame->next;
+        frame_free(frame, FLOW_OK);
     }
     for (int i = acount(calls->frames) - 1; i >= 0; i--) {
         frame_free(calls->frames[i], FLOW_ERR_STATE);
@@ -141,6 +142,9 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
 static int settle_calls(struct behavior_function_calls *calls, int result)
 {
     calls->result = result;
+    if (result == FLOW_OK) {
+        behavior_function_calls_reset(calls);
+    }
     if (result >= 0) {
         return result;
     }
@@ -218,29 +222,6 @@ static const behavior_function_invocation *invocation(
     assert(i->op == BF_INVOKE && i->left >= 0 && i->left < acount(function->calls));
     return &function->calls[i->left];
 }
-static void reset_activation(invocation_frame *frame)
-{
-    const behavior_function *f = frame->function;
-    behavior_function_activation *a = &frame->activation;
-    assert(!a->calls);
-    int slots = acount(f->slots) + acount(f->locals);
-    if (a->values) {
-        memset(a->values, 0, (size_t)(slots + acount(f->frames)) * sizeof *a->values);
-    }
-    if (a->wake_times) {
-        memset(a->wake_times, 0, (size_t)acount(f->frames) * sizeof *a->wake_times);
-    }
-    if (a->vm) {
-        memset(a->vm->values, 0, (size_t)(slots + 1) * sizeof *a->vm->values);
-        if (a->vm->parents) {
-            memset(a->vm->parents, 0, (size_t)acount(f->frames) * sizeof *a->vm->parents);
-        }
-    }
-    *a = (behavior_function_activation){ .values = a->values,
-                                         .wake_times = a->wake_times,
-                                         .vm = a->vm };
-}
-
 static invocation_frame *frame_new(
     struct behavior_function_calls *calls,
     const behavior_function *function,
@@ -257,19 +238,18 @@ static invocation_frame *frame_new(
         call_error(function, parent, BEHAVIOR_FUNCTION_DEPTH, "function recursion depth exceeded");
         return NULL;
     }
-    invocation_frame *frame = calls->spare;
-    calls->spare = NULL;
+    invocation_frame **available = &calls->spare;
+    while (*available && (*available)->function != call.function) {
+        available = &(*available)->next;
+    }
+    invocation_frame *frame = *available;
+    if (frame) {
+        *available = frame->next;
+        frame->next = NULL;
+    }
     if (!frame) {
         frame = xcalloc(1, sizeof *frame);
         arena_init(&frame->storage, 4096);
-    }
-    if (frame->function != call.function) {
-        behavior_function_activation_free(&frame->activation);
-        behavior_function_free_data(frame->data);
-        frame->data = NULL;
-    } else {
-        reset_activation(frame);
-        behavior_function_reset_data(frame->data);
     }
     frame->function = call.function;
     frame->invocation = call;
@@ -281,6 +261,11 @@ static invocation_frame *frame_new(
         .activation = &frame->activation,
         .variables = parent->variables,
         .data = frame->data,
+        .queries = frame->context.queries,
+        .commands = frame->context.commands,
+        .command_arguments = frame->context.command_arguments,
+        .command_results = frame->context.command_results,
+        .services = parent->services,
         .budget = parent->budget,
         .call_depth = depth,
         .inspection_user = parent->inspection_user,
@@ -354,6 +339,9 @@ static invocation_frame *frame_new(
     if (size) {
         frame->context.watch_storage = arena_alloc(&frame->storage, size);
     }
+    /* Supplied host banks live with the frame, so run_once must not release
+     * their allocations before successful retirement can reset them. */
+    behavior_function_prepare_host(call.function, &frame->context);
     return frame;
 }
 

@@ -17,17 +17,21 @@ Independent row state gives each tuple its own timers, state and suspended
 tasks. Its storage necessarily grows with retained rows and live continuations.
 Stateless synchronous generator systems stream through a reusable row header;
 they do not retain a coroutine per row. Serial synchronous invocations now reuse
-one idle activation per program, up to 64 KiB of fixed frame storage. The cache
-rebinds owner, arguments, services and state, and releases host, payload, nested
-call, task and request ownership. Failed, cancelled, inspected and resumed work
+one idle activation per program, up to 64 KiB including fixed host banks and
+completed helper frames. The cache rebinds owner, arguments, services and state,
+clears borrowed values, and releases live payload, task and request ownership.
+Failed, cancelled, inspected and resumed work
 is excluded. Prepared reduction batches retain compact owner/variable IDs and
 reuse a streaming activation when eligible. Other prepared paths still need
 simultaneous activations per row.
 Value filters use a temporary admission bitmap to preserve evaluation before
 body writes. Query cache limits bound cached
 matching rows, not the separately owned state or task results.
-Low retained memory does not imply zero allocation traffic: predicate evaluators,
-helper calls and body activations still set up temporary storage. Measure both
+Predicate evaluators share a separate 64 KiB per-program idle budget, including
+their host banks, helper frames and arenas. Each active evaluator is detached
+from the cache, so reentrant work cannot reuse its live values. Low retained
+memory does not imply zero allocation traffic: managed snapshots and query
+results can still require temporary storage. Measure both
 peak retained bytes and allocation counts before making a gameplay speed claim.
 
 The original audit's native 64-bit Debug build has a 288-byte `execution_instance`
@@ -57,7 +61,9 @@ not frame-rate promises.
 
 | Optimization | Established fact | Retained storage or remaining work |
 | --- | --- | --- |
-| Synchronous activation reuse | A successful first invocation has released all transient ownership before its fixed storage is reused for the same immutable function. | One idle frame per program, at most 64 KiB; host/payload/nested-call allocation remains. |
+| Synchronous activation reuse | A successful first invocation has released all transient ownership before its fixed storage is reused for the same immutable function. | One idle frame per program, at most 64 KiB including host banks, VM scratch and idle helper frames; managed payload allocation remains. |
+| Predicate evaluator reuse | Only a boolean result escapes a synchronous predicate; each immutable function's scratch is reset and services are rebound. | All idle evaluators together retain at most 64 KiB per program; failures and oversized scratch are released. |
+| Reduction field metadata | Registered component schemas are immutable; cached field shape cannot change inside the program's world. | Eight fixed entries per program; live entity generation, component presence and layout are still checked for every contribution and preflight record. |
 | Reactive binding order cache | The complete ordered live work stream and program generation identities still match the cached dependency topology. Values and dynamic targets are reevaluated. | One schedule per owning program, at most 16 programs, 1,024 rows and 64 KiB. Cache misses use the existing sorter; larger workloads execute normally. |
 | Unchanged scheduler registration | Every copied descriptor field, callback, effect, phase and dependency is equal, and no prior error needs recovery. | Registration retains its existing descriptor. Batch scratch retains at most 128 entries; recursive and larger batches use temporary storage. |
 | Presentation-only compilation reuse | Capability category, keywords and description have no executable meaning; all semantic metadata and binding generations still match. | Fresh catalogs own current display text. Parsing/declaration discovery and semantic edits still do their existing work. |
@@ -65,7 +71,7 @@ not frame-rate promises.
 
 Cache limits constrain retained optimization storage, not gameplay entities,
 task counts or valid program sizes. `activation_cache_bytes`,
-`binding_schedule_bytes` and `schedule_scratch_bytes()` expose the corresponding
+`query_cache_bytes`, `binding_schedule_bytes` and `schedule_scratch_bytes()` expose the corresponding
 idle storage costs. Allocation counters do not measure peak or total memory.
 
 ### Tiny benchmark evidence
@@ -177,13 +183,78 @@ build bug: a web-only macro overrode the requested two-worker budget with four.
 That gate is now restricted to threaded web builds. Initial four-worker timings
 are not a paired comparison for the final two-worker measurements.
 
+## Execution-storage and row-worker measurements
+
+This follow-up starts from main
+`2b1d9139523c4676a6cb0dfc7a38b58dc5a49b22`. Preserved executables from that
+tree provide the baseline for unchanged activation, array and two-system
+reduction benchmark bodies. The candidate uses Clang 19.1.7, Release `-O3`,
+SLJIT, assertions enabled and sanitizers off. Runs are sequential, with CPU 2
+for activation/array fixtures and CPUs 2–3 for reductions. Configuration and
+builds finish before measurement; every selector keeps the 60-second supervisor.
+The following values are medians of five trials, with minimum–maximum ranges.
+
+| Two-system fixture, µs/pass | Baseline | Reuse and metadata cache |
+| --- | --- | --- |
+| Ordinary writes, serial | 2,516 (2,061–3,029) | 1,906 (1,372–2,929) |
+| Ordered reductions, serial | 2,787 (2,545–3,329) | 843 (831–1,097) |
+| Ordered reductions, system workers | 2,524 (2,372–2,788) | 1,207 (1,030–1,463) |
+| Unordered sums, serial | 2,354 (2,035–3,423) | 745 (719–1,349) |
+| Unordered sums, system workers | 1,653 (1,564–2,080) | 962 (743–1,854) |
+
+These are the existing 256-contributor, two-system workloads, not the new row
+executor. All modes reduce warm allocation calls from 106,512 to 49,168 and
+requested bytes from 30,196,288 to 6,799,936 per eight passes (about 77% fewer
+bytes). Reducer activation caches grow from 3,376 to 10,576 bytes across both
+programs. This sample supports a reduction-path improvement, but does not show
+system workers beating the new serial path at this size.
+
+The scalar helper-event fixture falls from 38,400 SLJIT allocation calls and
+24,012,800 requested bytes to zero per 3,200 invocations. Every direct, one-helper
+and two-helper array mode also reaches zero warm allocations; the two-helper
+SLJIT fixture previously made 640 calls requesting 480,256 bytes per 32
+dispatches. VM fixtures reach zero as well. This is fixed-storage reuse, not an
+allocation-free language guarantee: managed result payloads and query snapshot
+items still allocate in other workloads. Tiny timings remain inconclusive.
+For example, the one-item two-helper SLJIT median improves from 1.72 to 1.41 µs,
+while its 128-item median regresses from 2.40 to 3.27 µs amid broad outliers.
+The scalar helper-event median also regresses from 1.60 to 2.33 µs in this sample.
+
+The new single-program benchmark separately compares serial execution with
+requested two-worker rows. Each trial performs four passes; the heavy helper
+performs 64 integer-mixing iterations per row. A first run had severe variation
+(the unordered heavy serial median was 20.56 ms while ordered was 3.47 ms), so
+one diagnostic repeat tested whether that difference persisted. It did not.
+The repeat below still has overlapping ranges and is not a robust speedup claim.
+
+| Row workload, µs/pass | Serial | Requested two-worker rows |
+| --- | --- | --- |
+| 16 light, unordered | 26.6 (20.8–71.9) | 20.7 (20.5–41.5), serial fallback |
+| 1,024 light, unordered | 4,271 (3,247–4,906) | 3,585 (2,325–4,908) |
+| 1,024 heavy, unordered | 4,736 (3,001–6,829) | 3,378 (3,070–4,524) |
+| 1,024 heavy, ordered | 3,778 (3,449–6,238) | 3,590 (3,323–6,102) |
+
+Both worker IDs participated in every large parallel trial. Unordered rows
+retain 35,584 bytes of private worker scratch, plus 8,240 row-ID bytes and 1,312
+parent log/hash bytes; ordered rows retain 32,960 worker bytes. Ordered logs at
+this size exceed the idle cap and are freed, so repeated dispatches still
+allocate. Active contribution storage scales with rows. Unordered workers
+preserve two globally coalesced records per system; ordered work preserves all
+2,048 records and their publication order. The 16-row control launches no jobs.
+
+Measured allocation removal justifies the bounded reuse. The row executor is
+correctness-verified but these timings do not establish a general parallel gain
+or justify broadening eligibility. More selective scheduling should use measured
+body/merge costs rather than entity count alone. No timing threshold is a test
+assertion, and no automatic regrouping of stable sums is introduced.
+
 ## Remaining work to evaluate
 
 | Opportunity | Evidence and possible gain | Cost or required proof |
 | --- | --- | --- |
-| Reuse host and nested-call storage | Fixed activation reuse leaves host banks and nested calls allocating on each invocation. | Reset all managed and native ownership, bound retained capacity and measure helper-heavy workloads. |
+| Reuse remaining managed payload storage | Fixed host and nested-call buffers now reuse storage; completed activations still release their managed payload arenas. | Preserve escaped state/task/result ownership; measure before introducing further allocator machinery. |
 | Scale binding cache misses | Stable schedules avoid rebuilding; topology changes still use the original sorter. | A cheaper graph algorithm must preserve stable ordering, conservative dependencies and cycle rejection before writes. |
-| Broaden proven worker eligibility | Preparation now occurs per dependency batch, including phases with native systems. Authored helper calls and several query-source intrinsics still conservatively prevent worker execution. | Carry verified component origins/effects through calls; preserve observer/debug barriers and serial publication. |
+| Broaden proven worker eligibility | Preparation occurs per dependency batch. Scalar helper closures can be proved independent; helpers with component access, managed values or opaque effects remain conservative. | Carry verified component origins/effects through calls; preserve observer/debug barriers, failure ordering and serial publication. |
 | Narrow compilation invalidation further | Declaration discovery still reparses sources; semantic catalog changes remain a global reuse gate. | Retain syntax with explicit ownership and track actual semantic dependencies, including debugger/source ranges. |
 | Extend collection borrowing | Synchronous authored helper chains now qualify; opaque native calls, recursion, managed elements and potentially escaping results still use owning copies. | Prove per-value retention and mutation, verify native lifetime contracts and preserve debugger/suspension ownership. |
 
@@ -208,8 +279,20 @@ The call-view/reduction follow-up implements two of the proposed contracts:
   sum aggregation within a system. Integer addition wraps at its storage width;
   ordered writes preserve per-write range clamps. Unordered sums require unbounded
   fields and may change floating-point results and write-revision counts. Systems
-  can run concurrently; rows within a system remain serial. A producer cannot
-  otherwise access its reduced component or suspend.
+  can run concurrently. A sufficiently large stateless reducer can also split
+  its rows into contiguous worker chunks: private logs merge in original row
+  order, then publish serially. Global coalescing preserves one unordered write
+  per destination per system. A producer cannot otherwise access its reduced
+  component or suspend.
+
+The row executor requires a proved synchronous body and allows reachable numeric
+scalar helper chains without references, world access or side effects. Query
+admission happens before worker execution. Debugging, profiling, state, tasks,
+imports, ordinary writes, mixed ordered/unordered modes and insufficient proofs
+keep serial execution. The scheduler chooses row work only for a singleton
+system batch; independent multi-system batches keep their existing executor.
+Worker scratch retains at most 1 MiB in total, with at most the executor's worker
+budget (capped at 32) private contexts. Active logs remain proportional to work.
 
 Further language changes should earn their cost with measured workloads:
 
@@ -221,10 +304,11 @@ Further language changes should earn their cost with measured workloads:
 - **Verified native view contracts:** let a native helper promise and enforce
   no retention or mutation of borrowed inputs. This could extend copy elimination
   across the host boundary; incorrect declarations would be an engine bug.
-- **Row-independent reduction bodies:** prohibiting observable cross-row state
-  could permit splitting one large system across workers. Stable publication would
-  still need original row indices and contribution storage. This is not yet a
-  language guarantee or implemented optimization.
+- **Ordinary row writes:** unique target ownership would help prove write
+  independence, but parallel execution must also preserve first-failure behavior.
+  Staging writes or proving the entire row cannot fail would be necessary before
+  extending the implemented reduction path. An exclusive relationship alone does
+  not prove that different sources have different targets.
 
 Units in function signatures improve compile-time dimensional checking. They
 are erased and do not inherently make arithmetic faster. Range, alias, lifetime

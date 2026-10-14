@@ -267,6 +267,26 @@ static bool minimize(const char *input, const char *expected)
     return minimize_in(&catalog, input, expected);
 }
 
+/* The chibi_ctl --format pipeline: minimize, then re-indent the result. */
+static bool minimize_formatted(const char *input, const char *expected)
+{
+    char *minimal = authoring_source_minimize(input, &catalog, "Demo");
+    script_syntax *shortened = script_parse(minimal);
+    char error[192];
+    text = authoring_source_format(shortened, error, sizeof error);
+    script_syntax_free(shortened);
+    free(minimal);
+    if (!text) {
+        fprintf(stderr, "format: %s\n", error);
+        return false;
+    }
+    if (strcmp(text, expected)) {
+        fprintf(stderr, "minimize:\n%s\nexpected:\n%s\n", text, expected);
+        return false;
+    }
+    return true;
+}
+
 TEST_CASE(source_minimize_drops_redundant_text)
 {
     REQUIRE(minimize(
@@ -303,6 +323,58 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "            x = 1.0\n"
         "        }\n"
         "        return\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_flattens_else_if_blocks)
+{
+    REQUIRE(minimize_formatted(
+        "behavior Demo {\n"
+        "    count := 0\n"
+        "    on Tick {\n"
+        "        if count > 1 {\n"
+        "            count = 0\n"
+        "        } else {\n"
+        "            if count > 0 {\n"
+        "                count = 1\n"
+        "            } else {\n"
+        "                count = 2\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        "behavior Demo {\n"
+        "    count := 0\n"
+        "    on Tick {\n"
+        "        if count > 1 {\n"
+        "            count = 0\n"
+        "        } else if count > 0 {\n"
+        "            count = 1\n"
+        "        } else {\n"
+        "            count = 2\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_drops_root_state_keyword)
+{
+    REQUIRE(minimize_formatted(
+        "behavior Demo {\n"
+        "    state count := 0\n"
+        "    on Tick {\n"
+        "        count = count + 1\n"
+        "    }\n"
+        "}\n",
+        "behavior Demo {\n"
+        "    count := 0\n"
+        "    on Tick {\n"
+        "        count = count + 1\n"
         "    }\n"
         "}\n"
     ));
@@ -609,6 +681,8 @@ void test_language_format()
     RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_flattens_else_if_blocks);
+    RUN_TEST_CASE(source_minimize_drops_root_state_keyword);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);

@@ -1,6 +1,48 @@
 # Core operation contract validation
 
-Validated on 2026-10-15 against eligible main
+## Current combined local validation
+
+The operation/module combination was independently reviewed and tested on
+2026-10-15 at `a26d0246feb343c93f28979d96cc9e1dd1fd4df8`, tree
+`a6926ee97b9dad41d3e99ab74429b8d2a2f7f95e`, against eligible main
+`f1bfe133afbf214de679ca3da9a12c08b6511788`. Its other parent is the earlier
+published operation head `b4d4c1f9e8ff2b98743958ac899038b49d8cc4c1`.
+Operation implementations/fixtures match that parent; the module export fix and
+fixtures match main. Only build-list, dispatcher and policy membership conflicts
+needed combining. Every previous group member and relative order is preserved.
+
+All five checks passed serially, each as one unchanged production 60-second
+invocation. Times exclude configuration/builds; every command exited zero.
+
+| Invocation | Selectors | Cases passed | Assertions | Seconds |
+| --- | ---: | ---: | ---: | ---: |
+| `group language` | 30 | 397 | 36,563 | 22.088 |
+| `group wasm` | 18 | 241 | 32,680 | 7.618 |
+| `tool native-tools` | 1 | 116 | 29,566 | 22.075 |
+| `tool native-catalog` | 1 | 6 | 346 | 0.199 |
+| `tool language-prepared` | 1 | 19 | 833 | 0.265 |
+
+Each operation and module case ran exactly once per applicable group. Prepared
+counts combine producer 6/199, runtime-only consumer 12/629 and parent 1/5.
+Native-tools used the compiler-only tooling closure; native-catalog used the
+native/compiler-enabled closure and retained all six preparation/native cases.
+Four build-currency checks passed separately. The 64-file reviewed source
+closure, 89-file corpus, policy worker and five output artifacts retained their
+pre-run hashes. The backend/sanitizer limitations below still apply.
+
+This is approval of the exact local combination, not approval of a future
+published head. Final documentation/content identity, updated remote blobs,
+current integration eligibility, server requirements and holds still need
+verification. Earlier operation controls remain historical evidence for their
+unchanged guards and fixtures; they were not rerun for this combination.
+
+## Historical operation validation on the earlier base
+
+The following results predate module integration and are not current-combination
+runs. The earlier published `b4d4c1f9` tree also passed its separate five-check
+review on base `62906a50`; integration was then blocked by main advancing. Its
+retained report and hashes remain distinct from the new combined evidence.
+The older implementation was validated on 2026-10-15 against eligible main
 `62906a504fee6b2e0bd6349a8eeff1450529cd90`:
 
 - Implementation and isolated controls: `986a100726357fdff43deba746ff59674bd53faf`,
@@ -12,13 +54,14 @@ Validated on 2026-10-15 against eligible main
 This report is a documentation-only follow-up to those tested heads. It covers
 the [bounded Owner/Delta/Delay contract](engine-operation-contracts.md), not all L16.
 
-## Review and build conditions
+## Historical review and build conditions
 
 Independent review checked declaration shape, generated opcode identity, catalog
 ABI domain separation, incremental invalidation, raw/custom binding validation,
 and the whole-catalog boundary before state-read/write rewrites. Unknown host
 operations gain no guarantees. Delay makes no no-reentry promise. The merged
-query/scalar-read implementation remains intact; unrelated held work is excluded.
+query/scalar-read implementation remained intact; module work was excluded at
+that earlier stage and is included only in the current combination above.
 
 Four build trees were current: native language, compiler-only tools, native tools
 with compiler support, and Wasm language. Native uses Clang 19.1.7 Debug,
@@ -35,7 +78,7 @@ zero against the actual struct fields; fixture inputs, calls and assertions are
 unchanged. They compiled successfully. Their prototype/UI fixture selectors were
 not independently executed by this matrix.
 
-## Positive results
+## Historical selected positive results
 
 These seven routes ran on implementation `986a1007`, serially under the unchanged
 production 60-second supervisor. Times include in-test setup and exclude
@@ -67,7 +110,7 @@ assert their intended diagnostic. An earlier native-catalog invocation ran zero
 cases because its tools build lacked native support; the six-case result above
 resolves that coverage gap. Those earlier failures are not counted as passes.
 
-## Isolated negative controls
+## Historical isolated negative controls
 
 On implementation `986a1007`, each control removed exactly one reviewed
 production guard/comparison, leaving fixtures and assertions unchanged. Every run exited one with 7/8 cases passing
@@ -94,7 +137,7 @@ and binaries were untouched. Control builds were removed after preserving logs,
 configuration, commands, patches and hashes. Log digests are recorded in
 [evidence](evidence/engine-operations/log-sha256.txt).
 
-## Regular gate integration
+## Historical regular gate integration
 
 The standalone routes initially left a regular regression-coverage gap. After
 independent workload admission, `5fbe3ce5` added `language-operations` once to

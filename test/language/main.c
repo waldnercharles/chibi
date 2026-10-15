@@ -15,6 +15,7 @@ void test_language_query_program();
 void test_language_query_boundary();
 void test_language_incremental();
 void test_language_operations();
+void test_language_modules();
 void test_numeric_ranges();
 void test_language_scalarize();
 void test_language_benchmark();
@@ -59,6 +60,7 @@ int main(int argc, char **argv)
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool operations = argc == 2 && !strcmp(argv[1], "--operations");
+    bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool scalarize = argc == 2 && !strcmp(argv[1], "--scalarize");
     bool reductions = argc == 2 && !strcmp(argv[1], "--reductions");
@@ -79,15 +81,16 @@ int main(int argc, char **argv)
         (!format && !prepared && !execution && !semantic && !benchmark &&
          !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
          !incremental_benchmark && !wasm && !program && !query_program &&
-         !incremental && !operations && !ranges && !scalarize && !borrow &&
-         !reductions && !binding_schedule && !activation_cache && !headless &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && !graph_model && !graph_authoring && !model_runtime &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !incremental && !operations && !modules && !ranges && !scalarize &&
+         !borrow && !reductions && !binding_schedule && !activation_cache &&
+         !headless && !navigation && !publication && !field_runtime && !prototype &&
+         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
+         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
             "| --program | --query-program | --incremental | --operations | "
+            "--modules | "
             "--ranges | "
             "--scalarize | --borrow | --reductions | --binding-schedule | "
             "--activation-cache "
@@ -158,6 +161,8 @@ int main(int argc, char **argv)
     } else if (query_program) {
         test_language_query_program();
         test_language_query_boundary();
+    } else if (modules) {
+        test_language_modules();
     } else if (incremental) {
         test_language_incremental();
     } else if (operations) {

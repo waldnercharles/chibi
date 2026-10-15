@@ -437,6 +437,9 @@ TOOLS = {
     # Eight bounded core operation contract cases: 42 catalog attempts, four tiny
     # module finalizations, eight dispatches and two synthetic-time updates.
     'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
+    # Fixed module-boundary specimen: seven C cases, at most 22 catalogs, 60 sources,
+    # 48 lowering requests/42 finalization attempts, 20 programs/56 dispatches; no GPU.
+    'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     # Bounded scalar proof tests: runtime IR reductions and VM/compiled/inspection parity.
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
     # Bounded union scalar replacement and checked component-read differential/control-flow cases.
@@ -471,19 +474,19 @@ for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark'
 for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions'):
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
-# Every admitted selector of each built driver, run under one shared deadline.
+# Dedicated routes for admitted installed-example fixtures.
 for lab in EXAMPLE_LABS:
     TOOLS[f'installed-example-{lab}'] = [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                                         f'--installed-example-{lab}']
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-operations', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize',
+             'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize',
              'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
@@ -514,7 +517,7 @@ GROUPS = {
     'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'script-benchmark',
                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
-                 'language-headless', 'language-format', 'language-navigation', 'language-publication',
+                 'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime'],
 }

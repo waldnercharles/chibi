@@ -1716,6 +1716,9 @@ static bool capture_measure(
               : capture_text_is(&snapshot, writes)
     );
     arena_free(&current);
+    if (!attached) {
+        REQUIRE(used == live);
+    }
     execution_memory_usage memory = execution_program_memory_usage(program);
     printf(
         "capture backend=%d shape=%s phase=%s writes=%d attached=%d holders=%d "
@@ -1883,6 +1886,100 @@ TEST_CASE(program_detached_array_capture_retention_audit)
 TEST_CASE(program_attached_string_capture_retention_control)
 {
     REQUIRE(capture_retention_case(false, true, 0));
+    return true;
+}
+TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
+{
+    const char *source =
+        "behavior Descendant { before: string = \"\"; observed: string = \"\";"
+        "done: double = 0;"
+        "Child :: fn(value: ref string) { yield; value = value; before = value;"
+        "yield; value = \"small\"; observed = value;"
+        "yield; value = \"\"; done = 1; yield; }"
+        "Relay :: fn(value: ref string) { yield; Child(value); }"
+        "on Impulse(amount, enabled) { v := capture_text(); Relay(v); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        capture_text_calls = 0;
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        uint64_t owner = ecs_entity_to_u64(ecs_world_create_entity(world));
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
+        REQUIRE(capture_text_calls == 1 && capture_state_is(instance, "before", 0, false));
+        int holders;
+        execution_box *box = capture_box(instance, &holders);
+        REQUIRE(box && holders == 1 && box->holders == 1 && box->owner == &box->detached);
+        int saved = -1;
+        for (int i = 0; i < execution_inspector_watch_count(debugger); i++) {
+            const execution_debug_watch *watch = execution_inspector_watch_at(debugger, i);
+            if (watch->availability == EXECUTION_WATCH_AVAILABLE &&
+                capture_text_is(&watch->value, 0)) {
+                saved = i;
+            }
+        }
+        REQUIRE(saved >= 0);
+        execution_inspector_recording(debugger, false, owner);
+        REQUIRE(execution_inspector_pause(debugger, owner));
+        REQUIRE(execution_program_update(program, 3, 0, 10000) >= FLOW_OK);
+        REQUIRE(execution_program_paused(program));
+        REQUIRE(capture_text_is(box->value, 0));
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
+        REQUIRE(!strcmp(box->value->str, "small") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(execution_program_update(program, 4, 0, 10000) == FLOW_OK);
+        REQUIRE(!strcmp(box->value->str, "") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(number_state(instance, "done", 1));
+        REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
+        REQUIRE(execution_program_update(program, 5, 0, 10000) == FLOW_OK);
+        REQUIRE(!capture_box(instance, &holders) && !holders);
+        REQUIRE(!execution_instance_pending(instance));
+        execution_program_detach(program, owner);
+        REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
+    }
+    return true;
+}
+TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
+{
+    const char *source =
+        "behavior Handles { seen: double = 0;"
+        "Result :: fn() -> (value: double) { yield; return 7; }"
+        "Use :: fn(jobs: ref task<double>[]) { yield; jobs = jobs; yield;"
+        "answer := await jobs[0]; if answer is double n { seen = n; }"
+        "jobs = []; yield; }"
+        "on Impulse(amount, enabled) { jobs: task<double>[] = [Result()]; "
+        "Use(jobs); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        uint64_t owner = ecs_entity_to_u64(ecs_world_create_entity(world));
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).task_result_bytes > 0);
+        int holders;
+        execution_box *box = capture_box(instance, &holders);
+        REQUIRE(box && holders == 1 && ((pin_array *)box->value->ptr)->count == 1);
+        REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 7));
+        REQUIRE(((pin_array *)box->value->ptr)->count == 0);
+        REQUIRE(arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(execution_program_update(program, 3, 0, 10000) == FLOW_OK);
+        REQUIRE(!capture_box(instance, &holders) && !holders);
+        REQUIRE(!execution_instance_pending(instance));
+        REQUIRE(!execution_program_memory_usage(program).task_result_bytes);
+        execution_program_detach(program, owner);
+    }
     return true;
 }
 TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes)
@@ -7406,6 +7503,8 @@ void test_language_program()
     RUN_TEST_CASE(program_detached_string_capture_retention_audit);
     RUN_TEST_CASE(program_detached_array_capture_retention_audit);
     RUN_TEST_CASE(program_attached_string_capture_retention_control);
+    RUN_TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink);
+    RUN_TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     RUN_TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows);
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);

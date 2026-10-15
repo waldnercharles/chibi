@@ -17,6 +17,10 @@ void test_language_incremental();
 void test_language_modules();
 void test_numeric_ranges();
 void test_language_scalarize();
+void test_language_component_write();
+void test_language_component_write_source();
+void test_language_component_write_ir();
+void test_language_component_write_layout();
 void test_language_benchmark();
 void test_language_activation_benchmark();
 void test_language_binding_benchmark();
@@ -60,6 +64,9 @@ int main(int argc, char **argv)
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
+    bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
+    bool component_write_layout = argc == 2 &&
+                                  !strcmp(argv[1], "--component-write-layout");
     bool scalarize = argc == 2 && !strcmp(argv[1], "--scalarize");
     bool reductions = argc == 2 && !strcmp(argv[1], "--reductions");
     bool borrow = argc == 2 && !strcmp(argv[1], "--borrow");
@@ -79,7 +86,8 @@ int main(int argc, char **argv)
         (!format && !prepared && !execution && !semantic && !benchmark &&
          !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
          !incremental_benchmark && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !scalarize && !borrow && !reductions &&
+         !incremental && !modules && !ranges && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
@@ -89,7 +97,9 @@ int main(int argc, char **argv)
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
             "| --program | --query-program | --incremental | --modules | "
             "--ranges | "
-            "--scalarize | --borrow | --reductions | --binding-schedule | "
+            "--component-write | --component-write-layout | --scalarize | "
+            "--borrow | --reductions | "
+            "--binding-schedule | "
             "--activation-cache "
             "| "
             "--script-benchmark | --activation-benchmark | --binding-benchmark "
@@ -164,6 +174,12 @@ int main(int argc, char **argv)
         test_language_incremental();
     } else if (ranges) {
         test_numeric_ranges();
+    } else if (component_write_layout) {
+        test_language_component_write_layout();
+    } else if (component_write) {
+        test_language_component_write();
+        test_language_component_write_source();
+        test_language_component_write_ir();
     } else if (scalarize) {
         test_language_scalarize();
     } else if (program) {

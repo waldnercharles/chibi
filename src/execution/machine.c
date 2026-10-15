@@ -2,6 +2,7 @@
 
 #include "ecs/execution.h"
 #include "execution/borrow.h"
+#include "execution/component_write.h"
 #include "execution/definition.h"
 #include "execution/random.h"
 #include "execution/status.h"
@@ -46,7 +47,8 @@ static int fail(
     ctx->error_steps = steps;
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
+        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
         ctx->error_message = i->op == BF_QUERY_VARIABLE
                                ? "Query variable is not bound"
                            : i->op == BF_COMPONENT_READ
@@ -525,6 +527,13 @@ int execution_machine_step(execution_machine *m, int pc)
                 (const ecs_execution_view *)(uintptr_t)behavior_scalar_bits(a),
                 b.u64
             );
+            break;
+        case BF_COMPONENT_WRITE:
+            ctx->error_message = behavior_component_write(ctx, i, &a.u64, &b.d);
+            if (ctx->error_message) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                goto done;
+            }
             break;
         case BF_COMPONENT_READ: {
             uint32_t row = ctx->world ? ecs_execution_entity(ctx->world, a.u64) : 0;

@@ -72,11 +72,13 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
     for (int i = 0; i < acount(f->instructions); i++) {
         const behavior_function_instruction *instruction = &f->instructions[i];
         if (instruction->op != BF_COMPONENT && instruction->op != BF_COLUMN &&
-            instruction->op != BF_COLUMN_TRY && instruction->op != BF_COMPONENT_READ) {
+            instruction->op != BF_COLUMN_TRY && instruction->op != BF_COMPONENT_READ &&
+            instruction->op != BF_COMPONENT_WRITE) {
             continue;
         }
         if (!installed(world, instruction->value.u64) ||
-            ((instruction->type != PIN_BOOL || instruction->op == BF_COMPONENT_READ) &&
+            ((instruction->type != PIN_BOOL || instruction->op == BF_COMPONENT_READ ||
+              instruction->op == BF_COMPONENT_WRITE) &&
              !layout_matches(
                  world,
                  instruction->value.u64,

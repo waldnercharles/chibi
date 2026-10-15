@@ -112,6 +112,8 @@
     OP(REQUIRE) \
     OP(ASSERT) \
     OP(WRITE) \
+    /* Outputless checked publication through the authoritative component store. */ \
+    OP(COMPONENT_WRITE) \
     OP(COMMAND_ARGUMENT) \
     OP(COMMAND_OUTPUT) \
     OP(COMMAND) \
@@ -179,7 +181,8 @@ static inline bool behavior_function_call(behavior_function_op op)
            op == BF_STRING_EQUAL || op == BF_STORE_VALUE || op == BF_QUERY ||
            op == BF_COMMAND || op == BF_COMMAND_BEGIN || op == BF_HOST_CALL ||
            op == BF_RANDOM || op == BF_RANDOM_RANGE || op == BF_STATE_SELECT ||
-           op == BF_RETRIGGER || op == BF_SOURCE_POINT || op == BF_SOURCE_WATCH;
+           op == BF_RETRIGGER || op == BF_SOURCE_POINT ||
+           op == BF_SOURCE_WATCH || op == BF_COMPONENT_WRITE;
 }
 static inline bool behavior_function_observer(behavior_function_op op)
 {

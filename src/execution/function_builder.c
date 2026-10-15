@@ -894,16 +894,18 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             );
             break;
         case BF_COMPONENT_READ:
-            CHECK(index_valid(i->component, acount(f->components)), "invalid component read binding");
+        case BF_COMPONENT_WRITE:
+            CHECK(index_valid(i->component, acount(f->components)), "invalid scalar component binding");
             CHECK(
                 !f->components[i->component].binding && i->value.type == PIN_U64 &&
                     i->value.u64 == f->components[i->component].id,
-                "component read ID differs from current-world binding"
+                "scalar component ID differs from current-world binding"
             );
             CHECK(
                 (SLOT(i->left, PIN_HANDLE) || SLOT(i->left, PIN_U64)) &&
-                    i->type >= PIN_BOOL && i->type <= PIN_F64,
-                "invalid scalar component read operands"
+                    i->type >= PIN_BOOL && i->type <= PIN_F64 &&
+                    (i->op != BF_COMPONENT_WRITE || SLOT(i->right, i->type)),
+                "invalid scalar component operands"
             );
             CHECK(
                 i->layout && i->offset && i->target >= 0 &&
@@ -1335,6 +1337,9 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
             break;
         case BF_COMPONENT_READ:
             CHECK_KIND(KIND(i->left) == BEHAVIOR_VALUE);
+            break;
+        case BF_COMPONENT_WRITE:
+            CHECK_KIND(KIND(i->left) == BEHAVIOR_VALUE && KIND(i->right) == BEHAVIOR_VALUE);
             break;
         case BF_ENTITY:
             CHECK_KIND(KIND(i->left) == BEHAVIOR_ADDRESS && KIND(i->right) == BEHAVIOR_VALUE);

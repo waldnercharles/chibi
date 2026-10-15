@@ -1,4 +1,5 @@
 #include "ecs/execution.h"
+#include "execution/component_write.h"
 #include "execution/jit_internal.h"
 #if CHIBI_HAVE_SJLIT
 #include <stddef.h>
@@ -276,6 +277,56 @@ static void row(const behavior_machine *m, const behavior_function_instruction *
     sljit_emit_op1(c, SLJIT_MOV_P, dest, offset, SLJIT_IMM, 0);
     bind(c, done);
 }
+static void component_write(const behavior_machine *m, const behavior_function_instruction *i)
+{
+    struct sljit_compiler *c = m->compiler;
+    /* Materialize both operands in their own scalar stack cells before loading
+     * argument registers. A shared operand slot needs no second temporary. */
+    const int operands[] = { i->left, i->right };
+    for (int j = 0; j < 2; j++) {
+        int index = operands[j], source = m->registers[index];
+        assert(index >= 0 && (size_t)(index + 1) * sizeof(double) <= (size_t)m->locals);
+        if (!source) {
+            continue;
+        }
+        pin_type type = m->function->slots[index];
+        if (type == PIN_F32 || type == PIN_F64) {
+            sljit_emit_fop1(
+                c,
+                type == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64,
+                SLJIT_MEM1(SLJIT_SP),
+                index * sizeof(double),
+                source,
+                0
+            );
+        } else {
+            sljit_emit_op1(
+                c,
+                behavior_jit_integer_move(type),
+                SLJIT_MEM1(SLJIT_SP),
+                index * sizeof(double),
+                source,
+                0
+            );
+        }
+    }
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R1, 0, SLJIT_IMM, (sljit_sw)i);
+    sljit_get_local_base(c, SLJIT_R2, 0, i->left * sizeof(double));
+    sljit_get_local_base(c, SLJIT_R3, 0, i->right * sizeof(double));
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS4(P, P, P, P, P), SLJIT_IMM, (sljit_sw)behavior_component_write);
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_R0,
+        0
+    );
+    struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
+    bind(c, ok);
+}
 bool behavior_jit_component(
     const behavior_machine *m,
     const behavior_function_instruction *i,
@@ -352,6 +403,7 @@ bool behavior_jit_component(
         case BF_COLUMN_TRY:
         case BF_COMPONENT: component(m, i, dest, offset); return true;
         case BF_COMPONENT_READ: component_read(m, i, dest, offset); return true;
+        case BF_COMPONENT_WRITE: component_write(m, i); return true;
         case BF_ASSERT: {
             slot(m, i->left, SLJIT_R3);
             struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);

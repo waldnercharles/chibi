@@ -736,6 +736,8 @@ bool execution_wasm_emit(
             } else if (direct(f, i)) {
                 emitted_value(&code, f, i);
             } else {
+                /* Checked component writes deliberately use the canonical step
+                 * import, including its authoritative publication callback. */
                 size_t callback = observer_callback(i->op);
                 if (callback) {
                     local(&code, 0x20, CONTEXT);

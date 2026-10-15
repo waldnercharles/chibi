@@ -458,6 +458,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                 case BF_COMMAND_OUTPUT:
                 case BF_COMMAND:
                 case BF_COMMAND_BEGIN:
+                case BF_COMPONENT_WRITE:
                 case BF_SUSPEND:
                 case BF_DELAY: valid = false; break;
                 case BF_ARRAY:
@@ -1070,6 +1071,12 @@ static void function(effects *e, const behavior_function *f, int depth)
                     unknown(e);
                 }
                 break;
+            case BF_COMPONENT_WRITE:
+                add(e, true, i->value.u64);
+                if (!e->counting) {
+                    e->summary->parallel_safe = false;
+                }
+                break;
             case BF_COMPONENT_READ:
                 if (e->reducing) {
                     add(e, false, i->value.u64);
@@ -1514,6 +1521,7 @@ static void cost_function(costs *c, const behavior_function *f)
             case BF_COMMAND_BEGIN:
             case BF_STATE_SELECT:
             case BF_RETRIGGER:
+            case BF_COMPONENT_WRITE:
                 cost_add(c, f, pc, 0, 0, COST_ALL, "Runtime service has input-dependent allocation, copy, or retention costs");
                 break;
             default: break;

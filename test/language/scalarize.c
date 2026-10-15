@@ -1,15 +1,24 @@
+#include "backend.h"
+#include "ecs/execution.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/status.h"
 #include "language/lower.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 #include "types/union.h"
 
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef __EMSCRIPTEN__
+#include "execution/wasm_jit.h"
+#endif
 
 static behavior_function_builder *builder;
 static behavior_function *function;
@@ -20,6 +29,7 @@ static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
 static bool pause_source;
+static bool component_types;
 
 static void release_run()
 {
@@ -45,6 +55,10 @@ static void cleanup()
     analysis = NULL;
     syntax = NULL;
     pause_source = false;
+    if (component_types) {
+        type_catalog_set_project(NULL);
+        component_types = false;
+    }
 }
 
 static int emit(behavior_function_instruction i)
@@ -799,6 +813,602 @@ TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback)
     return true;
 }
 
+/* Pre-optimization baseline: keep the real authored reference primitives. Tiny
+ * assertion-inclusive timings describe this fixture only, never a pass/fail
+ * threshold. Cold allocation counts include preparation and the first call;
+ * trials reuse the canonical bank, VM scratch and resettable value arena. */
+enum
+{
+    READ_COMPONENT = 9201,
+    READ_TYPE = 9202,
+    READ_SELF = 9203,
+    READ_ENTITY = 9204,
+    READ_TRIALS = 5,
+    READ_INVOCATIONS = 8,
+    READ_BUDGET = 100
+};
+#define READ_OWNER ((UINT64_C(7) << 32) | 1)
+typedef struct
+{
+    int32_t signed_value;
+    uint64_t wide;
+    float single;
+} scalar_read_row;
+typedef struct
+{
+    int32_t signed_value;
+    const char *text;
+} managed_read_row;
+static const type_field scalar_read_fields[] = {
+    { .name = "signed_value",
+      .type = PIN_I32,
+      .offset = offsetof(scalar_read_row, signed_value),
+      .size = sizeof(int32_t),
+      .type_name = "int",
+      .range_contract = true,
+      .min = 0,
+      .max = 10 },
+    { .name = "wide",
+      .type = PIN_U64,
+      .offset = offsetof(scalar_read_row, wide),
+      .size = sizeof(uint64_t),
+      .type_name = "uint64_t" },
+    { .name = "single",
+      .type = PIN_F32,
+      .offset = offsetof(scalar_read_row, single),
+      .size = sizeof(float),
+      .type_name = "float" }
+};
+static const type_field managed_read_fields[] = {
+    { .name = "signed_value",
+      .type = PIN_I32,
+      .offset = offsetof(managed_read_row, signed_value),
+      .size = sizeof(int32_t),
+      .type_name = "int" },
+    { .name = "text",
+      .type = PIN_STR,
+      .offset = offsetof(managed_read_row, text),
+      .size = sizeof(const char *),
+      .type_name = "const char *" }
+};
+static const type_desc scalar_read_type = { .name = "ScalarRead",
+                                            .size = sizeof(scalar_read_row),
+                                            .fields = scalar_read_fields,
+                                            .field_count = 3 };
+static const type_desc managed_read_type = { .name = "ManagedRead",
+                                             .size = sizeof(managed_read_row),
+                                             .fields = managed_read_fields,
+                                             .field_count = 2 };
+static const type_desc *const read_types[] = { &scalar_read_type, &managed_read_type };
+static struct
+{
+    scalar_read_row rows[2];
+    managed_read_row managed[2];
+    uint32_t generations[2];
+    unsigned char occupied[2];
+    uint64_t membership;
+    int lookup[2];
+    ecs_execution_column column;
+    ecs_execution_view world;
+} read_fixture;
+
+static void read_world(bool managed)
+{
+    const type_desc *type = managed ? &managed_read_type : &scalar_read_type;
+    memset(&read_fixture, 0, sizeof read_fixture);
+    read_fixture.rows[1] = (scalar_read_row){ -23, UINT64_C(0xfedcba9876543210), -0.0f };
+    read_fixture.generations[1] = 7;
+    read_fixture.occupied[1] = 1;
+    read_fixture.membership = 2;
+    read_fixture.column = (ecs_execution_column){
+        .id = READ_COMPONENT,
+        .layout = type_layout_hash(type),
+        .stride = type->size,
+        .data = managed ? (void *)read_fixture.managed : (void *)read_fixture.rows,
+        .occupancy = &read_fixture.membership,
+        .count = 1,
+        .singleton = 1,
+        .type = type
+    };
+    uint64_t hash = READ_COMPONENT * UINT64_C(11400714819323198485);
+    read_fixture.lookup[(hash ^ (hash >> 32)) & 1] = 1;
+    read_fixture.world = (ecs_execution_view){ .generations = read_fixture.generations,
+                                               .occupied = read_fixture.occupied,
+                                               .slot_count = 2,
+                                               .columns = &read_fixture.column,
+                                               .lookup = read_fixture.lookup,
+                                               .capacity = 2 };
+}
+
+static bool read_global(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id != READ_SELF) {
+        return false;
+    }
+    *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+    return true;
+}
+
+static bool read_compile(int field, bool getter, bool managed)
+{
+    cleanup();
+    const type_catalog_pack pack = { .types = read_types, .type_count = 2 };
+    type_catalog_set_project(&pack);
+    component_types = true;
+    const type_desc *type = managed ? &managed_read_type : &scalar_read_type;
+    script_catalog_field fields[3] = { 0 };
+    for (int j = 0; j < type->field_count; j++) {
+        const type_field *f = &type->fields[j];
+        fields[j] = (script_catalog_field){ .id = (uint64_t)(9300 + j),
+                                            .name = f->name,
+                                            .type = { .storage = f->type },
+                                            .offset = f->offset,
+                                            .range_contract = f->range_contract,
+                                            .min = f->min,
+                                            .max = f->max };
+    }
+    const script_catalog_type root = { .id = READ_TYPE,
+                                       .name = type->name,
+                                       .type = { .storage = PIN_STRUCT,
+                                                 .nominal = READ_TYPE },
+                                       .fields = fields,
+                                       .field_count = type->field_count,
+                                       .size = type->size,
+                                       .layout = type_layout_hash(type),
+                                       .component = true,
+                                       .component_id = READ_COMPONENT };
+    const script_catalog_global self = { .id = READ_SELF,
+                                         .name = "self",
+                                         .type = { .storage = PIN_HANDLE,
+                                                   .nominal = READ_ENTITY } };
+    const script_catalog_parameter output = { .name = "value",
+                                              .type = fields[field].type };
+    const script_catalog_capability capability = {
+        .id = 9400,
+        .name = "read_field",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &output,
+        .result_count = 1,
+        .component_access = SCRIPT_COMPONENT_ACCESS_READ,
+        .component = READ_TYPE,
+        .component_field = fields[field].id,
+        .component_entity = -1,
+        .component_value = -1,
+        .effects = SCRIPT_EFFECT_READ
+    };
+    const script_catalog catalog = { .types = &root,
+                                     .type_count = 1,
+                                     .globals = &self,
+                                     .global_count = 1,
+                                     .capabilities = &capability,
+                                     .capability_count = 1,
+                                     .entity_type = READ_ENTITY };
+    char source[256], expression[96];
+    if (getter) {
+        snprintf(expression, sizeof expression, "read_field()");
+    } else {
+        snprintf(
+            expression,
+            sizeof expression,
+            "self.%s.%s",
+            type->name,
+            fields[field].name
+        );
+    }
+    snprintf(
+        source,
+        sizeof source,
+        "library Baseline { Read :: () -> %s { return %s; } }",
+        script_scalar_name(fields[field].type.storage),
+        expression
+    );
+    syntax = script_parse(source);
+    REQUIRE(syntax && !syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &catalog);
+    for (int j = 0; analysis && j < analysis->diagnostic_count; j++) {
+        fprintf(
+            stderr,
+            "scalar component semantic: %s\n",
+            analysis->diagnostics[j].message
+        );
+    }
+    REQUIRE(analysis && analysis->valid);
+    const script_lower_bindings bindings = { .global = read_global };
+    plan = script_lower(analysis, &catalog, &bindings);
+    for (int j = 0; plan && j < plan->diagnostic_count; j++) {
+        fprintf(stderr, "scalar component lower: %s\n", plan->diagnostics[j].message);
+    }
+    REQUIRE(plan && plan->valid);
+    for (int j = 0; j < plan->function_count; j++) {
+        behavior_function *body = plan->functions[j].body;
+        if (body && !body->argument_count && body->result_count == 1) {
+            REQUIRE(!function);
+            function = body;
+            plan->functions[j].body = NULL;
+        }
+    }
+    REQUIRE(function && behavior_function_compile(function));
+#ifdef __EMSCRIPTEN__
+    REQUIRE(function->artifact->wasm_jit);
+#else
+    REQUIRE(behavior_function_entry(function));
+    REQUIRE(behavior_function_compile_inspection(function));
+    REQUIRE(function->artifact->inspection_code);
+#endif
+    return true;
+}
+
+static bool read_host(const behavior_function_instruction *i, const node_host_call *primitive)
+{
+    if (i->op != BF_HOST_CALL) {
+        return false;
+    }
+    const behavior_function_host_call *host = &function->host_calls[i->target];
+    uint64_t id = execution_intrinsic_id(primitive);
+    /* Publication owns a copy of the host descriptor. Pin both its declared
+     * identity and its actual production callback, not the descriptor address. */
+    return host->capability_id == id &&
+           host->capability_abi == execution_intrinsic_abi(id) &&
+           host->call->value == primitive->value;
+}
+
+static int read_hosts(const node_host_call *primitive, bool runtime)
+{
+    int count = 0;
+    for (int pc = 0; pc < acount(function->instructions); pc++) {
+        count += read_host(&function->instructions[pc], primitive) &&
+                 (!runtime || behavior_function_runtime_keeps(function, pc));
+    }
+    return count;
+}
+
+static void read_begin(pin_value *output, int mode)
+{
+    release_run();
+    if (behavior_function_resumable(function)) {
+        behavior_function_activation_init(function, &activation);
+    }
+    context = (behavior_function_context){ .results = output,
+                                           .activation = &activation,
+                                           .budget = READ_BUDGET,
+                                           .source_pause = mode >= 2 ? inspect : NULL,
+                                           .world = &read_fixture.world };
+    behavior_function_bind_storage(&context, &storage);
+    assert(behavior_function_bind(function, &context, NULL, READ_OWNER));
+    /* Retain the canonical bank across calls, independently of arena values. */
+    behavior_function_prepare_host(function, &context);
+}
+
+static int read_run(int mode)
+{
+    arena_reset(&storage);
+    context.steps = 0;
+    context.returned = false;
+    return behavior_function_run(function, &context, mode & 1);
+}
+
+static bool read_equal(pin_value output, int field)
+{
+    const scalar_read_row *row = &read_fixture.rows[1];
+    const type_field *f = &scalar_read_fields[field];
+    REQUIRE(output.type == f->type);
+    REQUIRE(!memcmp(&output.d, (const char *)row + f->offset, f->size));
+    return true;
+}
+
+static double read_seconds()
+{
+    struct timespec now;
+    int status = clock_gettime(CLOCK_MONOTONIC, &now);
+    assert(status == 0);
+    (void)status;
+    return now.tv_sec + now.tv_nsec * 1e-9;
+}
+
+TEST_CASE(scalar_component_reads_record_generic_preoptimization_baseline)
+{
+    for (int getter = 0; getter < 2; getter++) {
+        for (int field = 0; field < 3; field++) {
+            REQUIRE(read_compile(field, getter, false));
+            read_world(false);
+            REQUIRE(type_is_plain(&scalar_read_type));
+            REQUIRE(calls(false) == (getter ? 3 : 2));
+            REQUIRE(calls(true) == calls(false));
+            REQUIRE(read_hosts(&EXECUTION_reference_make_call, true) == 1);
+            REQUIRE(read_hosts(&EXECUTION_reference_field_call, true) == getter);
+            REQUIRE(read_hosts(&EXECUTION_reference_read_call, true) == 1);
+            /* local_address reserves a two-cell snapshot descriptor for the
+             * writable authored result, but emits no snapshot host call. */
+            REQUIRE(acount(function->data_values) == (getter ? 19 : 14));
+            REQUIRE(acount(function->host_calls) == (getter ? 4 : 3));
+            REQUIRE(read_hosts(&EXECUTION_snapshot_call, false) == 0);
+            const behavior_function_host_call
+                *result_bank = &function->host_calls[acount(function->host_calls) - 1];
+            REQUIRE(result_bank->capability_id == execution_intrinsic_id(&EXECUTION_snapshot_call));
+            REQUIRE(
+                result_bank->result_first - result_bank->first == 1 &&
+                result_bank->result_count == 1
+            );
+            REQUIRE(result_bank->first == (getter ? 17 : 12));
+            /* Record the current getter's conservative write metadata too. */
+            REQUIRE(acount(function->component_writes) == getter);
+            printf(
+                "SCALAR_READ path=%s field=%s canonical_hosts=%d "
+                "runtime_hosts=%d "
+                "make=1 field=%d read=1 descriptors=%d "
+                "primitive_bank_values=%d "
+                "result_bank_values=2 bank_values=%d bank_value_bytes=%zu "
+                "writes=%d\n",
+                getter ? "getter" : "member",
+                scalar_read_fields[field].name,
+                calls(false),
+                calls(true),
+                getter,
+                acount(function->host_calls),
+                result_bank->first,
+                acount(function->data_values),
+                (size_t)acount(function->data_values) * sizeof(pin_value),
+                acount(function->component_writes)
+            );
+            for (int mode = 0; mode < 4; mode++) {
+                pin_value output = { .type = scalar_read_fields[field].type };
+                xalloc_stats cold_before, cold_after;
+                xalloc_stats_get(&cold_before);
+                uint64_t cold_blocks = arena_block_allocations();
+                uint64_t cold_banks = behavior_function_data_allocations();
+                uint64_t cold_vm = behavior_function_vm_allocations();
+                read_begin(&output, mode);
+                REQUIRE(read_run(mode) == FLOW_OK);
+                xalloc_stats_get(&cold_after);
+                REQUIRE(read_equal(output, field));
+                size_t bytes, capacity;
+                arena_usage(&storage, &bytes, &capacity);
+                REQUIRE(bytes > 0);
+                size_t host_bytes = behavior_function_host_storage_bytes(&context);
+                REQUIRE(host_bytes > 0);
+                REQUIRE(behavior_function_data_allocations() - cold_banks == 1);
+                printf(
+                    "SCALAR_READ_COLD path=%s field=%s backend=%s inspected=%d "
+                    "alloc_calls=%llu requested_bytes=%llu arena_blocks=%llu "
+                    "bank_allocs=%llu vm_allocs=%llu host_bytes=%zu "
+                    "arena_bytes=%zu\n",
+                    getter ? "getter" : "member",
+                    scalar_read_fields[field].name,
+                    behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
+                    mode >= 2,
+                    (unsigned long long)(cold_after.calls - cold_before.calls),
+                    (unsigned long long)(cold_after.requested_bytes -
+                                         cold_before.requested_bytes),
+                    (unsigned long long)(arena_block_allocations() - cold_blocks),
+                    (unsigned long long)(behavior_function_data_allocations() - cold_banks),
+                    (unsigned long long)(behavior_function_vm_allocations() - cold_vm),
+                    host_bytes,
+                    bytes
+                );
+                for (int trial = 0; trial < READ_TRIALS; trial++) {
+                    xalloc_stats before, after;
+                    xalloc_stats_get(&before);
+                    uint64_t blocks = arena_block_allocations();
+                    uint64_t banks = behavior_function_data_allocations();
+                    uint64_t vm = behavior_function_vm_allocations();
+#ifdef __EMSCRIPTEN__
+                    execution_wasm_jit_stats wasm_before, wasm_after;
+                    execution_wasm_jit_get_stats(&wasm_before);
+#endif
+                    double start = read_seconds();
+                    for (int run = 0; run < READ_INVOCATIONS; run++) {
+                        context.error_message = "stale scalar read error";
+                        REQUIRE(read_run(mode) == FLOW_OK);
+                        REQUIRE(read_equal(output, field));
+                        REQUIRE(!context.error_message);
+                    }
+                    double elapsed = read_seconds() - start;
+                    xalloc_stats_get(&after);
+                    REQUIRE(behavior_function_data_allocations() == banks);
+                    REQUIRE(behavior_function_host_storage_bytes(&context) == host_bytes);
+                    arena_usage(&storage, &bytes, &capacity);
+#ifdef __EMSCRIPTEN__
+                    execution_wasm_jit_get_stats(&wasm_after);
+                    REQUIRE(
+                        wasm_after.executions - wasm_before.executions ==
+                        (uint64_t)((mode & 1) ? READ_INVOCATIONS : 0)
+                    );
+                    REQUIRE(wasm_after.compile_failures == wasm_before.compile_failures);
+#endif
+                    printf(
+                        "SCALAR_READ path=%s field=%s backend=%s inspected=%d "
+                        "trial=%d "
+                        "calls=%d assertion_inclusive_seconds=%.9f "
+                        "host_bytes=%zu arena_bytes=%zu "
+                        "arena_capacity=%zu "
+                        "alloc_calls=%llu requested_bytes=%llu "
+                        "arena_blocks=%llu bank_allocs=%llu vm_allocs=%llu\n",
+                        getter ? "getter" : "member",
+                        scalar_read_fields[field].name,
+                        behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
+                        mode >= 2,
+                        trial,
+                        READ_INVOCATIONS,
+                        elapsed,
+                        host_bytes,
+                        bytes,
+                        capacity,
+                        (unsigned long long)(after.calls - before.calls),
+                        (unsigned long long)(after.requested_bytes - before.requested_bytes),
+                        (unsigned long long)(arena_block_allocations() - blocks),
+                        (unsigned long long)(behavior_function_data_allocations() - banks),
+                        (unsigned long long)(behavior_function_vm_allocations() - vm)
+                    );
+                }
+            }
+        }
+    }
+    return true;
+}
+
+TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery)
+{
+    for (int getter = 0; getter < 2; getter++) {
+        REQUIRE(read_compile(0, getter, false));
+        const behavior_function_instruction *failed = NULL;
+        uintptr_t steps = 0;
+        for (int pc = 0; pc < acount(function->instructions); pc++) {
+            const behavior_function_instruction *i = &function->instructions[pc];
+            steps += i->op == BF_CHECK;
+            if (read_host(i, &EXECUTION_reference_read_call)) {
+                failed = i;
+                break;
+            }
+        }
+        REQUIRE(failed && failed->source >= 0);
+        const char *expression = getter ? "read_field()" : "self.ScalarRead";
+        const char *start = strstr(syntax->text, expression);
+        REQUIRE(start);
+        const behavior_function_source
+            *origin = behavior_function_source_at(function, failed->source);
+        REQUIRE(origin && origin->asset_name && !strcmp(origin->asset_name, "Baseline"));
+        REQUIRE(origin->start == start - syntax->text);
+        REQUIRE(origin->end == origin->start + (int)strlen(expression));
+        REQUIRE(origin->line == 1 && origin->column == origin->start + 1);
+        printf(
+            "SCALAR_READ_FAILURE path=%s cases=9 modes=4 status=%d reason=%d "
+            "frame=%d source=%d stack=%d pin=%d steps=%llu "
+            "asset=%s span=%d:%d line=%d column=%d\n",
+            getter ? "getter" : "member",
+            FLOW_ERR_INVALID_GRAPH,
+            BEHAVIOR_FUNCTION_HOST_DATA,
+            failed->frame,
+            failed->source,
+            failed->stack,
+            failed->pin,
+            (unsigned long long)steps,
+            origin->asset_name,
+            origin->start,
+            origin->end,
+            origin->line,
+            origin->column
+        );
+        for (int mode = 0; mode < 4; mode++) {
+            pin_value output = { .type = PIN_I32 };
+            read_world(false);
+            read_begin(&output, mode);
+            /* Every failure is followed by a success with the identical context,
+             * bank and arena. No reset helper clears the old diagnostic for it. */
+            for (int failure = 0; failure < 9; failure++) {
+                read_world(false);
+                context.world = &read_fixture.world;
+                context.owner = READ_OWNER;
+                switch (failure) {
+                    case 0: context.world = NULL; break;
+                    case 1: context.owner = UINT64_C(7) << 32; break;
+                    case 2: context.owner = (UINT64_C(7) << 32) | 2; break;
+                    case 3: read_fixture.occupied[1] = 0; break;
+                    case 4: read_fixture.generations[1]++; break;
+                    case 5: read_fixture.membership = 0; break;
+                    case 6: read_fixture.world.capacity = 0; break;
+                    case 7: read_fixture.column.layout ^= 1; break;
+                    case 8: read_fixture.column.stride++; break;
+                }
+                output.i = 123456;
+                context.error_message = "stale scalar read error";
+                REQUIRE(read_run(mode) == FLOW_ERR_INVALID_GRAPH);
+                REQUIRE(output.i == 123456);
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, "Referenced storage is unavailable")
+                );
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+                REQUIRE(context.node_id == failed->node_id);
+                REQUIRE(
+                    context.error_frame == failed->frame &&
+                    context.error_source == failed->source
+                );
+                REQUIRE(
+                    context.error_stack == failed->stack &&
+                    context.error_pin == failed->pin
+                );
+                REQUIRE(context.error_steps == steps && context.steps == steps);
+                read_world(false);
+                context.world = &read_fixture.world;
+                context.owner = READ_OWNER;
+                REQUIRE(read_run(mode) == FLOW_OK);
+                REQUIRE(output.i == -23 && !context.error_message);
+            }
+        }
+    }
+    return true;
+}
+
+static const managed_read_row *read_captured;
+static int read_captures;
+static void read_capture(
+    void *,
+    behavior_function_context *,
+    const behavior_source_watch *,
+    const pin_value *value
+)
+{
+    if (!value || value->type != PIN_STRUCT || !value->type_name ||
+        strcmp(value->type_name, managed_read_type.name)) {
+        return;
+    }
+    read_captures++;
+    read_captured = value->ptr;
+    read_fixture.managed[1].signed_value = 99;
+    ((char *)read_fixture.managed[1].text)[0] = 'X';
+}
+
+TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots)
+{
+    for (int getter = 0; getter < 2; getter++) {
+        REQUIRE(read_compile(0, getter, true));
+        REQUIRE(!type_is_plain(&managed_read_type));
+        REQUIRE(calls(false) == (getter ? 3 : 2) && calls(true) == calls(false));
+        REQUIRE(read_hosts(&EXECUTION_reference_read_call, true) == 1);
+        REQUIRE(acount(function->data_values) == (getter ? 19 : 14));
+        for (int mode = 0; mode < 4; mode++) {
+            read_world(true);
+            char text[] = "retained";
+            read_fixture.managed[1] = (managed_read_row){ -23, text };
+            pin_value output = { .type = PIN_I32 };
+            read_begin(&output, mode);
+            read_captured = NULL;
+            read_captures = 0;
+            context.source_capture = mode >= 2 ? read_capture : NULL;
+            REQUIRE(read_run(mode) == FLOW_OK);
+            REQUIRE(output.i == -23);
+            size_t bytes, capacity;
+            arena_usage(&storage, &bytes, &capacity);
+            REQUIRE(bytes > 0);
+            if (!getter && mode >= 2) {
+                REQUIRE(read_captures == 1 && read_captured);
+                REQUIRE(read_captured != &read_fixture.managed[1]);
+                REQUIRE(read_captured->signed_value == -23);
+                REQUIRE(read_captured->text != text && !strcmp(read_captured->text, "retained"));
+                REQUIRE(read_fixture.managed[1].signed_value == 99 && text[0] == 'X');
+            } else {
+                /* Explicit scalar getters never publish the root snapshot, even
+                 * when unrelated managed fields share its component storage. */
+                REQUIRE(!read_captures && !read_captured);
+                REQUIRE(read_fixture.managed[1].signed_value == -23 && !strcmp(text, "retained"));
+            }
+            printf(
+                "SCALAR_READ_MANAGED path=%s backend=%s inspected=%d "
+                "root_captures=%d runtime_hosts=%d bank_values=%d "
+                "arena_bytes=%zu\n",
+                getter ? "getter" : "member",
+                behavior_backend_name((mode & 1) ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE),
+                mode >= 2,
+                read_captures,
+                calls(true),
+                acount(function->data_values),
+                bytes
+            );
+        }
+    }
+    return true;
+}
+
 void test_language_scalarize()
 {
     pu_setup(NULL, cleanup);
@@ -817,5 +1427,8 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_unions_cross_isolated_calls_without_removing_effects_or_errors);
     RUN_TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots);
     RUN_TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback);
+    RUN_TEST_CASE(scalar_component_reads_record_generic_preoptimization_baseline);
+    RUN_TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery);
+    RUN_TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots);
     pu_clear_setup();
 }

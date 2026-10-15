@@ -787,6 +787,9 @@ The language follow-up admits these focused C checks under the same supervisor:
   cases; the native group retains the full-engine source-query cases.
   The new runtime fixtures use at most 33 entities and six supplied-time steps
   per backend, without files, children or GPU work.
+  The bound query-variable IR specimen adds finite differential, verification,
+  prepared, inspection and allocation cases. Its exact bounds, backend contract,
+  baseline and coverage limits are recorded in [Bound query-variable lowering](query-binding-lowering.md).
 - `tool language-incremental` prepares four tiny source overlays per case and
   checks unchanged-generation reuse, dependency and catalog invalidation, binding
   generations, backend changes and ownership after older collections retire.
@@ -806,7 +809,11 @@ The language follow-up admits these focused C checks under the same supervisor:
   same-context recovery. Direct getter lowering removes reference descriptors;
   ordinary member snapshots remain the fallback oracle. See
   [checked scalar reads](scalar-component-reads.md) for the reviewed workload,
-  exact candidate evidence and deliberately unrun coverage.
+  historical measurements, refreshed integration scope and deliberately unrun coverage.
+  One combined 12-instruction scalar/query definition adds 20 calls across VM/
+  compiled and inspection modes, with live integer/floating/handle values,
+  distinct missing-tuple/stale-entity failures and same-context recovery. The
+  combined workload requires independent admission before execution.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
 - The optimizer microbenchmarks below use the existing C dispatchers, five
@@ -861,6 +868,9 @@ The language follow-up admits these focused C checks under the same supervisor:
   and continuation. One extra verified array function executes eight normal and
   inspection calls, checking guarded borrowing, mixed-header fallback copies and
   an array whose items alias the public activation's saved-value bank.
+  Two bound-query-variable functions add 16 calls covering first/last index,
+  high-bit/zero handles, missing tuples and same-context recovery with exact
+  source/debug metadata, in normal and inspected modes.
   One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
   flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
@@ -870,7 +880,9 @@ The language follow-up admits these focused C checks under the same supervisor:
   Three additional five-instruction scalar-component functions add 132 calls:
   BOOL, high-bit U64, F64 negative zero/NaN payload, ten unavailable-storage
   failures, exact metadata and alternate-world recovery despite stale cached
-  columns. These share the same compiler child and source-size bound.
+  columns. These coexist with the two query-variable definitions and sixteen
+  query calls below, sharing the same compiler child and source-size bound.
+  The combined generated source requires independent admission before execution.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
@@ -1457,3 +1469,30 @@ shared production 60-second deadline covers both validations, all snapshots and
 fixture setup; each child also has the existing 10-second tooling limit.
 The inline language event, system cancellation and binding cases retain both
 VM and compiled-backend coverage without reading the Examples checkout.
+
+### Configurable source layout and whitespace maps
+
+The existing C `--format` dispatcher adds nine finite cases for SDK defaults,
+1/2/16-space and tab indentation, width boundaries (including UTF-8), nested
+lists/records/parameters/calls/binary expressions, comments and literal bytes,
+edit-map reconstruction and caret affinity, invalid options/drafts, and
+composition with the comment-preserving semantic minimizer. Fixtures are tiny
+in-memory strings; no worlds, clocks, files, processes, network or GPU are added.
+The map checks walk at most the bytes of those fixed strings.
+
+The existing bounded native corpus (at most 256 files/8 MiB) now verifies three
+fixed configurations: defaults, two spaces at width 80, and tabs at width 40.
+Each configuration reparses the result and checks idempotence and immutable
+input. `language-format` owns that corpus; `wasm-format` runs the same finite C
+cases through Node without a browser or corpus filesystem dependency. Both use
+the unchanged production 60-second supervisor. Configuration/build timing is
+separate. This is SDK/printer evidence, not controller, Studio, RML/RCSS,
+rendering or browser integration coverage.
+
+The first successful measured expanded runs passed 38 native cases/2,944
+assertions (89 corpus files, 63,497 source bytes, all three modes) in 8.606 s,
+and 37 Node/Wasm cases/2,583 assertions in 7.816 s. Native used Clang 19
+ASan/UBSan (leak detection disabled); Wasm used Emscripten 6.0.10 and Node 24.
+The initial expanded run exposed a test-oracle mistake: empty documents are
+syntax errors in the current grammar. The corrected case preserves that
+rejection and tests insertion affinity on a valid empty behavior instead.

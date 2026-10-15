@@ -1048,7 +1048,7 @@ TEST_CASE(prepared_runtime_scalar_getter_rejects_old_version_and_forged_range)
     for (int invalid = 0; invalid < 3; invalid++) {
         memcpy(mutation, bytes, length);
         if (!invalid) {
-            mutation[version_offset] = 13; /* Predates the shifted opcode enum. */
+            mutation[version_offset] = EXECUTION_PREPARED_VERSION - 1;
         } else {
             mutation[target] = invalid == 1 ? 1 : crossing; /* Zigzag -1 or stride. */
         }

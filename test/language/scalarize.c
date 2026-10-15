@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "ecs/ecs.h"
 #include "ecs/execution.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
@@ -1651,6 +1652,81 @@ TEST_CASE(scalar_component_reads_copy_all_widths_and_preserve_live_registers)
     return true;
 }
 
+TEST_CASE(scalar_component_reads_compose_with_query_variables_and_live_values)
+{
+    builder = behavior_function_builder_new();
+    pin_value args[] = { { .type = PIN_I64, .i64 = -INT64_C(0x123456789abcde) },
+                         { .type = PIN_F64, .d = -13.75 } };
+    pin_value outputs[] = { { .type = PIN_F64 },
+                            args[0],
+                            args[1],
+                            { .type = PIN_HANDLE },
+                            { .type = PIN_HANDLE } };
+    behavior_function_builder_signature(builder, args, 2, outputs, 5, NULL, 0);
+    int integer = argument(args[0], 0), floating = argument(args[1], 1);
+    int owner = value((behavior_function_instruction){ .op = BF_QUERY_VARIABLE,
+                                                       .type = PIN_HANDLE,
+                                                       .target = 1,
+                                                       .node_id = 918,
+                                                       .pin = 4 });
+    int survivor = value((
+        behavior_function_instruction
+    ){ .op = BF_QUERY_VARIABLE, .type = PIN_HANDLE, .target = ECS_QUERY_VARS });
+    int copied = value(read_raw_instruction(PIN_F64, owner));
+    int after = value((behavior_function_instruction){ .op = BF_QUERY_VARIABLE,
+                                                       .type = PIN_HANDLE,
+                                                       .target = 1 });
+    result(copied, PIN_F64, 0);
+    result(integer, PIN_I64, 1);
+    result(floating, PIN_F64, 2);
+    result(survivor, PIN_HANDLE, 3);
+    result(after, PIN_HANDLE, 4);
+    REQUIRE(read_finish());
+    REQUIRE(read_instructions() == 1 && calls(true) == 0);
+    uint64_t tuple[ECS_QUERY_VARS] = { 0 };
+    tuple[ECS_QUERY_VARS - 1] = UINT64_C(0xfedcba9876543210);
+    for (int mode = 0; mode < 4; mode++) {
+        pin_value stored = { .type = PIN_F64, .d = -0.0 };
+        read_raw_world(stored);
+        read_begin(outputs, mode);
+        context.arguments = args;
+        context.argument_count = 2;
+        context.world = &read_raw_fixture.world;
+        for (int phase = 0; phase < 5; phase++) {
+            bool missing = phase == 1, stale = phase == 3;
+            tuple[0] = ((stale ? UINT64_C(8) : UINT64_C(7)) << 32) | READ_RAW_SLOT;
+            context.query_variables = missing ? NULL : tuple;
+            context.error_message = "stale combined read error";
+            pin_value sentinels[5];
+            for (int j = 0; j < 5; j++) {
+                outputs[j].u64 = UINT64_C(0x123456789abcdef0) + j;
+                sentinels[j] = outputs[j];
+            }
+            REQUIRE(read_run(mode) == (missing || stale ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+            if (missing || stale) {
+                for (int j = 0; j < 5; j++) {
+                    REQUIRE(outputs[j].type == sentinels[j].type);
+                    REQUIRE(outputs[j].u64 == sentinels[j].u64);
+                }
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+                REQUIRE(context.node_id == (missing ? 918 : 917));
+                REQUIRE(context.error_pin == (missing ? 4 : 3));
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, missing ? "Query variable is not bound" : "Referenced storage is unavailable")
+                );
+                continue;
+            }
+            REQUIRE(!context.error_message);
+            REQUIRE(!memcmp(&outputs[0].d, &stored.d, sizeof stored.d));
+            REQUIRE(outputs[1].i64 == args[0].i64 && outputs[2].d == args[1].d);
+            REQUIRE(outputs[3].u64 == tuple[ECS_QUERY_VARS - 1]);
+            REQUIRE(outputs[4].u64 == tuple[0]);
+        }
+    }
+    return true;
+}
+
 TEST_CASE(scalar_component_reads_reject_invalid_bindings_types_bounds_and_provenance)
 {
     enum
@@ -1946,6 +2022,7 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_component_reads_preserve_failures_and_same_context_recovery);
     RUN_TEST_CASE(scalar_component_reads_keep_managed_root_debug_snapshots);
     RUN_TEST_CASE(scalar_component_reads_copy_all_widths_and_preserve_live_registers);
+    RUN_TEST_CASE(scalar_component_reads_compose_with_query_variables_and_live_values);
     RUN_TEST_CASE(scalar_component_reads_reject_invalid_bindings_types_bounds_and_provenance);
     RUN_TEST_CASE(scalar_component_reads_retain_unused_failures_short_circuit_and_budget);
     RUN_TEST_CASE(scalar_component_reads_reacquire_after_writes_and_world_changes);

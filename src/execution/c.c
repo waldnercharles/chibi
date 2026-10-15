@@ -76,7 +76,12 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
 {
     if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         fputs("c->error_message=(const char*)", out);
-        type_name(out, i->op == BF_COMPONENT_READ ? "Referenced storage is unavailable" : i->message);
+        type_name(
+            out,
+            i->op == BF_QUERY_VARIABLE   ? "Query variable is not bound"
+            : i->op == BF_COMPONENT_READ ? "Referenced storage is unavailable"
+                                         : i->message
+        );
         fputs(";", out);
     }
     fprintf(out, "c->error_stack=%d;", i->stack);
@@ -612,6 +617,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_OWNER: fprintf(out, "v%d=c->owner;\n", i->output); break;
+            case BF_QUERY_VARIABLE:
+                fputs("if(!c->query_variables){", out);
+                failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                fprintf(out, "}v%d=c->query_variables[%d];c->error_message=0;\n", i->output, i->target - 1);
+                break;
             case BF_WORLD:
                 fprintf(out, "v%d=(uintptr_t)c->%s;\n", i->output, i->target ? "binding_world" : "world");
                 break;

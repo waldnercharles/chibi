@@ -47,7 +47,9 @@ static int fail(
     ctx->steps = i->frame ? parents[0] : steps;
     ctx->failure = reason;
     if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
-        ctx->error_message = i->op == BF_COMPONENT_READ
+        ctx->error_message = i->op == BF_QUERY_VARIABLE
+                               ? "Query variable is not bound"
+                           : i->op == BF_COMPONENT_READ
                                ? "Referenced storage is unavailable"
                                : i->message;
     }
@@ -502,6 +504,14 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             break;
         case BF_OWNER: out->u64 = ctx->owner; break;
+        case BF_QUERY_VARIABLE:
+            if (!ctx->query_variables) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                goto done;
+            }
+            out->u64 = ctx->query_variables[i->target - 1];
+            ctx->error_message = NULL;
+            break;
         case BF_WORLD:
             if (BF_POINTER_TYPE == PIN_U64) {
                 out->u64 = (uintptr_t)(i->target ? ctx->binding_world : ctx->world);

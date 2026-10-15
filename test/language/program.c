@@ -10,6 +10,7 @@
 #include "execution/inspection.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
+#include "execution/program_internal.h"
 #include "execution/status.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -247,6 +248,12 @@ static const script_catalog_capability capabilities[] = {
       .results = &managed_result,
       .result_count = 1,
       .effects = SCRIPT_EFFECT_HOST },
+    { .id = 63,
+      .name = "capture_text",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = &managed_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const script_catalog_global globals[] = {
     { .id = 30, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = 700 } },
@@ -348,6 +355,26 @@ static const char *managed_text(arena *storage, const pin_value *, int count, pi
              : NULL;
 }
 static const node_host_call managed_call = { .value = managed_text };
+#define CAPTURE_TEXT_BYTES 512
+#define CAPTURE_WRITES 32
+#define CAPTURE_KEEP_UPDATES 40
+#define CAPTURE_STORAGE_LIMIT ((size_t)256 * 1024)
+static int capture_text_calls;
+static const char *capture_text(arena *storage, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0 && capture_text_calls < CAPTURE_WRITES + 2);
+    char text[CAPTURE_TEXT_BYTES + 1];
+    memset(text, 'x', CAPTURE_TEXT_BYTES);
+    text[0] = (char)('A' + capture_text_calls / 26);
+    text[1] = (char)('a' + capture_text_calls % 26);
+    text[CAPTURE_TEXT_BYTES] = 0;
+    capture_text_calls++;
+    const pin_value value = { .type = PIN_STR, .str = text };
+    return pin_value_snapshot_to_arena(storage, out, &value)
+             ? "capture text snapshot failed"
+             : NULL;
+}
+static const node_host_call capture_call = { .value = capture_text };
 static const char *instance_clock(
     const behavior_function_context *context,
     void *,
@@ -409,6 +436,10 @@ static bool host(void *, uint64_t id, script_lower_host *out)
     }
     if (id == 21) {
         *out = (script_lower_host){ .command = &EXECUTION_Delay };
+        return true;
+    }
+    if (id == 63) {
+        *out = (script_lower_host){ .call = &capture_call };
         return true;
     }
     if (id == 50) {
@@ -1021,6 +1052,121 @@ static execution_instance *program_query_tuple(ecs_entity owner, ecs_entity targ
     uint64_t variable = ecs_entity_to_u64(target);
     return execution_program_row(program, ecs_entity_to_u64(owner), &variable, 1);
 }
+TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets" },
+        { .id = 602, .name = "Leaves" },
+    };
+    const ecs_relationship_desc leaves = { .id = 602,
+                                           .key = "program.row-leaves",
+                                           .name = "Leaves" };
+    script_catalog active = catalog;
+    active.relationships = relationships;
+    active.relationship_count = 2;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int inspected = 0; inspected < 2; inspected++) {
+            prepare();
+            REQUIRE(ecs_world_register_relationship(world, &row_targets, NULL) == ECS_OK);
+            REQUIRE(ecs_world_register_relationship(world, &leaves, NULL) == ECS_OK);
+            ecs_entity owner = positioned(0, false);
+            ecs_entity middle[] = { positioned(10, false), positioned(20, false) };
+            ecs_entity leaf[] = { positioned(5, false),
+                                  positioned(15, false),
+                                  positioned(25, false) };
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(
+                    ecs_world_record_add_pair(world, owner, row_targets.id, middle[i], 0) == ECS_OK
+                );
+                REQUIRE(
+                    ecs_world_record_add_pair(world, middle[i], leaves.id, leaf[i], 0) == ECS_OK
+                );
+                REQUIRE(
+                    ecs_world_record_add_pair(world, middle[i], leaves.id, leaf[i + 1], 0) == ECS_OK
+                );
+            }
+            REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+            REQUIRE(compile_catalog(
+                "system Chained query p:Position "
+                "join middle in self.Targets join leaf in middle.Leaves "
+                "join mid:Position from middle join aim:Position from leaf "
+                "where aim.x > mid.x { "
+                "state ticks:double=0; state seen:double=0; "
+                "on Impulse(amount,enabled) { if enabled { seen=amount; "
+                "p.x+=amount+mid.x+aim.x; } } "
+                "ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
+                backends[backend],
+                &active
+            ));
+            REQUIRE(!execution_module_effects(module).parallel_safe);
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(program);
+            if (inspected) {
+                debugger = execution_program_inspector(program);
+                REQUIRE(debugger);
+                execution_inspector_recording(debugger, true, ecs_entity_to_u64(owner));
+            }
+            REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_memory_usage(program).query_rows == 4);
+            REQUIRE(execution_program_memory_usage(program).instance_count == 2);
+            execution_instance *accepted[2];
+            uint64_t tuples[2][2];
+            for (int i = 0; i < 2; i++) {
+                tuples[i][0] = ecs_entity_to_u64(middle[i]);
+                tuples[i][1] = ecs_entity_to_u64(leaf[i + 1]);
+                accepted[i] = execution_program_row(program, ecs_entity_to_u64(owner), tuples[i], 2);
+                REQUIRE(accepted[i] && number_state(accepted[i], "ticks", 1));
+                REQUIRE(number_state(accepted[i], "seen", 0));
+                const uint64_t rejected[] = { tuples[i][0],
+                                              ecs_entity_to_u64(leaf[i]) };
+                REQUIRE(!execution_program_row(program, ecs_entity_to_u64(owner), rejected, 2));
+            }
+            REQUIRE(accepted[0] != accepted[1]);
+            const program_position *position = ecs_component_data_const(world, owner, 501);
+            REQUIRE(position && position->x == 0 && position->y == 70);
+            for (int i = 0; i < 3; i++) {
+                position = ecs_component_data_const(world, leaf[i], 501);
+                REQUIRE(position && position->y == i * 10);
+            }
+            pin_value payload[] = { { .type = PIN_F64, .d = 3 },
+                                    { .type = PIN_BOOL, .b = true } };
+            REQUIRE(
+                execution_program_emit(program, 11, ecs_entity_to_u64(owner), payload, 2) == FLOW_OK
+            );
+            payload[0].d = 99;
+            payload[1].b = false;
+            REQUIRE(execution_program_pump(program, .5, 0, 1000) == FLOW_OK);
+            position = ecs_component_data_const(world, owner, 501);
+            REQUIRE(position && position->x == 76 && position->y == 70);
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(number_state(accepted[i], "ticks", 1));
+                REQUIRE(number_state(accepted[i], "seen", 3));
+                REQUIRE(execution_instance_pending(accepted[i]) == 0);
+            }
+            if (inspected) {
+                bool seen[2] = { false, false };
+                REQUIRE(execution_inspector_watch_count(debugger) > 0);
+                for (int i = 0; i < execution_inspector_activity_count(debugger); i++) {
+                    execution_debug_activity activity = execution_inspector_activity_at(debugger, i);
+                    if (activity.owner != ecs_entity_to_u64(owner)) {
+                        continue;
+                    }
+                    bool first = activity.query_variables[0] == tuples[0][0] &&
+                                 activity.query_variables[1] == tuples[0][1];
+                    bool second = activity.query_variables[0] == tuples[1][0] &&
+                                  activity.query_variables[1] == tuples[1][1];
+                    REQUIRE(first || second);
+                    seen[0] |= first;
+                    seen[1] |= second;
+                }
+                REQUIRE(seen[0] && seen[1]);
+            }
+            REQUIRE(!execution_program_error(program));
+        }
+    }
+    return true;
+}
 TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple)
 {
     script_catalog active = catalog;
@@ -1593,6 +1739,363 @@ static bool memory_text_state(execution_instance *instance, const char *name, in
     int size = MEMORY_TEXT_MIN + produced * MEMORY_TEXT_STEP;
     return value && value->type == PIN_STR && value->str[0] == 'A' + produced % 26 &&
            strlen(value->str) == (size_t)size && value->str[size - 1] == 'x';
+}
+/* This audit deliberately inspects private box storage: public payload metrics
+ * cover activation arenas, not the detached box's ordinary arena. It measures
+ * retained bytes without declaring arena usage to be semantically live data. */
+static execution_box *capture_box(execution_instance *instance, int *holders)
+{
+    execution_box *box = NULL;
+    *holders = 0;
+    for (int i = 0; i < acount(instance->activations); i++) {
+        execution_activation *activation = instance->activations[i];
+        for (int j = 0; j < acount(activation->held); j++) {
+            assert(!box || box == activation->held[j]);
+            box = activation->held[j];
+            (*holders)++;
+        }
+    }
+    return box;
+}
+static bool capture_text_is(const pin_value *value, int produced)
+{
+    if (!value || value->type != PIN_STR || value->container != PIN_CONTAINER_SINGLE ||
+        strlen(value->str) != CAPTURE_TEXT_BYTES ||
+        value->str[0] != 'A' + produced / 26 || value->str[1] != 'a' + produced % 26) {
+        return false;
+    }
+    for (int i = 2; i < CAPTURE_TEXT_BYTES; i++) {
+        if (value->str[i] != 'x') {
+            return false;
+        }
+    }
+    return true;
+}
+static bool capture_state_is(execution_instance *instance, const char *name, int produced, bool array)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    if (!array) {
+        return capture_text_is(value, produced);
+    }
+    if (!value || value->type != PIN_STR ||
+        value->container != PIN_CONTAINER_ARRAY || !value->ptr) {
+        return false;
+    }
+    const pin_array *items = value->ptr;
+    return items->count == 2 && capture_text_is(&items->items[0], produced) &&
+           capture_text_is(&items->items[1], 1);
+}
+static bool capture_measure(
+    execution_instance *instance,
+    const char *label,
+    behavior_backend backend,
+    bool array,
+    bool attached,
+    int expected_holders,
+    int writes
+)
+{
+    int holders;
+    execution_box *box = capture_box(instance, &holders);
+    REQUIRE(holders == expected_holders);
+    if (!expected_holders) {
+        REQUIRE(!box);
+        printf(
+            "capture backend=%d shape=%s phase=%s writes=%d holders=0 "
+            "boxes=0\n",
+            backend,
+            array ? "array-element" : "string",
+            label,
+            writes
+        );
+        return true;
+    }
+    REQUIRE(box && box->holders == holders + attached);
+    REQUIRE((box->owner == &box->detached) == !attached);
+    REQUIRE(box->value);
+    REQUIRE(attached || box->value == &box->kept);
+    size_t used, capacity;
+    arena_usage(&box->storage, &used, &capacity);
+    size_t backing = arena_storage_bytes(&box->storage);
+    REQUIRE(used <= capacity && capacity <= backing && backing < CAPTURE_STORAGE_LIMIT);
+    /* A fresh owning snapshot is a bounded reference size for the current
+     * value, including nested array headers and strings, not the old versions. */
+    arena current = { 0 };
+    pin_value snapshot;
+    REQUIRE(!pin_value_snapshot_to_arena(&current, &snapshot, box->value));
+    size_t live, live_capacity;
+    arena_usage(&current, &live, &live_capacity);
+    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < 4 * CAPTURE_TEXT_BYTES);
+    REQUIRE(
+        array ? capture_text_is(&((pin_array *)snapshot.ptr)->items[0], writes ? writes + 1 : 0)
+              : capture_text_is(&snapshot, writes)
+    );
+    arena_free(&current);
+    if (!attached) {
+        REQUIRE(used == live);
+    }
+    execution_memory_usage memory = execution_program_memory_usage(program);
+    printf(
+        "capture backend=%d shape=%s phase=%s writes=%d attached=%d holders=%d "
+        "box_used=%zu box_capacity=%zu box_backing=%zu current_snapshot=%zu "
+        "activation_payload=%zu activation_capacity=%zu\n",
+        backend,
+        array ? "array-element" : "string",
+        label,
+        writes,
+        attached,
+        box->holders,
+        used,
+        capacity,
+        backing,
+        live,
+        memory.payload_bytes,
+        memory.payload_capacity
+    );
+    return true;
+}
+static bool capture_retention_case(bool array, bool attached, int ending)
+{
+    char source[2048];
+    int length = snprintf(
+        source,
+        sizeof source,
+        "behavior Capture { writer: task; keeper: task; count: double = 0;"
+        "seen: string = \"\"; latest: string = \"\"; tail: string = \"\";"
+        "initial: %s; saved: %s;"
+        "Write :: fn(value: ref %s, alias: ref %s) { yield; i := 0;"
+        "while i < %d { %s = capture_text(); seen = %s; %s"
+        "if i == 7 { saved = alias; } count += 1; i += 1; yield; } }"
+        "Keep :: fn(value: ref %s) { yield; i := 0; while i < %d {"
+        "latest = %s; i += 1; yield; } }"
+        "on Impulse(amount, enabled) { if amount == 0 { v := %s; initial = v;"
+        "writer = Write(v, v); keeper = Keep(v); if enabled { await writer; } }"
+        "else if amount == 1 { cancel writer; } else { cancel keeper; } } }",
+        array ? "string[]" : "string = \"\"",
+        array ? "string[]" : "string = \"\"",
+        array ? "string[]" : "string",
+        array ? "string[]" : "string",
+        CAPTURE_WRITES,
+        array ? "value[0]" : "value",
+        array ? "alias[0]" : "alias",
+        array ? "tail = alias[1];" : "",
+        array ? "string[]" : "string",
+        CAPTURE_KEEP_UPDATES,
+        array ? "value[0]" : "value",
+        array ? "[capture_text(), capture_text()]" : "capture_text()"
+    );
+    REQUIRE(length > 0 && (size_t)length < sizeof source);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        capture_text_calls = 0;
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = attached } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(capture_measure(instance, "start", backends[b], array, attached, 3, 0));
+        int last = ending ? CAPTURE_WRITES / 2 : CAPTURE_WRITES;
+        for (int step = 1; step <= last; step++) {
+            REQUIRE(execution_program_update(program, step, 0, 10000) == FLOW_OK);
+            REQUIRE(number_state(instance, "count", step));
+            REQUIRE(capture_state_is(instance, "seen", step + array, false));
+            REQUIRE(capture_state_is(instance, "initial", 0, array));
+            if (step >= 8) {
+                REQUIRE(capture_state_is(instance, "saved", 8 + array, array));
+            }
+            if (array) {
+                REQUIRE(capture_state_is(instance, "tail", 1, false));
+            }
+            if (step == 8 || step == 16 || step == CAPTURE_WRITES) {
+                REQUIRE(
+                    capture_measure(instance, "overwrite", backends[b], array, attached, 3, step)
+                );
+            }
+        }
+        REQUIRE(capture_text_calls == last + 1 + array);
+        if (ending == 2) {
+            execution_program_detach(program, ecs_entity_to_u64(owner));
+            execution_memory_usage detached = execution_program_memory_usage(program);
+            REQUIRE(
+                !detached.instance_count && !detached.activation_bytes &&
+                !detached.payload_capacity
+            );
+            printf(
+                "capture backend=%d shape=%s phase=owner-detach instances=0 "
+                "activations=0 payload=0\n",
+                backends[b],
+                array ? "array-element" : "string"
+            );
+            continue;
+        }
+        if (ending == 1) {
+            args[0].d = 1;
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, last, 0, 10000) == FLOW_OK);
+        }
+        REQUIRE(execution_program_update(program, last + 1, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "count", last));
+        REQUIRE(capture_state_is(instance, "latest", last + array, false));
+        REQUIRE(capture_measure(
+            instance,
+            ending ? "writer-cancelled" : "writer-complete",
+            backends[b],
+            array,
+            false,
+            1,
+            last
+        ));
+        if (ending == 1) {
+            args[0].d = 2;
+            REQUIRE(
+                execution_instance_dispatch(instance, 11, args, 2, last + 1, 0, 10000) == FLOW_OK
+            );
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(
+                capture_measure(instance, "cancelled-before-update", backends[b], array, false, 1, last)
+            );
+            /* Cancellation stops execution immediately. Finished activations
+             * release their held boxes at the next program safe point. */
+            REQUIRE(execution_program_update(program, last + 2, 0, 10000) == FLOW_OK);
+        } else {
+            for (int step = last + 2; step <= CAPTURE_KEEP_UPDATES + 1; step++) {
+                REQUIRE(execution_program_update(program, step, 0, 10000) == FLOW_OK);
+            }
+        }
+        REQUIRE(capture_measure(
+            instance,
+            ending ? "last-holder-cancelled" : "last-holder-complete",
+            backends[b],
+            array,
+            false,
+            0,
+            last
+        ));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        REQUIRE(capture_state_is(instance, "initial", 0, array));
+        REQUIRE(capture_state_is(instance, "saved", 8 + array, array));
+        REQUIRE(capture_state_is(instance, "seen", last + array, false));
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(!complete.payload_bytes && !complete.payload_capacity);
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        REQUIRE(!execution_program_memory_usage(program).instance_count);
+    }
+    return true;
+}
+TEST_CASE(program_detached_string_capture_retention_audit)
+{
+    for (int ending = 0; ending < 3; ending++) {
+        REQUIRE(capture_retention_case(false, false, ending));
+    }
+    return true;
+}
+TEST_CASE(program_detached_array_capture_retention_audit)
+{
+    for (int ending = 0; ending < 3; ending++) {
+        REQUIRE(capture_retention_case(true, false, ending));
+    }
+    return true;
+}
+TEST_CASE(program_attached_string_capture_retention_control)
+{
+    REQUIRE(capture_retention_case(false, true, 0));
+    return true;
+}
+TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink)
+{
+    const char *source =
+        "behavior Descendant { before: string = \"\"; observed: string = \"\";"
+        "done: double = 0;"
+        "Child :: fn(value: ref string) { yield; value = value; before = value;"
+        "yield; value = \"small\"; observed = value;"
+        "yield; value = \"\"; done = 1; yield; }"
+        "Relay :: fn(value: ref string) { yield; Child(value); }"
+        "on Impulse(amount, enabled) { v := capture_text(); Relay(v); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        capture_text_calls = 0;
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        uint64_t owner = ecs_entity_to_u64(ecs_world_create_entity(world));
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        debugger = execution_program_inspector(program);
+        REQUIRE(debugger);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
+        REQUIRE(capture_text_calls == 1 && capture_state_is(instance, "before", 0, false));
+        int holders;
+        execution_box *box = capture_box(instance, &holders);
+        REQUIRE(box && holders == 1 && box->holders == 1 && box->owner == &box->detached);
+        int saved = -1;
+        for (int i = 0; i < execution_inspector_watch_count(debugger); i++) {
+            const execution_debug_watch *watch = execution_inspector_watch_at(debugger, i);
+            if (watch->availability == EXECUTION_WATCH_AVAILABLE &&
+                capture_text_is(&watch->value, 0)) {
+                saved = i;
+            }
+        }
+        REQUIRE(saved >= 0);
+        execution_inspector_recording(debugger, false, owner);
+        REQUIRE(execution_inspector_pause(debugger, owner));
+        REQUIRE(execution_program_update(program, 3, 0, 10000) >= FLOW_OK);
+        REQUIRE(execution_program_paused(program));
+        REQUIRE(capture_text_is(box->value, 0));
+        REQUIRE(execution_inspector_control(debugger, EXECUTION_DEBUG_RESUME) == FLOW_SUSPENDED_RESULT);
+        REQUIRE(!strcmp(box->value->str, "small") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(execution_program_update(program, 4, 0, 10000) == FLOW_OK);
+        REQUIRE(!strcmp(box->value->str, "") && arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(number_state(instance, "done", 1));
+        REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
+        REQUIRE(execution_program_update(program, 5, 0, 10000) == FLOW_OK);
+        REQUIRE(!capture_box(instance, &holders) && !holders);
+        REQUIRE(!execution_instance_pending(instance));
+        execution_program_detach(program, owner);
+        REQUIRE(capture_text_is(&execution_inspector_watch_at(debugger, saved)->value, 0));
+    }
+    return true;
+}
+TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced)
+{
+    const char *source =
+        "behavior Handles { seen: double = 0;"
+        "Result :: fn() -> (value: double) { yield; return 7; }"
+        "Use :: fn(jobs: ref task<double>[]) { yield; jobs = jobs; yield;"
+        "answer := await jobs[0]; if answer is double n { seen = n; }"
+        "jobs = []; yield; }"
+        "on Impulse(amount, enabled) { jobs: task<double>[] = [Result()]; "
+        "Use(jobs); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        uint64_t owner = ecs_entity_to_u64(ecs_world_create_entity(world));
+        execution_instance *instance = execution_program_attach(program, owner);
+        REQUIRE(instance);
+        const pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 10000) == FLOW_OK);
+        REQUIRE(execution_program_memory_usage(program).task_result_bytes > 0);
+        int holders;
+        execution_box *box = capture_box(instance, &holders);
+        REQUIRE(box && holders == 1 && ((pin_array *)box->value->ptr)->count == 1);
+        REQUIRE(execution_program_update(program, 2, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 7));
+        REQUIRE(((pin_array *)box->value->ptr)->count == 0);
+        REQUIRE(arena_storage_bytes(&box->storage) < 512);
+        REQUIRE(execution_program_update(program, 3, 0, 10000) == FLOW_OK);
+        REQUIRE(!capture_box(instance, &holders) && !holders);
+        REQUIRE(!execution_instance_pending(instance));
+        REQUIRE(!execution_program_memory_usage(program).task_result_bytes);
+        execution_program_detach(program, owner);
+    }
+    return true;
 }
 TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes)
 {
@@ -7006,6 +7509,7 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
@@ -7033,6 +7537,7 @@ void test_language_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
@@ -7112,6 +7617,11 @@ void test_language_program()
     RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
+    RUN_TEST_CASE(program_detached_string_capture_retention_audit);
+    RUN_TEST_CASE(program_detached_array_capture_retention_audit);
+    RUN_TEST_CASE(program_attached_string_capture_retention_control);
+    RUN_TEST_CASE(program_descendant_capture_keeps_inspector_snapshots_across_shrink);
+    RUN_TEST_CASE(program_detached_capture_preserves_task_handles_until_replaced);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     RUN_TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows);
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);

@@ -580,7 +580,31 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     const char *error;
-    if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
+    if (ref->kind == LANGUAGE_REFERENCE_VALUE && ref->box &&
+        ref->box->owner == &ref->box->detached) {
+        execution_box *box = ref->box;
+        assert(box->value == &box->kept && box->detached.value_storage == &box->storage);
+        /* Logical references keep the box, not an address in its payload.
+         * Stage the write without publishing, then retain only the final root:
+         * a path write's working snapshot still includes the replaced value. */
+        arena working = { 0 }, committed = { 0 };
+        pin_value candidate = box->kept, retained;
+        language_reference staged = *ref;
+        staged.value = &candidate;
+        error = write_reference_value(&working, &staged, args);
+        if (!error && pin_value_snapshot_to_arena(&committed, &retained, &candidate)) {
+            error = "Cannot retain referenced value";
+        }
+        if (!error) {
+            arena previous = box->storage;
+            box->kept = retained;
+            box->storage = committed;
+            arena_free(&previous);
+        } else {
+            arena_free(&committed);
+        }
+        arena_free(&working);
+    } else if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
         error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
         /* Scalars never allocate, so the arena gets a block only on demand. */
@@ -726,21 +750,6 @@ static const char *query_target_value(arena *storage, const pin_value *args, int
     return NULL;
 }
 const node_host_call EXECUTION_query_target_call = { .value = query_target_value };
-static const char *query_variable_value(arena *storage, const pin_value *args, int count, pin_value *out)
-{
-    (void)storage;
-    assert(count == 2);
-    (void)count;
-    const behavior_function_context *context = value_context(args[0]);
-    int variable = args[1].i;
-    if (!context->query_variables || variable < 1 || variable > ECS_QUERY_VARS) {
-        return "Query variable is not bound";
-    }
-    *out = (pin_value){ .type = PIN_HANDLE,
-                        .u64 = context->query_variables[variable - 1] };
-    return NULL;
-}
-const node_host_call EXECUTION_query_variable_call = { .value = query_variable_value };
 static const char *component_membership_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -886,8 +895,6 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_query_source_call;
         case EXECUTION_INTRINSIC_QUERY_TARGET:
             return &EXECUTION_query_target_call;
-        case EXECUTION_INTRINSIC_QUERY_VARIABLE:
-            return &EXECUTION_query_variable_call;
         case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
             return &EXECUTION_component_membership_call;
         case EXECUTION_INTRINSIC_BREAK_REQUEST:
@@ -901,9 +908,6 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
-    if (call == &EXECUTION_query_variable_call) {
-        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_VARIABLE;
-    }
     if (call == &EXECUTION_query_target_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_TARGET;
     }
@@ -992,7 +996,7 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
-        case EXECUTION_INTRINSIC_QUERY_VARIABLE: return &EXECUTION_value_access;
+            return &EXECUTION_value_access;
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:

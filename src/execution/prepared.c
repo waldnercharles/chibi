@@ -356,6 +356,7 @@ static uint64_t context_abi()
                               FIELD(world),
                               FIELD(binding_world),
                               FIELD(columns),
+                              FIELD(query_variables),
                               FIELD(variable_storage),
                               FIELD(value_owner),
                               FIELD(value_storage),
@@ -385,18 +386,48 @@ static uint64_t context_abi()
     }
     return hash;
 }
+uint64_t prepared_abi(const char *const *names, int count)
+{
+    uint64_t hash = context_abi();
+    static const unsigned char domain[] = "chibi.prepared.instructions";
+    for (size_t i = 0; i < sizeof domain; i++) {
+        hash = (hash ^ domain[i]) * UINT64_C(1099511628211);
+    }
+    for (int op = 0; op < count; op++) {
+        /* Include the NUL boundary, then the ordinal as eight little-endian
+         * bytes, independent of enum size, pointers and compiler padding. */
+        const unsigned char *name = (const unsigned char *)names[op];
+        do {
+            hash = (hash ^ *name) * UINT64_C(1099511628211);
+        } while (*name++);
+        uint64_t ordinal = (uint64_t)op;
+        for (int byte = 0; byte < 8; byte++) {
+            hash = (hash ^ (unsigned char)(ordinal >> (byte * 8))) *
+                   UINT64_C(1099511628211);
+        }
+    }
+    return hash;
+}
 static void header(execution_wire *w)
 {
+    static const char *const names[] = {
+#define FUNCTION_NAME(op) [BF_##op] = #op,
+#define MATH_NAME(op, name, fn) FUNCTION_NAME(op)
+        BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
+#undef MATH_NAME
+#undef FUNCTION_NAME
+    };
+    uint64_t expected_abi = prepared_abi(names, BF_END + 1);
     uint64_t magic = PREPARED_MAGIC, version = EXECUTION_PREPARED_VERSION,
-             pointer_size = sizeof(void *), context_size = context_abi();
+             pointer_size = sizeof(void *), abi = expected_abi;
     U64(magic);
     U64(version);
     U64(pointer_size);
-    U64(context_size);
+    U64(abi);
     if (magic != PREPARED_MAGIC || version != EXECUTION_PREPARED_VERSION) {
         w->error = "unknown prepared format version";
     }
-    if (pointer_size != sizeof(void *) || context_size != context_abi()) {
+    if (pointer_size != sizeof(void *) || abi != expected_abi) {
         w->error = "prepared target ABI differs";
     }
 }

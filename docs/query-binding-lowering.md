@@ -39,9 +39,13 @@ optimization, or expanded parallel-owner proof.
 - VM, SLJIT, generated Wasm and generated C implement the same operation. SLJIT
   uses reserved scratch registers. Wasm directly loads on success and delegates
   only the missing-tuple failure to the existing diagnostic helper.
-- Prepared execution format version 14 rejects older opcode layouts. The context
-  ABI hash now includes `query_variables`. Rebuild prepared packages with the
-  matching SDK; authored project data needs no migration/version bump.
+- The prepared schema fingerprint includes the actual stable-name/ordinal map,
+  including `QUERY_VARIABLE`, and the context ABI hash includes `query_variables`.
+  Main's manual payload/semantic version remains 13: this change adds an opcode
+  without changing any existing instruction payload or execution meaning. Older
+  layouts and the retired intrinsic are rejected by the schema identity. Rebuild
+  prepared packages with the matching SDK; authored project data needs no
+  migration/version bump.
 
 The retired intrinsic and its verifier/effect/cost cases are removed. The test
 oracle uses the public context-host ABI solely for differential semantics; it is
@@ -81,12 +85,18 @@ UndefinedBehaviorSanitizer. LeakSanitizer cannot start under this environment's
 tracing, so `ASAN_OPTIONS=detect_leaks=0` is explicit: leak detection is unrun.
 
 The admitted Node run is a reviewed replacement for this generated-IR semantic
-contract only. Chromium cannot start because socket creation is denied; the
-sanctioned elevated attempt failed before execution. Browser loader, isolation,
-iframe and worker delivery are unrun, as are GPU/Studio suites and other platform
-architectures. This does not waive server checks, review requirements or holds.
+contract only. During the original validation, Chromium could not start because
+socket creation was denied; the sanctioned elevated attempt failed before
+execution. Browser execution was not attempted during the main/schema refresh.
+Browser loader, isolation, iframe and worker delivery remain unrun, as do
+GPU/Studio suites and other platform architectures. This does not waive server
+checks, review requirements or holds.
 
-## Measurements
+## Historical measurements
+
+These samples belong to the original baseline and candidate described above,
+before the main/schema refresh. They remain provenance, not measurements of the
+refreshed candidate. Fresh exact-head validation is recorded separately.
 
 Linux x86-64; CMake 4.4.3, Ninja 1.13.2, Clang 19.1.7 native Release and
 Emscripten 6.0.10 Release with bundled Node 24.19.0. Baseline and candidate use

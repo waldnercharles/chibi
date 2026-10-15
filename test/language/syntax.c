@@ -456,25 +456,50 @@ TEST_CASE(language_retained_corpus)
             }
         }
         if (corpus_format && !original->diagnostic_count) {
-            char error[192];
-            formatted_text = authoring_source_format(original, error, sizeof error);
-            bool valid = formatted_text != NULL;
-            if (valid) {
-                fresh = script_parse(formatted_text);
-                reformatted_text = authoring_source_format(fresh, error, sizeof error);
-                valid = reformatted_text &&
-                        !strcmp(formatted_text, reformatted_text) &&
-                        !strcmp(original->text, corpus_text);
+            const authoring_format_options options[] = {
+                authoring_format_defaults(),
+                { .indent_width = 2, .preferred_width = 80 },
+                { .indent_width = 4, .preferred_width = 40, .use_tabs = true },
+            };
+            for (int mode = 0; mode < 3; mode++) {
+                char error[192];
+                formatted_text = authoring_source_format_with_options(
+                    original,
+                    &options[mode],
+                    NULL,
+                    error,
+                    sizeof error
+                );
+                bool valid = formatted_text != NULL;
+                if (valid) {
+                    fresh = script_parse(formatted_text);
+                    reformatted_text = authoring_source_format_with_options(
+                        fresh,
+                        &options[mode],
+                        NULL,
+                        error,
+                        sizeof error
+                    );
+                    valid = reformatted_text &&
+                            !strcmp(formatted_text, reformatted_text) &&
+                            !strcmp(original->text, corpus_text);
+                }
+                if (!valid) {
+                    failures++;
+                    fprintf(
+                        stderr,
+                        "Corpus formatting failed (mode %d): %s: %s\n",
+                        mode,
+                        path,
+                        error[0] ? error : "formatting is not idempotent"
+                    );
+                }
+                script_syntax_free(fresh);
+                fresh = NULL;
+                free(formatted_text);
+                free(reformatted_text);
+                formatted_text = reformatted_text = NULL;
             }
-            if (!valid) {
-                failures++;
-                fprintf(stderr, "Corpus formatting failed: %s: %s\n", path, error[0] ? error : "formatting is not idempotent");
-            }
-            script_syntax_free(fresh);
-            fresh = NULL;
-            free(formatted_text);
-            free(reformatted_text);
-            formatted_text = reformatted_text = NULL;
         }
         script_syntax_free(original);
         original = NULL;

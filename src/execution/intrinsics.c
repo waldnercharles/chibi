@@ -580,7 +580,31 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     const char *error;
-    if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
+    if (ref->kind == LANGUAGE_REFERENCE_VALUE && ref->box &&
+        ref->box->owner == &ref->box->detached) {
+        execution_box *box = ref->box;
+        assert(box->value == &box->kept && box->detached.value_storage == &box->storage);
+        /* Logical references keep the box, not an address in its payload.
+         * Stage the write without publishing, then retain only the final root:
+         * a path write's working snapshot still includes the replaced value. */
+        arena working = { 0 }, committed = { 0 };
+        pin_value candidate = box->kept, retained;
+        language_reference staged = *ref;
+        staged.value = &candidate;
+        error = write_reference_value(&working, &staged, args);
+        if (!error && pin_value_snapshot_to_arena(&committed, &retained, &candidate)) {
+            error = "Cannot retain referenced value";
+        }
+        if (!error) {
+            arena previous = box->storage;
+            box->kept = retained;
+            box->storage = committed;
+            arena_free(&previous);
+        } else {
+            arena_free(&committed);
+        }
+        arena_free(&working);
+    } else if (ref->kind == LANGUAGE_REFERENCE_VALUE) {
         error = write_reference_value(ref->owner->value_storage, ref, args);
     } else {
         /* Scalars never allocate, so the arena gets a block only on demand. */

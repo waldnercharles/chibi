@@ -1453,3 +1453,30 @@ shared production 60-second deadline covers both validations, all snapshots and
 fixture setup; each child also has the existing 10-second tooling limit.
 The inline language event, system cancellation and binding cases retain both
 VM and compiled-backend coverage without reading the Examples checkout.
+
+### Configurable source layout and whitespace maps
+
+The existing C `--format` dispatcher adds nine finite cases for SDK defaults,
+1/2/16-space and tab indentation, width boundaries (including UTF-8), nested
+lists/records/parameters/calls/binary expressions, comments and literal bytes,
+edit-map reconstruction and caret affinity, invalid options/drafts, and
+composition with the comment-preserving semantic minimizer. Fixtures are tiny
+in-memory strings; no worlds, clocks, files, processes, network or GPU are added.
+The map checks walk at most the bytes of those fixed strings.
+
+The existing bounded native corpus (at most 256 files/8 MiB) now verifies three
+fixed configurations: defaults, two spaces at width 80, and tabs at width 40.
+Each configuration reparses the result and checks idempotence and immutable
+input. `language-format` owns that corpus; `wasm-format` runs the same finite C
+cases through Node without a browser or corpus filesystem dependency. Both use
+the unchanged production 60-second supervisor. Configuration/build timing is
+separate. This is SDK/printer evidence, not controller, Studio, RML/RCSS,
+rendering or browser integration coverage.
+
+The first successful measured expanded runs passed 38 native cases/2,944
+assertions (89 corpus files, 63,497 source bytes, all three modes) in 8.606 s,
+and 37 Node/Wasm cases/2,583 assertions in 7.816 s. Native used Clang 19
+ASan/UBSan (leak detection disabled); Wasm used Emscripten 6.0.10 and Node 24.
+The initial expanded run exposed a test-oracle mistake: empty documents are
+syntax errors in the current grammar. The corrected case preserves that
+rejection and tests insertion affinity on a valid empty behavior instead.

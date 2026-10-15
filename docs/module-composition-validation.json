@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-15",
+  "scope": "Narrow qualified module-composition prerequisite; no full L07, broader readiness, whole-app or performance claim.",
+  "tested_commit": "072be745a8f5c73e14c1e07b0a1704c4de8555a8",
+  "tested_tree": "5e61dfbe04f84e3260821f04297bc16e2adcf52e",
+  "tested_base": "b1ada743d978a25ff8b0d5d677b491291eb4ddf5",
+  "documentation_integration_base": "19a8439314a1057d4a1c7c4e0e5e8ba47da7bd02",
+  "final_integration_change": "Documentation and evidence only after tested commit; product, test and policy bytes preserved.",
+  "admission": {
+    "independent_review": "approved",
+    "routes": [
+      "language-modules",
+      "wasm-modules"
+    ],
+    "aggregate_membership": "unchanged",
+    "max_catalogs": 18,
+    "max_source_preparations": 52,
+    "max_lowering_requests": 40,
+    "max_finalizations": 34,
+    "max_programs": 16,
+    "max_dispatches": 52,
+    "instructions_per_dispatch": 1000,
+    "max_sources_per_collection": 5,
+    "max_libraries_per_collection": 2,
+    "max_function_or_handler_bodies_per_collection": 6,
+    "max_live_collections": 3,
+    "max_live_programs": 1
+  },
+  "configuration": {
+    "native": "Clang 19 Debug, -fsanitize=address,undefined -fno-omit-frame-pointer, bytecode and SLJIT",
+    "native_leak_detection": "disabled: LeakSanitizer process scan unavailable; not a leak-check pass",
+    "wasm": "Emscripten Release, Node 24, bytecode and generated Wasm",
+    "builds": "Both completed at -j2 and reported no work remaining before selected runtime checks.",
+    "timing": "Includes in-test fixture setup; excludes configuration and build."
+  },
+  "baseline": {
+    "commit": "0dd6f87dba7b2213382b7e9cb9fcf452a78b9228",
+    "tree": "ef3cd89de26c9a54955e04e07ad2d07aea30cbe4",
+    "route": "language-modules",
+    "exit_code": 1,
+    "cases_passed": 5,
+    "cases_failed": 1,
+    "assertions": 337,
+    "wall_seconds": 0.169,
+    "failed_case": "modules_duplicate_qualified_helpers_cannot_publish_by_path_order",
+    "failed_assertion": "!authoring_sources_valid(collections[0])",
+    "observation": "Distinct documents exporting Same.Step produced a valid collection.",
+    "initial_attempt": "LeakSanitizer fatal error prevented normal completion; the dedicated repeat with ASAN_OPTIONS=detect_leaks=0 established the negative regression.",
+    "initial_diagnostic": "LeakSanitizer does not work under ptrace (strace, gdb, etc)"
+  },
+  "runs": [
+    {
+      "route": "language-modules",
+      "command": "python3 tools/test_policy.py tool language-modules",
+      "build_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "build-modules-native",
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "exit_code": 0,
+      "cases_passed": 6,
+      "cases_failed": 0,
+      "assertions": 348,
+      "wall_seconds": 0.168,
+      "deadline_seconds": 60,
+      "log_sha256": "8ad3378aa9f6881009dc3183b760bd8df2fa016c83e31c9d5dd0b140d4e59d3a",
+      "summary": "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 348",
+      "timing": "Test command wall time: 0.168s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "route": "wasm-modules",
+      "command": "python3 tools/test_policy.py tool wasm-modules",
+      "build_environment": {
+        "CHIBI_WASM_BUILD_DIR": "build-modules-wasm"
+      },
+      "exit_code": 0,
+      "cases_passed": 6,
+      "cases_failed": 0,
+      "assertions": 348,
+      "wall_seconds": 0.227,
+      "deadline_seconds": 60,
+      "log_sha256": "f9b41bccf307d3274682dec66d02247a5f495be4e31d4b60d38deecc617bfeb8",
+      "summary": "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 348",
+      "timing": "Test command wall time: 0.227s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "route": "language-navigation",
+      "command": "python3 tools/test_policy.py tool language-navigation",
+      "build_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "build-modules-native",
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "exit_code": 0,
+      "cases_passed": 29,
+      "cases_failed": 0,
+      "assertions": 329,
+      "wall_seconds": 0.183,
+      "deadline_seconds": 60,
+      "log_sha256": "6288d5da599296567f51af12a896c9a593f9317b14b99abc28a624ed3010e3db",
+      "summary": "Summary: Passed: 29 Failed: 0 Total: 29 Suites: 0 Asserts: 329",
+      "timing": "Test command wall time: 0.183s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+    },
+    {
+      "route": "language-incremental",
+      "command": "python3 tools/test_policy.py tool language-incremental",
+      "build_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "build-modules-native",
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "exit_code": 0,
+      "cases_passed": 13,
+      "cases_failed": 0,
+      "assertions": 235,
+      "wall_seconds": 0.43,
+      "deadline_seconds": 60,
+      "log_sha256": "358852d9339d679f32ea6510bd820f6e7cbe1026c8a3973869d3b242b5a82e0a",
+      "summary": "Summary: Passed: 13 Failed: 0 Total: 13 Suites: 0 Asserts: 235",
+      "timing": "Test command wall time: 0.430s; ceiling 60s; includes in-test fixture setup; external configuration/build excluded."
+    }
+  ],
+  "tested_source_files": [
+    {
+      "path": "src/authoring/source_catalog.c",
+      "git_blob": "3894b50467f8c287a68521e688ec0d34adc96115",
+      "sha256": "f48a18aa957af1e34188054daaeb797a1efd0041d5db16aa3a0f7cbd0fce06c3"
+    },
+    {
+      "path": "test/language/CMakeLists.txt",
+      "git_blob": "28d4518edb895bc8c35b7721acc437ec68179b44",
+      "sha256": "43387c39de5a74d9623ac2c5c7e84ae2fcabbd9b4f74807da5311cc8ab40390d"
+    },
+    {
+      "path": "test/language/main.c",
+      "git_blob": "c62b01b881fcbeda712c04c0a0bece0ff5dfc80a",
+      "sha256": "b40fde44c424e9dd9272699d7651597c1ff77267cf413fbc5b4a0460ac35193d"
+    },
+    {
+      "path": "test/language/modules.c",
+      "git_blob": "b0df7752b8478934d1099d76758d11a406ab8e3d",
+      "sha256": "28bef3e6cc3515e2a68b65002762698459684655fc2d271e42b5dbb9a5b597f2"
+    },
+    {
+      "path": "tools/test_policy.py",
+      "git_blob": "9f468e4dd0d5450612982f67e156b31b971bcee5",
+      "sha256": "3bef4be1ad20efcecf61ff8f0794a7fb0a0adbd120b4b09e5d8056979c0281d6"
+    }
+  ],
+  "tested_artifacts": [
+    {
+      "path": "build-modules-native/test_language",
+      "sha256": "2a010250500b91887fdf994a4018edecd4ca9f21138b3d53a978a6ef76099a76"
+    },
+    {
+      "path": "build-modules-wasm/test_language.js",
+      "sha256": "de60a1c108f6c6a8d768f20b1a12b9ae28f985b5166dc1b119bbaca7e745ed8b"
+    },
+    {
+      "path": "build-modules-wasm/test_language.wasm",
+      "sha256": "bdcdaa2780e0959f06a575631904f2957f5612dfd0cb951834c9e97496569534"
+    }
+  ],
+  "limitations": [
+    "No full/quarantined gate ran.",
+    "No aggregate membership expansion.",
+    "Existing program/imported-state and publication cases were audited but not rerun.",
+    "No representative multi-feature application or qualified imported-state/publication integration proof.",
+    "No intermodule scheduling proof or speedup claim.",
+    "No Celeste source inventory.",
+    "Publication and final published-head review are separate."
+  ]
+}

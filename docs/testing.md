@@ -1496,3 +1496,29 @@ ASan/UBSan (leak detection disabled); Wasm used Emscripten 6.0.10 and Node 24.
 The initial expanded run exposed a test-oracle mistake: empty documents are
 syntax errors in the current grammar. The corrected case preserves that
 rejection and tests insertion affinity on a valid empty behavior instead.
+
+## Qualified module prerequisite: admitted fixed workload
+
+`tool language-modules` and `tool wasm-modules` route the same six pico_unit
+cases through the existing `test_language --modules` dispatcher. The exact
+[workload and coverage boundary](module-composition.md#fixed-workload-and-validation)
+limits each selector to 18 catalogs, 52 source preparations, at most 40 lowering
+requests and 34 finalization attempts, 16 programs and 52 budgeted dispatches.
+The numeric operation comes from Studio's horizontal-scroll clamp, compared
+inline, locally and through an existing qualified library on bytecode and the platform compiled
+backend. Other cases check unqualified ambiguity, duplicate qualified callable
+names, cross-library cycles, nonexported library state, and catalog isolation.
+
+Independent review admitted only the dedicated routes; aggregate membership is
+unchanged. The pre-fix native regression failed at the intended duplicate-name
+assertion. On exact corrected source `072be745a8f5c73e14c1e07b0a1704c4de8555a8`,
+native and Wasm each passed six cases/348 assertions in 0.168 s and 0.227 s.
+Selected native navigation passed 29 cases/329 assertions in 0.183 s; incremental
+preparation passed 13 cases/235 assertions in 0.430 s. Native used Clang 19
+ASan/UBSan with leak detection disabled because LeakSanitizer could not scan this
+environment; leak checking is unavailable, not passed. Wasm used Emscripten
+Release and Node 24. Configuration/build time remains separate, and each command
+retained its shared production 60-second deadline. See the linked proof and
+[machine-readable evidence](module-composition-validation.json) for identity,
+configuration and limitations. No full-L07, application-scale, benchmark, or
+scheduling claim follows; full/quarantined gates remain disabled, not passed.

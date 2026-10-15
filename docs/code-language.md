@@ -466,6 +466,11 @@ Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `Name :: pure fn(...)` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
 `"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
+The bounded [qualified-module composition specimen](module-composition.md) checks
+existing discovery, lexical/qualified binding, cycle rejection, state visibility
+and independent catalogs. It does not introduce import aliases or new visibility
+syntax.
+
 Type parameters preserve generic relationships, for example
 `Identity :: fn<T: float>(item: T) -> (output: T) { ... }`. A function
 gives its results with `return x`, or `return(a, b)` in signature order. A bare `return` gives

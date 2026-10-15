@@ -92,6 +92,31 @@ static void capability(source_catalog *c, const char *path, script_catalog_capab
     apush(c->capabilities, value);
     update_view(c);
 }
+/* Only authored exports enter here. Native aliases and event declarations keep
+ * their existing insertion rules; an export cannot hide an exact callable of
+ * the same kind already present in this catalog. */
+static void exported_callable(source_catalog *c, const char *path, script_range range, script_catalog_capability value)
+{
+    for (int i = 0; i < acount(c->capabilities); i++) {
+        const script_catalog_capability *existing = &c->capabilities[i];
+        const char *name = existing->qualified_name ? existing->qualified_name
+                                                    : existing->name;
+        if (existing->id != value.id && existing->kind == value.kind &&
+            !strcmp(name, value.qualified_name)) {
+            char message[192];
+            snprintf(
+                message,
+                sizeof message,
+                "Duplicate exported callable name '%s'",
+                value.qualified_name
+            );
+            error(c, path, range, message);
+            return;
+        }
+    }
+    capability(c, path, value);
+}
+
 static char *read_source(source_catalog *c, const char *path)
 {
     if (++c->files > MAX_FILES) {
@@ -1243,7 +1268,7 @@ static source_catalog *build(
                 .effects = f->effects,
             };
             callable_ports(c, a, j, &value);
-            capability(c, source->path, value);
+            exported_callable(c, source->path, symbol->declaration, value);
         }
     }
     for (int i = 0; i < acount(c->references); i++) {

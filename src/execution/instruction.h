@@ -42,6 +42,7 @@ typedef enum
     BF_CONTEXT,
     BF_STORAGE_NAME,
     BF_ARRAY,
+    BF_QUERY_VARIABLE, /* Checked current tuple handle; target is 1-based. */
     BF_QUERY,
     BF_HOST_SLOT,
     BF_HOST_SERVICE,

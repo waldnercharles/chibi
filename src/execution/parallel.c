@@ -232,6 +232,7 @@ void behavior_function_parallel_proof(behavior_function *f)
             case BF_CONTEXT:
             case BF_STORAGE_NAME:
             case BF_ARRAY:
+            case BF_QUERY_VARIABLE:
             case BF_HOST_SERVICE:
             case BF_OWN_NAME:
             case BF_COPY_STRING:

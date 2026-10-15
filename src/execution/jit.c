@@ -141,7 +141,9 @@ void behavior_jit_failure(
             SLJIT_MEM1(m->context),
             offsetof(behavior_function_context, error_message),
             SLJIT_IMM,
-            (sljit_sw)i->message
+            (sljit_sw)(i->op == BF_QUERY_VARIABLE
+                           ? "Query variable is not bound"
+                           : i->message)
         );
     }
     store_steps(m, offsetof(behavior_function_context, error_steps));

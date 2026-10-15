@@ -148,14 +148,14 @@ void behavior_function_optimize(behavior_function *f)
             op->op == BF_INTERN_STRING || op->op == BF_STRING_EQUAL ||
             op->op == BF_STORE_VALUE || op->op == BF_STORE_HEADER ||
             op->op == BF_STORE_TYPE_NAME || op->op == BF_ARRAY ||
-            op->op == BF_QUERY || op->op == BF_READ || op->op == BF_HOST_SLOT ||
-            op->op == BF_HOST_SERVICE || op->op == BF_HOST_CALL ||
-            op->op == BF_COMMAND_SERVICE || op->op == BF_COMMAND_ARGUMENT ||
-            op->op == BF_COMMAND || op->op == BF_COMMAND_OUTPUT ||
-            op->op == BF_COMMAND_RESULT || op->op == BF_COMMAND_BEGIN ||
-            op->op == BF_SUSPEND || op->op == BF_DELAY || op->op == BF_POINT ||
-            op->op == BF_SOURCE_POINT || op->op == BF_SOURCE_WATCH ||
-            op->op == BF_INVOKE) {
+            op->op == BF_QUERY_VARIABLE || op->op == BF_QUERY || op->op == BF_READ ||
+            op->op == BF_HOST_SLOT || op->op == BF_HOST_SERVICE ||
+            op->op == BF_HOST_CALL || op->op == BF_COMMAND_SERVICE ||
+            op->op == BF_COMMAND_ARGUMENT || op->op == BF_COMMAND ||
+            op->op == BF_COMMAND_OUTPUT || op->op == BF_COMMAND_RESULT ||
+            op->op == BF_COMMAND_BEGIN || op->op == BF_SUSPEND ||
+            op->op == BF_DELAY || op->op == BF_POINT || op->op == BF_SOURCE_POINT ||
+            op->op == BF_SOURCE_WATCH || op->op == BF_INVOKE) {
             return;
         }
         /* Only borrowed name metadata may occupy pointer slots. Arithmetic

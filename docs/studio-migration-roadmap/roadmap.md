@@ -305,11 +305,11 @@ PR / exact head / review / tests / remaining blocker: **unrecorded**
 
 Stage: 1B · Repository: chibi · Scope: committed
 Dependencies: L00,L01,L07
-Decision gate: Inferred capture selected; callable grammar, capture/retention/ref contract still need specification
+Decision gate: Inferred shared mutable bindings selected; optional fn, arrow bodies and inferred results requested; exact grammar/canonicalization and lifetime admission pending; proper cycle reclamation required in a separate PR, mechanism unselected
 
-Owner selected inferred captures. Define exact safe by-value/ref and callable lifetime contract before grammar; checked nonescaping authored-to-authored predicate/comparator/visitor APIs first, with complete owner/service effects.
+Owner selected inferred shared mutable captures and requested optional fn, arrow forms and inferred results. Resolve exact grammar/canonicalization and lifetime admission before parser/runtime work; recommend fn-free semantic canonicalization, distinct callable types and no implicit block-to-arrow rewriting. Checked synchronous authored-to-authored callbacks first with complete owner/service effects. Proper automatic capture-cycle reclamation remains a separate required PR; interim rejection is temporary.
 
-Acceptance: Inferred captures and costs inspectable; mutation must not silently change capture/alias lifetime; no borrowed escape or suspension; all owner/service effects tracked; zero environment allocation proved only on the chosen hot path.
+Acceptance: Optional-fn block and arrow forms preserve capture/result semantics; inference keeps explicit recursive fallback and bodyless callable types distinct. Grammar boundaries and checked canonical keyword removal preserve comments, binding/effect identity and source maps. Outer and sibling closures share one binding across stack/owned placement and copies; ordinary value copies remain unchanged. No dangling escape or unsupported suspension; owner/service effects and capture costs inspectable. Proper cycle reclamation remains required in a separate PR; temporary rejection cannot close it. Zero allocation claims need exact hot-path evidence.
 
 Plan evidence: D6
 PR / exact head / review / tests / remaining blocker: **unrecorded**

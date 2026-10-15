@@ -404,6 +404,130 @@ TEST_CASE(source_minimize_reaches_a_fixed_point)
     return true;
 }
 
+static bool minimize_valid(const script_catalog *in, const char *input, const char *expected)
+{
+    source = script_parse(input);
+    script_analysis *analysis = script_analyze_document(source, in, "Demo");
+    bool valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(!source->diagnostic_count && valid);
+    REQUIRE(minimize_in(in, input, expected));
+    formatted = script_parse(text);
+    analysis = script_analyze_document(formatted, in, "Demo");
+    valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(!formatted->diagnostic_count && valid);
+    again = authoring_source_minimize(text, in, "Demo");
+    REQUIRE(again && !strcmp(text, again));
+    return true;
+}
+
+TEST_CASE(source_minimize_preserves_wrapper_comments)
+{
+    const char *input = "library Demo { F :: fn(a: float) -> (r: float) { "
+                        "r = (/* before hé */ a /* after */) } }";
+    REQUIRE(minimize_valid(&catalog, input, input));
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        "library Demo { F :: fn(a: float) -> (r: float) { "
+        "r = (// before\r\n a // after\r\n); } }",
+        "library Demo { F :: fn(a: float) -> (r: float) { "
+        "r = (// before\r\n a // after\r\n) } }"
+    ));
+    cleanup();
+    /* Copied operand comments do not prevent removing outer parentheses. */
+    REQUIRE(minimize_valid(
+        &catalog,
+        "library Demo { F :: fn(a: float) -> (r: float) { "
+        "r = ((a /* same */ + a /* same */ + a)); } }",
+        "library Demo { F :: fn(a: float) -> (r: float) { "
+        "r = a /* same */ + a /* same */ + a } }"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_preserves_declaration_and_argument_comments)
+{
+    REQUIRE(minimize_valid(
+        &catalog,
+        "library Demo { F :: fn(a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "{ r = a + b } "
+        "Use :: fn() { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
+        "default */ 2.0); } }",
+        "library Demo { F :: fn(a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "{ r = a + b } "
+        "Use :: fn() { x: /* type */ float = F(a: /* label */ 1.0, b: /* "
+        "default */ 2.0) } }"
+    ));
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        "library Demo { F :: fn(a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "{ r = a + b } "
+        "Use :: fn() { x := F(a: 1.0, /* separator */ b: 2.0); } }",
+        "library Demo { F :: fn(a: float = 1.0, b: float = 2.0) -> (r: float) "
+        "{ r = a + b } "
+        "Use :: fn() { x := F(1.0, /* separator */ 2.0) } }"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
+{
+    REQUIRE(minimize_valid(
+        &catalog,
+        "behavior Demo { on Tick /* alias */ as frame { x := frame.dt; } }",
+        "behavior Demo { on Tick /* alias */ as frame { x := frame.dt } }"
+    ));
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        "library Demo { state total: /* declared */ float = 0.0\n"
+        "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "*/total); } }",
+        "library Demo { state total: /* declared */ float = 0.0\n"
+        "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "*/total) } }"
+    ));
+    return true;
+}
+
+TEST_CASE(source_minimize_distinguishes_comments_from_strings)
+{
+    REQUIRE(
+        minimize_valid(&catalog, "library Demo { F :: fn() -> (r: string) { r = (\"/* text */ // text\"); } }", "library Demo { F :: fn() -> (r: string) { r = \"/* text */ // text\" } }")
+    );
+    return true;
+}
+
+TEST_CASE(source_format_and_minimize_remain_separate)
+{
+    const char *input = "library Demo { state count: int = 0\n"
+                        "F :: fn() -> (r: int) { state local: int = 1\n"
+                        "r = (/* keep */ state.count + local); } }";
+    REQUIRE(format(input));
+    REQUIRE(strstr(text, "state count: int = 0"));
+    REQUIRE(strstr(text, "state local: int = 1"));
+    REQUIRE(strstr(text, "r = (/* keep */ state.count + local);"));
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        input,
+        "library Demo { state count: int = 0\n"
+        "F :: fn() -> (r: int) { state local: int = 1\n"
+        "r = (/* keep */ count + local) } }"
+    ));
+    free(again);
+    char error[192];
+    again = authoring_source_format(formatted, error, sizeof error);
+    REQUIRE(again);
+    REQUIRE(strstr(again, "state count: int = 0"));
+    REQUIRE(strstr(again, "state local: int = 1"));
+    REQUIRE(strstr(again, "r = (/* keep */ count + local)"));
+    return true;
+}
+
 TEST_CASE(source_minimize_keeps_argument_order)
 {
     /* Arguments run in source order, so out-of-order labels stay. */
@@ -620,6 +744,22 @@ static const script_catalog component_catalog = {
     .tick_event = 30,
 };
 
+TEST_CASE(source_minimize_preserves_accessor_and_operator_comments)
+{
+    REQUIRE(minimize_valid(
+        &component_catalog,
+        "behavior Demo { on Tick { if has_velocity(/* present */) { "
+        "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
+        "multiply */ 3.0), self); "
+        "} } }",
+        "behavior Demo { on Tick { if has_velocity(/* present */) { "
+        "set_velocity_x(/* set */ multiply(get_velocity(/* get */).Value.x, /* "
+        "multiply */ 3.0), self) "
+        "} } }"
+    ));
+    return true;
+}
+
 TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
 {
     REQUIRE(minimize_in(
@@ -692,9 +832,15 @@ void test_language_format()
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
+    RUN_TEST_CASE(source_minimize_preserves_wrapper_comments);
+    RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);
+    RUN_TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments);
+    RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
+    RUN_TEST_CASE(source_format_and_minimize_remain_separate);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
+    RUN_TEST_CASE(source_minimize_preserves_accessor_and_operator_comments);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
     RUN_TEST_CASE(source_minimize_keeps_generic_component_calls);
     pu_setup(NULL, NULL);

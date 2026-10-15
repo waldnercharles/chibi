@@ -1496,3 +1496,47 @@ ASan/UBSan (leak detection disabled); Wasm used Emscripten 6.0.10 and Node 24.
 The initial expanded run exposed a test-oracle mistake: empty documents are
 syntax errors in the current grammar. The corrected case preserves that
 rejection and tests insertion affinity on a valid empty behavior instead.
+
+## Qualified module prerequisite: admitted fixed workload
+
+`tool language-modules` and `tool wasm-modules` route the same seven pico_unit
+cases through the existing `test_language --modules` dispatcher. The exact
+[workload and coverage boundary](module-composition.md#fixed-workload-and-validation)
+limits each selector to 22 catalogs, 60 source preparations, at most 48 lowering
+requests and 42 finalization attempts, 20 programs and 56 budgeted dispatches.
+There are at most five sources, two libraries and six bodies per collection,
+with four bodies in one source. The arithmetic comes from Studio's horizontal
+scroll clamp, compared inline, locally and through an existing qualified library
+on bytecode and the platform compiled backend. Other cases check ambiguity,
+duplicate top-level qualified names, cycles, nonexported state, catalog isolation,
+and distinct same-named nested lexical helpers that never become catalog exports.
+
+The original six-case checks at `072be745a8f5c73e14c1e07b0a1704c4de8555a8`
+passed native/Wasm 6/348 (0.168/0.227 s), navigation 29/329 (0.183 s), and
+incremental preparation 13/235 (0.430 s). Those are historical results: review
+found a nested-helper collision and superseded the earlier approval. The new
+regression-only tree `3ce898152de5e23316f3a6e144b0460c0d6f6ab6` failed only that
+seventh case, at the intended `Scoped.Helper` duplicate diagnostic, with seven
+cases/350 assertions in 0.179 s. Native ASan/UBSan remained enabled; LeakSanitizer
+cannot scan this environment, so leak checking is unavailable, not passed.
+
+Exact correction `e3749f9fae281a099c553d02fbbead80fe65467b` passed independent
+review and five coordinated checks. Native/Wasm module routes each passed 7/438
+in 0.204/0.251 s. Complete language (29 commands) passed 389/36,402 in 23.985 s;
+complete Wasm (17 commands) passed 233/32,519 in 4.223 s. Exact-source
+`native-tools`, including its own `policy_worker`, passed 116/29,566 in 21.699 s.
+Each check ran once, serially, and exited 0. Source/artifact hashes matched before
+and after; all three `-j2` build currency checks reported no work. No prior group
+member was removed. The native language group includes program/imported state,
+publication, navigation and incremental coverage. Each complete group retained
+one shared production 60-second deadline, with configuration/build time separate
+and no chunking or failure suppression. These are measured full commands, not
+sums of old timings. This documentation follow-up preserves tested product,
+test, policy and fixture bytes and performs no new runtime.
+`wasm-format` remains a pre-existing standalone gap; this does not claim every
+admitted selector is covered. See the linked proof and
+[machine-readable historical evidence and current status](module-composition-validation.json).
+No full-L07, application-scale, benchmark, or scheduling claim follows;
+full/quarantined gates remain disabled, not passed.
+The explicit platform merge hold remains; no GitHub approval or resolved-thread
+status is asserted by this local validation.

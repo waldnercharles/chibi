@@ -101,6 +101,25 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+`language-operations` is the bounded C workload for the checked core operation
+contract. Its nine cases attempt 82 catalog constructions (13 accepted and 69
+rejected), with at most 20 capabilities and four globals per catalog, and 13
+single-definition malformed inputs, 15 raw-table scalar semantic metadata
+rejections and 36 dormant metadata rejections. The latter independently mutate
+twelve fields for each of Owner, Delta and Delay; malformed tables are never
+lowered or executed. It performs seven
+top-level source preparation/lowering attempts (including two direct-catalog
+state rewrite rejections) and four
+tiny module finalizations (two constant-library bytecode modules, one operation fixture on
+each backend). The execution fixture dispatches four fixed durations on each
+backend, performs one synthetic-time update per backend and uses a 1,000-step
+budget per dispatch/update. No prepared bytes, files, subprocesses, windows,
+network or GPU are used. Native uses bytecode/SLJIT; the same C workload uses
+bytecode/Wasm in the browser-target driver. Admission and execution timing must
+be recorded separately; the shared production supervisor retains its 60-second
+deadline. Existing `language-program`, `language-incremental`, `native-catalog`
+and prepared integration selectors remain applicable to the changed contracts.
+
 The compiled-runtime rollout passed native, language, tooling, materials and
 project groups under their shared 60-second deadlines. Browser Wasm execution
 passed in serial and pthread configurations. URL gesture coverage passed nine

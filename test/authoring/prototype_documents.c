@@ -114,9 +114,11 @@ TEST_CASE(rebase_keeps_local_values_over_evolving_defaults)
  * display-name changes. */
 TEST_CASE(retained_strings_survive_clones_and_renames)
 {
-    static const type_field fields[] = {
-        { "text", PIN_STR, 0, sizeof(char *), "const char *" }
-    };
+    static const type_field fields[] = { { .name = "text",
+                                           .type = PIN_STR,
+                                           .offset = 0,
+                                           .size = sizeof(char *),
+                                           .type_name = "const char *" } };
     static const type_desc type = { "Label", sizeof(char *), fields, 1, NULL };
     static const ecs_component_desc component = { .id = 901,
                                                   .key = "test.Label",
@@ -124,7 +126,7 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
                                                   .element_size = sizeof(char *),
                                                   .type = &type };
     const ecs_component_desc *components[] = { &component };
-    prototype_registry registry = { components, 1, NULL, NULL };
+    prototype_registry registry = { .components = components, .component_count = 1 };
     char error[256];
     test_prototype = prototype_load(
         "name \"StringOwner\"\ncomponents {\n    test.Label "
@@ -147,7 +149,8 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
     ecs_component_desc renamed = component;
     renamed.name = "DisplayLabel";
     const ecs_component_desc *renamed_components[] = { &renamed };
-    prototype_registry renamed_registry = { renamed_components, 1, NULL, NULL };
+    prototype_registry renamed_registry = { .components = renamed_components,
+                                            .component_count = 1 };
     test_prototype = prototype_load(saved, &renamed_registry, error, sizeof error);
     REQUIRE(test_prototype && prototype_add_component(test_prototype, &renamed) == 0);
     REQUIRE(prototype_read_field(test_prototype, "DisplayLabel", "text", &value) == 0);
@@ -159,7 +162,8 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
  * entities until reattached with their retained values. */
 TEST_CASE(detached_components_spawn_absent_and_reattach)
 {
-    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { .components = REGISTRY_COMPONENTS,
+                                    .component_count = REGISTRY_COMPONENT_COUNT };
     char error[256];
     test_prototype = prototype_load(
         "name \"Retained\"\n"
@@ -264,9 +268,9 @@ static int attach(ecs_world *, ecs_entity, const char *graph_name, void *)
 /* The game's components, with BaseEnemy to include. */
 static prototype_registry enemies()
 {
-    return (
-        prototype_registry
-    ){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT, find_base, NULL };
+    return (prototype_registry){ .components = REGISTRY_COMPONENTS,
+                                 .component_count = REGISTRY_COMPONENT_COUNT,
+                                 .include = find_base };
 }
 
 static const Health *health_of(const prototype *p)
@@ -318,15 +322,14 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
     REQUIRE(strcmp(prototype_identity(test_prototype), prototype_identity(copy)) != 0);
     REQUIRE(!strstr(again, "identity"));
 
-    prototype_registry missing = { REGISTRY_COMPONENTS, 1, find_base, NULL };
+    prototype_registry missing = { .components = REGISTRY_COMPONENTS,
+                                   .component_count = 1,
+                                   .include = find_base };
     REQUIRE(!prototype_load(derived_enemy, &missing, error, sizeof error));
     REQUIRE(strstr(error, "Health"));
-    const prototype_registry cycles = {
-        REGISTRY_COMPONENTS,
-        REGISTRY_COMPONENT_COUNT,
-        find_cycle,
-        NULL,
-    };
+    const prototype_registry cycles = { .components = REGISTRY_COMPONENTS,
+                                        .component_count = REGISTRY_COMPONENT_COUNT,
+                                        .include = find_cycle };
     REQUIRE(!prototype_load(cycle_a, &cycles, error, sizeof error));
     REQUIRE(strstr(error, "cycle"));
     return true;

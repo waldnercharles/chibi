@@ -3,6 +3,7 @@
 #include "authoring/source_minimize.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,7 @@
 static script_syntax *source, *formatted;
 static char *text, *again;
 static char *metadata, *remapped;
+static authoring_format_map edit_map;
 
 static void cleanup()
 {
@@ -19,6 +21,7 @@ static void cleanup()
     free(again);
     free(metadata);
     free(remapped);
+    authoring_format_map_free(&edit_map);
     source = formatted = NULL;
     text = again = NULL;
     metadata = remapped = NULL;
@@ -37,6 +40,279 @@ static bool format(const char *input)
     again = authoring_source_format(formatted, error, sizeof error);
     return again && !strcmp(text, again) && !formatted->diagnostic_count &&
            !strcmp(source->text, input);
+}
+
+static bool configured(const char *input, authoring_format_options options)
+{
+    source = script_parse(input);
+    char error[192];
+    text = authoring_source_format_with_options(source, &options, &edit_map, error, sizeof error);
+    if (!text) {
+        fprintf(stderr, "configured format: %s\n", error);
+        return false;
+    }
+    formatted = script_parse(text);
+    again = authoring_source_format_with_options(formatted, &options, NULL, error, sizeof error);
+    if (!again || strcmp(text, again)) {
+        fprintf(stderr, "configured format is not idempotent: %s\n%s\n%s\n", error, text, again ? again : "<null>");
+        return false;
+    }
+    return !formatted->diagnostic_count && !strcmp(source->text, input);
+}
+
+static bool map_reproduces_source()
+{
+    REQUIRE(edit_map.source_size == (int)strlen(source->text));
+    REQUIRE(edit_map.formatted_size == (int)strlen(text));
+    int before = 0, after = 0;
+    for (int i = 0; i < edit_map.count; i++) {
+        authoring_format_edit e = edit_map.edits[i];
+        REQUIRE(e.start >= before && e.end >= e.start && e.end <= edit_map.source_size);
+        REQUIRE(
+            e.new_start >= after && e.new_end >= e.new_start &&
+            e.new_end <= edit_map.formatted_size
+        );
+        REQUIRE(e.start - before == e.new_start - after);
+        REQUIRE(!memcmp(source->text + before, text + after, (size_t)(e.start - before)));
+        for (int p = before; p < e.start; p++) {
+            if (p > before || !i ||
+                edit_map.edits[i - 1].start != edit_map.edits[i - 1].end) {
+                REQUIRE(
+                    authoring_format_map_position(&edit_map, p, AUTHORING_FORMAT_BEFORE) ==
+                    after + p - before
+                );
+            }
+            REQUIRE(
+                authoring_format_map_position(&edit_map, p, AUTHORING_FORMAT_AFTER) ==
+                after + p - before
+            );
+        }
+        for (int p = e.start; p < e.end; p++) {
+            REQUIRE(isspace((unsigned char)source->text[p]));
+        }
+        for (int p = e.new_start; p < e.new_end; p++) {
+            REQUIRE(isspace((unsigned char)text[p]));
+        }
+        REQUIRE(
+            authoring_format_map_position(&edit_map, e.start, AUTHORING_FORMAT_BEFORE) ==
+            e.new_start
+        );
+        REQUIRE(
+            authoring_format_map_position(&edit_map, e.end, AUTHORING_FORMAT_AFTER) ==
+            e.new_end
+        );
+        if (e.end - e.start > 1) {
+            REQUIRE(
+                authoring_format_map_position(&edit_map, e.start + 1, AUTHORING_FORMAT_BEFORE) ==
+                e.new_start
+            );
+            REQUIRE(
+                authoring_format_map_position(&edit_map, e.start + 1, AUTHORING_FORMAT_AFTER) ==
+                e.new_end
+            );
+        }
+        before = e.end;
+        after = e.new_end;
+    }
+    REQUIRE(edit_map.source_size - before == edit_map.formatted_size - after);
+    REQUIRE(!strcmp(source->text + before, text + after));
+    return true;
+}
+
+TEST_CASE(source_format_options_preserve_defaults)
+{
+    const char *input = "behavior Demo{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
+    REQUIRE(configured(input, authoring_format_defaults()));
+    char error[192];
+    char *legacy = authoring_source_format(source, error, sizeof error);
+    REQUIRE(legacy && !strcmp(text, legacy));
+    free(legacy);
+    authoring_format_map defaults_map = { 0 };
+    legacy = authoring_source_format_with_options(source, NULL, &defaults_map, error, sizeof error);
+    REQUIRE(legacy && !strcmp(text, legacy));
+    REQUIRE(defaults_map.count == edit_map.count && defaults_map.count > 0);
+    REQUIRE(
+        defaults_map.source_size == edit_map.source_size &&
+        defaults_map.formatted_size == edit_map.formatted_size
+    );
+    authoring_format_map_free(&defaults_map);
+    free(legacy);
+    REQUIRE(strstr(text, "value := [\n        1,\n        2];"));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+
+TEST_CASE(source_format_configures_indentation)
+{
+    const char *input = "behavior Demo{on Tick{call(\n1,\n2);}}";
+    const int widths[] = { 1, 2, 16 };
+    for (int i = 0; i < 3; i++) {
+        authoring_format_options options = { .indent_width = widths[i] };
+        REQUIRE(configured(input, options));
+        const char *line = strchr(text, '\n') + 1;
+        REQUIRE((int)strspn(line, " ") == widths[i]);
+        REQUIRE(map_reproduces_source());
+        cleanup();
+    }
+    REQUIRE(configured(input, (authoring_format_options){ .indent_width = 4, .use_tabs = true }));
+    REQUIRE(!strcmp(text, "behavior Demo {\n\ton Tick {\n\t\tcall(\n\t\t\t1,\n\t\t\t2);\n\t}\n}\n"));
+    return true;
+}
+
+TEST_CASE(source_format_reflows_lists_and_records)
+{
+    const char
+        *input = "behavior Demo{numbers:=[1,2,3];value:={left:1,right:[2,3]};}";
+    REQUIRE(
+        configured(input, (authoring_format_options){ .indent_width = 2, .preferred_width = 20 })
+    );
+    REQUIRE(
+        !strcmp(text, "behavior Demo {\n  numbers := [\n    1,\n    2,\n    3\n  ];\n  value := {\n    left: 1,\n    right: [2, 3]\n  };\n}\n")
+    );
+    REQUIRE(map_reproduces_source());
+    cleanup();
+    REQUIRE(configured(
+        "behavior Demo{numbers:=[\n1,\n2,\n3\n];}",
+        (authoring_format_options){ .indent_width = 2, .preferred_width = 80 }
+    ));
+    REQUIRE(strstr(text, "numbers := [1, 2, 3];"));
+    return true;
+}
+
+TEST_CASE(source_format_reflows_parameters_calls_and_binary)
+{
+    REQUIRE(configured(
+        "library "
+        "Demo{Compute::(first:int,second:int)->int{result:=(first+second*123);"
+        "return call(first,second,result);}}",
+        (authoring_format_options){ .indent_width = 2, .preferred_width = 24 }
+    ));
+    REQUIRE(strstr(text, "Compute :: (\n    first: int,\n    second: int\n  ) -> int"));
+    REQUIRE(strstr(text, "result := (\n      first +\n      second *\n      123\n    );"));
+    REQUIRE(strstr(text, "call(\n      first,\n      second,\n      result\n    );"));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+
+TEST_CASE(source_format_width_is_byte_based_and_bounded)
+{
+    const char *input = "behavior Demo{x:=[\"é\",\"é\"];empty:=[];}";
+    REQUIRE(
+        configured(input, (authoring_format_options){ .indent_width = 1, .preferred_width = 18 })
+    );
+    REQUIRE(strstr(text, "x := [\"é\", \"é\"];"));
+    cleanup();
+    REQUIRE(
+        configured(input, (authoring_format_options){ .indent_width = 1, .preferred_width = 17 })
+    );
+    REQUIRE(strstr(text, "x := [\n  \"é\",\n  \"é\"\n ];"));
+    REQUIRE(strstr(text, "empty := [];"));
+    cleanup();
+    REQUIRE(configured(
+        input,
+        (authoring_format_options){ .indent_width = 16, .preferred_width = 1, .use_tabs = true }
+    ));
+    REQUIRE(strstr(text, "\tx := [\n\t\t\"é\""));
+    cleanup();
+    REQUIRE(
+        configured(input, (authoring_format_options){ .indent_width = 1, .preferred_width = 4096 })
+    );
+    REQUIRE(strstr(text, "x := [\"é\", \"é\"];"));
+    return true;
+}
+
+TEST_CASE(source_format_reflow_preserves_comments)
+{
+    REQUIRE(configured(
+        "/* module\r\n comment */\r\nbehavior Demo{x:=[1, // first\r\n2, /* hé "
+        "*/ 3];on Tick{call(\"// exact\",/* x\ny */\"é\");}} // end",
+        (authoring_format_options){ .indent_width = 2, .preferred_width = 12 }
+    ));
+    REQUIRE(strstr(text, "/* module\r\n comment */"));
+    REQUIRE(strstr(text, "1, // first\r\n"));
+    REQUIRE(strstr(text, "/* hé */"));
+    REQUIRE(strstr(text, "/* x\ny */"));
+    REQUIRE(strstr(text, "\"// exact\""));
+    REQUIRE(strstr(text, "} // end\n"));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+
+TEST_CASE(source_format_maps_insertions_deletions_and_empty_draft)
+{
+    REQUIRE(configured("  behavior Demo{ x :=  1 ; }  ", authoring_format_defaults()));
+    REQUIRE(map_reproduces_source());
+    REQUIRE(edit_map.count > 3);
+    bool internal_insertion = false;
+    for (int i = 0; i < edit_map.count; i++) {
+        authoring_format_edit e = edit_map.edits[i];
+        if (e.start == e.end && e.start > 0 && e.start < edit_map.source_size) {
+            REQUIRE(e.new_end > e.new_start);
+            REQUIRE(
+                authoring_format_map_position(&edit_map, e.start, AUTHORING_FORMAT_BEFORE) ==
+                e.new_start
+            );
+            REQUIRE(
+                authoring_format_map_position(&edit_map, e.start, AUTHORING_FORMAT_AFTER) ==
+                e.new_end
+            );
+            internal_insertion = true;
+        }
+    }
+    REQUIRE(internal_insertion);
+    REQUIRE(authoring_format_map_position(&edit_map, 1, AUTHORING_FORMAT_AFTER) == 0);
+    cleanup();
+    REQUIRE(configured("behavior Demo {\n    x := 1;\n}\n", authoring_format_defaults()));
+    REQUIRE(edit_map.count == 0);
+    REQUIRE(
+        authoring_format_map_position(&edit_map, edit_map.source_size, AUTHORING_FORMAT_AFTER) ==
+        edit_map.formatted_size
+    );
+    cleanup();
+    REQUIRE(configured("behavior Demo {}", authoring_format_defaults()));
+    REQUIRE(edit_map.count == 1);
+    REQUIRE(
+        authoring_format_map_position(&edit_map, edit_map.source_size, AUTHORING_FORMAT_BEFORE) ==
+        edit_map.source_size
+    );
+    REQUIRE(
+        authoring_format_map_position(&edit_map, edit_map.source_size, AUTHORING_FORMAT_AFTER) ==
+        edit_map.source_size + 1
+    );
+    REQUIRE(map_reproduces_source());
+    cleanup();
+    source = script_parse("");
+    REQUIRE(source->diagnostic_count);
+    text = authoring_source_format_with_options(source, NULL, &edit_map, NULL, 0);
+    REQUIRE(!text && !edit_map.count && !edit_map.edits);
+    REQUIRE(!strcmp(source->text, ""));
+    return true;
+}
+
+TEST_CASE(source_format_rejects_options_and_drafts_atomically)
+{
+    source = script_parse("behavior Demo {x:=1;}");
+    const authoring_format_options invalid[] = {
+        { .indent_width = 0 },
+        { .indent_width = 17 },
+        { .indent_width = 4, .preferred_width = -1 },
+        { .indent_width = 4, .preferred_width = 4097 },
+    };
+    for (int i = 0; i < 4; i++) {
+        char error[192];
+        text = authoring_source_format_with_options(source, &invalid[i], &edit_map, error, sizeof error);
+        REQUIRE(!text && strstr(error, "Invalid formatter options"));
+        REQUIRE(
+            !edit_map.edits && !edit_map.count && !edit_map.source_size &&
+            !edit_map.formatted_size
+        );
+        REQUIRE(!strcmp(source->text, "behavior Demo {x:=1;}"));
+    }
+    cleanup();
+    source = script_parse("behavior Broken {x:=}");
+    text = authoring_source_format_with_options(source, NULL, &edit_map, NULL, 0);
+    REQUIRE(!text && !edit_map.edits && !edit_map.count);
+    return true;
 }
 
 TEST_CASE(source_format_block_layout)
@@ -220,6 +496,12 @@ TEST_CASE(source_format_incomplete_source_is_unchanged)
     text = authoring_source_format(source, error, sizeof error);
     REQUIRE(!text);
     REQUIRE(strstr(error, "limit"));
+    authoring_format_options options = { .indent_width = 2, .preferred_width = 80 };
+    text = authoring_source_format_with_options(source, &options, &edit_map, error, sizeof error);
+    REQUIRE(!text && strstr(error, "limit"));
+    REQUIRE(
+        !edit_map.edits && !edit_map.count && !edit_map.source_size && !edit_map.formatted_size
+    );
     REQUIRE(!strcmp(source->text, nested));
     return true;
 }
@@ -498,6 +780,28 @@ TEST_CASE(source_minimize_distinguishes_comments_from_strings)
     REQUIRE(
         minimize_valid(&catalog, "library Demo { F :: fn() -> (r: string) { r = (\"/* text */ // text\"); } }", "library Demo { F :: fn() -> (r: string) { r = \"/* text */ // text\" } }")
     );
+    return true;
+}
+
+TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer)
+{
+    const char *input = "library Demo { F :: fn(a: float) -> (r: float) { "
+                        "r = (/* before hé */ a /* after */) } }";
+    char *minimized = authoring_source_minimize(input, &catalog, "Demo");
+    REQUIRE(minimized && !strcmp(input, minimized));
+    bool valid = configured(
+        minimized,
+        (authoring_format_options){ .indent_width = 2, .preferred_width = 16 }
+    );
+    free(minimized);
+    REQUIRE(valid);
+    REQUIRE(strstr(text, "/* before hé */"));
+    REQUIRE(strstr(text, "/* after */"));
+    script_analysis *analysis = script_analyze_document(formatted, &catalog, "Demo");
+    valid = analysis->valid && !analysis->diagnostic_count;
+    script_analysis_free(analysis);
+    REQUIRE(valid);
+    REQUIRE(map_reproduces_source());
     return true;
 }
 
@@ -815,6 +1119,14 @@ TEST_CASE(source_minimize_keeps_generic_component_calls)
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_options_preserve_defaults);
+    RUN_TEST_CASE(source_format_configures_indentation);
+    RUN_TEST_CASE(source_format_reflows_lists_and_records);
+    RUN_TEST_CASE(source_format_reflows_parameters_calls_and_binary);
+    RUN_TEST_CASE(source_format_width_is_byte_based_and_bounded);
+    RUN_TEST_CASE(source_format_reflow_preserves_comments);
+    RUN_TEST_CASE(source_format_maps_insertions_deletions_and_empty_draft);
+    RUN_TEST_CASE(source_format_rejects_options_and_drafts_atomically);
     RUN_TEST_CASE(source_format_block_layout);
     RUN_TEST_CASE(source_format_reductions);
     RUN_TEST_CASE(source_format_component_measures);
@@ -836,6 +1148,7 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_preserves_declaration_and_argument_comments);
     RUN_TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments);
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
+    RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);

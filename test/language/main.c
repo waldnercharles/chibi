@@ -10,6 +10,7 @@ void test_language_execution();
 void test_language_wasm();
 void test_language_semantic();
 void test_language_program();
+void test_language_capture();
 void test_language_query_program();
 void test_language_query_boundary();
 void test_language_incremental();
@@ -162,6 +163,7 @@ int main(int argc, char **argv)
         test_language_scalarize();
     } else if (program) {
         test_language_program();
+        test_language_capture();
         test_language_query_boundary();
     } else if (semantic) {
         test_language_semantic();

@@ -434,6 +434,9 @@ TOOLS = {
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     # Bounded in-process SDK generation reuse and invalidation, with four tiny source overlays.
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
+    # Eight bounded core operation contract cases: 42 catalog attempts, four tiny
+    # module finalizations, eight dispatches and two synthetic-time updates.
+    'language-operations': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--operations'],
     # Bounded scalar proof tests: runtime IR reductions and VM/compiled/inspection parity.
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
     # Bounded union scalar replacement and checked component-read differential/control-flow cases.
@@ -475,12 +478,12 @@ for lab in EXAMPLE_LABS:
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize',
+             'wasm-publication', 'wasm-operations', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize',
              'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
@@ -508,7 +511,7 @@ GROUPS = {
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
-    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'script-benchmark',
+    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'script-benchmark',
                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',

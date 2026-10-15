@@ -187,6 +187,9 @@ TEST_CASE(native_catalog_identity_lookup_preserves_order_and_duplicate_errors)
             .id = catalog_test_id(i),
             .name = name,
             .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .operation = SCRIPT_OPERATION_DELTA,
+            .pure = true,
+            .completion_outcome = -1,
             .results = &result,
             .result_count = 1,
         };

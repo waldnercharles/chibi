@@ -36,7 +36,7 @@ endfunction()
 
 chibi_sdk_contract(chibi_support "${CHIBI_SDK_ROOT}/src/support" m)
 chibi_sdk_contract(chibi_types "${CHIBI_SDK_ROOT}/src/types" chibi_support m)
-chibi_sdk_contract(chibi_execution_contract "${CHIBI_SDK_ROOT}/src/execution" chibi_types)
+chibi_sdk_contract(chibi_execution_contract "${CHIBI_SDK_ROOT}/src/execution" chibi_types chibi_capabilities)
 chibi_sdk_contract(chibi_tasks "${CHIBI_SDK_ROOT}/src/runtime")
 chibi_sdk_contract(chibi_input_action "${CHIBI_SDK_ROOT}/src/runtime")
 chibi_sdk_contract(chibi_asset_values "${CHIBI_SDK_ROOT}/src/support" chibi_support)

@@ -148,6 +148,49 @@ typedef struct
      * Outcome ordinals: true/body, false/completed. Break is an entry ordinal. */
     int inputs[2], results[2], outcomes[2], break_entry;
 } script_catalog_flow;
+/* Closed, implementation-checked operations. Zero grants no extra contract;
+ * generic host declarations must not acquire guarantees from a pure label. */
+enum
+{
+    SCRIPT_OPERATION_SCALAR_ARGUMENTS = 1u << 0,
+    SCRIPT_OPERATION_SCALAR_RESULTS = 1u << 1,
+    SCRIPT_OPERATION_NO_ARGUMENT_RETENTION = 1u << 2,
+    SCRIPT_OPERATION_NO_RESULT_ALIAS = 1u << 3,
+    SCRIPT_OPERATION_NO_ALLOCATION = 1u << 4,
+    SCRIPT_OPERATION_NO_PAYLOAD_COPY = 1u << 5,
+    SCRIPT_OPERATION_ACTIVATION_THREAD = 1u << 6,
+    SCRIPT_OPERATION_NO_REENTRY = 1u << 7,
+    SCRIPT_OPERATION_SAVES_LIVE_VALUES = 1u << 8,
+};
+#define SCRIPT_OPERATION_SCALAR_READ                                             \
+    (SCRIPT_OPERATION_SCALAR_ARGUMENTS | SCRIPT_OPERATION_SCALAR_RESULTS |       \
+     SCRIPT_OPERATION_NO_ARGUMENT_RETENTION | SCRIPT_OPERATION_NO_RESULT_ALIAS | \
+     SCRIPT_OPERATION_NO_ALLOCATION | SCRIPT_OPERATION_NO_PAYLOAD_COPY |         \
+     SCRIPT_OPERATION_ACTIVATION_THREAD | SCRIPT_OPERATION_NO_REENTRY)
+/* Identity, actual instruction name, semantic version, effects, guarantees.
+ * Both catalog ABI and execution binding are generated from these same rows. */
+#define SCRIPT_ENGINE_OPERATIONS(X)                                            \
+    X(OWNER, OWNER, 1, 0, SCRIPT_OPERATION_SCALAR_READ)                        \
+    X(DELTA, DELTA, 1, 0, SCRIPT_OPERATION_SCALAR_READ)                        \
+    X(DELAY,                                                                   \
+      DELAY,                                                                   \
+      1,                                                                       \
+      SCRIPT_EFFECT_SUSPEND,                                                   \
+      SCRIPT_OPERATION_SCALAR_ARGUMENTS | SCRIPT_OPERATION_ACTIVATION_THREAD | \
+          SCRIPT_OPERATION_SAVES_LIVE_VALUES)
+typedef enum
+{
+    SCRIPT_OPERATION_UNKNOWN,
+#define OPERATION(NAME, INSTRUCTION, VERSION, EFFECTS, GUARANTEES)             \
+    SCRIPT_OPERATION_##NAME,
+    SCRIPT_ENGINE_OPERATIONS(OPERATION)
+#undef OPERATION
+} script_operation;
+typedef struct
+{
+    const char *name, *instruction;
+    unsigned version, effects, guarantees;
+} script_operation_contract;
 typedef struct
 {
     uint64_t id;
@@ -169,6 +212,7 @@ typedef struct
     int entry_count, outcome_count;
     int completion_outcome;
     unsigned effects;
+    script_operation operation;
     uint64_t receiver;
     bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
 } script_catalog_capability;
@@ -222,6 +266,10 @@ int script_catalog_find_capability(const script_catalog *, const char *name, scr
 int script_catalog_find_field(const script_catalog_type *, const char *name);
 /* Declared executable ABI; excludes callbacks, defaults and source aliases. */
 uint64_t script_catalog_capability_abi(const script_catalog *, const script_catalog_capability *);
+/* NULL for unknown/unrecognized operations. Absent guarantees are unknown,
+ * never proof of the opposite. Known declarations must match their contract. */
+const script_operation_contract *script_operation_describe(script_operation);
+bool script_catalog_operation_valid(const script_catalog_capability *);
 const script_catalog_type *script_catalog_type_by_id(const script_catalog *, uint64_t id);
 const script_catalog_capability *script_catalog_capability_by_id(const script_catalog *, uint64_t id);
 script_type script_builtin_type(const char *name);

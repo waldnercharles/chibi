@@ -82,10 +82,12 @@ The latest request to produce remaining PRs authorizes implementation and stacki
 
 ### 3. Lambdas (D6)
 
-- Owner selected inferred captures over explicit capture lists. This does not yet choose by-value/ref semantics, callable signature spelling, or retention behavior.
-- Recommended safe next design: inferred immutable by-value captures with mutation remaining explicit, subject to the outstanding semantic choice; checked synchronous nonescaping consumers first. Static/borrowed/owned callable categories must remain semantically distinguishable, whether spelled with qualifiers or parameter lifetime effects.
-- Initial stored callbacks need a named feature and owner-bound lifetime/reload policy. Recommended: old-owner generation invalidation and re-registration. Do not infer this from a capture-syntax answer.
-- Escaping local `ref`, task-producing callable syntax, pinned old-generation closures and direct synchronous host reentry remain separate decisions, not implicit consequences of adding lambdas.
+- Selected: inferred shared mutable lexical bindings. Outer writes and sibling-closure writes are mutually visible; ordinary array/value assignment remains unchanged. The [decision record](decisions.md#selected-inferred-shared-mutable-captures) supersedes the historical immutable-snapshot recommendation.
+- Requested syntax direction: optional `fn`, an optional arrow body and inferred results. The [concrete proposal](../language-contracts/inferred-shared-captures-proposal.md) now gives equivalent `fn(value: int) { return ...; }`, `(value: int) { return ...; }` and `(value: int) => expression` forms, preserving explicit results for unresolved recursion. Exact grammar and canonicalization remain proposals; no lambda is implemented. Contextual parameter inference is unselected.
+- Recommend fn-free canonical expressions through checked semantic minimization, including a combined Format command; keep the whitespace-only layout SDK distinct. Keep `fn` and explicit nonvoid results in bodyless callable types. Extra arrow-block combinations and exact command defaults need scoped review; optional-keyword removal does not authorize block-to-arrow rewrites.
+- Pending lifetime/admission details: verified synchronous nonescape first, with the same shared-binding meaning for owned escape. Returned scalar/string/array captures and the named-result counter tuple are proposed; captured refs/task handles and general callable-bearing containers need their explicit lifetime/ownership contracts. No author allocator/free or Rust-style lifetime annotation is required by the selected semantics.
+- Proper capture-cycle support and automatic reclamation are required in a separate implementation PR. Initial rejection is only a temporary safety limitation and does not close that requirement. No collector or reclamation algorithm is selected.
+- Stored callbacks still need a named consumer and owner/reload contract. Old-owner generation invalidation and re-registration remain recommendations. Task-producing callables, cross-owner/thread access, pinned old generations and direct synchronous host reentry are not implicitly approved.
 
 ### 4. Packed AoS/SoA storage (D9)
 

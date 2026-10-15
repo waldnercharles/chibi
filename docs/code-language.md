@@ -5,6 +5,10 @@ The shared C frontend retains syntax snapshots and resolves typed semantic
 records. The compiler lowers those records directly into verified execution
 modules; visual editors consume their authoring projections.
 
+The [versioned current contract](language-contracts/v1.md) pins source evidence,
+existing C conformance cases and unresolved migration semantics separately.
+Its source audit is not fresh runtime or cross-backend validation.
+
 ## Declarative documents
 
 Project manifests are `project.kdl`, version 24. Scenes, prototypes, event
@@ -566,7 +570,12 @@ finishes and before the next dependent system prepares its query. A producer
 cannot ordinarily read or write a component it reduces; this includes reachable
 helpers, bindings and value/change filters. Component-presence tests are allowed.
 The restriction lets separate systems calculate contributions to shared targets
-concurrently. Query rows within each system still execute sequentially.
+concurrently. Eligible reduction rows can also execute on workers with private
+contributions merged in row order. The runtime requires sufficient rows/workers,
+streaming execution and verified reduction-only effects; ordinary writes,
+observation, inspection or profiling retain the serial fallback. See
+`execution_program_run_system_parallel` in `src/execution/program.c` and its
+caller in `src/runtime/behaviors/source.c`.
 
 Ordinary `reduce` replays contributions in stable system/query order, including
 integer wrapping at the destination width, clamping each bounded-field update,
@@ -609,23 +618,30 @@ ordinary update.
 
 State belongs to a behavior instance and persists across event executions and
 suspension. Task, entity and array state needs no default; it starts empty.
-A compatible live update preserves values by stable variable
-identity, type, container and reflected layout. A changed default applies to new
-instances; restarting applies it to an existing instance. Adding or removing
-state, changing its type or losing its identity requires a restart. Updates wait
-for active executions to finish. Invalid drafts retain the last valid graph and
-runtime generation.
+A nonrestart publication preserves matching state by stable variable identity,
+sharedness, scalar storage, container and nominal type name. New or nonmatching
+state starts from its new default; removed state disappears. A changed default
+does not replace a matched value unless explicitly restarted. This state matcher
+does not compare reflected layout hashes; installed-schema preflight is a
+separate check, not a promise of arbitrary reflected-layout migration.
+Publication occurs outside active dispatch, cancels the old continuations and
+tasks, and replaces the program; it does not wait for suspended work to finish.
+Invalid drafts retain the applied source/runtime generation.
 
-System root state belongs to each matched entity and persists across ticks.
+System root state belongs to each matched query tuple and persists across ticks.
 `shared total := 0;` instead belongs to the system and is shared by its
-matched entities. `shared` is rejected in behaviors. Leaving the query releases
-an entity's retained system state; matching again starts from the authored defaults.
+matched instances. `shared` is rejected in behaviors. Leaving the query releases
+the tuple's retained system state; matching again starts from the authored defaults.
 Entity generation changes also start fresh state. Suspended system executions
 retain their continuation rather than starting a second Tick for that entity.
-Changing a system's source or query currently restarts its registration: pending
-continuations are cancelled, and both entity-private and shared state start from
-the authored defaults. Compatible behavior instance reload does not preserve
-state across this system registration replacement.
+System publication uses the same matching-state replacement path. Query-managed
+rows are retained only when the query generator shape matches; later membership
+refresh still releases rows that no longer match. In the preview caller,
+`preview_sources_stage` sets restart only for the explicitly requested
+`restart_path`; dependent replacements preserve matching state. Explicit restart
+resets both instance and shared state. These rules come from
+`src/authoring/preview_source_publish.c` and `src/execution/program.c`, not the
+retired native application-DLL reload mechanism.
 
 ### Named scene entities
 

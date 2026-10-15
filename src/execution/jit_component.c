@@ -22,14 +22,11 @@ static void slot(const behavior_machine *m, int index, int reg)
         source ? 0 : index * sizeof(double)
     );
 }
-static void entity(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
+/* R0 is the world, R1 the handle. A valid handle leaves its slot in R1. */
+static void entity_checks(struct sljit_compiler *c, struct sljit_jump **invalid)
 {
-    struct sljit_compiler *c = m->compiler;
-    slot(m, i->left, SLJIT_R0);
-    slot(m, i->right, SLJIT_R1);
     sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R2, 0, SLJIT_R1, 0, SLJIT_IMM, 32);
     sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R1, 0, SLJIT_R1, 0);
-    struct sljit_jump *invalid[5];
     invalid[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
     invalid[1] = sljit_emit_cmp(
         c,
@@ -45,6 +42,14 @@ static void entity(const behavior_machine *m, const behavior_function_instructio
     invalid[3] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, generations));
     invalid[4] = sljit_emit_cmp(c, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R2, 0, SLJIT_MEM2(SLJIT_R3, SLJIT_R1), 2);
+}
+static void entity(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
+{
+    struct sljit_compiler *c = m->compiler;
+    slot(m, i->left, SLJIT_R0);
+    slot(m, i->right, SLJIT_R1);
+    struct sljit_jump *invalid[5];
+    entity_checks(c, invalid);
     sljit_emit_op1(c, SLJIT_MOV_U32, dest, offset, SLJIT_R1, 0);
     struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
     for (int j = 0; j < 5; j++) {
@@ -53,8 +58,49 @@ static void entity(const behavior_machine *m, const behavior_function_instructio
     sljit_emit_op1(c, SLJIT_MOV_U32, dest, offset, SLJIT_IMM, 0);
     bind(c, done);
 }
+/* R0 is the world; find the current column in R2, preserving the slot in R1. */
+static void find_column(struct sljit_compiler *c, uint64_t id, struct sljit_jump **empty)
+{
+    sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R4, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, capacity));
+    empty[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R4, 0, SLJIT_IMM, 0);
+    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R4, 0, SLJIT_R4, 0, SLJIT_IMM, 1);
+    uint64_t hash = id * UINT64_C(11400714819323198485);
+    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R4, 0, SLJIT_IMM, (sljit_sw)(hash ^ (hash >> 32)));
+    struct sljit_label *probe = sljit_emit_label(c);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, lookup));
+    sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R2, 0, SLJIT_MEM2(SLJIT_R2, SLJIT_R3), 2);
+    empty[1] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
+    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, 1);
+    sljit_emit_op2(c, SLJIT_MUL, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, sizeof(ecs_execution_column));
+    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, columns));
+    struct sljit_jump *found = sljit_emit_cmp(
+        c,
+        SLJIT_EQUAL,
+        SLJIT_MEM1(SLJIT_R2),
+        offsetof(ecs_execution_column, id),
+        SLJIT_IMM,
+        (sljit_sw)id
+    );
+    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_IMM, 1);
+    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_R4, 0);
+    struct sljit_jump *again = sljit_emit_jump(c, SLJIT_JUMP);
+    if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
+        sljit_set_label(again, probe);
+    }
+    bind(c, found);
+}
+static struct sljit_jump *absent(struct sljit_compiler *c)
+{
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, occupancy));
+    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 6);
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM2(SLJIT_R0, SLJIT_R3), 3);
+    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 63);
+    sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R3, 0);
+    sljit_emit_op2(c, SLJIT_AND, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
+    return sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+}
 /* R0..R4 are scratch for checked ECS lookup. The allocator spills integer
- * values that survive this instruction; floating point values stay live. */
+ * values that survive these instructions; floating point values stay live. */
 static void component(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
 {
     struct sljit_compiler *c = m->compiler;
@@ -71,42 +117,10 @@ static void component(const behavior_machine *m, const behavior_function_instruc
     empty[4] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
     struct sljit_jump *bound = sljit_emit_jump(c, SLJIT_JUMP);
     bind(c, unbound);
-    sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R4, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, capacity));
-    empty[1] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R4, 0, SLJIT_IMM, 0);
-    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R4, 0, SLJIT_R4, 0, SLJIT_IMM, 1);
-    uint64_t hash = i->value.u64 * UINT64_C(11400714819323198485);
-    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R4, 0, SLJIT_IMM, (sljit_sw)(hash ^ (hash >> 32)));
-    struct sljit_label *probe = sljit_emit_label(c);
-    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, lookup));
-    sljit_emit_op1(c, SLJIT_MOV_U32, SLJIT_R2, 0, SLJIT_MEM2(SLJIT_R2, SLJIT_R3), 2);
-    empty[2] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
-    sljit_emit_op2(c, SLJIT_SUB, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, 1);
-    sljit_emit_op2(c, SLJIT_MUL, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_IMM, sizeof(ecs_execution_column));
-    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R2, 0, SLJIT_R2, 0, SLJIT_MEM1(SLJIT_R0), offsetof(ecs_execution_view, columns));
-    struct sljit_jump *found = sljit_emit_cmp(
-        c,
-        SLJIT_EQUAL,
-        SLJIT_MEM1(SLJIT_R2),
-        offsetof(ecs_execution_column, id),
-        SLJIT_IMM,
-        (sljit_sw)i->value.u64
-    );
-    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_IMM, 1);
-    sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_R4, 0);
-    struct sljit_jump *again = sljit_emit_jump(c, SLJIT_JUMP);
-    if (sljit_get_compiler_error(c) == SLJIT_SUCCESS) {
-        sljit_set_label(again, probe);
-    }
-    bind(c, found);
+    find_column(c, i->value.u64, &empty[1]);
     bind(c, bound);
     if (!metadata) {
-        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, occupancy));
-        sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 6);
-        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_MEM2(SLJIT_R0, SLJIT_R3), 3);
-        sljit_emit_op2(c, SLJIT_AND, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 63);
-        sljit_emit_op2(c, SLJIT_LSHR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R3, 0);
-        sljit_emit_op2(c, SLJIT_AND, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, 1);
-        empty[3] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+        empty[3] = absent(c);
     }
     if (i->type == PIN_BOOL) {
         sljit_emit_op1(c, SLJIT_MOV_U8, dest, offset, SLJIT_IMM, 1);
@@ -158,6 +172,76 @@ static void component(const behavior_machine *m, const behavior_function_instruc
         }
     }
     sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_IMM, 0);
+    bind(c, done);
+}
+static void component_read(
+    const behavior_machine *m,
+    const behavior_function_instruction *i,
+    int dest,
+    sljit_sw offset
+)
+{
+    struct sljit_compiler *c = m->compiler;
+    slot(m, i->left, SLJIT_R1);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, world));
+    struct sljit_jump *invalid[11];
+    invalid[0] = sljit_emit_cmp(c, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+    entity_checks(c, &invalid[1]);
+    find_column(c, i->value.u64, &invalid[6]);
+    invalid[8] = absent(c);
+    invalid[9] = sljit_emit_cmp(
+        c,
+        SLJIT_NOT_EQUAL,
+        SLJIT_MEM1(SLJIT_R2),
+        offsetof(ecs_execution_column, layout),
+        SLJIT_IMM,
+        (sljit_sw)i->layout
+    );
+    invalid[10] = sljit_emit_cmp(
+        c,
+        SLJIT_NOT_EQUAL,
+        SLJIT_MEM1(SLJIT_R2),
+        offsetof(ecs_execution_column, stride),
+        SLJIT_IMM,
+        (sljit_sw)i->offset
+    );
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R2), offsetof(ecs_execution_column, data));
+    sljit_emit_op2(
+        c,
+        SLJIT_MUL,
+        SLJIT_R1,
+        0,
+        SLJIT_R1,
+        0,
+        SLJIT_IMM,
+        (sljit_sw)i->offset
+    );
+    sljit_emit_op2(c, SLJIT_ADD, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R1, 0);
+    if (i->type == PIN_F32 || i->type == PIN_F64) {
+        sljit_emit_fop1(
+            c,
+            i->type == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64,
+            dest,
+            offset,
+            SLJIT_MEM1(SLJIT_R0),
+            i->target
+        );
+    } else {
+        sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_MEM1(SLJIT_R0), i->target);
+    }
+    sljit_emit_op1(
+        c,
+        SLJIT_MOV_P,
+        SLJIT_MEM1(m->context),
+        offsetof(behavior_function_context, error_message),
+        SLJIT_IMM,
+        0
+    );
+    struct sljit_jump *done = sljit_emit_jump(c, SLJIT_JUMP);
+    for (int j = 0; j < 11; j++) {
+        bind(c, invalid[j]);
+    }
+    behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
     bind(c, done);
 }
 static void row(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
@@ -267,6 +351,7 @@ bool behavior_jit_component(
         case BF_COLUMN:
         case BF_COLUMN_TRY:
         case BF_COMPONENT: component(m, i, dest, offset); return true;
+        case BF_COMPONENT_READ: component_read(m, i, dest, offset); return true;
         case BF_ASSERT: {
             slot(m, i->left, SLJIT_R3);
             struct sljit_jump *ok = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);

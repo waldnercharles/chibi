@@ -91,6 +91,8 @@
     OP(RANDOM_RANGE) \
     OP(ENTITY) \
     OP(COMPONENT) \
+    /* Checked scalar copy: entity, component ID/layout/stride, field byte offset. */ \
+    OP(COMPONENT_READ) \
     OP(COLUMN) \
     OP(COLUMN_TRY) /* Non-trapping layout guard for speculative read-only work. */ \
     OP(ROW) /* checked column + live entity slot; no storage-changing effects */ \

@@ -1833,6 +1833,32 @@ static bool bounded_type(const script_catalog *catalog, const script_catalog_typ
     }
     return false;
 }
+/* A selected scalar getter consumes its private reference immediately. Prove
+ * the reflected byte range before replacing that descriptor with a checked
+ * value copy; ordinary member snapshots and escaping references stay generic. */
+static bool scalar_component_field(const script_catalog_type *type, const script_catalog_field *field)
+{
+    script_type value = field->type;
+    if (value.storage < PIN_BOOL || value.storage > PIN_F64 ||
+        value.container != PIN_CONTAINER_SINGLE || value.flags || value.nominal ||
+        field->offset > INT_MAX || !type->layout || !type->size) {
+        return false;
+    }
+    const type_desc *root = type_catalog_find(type->name);
+    size_t width = behavior_scalar_size(value.storage);
+    if (!root || root->size != type->size || type_layout_hash(root) != type->layout ||
+        field->offset > type->size || width > type->size - field->offset) {
+        return false;
+    }
+    for (int j = 0; j < root->field_count; j++) {
+        const type_field *actual = &root->fields[j];
+        if (!strcmp(actual->name, field->name) && actual->type == value.storage &&
+            actual->offset == field->offset && actual->size == width) {
+            return true;
+        }
+    }
+    return false;
+}
 static int component_call(lower *l, const script_expression *e, const script_catalog_capability *cap)
 {
     if (l->initializing) {
@@ -1846,12 +1872,37 @@ static int component_call(lower *l, const script_expression *e, const script_cat
     }
     script_type result = type->type;
     result.nominal = type->id;
+    const script_catalog_field *field = NULL;
     if (cap->component_field) {
-        const script_catalog_field *field = component_field(l, type, cap->component_field, e->range);
+        field = component_field(l, type, cap->component_field, e->range);
         if (!field) {
             return -1;
         }
         result = field->type;
+    }
+    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ && field &&
+        scalar_component_field(type, field)) {
+        int owner = entity >= 0
+                      ? expression(l, entity)
+                      : value_op(
+                            l,
+                            (behavior_function_instruction){ .op = BF_OWNER,
+                                                             .type = PIN_HANDLE },
+                            e->range
+                        );
+        return value_op(
+            l,
+            (behavior_function_instruction){
+                .op = BF_COMPONENT_READ,
+                .type = result.storage,
+                .left = owner,
+                .component = behavior_function_builder_component(l->builder, type->component_id, false, !l->reduction_target),
+                .value = { .type = PIN_U64, .u64 = type->component_id },
+                .layout = type->layout,
+                .offset = type->size,
+                .target = (int)field->offset },
+            e->range
+        );
     }
     if (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ) {
         return reference_read(l, component_reference(l, e, cap, type, entity, NULL), result, e->range);

@@ -804,6 +804,16 @@ The language follow-up admits these focused C checks under the same supervisor:
   The scalarization cases include forward joins, nested union escapes, retained
   native side effects/errors and bounded analysis fallback; real waits, managed
   payloads and inspection remain conservative counterexamples.
+  The scalar-component cases compare authored member snapshots against explicit
+  scalar getters, including managed-root observation, exact diagnostics and
+  same-context recovery. Direct getter lowering removes reference descriptors;
+  ordinary member snapshots remain the fallback oracle. See
+  [checked scalar reads](scalar-component-reads.md) for the reviewed workload,
+  historical measurements, refreshed integration scope and deliberately unrun coverage.
+  One combined 12-instruction scalar/query definition adds 20 calls across VM/
+  compiled and inspection modes, with live integer/floating/handle values,
+  distinct missing-tuple/stale-entity failures and same-context recovery. The
+  combined workload requires independent admission before execution.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
 - The optimizer microbenchmarks below use the existing C dispatchers, five
@@ -867,6 +877,12 @@ The language follow-up admits these focused C checks under the same supervisor:
   deadlines apply. The existing tooling driver loads the library and compares 120
   normal/inspection executions against the canonical VM and runs two pause/resume
   samples including negative zero, then removes all files.
+  Three additional five-instruction scalar-component functions add 132 calls:
+  BOOL, high-bit U64, F64 negative zero/NaN payload, ten unavailable-storage
+  failures, exact metadata and alternate-world recovery despite stale cached
+  columns. These coexist with the two query-variable definitions and sixteen
+  query calls below, sharing the same compiler child and source-size bound.
+  The combined generated source requires independent admission before execution.
   This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.

@@ -49,6 +49,8 @@ static int fail(
     if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         ctx->error_message = i->op == BF_QUERY_VARIABLE
                                ? "Query variable is not bound"
+                           : i->op == BF_COMPONENT_READ
+                               ? "Referenced storage is unavailable"
                                : i->message;
     }
     return reason == BEHAVIOR_FUNCTION_COMMAND   ? ctx->error_status
@@ -524,6 +526,22 @@ int execution_machine_step(execution_machine *m, int pc)
                 b.u64
             );
             break;
+        case BF_COMPONENT_READ: {
+            uint32_t row = ctx->world ? ecs_execution_entity(ctx->world, a.u64) : 0;
+            const ecs_execution_column
+                *column = ecs_execution_component(ctx->world, row, i->value.u64);
+            if (!column || column->layout != i->layout || column->stride != i->offset) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_HOST_DATA);
+                goto done;
+            }
+            memcpy(
+                &out->d,
+                (const char *)column->data + (size_t)row * column->stride + i->target,
+                behavior_scalar_size(i->type)
+            );
+            ctx->error_message = NULL;
+            break;
+        }
         case BF_COLUMN:
         case BF_COLUMN_TRY:
         case BF_COMPONENT: {

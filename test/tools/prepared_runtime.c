@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "test/prepared_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/value_wire.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -754,7 +755,7 @@ TEST_CASE(prepared_runtime_field_observer_baseline_edges_and_retarget)
         REQUIRE(!ecs_world_register_component(world, &prepared_counter_component, NULL));
         ecs_entity entities[] = { ecs_world_create_entity(world),
                                   ecs_world_create_entity(world) };
-        const prepared_counter initial[] = { { 1 }, { 20 } };
+        const prepared_counter initial[] = { { .value = 1 }, { .value = 20 } };
         for (int i = 0; i < 2; i++) {
             REQUIRE(!ecs_world_record_add(
                 world,
@@ -904,6 +905,168 @@ TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler)
     return true;
 }
 
+static const behavior_function *scalar_getter()
+{
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        execution_module_function_info function = execution_module_function_at(module, i);
+        if (function.kind == EXECUTION_FUNCTION_AUTHORED) {
+            return function.body;
+        }
+    }
+    return NULL;
+}
+
+static bool scalar_getter_run(
+    const behavior_function *function,
+    ecs_entity entity,
+    bool compiled,
+    bool present,
+    bool expected
+)
+{
+    arena storage = { 0 };
+    behavior_function_activation activation = { 0 };
+    behavior_function_activation_init(function, &activation);
+    pin_value result = { .type = PIN_BOOL };
+    behavior_function_context context = {
+        .results = &result,
+        .activation = &activation,
+        .budget = 1000,
+        .world = ecs_world_execution(world),
+        .failure = BEHAVIOR_FUNCTION_HOST_FLOW,
+        .error_message = "stale error",
+    };
+    behavior_function_bind_storage(&context, &storage);
+    bool bound = behavior_function_bind(function, &context, NULL, ecs_entity_to_u64(entity));
+    int status = bound ? behavior_function_run(function, &context, compiled)
+                       : FLOW_ERR_STATE;
+    bool valid = present
+                   ? status == FLOW_OK && result.type == PIN_BOOL &&
+                         result.b == expected && !context.error_message &&
+                         context.failure == BEHAVIOR_FUNCTION_HOST_FLOW
+                   : status == FLOW_ERR_INVALID_GRAPH &&
+                         context.failure == BEHAVIOR_FUNCTION_HOST_DATA &&
+                         context.error_message &&
+                         !strcmp(context.error_message, "Referenced storage is unavailable");
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    arena_free(&storage);
+    REQUIRE(bound && valid);
+    return true;
+}
+
+TEST_CASE(prepared_runtime_scalar_getter_executes_after_wire_retirement)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(read_file("scalar-read.prepared", &bytes, &length));
+        REQUIRE(length <= 16 * 1024);
+        execution_prepared_linker link = linker();
+        char error[192];
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared scalar getter: %s\n", error);
+        }
+        REQUIRE(module && !execution_module_import_count(module));
+        free(bytes);
+        bytes = NULL;
+        const behavior_function *function = scalar_getter();
+        REQUIRE(function && execution_module_function_count(module) == 1);
+        REQUIRE(b == 0 || behavior_function_entry(function));
+
+        /* A bool value read must validate layout and stride just like numeric
+         * reads; it is not the older bool component-presence operation. */
+        for (int schema = 0; schema < 3; schema++) {
+            world = ecs_world_new();
+            type_desc wrong_type = prepared_counter_type;
+            ecs_component_desc wrong = prepared_counter_component;
+            if (schema) {
+                wrong.type = &wrong_type;
+                wrong.layout_hash = type_layout_hash(&prepared_counter_type);
+                if (schema == 1) {
+                    wrong.layout_hash ^= 1;
+                } else {
+                    wrong_type.size++;
+                    wrong.element_size++;
+                }
+                REQUIRE(ecs_world_register_component(world, &wrong, NULL) == ECS_OK);
+            }
+            REQUIRE(!execution_module_components_valid(module, world));
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(!program);
+            ecs_world_free(world);
+            world = NULL;
+        }
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &prepared_counter_component, NULL) == ECS_OK);
+        REQUIRE(execution_module_components_valid(module, world));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        ecs_entity entity = ecs_world_create_entity(world);
+        prepared_counter initial = { .value = 17, .enabled = true };
+        REQUIRE(
+            ecs_world_record_add(world, entity, prepared_counter_component.id, &initial, 0) == ECS_OK
+        );
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(scalar_getter_run(function, entity, b == 1, true, true));
+        prepared_counter *counter = ecs_component_data(
+            world,
+            entity,
+            prepared_counter_component.id
+        );
+        REQUIRE(counter);
+        counter->enabled = false;
+        REQUIRE(scalar_getter_run(function, entity, b == 1, true, false));
+        REQUIRE(
+            ecs_world_record_remove(world, entity, prepared_counter_component.id, 0) == ECS_OK
+        );
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(scalar_getter_run(function, entity, b == 1, false, false));
+    }
+    return true;
+}
+
+TEST_CASE(prepared_runtime_scalar_getter_rejects_old_version_and_forged_range)
+{
+    REQUIRE(read_file("scalar-read.prepared", &bytes, &length));
+    REQUIRE(length <= 16 * 1024);
+    execution_prepared_linker link = linker();
+    char error[192];
+    size_t target = 0;
+    REQUIRE(prepared_scalar_getter_target(bytes, length, &target));
+    unsigned char crossing = (unsigned char)(sizeof(prepared_counter) * 2);
+    execution_wire header = { .data = bytes, .size = length, .reading = true };
+    uint64_t magic = 0, version = 0;
+    execution_wire_u64(&header, &magic);
+    size_t version_offset = header.offset;
+    execution_wire_u64(&header, &version);
+    REQUIRE(!header.error && version == EXECUTION_PREPARED_VERSION);
+    REQUIRE(header.offset == version_offset + 1);
+    mutation = malloc(length);
+    REQUIRE(mutation);
+    for (int invalid = 0; invalid < 3; invalid++) {
+        memcpy(mutation, bytes, length);
+        if (!invalid) {
+            mutation[version_offset] = EXECUTION_PREPARED_VERSION - 1;
+        } else {
+            mutation[target] = invalid == 1 ? 1 : crossing; /* Zigzag -1 or stride. */
+        }
+        module = execution_prepared_read(mutation, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module);
+        REQUIRE(
+            strstr(error, invalid ? "prepared definition verification failed" : "unknown prepared format version")
+        );
+    }
+    const int incompatible[] = { MISSING_TYPE, TYPE_LAYOUT, TYPE_STORAGE };
+    for (int i = 0; i < 3; i++) {
+        mismatch = incompatible[i];
+        module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+        REQUIRE(!module && strstr(error, "type requirement"));
+    }
+    return true;
+}
+
 void test_tool_prepared_runtime(const char *path)
 {
     directory = path;
@@ -918,5 +1081,7 @@ void test_tool_prepared_runtime(const char *path)
     RUN_TEST_CASE(prepared_runtime_state_action_banks_survive_wire_and_replacement);
     RUN_TEST_CASE(prepared_runtime_field_observer_baseline_edges_and_retarget);
     RUN_TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler);
+    RUN_TEST_CASE(prepared_runtime_scalar_getter_executes_after_wire_retirement);
+    RUN_TEST_CASE(prepared_runtime_scalar_getter_rejects_old_version_and_forged_range);
     pu_clear_setup();
 }

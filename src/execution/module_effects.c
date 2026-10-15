@@ -1070,6 +1070,17 @@ static void function(effects *e, const behavior_function *f, int depth)
                     unknown(e);
                 }
                 break;
+            case BF_COMPONENT_READ:
+                if (e->reducing) {
+                    add(e, false, i->value.u64);
+                }
+                if (!e->counting) {
+                    int steps = EFFECT_STEPS;
+                    if (!slot_origin(f, pc, i->left, 0, &steps).owner && !e->reducing) {
+                        e->summary->parallel_safe = false;
+                    }
+                }
+                break;
             case BF_COMPONENT:
                 if (!e->counting) {
                     int steps = EFFECT_STEPS;

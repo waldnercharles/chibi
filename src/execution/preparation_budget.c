@@ -39,7 +39,8 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
         if (!f->batchable) {
             continue;
         }
-        if (op->op == BF_COMPONENT || op->op == BF_COLUMN || op->op == BF_COLUMN_TRY) {
+        if (op->op == BF_COMPONENT || op->op == BF_COLUMN ||
+            op->op == BF_COLUMN_TRY || op->op == BF_COMPONENT_READ) {
             reads = sum(reads, 1);
         }
         if (op->op != BF_HOST_CALL) {

@@ -445,7 +445,7 @@ and the `cachefast` binary/shader snapshots.
 
 ### Reduced diffuse reconstruction
 
-`GameHRC2D.reconstruction_scale` independently controls Gather, diffuse history,
+`HRC2D.reconstruction_scale` independently controls Gather, diffuse history,
 filtering, and bounce-image dimensions, from 0.5 through 1.0. It defaults to 1.0.
 Material rasterization and final composition keep their full dimensions. Reduced
 light is reconstructed using absorption-guided weights to limit interpolation
@@ -616,7 +616,7 @@ pinhole and smoke.
 | Gather reads per-quadrant fluence images (`resolve.shd`) | max 1/255 | ~0.1 ms |
 | Gather loads its near-field inputs into a shared-memory tile | identical | 1.75 → 1.22 ms |
 | Emission and optical depth in one texture, two trace fetches instead of three | max 1/255 | ~0.2 ms |
-| `GameHRC2D.far_level` half-resolution far field (Sandbox: 2) | see below | transport 6.3 → 4.2 ms |
+| `HRC2D.far_level` half-resolution far field (Sandbox: 2) | see below | transport 6.3 → 4.2 ms |
 
 Sandbox frame medians include CPU submission and GPU completion. These are
 three alternating uninstrumented runs each:

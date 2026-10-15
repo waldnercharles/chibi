@@ -42,7 +42,7 @@ static uint64_t declaration_abi(const authoring_sources *sources)
     }
     return hash;
 }
-static bool *changed_sources(const game_preview_source_state *state)
+static bool *changed_sources(const preview_source_state *state)
 {
     int count = authoring_sources_count(state->working);
     bool *changed = xcalloc((size_t)count, sizeof *changed);
@@ -83,24 +83,24 @@ static bool *changed_sources(const game_preview_source_state *state)
 
 typedef struct
 {
-    game_preview_definition *current, *prepared;
+    preview_definition *current, *prepared;
 } projection_stage;
-struct game_preview_source_staging
+struct preview_source_staging
 {
-    game_preview_world *world;
+    preview_world *world;
     authoring_sources *sources;
-    game_source_staging *runtime;
+    source_staging *runtime;
     projection_stage *projections;
-    game_preview_definition **definitions, **removed;
+    preview_definition **definitions, **removed;
 };
-static game_preview_definition *source_projection(game_preview_world *world, const authoring_source *source)
+static preview_definition *source_projection(preview_world *world, const authoring_source *source)
 {
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *definition = world->definitions[i];
+        preview_definition *definition = world->definitions[i];
         if (!definition->working_presentation || !definition->path) {
             continue;
         }
-        const authoring_source *old = game_preview_source_at_path(
+        const authoring_source *old = preview_source_at_path(
             world->source_state->applied,
             definition->path
         );
@@ -111,10 +111,10 @@ static game_preview_definition *source_projection(game_preview_world *world, con
     }
     return NULL;
 }
-static void stage_free(game_preview_source_staging *stage)
+static void stage_free(preview_source_staging *stage)
 {
     for (int i = 0; i < acount(stage->projections); i++) {
-        game_preview_definition_free(stage->projections[i].prepared);
+        preview_definition_free(stage->projections[i].prepared);
     }
     afree(stage->projections);
     afree(stage->definitions);
@@ -122,15 +122,15 @@ static void stage_free(game_preview_source_staging *stage)
     authoring_sources_free(stage->sources);
     free(stage);
 }
-game_preview_source_staging *game_preview_sources_stage(
-    game_preview_world *world,
+preview_source_staging *preview_sources_stage(
+    preview_world *world,
     const char *restart_path,
     char *error,
     size_t size
 )
 {
     assert(world);
-    game_preview_source_state *state = world->source_state;
+    preview_source_state *state = world->source_state;
     if (!state || !state->working || !authoring_sources_valid(state->working)) {
         message(error, size, "Only a complete valid source collection can be published");
         return NULL;
@@ -139,20 +139,20 @@ game_preview_source_staging *game_preview_sources_stage(
         message(error, size, "Source publication is already staged");
         return NULL;
     }
-    if (restart_path && !game_preview_source_at_path(state->working, restart_path)) {
+    if (restart_path && !preview_source_at_path(state->working, restart_path)) {
         message(error, size, "Restart source is absent from the candidate collection");
         return NULL;
     }
     for (int i = 0; i < authoring_sources_count(state->working); i++) {
         const authoring_source *source = authoring_sources_at(state->working, i);
-        game_preview_definition
-            *definition = game_preview_find_definition(world, source->analysis->name);
+        preview_definition
+            *definition = preview_find_definition(world, source->analysis->name);
         if (definition && !definition->working_presentation) {
             message(error, size, "Source declaration conflicts with an existing declarative asset");
             return NULL;
         }
     }
-    game_preview_source_staging *stage = xcalloc(1, sizeof *stage);
+    preview_source_staging *stage = xcalloc(1, sizeof *stage);
     stage->world = world;
     stage->sources = authoring_sources_retain(state->working);
     for (int i = 0; i < acount(world->definitions); i++) {
@@ -162,7 +162,7 @@ game_preview_source_staging *game_preview_sources_stage(
     }
     for (int i = 0; i < authoring_sources_count(stage->sources); i++) {
         const authoring_source *source = authoring_sources_at(stage->sources, i);
-        game_preview_definition *current = source_projection(world, source);
+        preview_definition *current = source_projection(world, source);
         authoring_source_presentation *presentation = authoring_source_presentation_new(
             source->analysis,
             authoring_sources_catalog(stage->sources),
@@ -173,15 +173,14 @@ game_preview_source_staging *game_preview_sources_stage(
             stage_free(stage);
             return NULL;
         }
-        game_preview_definition
-            *prepared = game_preview_projection_new(source->analysis->name, presentation);
+        preview_definition *prepared = preview_projection_new(source->analysis->name, presentation);
         authoring_source_presentation_free(presentation);
         prepared->path = xstrdup(source->path);
         apush(stage->projections, ((projection_stage){ current, prepared }));
         apush(stage->definitions, current ? current : prepared);
     }
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *definition = world->definitions[i];
+        preview_definition *definition = world->definitions[i];
         if (!definition->working_presentation) {
             continue;
         }
@@ -194,7 +193,7 @@ game_preview_source_staging *game_preview_sources_stage(
         }
     }
     bool *changed = changed_sources(state);
-    game_source_publication *entries = NULL;
+    source_publication *entries = NULL;
     for (int i = 0; i < authoring_sources_count(stage->sources); i++) {
         const authoring_source *source = authoring_sources_at(stage->sources, i);
         bool restart = restart_path && !strcmp(restart_path, source->path);
@@ -205,7 +204,7 @@ game_preview_source_staging *game_preview_sources_stage(
             *old = source_at_identity(state->applied, source->analysis->identity);
         apush(
             entries,
-            ((game_source_publication){
+            ((source_publication){
                 .name = source->analysis->name,
                 .previous_name = old ? old->analysis->name : NULL,
                 .module = source->module,
@@ -217,13 +216,10 @@ game_preview_source_staging *game_preview_sources_stage(
     for (int i = 0; state->applied && i < authoring_sources_count(state->applied); i++) {
         const authoring_source *old = authoring_sources_at(state->applied, i);
         if (!source_at_identity(stage->sources, old->analysis->identity)) {
-            apush(
-                entries,
-                ((game_source_publication){ .previous_name = old->analysis->name })
-            );
+            apush(entries, ((source_publication){ .previous_name = old->analysis->name }));
         }
     }
-    stage->runtime = game_source_stage(world->runtime->sources, entries, acount(entries), NULL, error, size);
+    stage->runtime = source_stage(world->runtime->sources, entries, acount(entries), NULL, error, size);
     afree(entries);
     if (!stage->runtime) {
         stage_free(stage);
@@ -232,30 +228,29 @@ game_preview_source_staging *game_preview_sources_stage(
     state->staging = stage;
     return stage;
 }
-void game_preview_sources_discard(game_preview_source_staging *stage)
+void preview_sources_discard(preview_source_staging *stage)
 {
     assert(stage && stage->world->source_state->staging == stage);
-    game_source_discard(stage->runtime);
+    source_discard(stage->runtime);
     stage->world->source_state->staging = NULL;
     stage_free(stage);
 }
-void game_preview_sources_commit(game_preview_source_staging *stage)
+void preview_sources_commit(preview_source_staging *stage)
 {
     assert(stage && stage->world->source_state->staging == stage);
-    game_preview_world *world = stage->world;
-    game_preview_source_state *state = world->source_state;
+    preview_world *world = stage->world;
+    preview_source_state *state = world->source_state;
     assert(state->working == stage->sources);
-    game_source_commit(stage->runtime);
+    source_commit(stage->runtime);
     const input_action *actions = authoring_sources_input(stage->sources);
     if (world->runtime->engine) {
         engine_set_input_actions(world->runtime->engine, actions, acount(actions));
     }
     for (int i = 0; i < acount(stage->projections); i++) {
         projection_stage *row = &stage->projections[i];
-        game_preview_definition *definition = row->current ? row->current
-                                                           : row->prepared;
+        preview_definition *definition = row->current ? row->current : row->prepared;
         if (row->current) {
-            game_preview_definition *prepared = row->prepared;
+            preview_definition *prepared = row->prepared;
             free(definition->name);
             free(definition->path);
             authoring_source_presentation_free(definition->working_presentation);
@@ -279,7 +274,7 @@ void game_preview_sources_commit(game_preview_source_staging *stage)
     for (int i = 0; i < acount(stage->removed); i++) {
         stage->removed[i]->registered = 0;
         stage->removed[i]->world = NULL;
-        game_preview_definition_free(stage->removed[i]);
+        preview_definition_free(stage->removed[i]);
     }
     afree(world->definitions);
     world->definitions = stage->definitions;
@@ -291,12 +286,12 @@ void game_preview_sources_commit(game_preview_source_staging *stage)
     state->staging = NULL;
     stage_free(stage);
 }
-int game_preview_sources_publish(game_preview_world *world, const char *restart_path, char *error, size_t size)
+int preview_sources_publish(preview_world *world, const char *restart_path, char *error, size_t size)
 {
-    game_preview_source_staging *stage = game_preview_sources_stage(world, restart_path, error, size);
+    preview_source_staging *stage = preview_sources_stage(world, restart_path, error, size);
     if (!stage) {
         return -1;
     }
-    game_preview_sources_commit(stage);
+    preview_sources_commit(stage);
     return 0;
 }

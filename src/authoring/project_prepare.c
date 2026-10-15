@@ -107,14 +107,14 @@ static pin_value initial(const script_catalog *catalog, const script_catalog_par
     }
     return value;
 }
-static game_event_catalog *events_prepare(
+static event_catalog *events_prepare(
     const script_catalog *catalog,
     const execution_prepared_linker *types,
     char *error,
     size_t size
 )
 {
-    game_event_declaration *events = NULL;
+    event_declaration *events = NULL;
     for (int i = 0; i < catalog->capability_count; i++) {
         const script_catalog_capability *cap = &catalog->capabilities[i];
         if (cap->kind != SCRIPT_CAPABILITY_EVENT) {
@@ -135,7 +135,7 @@ static game_event_catalog *events_prepare(
         }
         apush(
             events,
-            ((game_event_declaration){
+            ((event_declaration){
                 .event = { .id = cap->id,
                            .abi = script_catalog_capability_abi(catalog, cap),
                            .name = cap->name,
@@ -143,7 +143,7 @@ static game_event_catalog *events_prepare(
                 .fields = fields })
         );
     }
-    game_event_catalog *result = game_event_catalog_new(events, acount(events), types, error, size);
+    event_catalog *result = event_catalog_new(events, acount(events), types, error, size);
     for (int i = 0; i < acount(events); i++) {
         execution_module_event_field_info *fields = (void *)events[i].fields;
         afree(fields);
@@ -152,15 +152,15 @@ static game_event_catalog *events_prepare(
     return result;
 }
 static bool attachments_valid(
-    const game_scene *scene,
+    const scene *prepared_scene,
     const authoring_sources *sources,
     char *error,
     size_t size
 )
 {
-    for (int i = 0; i < game_scene_object_count(scene); i++) {
-        for (int j = 0; j < game_scene_object_behavior_count(scene, i); j++) {
-            const char *name = game_scene_object_behavior(scene, i, j);
+    for (int i = 0; i < scene_object_count(prepared_scene); i++) {
+        for (int j = 0; j < scene_object_behavior_count(prepared_scene, i); j++) {
+            const char *name = scene_object_behavior(prepared_scene, i, j);
             bool found = false;
             for (int k = 0; k < authoring_sources_count(sources); k++) {
                 const authoring_source *source = authoring_sources_at(sources, k);
@@ -188,50 +188,50 @@ typedef struct
     const authoring_sources *sources;
     ecs_world *schemas;
 } scene_inputs;
-static game_scene *prepare_scene(const scene_inputs *in, const char *path, char *error, size_t size)
+static scene *prepare_scene(const scene_inputs *in, const char *path, char *error, size_t size)
 {
     char *text = project_prepare_read(path, NULL, error, size);
-    game_scene_document *document = text ? game_scene_document_load(text, error, size)
-                                         : NULL;
+    scene_document *document = text ? scene_document_load(text, error, size) : NULL;
     free(text);
     if (!document) {
         return NULL;
     }
     if (!document->ui && in->project->ui) {
-        game_scene_document_set_ui(document, in->project->ui);
+        scene_document_set_ui(document, in->project->ui);
     }
-    game_prototype **objects = NULL;
+    prototype **objects = NULL;
     bool valid = true;
     project_expansion expanded = { 0 };
     for (int i = 0; valid && i < acount(document->entities); i++) {
-        game_prototype *object = project_prepare_object(&document->entities[i], in->prototypes, error, size);
+        prototype *object = project_prepare_object(&document->entities[i], in->prototypes, error, size);
         valid = object && project_prepare_expand(&expanded, object, error, size) &&
                 authoring_prototype_parameters_fields(in->fields, object, error, size);
         if (object) {
             apush(objects, object);
         }
     }
-    game_scene *scene = valid ? authoring_scene_prepare(
-                                    document,
-                                    (const game_prototype *const *)objects,
-                                    acount(objects),
-                                    error,
-                                    size
-                                )
-                              : NULL;
+    scene *prepared_scene = valid ? authoring_scene_prepare(
+                                        document,
+                                        (const prototype *const *)objects,
+                                        acount(objects),
+                                        error,
+                                        size
+                                    )
+                                  : NULL;
     for (int i = 0; i < acount(objects); i++) {
-        game_prototype_free(objects[i]);
+        prototype_free(objects[i]);
     }
     afree(objects);
-    game_scene_document_free(document);
-    if (scene && (!attachments_valid(scene, in->sources, error, size) ||
-                  game_scene_register_components(scene, in->schemas, error, size))) {
-        game_scene_free(scene);
+    scene_document_free(document);
+    if (prepared_scene &&
+        (!attachments_valid(prepared_scene, in->sources, error, size) ||
+         scene_register_components(prepared_scene, in->schemas, error, size))) {
+        scene_free(prepared_scene);
         return NULL;
     }
-    return scene;
+    return prepared_scene;
 }
-static char *scene_name(const char *path)
+static char *name_from_path(const char *path)
 {
     const char *slash = strrchr(path, '/');
     const char *name = slash ? slash + 1 : path;
@@ -270,7 +270,7 @@ static char **scene_files(const char *content)
 static bool prepare_scenes(
     const scene_inputs *in,
     const char *start,
-    game_player_named_scene **scenes,
+    player_named_scene **scenes,
     char *error,
     size_t size
 )
@@ -278,21 +278,21 @@ static bool prepare_scenes(
     char **files = scene_files(in->project->content);
     bool valid = true;
     for (int i = 0; valid && i < acount(files); i++) {
-        char *name = scene_name(files[i]);
+        char *name = name_from_path(files[i]);
         if (!strcmp(name, start)) {
             free(name);
             continue;
         }
         char path[4096], reason[512];
         snprintf(path, sizeof path, "%s/scenes/%s", in->project->content, files[i]);
-        game_scene *scene = prepare_scene(in, path, reason, sizeof reason);
-        if (!scene) {
+        scene *prepared_scene = prepare_scene(in, path, reason, sizeof reason);
+        if (!prepared_scene) {
             snprintf(error, size, "scenes/%s: %s", files[i], reason);
             free(name);
             valid = false;
             continue;
         }
-        apush(*scenes, ((game_player_named_scene){ name, scene }));
+        apush(*scenes, ((player_named_scene){ name, prepared_scene }));
     }
     for (int i = 0; i < acount(files); i++) {
         free(files[i]);
@@ -312,20 +312,15 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
 static bool application_title_valid(const chibi_project *project, char *error, size_t size)
 {
     bool valid = project->application.title ||
-                 strlen(project->name) <= GAME_PLAYER_APPLICATION_TEXT_MAX;
+                 strlen(project->name) <= PLAYER_APPLICATION_TEXT_MAX;
     if (!valid && size) {
-        snprintf(error, size, "Project name is longer than %d bytes; set a shorter application title", GAME_PLAYER_APPLICATION_TEXT_MAX);
+        snprintf(error, size, "Project name is longer than %d bytes; set a shorter application title", PLAYER_APPLICATION_TEXT_MAX);
     }
     return valid;
 }
 /* The window icon ships beside the artifact, so it must decode as a PNG. Its
  * size and hash fill `icon` for the manifest's external records. */
-static bool application_icon_read(
-    const chibi_project *project,
-    game_player_asset *icon,
-    char *error,
-    size_t size
-)
+static bool application_icon_read(const chibi_project *project, player_asset *icon, char *error, size_t size)
 {
     const char *path = project->application.icon;
     if (!path) {
@@ -344,19 +339,17 @@ static bool application_icon_read(
         }
         return false;
     }
-    *icon = (game_player_asset){
-        .name = path,
-        .path = path,
-        .external = true,
-        .length = (size_t)bytes,
-        .content_hash = game_player_asset_fingerprint(data, (size_t)bytes)
-    };
+    *icon = (player_asset){ .name = path,
+                            .path = path,
+                            .external = true,
+                            .length = (size_t)bytes,
+                            .content_hash = player_asset_fingerprint(data, (size_t)bytes) };
     free(data);
     return true;
 }
 bool authoring_project_application_valid(const chibi_project *project, char *error, size_t size)
 {
-    game_player_asset icon;
+    player_asset icon;
     return application_title_valid(project, error, size) &&
            application_icon_read(project, &icon, error, size);
 }
@@ -369,7 +362,7 @@ static uint64_t content_hash(const void *data, size_t size)
     }
     return hash;
 }
-static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char *kind, const game_player_asset *asset)
+static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char *kind, const player_asset *asset)
 {
     yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, records);
     yyjson_mut_obj_add_str(doc, record, "kind", kind);
@@ -384,23 +377,19 @@ static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char 
         sizeof hash,
         "%016" PRIx64,
         asset->external ? asset->content_hash
-                        : game_player_asset_fingerprint(asset->data, asset->length)
+                        : player_asset_fingerprint(asset->data, asset->length)
     );
     yyjson_mut_obj_add_strcpy(doc, record, "content_hash", hash);
 }
 /* The artifact's resource closure: embedded assets, and the external files,
  * the window icon among them, that must ship beside it. */
-static char *manifest(
-    const game_player_asset *assets,
-    const game_player_asset *icon,
-    const authoring_project_artifact *artifact
-)
+static char *manifest(const player_asset *assets, const player_asset *icon, const authoring_project_artifact *artifact)
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
                                          "ui",     "font",          "sky",
                                          "sound" };
-    static_assert(sizeof kinds / sizeof *kinds == GAME_PLAYER_ASSET_COUNT);
+    static_assert(sizeof kinds / sizeof *kinds == PLAYER_ASSET_COUNT);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
@@ -446,7 +435,7 @@ bool authoring_project_prepare(
     if (!options->project || !options->native ||
         options->components.component_count < 0 ||
         (options->components.component_count && !options->components.components) ||
-        (options->modules & ~GAME_WORLD_MODULES_ALL)) {
+        (options->modules & ~WORLD_MODULES_ALL)) {
         return fail(error, size, "Invalid project preparation options");
     }
     bool valid = false;
@@ -454,19 +443,19 @@ bool authoring_project_prepare(
     chibi_project project = { 0 };
     ecs_world *schemas = ecs_world_new();
     material_fields *fields = material_fields_new();
-    game_package_collection *collection = NULL;
+    package_collection *collection = NULL;
     authoring_language_catalog *native = NULL;
     authoring_sources *sources = NULL;
     project_prototype *prototypes = NULL;
-    game_scene *scene = NULL;
-    game_player_named_scene *scenes = NULL;
-    game_event_catalog *events = NULL;
-    game_package_module *modules = NULL;
+    scene *prepared_scene = NULL;
+    player_named_scene *scenes = NULL;
+    event_catalog *events = NULL;
+    package_module *modules = NULL;
     const execution_module **definitions = NULL;
-    game_player_prototype *prepared = NULL;
-    game_player_asset *assets = NULL;
-    game_player_asset icon = { 0 };
-    const game_scene **visual_scenes = NULL;
+    player_prototype *prepared = NULL;
+    player_asset *assets = NULL;
+    player_asset icon = { 0 };
+    const scene **visual_scenes = NULL;
     declared_components *declared = NULL;
     input_action *actions = NULL;
     const ecs_component_desc **components = NULL;
@@ -533,23 +522,23 @@ bool authoring_project_prepare(
     if (!events) {
         goto done;
     }
-    game_prototype_registry registry = { .components = components,
-                                         .component_count = acount(components) };
+    prototype_registry registry = { .components = components,
+                                    .component_count = acount(components) };
     if (!project_prepare_prototypes(project.content, &registry, &prototypes, error, size)) {
         goto done;
     }
     for (int i = 0; i < acount(prototypes); i++) {
-        game_prototype *prototype = prototypes[i].prototype;
-        if (!authoring_prototype_parameters_fields(fields, prototype, error, size)) {
+        prototype *document = prototypes[i].prototype;
+        if (!authoring_prototype_parameters_fields(fields, document, error, size)) {
             goto done;
         }
-        game_scene *one = authoring_prototype_prepare(prototype, error, size);
+        scene *one = authoring_prototype_prepare(document, error, size);
         if (!one) {
             goto done;
         }
-        apush(prepared, ((game_player_prototype){ prototype->identity, one }));
+        apush(prepared, ((player_prototype){ document->identity, one }));
         if (!attachments_valid(one, sources, error, size) ||
-            game_scene_register_components(one, schemas, error, size)) {
+            scene_register_components(one, schemas, error, size)) {
             goto done;
         }
     }
@@ -559,9 +548,9 @@ bool authoring_project_prepare(
         fail(error, size, "Project has no start scene");
         goto done;
     }
-    start = scene_name(scene_path);
-    scene = prepare_scene(&inputs, scene_path, error, size);
-    if (!scene || !prepare_scenes(&inputs, start, &scenes, error, size)) {
+    start = name_from_path(scene_path);
+    prepared_scene = prepare_scene(&inputs, scene_path, error, size);
+    if (!prepared_scene || !prepare_scenes(&inputs, start, &scenes, error, size)) {
         goto done;
     }
     for (int i = 0; i < authoring_sources_count(sources); i++) {
@@ -571,7 +560,7 @@ bool authoring_project_prepare(
         if (!execution_prepared_write(source->module, &bytes, &length, error, size)) {
             goto done;
         }
-        if (length > GAME_PACKAGE_MAX_BYTES - module_bytes) {
+        if (length > PACKAGE_MAX_BYTES - module_bytes) {
             free(bytes);
             fail(error, size, "Prepared module closure exceeds package byte limit");
             goto done;
@@ -579,15 +568,15 @@ bool authoring_project_prepare(
         module_bytes += length;
         apush(
             modules,
-            ((game_package_module){ xstrdup(source->analysis->name),
-                                    execution_module_id(source->module),
-                                    bytes,
-                                    length })
+            ((package_module){ xstrdup(source->analysis->name),
+                               execution_module_id(source->module),
+                               bytes,
+                               length })
         );
         apush(definitions, source->module);
     }
-    if (!game_module_set_validate(definitions, acount(definitions), 0, error, size) ||
-        !game_event_catalog_validate(events, definitions, acount(definitions), error, size)) {
+    if (!module_set_validate(definitions, acount(definitions), 0, error, size) ||
+        !event_catalog_validate(events, definitions, acount(definitions), error, size)) {
         goto done;
     }
     /* The encoded package is linked independently of source/compiler storage. */
@@ -604,8 +593,8 @@ bool authoring_project_prepare(
     execution_prepared_linker native_linker = native_capabilities_prepared_linker(&context);
     declared_components_linking linking = { declared, &native_linker };
     execution_prepared_linker linker = declared_components_linker(&linking);
-    size_t remaining = GAME_PACKAGE_MAX_BYTES;
-    collection = game_package_read_budget(
+    size_t remaining = PACKAGE_MAX_BYTES;
+    collection = package_read_budget(
         modules,
         acount(modules),
         &linker,
@@ -618,14 +607,14 @@ bool authoring_project_prepare(
     if (!collection) {
         goto done;
     }
-    for (int i = 0; i < game_package_collection_count(collection); i++) {
-        if (!execution_module_components_valid(game_package_collection_module(collection, i), schemas)) {
+    for (int i = 0; i < package_collection_count(collection); i++) {
+        if (!execution_module_components_valid(package_collection_module(collection, i), schemas)) {
             if (size) {
                 snprintf(
                     error,
                     size,
                     "%s: Prepared component layout mismatch",
-                    game_package_collection_name(collection, i)
+                    package_collection_name(collection, i)
                 );
             }
             goto done;
@@ -634,7 +623,7 @@ bool authoring_project_prepare(
     for (int i = 0; i < acount(prepared); i++) {
         apush(visual_scenes, prepared[i].scene);
     }
-    apush(visual_scenes, scene);
+    apush(visual_scenes, prepared_scene);
     for (int i = 0; i < acount(scenes); i++) {
         apush(visual_scenes, scenes[i].scene);
     }
@@ -647,9 +636,9 @@ bool authoring_project_prepare(
     if (!authoring_sounds_prepare(project.content, &assets, error, size)) {
         goto done;
     }
-    game_player_spec spec = {
+    player_spec spec = {
         .world = { .modules = options->modules,
-                   .fields = (options->modules & GAME_WORLD_MATERIALS) ? fields : NULL,
+                   .fields = (options->modules & WORLD_MATERIALS) ? fields : NULL,
                    .events = events,
                    .actions = actions,
                    .action_count = acount(actions) },
@@ -660,19 +649,19 @@ bool authoring_project_prepare(
         .prototype_count = acount(prepared),
         .assets = assets,
         .asset_count = acount(assets),
-        .scene = scene,
+        .scene = prepared_scene,
         .scene_name = start,
         .scenes = scenes,
         .scene_count = acount(scenes)
     };
     char *title = project.application.title ? project.application.title
                                             : project.name;
-    game_player_application application = { .title = title,
-                                            .width = project.application.width,
-                                            .height = project.application.height,
-                                            .fullscreen = project.application.fullscreen,
-                                            .icon = project.application.icon };
-    valid = game_player_prepared_write(
+    player_application application = { .title = title,
+                                       .width = project.application.width,
+                                       .height = project.application.height,
+                                       .fullscreen = project.application.fullscreen,
+                                       .icon = project.application.icon };
+    valid = player_prepared_write(
         &spec,
         &application,
         &artifact->data,
@@ -691,7 +680,7 @@ done:
     authoring_visual_prepared_free(assets);
     afree(visual_scenes);
     if (collection) {
-        game_package_collection_free(collection);
+        package_collection_free(collection);
     }
     ecs_world_free(schemas);
     material_fields_free(fields);
@@ -702,19 +691,19 @@ done:
     afree(modules);
     afree(definitions);
     for (int i = 0; i < acount(prepared); i++) {
-        game_scene_free(prepared[i].scene);
+        scene_free(prepared[i].scene);
     }
     afree(prepared);
-    game_scene_free(scene);
+    scene_free(prepared_scene);
     for (int i = 0; i < acount(scenes); i++) {
         free((void *)scenes[i].name);
-        game_scene_free(scenes[i].scene);
+        scene_free(scenes[i].scene);
     }
     afree(scenes);
     project_prepare_prototypes_free(prototypes);
     free(start);
     free(scene_path);
-    game_event_catalog_free(events);
+    event_catalog_free(events);
     authoring_sources_free(sources);
     authoring_language_catalog_free(native);
     afree(components);

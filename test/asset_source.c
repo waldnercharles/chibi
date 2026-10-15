@@ -179,10 +179,10 @@ void test_asset_source()
         /* Canonical source has nothing authored to keep: an edit writes the
          * target's canonical text, with new members in the target's order. */
         const char *source = "name \"Removable\"\ncomponents {\n"
-                             "    (object)GAME.GameTransform\n}\n";
+                             "    (object)Transform\n}\n";
         const char *canonical = "name \"Removable\"\ncomponents {\n"
-                                "    (object)GAME.GameAim\n"
-                                "    GAME.GameTransform x=1\n}\n";
+                                "    (object)Aim\n"
+                                "    Transform x=1\n}\n";
         char error[256];
         av_doc *target = av_doc_read(canonical, error, sizeof error);
         assert(target);
@@ -361,12 +361,12 @@ void test_asset_source()
         break;
     }
 
-    if (type_catalog_find("GameTransform")) {
+    if (type_catalog_find("Transform")) {
         const char
             *draft = "version 1\nname \"Sandbox\"\n(array)entities {\n    - {\n"
                      "        name \"Player\"\n        prototype \"Player\"\n  "
                      "      components {\n"
-                     "            GAME.GameTransform x=-320.0 y\n        }\n   "
+                     "            Transform x=-320.0 y\n        }\n   "
                      " }\n}\n";
         int at = (int)(strstr(draft, "-320.0 y") - draft) + 8;
         source = asset_source_parse(draft);

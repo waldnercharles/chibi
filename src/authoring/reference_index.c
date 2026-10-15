@@ -34,10 +34,10 @@ struct reference_index
 static const reference_named_field_entry REFERENCE_NAMED_FIELDS[] = {
     { "MaterialTerrain", "field", REFERENCE_ASSET_FIELD, REFERENCE_BIND },
     { "EngineSystem", "asset", REFERENCE_ASSET_SYSTEM, REFERENCE_BIND },
-    { "GameShader", "material", REFERENCE_ASSET_MATERIAL, REFERENCE_BIND },
-    { "GameShader", "shape", REFERENCE_ASSET_SHAPE, REFERENCE_BIND },
-    { "GameUi", "document", REFERENCE_ASSET_UI, REFERENCE_BIND },
-    { "GameSpawnRequest", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
+    { "Shader", "material", REFERENCE_ASSET_MATERIAL, REFERENCE_BIND },
+    { "Shader", "shape", REFERENCE_ASSET_SHAPE, REFERENCE_BIND },
+    { "Ui", "document", REFERENCE_ASSET_UI, REFERENCE_BIND },
+    { "SpawnRequest", "prototype", REFERENCE_ASSET_PROTOTYPE, REFERENCE_SPAWN },
 };
 
 static char *copy(const char *text)
@@ -206,7 +206,7 @@ int reference_index_add_asset(
 
 int reference_index_event_asset(const reference_index *index, const char *name)
 {
-    return game_host_event_reserved(name)
+    return host_event_reserved(name)
              ? -1
              : reference_index_find_name(index, REFERENCE_ASSET_EVENT, name);
 }
@@ -410,11 +410,11 @@ static bool attaches(const reference *r, int behavior)
            r->symbol.kind == REFERENCE_SYMBOL_ASSET && r->symbol.asset == behavior;
 }
 
-/* A GameUi.document naming a ui asset. */
+/* A Ui.document naming a ui asset. */
 static bool shows_document(const reference_index *index, const reference *r)
 {
     return r->role == REFERENCE_BIND && r->component &&
-           !strcmp(r->component, "GameUi.document") && r->symbol.asset >= 0 &&
+           !strcmp(r->component, "Ui.document") && r->symbol.asset >= 0 &&
            index->assets[r->symbol.asset].kind == REFERENCE_ASSET_UI;
 }
 

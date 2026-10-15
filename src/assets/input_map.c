@@ -12,7 +12,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define CONTROL_ENUM "GameControl"
+#define CONTROL_ENUM "Control"
 #define CONTROL_LIMIT 64
 
 static bool fail(char *error, size_t size, const char *name, const char *message)
@@ -49,7 +49,7 @@ static bool read_action(const char *name, const av_value *value, input_action *o
     }
     *out = (input_action){ .name = name, .firing = firing && av_get_bool(firing) };
     if (!read_sources(av_obj_get(value, "sources"), &out->controls)) {
-        return fail(error, size, name, "sources must list one or more GameControl labels");
+        return fail(error, size, name, "sources must list one or more Control labels");
     }
     return true;
 }

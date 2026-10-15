@@ -435,6 +435,21 @@ if(CHIBI_SDK_BUILD_COMPILER)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c")
+    foreach(asset Start Cube Camera Light)
+        if(asset STREQUAL "Start")
+            set(folder scenes)
+        else()
+            set(folder prototypes)
+        endif()
+        set(input "${CHIBI_SDK_ROOT}/src/assets/starter/content/${folder}/${asset}.kdl")
+        set(output "${CMAKE_CURRENT_BINARY_DIR}/generated/starter/${asset}.c")
+        add_custom_command(OUTPUT "${output}"
+            COMMAND ${CMAKE_COMMAND} "-DINPUT=${input}" "-DOUTPUT=${output}"
+                "-DSYMBOL=chibi_starter_${asset}" -P "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
+            DEPENDS "${input}" "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
+                "${CHIBI_SDK_ROOT}/cmake/generated_file.cmake" VERBATIM)
+        target_sources(chibi_project_document PRIVATE "${output}")
+    endforeach()
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)

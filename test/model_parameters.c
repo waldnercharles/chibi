@@ -285,8 +285,8 @@ static void runtime_snapshots()
     int id = render_shader_find(asset->name);
     unsigned revision = render_shader_revision();
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     enum
     {
@@ -300,9 +300,9 @@ static void runtime_snapshots()
     for (int i = 0; i < COUNT; i++) {
         entities[i] = ecs_world_create_entity(world);
         snprintf(text[i], sizeof text[i], "Radius %.8g\n", 1 + i / 16.0);
-        GameShader binding = { .shape = asset->name, .parameters = text[i] };
+        Shader binding = { .shape = asset->name, .parameters = text[i] };
         assert(
-            ecs_world_record_add(world, entities[i], GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
+            ecs_world_record_add(world, entities[i], COMPONENT_Shader.id, &binding, 0) == ECS_OK
         );
         assert(ecs_world_apply_commands(world) == ECS_OK);
         assert(
@@ -321,10 +321,8 @@ static void runtime_snapshots()
     render_model_stats second = render_shader_model_stats();
     assert(second.bounds_updates == first.bounds_updates);
     assert(second.cache_hits >= first.cache_hits + COUNT);
-    GameTransform pose = { 100, -50 };
-    assert(
-        ecs_world_record_add(world, entities[0], GAME_COMPONENT_GameTransform.id, &pose, 0) == ECS_OK
-    );
+    Transform pose = { 100, -50 };
+    assert(ecs_world_record_add(world, entities[0], COMPONENT_Transform.id, &pose, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(
         render_shader_model_snapshot(id, world, entities[0], text[0], payload, min, max, &empty, &error)
@@ -382,10 +380,8 @@ static void runtime_snapshots()
     assert(ecs_world_apply_commands(world) == ECS_OK);
     ecs_entity reused = ecs_world_create_entity(world);
     assert(reused.slot == old.slot && ecs_entity_to_u64(reused) != ecs_entity_to_u64(old));
-    GameShader binding = { .shape = asset->name, .parameters = "Radius 6\n" };
-    assert(
-        ecs_world_record_add(world, reused, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
+    Shader binding = { .shape = asset->name, .parameters = "Radius 6\n" };
+    assert(ecs_world_record_add(world, reused, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     assert(
         render_shader_model_snapshot(id, world, reused, binding.parameters, payload, min, max, &empty, &error)
@@ -438,12 +434,10 @@ static void scoped_runtime_identity()
     assert(render_shader_models_upsert(catalog, 2, &error));
     int id = render_shader_find(parent->name);
     ecs_world *world = ecs_world_new();
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Shader, NULL) == ECS_OK);
     ecs_entity entity = ecs_world_create_entity(world);
-    GameShader binding = { .shape = parent->name };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
+    Shader binding = { .shape = parent->name };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     const node_desc *setter = registry_node_by_name("Set Shape Parameter");
     for (int i = 0; i < 2; i++) {

@@ -68,9 +68,11 @@ def runnable_selectors(classified, mappings):
 
 
 def studio_resource_preflight(build):
-    resources = {'studio': (261, 436675, '3ae7676c6de4a45db6dc2faadd29a9cf7dde2ea09409f1a008af4df4a4a65689'),
-                 'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
-    for name, (count, length, digest) in resources.items():
+    # The checked-in Studio project is already migrated to version 22.
+    resources = {'studio': (264, 455464, {
+                     'ad07c612fd681fda8233ca6871d8f8d629062e99fd53ef8f401e3a4233c135dd'}),
+                 'ui': (2, 297, {'8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92'})}
+    for name, (count, length, digests) in resources.items():
         base = build / 'share/chibi' / name
         files = sorted(p for p in base.rglob('*') if p.is_file())
         if len(files) != count or sum(p.stat().st_size for p in files) != length:
@@ -79,7 +81,7 @@ def studio_resource_preflight(build):
             raise ValueError('studio_resource_file_invalid')
         rows = {p.relative_to(base).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
         actual = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
-        if actual != digest:
+        if actual not in digests:
             raise ValueError('studio_startup_resource_generation_changed')
 
 
@@ -151,7 +153,8 @@ def studio_acceptance_preflight(selector):
         if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
             raise ValueError('studio_acceptance_source_path_invalid')
         path = source / relative
-        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 65536:
+        limit = 256 * 1024 if name == 'tests/acceptance/main.c' else 65536
+        if path.is_symlink() or path.stat().st_size != record['bytes'] or not 0 < record['bytes'] <= limit:
             raise ValueError('studio_acceptance_source_size_changed')
         if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
             raise ValueError('studio_acceptance_source_changed')
@@ -265,13 +268,13 @@ def installed_space_cadet(selector):
         raise ValueError('compiler_player_runtime_contract_mismatch')
     pin_path = project / '.chibi-engine.json'
     if pin_path.stat().st_size > 65536:
-        raise ValueError('game_pin_oversize')
+        raise ValueError('pin_oversize')
     pin = json.loads(pin_path.read_text())
     expected = dict(format=2, kind='player', build_id=player['build_id'],
                     engine_build_id=player['engine']['build_id'], sdk_build_id=player['sdk']['build_id'],
                     package_version=player['package_version'], requirements=player['requirements'])
     if pin != expected:
-        raise ValueError('game_pin_differs_from_installed_manifest')
+        raise ValueError('pin_differs_from_installed_manifest')
     paths = [project / 'project.kdl'] + sorted(p for p in (project / 'content').rglob('*') if p.is_file())
     if len(paths) != 36 or sum(p.stat().st_size for p in paths) != 144741:
         raise ValueError('SpaceCadet_source_membership_or_bytes_changed')
@@ -285,7 +288,7 @@ def installed_space_cadet(selector):
     for path in (project / '.chibi', artifact.parent, artifact, Path(str(artifact) + '.resources.json')):
         if path.is_symlink():
             raise ValueError('installed_prepared_handoff_must_not_be_symlink')
-    evidence = dict(game_root=str(project), player_build_id=player['build_id'],
+    evidence = dict(root=str(project), player_build_id=player['build_id'],
                     compiler_build_id=compiler['build_id'], source_fingerprint=fingerprint)
     if selector == '--compile-installed-space-cadet':
         binary = sdk / 'bin/chibi-compile'

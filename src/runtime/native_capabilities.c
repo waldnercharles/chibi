@@ -58,7 +58,8 @@ static bool same_type(const script_catalog_type *a, const script_catalog_type *b
         const script_catalog_field *x = &a->fields[i], *y = &b->fields[i];
         if (x->id != y->id || !same_text(x->name, y->name) ||
             !script_type_equal(x->type, y->type) || x->offset != y->offset ||
-            x->read != y->read || x->write != y->write || x->writable != y->writable) {
+            x->read != y->read || x->write != y->write ||
+            x->writable != y->writable || !same_text(x->read_key, y->read_key)) {
             return false;
         }
     }
@@ -135,6 +136,7 @@ static bool add_type(
     for (int i = 0; i < source->field_count; ++i) {
         fields[i] = source->fields[i];
         fields[i].name = own(n, fields[i].name);
+        fields[i].read_key = own(n, fields[i].read_key);
         /* Reflected declarations leave units to the target layout. */
         fields[i].unit = own(
             n,

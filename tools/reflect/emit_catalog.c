@@ -3,7 +3,6 @@
 #include "reflect_internal.h"
 #include "support/xalloc.h"
 
-#include <ctype.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,7 +139,7 @@ static unsigned effects(const fn_info *f)
 }
 static void fn_parameters(FILE *out, const fn_info *f)
 {
-    char *symbol = join(g_prefix, "_native_", f->name);
+    char *symbol = join(symbol_prefix(), "native_", f->name);
     parameters_begin(out, symbol, "arguments");
     int inputs = 0;
     for (int i = 0; i < acount(f->pname); ++i) {
@@ -211,7 +210,7 @@ static bool derived_operation(const char *op)
 }
 static void struct_parameters(FILE *out, const struct_info *s)
 {
-    char *symbol = join(g_prefix, "_native_", s->name);
+    char *symbol = join(symbol_prefix(), "native_", s->name);
     for (int output = 0; output < 2; ++output) {
         parameters_begin(out, symbol, output ? "fields_out" : "fields_in");
         for (int i = 0; i < acount(s->fields); ++i) {
@@ -298,10 +297,10 @@ static void cap(
     if (action) {
         fprintf(
             out,
-            ", .entries = %s_native_entry, .entry_count = 1, .outcomes = "
-            "%s_native_outcome, .outcome_count = 1, .completion_outcome = 0",
-            g_prefix,
-            g_prefix
+            ", .entries = %snative_entry, .entry_count = 1, .outcomes = "
+            "%snative_outcome, .outcome_count = 1, .completion_outcome = 0",
+            symbol_prefix(),
+            symbol_prefix()
         );
     } else {
         fputs(", .completion_outcome = -1", out);
@@ -309,7 +308,7 @@ static void cap(
 }
 static void struct_caps(FILE *out, const struct_info *s)
 {
-    char *symbol = join(g_prefix, "_native_", s->name);
+    char *symbol = join(symbol_prefix(), "native_", s->name);
     uint64_t id = script_catalog_id("type", s->name);
     char *name = join("Make_", s->name, "");
     cap(out, name, symbol, "fields_in", acount(s->fields), "make_result", 1, false, 0, s->constructor_name);
@@ -357,7 +356,7 @@ static void struct_caps(FILE *out, const struct_info *s)
             }
             name = join(operations[i].name, s->name, "");
             const char *ports = !strcmp(operations[i].output, "bool_result")
-                                  ? g_prefix
+                                  ? (*g_prefix ? g_prefix : "native")
                                   : symbol;
             cap(out,
                 name,
@@ -417,12 +416,12 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
     const char **opaque = handles(ctx);
     fprintf(
         out,
-        "static const char *const %s_native_entry[] = { \"Exec\" };\nstatic "
-        "const char *const %s_native_outcome[] = { \"Then\" };\n",
-        g_prefix,
-        g_prefix
+        "static const char *const %snative_entry[] = { \"Exec\" };\nstatic "
+        "const char *const %snative_outcome[] = { \"Then\" };\n",
+        symbol_prefix(),
+        symbol_prefix()
     );
-    parameters_begin(out, g_prefix, "bool_result");
+    parameters_begin(out, *g_prefix ? g_prefix : "native", "bool_result");
     parameter(out, "Value", "PIN_BOOL", NULL, false, 0, 0, false);
     parameters_end(out);
     for (int i = 0; i < acount(ctx->fns); ++i) {
@@ -433,7 +432,12 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
     }
     for (int i = 0; i < acount(ctx->structs); ++i) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "static const script_catalog_field %s_native_%s_fields[] = {\n", g_prefix, s->name);
+        fprintf(
+            out,
+            "static const script_catalog_field %snative_%s_fields[] = {\n",
+            symbol_prefix(),
+            s->name
+        );
         for (int j = 0; j < acount(s->fields); ++j) {
             const field_info *field = &s->fields[j];
             fprintf(out, "    { .id = UINT64_C(%" PRIu64 "), .name = ", field_id(s, field));
@@ -453,7 +457,7 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         }
         fputs("};\n", out);
     }
-    fprintf(out, "static const script_catalog_type %s_native_types[] = {\n", g_prefix);
+    fprintf(out, "static const script_catalog_type %snative_types[] = {\n", symbol_prefix());
     fprintf(
         out,
         "    { .id = UINT64_C(%" PRIu64
@@ -470,10 +474,10 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         type(out, "PIN_STRUCT", s->name, 0);
         fprintf(
             out,
-            ", .size = sizeof(%s), .fields = %s_native_%s_fields, .field_count "
+            ", .size = sizeof(%s), .fields = %snative_%s_fields, .field_count "
             "= %d",
             s->name,
-            g_prefix,
+            symbol_prefix(),
             s->name,
             acount(s->fields)
         );
@@ -481,17 +485,13 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             fprintf(out, ", .underlying = UINT64_C(%" PRIu64 ")", script_catalog_id("type", s->alias_of));
         }
         if (s->component) {
-            const char *source = !strncmp(s->name, "Game", 4) &&
-                                         isupper((unsigned char)s->name[4])
-                                   ? s->name + 4
-                                   : s->name;
             fprintf(
                 out,
                 ", .component = true, .component_id = UINT64_C(%" PRIu64
                 "), .source_name = ",
                 component_id(s)
             );
-            emit_string(out, source);
+            emit_string(out, s->name);
             fputs(", .key = ", out);
             emit_string(out, component_key(s));
             if (s->derived_from) {
@@ -519,11 +519,11 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         fputs(", .size = sizeof(uint64_t) },\n", out);
     }
     fputs("};\n", out);
-    fprintf(out, "static const script_catalog_capability %s_native_declarations[] = {\n", g_prefix);
+    fprintf(out, "static const script_catalog_capability %snative_declarations[] = {\n", symbol_prefix());
     int capabilities = 0, bindings = 0;
     for (int i = 0; i < acount(ctx->fns); ++i) {
         const fn_info *f = &ctx->fns[i];
-        char *symbol = join(g_prefix, "_native_", f->name);
+        char *symbol = join(symbol_prefix(), "native_", f->name);
         int inputs = 0, outputs = !f->read && !f->ret_void;
         for (int j = 0; j < acount(f->pname); ++j) {
             inputs += !f->pout[j];
@@ -562,7 +562,7 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         fputs("    { 0 },\n", out);
     }
     fputs("};\n", out);
-    fprintf(out, "static const native_capability_binding %s_native_bindings[] = {\n", g_prefix);
+    fprintf(out, "static const native_capability_binding %snative_bindings[] = {\n", symbol_prefix());
     for (int i = 0; i < acount(ctx->fns); ++i) {
         const fn_info *f = &ctx->fns[i];
         int outputs = !f->read && !f->ret_void;
@@ -572,14 +572,14 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         fprintf(
             out,
             "    { .id = UINT64_C(%" PRIu64
-            "), .call = &%s_%s_execution, .access = &%s_native_%s_access, "
-            ".result_pins = %s_native_%s_pins, .result_count = %d },\n",
+            "), .call = &%s%s_execution, .access = &%snative_%s_access, "
+            ".result_pins = %snative_%s_pins, .result_count = %d },\n",
             script_catalog_id("capability", f->display_name ? f->display_name : f->name),
-            g_prefix,
+            symbol_prefix(),
             f->name,
-            g_prefix,
+            symbol_prefix(),
             f->name,
-            g_prefix,
+            symbol_prefix(),
             f->name,
             outputs
         );
@@ -593,9 +593,9 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         fprintf(
             out,
             "    { .id = UINT64_C(%" PRIu64
-            "), .call = &%s_Unwrap_%s_execution },\n",
+            "), .call = &%sUnwrap_%s_execution },\n",
             script_catalog_id("capability", name),
-            g_prefix,
+            symbol_prefix(),
             s->name
         );
         free(name);
@@ -606,27 +606,27 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
     fputs("};\n", out);
     fprintf(
         out,
-        "static const script_catalog %s_native_catalog = { .types = "
-        "%s_native_types, .type_count = %d, .capabilities = "
-        "%s_native_declarations, .capability_count = %d, .entity_type = "
+        "static const script_catalog %snative_catalog = { .types = "
+        "%snative_types, .type_count = %d, .capabilities = "
+        "%snative_declarations, .capability_count = %d, .entity_type = "
         "UINT64_C(%" PRIu64 ") };\n",
-        g_prefix,
-        g_prefix,
+        symbol_prefix(),
+        symbol_prefix(),
         1 + acount(ctx->structs) + acount(ctx->enums) + acount(opaque),
-        g_prefix,
+        symbol_prefix(),
         capabilities,
         script_catalog_id("type", "ecs.entity")
     );
     fprintf(
         out,
-        "const native_capability_pack %s_NATIVE_PACK = { .catalog = "
-        "&%s_native_catalog, .bindings = %s_native_bindings, .binding_count = "
-        "%d, .layouts = %s_REGISTRY_TYPES, .layout_count = %d };\n",
-        g_prefix,
-        g_prefix,
-        g_prefix,
+        "const native_capability_pack %sNATIVE_PACK = { .catalog = "
+        "&%snative_catalog, .bindings = %snative_bindings, .binding_count = "
+        "%d, .layouts = %sREGISTRY_TYPES, .layout_count = %d };\n",
+        symbol_prefix(),
+        symbol_prefix(),
+        symbol_prefix(),
         bindings,
-        g_prefix,
+        symbol_prefix(),
         acount(ctx->structs)
     );
     afree(opaque);

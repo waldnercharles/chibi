@@ -71,85 +71,83 @@ static behavior_asset *contact_observer()
     return asset;
 }
 
-static ecs_entity add_body(game_preview_world *live, unsigned category, unsigned mask)
+static ecs_entity add_body(preview_world *live, unsigned category, unsigned mask)
 {
     ecs_entity entity = ecs_world_create_entity(live->runtime->ecs);
-    assert(GAME_GameTransform_add(live->runtime->ecs, entity, 0) == ECS_OK);
-    assert(GAME_GameCollider_add(live->runtime->ecs, entity, 0) == ECS_OK);
-    assert(GAME_GameBody_add(live->runtime->ecs, entity, 0) == ECS_OK);
+    assert(Transform_add(live->runtime->ecs, entity, 0) == ECS_OK);
+    assert(Collider_add(live->runtime->ecs, entity, 0) == ECS_OK);
+    assert(Body_add(live->runtime->ecs, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(live->runtime->ecs) == ECS_OK);
-    *GAME_GameTransform_get(live->runtime->ecs, entity) = (GameTransform){ 0 };
-    *GAME_GameCollider_get(live->runtime->ecs, entity) = (GameCollider){
-        .radius = 10,
-        .category = category,
-        .mask = mask,
-        .sensor = true
-    };
-    assert(game_behavior_attach(live->runtime->behaviors, entity, "Contacts") == 0);
+    *Transform_get(live->runtime->ecs, entity) = (Transform){ 0 };
+    *Collider_get(live->runtime->ecs, entity) = (Collider){ .radius = 10,
+                                                            .category = category,
+                                                            .mask = mask,
+                                                            .sensor = true };
+    assert(behavior_attach(live->runtime->behaviors, entity, "Contacts") == 0);
     return entity;
 }
 
-static void expect_contacts(game_preview_world *live, int count)
+static void expect_contacts(preview_world *live, int count)
 {
-    game_behavior_clear_logs(live->runtime->behaviors);
-    assert(game_physics_tick(live->runtime->physics, 0) == 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == 0);
-    assert(game_entities_flush(live->runtime->entities) == 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == 0);
-    assert(game_entities_dispatch_events(live->runtime->entities) >= 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == count);
+    behavior_clear_logs(live->runtime->behaviors);
+    assert(physics_tick(live->runtime->physics, 0) == 0);
+    assert(behavior_log_count(live->runtime->behaviors) == 0);
+    assert(entities_flush(live->runtime->entities) == 0);
+    assert(behavior_log_count(live->runtime->behaviors) == 0);
+    assert(entities_dispatch_events(live->runtime->entities) >= 0);
+    assert(behavior_log_count(live->runtime->behaviors) == count);
 }
 
 static void contact_history()
 {
     ecs_world *world = ecs_world_new();
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameBody, NULL) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(world);
+    assert(ecs_world_register_component(world, &COMPONENT_Transform, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Collider, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Body, NULL) == ECS_OK);
+    preview_world *live = preview_world_new(world);
     register_damage_event(live);
     assert(
-        game_preview_add_definition(live, game_preview_definition_new("Contacts", contact_observer())) == 0
+        preview_add_definition(live, preview_definition_new("Contacts", contact_observer())) == 0
     );
     ecs_entity a = add_body(live, 1, 2);
     ecs_entity b = add_body(live, 2, 0);
     expect_contacts(live, 0);
-    GAME_GameCollider_get(world, b)->mask = 1;
+    Collider_get(world, b)->mask = 1;
     expect_contacts(live, 2);
-    behavior_instance *observer = game_behavior_instance(live->runtime->behaviors, a, "Contacts");
+    behavior_instance *observer = behavior_instance(live->runtime->behaviors, a, "Contacts");
     pin_value other;
     assert(
         behavior_instance_get_variable(observer, observer->asset->variables[0].id, &other) == 0
     );
     assert(other.u64 == ecs_entity_to_u64(b));
     expect_contacts(live, 0);
-    GAME_GameTransform_get(world, b)->x = 21;
+    Transform_get(world, b)->x = 21;
     expect_contacts(live, 0);
-    GAME_GameTransform_get(world, b)->x = 20;
+    Transform_get(world, b)->x = 20;
     expect_contacts(live, 2);
-    game_physics_reset(live->runtime->physics);
+    physics_reset(live->runtime->physics);
     expect_contacts(live, 2);
-    game_behavior_destroy_entity(live->runtime->behaviors, b);
+    behavior_destroy_entity(live->runtime->behaviors, b);
     ecs_entity replacement = add_body(live, 2, 1);
     assert(ecs_entity_to_u64(replacement) != ecs_entity_to_u64(b));
     expect_contacts(live, 2);
-    GAME_GameCollider_get(world, replacement)->mask = 0;
+    Collider_get(world, replacement)->mask = 0;
     expect_contacts(live, 0);
-    GAME_GameCollider_get(world, replacement)->mask = 1;
+    Collider_get(world, replacement)->mask = 1;
     expect_contacts(live, 2);
-    game_behavior_clear_logs(live->runtime->behaviors);
-    game_physics_reset(live->runtime->physics);
-    assert(game_physics_tick(live->runtime->physics, 0) == 0);
+    behavior_clear_logs(live->runtime->behaviors);
+    physics_reset(live->runtime->physics);
+    assert(physics_tick(live->runtime->physics, 0) == 0);
     engine *runtime = authoring_engine_new(world, live->runtime);
     assert(engine_set_playing(runtime, false) == 0);
     assert(engine_frame(runtime, 0.0) >= 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == 0);
+    assert(behavior_log_count(live->runtime->behaviors) == 0);
     assert(engine_frame(runtime, 0.1) >= 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == 0);
+    assert(behavior_log_count(live->runtime->behaviors) == 0);
     assert(engine_set_playing(runtime, true) == 0);
     assert(engine_frame(runtime, 0.2) >= 0);
     assert(engine_frame(runtime, 0.2 + ENGINE_FIXED_SECONDS) >= 0);
-    assert(game_behavior_log_count(live->runtime->behaviors) == 2);
+    assert(behavior_log_count(live->runtime->behaviors) == 2);
     pin_value point;
     assert(
         behavior_instance_get_variable(observer, observer->asset->variables[1].id, &point) == 0
@@ -161,7 +159,7 @@ static void contact_history()
         isfinite(((const CF_V2 *)point.ptr)->y)
     );
     engine_free(runtime);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -169,10 +167,10 @@ static void contact_history()
 
 static bool oracle_overlap(ecs_world *world, ecs_entity a, ecs_entity b)
 {
-    const GameTransform *left = GAME_GameTransform_get_const(world, a);
-    const GameTransform *right = GAME_GameTransform_get_const(world, b);
-    const GameCollider *first = GAME_GameCollider_get_const(world, a);
-    const GameCollider *second = GAME_GameCollider_get_const(world, b);
+    const Transform *left = Transform_get_const(world, a);
+    const Transform *right = Transform_get_const(world, b);
+    const Collider *first = Collider_get_const(world, a);
+    const Collider *second = Collider_get_const(world, b);
     if (!(first->category & second->mask) || !(second->category & first->mask) ||
         first->radius < 0 || second->radius < 0) {
         return false;
@@ -192,13 +190,13 @@ static unsigned random_value(unsigned *state)
 static void contact_oracle()
 {
     ecs_world *world = ecs_world_new();
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameBody, NULL) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(world);
+    assert(ecs_world_register_component(world, &COMPONENT_Transform, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Collider, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Body, NULL) == ECS_OK);
+    preview_world *live = preview_world_new(world);
     register_damage_event(live);
     assert(
-        game_preview_add_definition(live, game_preview_definition_new("Contacts", contact_observer())) == 0
+        preview_add_definition(live, preview_definition_new("Contacts", contact_observer())) == 0
     );
     ecs_entity bodies[ORACLE_BODIES];
     for (int i = 0; i < ORACLE_BODIES; i++) {
@@ -210,10 +208,10 @@ static void contact_oracle()
     unsigned random = 17;
     for (int phase = 0; phase < 32; phase++) {
         for (int i = 0; i < ORACLE_BODIES; i++) {
-            GameTransform *position = GAME_GameTransform_get(world, bodies[i]);
+            Transform *position = Transform_get(world, bodies[i]);
             position->x = (float)(int)(random_value(&random) % 601) - 300;
             position->y = (float)(int)(random_value(&random) % 601) - 300;
-            GameCollider *collider = GAME_GameCollider_get(world, bodies[i]);
+            Collider *collider = Collider_get(world, bodies[i]);
             collider->radius = (float)(random_value(&random) % 150);
             collider->category = 1u << (random_value(&random) % 3);
             collider->mask = random_value(&random) % 8;
@@ -235,32 +233,29 @@ static void contact_oracle()
                 previous[i][j] = overlap;
             }
         }
-        game_behavior_clear_logs(live->runtime->behaviors);
-        assert(game_physics_tick(live->runtime->physics, 0) == 0);
+        behavior_clear_logs(live->runtime->behaviors);
+        assert(physics_tick(live->runtime->physics, 0) == 0);
         for (int batch = 0; batch < 4; batch++) {
-            assert(game_entities_dispatch_events(live->runtime->entities) == 0);
+            assert(entities_dispatch_events(live->runtime->entities) == 0);
         }
-        if (game_behavior_log_count(live->runtime->behaviors) != count) {
+        if (behavior_log_count(live->runtime->behaviors) != count) {
             fprintf(
                 stderr,
                 "contact oracle phase %d: expected %d events, got %d\n",
                 phase,
                 count,
-                game_behavior_log_count(live->runtime->behaviors)
+                behavior_log_count(live->runtime->behaviors)
             );
         }
-        assert(game_behavior_log_count(live->runtime->behaviors) == count);
+        assert(behavior_log_count(live->runtime->behaviors) == count);
         for (int i = 0; i < count; i++) {
-            game_behavior_log_info log;
-            assert(game_behavior_log_info_at(live->runtime->behaviors, i, &log) == 0);
+            behavior_log_info log;
+            assert(behavior_log_info_at(live->runtime->behaviors, i, &log) == 0);
             assert(ecs_entity_to_u64(log.entity) == expected[i]);
         }
         for (int i = 0; i < ORACLE_BODIES; i++) {
-            behavior_instance *instance = game_behavior_instance(
-                live->runtime->behaviors,
-                bodies[i],
-                "Contacts"
-            );
+            behavior_instance
+                *instance = behavior_instance(live->runtime->behaviors, bodies[i], "Contacts");
             pin_value other;
             assert(
                 behavior_instance_get_variable(
@@ -273,24 +268,24 @@ static void contact_oracle()
         }
         expect_contacts(live, 0);
     }
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
 static void invalid_physics()
 {
     ecs_world *world = ecs_world_new();
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameBody, NULL) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(world);
+    assert(ecs_world_register_component(world, &COMPONENT_Transform, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Collider, NULL) == ECS_OK);
+    assert(ecs_world_register_component(world, &COMPONENT_Body, NULL) == ECS_OK);
+    preview_world *live = preview_world_new(world);
     assert(
-        game_preview_add_definition(live, game_preview_definition_new("Contacts", contact_observer())) == 0
+        preview_add_definition(live, preview_definition_new("Contacts", contact_observer())) == 0
     );
     ecs_entity entity = add_body(live, 1, 1);
     for (int invalid = 0; invalid < 7; invalid++) {
-        GameTransform *position = GAME_GameTransform_get(world, entity);
-        GameCollider *collider = GAME_GameCollider_get(world, entity);
+        Transform *position = Transform_get(world, entity);
+        Collider *collider = Collider_get(world, entity);
         switch (invalid) {
             case 0: collider->radius = FLT_MAX; break;
             case 1: position->x = -FLT_MAX; break;
@@ -300,14 +295,14 @@ static void invalid_physics()
             case 5: position->x = INFINITY; break;
             case 6: position->y = NAN; break;
         }
-        assert(game_physics_tick(live->runtime->physics, 0) < 0);
-        assert(game_physics_error(live->runtime->physics)[0]);
-        *position = (GameTransform){ 0 };
+        assert(physics_tick(live->runtime->physics, 0) < 0);
+        assert(physics_error(live->runtime->physics)[0]);
+        *position = (Transform){ 0 };
         collider->radius = 10;
-        assert(game_physics_tick(live->runtime->physics, 0) == 0);
-        assert(!game_physics_error(live->runtime->physics)[0]);
+        assert(physics_tick(live->runtime->physics, 0) == 0);
+        assert(!physics_error(live->runtime->physics)[0]);
     }
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
@@ -326,11 +321,11 @@ static char *read_content(const char *path)
     return text;
 }
 
-static game_prototype *read_prototype(const char *path, const game_prototype_registry *registry)
+static prototype *read_prototype(const char *path, const prototype_registry *registry)
 {
     char *text = read_content(path);
     char error[256];
-    game_prototype *prototype = game_prototype_load(text, registry, error, sizeof error);
+    prototype *prototype = prototype_load(text, registry, error, sizeof error);
     free(text);
     assert(prototype);
     return prototype;
@@ -360,46 +355,35 @@ static behavior_asset *read_behavior(const char *name)
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    return behavior_attach(user, entity, name);
 }
 
-static ecs_entity spawn(const game_prototype *prototype, ecs_world *world, game_behavior_world *behaviors)
+static ecs_entity spawn(const prototype *prototype, ecs_world *world, behavior_world *behaviors)
 {
     ecs_entity entity;
     char error[256];
     assert(
-        game_prototype_spawn(
-            prototype,
-            world,
-            &(game_prototype_spawn_hooks){ attach, behaviors },
-            &entity,
-            error,
-            sizeof error
-        ) == 0
+        prototype_spawn(prototype, world, &(prototype_spawn_hooks){ attach, behaviors }, &entity, error, sizeof error) ==
+        0
     );
     return entity;
 }
 
 static void authored_combat(bool isolated)
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *enemy = read_prototype("test/fixtures/content/prototypes/Enemy.kdl", &registry);
-    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
-    game_prototype_preview *preview = isolated ? game_prototype_preview_new(&registry)
-                                               : NULL;
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+    prototype *enemy = read_prototype("test/fixtures/content/prototypes/Enemy.kdl", &registry);
+    prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
+    prototype_preview *preview = isolated ? prototype_preview_new(&registry) : NULL;
     register_test_preview_catalog(preview);
-    ecs_world *world = isolated ? game_prototype_preview_world(preview)
-                                : ecs_world_new();
-    game_preview_world *live = NULL;
+    ecs_world *world = isolated ? prototype_preview_world(preview) : ecs_world_new();
+    preview_world *live = NULL;
     engine *runtime = NULL;
     if (!isolated) {
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            assert(
-                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-            );
+        for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+            assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
         }
-        live = game_preview_world_new(world);
+        live = preview_world_new(world);
         register_damage_event(live);
         runtime = authoring_engine_new(world, live->runtime);
         assert(engine_set_playing(runtime, true) == 0);
@@ -411,76 +395,73 @@ static void authored_combat(bool isolated)
     for (int i = 0; i < (int)(sizeof names / sizeof names[0]); i++) {
         behavior_asset *asset = read_behavior(names[i]);
         if (isolated) {
-            assert(game_prototype_preview_register_behavior(preview, names[i], asset) == 0);
+            assert(prototype_preview_register_behavior(preview, names[i], asset) == 0);
             behavior_asset_free(asset);
         } else {
-            assert(
-                game_preview_add_definition(live, game_preview_definition_new(names[i], asset)) == 0
-            );
+            assert(preview_add_definition(live, preview_definition_new(names[i], asset)) == 0);
         }
     }
-    game_behavior_world *behaviors = isolated
-                                       ? game_prototype_preview_behaviors(preview)
-                                       : live->runtime->behaviors;
+    behavior_world *behaviors = isolated ? prototype_preview_behaviors(preview)
+                                         : live->runtime->behaviors;
     ecs_entity target;
     if (isolated) {
         char error[256];
-        assert(game_prototype_preview_launch(preview, enemy, error, sizeof error) == 0);
-        target = game_prototype_preview_entity(preview);
+        assert(prototype_preview_launch(preview, enemy, error, sizeof error) == 0);
+        target = prototype_preview_entity(preview);
     } else {
         target = spawn(enemy, world, behaviors);
     }
     simulation_fixture clock = simulation_fixture_new(runtime, preview);
     simulation_advance(&clock, 0);
-    game_particles *particles = isolated ? game_prototype_preview_particles(preview)
-                                         : live->runtime->particles;
-    assert(game_particles_count(particles) == 0);
+    particles *particles = isolated ? prototype_preview_particles(preview)
+                                    : live->runtime->particles;
+    assert(particles_count(particles) == 0);
     ecs_entity shot = spawn(projectile, world, behaviors);
-    *GAME_GameTransform_get(world, shot) = *GAME_GameTransform_get_const(world, target);
+    *Transform_get(world, shot) = *Transform_get_const(world, target);
     simulation_frame(&clock, clock.time);
-    assert(GAME_GameHealth_get_const(world, target)->current == 50);
+    assert(Health_get_const(world, target)->current == 50);
     assert(ecs_entity_is_alive(world, shot));
     simulation_step(&clock);
     assert(!ecs_entity_is_alive(world, shot));
-    assert(game_particles_count(particles) == 12);
-    assert(game_particles_data(particles)[0].age == 0.0f);
-    assert(GAME_GameHealth_get_const(world, target)->current == 40);
+    assert(particles_count(particles) == 12);
+    assert(particles_data(particles)[0].age == 0.0f);
+    assert(Health_get_const(world, target)->current == 40);
     simulation_step(&clock);
-    assert(GAME_GameHealth_get_const(world, target)->current == 40);
+    assert(Health_get_const(world, target)->current == 40);
     ecs_entity shots[2];
     for (int i = 0; i < 2; i++) {
         shots[i] = spawn(projectile, world, behaviors);
-        *GAME_GameTransform_get(world, shots[i]) = *GAME_GameTransform_get_const(world, target);
-        GAME_GameProjectile_get(world, shots[i])->damage = 20;
+        *Transform_get(world, shots[i]) = *Transform_get_const(world, target);
+        Projectile_get(world, shots[i])->damage = 20;
     }
     simulation_step(&clock);
     assert(!ecs_entity_is_alive(world, shots[0]));
     assert(!ecs_entity_is_alive(world, shots[1]));
     assert(!ecs_entity_is_alive(world, target));
-    assert(game_particles_count(particles) == 36);
+    assert(particles_count(particles) == 36);
     if (!isolated) {
-        float particle_age = game_particles_data(particles)[0].age;
+        float particle_age = particles_data(particles)[0].age;
         assert(engine_set_playing(runtime, false) == 0);
         simulation_frame(&clock, 10.0);
-        assert(game_particles_count(particles) == 36);
-        assert(game_particles_data(particles)[0].age == particle_age);
+        assert(particles_count(particles) == 36);
+        assert(particles_data(particles)[0].age == particle_age);
         assert(engine_set_playing(runtime, true) == 0);
         simulation_advance(&clock, 10.5);
-        assert(game_particles_count(particles) == 0);
+        assert(particles_count(particles) == 0);
     }
     if (isolated) {
-        game_prototype_preview_stop(preview);
-        assert(game_particles_count(particles) == 0);
+        prototype_preview_stop(preview);
+        assert(particles_count(particles) == 0);
     }
     if (isolated) {
-        game_prototype_preview_free(preview);
+        prototype_preview_free(preview);
     } else {
         engine_free(runtime);
-        game_preview_world_free(live);
+        preview_world_free(live);
         ecs_world_free(world);
     }
-    game_prototype_free(projectile);
-    game_prototype_free(enemy);
+    prototype_free(projectile);
+    prototype_free(enemy);
 }
 
 void test_combat()

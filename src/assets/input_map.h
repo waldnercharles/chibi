@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 
-/* A project's input map, content/input.kdl. Each action names the GameControl
+/* A project's input map, content/input.kdl. Each action names the Control
  * labels that hold it, and may also hold Aim firing:
  *
  *     Fire {

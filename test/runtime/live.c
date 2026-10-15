@@ -58,24 +58,24 @@ static void automatic_layout_checks()
     uint64_t automatic = source->graph->nodes[0]->id,
              placed = source->graph->nodes[1]->id;
     source->graph->nodes[0]->placed = false;
-    game_preview_definition *definition = game_preview_definition_new("layout", source);
+    preview_definition *definition = preview_definition_new("layout", source);
     behavior_asset *open = authoring_snapshot(definition->working);
     graph_node_by_id(open->graph, automatic)->x += 240;
     test_check(
-        game_preview_sync_working(definition, open) == 0 &&
-            !definition->dirty && !definition->unsaved &&
+        preview_sync_working(definition, open) == 0 && !definition->dirty &&
+            !definition->unsaved &&
             graph_node_by_id(definition->working->graph, automatic)->x ==
                 graph_node_by_id(open->graph, automatic)->x,
         "arranging automatic nodes leaves a definition saved and applied"
     );
     graph_node_by_id(open->graph, placed)->x += 40;
     test_check(
-        game_preview_sync_working(definition, open) == 0 && definition->dirty &&
+        preview_sync_working(definition, open) == 0 && definition->dirty &&
             definition->unsaved,
         "moving a placed node is an unsaved edit"
     );
     behavior_asset_free(open);
-    game_preview_definition_free(definition);
+    preview_definition_free(definition);
 }
 
 /* Component access nodes write one-line file entries. Wherever arrangement
@@ -83,17 +83,17 @@ static void automatic_layout_checks()
 static void arranged_entries_checks()
 {
     static const char *const kinds[] = {
-        "Get_GameCollider",
-        "GetEntity_GameCollider",
-        "Has_GameCollider",
-        "HasEntity_GameCollider",
-        "Set_GameCollider",
-        "SetEntity_GameCollider",
-        "Add_GameCollider",
-        "Remove_GameCollider",
-        "Make_GameCollider",
-        "Break_GameCollider",
-        "Set_GameCollider_ignore_entity",
+        "Get_Collider",
+        "GetEntity_Collider",
+        "Has_Collider",
+        "HasEntity_Collider",
+        "Set_Collider",
+        "SetEntity_Collider",
+        "Add_Collider",
+        "Remove_Collider",
+        "Make_Collider",
+        "Break_Collider",
+        "Set_Collider_ignore_entity",
     };
     static const float spots[][2] = { { 12, 0 }, { 1576, 261 }, { -1234567, -7654321 } };
     behavior_asset *source = behavior_asset_new("Arranged");
@@ -102,7 +102,7 @@ static void arranged_entries_checks()
         assert(n);
         n->placed = false;
     }
-    game_preview_definition *definition = game_preview_definition_new("arranged", source);
+    preview_definition *definition = preview_definition_new("arranged", source);
     bool saved = true;
     for (size_t s = 0; s < sizeof spots / sizeof *spots; s++) {
         behavior_asset *open = authoring_snapshot(definition->working);
@@ -110,12 +110,11 @@ static void arranged_entries_checks()
             open->graph->nodes[i]->x = spots[s][0];
             open->graph->nodes[i]->y = spots[s][1];
         }
-        saved &= game_preview_sync_working(definition, open) == 0 &&
-                 !definition->unsaved;
+        saved &= preview_sync_working(definition, open) == 0 && !definition->unsaved;
         behavior_asset_free(open);
     }
     test_check(saved, "arranged component access nodes keep their file entries");
-    game_preview_definition_free(definition);
+    preview_definition_free(definition);
 }
 
 void run_live_preview_checks(void)
@@ -125,24 +124,24 @@ void run_live_preview_checks(void)
     ecs_world *ecs = ecs_world_new();
     ecs_entity first = ecs_world_create_entity(ecs);
     ecs_entity second = ecs_world_create_entity(ecs);
-    game_preview_world *world = game_preview_world_new(ecs);
+    preview_world *world = preview_world_new(ecs);
     behavior_asset *source = make_live_behavior_asset();
-    game_preview_definition *definition = game_preview_definition_new("preview", source);
+    preview_definition *definition = preview_definition_new("preview", source);
     test_check(
-        game_preview_add_definition(world, definition) == 0 &&
-            game_behavior_attach(world->runtime->behaviors, first, "preview") == 0 &&
-            game_behavior_attach(world->runtime->behaviors, second, "preview") == 0,
+        preview_add_definition(world, definition) == 0 &&
+            behavior_attach(world->runtime->behaviors, first, "preview") == 0 &&
+            behavior_attach(world->runtime->behaviors, second, "preview") == 0,
         "preview fixture attaches two independent runtime instances"
     );
-    behavior_instance *one = game_behavior_instance(world->runtime->behaviors, first, "preview");
-    behavior_instance *two = game_behavior_instance(world->runtime->behaviors, second, "preview");
+    behavior_instance *one = behavior_instance(world->runtime->behaviors, first, "preview");
+    behavior_instance *two = behavior_instance(world->runtime->behaviors, second, "preview");
     uint64_t counter = definition->working->variables[0].id;
     pin_value value = { .type = PIN_I32, .type_name = "int", .i = 37 };
     behavior_instance_set_variable(one, counter, &value);
     node *set = definition->working->graph->nodes[3];
     value.i = 9;
     graph_set_pin_default(definition->working->graph, set, 0, 1, &value);
-    game_preview_mark_dirty(definition);
+    preview_mark_dirty(definition);
     behavior_asset *before = definition->applied;
     flow_run *pending = behavior_instance_enqueue(
         two,
@@ -152,26 +151,23 @@ void run_live_preview_checks(void)
     );
     char message[256];
     test_check(
-        pending &&
-            game_preview_update(world, definition, message, sizeof message) ==
-                INSTANCE_UPDATE_BUSY &&
+        pending && preview_update(world, definition, message, sizeof message) == INSTANCE_UPDATE_BUSY &&
             one->asset == before && two->asset == before,
         "one queued activation defers preview for every affected instance "
         "atomically"
     );
-    game_behavior_pump(world->runtime->behaviors, 1.0);
+    behavior_pump(world->runtime->behaviors, 1.0);
     test_check(
-        game_preview_update(world, definition, message, sizeof message) ==
-                INSTANCE_UPDATE_READY &&
-            one == game_behavior_instance(world->runtime->behaviors, first, "preview") &&
-            two == game_behavior_instance(world->runtime->behaviors, second, "preview") &&
+        preview_update(world, definition, message, sizeof message) == INSTANCE_UPDATE_READY &&
+            one == behavior_instance(world->runtime->behaviors, first, "preview") &&
+            two == behavior_instance(world->runtime->behaviors, second, "preview") &&
             one->asset == definition->applied && two->asset == definition->applied &&
             behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 37,
         "preview updates both definitions without recreating instances or "
         "resetting variables"
     );
     test_check(
-        game_behavior_dispatch(world->runtime->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) ==
+        behavior_dispatch(world->runtime->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) ==
                 1 &&
             behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9 &&
             behavior_instance_get_variable(two, counter, &value) == 0 && value.i == 1,
@@ -187,53 +183,49 @@ void run_live_preview_checks(void)
         NULL,
         ""
     );
-    game_preview_mark_dirty(definition);
+    preview_mark_dirty(definition);
     before = definition->applied;
     test_check(
-        added &&
-            game_preview_update(world, definition, message, sizeof message) ==
-                INSTANCE_UPDATE_RESTART &&
+        added && preview_update(world, definition, message, sizeof message) == INSTANCE_UPDATE_RESTART &&
             definition->applied == before && one->asset == before,
         "state schema changes require explicit restart and leave the running "
         "version intact"
     );
     behavior_asset_delete_variable(definition->working, added->id);
     behavior_asset_delete_variable(definition->working, counter);
-    game_preview_mark_dirty(definition);
+    preview_mark_dirty(definition);
     test_check(
-        game_preview_update(world, definition, message, sizeof message) < 0 &&
+        preview_update(world, definition, message, sizeof message) < 0 &&
             definition->diagnostics.error_count > 0 && definition->applied == before,
         "invalid preview retains the running snapshot and reports the graph "
         "error"
     );
     test_check(
-        game_behavior_dispatch(world->runtime->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) ==
+        behavior_dispatch(world->runtime->behaviors, first, "Tick", (flow_inputs){ 0 }, NULL) ==
                 1 &&
             behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9,
         "last valid behavior continues executing while the working graph is "
         "broken"
     );
-    game_preview_sync_working(definition, definition->applied);
+    preview_sync_working(definition, definition->applied);
     test_check(
-        game_preview_update(world, definition, message, sizeof message) ==
-                INSTANCE_UPDATE_READY &&
+        preview_update(world, definition, message, sizeof message) == INSTANCE_UPDATE_READY &&
             !definition->dirty && definition->unsaved &&
             !definition->diagnostics.error_count &&
             behavior_instance_get_variable(one, counter, &value) == 0 && value.i == 9,
         "fixing the working graph recovers preview without losing runtime state"
     );
-    game_preview_world_free(world);
+    preview_world_free(world);
     ecs_world_free(ecs);
 }
 
 void run_prototype_live_checks()
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype_preview *preview = game_prototype_preview_new(&registry);
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+    prototype_preview *preview = prototype_preview_new(&registry);
     behavior_asset *working = make_live_behavior_asset();
     char message[256];
-    game_prototype *prototype = game_prototype_load(
+    prototype *prototype = prototype_load(
         "name \"LivePreview\"\n"
         "(array)behaviors \"live\"\n",
         &registry,
@@ -242,12 +234,12 @@ void run_prototype_live_checks()
     );
     test_check(
         prototype &&
-            game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+            prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
                 0 &&
-            game_prototype_preview_launch(preview, prototype, message, sizeof message) == 0,
+            prototype_preview_launch(preview, prototype, message, sizeof message) == 0,
         "prototype preview can launch a newly authored behavior"
     );
-    behavior_instance *instance = game_prototype_preview_instance(preview, "live");
+    behavior_instance *instance = prototype_preview_instance(preview, "live");
     uint64_t counter = working->variables[0].id;
     behavior_instance_set_variable(instance, counter, &(pin_value){ .type = PIN_I32, .i = 61 });
     graph_set_pin_default(
@@ -261,22 +253,22 @@ void run_prototype_live_checks()
     flow_error error = { 0 };
     behavior_instance_enqueue(instance, instance->asset->graph->nodes[2], (flow_inputs){ 0 }, &error);
     test_check(
-        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+        prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
             INSTANCE_UPDATE_BUSY,
         "prototype preview defers edits while an execution is queued"
     );
-    game_behavior_pump(game_prototype_preview_behaviors(preview), 1.0);
+    behavior_pump(prototype_preview_behaviors(preview), 1.0);
     test_check(
-        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+        prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
                 INSTANCE_UPDATE_READY &&
-            instance == game_prototype_preview_instance(preview, "live") &&
+            instance == prototype_preview_instance(preview, "live") &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 61,
         "prototype preview updates without resetting its instance state"
     );
     test_check(
-        game_prototype_preview_tick(preview, 2.0) >= 0 &&
-            game_prototype_preview_tick(preview, 2.0 + ENGINE_FIXED_SECONDS) >= 0 &&
+        prototype_preview_tick(preview, 2.0) >= 0 &&
+            prototype_preview_tick(preview, 2.0 + ENGINE_FIXED_SECONDS) >= 0 &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 7,
         "prototype preview executes the edited graph on its next tick"
@@ -292,46 +284,42 @@ void run_prototype_live_checks()
     );
     uint64_t added_id = added->id;
     test_check(
-        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
+        prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) ==
                 INSTANCE_UPDATE_RESTART &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 7,
         "prototype schema changes wait for an explicit restart"
     );
     test_check(
-        game_prototype_preview_update_behavior(preview, "live", working, true, message, sizeof message) ==
+        prototype_preview_update_behavior(preview, "live", working, true, message, sizeof message) ==
                 INSTANCE_UPDATE_READY &&
-            behavior_instance_get_variable(
-                game_prototype_preview_instance(preview, "live"),
-                added_id,
-                &value
-            ) == 0,
+            behavior_instance_get_variable(prototype_preview_instance(preview, "live"), added_id, &value) ==
+                0,
         "explicit prototype restart installs the new state schema"
     );
-    instance = game_prototype_preview_instance(preview, "live");
+    instance = prototype_preview_instance(preview, "live");
     behavior_asset_delete_variable(working, counter);
     test_check(
-        game_prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) <
+        prototype_preview_update_behavior(preview, "live", working, false, message, sizeof message) <
                 0 &&
-            game_prototype_preview_tick(preview, 2.0 + 2 * ENGINE_FIXED_SECONDS) >= 0 &&
+            prototype_preview_tick(preview, 2.0 + 2 * ENGINE_FIXED_SECONDS) >= 0 &&
             behavior_instance_get_variable(instance, counter, &value) == 0 &&
             value.i == 7,
         "invalid prototype edits leave the last valid graph running"
     );
     behavior_asset_free(working);
-    game_prototype_free(prototype);
-    game_prototype_preview_free(preview);
+    prototype_free(prototype);
+    prototype_preview_free(preview);
 }
 
 static void run_optional_module_checks()
 {
     ecs_world *ecs = ecs_world_new();
-    game_live_world *world = game_live_world_new_modules(ecs, 0);
+    live_world *world = live_world_new_modules(ecs, 0);
     test_check(
         world->behaviors && world->entities && !world->physics &&
             !world->particles && !world->materials && !world->visibility &&
-            !game_behavior_audio(world->behaviors) &&
-            !game_behavior_ui(world->behaviors),
+            !behavior_audio(world->behaviors) && !behavior_ui(world->behaviors),
         "a headless runtime creates behavior and entity services without "
         "optional modules"
     );
@@ -346,7 +334,7 @@ static void run_optional_module_checks()
     test_check(engine_sample_movement(runtime, 1, 0) == FLOW_ERR_STATE, "an uninstalled input service rejects host input");
     engine_reset(runtime);
     engine_free(runtime);
-    game_live_world_free(world);
+    live_world_free(world);
     ecs_world_free(ecs);
 }
 
@@ -354,40 +342,40 @@ void run_live_checks(void)
 {
     run_optional_module_checks();
     ecs_world *ecs = ecs_world_new();
-    ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_world_register_component(ecs, &COMPONENT_Health, NULL);
     ecs_entity e1 = ecs_world_create_entity(ecs);
     ecs_entity e2 = ecs_world_create_entity(ecs);
-    GAME_GameHealth_add(ecs, e1, 1);
-    GAME_GameHealth_add(ecs, e2, 2);
+    Health_add(ecs, e1, 1);
+    Health_add(ecs, e2, 2);
     ecs_world_apply_commands(ecs);
-    GAME_GameHealth_get(ecs, e1)->current = 7;
+    Health_get(ecs, e1)->current = 7;
 
-    game_preview_world *world = game_preview_world_new(ecs);
-    game_preview_definition *definition = game_preview_definition_new("live", make_live_behavior_asset());
-    game_preview_definition *other_definition = game_preview_definition_new(
+    preview_world *world = preview_world_new(ecs);
+    preview_definition *definition = preview_definition_new("live", make_live_behavior_asset());
+    preview_definition *other_definition = preview_definition_new(
         "other",
         make_behavior_behavior_asset("Other", 0)
     );
     test_check(
         world && definition && other_definition &&
-            game_preview_add_definition(world, definition) == 0 &&
-            game_preview_add_definition(world, other_definition) == 0,
+            preview_add_definition(world, definition) == 0 &&
+            preview_add_definition(world, other_definition) == 0,
         "a live definition owns a mutable working copy and an applied "
         "snapshot"
     );
-    game_behavior_world *behaviors = world->runtime->behaviors;
+    behavior_world *behaviors = world->runtime->behaviors;
     test_check(
-        game_behavior_attach(behaviors, e1, "live") == 0 &&
-            game_behavior_attach(behaviors, e1, "other") == 0,
+        behavior_attach(behaviors, e1, "live") == 0 &&
+            behavior_attach(behaviors, e1, "other") == 0,
         "runtime instances attach only to the applied snapshot"
     );
-    behavior_instance *live_before = game_behavior_instance(behaviors, e1, "live");
+    behavior_instance *live_before = behavior_instance(behaviors, e1, "live");
     test_check(
         behavior_instance_service(live_before, "ecs.world") == ecs,
         "attached instances receive the owning ECS world service"
     );
     const behavior_asset *applied_before = definition->applied;
-    behavior_instance *other_before = game_behavior_instance(behaviors, e1, "other");
+    behavior_instance *other_before = behavior_instance(behaviors, e1, "other");
     uint64_t node_id = definition->working->graph->nodes[0]->id;
     test_check(
         behavior_asset_mutable(definition->working) &&
@@ -397,22 +385,22 @@ void run_live_checks(void)
         "snapshots are immutable"
     );
     test_check(
-        game_preview_mark_dirty(definition) == 0 && definition->dirty &&
+        preview_mark_dirty(definition) == 0 && definition->dirty &&
             strcmp(definition->applied->name, "LiveWorking") == 0,
         "Compile/apply is explicit and unapplied edits are visible"
     );
     behavior_asset *working = definition->working;
     behavior_asset_set_description(working, "edited working copy");
-    game_preview_mark_dirty(definition);
+    preview_mark_dirty(definition);
     char message[256];
     test_check(
-        game_preview_apply(world, definition, message, sizeof message) == 0 &&
+        preview_apply(world, definition, message, sizeof message) == 0 &&
             !definition->dirty && strstr(message, "destroyed and recreated"),
         "one replacement choke point states that only this definition "
         "is recreated"
     );
-    behavior_instance *live_after = game_behavior_instance(behaviors, e1, "live");
-    behavior_instance *other_after = game_behavior_instance(behaviors, e1, "other");
+    behavior_instance *live_after = behavior_instance(behaviors, e1, "live");
+    behavior_instance *other_after = behavior_instance(behaviors, e1, "other");
     test_check(
         live_after && live_after->asset == definition->applied &&
             live_after->asset != applied_before,
@@ -420,7 +408,7 @@ void run_live_checks(void)
         "operation"
     );
     test_check(
-        other_after == other_before && GAME_GameHealth_get(ecs, e1)->current == 7,
+        other_after == other_before && Health_get(ecs, e1)->current == 7,
         "applying is scoped and leaves other behaviors and components intact"
     );
     test_check(definition->applied->graph->nodes[0]->id == node_id, "snapshot replacement preserves node identity");
@@ -434,13 +422,13 @@ void run_live_checks(void)
     );
     test_check(begin_value.i == 1, "apply keeps observable behavior defined when transient state is recreated");
     test_check(
-        game_behavior_instance(behaviors, e2, "other") == NULL &&
-            game_behavior_attachment_count(behaviors) == 2,
+        behavior_instance(behaviors, e2, "other") == NULL &&
+            behavior_attachment_count(behaviors) == 2,
         "replacing one definition does not create instances for "
         "unrelated entities"
     );
     test_check(
-        game_preview_apply(world, definition, message, sizeof message) == 0 &&
+        preview_apply(world, definition, message, sizeof message) == 0 &&
             strstr(message, "no unapplied edits"),
         "a clean applied snapshot is stable until another explicit "
         "apply"
@@ -449,13 +437,13 @@ void run_live_checks(void)
     test_check(
         invalid_counter &&
             behavior_asset_delete_variable(working, invalid_counter->id) == 0 &&
-            game_preview_mark_dirty(definition) == 0 &&
-            game_preview_apply(world, definition, message, sizeof message) != 0 &&
+            preview_mark_dirty(definition) == 0 &&
+            preview_apply(world, definition, message, sizeof message) != 0 &&
             definition->diagnostics.error_count > 0,
         "blocked apply retains structured graph diagnostics"
     );
     test_check(
-        game_preview_mark_dirty(definition) == 0 &&
+        preview_mark_dirty(definition) == 0 &&
             behavior_asset_mutable(definition->working),
         "authoring remains available on the working copy after apply"
     );
@@ -464,6 +452,6 @@ void run_live_checks(void)
         "runtime state stays out of working-copy history and applied "
         "identity"
     );
-    game_preview_world_free(world);
+    preview_world_free(world);
     ecs_world_free(ecs);
 }

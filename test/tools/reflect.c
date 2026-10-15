@@ -439,6 +439,33 @@ TEST_CASE(derived_component_names_its_source)
     return true;
 }
 
+TEST_CASE(empty_prefix_generates_canonical_component_names)
+{
+    const char *const unprefixed[] = {
+        CHIBI_REFLECT_PATH, source,  "--prefix", "", "--types-output", output,
+        "--runtime-output", runtime, NULL
+    };
+    tool_write(source, COMPONENT HEALTH);
+    REQUIRE(tool_run(unprefixed, directory, log_path) == 0);
+    char *types = tool_read(output), *capabilities = tool_read(runtime);
+    bool canonical = types && capabilities &&
+                     strstr(types, "const type_desc T_Health =") &&
+                     strstr(types, "const ecs_component_desc COMPONENT_Health =") &&
+                     strstr(types, ".key = \"Health\"") &&
+                     strstr(types, "Health *Health_get(") &&
+                     strstr(capabilities, "const native_capability_pack NATIVE_PACK =") &&
+                     strstr(capabilities, "native_bool_result[]") &&
+                     strstr(capabilities, ".results = native_bool_result,") &&
+                     strstr(capabilities, ".source_name = \"Health\"") &&
+                     !strstr(types, "_COMPONENT_Health") &&
+                     !strstr(types, "_T_Health") &&
+                     !strstr(capabilities, "_NATIVE_PACK");
+    free(types);
+    free(capabilities);
+    REQUIRE(canonical);
+    return true;
+}
+
 void test_tool_reflect()
 {
     strcpy(directory, "/tmp/chibi-reflect-test-XXXXXX");
@@ -462,6 +489,7 @@ void test_tool_reflect()
     RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
     RUN_TEST_CASE(derived_component_names_its_source);
+    RUN_TEST_CASE(empty_prefix_generates_canonical_component_names);
     afree(original);
     afree(inserted);
     afree(readded);

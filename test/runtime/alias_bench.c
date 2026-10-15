@@ -21,7 +21,7 @@ void emit_alias_c(const char *path)
     assert(out);
     for (int reverse = 0; reverse < 2; reverse++) {
         behavior_asset *a = whole_alias_fixture(
-            registry_node_by_name(reverse ? "game_transform_from_cf" : "game_transform_to_cf"),
+            registry_node_by_name(reverse ? "transform_from_cf" : "transform_to_cf"),
             true,
             true
         );
@@ -42,7 +42,7 @@ int bench_alias(const char *path, int count, int rotation)
     assert(library && count > 0);
     for (int reverse = 0; reverse < 2; reverse++) {
         behavior_asset *a = whole_alias_fixture(
-            registry_node_by_name(reverse ? "game_transform_from_cf" : "game_transform_to_cf"),
+            registry_node_by_name(reverse ? "transform_from_cf" : "transform_to_cf"),
             true,
             true
         );
@@ -56,7 +56,7 @@ int bench_alias(const char *path, int count, int rotation)
         float input[] = { -0.f, NAN }, output[2];
         pin_value arg = { .type = PIN_STRUCT,
                           .ptr = input,
-                          .type_name = reverse ? "CF_V2" : "GameTransform" };
+                          .type_name = reverse ? "CF_V2" : "Transform" };
         for (int missing = 0; missing < 2; missing++) {
             arg.ptr = missing ? NULL : input;
             pin_value result = { .type = PIN_STRUCT, .ptr = output };

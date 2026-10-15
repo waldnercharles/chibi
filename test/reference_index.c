@@ -148,24 +148,24 @@ static healer healer_new()
     set_default(g, h.spawn, "Prototype", (pin_value){ .type = PIN_NAME, .str = "Pulse" });
 
     h.getter = graph_add_node(g, &NODE_GetComponent);
-    set_default(g, h.getter, "Component", (pin_value){ .type = PIN_NAME, .str = "GameHealth" });
+    set_default(g, h.getter, "Component", (pin_value){ .type = PIN_NAME, .str = "Health" });
     assert(graph_expose_output_fields(g, h.getter, 0) == 0);
-    h.setter = add_named_node(g, "Set_GameHealth_current");
+    h.setter = add_named_node(g, "Set_Health_current");
     pin_binding maximum = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                            .component_key = "GAME.GameHealth",
+                            .component_key = "Health",
                             .field_name = "maximum" };
     assert(graph_set_pin_binding(g, h.setter, 0, pin_named(h.setter, 0, "Value"), &maximum) == 0);
     h.split = graph_add_node(g, &NODE_SetComponent);
-    set_default(g, h.split, "Component", (pin_value){ .type = PIN_NAME, .str = "GameUi" });
+    set_default(g, h.split, "Component", (pin_value){ .type = PIN_NAME, .str = "Ui" });
     assert(component_node_show_field(g, h.split, "document", true) == 0);
     set_default(g, h.split, "document", (pin_value){ .type = PIN_STR, .str = "Hud" });
-    h.shader = add_named_node(g, "SetEntity_GameShader");
-    GameShader glow = { .material = "Glow", .shape = "", .parameters = "" };
+    h.shader = add_named_node(g, "SetEntity_Shader");
+    Shader glow = { .material = "Glow", .shape = "", .parameters = "" };
     set_default(
         g,
         h.shader,
         "Value",
-        (pin_value){ .type = PIN_STRUCT, .type_name = "GameShader", .ptr = &glow }
+        (pin_value){ .type = PIN_STRUCT, .type_name = "Shader", .ptr = &glow }
     );
     return h;
 }
@@ -248,21 +248,21 @@ static void test_graphs()
     assert(uses(index, asset_symbol(glow), REFERENCE_BIND, h.shader) == 1);
 
     /* Components and fields through nodes and bindings. */
-    reference_symbol game_health = named(REFERENCE_SYMBOL_COMPONENT, "GameHealth", NULL);
-    assert(uses(index, game_health, REFERENCE_READ, h.getter) == 3); /* the node and its two fields */
-    reference_symbol current = named(REFERENCE_SYMBOL_FIELD, "GameHealth", "current");
+    reference_symbol health = named(REFERENCE_SYMBOL_COMPONENT, "Health", NULL);
+    assert(uses(index, health, REFERENCE_READ, h.getter) == 3); /* the node and its two fields */
+    reference_symbol current = named(REFERENCE_SYMBOL_FIELD, "Health", "current");
     assert(uses(index, current, REFERENCE_READ, h.getter) == 1);
     assert(uses(index, current, REFERENCE_WRITE, h.setter) == 1);
     assert(
-        uses(index, named(REFERENCE_SYMBOL_FIELD, "GameHealth", "maximum"), REFERENCE_READ, h.setter) == 1
+        uses(index, named(REFERENCE_SYMBOL_FIELD, "Health", "maximum"), REFERENCE_READ, h.setter) == 1
     );
     assert(
-        uses(index, named(REFERENCE_SYMBOL_FIELD, "GameUi", "document"), REFERENCE_WRITE, h.split) == 1
+        uses(index, named(REFERENCE_SYMBOL_FIELD, "Ui", "document"), REFERENCE_WRITE, h.split) == 1
     );
     assert(
-        uses(index, named(REFERENCE_SYMBOL_COMPONENT, "GameShader", NULL), REFERENCE_WRITE, h.shader) == 1
+        uses(index, named(REFERENCE_SYMBOL_COMPONENT, "Shader", NULL), REFERENCE_WRITE, h.shader) == 1
     );
-    assert(!reference_index_definition(index, game_health));
+    assert(!reference_index_definition(index, health));
 
     /* Counts by role; the asset's own symbols are not uses of the asset. */
     assert(reference_index_count_uses(index, health, REFERENCE_USES) == 3);
@@ -280,17 +280,17 @@ static void test_graphs()
  * and send events. */
 static void test_documents()
 {
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    prototype_registry registry = {
+        .components = REGISTRY_COMPONENTS,
+        .component_count = REGISTRY_COMPONENT_COUNT,
     };
     char error[256];
-    game_prototype *ship = game_prototype_load(
+    prototype *ship = prototype_load(
         "name \"Ship\"\n"
         "(array)behaviors \"Flight\"\n"
         "components {\n"
-        "    GameShader material=\"Hull\"\n"
-        "    GameUi document=\"Hud\"\n"
+        "    Shader material=\"Hull\"\n"
+        "    Ui document=\"Hud\"\n"
         "}\n",
         &registry,
         error,
@@ -316,7 +316,7 @@ static void test_documents()
     assert(reference_index_count_uses(index, asset_symbol(hud), REFERENCE_ROLE(REFERENCE_BIND)) == 1);
 
     const char *behaviors[] = { "Flight" };
-    av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"\n");
+    av_value *overrides = test_read_asset_value("Shader material=\"Chrome\"\n");
     reference_object object = {
         .name = "player",
         .prototype = "Ship",
@@ -338,7 +338,7 @@ static void test_documents()
     reference_index_find_uses(index, asset_symbol(chrome), &found);
     assert(
         acount(found) == 1 && found[0]->source == scene &&
-        !strcmp(found[0]->component, "GameShader.material")
+        !strcmp(found[0]->component, "Shader.material")
     );
     asetlen(found, 0);
     /* The override replaces the prototype's material; its ui stays. */
@@ -369,7 +369,7 @@ static void test_documents()
         );
     }
     reference_index_free(index);
-    game_prototype_free(ship);
+    prototype_free(ship);
 }
 
 static const reference *handler(const reference_index *index, const char *event)

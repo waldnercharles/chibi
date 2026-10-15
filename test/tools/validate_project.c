@@ -1,5 +1,7 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
+#include "assets/scene_document.h"
+#include "support/array.h"
 #include "test/tools/fixture.h"
 #if CHIBI_TEST_MODEL_IMPORT
 #include "test/support/gltf_fixture.h"
@@ -18,9 +20,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-/* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
+/* The longest prototype name the player takes, PROTOTYPE_NAME_MAX. */
 #define PROTOTYPE_NAME_MAX 1024
-/* How many resources a player takes in all, GAME_PLAYER_MAX_ASSETS. */
+/* How many resources a player takes in all, PLAYER_MAX_ASSETS. */
 #define PLAYER_MAX_ASSETS 4096
 
 /* An Ogg Vorbis file's first page holds only its 30-byte identification
@@ -169,8 +171,18 @@ static void setup()
     strcpy(root, "/tmp/chibi-validate-project-XXXXXX");
     assert(mkdtemp(root));
     path(log_path, sizeof log_path, "output");
-    int created = ctl(false, "{\"contract\":1,\"operation\":\"new_project\",\"path\":\"game\",\"name\":\"Game\"}");
-    assert(created == 0);
+    /* Diagnostic cases author their own empty fixture; only the starter case
+     * below uses production project creation. */
+    const char *folders[] = { "game", "game/content", "game/content/scenes" };
+    for (int i = 0; i < 3; i++) {
+        char folder[256];
+        path(folder, sizeof folder, folders[i]);
+        assert(mkdir(folder, 0700) == 0);
+    }
+    char manifest[256];
+    snprintf(manifest, sizeof manifest, "version %d\nname \"Game\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", CHIBI_PROJECT_VERSION);
+    write_file("game/project.kdl", manifest);
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n");
 }
 
 static void teardown()
@@ -182,9 +194,33 @@ static void teardown()
 
 TEST_CASE(new_project_is_valid)
 {
+    char game[256];
+    path(game, sizeof game, "game");
+    tool_remove_tree(game);
+    REQUIRE(
+        ctl(false, "{\"contract\":1,\"operation\":\"new_project\",\"path\":\"game\",\"name\":\"Game\"}") == 0
+    );
     REQUIRE(validate() == 0);
     REQUIRE(yyjson_get_bool(result("valid")) && errors() == 0);
     REQUIRE(!yyjson_arr_size(result("project")) && !yyjson_arr_size(result("problems")));
+#ifdef CHIBI_TEST_NATIVE_RUNTIME
+    char start[256], error[256];
+    path(start, sizeof start, "game/content/scenes/Start.kdl");
+    char *text = tool_read(start);
+    scene_document *scene = scene_document_load(text, error, sizeof error);
+    free(text);
+    REQUIRE(scene);
+    bool starter = scene->perspective && acount(scene->entities) == 3 &&
+                   scene_document_entity_index(scene, "Cube") >= 0 &&
+                   scene_document_entity_index(scene, "Camera") >= 0 &&
+                   scene_document_entity_index(scene, "Light") >= 0;
+    scene_document_free(scene);
+    REQUIRE(starter);
+#endif
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2}") ==
+        0
+    );
     return true;
 }
 
@@ -305,12 +341,12 @@ TEST_CASE(missing_ui_documents_are_reported)
     REQUIRE(unlink(extra) == 0);
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
 
-    /* A GameUi document is looked up the same way, by name only, in the
+    /* A Ui document is looked up the same way, by name only, in the
      * prototype and in the scene that places it. */
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Menu\"}") == 0
     );
-    write_file("game/content/prototypes/Menu.kdl", "name \"Menu\"\ncomponents {\n    GAME.GameUi document=\"../ui/Hud\"\n}\n");
+    write_file("game/content/prototypes/Menu.kdl", "name \"Menu\"\ncomponents {\n    Ui document=\"../ui/Hud\"\n}\n");
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Menu\" prototype=\"Menu\"\n}\n");
     REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
     size_t index, count;
@@ -451,11 +487,11 @@ TEST_CASE(prototype_includes_resolve)
     char folder[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameHealth current=3 maximum=3\n}\n(array)behaviors \"Spin\"\n");
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Health current=3 maximum=3\n}\n(array)behaviors \"Spin\"\n");
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Spin\"}") == 0
     );
-    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    GameTransform x=1 y=2\n}\n");
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    Transform x=1 y=2\n}\n");
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Drone\" prototype=\"Drone\"\n}\n");
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(
@@ -474,7 +510,7 @@ TEST_CASE(prototype_includes_resolve)
     path(drone, sizeof drone, "game/content/prototypes/Drone.kdl");
     char *text = tool_read(drone);
     bool kept = text && strstr(text, "(array)includes \"Hull\"") &&
-                !strstr(text, "GameHealth");
+                !strstr(text, "Health");
     free(text);
     REQUIRE(kept);
     /* The include is an edge from Drone to Hull, and only Drone's. Hull's
@@ -701,8 +737,8 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     char folder[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/hull_base.kdl", "name \"Hull\"\ncomponents {\n    GameHealth current=3 maximum=3\n}\n");
-    write_file("game/content/prototypes/Hull.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    GameTransform x=1 y=2\n}\n");
+    write_file("game/content/prototypes/hull_base.kdl", "name \"Hull\"\ncomponents {\n    Health current=3 maximum=3\n}\n");
+    write_file("game/content/prototypes/Hull.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    Transform x=1 y=2\n}\n");
     /* Nor need a name be one a file could take. */
     write_file("game/content/prototypes/grunt.kdl", "name \"enemies/grunt\"\n(array)includes \"Hull\"\n");
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hull\" prototype=\"Hull\"\n    - name=\"Drone\" prototype=\"Drone\"\n    - name=\"Grunt\" prototype=\"enemies/grunt\"\n}\n");
@@ -929,7 +965,7 @@ TEST_CASE(manifest_content_folder_is_used)
     char hero[256];
     path(hero, sizeof hero, "game/assets/prototypes/Hero.kdl");
     REQUIRE(access(hero, F_OK) == 0);
-    write_file("game/assets/prototypes/Hero.kdl", "name \"Hero\"\ncomponents {\n  GameTransform x=1 y=2\n}\n");
+    write_file("game/assets/prototypes/Hero.kdl", "name \"Hero\"\ncomponents {\n  Transform x=1 y=2\n}\n");
     write_file("game/assets/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/Hero.kdl\"}") ==
@@ -1021,7 +1057,7 @@ static double global_x(const char *name)
         }
         yyjson_arr_foreach(yyjson_obj_get(entity, "components"), j, components, component)
         {
-            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameGlobalTransform2D")) {
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GlobalTransform2D")) {
                 yyjson_val *position = yyjson_obj_get(
                     yyjson_arr_get(yyjson_obj_get(component, "fields"), 0),
                     "value"
@@ -1038,15 +1074,15 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     char folder[256], scene[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Transform x=0 y=0\n}\n");
     /* A root and a child may share a name; siblings may not. */
     write_file(
         "game/content/scenes/Start.kdl",
         "version 1\nname \"Start\"\n(array)entities {\n"
-        "    - name=\"Ship\" prototype=\"Hull\" { components { GameTransform "
+        "    - name=\"Ship\" prototype=\"Hull\" { components { Transform "
         "x=100 y=5; }; "
         "(array)children { - name=\"Turret\" prototype=\"Hull\" { components { "
-        "GameTransform x=10 y=0; }; }; }; }\n"
+        "Transform x=10 y=0; }; }; }; }\n"
         "    - name=\"Turret\" prototype=\"Hull\"\n}\n"
     );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
@@ -1084,25 +1120,25 @@ TEST_CASE(scene_joints_name_their_other_by_path)
     REQUIRE(mkdir(folder, 0700) == 0);
     write_file(
         "game/content/prototypes/Post.kdl",
-        "name \"Post\"\ncomponents {\n    (object)GAME.GameBody\n"
-        "    GAME.GameCollider category=1 mask=1 radius=4.0\n    "
-        "(object)GAME.GameTransform\n}\n"
+        "name \"Post\"\ncomponents {\n    (object)Body\n"
+        "    Collider category=1 mask=1 radius=4.0\n    "
+        "(object)Transform\n}\n"
     );
     write_file(
         "game/content/prototypes/Weight.kdl",
-        "name \"Weight\"\ncomponents {\n    GAME.GameBody type=\"Dynamic\"\n"
-        "    GAME.GameCollider category=2 mask=2 radius=4.0\n    "
-        "GAME.GameJoint kind=\"Distance\"\n"
-        "    (object)GAME.GameOrientation\n    (object)GAME.GameTransform\n    "
-        "(object)GAME.GameVelocity\n}\n"
+        "name \"Weight\"\ncomponents {\n    Body type=\"Dynamic\"\n"
+        "    Collider category=2 mask=2 radius=4.0\n    "
+        "Joint kind=\"Distance\"\n"
+        "    (object)Orientation\n    (object)Transform\n    "
+        "(object)Velocity\n}\n"
     );
-    write_file("game/content/prototypes/Fall.kdl", "name \"Fall\"\ncomponents {\n    GAME.GameGravity {\n        acceleration y=-320.0\n    }\n}\n");
+    write_file("game/content/prototypes/Fall.kdl", "name \"Fall\"\ncomponents {\n    Gravity {\n        acceleration y=-320.0\n    }\n}\n");
     const char *scene = "version 1\nname \"Start\"\n(array)entities {\n"
                         "    - name=\"Anchor\" prototype=\"Post\" { components "
-                        "{ GameTransform x=-200 y=0; }; }\n"
+                        "{ Transform x=-200 y=0; }; }\n"
                         "    - name=\"Swing\" prototype=\"Weight\" { "
-                        "components { GameJoint other=\"%s\"; "
-                        "GameTransform x=-200 y=-50; }; }\n"
+                        "components { Joint other=\"%s\"; "
+                        "Transform x=-200 y=-50; }; }\n"
                         "    - name=\"Fall\" prototype=\"Fall\"\n}\n";
     char text[1024];
     snprintf(text, sizeof text, scene, "Anchor");
@@ -1121,7 +1157,7 @@ TEST_CASE(scene_joints_name_their_other_by_path)
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") !=
         0
     );
-    REQUIRE(strstr(failure(), "Swing: GameJoint other names Anchors, but no entity has that path"));
+    REQUIRE(strstr(failure(), "Swing: Joint other names Anchors, but no entity has that path"));
     return true;
 }
 
@@ -1131,17 +1167,17 @@ TEST_CASE(prototype_children_come_with_their_instance)
     char folder[256], ship[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    Transform x=0 y=0\n}\n");
     write_file(
         "game/content/prototypes/Ship.kdl",
-        "name \"Ship\"\ncomponents { GameTransform x=0 y=0; }\n"
+        "name \"Ship\"\ncomponents { Transform x=0 y=0; }\n"
         "(array)children { - name=\"Gun\" prototype=\"Hull\" { components { "
-        "GameTransform x=4 y=0; }; }; }\n"
+        "Transform x=4 y=0; }; }; }\n"
     );
     write_file(
         "game/content/scenes/Start.kdl",
         "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Flagship\" "
-        "prototype=\"Ship\" { components { GameTransform x=100 y=0; }; }\n}\n"
+        "prototype=\"Ship\" { components { Transform x=100 y=0; }; }\n}\n"
     );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     REQUIRE(format(NULL) == 0 && format("--check") == 0);
@@ -1150,7 +1186,7 @@ TEST_CASE(prototype_children_come_with_their_instance)
     /* A prototype with children is formatted too: Transform's zero fields go. */
     bool nested = text &&
                   strstr(text, "(array)children {\n    - {\n        name \"Gun\"") &&
-                  strstr(text, "(object)GAME.GameTransform");
+                  strstr(text, "(object)Transform");
     free(text);
     REQUIRE(nested);
     REQUIRE(
@@ -1188,7 +1224,7 @@ TEST_CASE(prototype_children_come_with_their_instance)
     write_file(
         "game/content/prototypes/Ship.kdl",
         "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
-        "components { GAME.GameUi document=\"Nowhere\"; }; }; }\n"
+        "components { Ui document=\"Nowhere\"; }; }; }\n"
     );
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Ship\"}") !=
@@ -1265,9 +1301,9 @@ TEST_CASE(scene_instances_share_the_expansion)
     REQUIRE(mkdir(folder, 0700) == 0);
     write_fans("Bush", 9);
     REQUIRE(validate() == 0);
-    static char scene[GAME_PROTOTYPE_EXPANSION_MAX];
+    static char scene[PROTOTYPE_EXPANSION_MAX];
     int n = snprintf(scene, sizeof scene, "version 1\nname \"Start\"\n(array)entities {\n");
-    for (int i = 0; i < GAME_PROTOTYPE_EXPANSION_MAX / 512; i++) {
+    for (int i = 0; i < PROTOTYPE_EXPANSION_MAX / 512; i++) {
         n += snprintf(scene + n, sizeof scene - n, "    - name=\"B%d\" prototype=\"Bush0\"\n", i);
     }
     snprintf(scene + n, sizeof scene - n, "}\n");
@@ -1286,7 +1322,7 @@ static double snapshot_x()
         yyjson_val *components = yyjson_obj_get(yyjson_arr_get(entities, i), "components");
         for (size_t j = 0; j < yyjson_arr_size(components); j++) {
             yyjson_val *component = yyjson_arr_get(components, j);
-            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameTransform")) {
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "Transform")) {
                 yyjson_val *x = yyjson_arr_get(yyjson_obj_get(component, "fields"), 0);
                 assert(reads(yyjson_get_str(yyjson_obj_get(x, "name")), "x"));
                 return yyjson_get_num(yyjson_obj_get(x, "value"));
@@ -1342,7 +1378,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     REQUIRE(strstr(failure(), "Charge.chibi: 3:5: A component field cannot hold a task"));
     /* A project may not declare a component the engine already has. */
     write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n}\n");
-    write_file("game/content/components/Transform.chibi", "component GameTransform {\n    x: float\n}\n");
+    write_file("game/content/components/Transform.chibi", "component Transform {\n    x: float\n}\n");
     REQUIRE(validate() != 0);
     REQUIRE(strstr(failure(), "Transform.chibi: the name is already an engine type"));
     return true;
@@ -1359,8 +1395,8 @@ TEST_CASE(unit_mismatches_are_warnings)
     /* Declared units, the engine's reflected units and dt's seconds. */
     write_file(
         "game/content/systems/Measure.chibi",
-        "system Measure(charge: Charge, movement: GameMovement, collider: "
-        "GameCollider) {\n"
+        "system Measure(charge: Charge, movement: Movement, collider: "
+        "Collider) {\n"
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
         "    collider.radius = movement.speed\n"
@@ -1412,10 +1448,10 @@ TEST_CASE(scenarios_hold_input_actions)
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Jumper\"}") == 0
     );
     write_file("game/content/input.kdl", "Jump {\n    (array)sources \"Mouse Left\"\n}\n");
-    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)GAME.GameTransform\n}\n");
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)Transform\n}\n");
     write_file("game/content/behaviors/Jumper.chibi", "behavior Jumper {\n    on Tick {\n        if input.Jump.held {\n            self.Transform = vec2(7, 0)\n        }\n    }\n}\n");
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Jumper\"\n    }\n}\n");
-    /* 1 is GAME_CONTROL_MOUSE_LEFT, the first GameControl. */
+    /* 1 is CONTROL_MOUSE_LEFT, the first Control. */
     const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
                           "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2,"
                           "\"input_timeline\":[{\"frame\":0,\"input\":"

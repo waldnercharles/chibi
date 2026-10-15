@@ -3,6 +3,7 @@
 #include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
+#include "authoring/source_metadata.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
 #include "execution/inspection.h"
@@ -81,11 +82,11 @@ static const type_desc velocity_type = {
 static const type_desc *const reflected_types[] = { &position_type, &velocity_type };
 /* A few controls, as the input map names them. */
 static const enum_value_desc control_values[] = {
-    { 3, "GAME_CONTROL_SPACE", "Space" },
-    { 30, "GAME_CONTROL_X", "X" },
-    { 32, "GAME_CONTROL_Z", "Z" },
+    { 3, "CONTROL_SPACE", "Space" },
+    { 30, "CONTROL_X", "X" },
+    { 32, "CONTROL_Z", "Z" },
 };
-static const enum_desc control_type = { "GameControl", control_values, 3 };
+static const enum_desc control_type = { "Control", control_values, 3 };
 static const enum_desc *const program_enums[] = { &control_type };
 type_catalog_pack test_program_types()
 {
@@ -353,8 +354,24 @@ static const char *action_pressed(arena *, const pin_value *in, int count, pin_v
 }
 static const node_host_call held_call = { .value = action_held };
 static const node_host_call pressed_call = { .value = action_pressed };
+static ecs_entity bound_level;
+static bool binding_available;
+static const char *scene_binding(arena *, const pin_value *in, int count, pin_value *out)
+{
+    assert(count == 1 && !strcmp(in[0].str, "Level"));
+    if (!binding_available) {
+        return "Get Global Variable references an unknown value";
+    }
+    out->u64 = ecs_entity_to_u64(bound_level);
+    return NULL;
+}
+static const node_host_call scene_binding_call = { .value = scene_binding };
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == script_catalog_id("capability", "Get Global Variable")) {
+        *out = (script_lower_host){ .call = &scene_binding_call };
+        return true;
+    }
     if (id == script_catalog_id("capability", INPUT_ACTION_HELD) ||
         id == script_catalog_id("capability", INPUT_ACTION_PRESSED)) {
         bool held = id == script_catalog_id("capability", INPUT_ACTION_HELD);
@@ -3212,6 +3229,159 @@ TEST_CASE(program_input_actions_read_through_typed_names)
     source_catalog_free(project);
     return true;
 }
+TEST_CASE(program_scene_bindings_are_typed_names_before_play)
+{
+    script_catalog_capability *native_capabilities = NULL;
+    for (int i = 0; i < catalog.capability_count; i++) {
+        apush(native_capabilities, catalog.capabilities[i]);
+    }
+    const script_catalog_parameter key = { .name = "Name",
+                                           .type = { .storage = PIN_NAME } };
+    const script_catalog_parameter value = {
+        .name = "Value",
+        .type = { .storage = PIN_FLOW, .flags = SCRIPT_TYPE_UNTYPED }
+    };
+    apush(
+        native_capabilities,
+        ((script_catalog_capability){
+            .id = script_catalog_id("capability", "Get Global Variable"),
+            .name = "Get Global Variable",
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = &key,
+            .parameter_count = 1,
+            .results = &value,
+            .result_count = 1,
+            .pure = true,
+            .effects = SCRIPT_EFFECT_READ,
+        })
+    );
+    script_catalog native = catalog;
+    native.capabilities = native_capabilities;
+    native.capability_count = acount(native_capabilities);
+    char root[] = "/tmp/chibi-globals-XXXXXX", prototype[256], scene[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(prototype, sizeof prototype, "%s/prototypes/Room.kdl", root);
+    snprintf(scene, sizeof scene, "%s/scenes/Start.kdl", root);
+    const source_catalog_edit edits[] = {
+        { .path = prototype,
+          .text = "name \"Room\"\ncomponents {\n    GlobalBinding "
+                  "name=\"Level\"\n}\n"
+                  "(array)children {\n    - {\n        name \"Player\"\n       "
+                  " components {\n            GlobalBinding name=\"Player\"\n  "
+                  "      }\n    }\n}\n" },
+        { .path = scene,
+          .text = "name \"Start\"\n(array)entities {\n    - {\n        name "
+                  "\"Room\"\n"
+                  "        components {\n            GlobalBinding "
+                  "name=\"Level\"\n        }\n"
+                  "        (array)children {\n            - {\n                "
+                  "name \"Camera\"\n"
+                  "                components {\n                    "
+                  "GlobalBinding name=\"Camera\"\n                }\n          "
+                  "  }\n        }\n    }\n}\n" },
+    };
+    source_catalog *project = source_catalog_edited(root, &native, edits, 2);
+    REQUIRE(!source_catalog_diagnostic_count(project));
+    const script_catalog *view = source_catalog_view(project);
+    int scope = script_catalog_find_type(view, "SceneGlobals");
+    REQUIRE(scope >= 0 && view->types[scope].field_count == 3);
+    int field = script_catalog_find_field(&view->types[scope], "Level");
+    REQUIRE(field >= 0);
+    const script_catalog_field *level = &view->types[scope].fields[field];
+    REQUIRE(level->type.storage == PIN_HANDLE && level->type.nominal == catalog.entity_type);
+    REQUIRE(!level->writable && !strcmp(level->read_key, "Level"));
+    int definitions = 0;
+    for (int i = 0; i < source_catalog_definition_count(project); i++) {
+        const source_catalog_definition *definition = &source_catalog_definitions(
+            project
+        )[i];
+        if (definition->field) {
+            REQUIRE(definition->owner == view->types[scope].id);
+            REQUIRE(
+                definition->range.end - definition->range.start ==
+                (int)strlen(definition->name) + 2
+            );
+            definitions++;
+        }
+    }
+    REQUIRE(definitions == 4);
+    const char *source = "behavior Reader { x: double = 0; on Tick(dt) { x = "
+                         "globals.Level.Position.x; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        REQUIRE(compile_catalog(source, backends[i], view));
+        bool reads = false;
+        for (int j = 0; j < analysis->expression_count; j++) {
+            const script_expression *expression = &analysis->expressions[j];
+            if (expression->member == level->id) {
+                reads = expression->effects & SCRIPT_EFFECT_READ;
+            }
+        }
+        REQUIRE(reads);
+        bound_level = positioned(12, false);
+        binding_available = true;
+        program = execution_program_new(module, world, NULL);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value dt = { .type = PIN_F64, .d = 1 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "x", 12));
+        binding_available = false;
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_ERR_INVALID_GRAPH);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(failure->node_id == level->id);
+        REQUIRE(!strcmp(failure->message, "Get Global Variable references an unknown value"));
+    }
+    const char *invalid[] = {
+        "behavior B { on Tick(dt) { x := globals.Leve; } }",
+        "behavior B { on Tick(dt) { globals.Level = self; } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        script_syntax *wrong = script_parse(invalid[i]);
+        script_analysis *checked = script_analyze(wrong, view);
+        REQUIRE(!checked->valid);
+        script_analysis_free(checked);
+        script_syntax_free(wrong);
+    }
+    script_syntax *wrong = script_parse("behavior B { on Tick(dt) { x := globals; } }");
+    script_analysis *checked = script_analyze(wrong, view);
+    REQUIRE(checked->valid);
+    const script_lower_bindings bindings = { .global = global, .host = host };
+    execution_module_plan *plan = script_lower(checked, view, &bindings);
+    REQUIRE(plan && !plan->valid && plan->diagnostic_count);
+    REQUIRE(strstr(plan->diagnostics[0].message, "namespace has no value"));
+    execution_module_plan_free(plan);
+    script_analysis_free(checked);
+    script_syntax_free(wrong);
+    /* Invalid namespace snapshots expose no field definitions with a missing
+     * owner. Navigation can still inspect the surviving project declarations. */
+    const script_catalog_global taken = { .id = 99,
+                                          .name = "globals",
+                                          .type = { .storage = PIN_F64 } };
+    for (int i = 0; i < 2; i++) {
+        script_catalog invalid = native;
+        if (!i) {
+            invalid.globals = &taken;
+            invalid.global_count = 1;
+        } else {
+            invalid.capability_count--;
+        }
+        source_catalog *broken = source_catalog_edited(root, &invalid, edits, 2);
+        REQUIRE(source_catalog_diagnostic_count(broken) == 1);
+        for (int j = 0; j < source_catalog_definition_count(broken); j++) {
+            REQUIRE(!source_catalog_definitions(broken)[j].field);
+        }
+        source_catalog_free(broken);
+    }
+    afree(native_capabilities);
+    source_catalog_free(project);
+    rmdir(root);
+    return true;
+}
 /* Migrates a version 15 project whose scene and prototype bind actions, into
  * an input map that already holds one. */
 TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
@@ -3275,13 +3445,13 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
         "        prototype \"Player\"\n"
         "        (array)behaviors\n"
         "        components {\n"
-        "            (object)GAME.GameInput\n"
+        "            (object)Input\n"
         "        }\n"
         "    }\n"
         "}\n",
         "name \"Player\"\n"
         "components {\n"
-        "    (object)GAME.GameInput\n"
+        "    (object)Input\n"
         "}\n",
         "Jump {\n"
         "    (array)sources \"Space\" \"Z\"\n"
@@ -3413,8 +3583,11 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
         { "content/scenes/Start.kdl", scene },
         { "content/prototypes/Enemy.kdl", prototype },
         { "content/Note.chibi", "// GameSdfMotion is gone.\nbehavior Note {\n}\n" },
+        { "content/scenes/SdfMotion.kdl",
+          "// GameSdfMotion is removed.\nversion 1\nname \"SdfMotion\"\n"
+          "description \"GameSdfMotion example\"\n(array)entities\n" },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         fputs(files[i][1], file);
@@ -3432,15 +3605,16 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
         "        prototype \"Enemy\"\n"
         "        (array)behaviors\n"
         "        components {\n"
-        "            (object)GAME.GameInput\n"
+        "            (object)Input\n"
         "        }\n"
         "    }\n"
         "}\n",
         "name \"Enemy\"\n"
         "(object)components\n",
         files[3][1],
+        files[4][1],
     };
-    for (int i = 1; i < 4; i++) {
+    for (int i = 1; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         char text[1024];
         FILE *file = fopen(path, "rb");
@@ -3507,7 +3681,7 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
     }
     snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
     unlink(path);
-    for (int i = 1; i < 4; i++) {
+    for (int i = 1; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -3830,6 +4004,160 @@ TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids)
         snprintf(path, sizeof path, "%s/%s", root, directories[i]);
         rmdir(path);
     }
+    rmdir(root);
+    return true;
+}
+TEST_CASE(program_version_21_prefixes_migrate_without_changing_data)
+{
+    const char
+        *source = "// GameTransform and GAME.GameHealth are documented here.\n"
+                  "behavior B {\n"
+                  "    label: string = \"GAME.GameHealth\"\n"
+                  "    other: GameCustom = null\n"
+                  "    function game_custom() { }\n"
+                  "    function get_game_transform_custom() { }\n"
+                  "    pose: struct<\"GameTransform\"> = null\n"
+                  "    lower: gametransform = null\n"
+                  "    body: enum<\"GameBodyType\"> = \"Dynamic\"\n"
+                  "    on Tick(dt: double) {\n"
+                  "        p := get_game_transform()\n"
+                  "        upper := GET_GAME_TRANSFORM()\n"
+                  "        mixed := Get_game_transform()\n"
+                  "        compact := GETGAMETRANSFORM()\n"
+                  "        h := get_component(Component: \"GAME.GameHealth\")\n"
+                  "        any := "
+                  "has_entities_with_component(\"GAME.GameCollider\")\n"
+                  "        count := count_matching_entities([], [{component: "
+                  "\"GAME.GameHealth\"}])\n"
+                  "        x := component(\"GAME.Custom\", \"value\")\n"
+                  "        y := "
+                  "convert<\"Unwrap_GameInput\">(get_game_input())\n"
+                  "        game_move_transform(p, 1, 2)\n"
+                  "        game_custom()\n"
+                  "        get_game_transform_custom()\n"
+                  "        self.GameTransform.x = 4\n"
+                  "        e := self\n"
+                  "        e.GameTransform.x = 5\n"
+                  "    }\n"
+                  "}\n";
+    const char *
+        expected = "// GameTransform and GAME.GameHealth are documented here.\n"
+                   "behavior B {\n"
+                   "    label: string = \"GAME.GameHealth\"\n"
+                   "    other: GameCustom = null\n"
+                   "    function game_custom() { }\n"
+                   "    function get_game_transform_custom() { }\n"
+                   "    pose: struct<\"Transform\"> = null\n"
+                   "    lower: Transform = null\n"
+                   "    body: enum<\"BodyType\"> = \"Dynamic\"\n"
+                   "    on Tick(dt: double) {\n"
+                   "        p := get_transform()\n"
+                   "        upper := GET_TRANSFORM()\n"
+                   "        mixed := Get_transform()\n"
+                   "        compact := GETTRANSFORM()\n"
+                   "        h := get_component(Component: \"Health\")\n"
+                   "        any := has_entities_with_component(\"Collider\")\n"
+                   "        count := count_matching_entities([], [{component: "
+                   "\"Health\"}])\n"
+                   "        x := component(\"Custom\", \"value\")\n"
+                   "        y := convert<\"Unwrap_Input\">(get_input())\n"
+                   "        move_transform(p, 1, 2)\n"
+                   "        game_custom()\n"
+                   "        get_game_transform_custom()\n"
+                   "        self.Transform.x = 4\n"
+                   "        e := self\n"
+                   "        e.Transform.x = 5\n"
+                   "    }\n"
+                   "}\n";
+    const char *asset = "// GAME.GameTransform keeps this comment.\n"
+                        "name \"GAME.GameTransform\"\n"
+                        "components {\n"
+                        "    GAME.GameTransform x=4.0\n"
+                        "    GAME.Custom label=\"GameTransform\"\n"
+                        "    GameHealth current=3\n"
+                        "}\n"
+                        "(array)nodes {\n"
+                        "    - type=\"Get_GameTransform\" "
+                        "description=\"GameTransform\"\n"
+                        "}\n";
+    const char *asset_expected = "// GAME.GameTransform keeps this comment.\n"
+                                 "name \"GAME.GameTransform\"\n"
+                                 "components {\n"
+                                 "    Transform x=4.0\n"
+                                 "    Custom label=\"GameTransform\"\n"
+                                 "    Health current=3\n"
+                                 "}\n"
+                                 "(array)nodes {\n"
+                                 "    - type=\"Get_Transform\" "
+                                 "description=\"GameTransform\"\n"
+                                 "}\n";
+    char error[256] = "";
+    char *migrated = chibi_migrate_prefixes(source, true, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    free(migrated);
+    migrated = chibi_migrate_prefixes(asset, false, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, asset_expected));
+    free(migrated);
+    REQUIRE(!chibi_migrate_prefixes(expected, true, error, sizeof error));
+    REQUIRE(!chibi_migrate_prefixes(asset_expected, false, error, sizeof error));
+    const char *collision = "components {\nGAME.GameHealth current=1\nHealth "
+                            "current=2\n}\n";
+    REQUIRE(!chibi_migrate_prefixes(collision, false, error, sizeof error) && error[0]);
+
+    char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    size_t old_anchor = (size_t)(strstr(source, "game_move_transform(p") - source),
+           new_anchor = (size_t)(strstr(expected, "move_transform(p") - expected);
+    char metadata[1024];
+    snprintf(
+        metadata,
+        sizeof metadata,
+        "{\"version\":2,\"description\":\"GameTransform\","
+        "\"graphs\":[{\"nodes\":[{\"id\":42,\"type\":\"Break_GameTransform\","
+        "\"x\":17,\"inputs\":[{\"id\":43,\"name\":\"GameTransform\","
+        "\"parents\":[\"GameTransform\"]}]}],"
+        "\"edges\":[{\"from\":\"42.GameTransform\",\"to\":\"44.Value\"}]}],"
+        "\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":\"node\"}]}",
+        old_anchor
+    );
+    char *bound = authoring_source_metadata_bind(metadata, source);
+    REQUIRE(bound);
+    const char *files[][2] = {
+        { "project.kdl", "version 21\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
+        { "content/B.chibi", source },
+        { "content/B.chibi.meta", bound },
+        { "content/Scene.kdl", asset },
+    };
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    free(bound);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 21);
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    snprintf(path, sizeof path, "%s/content/B.chibi.meta", root);
+    FILE *file = fopen(path, "rb");
+    REQUIRE(file);
+    char text[2048], anchor[64];
+    text[fread(text, 1, sizeof text - 1, file)] = '\0';
+    fclose(file);
+    snprintf(anchor, sizeof anchor, "\"start\":%zu", new_anchor);
+    REQUIRE(authoring_source_metadata_matches(text, expected));
+    REQUIRE(strstr(text, "\"type\":\"Break_Transform\"") && strstr(text, anchor));
+    REQUIRE(strstr(text, "\"description\":\"GameTransform\"") && strstr(text, "\"x\":17"));
+    REQUIRE(strstr(text, "\"name\":\"Transform\"") && strstr(text, "\"parents\":[\"Transform\"]"));
+    REQUIRE(strstr(text, "\"from\":\"42.Transform\"") && strstr(text, "\"to\":\"44.Value\""));
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
     rmdir(root);
     return true;
 }
@@ -4506,11 +4834,13 @@ void test_language_program()
     RUN_TEST_CASE(program_input_map_validates_actions);
     RUN_TEST_CASE(program_scene_children_are_referenced);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
+    RUN_TEST_CASE(program_scene_bindings_are_typed_names_before_play);
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
     RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
     RUN_TEST_CASE(program_version_19_components_move_to_chibi);
     RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
+    RUN_TEST_CASE(program_version_21_prefixes_migrate_without_changing_data);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

@@ -45,7 +45,7 @@ typedef struct
  * - PARAMETER: asset, graph_id (its function), id (its Entry or Return pin).
  * - LOCAL: asset, graph_id, id.
  * - EVENT: name. Its asset is its event definition, or -1.
- * - COMPONENT: name, as GameHealth. FIELD adds field, a dot path.
+ * - COMPONENT: name, as Health. FIELD adds field, a dot path.
  * A definition of a graph, variable, parameter or local also has its name. */
 typedef enum
 {
@@ -100,7 +100,7 @@ typedef struct
     const char *graph;     /* that graph's name; NULL when unnamed */
     const char *pin;       /* that pin's name; NULL without a pin */
     const char *object;    /* the scene object holding it */
-    const char *component; /* the component field holding it, as GameUi.document */
+    const char *component; /* the component field holding it, as Ui.document */
 } reference;
 
 reference_index *reference_index_new();
@@ -134,9 +134,9 @@ int reference_index_asset_count(const reference_index *index);
 const reference_asset *reference_index_asset_at(const reference_index *index, int position);
 /* Finds a named asset or adds its unresolved record. */
 int reference_index_named_asset(reference_index *, reference_asset_kind, const char *name);
-/* The kind of asset a component field's text names, as GameUi.document names
- * a ui asset and GameSpawnRequest.prototype a prototype; REFERENCE_ASSET_KIND_COUNT
- * for a field that names none. `component` is its type's name, as GameUi. */
+/* The kind of asset a component field's text names, as Ui.document names
+ * a ui asset and SpawnRequest.prototype a prototype; REFERENCE_ASSET_KIND_COUNT
+ * for a field that names none. `component` is its type's name, as Ui. */
 reference_asset_kind reference_named_field_kind(const char *component, const char *field);
 typedef struct
 {
@@ -180,7 +180,7 @@ int reference_index_count_uses(const reference_index *index, reference_symbol sy
  * events, components and fields. */
 const reference *reference_index_definition(const reference_index *index, reference_symbol symbol);
 /* The ui assets shown on the entities `behavior` is attached to: the
- * GameUi.document of each prototype and scene object that attaches it, whose
+ * Ui.document of each prototype and scene object that attaches it, whose
  * events reach the behavior. Appends their positions once each to
  * *documents (support/array.h). */
 void reference_index_attached_documents(const reference_index *index, int behavior, int **documents);

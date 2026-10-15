@@ -1,10 +1,10 @@
-#ifndef CHIBI_GAME_MATERIAL_DEFINITION_H
-#define CHIBI_GAME_MATERIAL_DEFINITION_H
+#ifndef CHIBI_MATERIAL_DEFINITION_H
+#define CHIBI_MATERIAL_DEFINITION_H
 #include "runtime/native_definitions.h"
 
-#define GAME_MATERIAL_DamageMaterial_NAME "Damage Material"
-#define GAME_MATERIAL_DamageMaterial_SOURCE "damage_material"
-#define GAME_MATERIAL_DamageMaterial_INPUTS(X)                                 \
+#define MATERIAL_DamageMaterial_NAME "Damage Material"
+#define MATERIAL_DamageMaterial_SOURCE "damage_material"
+#define MATERIAL_DamageMaterial_INPUTS(X)                                      \
     X("In",                                                                    \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -75,7 +75,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_HANDLE }))
-#define GAME_MATERIAL_DamageMaterial_OUTPUTS(X)                                \
+#define MATERIAL_DamageMaterial_OUTPUTS(X)                                     \
     X("Out",                                                                   \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -86,9 +86,9 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_FLOW }))
-#define GAME_MATERIAL_ReleaseMaterial_NAME "Release Material"
-#define GAME_MATERIAL_ReleaseMaterial_SOURCE "release_material"
-#define GAME_MATERIAL_ReleaseMaterial_INPUTS(X)                                \
+#define MATERIAL_ReleaseMaterial_NAME "Release Material"
+#define MATERIAL_ReleaseMaterial_SOURCE "release_material"
+#define MATERIAL_ReleaseMaterial_INPUTS(X)                                     \
     X("In",                                                                    \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -109,7 +109,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_HANDLE }))
-#define GAME_MATERIAL_ReleaseMaterial_OUTPUTS(X)                               \
+#define MATERIAL_ReleaseMaterial_OUTPUTS(X)                                    \
     X("Out",                                                                   \
       NATIVE_PARAMETER_EXEC,                                                   \
       PIN_FLOW,                                                                \
@@ -120,9 +120,9 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_FLOW }))
-#define GAME_MATERIAL_IsMaterialFragment_NAME "Is Material Fragment"
-#define GAME_MATERIAL_IsMaterialFragment_SOURCE "is_material_fragment"
-#define GAME_MATERIAL_IsMaterialFragment_INPUTS(X)                             \
+#define MATERIAL_IsMaterialFragment_NAME "Is Material Fragment"
+#define MATERIAL_IsMaterialFragment_SOURCE "is_material_fragment"
+#define MATERIAL_IsMaterialFragment_INPUTS(X)                                  \
     X("Entity",                                                                \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_HANDLE,                                                              \
@@ -133,7 +133,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_HANDLE }))
-#define GAME_MATERIAL_IsMaterialFragment_OUTPUTS(X)                            \
+#define MATERIAL_IsMaterialFragment_OUTPUTS(X)                                 \
     X("Fragment",                                                              \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_BOOL,                                                                \
@@ -144,11 +144,11 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_BOOL }))
-#define GAME_MATERIAL_IsPierceableMaterialFragment_NAME                        \
+#define MATERIAL_IsPierceableMaterialFragment_NAME                             \
     "Is Pierceable Material Fragment"
-#define GAME_MATERIAL_IsPierceableMaterialFragment_SOURCE                      \
+#define MATERIAL_IsPierceableMaterialFragment_SOURCE                           \
     "is_pierceable_material_fragment"
-#define GAME_MATERIAL_IsPierceableMaterialFragment_INPUTS(X)                   \
+#define MATERIAL_IsPierceableMaterialFragment_INPUTS(X)                        \
     X("Entity",                                                                \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_HANDLE,                                                              \
@@ -159,7 +159,7 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_HANDLE }))
-#define GAME_MATERIAL_IsPierceableMaterialFragment_OUTPUTS(X)                  \
+#define MATERIAL_IsPierceableMaterialFragment_OUTPUTS(X)                       \
     X("Fragment",                                                              \
       NATIVE_PARAMETER_DATA,                                                   \
       PIN_BOOL,                                                                \
@@ -171,30 +171,28 @@
       false,                                                                   \
       ((pin_value){ .type = PIN_BOOL }))
 
-#define GAME_MATERIAL_DAMAGE_INPUTS(X) GAME_MATERIAL_DamageMaterial_INPUTS(X)
-#define GAME_MATERIAL_RELEASE_INPUTS(X) GAME_MATERIAL_ReleaseMaterial_INPUTS(X)
-#define GAME_MATERIAL_FRAGMENT_INPUTS(X)                                       \
-    GAME_MATERIAL_IsMaterialFragment_INPUTS(X)
-#define GAME_MATERIAL_ACTION_OUTPUTS(X) GAME_MATERIAL_DamageMaterial_OUTPUTS(X)
-#define GAME_MATERIAL_FRAGMENT_OUTPUTS(X)                                      \
-    GAME_MATERIAL_IsMaterialFragment_OUTPUTS(X)
+#define MATERIAL_DAMAGE_INPUTS(X) MATERIAL_DamageMaterial_INPUTS(X)
+#define MATERIAL_RELEASE_INPUTS(X) MATERIAL_ReleaseMaterial_INPUTS(X)
+#define MATERIAL_FRAGMENT_INPUTS(X) MATERIAL_IsMaterialFragment_INPUTS(X)
+#define MATERIAL_ACTION_OUTPUTS(X) MATERIAL_DamageMaterial_OUTPUTS(X)
+#define MATERIAL_FRAGMENT_OUTPUTS(X) MATERIAL_IsMaterialFragment_OUTPUTS(X)
 
-extern const native_definition_pack GAME_MATERIAL_DEFINITION_PACK;
+extern const native_definition_pack MATERIAL_DEFINITION_PACK;
 
-#define GAME_MATERIAL_DamageMaterial_PRESENTATION                              \
+#define MATERIAL_DamageMaterial_PRESENTATION                                   \
     .category = "Physics",                                                     \
     .description = "Queues Energy damage that carves Entity's material "       \
                    "within "                                                   \
                    "Radius of Point; non-material targets are ignored."
-#define GAME_MATERIAL_IsMaterialFragment_PRESENTATION                          \
+#define MATERIAL_IsMaterialFragment_PRESENTATION                               \
     .category = "Physics",                                                     \
     .description = "Whether Entity is a fragment broken off destructible "     \
                    "material."
-#define GAME_MATERIAL_IsPierceableMaterialFragment_PRESENTATION                \
+#define MATERIAL_IsPierceableMaterialFragment_PRESENTATION                     \
     .category = "Physics",                                                     \
     .description = "Whether Entity is a material fragment that continuous "    \
                    "sensors may pass through."
-#define GAME_MATERIAL_ReleaseMaterial_PRESENTATION                             \
+#define MATERIAL_ReleaseMaterial_PRESENTATION                                  \
     .category = "Physics",                                                     \
     .description = "Queues Entity's remaining material to break loose as one " \
                    "fragment, then destroys Entity."

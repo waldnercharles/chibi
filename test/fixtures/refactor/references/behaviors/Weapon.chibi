@@ -9,7 +9,7 @@ behavior "Weapon" {
             elapsed_dt()
         } else {
             if find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Found {
-                await set_game_aim_direction(convert<"game_transform_to_cf">(direction_to(self.Transform, convert<"game_transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position))))
+                await set_aim_direction(convert<"transform_to_cf">(direction_to(self.Transform, convert<"transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position))))
                 elapsed_dt()
             } else {
                 elapsed_dt()

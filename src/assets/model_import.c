@@ -1028,12 +1028,12 @@ static bool write_mesh(import *in, const render_mesh_asset *mesh, const char *ke
 /* A prototype that draws the mesh at `source` in its own units. */
 static char *prototype_text(const char *name, const char *source)
 {
-    game_prototype *prototype = game_prototype_new(name);
-    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameTransform3D,
-                                               &GAME_COMPONENT_GameGeometry3D,
-                                               &GAME_COMPONENT_GameMeshAsset };
+    prototype *prototype = prototype_new(name);
+    const ecs_component_desc *components[] = { &COMPONENT_Transform3D,
+                                               &COMPONENT_Geometry3D,
+                                               &COMPONENT_MeshAsset };
     for (size_t i = 0; i < sizeof components / sizeof *components; i++) {
-        int added = game_prototype_add_component(prototype, components[i]);
+        int added = prototype_add_component(prototype, components[i]);
         assert(added == 0);
         (void)added;
     }
@@ -1044,15 +1044,15 @@ static char *prototype_text(const char *name, const char *source)
         const char *component, *field;
         pin_value value;
     } fields[] = {
-        { "GameTransform3D", "rotation", { .type = PIN_STRUCT, .ptr = &rotation } },
-        { "GameTransform3D", "scale", { .type = PIN_STRUCT, .ptr = &scale } },
-        { "GameGeometry3D", "width", { .type = PIN_F32, .f = 1 } },
-        { "GameGeometry3D", "height", { .type = PIN_F32, .f = 1 } },
-        { "GameGeometry3D", "depth", { .type = PIN_F32, .f = 1 } },
-        { "GameMeshAsset", "source", { .type = PIN_STR, .str = source } },
+        { "Transform3D", "rotation", { .type = PIN_STRUCT, .ptr = &rotation } },
+        { "Transform3D", "scale", { .type = PIN_STRUCT, .ptr = &scale } },
+        { "Geometry3D", "width", { .type = PIN_F32, .f = 1 } },
+        { "Geometry3D", "height", { .type = PIN_F32, .f = 1 } },
+        { "Geometry3D", "depth", { .type = PIN_F32, .f = 1 } },
+        { "MeshAsset", "source", { .type = PIN_STR, .str = source } },
     };
     for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
-        int written = game_prototype_write_field(
+        int written = prototype_write_field(
             prototype,
             fields[i].component,
             fields[i].field,
@@ -1061,8 +1061,8 @@ static char *prototype_text(const char *name, const char *source)
         assert(written == 0);
         (void)written;
     }
-    char *text = game_prototype_save(prototype);
-    game_prototype_free(prototype);
+    char *text = prototype_save(prototype);
+    prototype_free(prototype);
     return text;
 }
 

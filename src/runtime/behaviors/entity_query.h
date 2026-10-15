@@ -28,7 +28,7 @@ const char *entity_condition_resolve(
     const ecs_component_desc *component,
     entity_condition *out
 );
-const char *game_entity_count_matches(ecs_world *, const pin_value *, pin_value *);
-extern const node_host_call GAME_ENTITY_COUNT_MATCHING_CALL;
-extern const node_access GAME_ENTITY_COUNT_MATCHING_ACCESS;
+const char *entity_count_matches(ecs_world *, const pin_value *, pin_value *);
+extern const node_host_call ENTITY_COUNT_MATCHING_CALL;
+extern const node_access ENTITY_COUNT_MATCHING_ACCESS;
 #endif

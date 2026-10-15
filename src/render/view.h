@@ -10,8 +10,9 @@
 
 /* How the 3D path sees a camera. A nonzero forward looks along it from eye
  * with up toward the image top; a zero forward frames the center and span from
- * a fixed overhead angle. Field of view is vertical radians and the clips are
- * distances; zeros pick 35 degrees and clips that scale with the span. */
+ * the framing yaw and pitch (zeros use the default overhead angle). Field of
+ * view is vertical radians and the clips are distances; zeros pick 35 degrees
+ * and clips that scale with the span. */
 typedef struct engine_viewport_lens
 {
     CF_V3 eye, forward, up;
@@ -25,6 +26,8 @@ typedef struct engine_viewport_camera
     float span_width;
     float span_height;
     float focal_distance;
+    /* 3D framing: yaw turns around world +Y, pitch tilts away from the default
+     * overhead direction, and target_elevation places the target on world Y. */
     float yaw, pitch, target_elevation, roll;
     engine_viewport_lens lens;
 } engine_viewport_camera;

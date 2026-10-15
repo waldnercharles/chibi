@@ -10,7 +10,7 @@ static const char
 
 static const char *burst_call(void *service, const pin_value *values, pin_value *)
 {
-    game_particles *particles = service;
+    particles *particles = service;
     if (!particles) {
         return missing_particles;
     }
@@ -18,24 +18,24 @@ static const char *burst_call(void *service, const pin_value *values, pin_value 
         return "Emit Particles requires a position";
     }
     const CF_V2 *position = values[0].ptr;
-    game_particle_burst burst = {
+    particle_burst burst = {
         .position = { position->x, position->y },
         .color = values[1].u,
         .count = values[2].i,
         .speed = values[3].f,
         .lifetime = values[4].f,
     };
-    return game_particles_emit(particles, &burst) < 0
+    return particles_emit(particles, &burst) < 0
              ? "Emit Particles requires finite position, nonnegative count and "
                "speed, and positive lifetime"
              : NULL;
 }
-const node_host_call GAME_PARTICLES_BURST_CALL = { .service = "game.particles",
-                                                   .invoke = burst_call,
-                                                   .missing_service = missing_particles };
+const node_host_call PARTICLES_BURST_CALL = { .service = "game.particles",
+                                              .invoke = burst_call,
+                                              .missing_service = missing_particles };
 static const char *directed_call(void *service, const pin_value *v, pin_value *)
 {
-    game_particles *particles = service;
+    particles *particles = service;
     if (!particles) {
         return missing_directed;
     }
@@ -43,7 +43,7 @@ static const char *directed_call(void *service, const pin_value *v, pin_value *)
         return "Position and Direction are required";
     }
     const CF_V2 *position = v[0].ptr, *direction = v[1].ptr;
-    game_particle_spray spray = {
+    particle_spray spray = {
         .position = { position->x, position->y },
         .direction = { direction->x, direction->y },
         .count = v[2].i,
@@ -65,17 +65,15 @@ static const char *directed_call(void *service, const pin_value *v, pin_value *)
         .shape = v[18].i,
         .antialias = 1.5f,
     };
-    if (game_particles_emit_directed(particles, &spray) < 0) {
+    if (particles_emit_directed(particles, &spray) < 0) {
         return "Directed particle ranges and direction must be finite and "
                "valid";
     }
     return NULL;
 }
 
-const node_host_call GAME_PARTICLES_DIRECTED_CALL = {
-    .service = "game.particles",
-    .invoke = directed_call,
-    .missing_service = missing_directed
-};
+const node_host_call PARTICLES_DIRECTED_CALL = { .service = "game.particles",
+                                                 .invoke = directed_call,
+                                                 .missing_service = missing_directed };
 
-const node_access GAME_PARTICLES_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+const node_access PARTICLES_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

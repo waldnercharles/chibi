@@ -89,6 +89,7 @@ typedef struct
 
 extern int g_failed;
 extern const char *g_prefix;
+const char *symbol_prefix();
 extern const collect_ctx *g_collection;
 
 FILE *begin_generated(const char *path, char **temporary);

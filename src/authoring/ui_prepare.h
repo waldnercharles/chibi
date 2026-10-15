@@ -9,16 +9,16 @@
 bool authoring_ui_prepare(
     const char *content,
     const char *name,
-    game_ui_document *,
+    prepared_ui_document *,
     ui_source_resource **,
     char *error,
     size_t size
 );
 bool authoring_ui_assets_prepare(
     const char *content,
-    const game_scene *const *,
+    const scene *const *,
     int scene_count,
-    game_player_asset **,
+    player_asset **,
     char *error,
     size_t size
 );

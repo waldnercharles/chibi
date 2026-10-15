@@ -45,28 +45,27 @@ static const char *find_prototype(const char *name, void *)
     return NULL;
 }
 
-static const game_prototype_registry registry = { .include = find_prototype };
+static const prototype_registry registry = { .include = find_prototype };
 
 /* Whether the plan rewrites `asset` so that the child at `path` uses
- * `prototype` and the asset still includes what it did. */
-static bool rewritten(const refactor_plan *plan, int asset, const char *path, const char *prototype)
+ * `expected` and the asset still includes what it did. */
+static bool rewritten(const refactor_plan *plan, int asset, const char *path, const char *expected)
 {
     char error[256];
     for (int i = 0; i < acount(plan->edits); i++) {
         if (plan->edits[i].asset != asset) {
             continue;
         }
-        game_prototype *saved = game_prototype_load_authored(plan->edits[i].text, &registry, error, sizeof error);
-        int child = saved ? game_scene_document_entity_index(saved->children, path)
-                          : -1;
-        game_prototype *original = game_prototype_load_authored(texts[asset], &registry, error, sizeof error);
+        prototype *saved = prototype_load_authored(plan->edits[i].text, &registry, error, sizeof error);
+        int child = saved ? scene_document_entity_index(saved->children, path) : -1;
+        prototype *original = prototype_load_authored(texts[asset], &registry, error, sizeof error);
         bool ok = child >= 0 &&
-                  !strcmp(saved->children->entities[child].prototype, prototype) &&
+                  !strcmp(saved->children->entities[child].prototype, expected) &&
                   acount(saved->children->entities) ==
                       acount(original->children->entities) &&
                   acount(saved->includes) == acount(original->includes);
-        game_prototype_free(original);
-        game_prototype_free(saved);
+        prototype_free(original);
+        prototype_free(saved);
         return ok;
     }
     return false;
@@ -82,9 +81,9 @@ TEST_CASE(prototype_children_follow_a_rename)
         char path[64];
         snprintf(path, sizeof path, "content/prototypes/%s.kdl", names[i]);
         reference_index_add_asset(index, REFERENCE_ASSET_PROTOTYPE, names[i], path, NULL);
-        game_prototype *prototype = game_prototype_load_authored(texts[i], &registry, error, sizeof error);
-        reference_index_add_prototype(index, i, prototype);
-        game_prototype_free(prototype);
+        prototype *loaded = prototype_load_authored(texts[i], &registry, error, sizeof error);
+        reference_index_add_prototype(index, i, loaded);
+        prototype_free(loaded);
     }
     refactor_project project = { index, texts, &registry, NULL };
     refactor_plan plan = { 0 };

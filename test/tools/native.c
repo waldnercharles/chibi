@@ -25,19 +25,19 @@
 #include <string.h>
 #include <unistd.h>
 
-static game_world *simulation;
-static game_scene_instance *scene_instance;
+static world *simulation;
+static scene_instance *test_scene_instance;
 static material_fields *prepared_fields;
 static unsigned char *field_bytes;
 static int ticks;
-static game_player *player;
+static player *test_player;
 static unsigned char *module_bytes;
 static unsigned char *player_bytes;
-static game_event_catalog *event_catalog, *wrong_events;
-static ecs_world *world;
-static game_source_registry *registry;
-static game_source_entities *host;
-static game_scene *scene, *other_scene;
+static event_catalog *test_event_catalog, *wrong_events;
+static ecs_world *test_world;
+static source_registry *registry;
+static source_entities *host;
+static scene *test_scene, *other_scene;
 static execution_module *module;
 static bool catalog_active;
 static int old_begins, new_begins;
@@ -63,28 +63,28 @@ bool test_native_catalog_active()
 }
 type_catalog_pack test_native_catalog_pack()
 {
-    return GAME_TYPE_PACK;
+    return TYPE_PACK;
 }
 static void cleanup()
 {
-    if (player) {
-        game_player_free(player);
+    if (test_player) {
+        player_free(test_player);
     }
-    player = NULL;
+    test_player = NULL;
     free(module_bytes);
     module_bytes = NULL;
     free(player_bytes);
     player_bytes = NULL;
-    game_event_catalog_free(event_catalog);
-    event_catalog = NULL;
-    game_event_catalog_free(wrong_events);
+    event_catalog_free(test_event_catalog);
+    test_event_catalog = NULL;
+    event_catalog_free(wrong_events);
     wrong_events = NULL;
-    if (scene_instance) {
-        game_scene_instance_free(scene_instance);
+    if (test_scene_instance) {
+        scene_instance_free(test_scene_instance);
     }
-    scene_instance = NULL;
+    test_scene_instance = NULL;
     if (simulation) {
-        game_world_free(simulation);
+        world_free(simulation);
     }
     simulation = NULL;
     if (prepared_fields) {
@@ -100,29 +100,28 @@ static void cleanup()
         continuation.request = NULL;
     }
     if (host) {
-        game_source_entities_free(host);
+        source_entities_free(host);
     }
     host = NULL;
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
-    game_scene_free(scene);
-    scene = NULL;
-    game_scene_free(other_scene);
+    scene_free(test_scene);
+    test_scene = NULL;
+    scene_free(other_scene);
     other_scene = NULL;
     execution_module_free(module);
     module = NULL;
-    ecs_world_free(world);
-    world = NULL;
+    ecs_world_free(test_world);
+    test_world = NULL;
     continuation = (typeof(continuation)){ 0 };
     old_begins = new_begins = 0;
     observed = 0;
 }
 static const char *observe(void *service, const pin_value *, pin_value *)
 {
-    const GameTransform
-        *transform = GAME_GameTransform_get_const(world, continuation.entity);
+    const Transform *transform = Transform_get_const(test_world, continuation.entity);
     if (!transform) {
         return "native Begin cannot see initialized Transform";
     }
@@ -179,42 +178,40 @@ static bool register_behavior(behavior_backend backend, bool replacement)
         fprintf(stderr, "native observer module: %s\n", error);
     }
     REQUIRE(module);
-    REQUIRE(game_source_register(registry, replacement ? "New" : "Old", module, NULL) == 0);
+    REQUIRE(source_register(registry, replacement ? "New" : "Old", module, NULL) == 0);
     execution_module_free(module);
     module = NULL;
     return true;
 }
 static bool prototype(float x, const char *behavior)
 {
-    GameTransform transform = { .x = x, .y = 2 };
-    game_scene_component component = { &GAME_COMPONENT_GameTransform, &transform };
-    game_scene_object object = { .name = "Spawned",
-                                 .components = &component,
-                                 .component_count = 1,
-                                 .behaviors = &behavior,
-                                 .behavior_count = 1 };
-    game_scene_spec spec = { .name = "NativePrototype",
-                             .physics = game_physics_defaults(),
-                             .objects = &object,
-                             .object_count = 1 };
+    Transform transform = { .x = x, .y = 2 };
+    scene_component component = { &COMPONENT_Transform, &transform };
+    scene_object object = { .name = "Spawned",
+                            .components = &component,
+                            .component_count = 1,
+                            .behaviors = &behavior,
+                            .behavior_count = 1 };
+    scene_spec spec = { .name = "NativePrototype",
+                        .physics = physics_defaults(),
+                        .objects = &object,
+                        .object_count = 1 };
     char error[192];
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
-    REQUIRE(
-        game_entities_register_prepared(game_source_entities_host(host), "Selected", scene) == 0
-    );
-    game_scene_free(scene);
-    scene = NULL;
+    test_scene = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(test_scene);
+    REQUIRE(entities_register_prepared(source_entities_host(host), "Selected", test_scene) == 0);
+    scene_free(test_scene);
+    test_scene = NULL;
     return true;
 }
 /* A turret under the spawned ship, each with its own behavior. */
 static bool ship_prototype()
 {
-    GameTransform hull = { .x = 3, .y = 2 }, turret = { .x = 5 };
-    game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &hull },
-                                          { &GAME_COMPONENT_GameTransform, &turret } };
+    Transform hull = { .x = 3, .y = 2 }, turret = { .x = 5 };
+    scene_component components[] = { { &COMPONENT_Transform, &hull },
+                                     { &COMPONENT_Transform, &turret } };
     const char *behaviors[] = { "Old", "New" };
-    game_scene_object objects[] = {
+    scene_object objects[] = {
         { .name = "Ship",
           .components = &components[0],
           .component_count = 1,
@@ -227,19 +224,17 @@ static bool ship_prototype()
           .behavior_count = 1 },
     };
     const int parents[] = { -1, 0 };
-    game_scene_spec spec = { .name = "Ship",
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .object_count = 2,
-                             .parents = parents };
+    scene_spec spec = { .name = "Ship",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 2,
+                        .parents = parents };
     char error[192];
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
-    REQUIRE(
-        game_entities_register_prepared(game_source_entities_host(host), "Selected", scene) == 0
-    );
-    game_scene_free(scene);
-    scene = NULL;
+    test_scene = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(test_scene);
+    REQUIRE(entities_register_prepared(source_entities_host(host), "Selected", test_scene) == 0);
+    scene_free(test_scene);
+    test_scene = NULL;
     return true;
 }
 static bool complete(void *, int pin, pin_value value)
@@ -250,7 +245,7 @@ static bool complete(void *, int pin, pin_value value)
 }
 static int resume(void *)
 {
-    GameTransform *transform = GAME_GameTransform_get(world, continuation.entity);
+    Transform *transform = Transform_get(test_world, continuation.entity);
     continuation.payload_valid &= transform && transform->x == continuation.initial;
     if (!transform) {
         return FLOW_ERR_NODE;
@@ -290,14 +285,8 @@ static bool queue(float initial, float initialized)
     pin_value argument = { .type = PIN_NAME, .str = "Selected" };
     const char *error = NULL;
     REQUIRE(
-        GAME_ENTITY_SPAWN_COMMAND.begin(
-            game_source_entities_host(host),
-            NULL,
-            &argument,
-            1,
-            continuation.request,
-            &error
-        ) == FLOW_OK
+        ENTITY_SPAWN_COMMAND
+            .begin(source_entities_host(host), NULL, &argument, 1, continuation.request, &error) == FLOW_OK
     );
     return true;
 }
@@ -305,10 +294,10 @@ static bool finish()
 {
     continuation.state = EXECUTION_OWNER_COMPLETED;
     execution_request_finish(continuation.request, FLOW_HOST_FINISHED);
-    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
+    REQUIRE(entities_flush(source_entities_host(host)) == 0);
     continuation.request = NULL; /* Host completion consumed both references. */
     REQUIRE(continuation.detached);
-    REQUIRE(game_source_begin(registry, 1, 0) == 0);
+    REQUIRE(source_begin(registry, 1, 0) == 0);
     return true;
 }
 TEST_CASE(native_prepared_spawn_generations)
@@ -316,37 +305,38 @@ TEST_CASE(native_prepared_spawn_generations)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int i = 0; i < 2; i++) {
         behavior_backend backend = backends[i];
-        REQUIRE(
-            type_catalog_find("GameTransform") == GAME_COMPONENT_GameTransform.type
-        );
-        world = ecs_world_new();
-        registry = game_source_registry_new(world);
-        host = game_source_entities_new(registry);
-        game_source_entities_time(host, 1, 0, true);
+        REQUIRE(type_catalog_find("Transform") == COMPONENT_Transform.type);
+        test_world = ecs_world_new();
+        registry = source_registry_new(test_world);
+        host = source_entities_new(registry);
+        source_entities_time(host, 1, 0, true);
         REQUIRE(register_behavior(backend, false));
         REQUIRE(register_behavior(backend, true));
         REQUIRE(prototype(3, "Old"));
         REQUIRE(queue(3, 33));
         REQUIRE(prototype(7, "New")); /* Pending request retains Old generation. */
-        REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
-        REQUIRE(continuation.payload_valid && ecs_world_live_count(world) == 1);
+        REQUIRE(entities_flush(source_entities_host(host)) == 1);
+        REQUIRE(continuation.payload_valid && ecs_world_live_count(test_world) == 1);
         REQUIRE(old_begins == 0 && new_begins == 0);
         REQUIRE(finish());
         REQUIRE(old_begins == 1 && new_begins == 0 && observed == 33);
         REQUIRE(queue(7, 77));
-        REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
+        REQUIRE(entities_flush(source_entities_host(host)) == 1);
         REQUIRE(continuation.payload_valid && old_begins == 1 && new_begins == 0);
         REQUIRE(finish());
         REQUIRE(old_begins == 1 && new_begins == 1 && observed == 77);
         REQUIRE(queue(7, 88));
-        REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
+        REQUIRE(entities_flush(source_entities_host(host)) == 1);
         ecs_entity canceled = continuation.entity;
-        REQUIRE(ecs_world_live_count(world) == 3);
+        REQUIRE(ecs_world_live_count(test_world) == 3);
         execution_request_detach(continuation.request);
         continuation.request = NULL;
-        REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
-        REQUIRE(!ecs_entity_is_alive(world, canceled) && ecs_world_live_count(world) == 2);
-        REQUIRE(game_source_begin(registry, 2, 0) == 0);
+        REQUIRE(entities_flush(source_entities_host(host)) == 0);
+        REQUIRE(
+            !ecs_entity_is_alive(test_world, canceled) &&
+            ecs_world_live_count(test_world) == 2
+        );
+        REQUIRE(source_begin(registry, 2, 0) == 0);
         REQUIRE(old_begins == 1 && new_begins == 1);
         cleanup();
     }
@@ -356,38 +346,38 @@ TEST_CASE(native_prepared_spawn_generations)
  * canceled spawn takes them with it. */
 TEST_CASE(native_prepared_spawn_whole_tree)
 {
-    world = ecs_world_new();
-    registry = game_source_registry_new(world);
-    host = game_source_entities_new(registry);
-    game_source_entities_time(host, 1, 0, true);
+    test_world = ecs_world_new();
+    registry = source_registry_new(test_world);
+    host = source_entities_new(registry);
+    source_entities_time(host, 1, 0, true);
     REQUIRE(register_behavior(BEHAVIOR_BYTECODE, false));
     REQUIRE(register_behavior(BEHAVIOR_BYTECODE, true));
     REQUIRE(ship_prototype());
     REQUIRE(queue(3, 33));
-    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
+    REQUIRE(entities_flush(source_entities_host(host)) == 1);
     ecs_entity ship = continuation.entity;
-    REQUIRE(continuation.payload_valid && ecs_world_live_count(world) == 2);
-    REQUIRE(ecs_pair_source_count(world, ECS_CHILD_OF, ship) == 1);
+    REQUIRE(continuation.payload_valid && ecs_world_live_count(test_world) == 2);
+    REQUIRE(ecs_pair_source_count(test_world, ECS_CHILD_OF, ship) == 1);
     REQUIRE(finish());
     REQUIRE(old_begins == 1 && new_begins == 1);
     REQUIRE(queue(3, 44));
-    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
-    REQUIRE(ecs_world_live_count(world) == 4);
+    REQUIRE(entities_flush(source_entities_host(host)) == 1);
+    REQUIRE(ecs_world_live_count(test_world) == 4);
     execution_request_detach(continuation.request);
     continuation.request = NULL;
-    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
-    REQUIRE(ecs_world_live_count(world) == 2 && ecs_entity_is_alive(world, ship));
+    REQUIRE(entities_flush(source_entities_host(host)) == 0);
+    REQUIRE(ecs_world_live_count(test_world) == 2 && ecs_entity_is_alive(test_world, ship));
     /* Destroying the ship stops its children's behaviors with it, including
      * a child reparented under it in the same boundary. */
-    ecs_entity turret = ecs_pair_source(world, ECS_CHILD_OF, ship, 0);
-    ecs_entity escort = ecs_world_create_entity(world);
-    REQUIRE(game_source_attach(registry, escort, "New", true, 1, 0) == 0);
-    REQUIRE(ecs_world_record_add_pair(world, escort, ECS_CHILD_OF, ship, 0) == ECS_OK);
-    game_entities_request_destroy(game_source_entities_host(host), ship);
-    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
-    REQUIRE(ecs_world_live_count(world) == 0);
-    REQUIRE(game_source_detach_entity(registry, turret) == 0);
-    REQUIRE(game_source_detach_entity(registry, escort) == 0);
+    ecs_entity turret = ecs_pair_source(test_world, ECS_CHILD_OF, ship, 0);
+    ecs_entity escort = ecs_world_create_entity(test_world);
+    REQUIRE(source_attach(registry, escort, "New", true, 1, 0) == 0);
+    REQUIRE(ecs_world_record_add_pair(test_world, escort, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    entities_request_destroy(source_entities_host(host), ship);
+    REQUIRE(entities_flush(source_entities_host(host)) == 0);
+    REQUIRE(ecs_world_live_count(test_world) == 0);
+    REQUIRE(source_detach_entity(registry, turret) == 0);
+    REQUIRE(source_detach_entity(registry, escort) == 0);
     cleanup();
     return true;
 }
@@ -426,13 +416,13 @@ TEST_CASE(native_prepared_world_runs_source_and_real_physics)
         REQUIRE(prepared_fields);
         free(field_bytes);
         field_bytes = NULL;
-        game_world_options options = { .modules = GAME_WORLD_PHYSICS | GAME_WORLD_MATERIALS,
-                                       .fields = prepared_fields };
-        simulation = game_world_new(&options, error, sizeof error);
+        world_options options = { .modules = WORLD_PHYSICS | WORLD_MATERIALS,
+                                  .fields = prepared_fields };
+        simulation = world_new(&options, error, sizeof error);
         REQUIRE(simulation);
         prepared_fields = NULL;
-        ecs_world *ecs = game_world_ecs(simulation);
-        game_source_registry *sources = game_world_sources(simulation);
+        ecs_world *ecs = world_ecs(simulation);
+        source_registry *sources = world_sources(simulation);
         static const node_host_call call = { .invoke = tick };
         static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
         behavior_function_builder *builder = behavior_function_builder_new();
@@ -475,43 +465,43 @@ TEST_CASE(native_prepared_world_runs_source_and_real_physics)
         module = execution_module_finish(&plan, backends[b], error, sizeof error);
         execution_module_plan_free(plan);
         REQUIRE(module);
-        REQUIRE(game_source_register(sources, "Clock", module, NULL) == 0);
+        REQUIRE(source_register(sources, "Clock", module, NULL) == 0);
         execution_module_free(module);
         module = NULL;
-        GameTransform transform = { 0 };
-        GameVelocity velocity = { .x = 1 };
-        GameBody rigid = { .type = GAME_BODY_DYNAMIC };
-        GameCollider collider = { .shape = GAME_COLLIDER_BOX, .width = 1, .height = 1 };
-        const game_scene_component components[] = {
-            { &GAME_COMPONENT_GameTransform, &transform },
-            { &GAME_COMPONENT_GameVelocity, &velocity },
-            { &GAME_COMPONENT_GameBody, &rigid },
-            { &GAME_COMPONENT_GameCollider, &collider },
+        Transform transform = { 0 };
+        Velocity velocity = { .x = 1 };
+        Body rigid = { .type = BODY_DYNAMIC };
+        Collider collider = { .shape = COLLIDER_BOX, .width = 1, .height = 1 };
+        const scene_component components[] = {
+            { &COMPONENT_Transform, &transform },
+            { &COMPONENT_Velocity, &velocity },
+            { &COMPONENT_Body, &rigid },
+            { &COMPONENT_Collider, &collider },
         };
         const char *behavior = "Clock";
-        const game_scene_object object = { .name = "Moving",
-                                           .components = components,
-                                           .component_count = 4,
-                                           .behaviors = &behavior,
-                                           .behavior_count = 1 };
-        const game_scene_spec spec = { .name = "Prepared",
-                                       .physics = game_physics_defaults(),
-                                       .objects = &object,
-                                       .object_count = 1 };
-        scene = game_scene_prepare(&spec, error, sizeof error);
-        REQUIRE(scene);
-        scene_instance = game_scene_instantiate(scene, ecs, sources, error, sizeof error);
-        REQUIRE(scene_instance);
-        game_scene_free(scene);
-        scene = NULL;
-        engine *runtime = game_world_engine(simulation);
+        const scene_object object = { .name = "Moving",
+                                      .components = components,
+                                      .component_count = 4,
+                                      .behaviors = &behavior,
+                                      .behavior_count = 1 };
+        const scene_spec spec = { .name = "Prepared",
+                                  .physics = physics_defaults(),
+                                  .objects = &object,
+                                  .object_count = 1 };
+        test_scene = scene_prepare(&spec, error, sizeof error);
+        REQUIRE(test_scene);
+        test_scene_instance = scene_instantiate(test_scene, ecs, sources, error, sizeof error);
+        REQUIRE(test_scene_instance);
+        scene_free(test_scene);
+        test_scene = NULL;
+        engine *runtime = world_engine(simulation);
         REQUIRE(engine_frame(runtime, 0) == 0);
         REQUIRE(engine_frame(runtime, .05) == 0);
         REQUIRE(engine_last_timing(runtime)->simulation_steps == 3 && ticks == 3);
-        ecs_entity entity = game_scene_instance_entity(scene_instance, 0);
-        const GameTransform *moved = GAME_GameTransform_get_const(ecs, entity);
+        ecs_entity entity = scene_instance_entity(test_scene_instance, 0);
+        const Transform *moved = Transform_get_const(ecs, entity);
         REQUIRE(moved && fabsf(moved->x - .05f) < .00001f && moved->y == 0);
-        material_fields *catalog = game_materials_fields(game_world_materials(simulation));
+        material_fields *catalog = materials_fields(world_materials(simulation));
         field_context context;
         REQUIRE(
             material_field_context(catalog, "Constant", "preset/large", 0, &context, error, sizeof error)
@@ -542,9 +532,9 @@ static const char *observe_jump(void *service, const pin_value *, pin_value *)
 {
     const pin_value action = { .type = PIN_STR, .str = "Jump" };
     pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL };
-    const char *error = GAME_INPUT_HELD_CALL.invoke(service, &action, &held);
+    const char *error = INPUT_HELD_CALL.invoke(service, &action, &held);
     if (!error) {
-        error = GAME_INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+        error = INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
     }
     jump.steps++;
     jump.held = held.b;
@@ -632,59 +622,59 @@ static bool jump_world(engine **out)
     jump = (typeof(jump)){ 0 };
     char error[192];
     const input_action actions[] = {
-        { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
+        { "Jump", (UINT64_C(1) << CONTROL_Z) | (UINT64_C(1) << CONTROL_X), false },
     };
     /* A count without actions, an unnamed or empty-named action, one action
      * listed twice, an action without controls or with one outside
-     * GameControl, or more than the most actions a map holds is rejected. */
-    const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
-    const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
+     * Control, or more than the most actions a map holds is rejected. */
+    const input_action unnamed = { NULL, UINT64_C(1) << CONTROL_Z, false };
+    const input_action empty = { "", UINT64_C(1) << CONTROL_Z, false };
     const input_action twice[] = {
-        { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
-        { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
+        { "Jump", UINT64_C(1) << CONTROL_Z, false },
+        { "Jump", UINT64_C(1) << CONTROL_X, false },
     };
     const input_action uncontrolled = { "Jump", 0, false };
-    const input_action none = { "Jump", UINT64_C(1) << GAME_CONTROL_NONE, false };
-    const input_action beyond = { "Jump", UINT64_C(1) << GAME_CONTROL_COUNT, false };
+    const input_action none = { "Jump", UINT64_C(1) << CONTROL_NONE, false };
+    const input_action beyond = { "Jump", UINT64_C(1) << CONTROL_COUNT, false };
     static char names[INPUT_ACTION_MAX + 1][8];
     static input_action many[INPUT_ACTION_MAX + 1];
     for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
         snprintf(names[i], sizeof names[i], "A%d", i);
-        many[i] = (input_action){ names[i], UINT64_C(1) << GAME_CONTROL_Z, false };
+        many[i] = (input_action){ names[i], UINT64_C(1) << CONTROL_Z, false };
     }
-    game_world_options invalid[] = {
-        { .modules = GAME_WORLD_INPUT, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = twice, .action_count = 2 },
-        { .modules = GAME_WORLD_INPUT, .actions = &empty, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = &uncontrolled, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = &none, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = &beyond, .action_count = 1 },
-        { .modules = GAME_WORLD_INPUT, .actions = many, .action_count = INPUT_ACTION_MAX + 1 },
+    world_options invalid[] = {
+        { .modules = WORLD_INPUT, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = twice, .action_count = 2 },
+        { .modules = WORLD_INPUT, .actions = &empty, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = &uncontrolled, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = &none, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = &beyond, .action_count = 1 },
+        { .modules = WORLD_INPUT, .actions = many, .action_count = INPUT_ACTION_MAX + 1 },
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
-        REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
+        REQUIRE(!world_new(&invalid[i], error, sizeof error));
         REQUIRE(!strcmp(error, "Invalid runtime world options"));
     }
-    game_world_options most = { .modules = GAME_WORLD_INPUT,
-                                .actions = many,
-                                .action_count = INPUT_ACTION_MAX };
-    game_world *full = game_world_new(&most, error, sizeof error);
+    world_options most = { .modules = WORLD_INPUT,
+                           .actions = many,
+                           .action_count = INPUT_ACTION_MAX };
+    world *full = world_new(&most, error, sizeof error);
     REQUIRE(full);
-    game_world_free(full);
-    game_world_options options = { .modules = GAME_WORLD_INPUT,
-                                   .actions = actions,
-                                   .action_count = 1 };
-    simulation = game_world_new(&options, error, sizeof error);
+    world_free(full);
+    world_options options = { .modules = WORLD_INPUT,
+                              .actions = actions,
+                              .action_count = 1 };
+    simulation = world_new(&options, error, sizeof error);
     REQUIRE(simulation);
-    ecs_world *ecs = game_world_ecs(simulation);
-    static const node_host_call tick = { .service = GAME_INPUT_SERVICE,
+    ecs_world *ecs = world_ecs(simulation);
+    static const node_host_call tick = { .service = INPUT_SERVICE,
                                          .invoke = observe_jump,
                                          .optional_service = true };
     static const node_host_call press = { .invoke = count_jump };
     const pin_value dt = { .type = PIN_F32 };
-    behavior_function *tick_body = host_body(&tick, &GAME_INPUT_READ_ACCESS, &dt, 1, 990);
-    behavior_function *press_body = host_body(&press, &GAME_INPUT_READ_ACCESS, NULL, 0, 980);
+    behavior_function *tick_body = host_body(&tick, &INPUT_READ_ACCESS, &dt, 1, 990);
+    behavior_function *press_body = host_body(&press, &INPUT_READ_ACCESS, NULL, 0, 980);
     REQUIRE(tick_body && press_body);
     execution_module_plan *plan = execution_module_plan_new();
     plan->id = 992;
@@ -694,16 +684,14 @@ static bool jump_world(engine **out)
     module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
     execution_module_plan_free(plan);
     REQUIRE(module);
-    REQUIRE(game_source_register(game_world_sources(simulation), "Jumper", module, NULL) == 0);
+    REQUIRE(source_register(world_sources(simulation), "Jumper", module, NULL) == 0);
     execution_module_free(module);
     module = NULL;
     ecs_entity jumper = ecs_world_create_entity(ecs);
-    REQUIRE(GAME_GameInput_add(ecs, jumper, 0) == ECS_OK);
+    REQUIRE(Input_add(ecs, jumper, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
-    REQUIRE(
-        game_source_attach(game_world_sources(simulation), jumper, "Jumper", false, 0, 0) == 0
-    );
-    *out = game_world_engine(simulation);
+    REQUIRE(source_attach(world_sources(simulation), jumper, "Jumper", false, 0, 0) == 0);
+    *out = world_engine(simulation);
     REQUIRE(engine_frame(*out, 0) == 0);
     return true;
 }
@@ -711,9 +699,8 @@ TEST_CASE(native_action_state_combines_sources_per_step)
 {
     engine *runtime;
     REQUIRE(jump_world(&runtime));
-    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z,
-                   x = UINT64_C(1) << GAME_CONTROL_X,
-                   c = UINT64_C(1) << GAME_CONTROL_C;
+    const uint64_t z = UINT64_C(1) << CONTROL_Z, x = UINT64_C(1) << CONTROL_X,
+                   c = UINT64_C(1) << CONTROL_C;
     REQUIRE(jump_step(runtime, 0, false, false));
     REQUIRE(jump_step(runtime, z, true, true));
     REQUIRE(jump_step(runtime, z, true, false));
@@ -736,7 +723,7 @@ TEST_CASE(native_pause_keeps_held_actions)
 {
     engine *runtime;
     REQUIRE(jump_world(&runtime));
-    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z;
+    const uint64_t z = UINT64_C(1) << CONTROL_Z;
     REQUIRE(jump_step(runtime, z, true, true));
     REQUIRE(jump.presses == 1);
     REQUIRE(engine_set_playing(runtime, false) == 0);
@@ -752,8 +739,8 @@ TEST_CASE(native_pause_keeps_held_actions)
     cleanup();
     return true;
 }
-#define Z_DOWN (UINT64_C(1) << GAME_CONTROL_Z)
-#define X_DOWN (UINT64_C(1) << GAME_CONTROL_X)
+#define Z_DOWN (UINT64_C(1) << CONTROL_Z)
+#define X_DOWN (UINT64_C(1) << CONTROL_X)
 /* The controls sampled before each step. */
 static const struct
 {
@@ -825,14 +812,14 @@ static const char *kick(void *service, const pin_value *, pin_value *)
 {
     CF_V2 impulse = { 32, 0 };
     const pin_value in[] = { { .u64 = ecs_entity_to_u64(crate) }, { .ptr = &impulse } };
-    return GAME_PHYSICS_IMPULSE_CALL.invoke(service, in, NULL);
+    return PHYSICS_IMPULSE_CALL.invoke(service, in, NULL);
 }
 /* And through its 3D physics, as Apply Impulse 3D does. */
 static const char *kick_3d(void *service, const pin_value *, pin_value *)
 {
     CF_V3 impulse = { 64000, 0, 0 };
     const pin_value in[] = { { .u64 = ecs_entity_to_u64(crate) }, { .ptr = &impulse } };
-    return GAME_PHYSICS3D_IMPULSE_CALL.invoke(service, in, NULL);
+    return PHYSICS3D_IMPULSE_CALL.invoke(service, in, NULL);
 }
 /* Registers a source whose Tick makes one host call, and attaches it to the
  * crate. */
@@ -849,10 +836,10 @@ static bool kicker(const char *name, const node_host_call *call, const node_acce
     module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
     execution_module_plan_free(plan);
     REQUIRE(module);
-    REQUIRE(game_source_register(game_world_sources(simulation), name, module, NULL) == 0);
+    REQUIRE(source_register(world_sources(simulation), name, module, NULL) == 0);
     execution_module_free(module);
     module = NULL;
-    REQUIRE(game_source_attach(game_world_sources(simulation), crate, name, false, 0, 0) == 0);
+    REQUIRE(source_attach(world_sources(simulation), crate, name, false, 0, 0) == 0);
     return true;
 }
 /* The world binds its 2D and 3D physics as the services the push calls use:
@@ -862,47 +849,45 @@ TEST_CASE(native_world_binds_physics_for_pushes)
 {
     cleanup();
     char error[192];
-    game_world_options options = { .modules = GAME_WORLD_PHYSICS | GAME_WORLD_PHYSICS3D };
-    simulation = game_world_new(&options, error, sizeof error);
+    world_options options = { .modules = WORLD_PHYSICS | WORLD_PHYSICS3D };
+    simulation = world_new(&options, error, sizeof error);
     REQUIRE(simulation);
-    ecs_world *ecs = game_world_ecs(simulation);
+    ecs_world *ecs = world_ecs(simulation);
     crate = ecs_world_create_entity(ecs);
-    REQUIRE(GAME_GameTransform_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameVelocity_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameBody_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameCollider_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameTransform3D_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameBody3D_add(ecs, crate, 0) == ECS_OK);
-    REQUIRE(GAME_GameCollider3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Transform_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Velocity_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Body_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Collider_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Transform3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Body3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(Collider3D_add(ecs, crate, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
-    GAME_GameBody_get(ecs, crate)->type = GAME_BODY_DYNAMIC;
-    *GAME_GameCollider_get(ecs, crate) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
-                                                         .width = 32,
-                                                         .height = 32 };
-    *GAME_GameTransform3D_get(ecs, crate) = (GameTransform3D){
-        .rotation = cf_quat_identity(),
-        .scale = { 1, 1, 1 }
-    };
-    GAME_GameBody3D_get(ecs, crate)->type = GAME_BODY_DYNAMIC;
-    *GAME_GameCollider3D_get(ecs, crate) = (GameCollider3D){ .shape = GAME_COLLIDER3D_BOX,
-                                                             .size = { 32, 32, 32 } };
+    Body_get(ecs, crate)->type = BODY_DYNAMIC;
+    *Collider_get(ecs, crate) = (Collider){ .shape = COLLIDER_BOX,
+                                            .width = 32,
+                                            .height = 32 };
+    *Transform3D_get(ecs, crate) = (Transform3D){ .rotation = cf_quat_identity(),
+                                                  .scale = { 1, 1, 1 } };
+    Body3D_get(ecs, crate)->type = BODY_DYNAMIC;
+    *Collider3D_get(ecs, crate) = (Collider3D){ .shape = COLLIDER3D_BOX,
+                                                .size = { 32, 32, 32 } };
     static const node_host_call push = { .service = "game.physics", .invoke = kick };
     static const node_host_call push_3d = { .service = "game.physics3d",
                                             .invoke = kick_3d };
-    REQUIRE(kicker("Kick", &push, &GAME_PHYSICS_PUSH_ACCESS, 960));
-    REQUIRE(kicker("Kick3D", &push_3d, &GAME_PHYSICS3D_PUSH_ACCESS, 970));
-    engine *runtime = game_world_engine(simulation);
+    REQUIRE(kicker("Kick", &push, &PHYSICS_PUSH_ACCESS, 960));
+    REQUIRE(kicker("Kick3D", &push_3d, &PHYSICS3D_PUSH_ACCESS, 970));
+    engine *runtime = world_engine(simulation);
     REQUIRE(engine_frame(runtime, 0) == 0);
     REQUIRE(engine_frame(runtime, 1.5 * ENGINE_FIXED_SECONDS) == 0);
     REQUIRE(engine_last_timing(runtime)->simulation_steps == 1);
-    REQUIRE(fabsf(GAME_GameVelocity_get_const(ecs, crate)->x - 32) < .01f);
-    REQUIRE(fabsf(GAME_GameBody3D_get_const(ecs, crate)->linear_velocity.x - 64) < .01f);
-    REQUIRE(fabsf(GAME_GameBody_get_const(ecs, crate)->mass - 1) < 1e-5f);
-    REQUIRE(fabsf(GAME_GameBody3D_get_const(ecs, crate)->mass - 1000) < .01f);
+    REQUIRE(fabsf(Velocity_get_const(ecs, crate)->x - 32) < .01f);
+    REQUIRE(fabsf(Body3D_get_const(ecs, crate)->linear_velocity.x - 64) < .01f);
+    REQUIRE(fabsf(Body_get_const(ecs, crate)->mass - 1) < 1e-5f);
+    REQUIRE(fabsf(Body3D_get_const(ecs, crate)->mass - 1000) < .01f);
     cleanup();
     return true;
 }
-static bool player_host(void *, uint64_t id, execution_prepared_host *out)
+static bool resolve_player_host(void *, uint64_t id, execution_prepared_host *out)
 {
     static const node_host_call call = { .invoke = tick };
     static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
@@ -957,65 +942,63 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(execution_prepared_write(module, &module_bytes, &length, error, sizeof error));
         execution_module_free(module);
         module = NULL;
-        GameTransform transform = { .x = 4 };
-        GameGlobalBinding binding = { .name = "Player" };
-        game_scene_component components[] = {
-            { &GAME_COMPONENT_GameTransform, &transform },
-            { &GAME_COMPONENT_GameGlobalBinding, &binding }
-        };
+        Transform transform = { .x = 4 };
+        GlobalBinding binding = { .name = "Player" };
+        scene_component components[] = { { &COMPONENT_Transform, &transform },
+                                         { &COMPONENT_GlobalBinding, &binding } };
         const char *behavior = "Initial";
-        game_scene_object object = { .name = "Initial",
-                                     .components = components,
-                                     .component_count = 2,
-                                     .behaviors = &behavior,
-                                     .behavior_count = 1 };
-        game_scene_spec scene_spec = { .name = "Player",
-                                       .physics = game_physics_defaults(),
-                                       .objects = &object,
-                                       .object_count = 1 };
-        scene = game_scene_prepare(&scene_spec, error, sizeof error);
-        REQUIRE(scene);
-        const execution_prepared_linker linker = { .host = player_host };
-        game_package_module record = { .name = "Initial",
-                                       .id = 992,
-                                       .data = module_bytes,
-                                       .length = length };
-        game_player_prototype prototype = { .name = "Selected", .scene = scene };
-        game_player_spec spec = { .modules = &record,
-                                  .module_count = 1,
-                                  .linker = &linker,
-                                  .backend = backends[b],
-                                  .prototypes = &prototype,
-                                  .prototype_count = 1,
-                                  .scene = scene };
+        scene_object object = { .name = "Initial",
+                                .components = components,
+                                .component_count = 2,
+                                .behaviors = &behavior,
+                                .behavior_count = 1 };
+        scene_spec scene_spec = { .name = "Player",
+                                  .physics = physics_defaults(),
+                                  .objects = &object,
+                                  .object_count = 1 };
+        test_scene = scene_prepare(&scene_spec, error, sizeof error);
+        REQUIRE(test_scene);
+        const execution_prepared_linker linker = { .host = resolve_player_host };
+        package_module record = { .name = "Initial",
+                                  .id = 992,
+                                  .data = module_bytes,
+                                  .length = length };
+        player_prototype prototype = { .name = "Selected", .scene = test_scene };
+        player_spec spec = { .modules = &record,
+                             .module_count = 1,
+                             .linker = &linker,
+                             .backend = backends[b],
+                             .prototypes = &prototype,
+                             .prototype_count = 1,
+                             .scene = test_scene };
         char field_name[] = "message", default_text[] = "Saved payload";
         execution_module_event_field_info custom_field = {
             .name = field_name,
             .initial = { .type = PIN_STR, .str = default_text },
             .has_default = true
         };
-        game_event_declaration declarations[] = {
+        event_declaration declarations[] = {
             { .event = { .id = 993, .abi = 994, .name = "Begin" } },
             { .event = { .id = 996, .abi = 997, .name = "Unhandled", .field_count = 1 },
               .fields = &custom_field }
         };
-        event_catalog = game_event_catalog_new(declarations, 2, NULL, error, sizeof error);
-        REQUIRE(event_catalog);
+        test_event_catalog = event_catalog_new(declarations, 2, NULL, error, sizeof error);
+        REQUIRE(test_event_catalog);
         field_name[0] = 'X';
         default_text[0] = 'X';
-        spec.world.events = event_catalog;
+        spec.world.events = test_event_catalog;
         record.name = "Missing";
-        REQUIRE(!game_player_new(&spec, error, sizeof error));
-        REQUIRE(ticks == 0 && game_scene_object_count(scene) == 1);
+        REQUIRE(!player_new(&spec, error, sizeof error));
+        REQUIRE(ticks == 0 && scene_object_count(test_scene) == 1);
         record.name = "Initial";
         size_t player_length;
-        game_player_application application = { .title = "Native",
-                                                .width = 640,
-                                                .height = 360,
-                                                .fullscreen = true,
-                                                .icon = "art/icon.png" };
+        player_application application = { .title = "Native",
+                                           .width = 640,
+                                           .height = 360,
+                                           .fullscreen = true,
+                                           .icon = "art/icon.png" };
         REQUIRE(
-            game_player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
+            player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
         );
         char artifact_path[] = "/tmp/chibi-native-player-XXXXXX";
         int artifact_fd = mkstemp(artifact_path);
@@ -1023,29 +1006,29 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         bool written = write(artifact_fd, player_bytes, player_length) ==
                        (ssize_t)player_length;
         close(artifact_fd);
-        game_player_application read = { 0 };
+        player_application read = { 0 };
         bool read_back = written &&
-                         game_player_application_read(artifact_path, &read, error, sizeof error);
+                         player_application_read(artifact_path, &read, error, sizeof error);
         unlink(artifact_path);
         REQUIRE(read_back);
         REQUIRE(!strcmp(read.title, "Native") && !strcmp(read.icon, "art/icon.png"));
         REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
-        game_player_application_free(&read);
+        player_application_free(&read);
         /* An icon outside the resource root is refused, as on reading. */
         application.icon = "../outside.png";
         unsigned char *unsafe = NULL;
         size_t unsafe_length = 0;
         REQUIRE(
-            !game_player_prepared_write(&spec, &application, &unsafe, &unsafe_length, error, sizeof error)
+            !player_prepared_write(&spec, &application, &unsafe, &unsafe_length, error, sizeof error)
         );
         REQUIRE(!unsafe);
         application.icon = "art/icon.png";
-        game_player_host player_host_context = {
-            .components = { .components = GAME_REGISTRY_COMPONENTS,
-                            .component_count = GAME_REGISTRY_COMPONENT_COUNT },
+        player_host player_host_context = {
+            .components = { .components = REGISTRY_COMPONENTS,
+                            .component_count = REGISTRY_COMPONENT_COUNT },
             .linker = &linker
         };
-        REQUIRE(!game_player_prepared_read(
+        REQUIRE(!player_prepared_read(
             player_bytes,
             player_length - 1,
             &player_host_context,
@@ -1055,17 +1038,12 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         ));
         REQUIRE(ticks == 0);
         player_host_context.decoded_budget = 1;
-        REQUIRE(!game_player_prepared_read(
-            player_bytes,
-            player_length,
-            &player_host_context,
-            backends[b],
-            error,
-            sizeof error
-        ));
+        REQUIRE(
+            !player_prepared_read(player_bytes, player_length, &player_host_context, backends[b], error, sizeof error)
+        );
         REQUIRE(ticks == 0);
         player_host_context.decoded_budget = 0;
-        player = game_player_prepared_read(
+        test_player = player_prepared_read(
             player_bytes,
             player_length,
             &player_host_context,
@@ -1073,232 +1051,227 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
             error,
             sizeof error
         );
-        if (!player) {
+        if (!test_player) {
             fprintf(stderr, "prepared player: %s\n", error);
         }
-        REQUIRE(player);
+        REQUIRE(test_player);
         REQUIRE(ticks == 0);
-        game_scene_free(scene);
-        scene = NULL;
+        scene_free(test_scene);
+        test_scene = NULL;
         free(module_bytes);
         module_bytes = NULL;
         free(player_bytes);
         player_bytes = NULL;
-        game_event_catalog_free(event_catalog);
-        event_catalog = NULL;
-        game_world *runtime_world = game_player_world(player);
-        game_entities *entities = game_world_entities(runtime_world);
-        REQUIRE(game_entities_global_name_count(entities) == 1);
-        REQUIRE(!strcmp(game_entities_global_name_at(entities, 0), "Player"));
-        game_source_registry *sources = game_world_sources(runtime_world);
+        event_catalog_free(test_event_catalog);
+        test_event_catalog = NULL;
+        world *runtime_world = player_world(test_player);
+        entities *entities = world_entities(runtime_world);
+        REQUIRE(entities_global_name_count(entities) == 1);
+        REQUIRE(!strcmp(entities_global_name_at(entities, 0), "Player"));
+        source_registry *sources = world_sources(runtime_world);
         execution_module_event_info event;
         execution_module_event_field_info saved_field;
-        REQUIRE(game_source_event(sources, "Unhandled", &event));
+        REQUIRE(source_event(sources, "Unhandled", &event));
         REQUIRE(event.id == 996 && event.abi == 997 && event.field_count == 1);
-        REQUIRE(game_source_event_field(sources, "Unhandled", 0, &saved_field));
+        REQUIRE(source_event_field(sources, "Unhandled", 0, &saved_field));
         REQUIRE(
             !strcmp(saved_field.name, "message") &&
             !strcmp(saved_field.initial.str, "Saved payload")
         );
-        game_event_declaration wrong = { .event = { .id = 993, .abi = 999, .name = "Begin" } };
-        wrong_events = game_event_catalog_new(&wrong, 1, NULL, error, sizeof error);
+        event_declaration wrong = { .event = { .id = 993, .abi = 999, .name = "Begin" } };
+        wrong_events = event_catalog_new(&wrong, 1, NULL, error, sizeof error);
         REQUIRE(wrong_events);
-        REQUIRE(game_source_set_events(sources, wrong_events) < 0);
-        REQUIRE(game_source_event(sources, "Unhandled", &event) && event.id == 996);
+        REQUIRE(source_set_events(sources, wrong_events) < 0);
+        REQUIRE(source_event(sources, "Unhandled", &event) && event.id == 996);
         execution_module_event_field_info invalid_field = { .name = "invalid",
                                                             .initial = { .type = PIN_FLOW } };
-        game_event_declaration invalid = {
+        event_declaration invalid = {
             .event = { .id = 998, .abi = 999, .name = "Invalid", .field_count = 1 },
             .fields = &invalid_field
         };
-        REQUIRE(!game_event_catalog_new(&invalid, 1, NULL, error, sizeof error));
+        REQUIRE(!event_catalog_new(&invalid, 1, NULL, error, sizeof error));
         invalid_field.initial = (pin_value){ .type = PIN_STR, .str = "owner" };
         invalid_field.has_default = true;
         invalid_field.default_owner = true;
-        REQUIRE(!game_event_catalog_new(&invalid, 1, NULL, error, sizeof error));
+        REQUIRE(!event_catalog_new(&invalid, 1, NULL, error, sizeof error));
 
-        ecs_entity entity = game_scene_instance_entity(game_player_scene(player), 0);
-        REQUIRE(
-            GAME_GameTransform_get_const(game_world_ecs(runtime_world), entity)->x == 4
-        );
-        REQUIRE(engine_frame(game_world_engine(runtime_world), 0) == 0);
-        REQUIRE(engine_frame(game_world_engine(runtime_world), .02) == 0);
+        ecs_entity entity = scene_instance_entity(player_scene(test_player), 0);
+        REQUIRE(Transform_get_const(world_ecs(runtime_world), entity)->x == 4);
+        REQUIRE(engine_frame(world_engine(runtime_world), 0) == 0);
+        REQUIRE(engine_frame(world_engine(runtime_world), .02) == 0);
         REQUIRE(ticks == 1);
-        REQUIRE(game_source_attachment_count(game_world_sources(runtime_world)) == 1);
+        REQUIRE(source_attachment_count(world_sources(runtime_world)) == 1);
         cleanup();
-        world = ecs_world_new();
-        ecs_entity caller_entity = ecs_world_create_entity(world);
-        REQUIRE(ecs_entity_is_alive(world, caller_entity));
-        game_world_options borrowed = { .ecs = world };
-        simulation = game_world_new(&borrowed, error, sizeof error);
-        REQUIRE(simulation && game_world_ecs(simulation) == world);
-        game_world_free(simulation);
+        test_world = ecs_world_new();
+        ecs_entity caller_entity = ecs_world_create_entity(test_world);
+        REQUIRE(ecs_entity_is_alive(test_world, caller_entity));
+        world_options borrowed = { .ecs = test_world };
+        simulation = world_new(&borrowed, error, sizeof error);
+        REQUIRE(simulation && world_ecs(simulation) == test_world);
+        world_free(simulation);
         simulation = NULL;
-        REQUIRE(ecs_entity_is_alive(world, caller_entity));
+        REQUIRE(ecs_entity_is_alive(test_world, caller_entity));
         cleanup();
     }
     return true;
 }
-static game_scene *one_object_scene(const char *name, float x, const char *global)
+static scene *one_object_scene(const char *name, float x, const char *global)
 {
-    GameTransform transform = { .x = x };
-    GameGlobalBinding binding = { .name = global };
-    game_scene_component components[] = {
-        { &GAME_COMPONENT_GameTransform, &transform },
-        { &GAME_COMPONENT_GameGlobalBinding, &binding }
-    };
-    game_scene_object object = { .name = name,
-                                 .components = components,
-                                 .component_count = global ? 2 : 1 };
-    game_scene_spec spec = { .name = name,
-                             .physics = game_physics_defaults(),
-                             .objects = &object,
-                             .object_count = 1 };
+    Transform transform = { .x = x };
+    GlobalBinding binding = { .name = global };
+    scene_component components[] = { { &COMPONENT_Transform, &transform },
+                                     { &COMPONENT_GlobalBinding, &binding } };
+    scene_object object = { .name = name,
+                            .components = components,
+                            .component_count = global ? 2 : 1 };
+    scene_spec spec = { .name = name,
+                        .physics = physics_defaults(),
+                        .objects = &object,
+                        .object_count = 1 };
     char error[192];
-    return game_scene_prepare(&spec, error, sizeof error);
+    return scene_prepare(&spec, error, sizeof error);
 }
 /* A parent and its child bound to one global name. */
-static game_scene *twice_bound_scene(const char *global)
+static scene *twice_bound_scene(const char *global)
 {
-    GameGlobalBinding binding = { .name = global };
-    game_scene_component component = { &GAME_COMPONENT_GameGlobalBinding, &binding };
-    game_scene_object objects[] = {
+    GlobalBinding binding = { .name = global };
+    scene_component component = { &COMPONENT_GlobalBinding, &binding };
+    scene_object objects[] = {
         { .name = "First", .components = &component, .component_count = 1 },
         { .name = "Second", .components = &component, .component_count = 1 }
     };
-    game_scene_spec spec = { .name = "Twice",
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .parents = (const int[]){ -1, 0 },
-                             .object_count = 2 };
+    scene_spec spec = { .name = "Twice",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .parents = (const int[]){ -1, 0 },
+                        .object_count = 2 };
     char error[192];
-    return game_scene_prepare(&spec, error, sizeof error);
+    return scene_prepare(&spec, error, sizeof error);
 }
-static float first_x(const game_player *p)
+static float first_x(const player *p)
 {
-    ecs_entity entity = game_scene_instance_entity(game_player_scene(p), 0);
-    return GAME_GameTransform_get_const(game_world_ecs(game_player_world(p)), entity)
-        ->x;
+    ecs_entity entity = scene_instance_entity(player_scene(p), 0);
+    return Transform_get_const(world_ecs(player_world(p)), entity)->x;
 }
 /* Asks for a scene the way Load Scene does and starts it as hosts do. */
 static bool follow(const char *name, char *error, size_t size)
 {
-    game_scene_flow *flow = game_world_scenes(game_player_world(player));
+    scene_flow *flow = world_scenes(player_world(test_player));
     pin_value in = { .type = PIN_STR, .str = name };
-    if (GAME_SCENE_LOAD_CALL.invoke(flow, &in, NULL)) {
+    if (SCENE_LOAD_CALL.invoke(flow, &in, NULL)) {
         return false;
     }
-    char *next = game_scene_flow_take(flow);
-    bool loaded = game_player_load_scene(player, next, error, size);
+    char *next = scene_flow_take(flow);
+    bool loaded = player_load_scene(test_player, next, error, size);
     free(next);
     return loaded;
 }
 TEST_CASE(native_player_loads_named_scenes)
 {
     char error[192];
-    scene = one_object_scene("Hero", 1, "Player");
+    test_scene = one_object_scene("Hero", 1, "Player");
     other_scene = one_object_scene("Goal", 2, NULL);
-    REQUIRE(scene && other_scene);
-    game_player_named_scene named = { "Start", other_scene };
-    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
-                              .scene = scene,
-                              .scene_name = "Start",
-                              .scenes = &named,
-                              .scene_count = 1 };
-    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(test_scene && other_scene);
+    player_named_scene named = { "Start", other_scene };
+    player_spec spec = { .world = { .modules = WORLD_AUDIO },
+                         .scene = test_scene,
+                         .scene_name = "Start",
+                         .scenes = &named,
+                         .scene_count = 1 };
+    REQUIRE(!player_new(&spec, error, sizeof error));
     size_t length;
-    game_player_application application = { 0 };
+    player_application application = { 0 };
     /* Entering a scene that binds one global to two entities fails, so the
        player refuses it when the package is written or opened. */
-    game_scene *twice = twice_bound_scene("Player");
+    scene *twice = twice_bound_scene("Player");
     REQUIRE(twice);
-    named = (game_player_named_scene){ "Twice", twice };
-    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    named = (player_named_scene){ "Twice", twice };
+    REQUIRE(!player_new(&spec, error, sizeof error));
     REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
     error[0] = 0;
     REQUIRE(
-        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+        !player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
     REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
     /* So does a prototype tree that binds it twice, as writing it would. */
-    named = (game_player_named_scene){ "Next", other_scene };
-    spec.prototypes = &(game_player_prototype){ "Twice", twice };
+    named = (player_named_scene){ "Next", other_scene };
+    spec.prototypes = &(player_prototype){ "Twice", twice };
     spec.prototype_count = 1;
     error[0] = 0;
-    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(!player_new(&spec, error, sizeof error));
     REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
     spec.prototypes = NULL;
     spec.prototype_count = 0;
-    game_scene_free(twice);
+    scene_free(twice);
     REQUIRE(
-        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+        player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
-    game_player_host host_context = {
-        .components = { .components = GAME_REGISTRY_COMPONENTS,
-                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
-        .linker = &(execution_prepared_linker){ .host = player_host }
+    player_host host_context = {
+        .components = { .components = REGISTRY_COMPONENTS,
+                        .component_count = REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = resolve_player_host }
     };
-    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
-    REQUIRE(player);
-    game_world *w = game_player_world(player);
-    game_scene_flow *flow = game_world_scenes(w);
-    game_save *save = game_world_modules(w)->save;
-    REQUIRE(!strcmp(game_scene_flow_current(flow), "Start"));
-    REQUIRE(first_x(player) == 1);
-    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
-    engine *runtime = game_world_engine(w);
+    test_player = player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(test_player);
+    world *w = player_world(test_player);
+    scene_flow *flow = world_scenes(w);
+    save *save = world_modules(w)->save;
+    REQUIRE(!strcmp(scene_flow_current(flow), "Start"));
+    REQUIRE(first_x(test_player) == 1);
+    REQUIRE(entities_global_name_count(world_entities(w)) == 1);
+    engine *runtime = world_engine(w);
     REQUIRE(engine_frame(runtime, 0) == 0 && engine_frame(runtime, .05) == 0);
     uint64_t steps = engine_last_timing(runtime)->simulation_steps;
     REQUIRE(steps > 0);
 
     pin_value missing = { .type = PIN_STR, .str = "Missing" };
-    REQUIRE(!strcmp(GAME_SCENE_LOAD_CALL.invoke(flow, &missing, NULL), "No scene named 'Missing'"));
-    REQUIRE(!game_scene_flow_take(flow));
+    REQUIRE(!strcmp(SCENE_LOAD_CALL.invoke(flow, &missing, NULL), "No scene named 'Missing'"));
+    REQUIRE(!scene_flow_take(flow));
 
-    REQUIRE(game_save_set(save, "level", "1") && game_save_commit(save));
-    REQUIRE(game_save_set(save, "unsaved", "1"));
-    game_audio *audio = engine_audio(runtime);
-    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
-    uint64_t cues = game_audio_hash(audio);
+    REQUIRE(save_set(save, "level", "1") && save_commit(save));
+    REQUIRE(save_set(save, "unsaved", "1"));
+    audio *audio = engine_audio(runtime);
+    REQUIRE(audio_tone(audio, (tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    uint64_t cues = audio_hash(audio);
     REQUIRE(follow("Next", error, sizeof error));
-    REQUIRE(!strcmp(game_scene_flow_current(flow), "Next"));
-    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
-    REQUIRE(first_x(player) == 2);
-    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 0);
-    REQUIRE(!strcmp(game_save_get(save, "level"), "1") && !game_save_get(save, "unsaved"));
+    REQUIRE(!strcmp(scene_flow_current(flow), "Next"));
+    REQUIRE(ecs_world_live_count(world_ecs(w)) == 1);
+    REQUIRE(first_x(test_player) == 2);
+    REQUIRE(entities_global_name_count(world_entities(w)) == 0);
+    REQUIRE(!strcmp(save_get(save, "level"), "1") && !save_get(save, "unsaved"));
     /* The clock and sounds go on across a load. */
-    REQUIRE(game_audio_count(audio) == 1 && game_audio_hash(audio) == cues);
+    REQUIRE(audio_count(audio) == 1 && audio_hash(audio) == cues);
     REQUIRE(engine_frame(runtime, .1) == 0);
     REQUIRE(engine_last_timing(runtime)->simulation_steps > steps);
 
-    REQUIRE(!GAME_SCENE_RELOAD_CALL.invoke(flow, NULL, NULL));
-    char *next = game_scene_flow_take(flow);
+    REQUIRE(!SCENE_RELOAD_CALL.invoke(flow, NULL, NULL));
+    char *next = scene_flow_take(flow);
     REQUIRE(!strcmp(next, "Next"));
     free(next);
     REQUIRE(follow("Start", error, sizeof error));
-    REQUIRE(ecs_world_live_count(game_world_ecs(w)) == 1);
-    REQUIRE(first_x(player) == 1);
-    REQUIRE(game_entities_global_name_count(game_world_entities(w)) == 1);
+    REQUIRE(ecs_world_live_count(world_ecs(w)) == 1);
+    REQUIRE(first_x(test_player) == 1);
+    REQUIRE(entities_global_name_count(world_entities(w)) == 1);
 
-    REQUIRE(!game_player_load_scene(player, "Missing", error, sizeof error));
+    REQUIRE(!player_load_scene(test_player, "Missing", error, sizeof error));
     REQUIRE(!strcmp(error, "No scene named 'Missing'"));
     engine_reset(runtime);
-    REQUIRE(game_audio_count(audio) == 0);
+    REQUIRE(audio_count(audio) == 0);
     return true;
 }
 static int staged_sounds;
-static void *stage_sounds(void *, const game_player_asset *assets, int count, size_t *, char *, size_t)
+static void *stage_sounds(void *, const player_asset *assets, int count, size_t *, char *, size_t)
 {
-    staged_sounds = count && assets[0].kind == GAME_PLAYER_ASSET_SOUND ? count : -1;
+    staged_sounds = count && assets[0].kind == PLAYER_ASSET_SOUND ? count : -1;
     return &staged_sounds;
 }
-static bool any_scene(void *, void *, const game_scene *, char *, size_t)
+static bool any_scene(void *, void *, const scene *, char *, size_t)
 {
     return true;
 }
-static void keep_sounds(void *, void *, game_world *) {}
+static void keep_sounds(void *, void *, world *) {}
 static void drop_sounds(void *, void *) {}
-static const char *call(const node_host_call *host, game_audio *audio, pin_value a, pin_value b)
+static const char *call(const node_host_call *host, audio *audio, pin_value a, pin_value b)
 {
     pin_value in[] = { a, b, { .type = PIN_F32, .f = 0.5f } };
     return host->invoke(audio, in, NULL);
@@ -1306,17 +1279,17 @@ static const char *call(const node_host_call *host, game_audio *audio, pin_value
 TEST_CASE(native_player_plays_sounds)
 {
     char error[192];
-    GameTransform transform = { .x = 1 };
-    game_scene_component component = { &GAME_COMPONENT_GameTransform, &transform };
-    game_scene_object object = { .name = "Hero",
-                                 .components = &component,
-                                 .component_count = 1 };
-    game_scene_spec scene_spec = { .name = "Start",
-                                   .physics = game_physics_defaults(),
-                                   .objects = &object,
-                                   .object_count = 1 };
-    scene = game_scene_prepare(&scene_spec, error, sizeof error);
-    REQUIRE(scene);
+    Transform transform = { .x = 1 };
+    scene_component component = { &COMPONENT_Transform, &transform };
+    scene_object object = { .name = "Hero",
+                            .components = &component,
+                            .component_count = 1 };
+    scene_spec scene_spec = { .name = "Start",
+                              .physics = physics_defaults(),
+                              .objects = &object,
+                              .object_count = 1 };
+    test_scene = scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(test_scene);
     /* Mono 16-bit PCM at 44.1 kHz with two samples. */
     static const unsigned char wav[] = {
         'R',  'I',  'F', 'F', 40,   0,    0, 0, 'W', 'A', 'V', 'E',
@@ -1324,113 +1297,107 @@ TEST_CASE(native_player_plays_sounds)
         0x44, 0xAC, 0,   0,   0x88, 0x58, 1, 0, 2,   0,   16,  0,
         'd',  'a',  't', 'a', 4,    0,    0, 0, 0,   0,   0,   0
     };
-    game_player_asset sound = { .name = "Jump",
-                                .kind = GAME_PLAYER_ASSET_SOUND,
-                                .data = wav,
-                                .length = sizeof wav };
-    game_player_resource_host resources = { .stage = stage_sounds,
-                                            .scene = any_scene,
-                                            .commit = keep_sounds,
-                                            .discard = drop_sounds,
-                                            .retire = drop_sounds };
-    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
-                              .scene = scene,
-                              .assets = &sound,
-                              .asset_count = 1,
-                              .resources = resources };
+    player_asset sound = { .name = "Jump",
+                           .kind = PLAYER_ASSET_SOUND,
+                           .data = wav,
+                           .length = sizeof wav };
+    player_resource_host resources = { .stage = stage_sounds,
+                                       .scene = any_scene,
+                                       .commit = keep_sounds,
+                                       .discard = drop_sounds,
+                                       .retire = drop_sounds };
+    player_spec spec = { .world = { .modules = WORLD_AUDIO },
+                         .scene = test_scene,
+                         .assets = &sound,
+                         .asset_count = 1,
+                         .resources = resources };
     size_t length;
-    game_player_application application = { 0 };
+    player_application application = { 0 };
     REQUIRE(
-        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+        player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
-    game_player_host host_context = {
-        .components = { .components = GAME_REGISTRY_COMPONENTS,
-                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
-        .linker = &(execution_prepared_linker){ .host = player_host },
+    player_host host_context = {
+        .components = { .components = REGISTRY_COMPONENTS,
+                        .component_count = REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = resolve_player_host },
         .resources = resources
     };
-    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
-    REQUIRE(player && staged_sounds == 1);
-    game_audio *audio = game_world_modules(game_player_world(player))->audio;
-    REQUIRE(game_audio_sound_count(audio) == 1);
-    REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
+    test_player = player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(test_player && staged_sounds == 1);
+    audio *sounds = world_modules(player_world(test_player))->audio;
+    REQUIRE(audio_sound_count(sounds) == 1);
+    REQUIRE(!memcmp(audio_sound(sounds, 0, &length), wav, sizeof wav) && length == sizeof wav);
     /* Recordings identify the library by its names and files. */
-    game_audio *library = game_audio_new();
-    uint64_t empty = game_audio_library_hash(library);
-    game_audio_add_sound(library, "Jump", wav, sizeof wav);
-    REQUIRE(game_audio_library_hash(library) == game_audio_library_hash(audio));
-    REQUIRE(game_audio_library_hash(library) != empty);
-    game_audio_add_sound(library, "Land", wav, sizeof wav);
-    REQUIRE(game_audio_library_hash(library) != game_audio_library_hash(audio));
-    game_audio_free(library);
+    audio *library = audio_new();
+    uint64_t empty = audio_library_hash(library);
+    audio_add_sound(library, "Jump", wav, sizeof wav);
+    REQUIRE(audio_library_hash(library) == audio_library_hash(sounds));
+    REQUIRE(audio_library_hash(library) != empty);
+    audio_add_sound(library, "Land", wav, sizeof wav);
+    REQUIRE(audio_library_hash(library) != audio_library_hash(sounds));
+    audio_free(library);
     /* The library's records, names and copies count against the retained
      * storage budget. */
     size_t budget = 1 << 20;
     spec.decoded_remaining = &budget;
-    game_player *charged = game_player_new(&spec, error, sizeof error);
+    player *charged = player_new(&spec, error, sizeof error);
     REQUIRE(charged);
-    game_player_free(charged);
+    player_free(charged);
     size_t used = (1 << 20) - budget;
     REQUIRE(used > sizeof wav + sizeof "Jump");
     budget = used - 1;
-    REQUIRE(!game_player_new(&spec, error, sizeof error) && budget == used - 1);
+    REQUIRE(!player_new(&spec, error, sizeof error) && budget == used - 1);
     REQUIRE(!strcmp(error, "Prepared player retained storage budget exceeded"));
 
     pin_value jump = { .type = PIN_STR, .str = "Jump" },
               missing = { .type = PIN_STR, .str = "Missing" };
     pin_value quarter = { .type = PIN_F32, .f = 0.25f },
               two = { .type = PIN_F32, .f = 2 };
-    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
-    REQUIRE(!strcmp(call(&GAME_AUDIO_SOUND_CALL, audio, missing, quarter), "No sound named 'Missing'"));
-    REQUIRE(call(&GAME_AUDIO_SOUND_CALL, audio, jump, two));
-    game_voice voices[2];
-    REQUIRE(game_audio_take(audio, voices, 2) == 1 && game_audio_count(audio) == 1);
+    REQUIRE(!call(&AUDIO_SOUND_CALL, sounds, jump, quarter));
+    REQUIRE(!strcmp(call(&AUDIO_SOUND_CALL, sounds, missing, quarter), "No sound named 'Missing'"));
+    REQUIRE(call(&AUDIO_SOUND_CALL, sounds, jump, two));
+    audio_voice voices[2];
+    REQUIRE(audio_take(sounds, voices, 2) == 1 && audio_count(sounds) == 1);
     REQUIRE(voices[0].sound == 0 && voices[0].volume == 0.25f && voices[0].pan == 0.5f);
-    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
-    REQUIRE(game_audio_take(audio, voices, 2) == 1 && voices[0].sound == -1);
+    REQUIRE(audio_tone(sounds, (tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    REQUIRE(audio_take(sounds, voices, 2) == 1 && voices[0].sound == -1);
 
     float fade;
     uint64_t started, serial;
-    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two));
-    REQUIRE(game_audio_music(audio, &fade, &started) == 0 && fade == 2);
+    REQUIRE(!call(&AUDIO_MUSIC_CALL, sounds, jump, two));
+    REQUIRE(audio_music(sounds, &fade, &started) == 0 && fade == 2);
     /* The playing track keeps playing when a scene asks for it again. */
-    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, quarter));
-    REQUIRE(game_audio_music(audio, &fade, &serial) == 0 && serial == started && fade == 2);
-    REQUIRE(!call(&GAME_AUDIO_STOP_MUSIC_CALL, audio, quarter, quarter));
-    REQUIRE(game_audio_music(audio, &fade, &serial) == -1 && serial != started && fade == 0.25f);
-    REQUIRE(!call(&GAME_AUDIO_MUSIC_VOLUME_CALL, audio, quarter, quarter));
-    REQUIRE(call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, two, two));
-    REQUIRE(game_audio_volume(audio, GAME_AUDIO_MUSIC) == 0.25f);
-    REQUIRE(
-        game_audio_volume(audio, GAME_AUDIO_MASTER) == 1 &&
-        game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 1
-    );
+    REQUIRE(!call(&AUDIO_MUSIC_CALL, sounds, jump, quarter));
+    REQUIRE(audio_music(sounds, &fade, &serial) == 0 && serial == started && fade == 2);
+    REQUIRE(!call(&AUDIO_STOP_MUSIC_CALL, sounds, quarter, quarter));
+    REQUIRE(audio_music(sounds, &fade, &serial) == -1 && serial != started && fade == 0.25f);
+    REQUIRE(!call(&AUDIO_MUSIC_VOLUME_CALL, sounds, quarter, quarter));
+    REQUIRE(call(&AUDIO_SOUND_VOLUME_CALL, sounds, two, two));
+    REQUIRE(audio_volume(sounds, AUDIO_MUSIC) == 0.25f);
+    REQUIRE(audio_volume(sounds, AUDIO_MASTER) == 1 && audio_volume(sounds, AUDIO_SOUNDS) == 1);
 
-    uint64_t generation = game_audio_generation(audio), hash = game_audio_hash(audio);
+    uint64_t generation = audio_generation(sounds), hash = audio_hash(sounds);
+    REQUIRE(hash && !call(&AUDIO_MUSIC_CALL, sounds, jump, two) && audio_hash(sounds) != hash);
+    REQUIRE(!call(&AUDIO_SOUND_CALL, sounds, jump, quarter));
+    REQUIRE(!call(&AUDIO_MASTER_VOLUME_CALL, sounds, quarter, quarter));
+    REQUIRE(!call(&AUDIO_SOUND_VOLUME_CALL, sounds, quarter, quarter));
+    REQUIRE(audio_volume(sounds, AUDIO_SOUNDS) == 0.25f);
+    engine_reset(world_engine(player_world(test_player)));
     REQUIRE(
-        hash && !call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two) &&
-        game_audio_hash(audio) != hash
+        audio_generation(sounds) != generation &&
+        audio_music(sounds, &fade, &serial) == -1
     );
-    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
-    REQUIRE(!call(&GAME_AUDIO_MASTER_VOLUME_CALL, audio, quarter, quarter));
-    REQUIRE(!call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, quarter, quarter));
-    REQUIRE(game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 0.25f);
-    engine_reset(game_world_engine(game_player_world(player)));
-    REQUIRE(
-        game_audio_generation(audio) != generation &&
-        game_audio_music(audio, &fade, &serial) == -1
-    );
-    REQUIRE(!game_audio_hash(audio) && !game_audio_count(audio));
-    REQUIRE(!game_audio_take(audio, voices, 2) && game_audio_sound_count(audio) == 1);
-    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
-        REQUIRE(game_audio_volume(audio, i) == 1);
+    REQUIRE(!audio_hash(sounds) && !audio_count(sounds));
+    REQUIRE(!audio_take(sounds, voices, 2) && audio_sound_count(sounds) == 1);
+    for (int i = 0; i < AUDIO_BUSES; i++) {
+        REQUIRE(audio_volume(sounds, i) == 1);
     }
     static const unsigned char text[] = "not a sound file";
-    sound = (game_player_asset){ .name = "Text",
-                                 .kind = GAME_PLAYER_ASSET_SOUND,
-                                 .data = text,
-                                 .length = sizeof text };
-    REQUIRE(!game_player_asset_valid(&sound));
+    sound = (player_asset){ .name = "Text",
+                            .kind = PLAYER_ASSET_SOUND,
+                            .data = text,
+                            .length = sizeof text };
+    REQUIRE(!player_asset_valid(&sound));
     /* Players only take sounds they can decode: not WAVE_FORMAT_EXTENSIBLE,
      * surround, 12-bit samples, less than one whole frame, or 48 kHz, which
      * the 44.1 kHz mixer would play slow and low. */
@@ -1443,24 +1410,24 @@ TEST_CASE(native_player_plays_sounds)
         memcpy(edited, wav, sizeof wav);
         edited[undecodable[i].at] = undecodable[i].value & 0xFF;
         edited[undecodable[i].at + 1] = undecodable[i].value >> 8;
-        REQUIRE(!game_sound_format_of(edited, sizeof edited));
+        REQUIRE(!sound_format_of(edited, sizeof edited));
     }
-    REQUIRE(!game_sound_format_of(wav, sizeof wav - 1)); /* samples cut short */
+    REQUIRE(!sound_format_of(wav, sizeof wav - 1)); /* samples cut short */
     unsigned char real[sizeof wav];
     memcpy(real, wav, sizeof wav);
     real[20] = 3, real[34] = 32; /* one float sample */
-    REQUIRE(game_sound_format_of(real, sizeof real) == GAME_SOUND_WAV);
+    REQUIRE(sound_format_of(real, sizeof real) == SOUND_WAV);
     /* Chunks pad to even sizes, and samples only count after the format. */
     unsigned char padded[sizeof wav + 10] = { 0 };
     memcpy(padded, wav, 36);
     memcpy(padded + 36, "LIST\1\0\0\0", 8);
     memcpy(padded + 46, wav + 36, 12);
-    REQUIRE(game_sound_format_of(padded, sizeof padded) == GAME_SOUND_WAV);
+    REQUIRE(sound_format_of(padded, sizeof padded) == SOUND_WAV);
     unsigned char early[sizeof wav];
     memcpy(early, wav, 12);
     memcpy(early + 12, wav + 36, 12);
     memcpy(early + 24, wav + 12, 24);
-    REQUIRE(!game_sound_format_of(early, sizeof early));
+    REQUIRE(!sound_format_of(early, sizeof early));
     /* A page holding only a stereo 44.1 kHz Vorbis identification header, an
      * empty page that ends the stream, and a few trailing bytes. */
     unsigned char ogg[88] = { 'O', 'g', 'g', 'S' };
@@ -1470,31 +1437,31 @@ TEST_CASE(native_player_plays_sounds)
     memcpy(ogg + 58, "OggS", 4);
     ogg[63] = 4;
     memcpy(ogg + 85, "TAG", 3);
-    REQUIRE(game_sound_format_of(ogg, sizeof ogg) == GAME_SOUND_OGG);
-    REQUIRE(game_sound_format_of(ogg, 85) == GAME_SOUND_OGG);
+    REQUIRE(sound_format_of(ogg, sizeof ogg) == SOUND_OGG);
+    REQUIRE(sound_format_of(ogg, 85) == SOUND_OGG);
     /* Cut inside the header or the last page, or before the stream ends. */
-    REQUIRE(!game_sound_format_of(ogg, 40));
-    REQUIRE(!game_sound_format_of(ogg, 84));
-    REQUIRE(!game_sound_format_of(ogg, 58));
+    REQUIRE(!sound_format_of(ogg, 40));
+    REQUIRE(!sound_format_of(ogg, 84));
+    REQUIRE(!sound_format_of(ogg, 58));
     /* The first page must not end the stream. */
     ogg[5] = 6;
-    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    REQUIRE(!sound_format_of(ogg, sizeof ogg));
     ogg[5] = 2;
     ogg[40] = 0x80, ogg[41] = 0xBB; /* 48 kHz */
-    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    REQUIRE(!sound_format_of(ogg, sizeof ogg));
     ogg[40] = 0x44, ogg[41] = 0xAC;
     ogg[39] = 6;
-    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    REQUIRE(!sound_format_of(ogg, sizeof ogg));
     memcpy(ogg + 28, "OpusHead", 8);
     ogg[39] = 2;
-    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
-    sound = (game_player_asset){ .name = "Jump",
-                                 .kind = GAME_PLAYER_ASSET_SOUND,
-                                 .length = sizeof wav,
-                                 .path = "content/sounds/Jump.wav",
-                                 .content_hash = 1,
-                                 .external = true };
-    REQUIRE(!game_player_asset_valid(&sound));
+    REQUIRE(!sound_format_of(ogg, sizeof ogg));
+    sound = (player_asset){ .name = "Jump",
+                            .kind = PLAYER_ASSET_SOUND,
+                            .length = sizeof wav,
+                            .path = "content/sounds/Jump.wav",
+                            .content_hash = 1,
+                            .external = true };
+    REQUIRE(!player_asset_valid(&sound));
     return true;
 }
 typedef struct
@@ -1559,7 +1526,7 @@ TEST_CASE(native_player_reads_declared_components)
     /* A project that declares nothing still hides the other project's set. */
     declared_components *none = declared_components_new(NULL, 0, error, sizeof error);
     REQUIRE(none && !type_catalog_find("Charge"));
-    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    REQUIRE(project_components().component_count == REGISTRY_COMPONENT_COUNT);
     declared_components_free(none);
     REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
@@ -1567,8 +1534,8 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(components.components[0]->layout_hash == type_layout_hash(type));
     ecs_component_catalog project = project_components();
     REQUIRE(script_catalog_project() == declared_components_catalog(declared));
-    REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
-    REQUIRE(project.components[GAME_REGISTRY_COMPONENT_COUNT] == components.components[0]);
+    REQUIRE(project.component_count == REGISTRY_COMPONENT_COUNT + 1);
+    REQUIRE(project.components[REGISTRY_COMPONENT_COUNT] == components.components[0]);
     const script_catalog_type *script = &declared_components_catalog(declared)->types[0];
     REQUIRE(
         script->component && script->component_id == components.components[0]->id
@@ -1579,35 +1546,33 @@ TEST_CASE(native_player_reads_declared_components)
         script->fields[4].type.nominal == script_catalog_id("type", "CF_V2")
     );
     charge row = { .level = 1.25f, .cycles = 2, .full = true, .drift = { 1, -1 } };
-    game_scene_component data = { components.components[0], &row };
-    game_scene_object object = { .name = "Cell",
-                                 .components = &data,
-                                 .component_count = 1 };
-    game_scene_spec scene_spec = { .name = "Declared",
-                                   .physics = game_physics_defaults(),
-                                   .objects = &object,
-                                   .object_count = 1 };
-    scene = game_scene_prepare(&scene_spec, error, sizeof error);
-    REQUIRE(scene);
+    scene_component data = { components.components[0], &row };
+    scene_object object = { .name = "Cell", .components = &data, .component_count = 1 };
+    scene_spec scene_spec = { .name = "Declared",
+                              .physics = physics_defaults(),
+                              .objects = &object,
+                              .object_count = 1 };
+    test_scene = scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(test_scene);
     /* The input map travels with the package. */
-    const input_action jump_map = { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false };
-    game_player_spec spec = { .world = { .components = components,
-                                         .actions = &jump_map,
-                                         .action_count = 1 },
-                              .declared = declared,
-                              .scene = scene };
+    const input_action jump_map = { "Jump", UINT64_C(1) << CONTROL_Z, false };
+    player_spec spec = { .world = { .components = components,
+                                    .actions = &jump_map,
+                                    .action_count = 1 },
+                         .declared = declared,
+                         .scene = test_scene };
     /* A player keeps its own set's layout while a newer set is published. */
     declared_component smaller = { .name = "Charge", .fields = &level, .field_count = 1 };
     declared_components *newer = declared_components_new(&smaller, 1, error, sizeof error);
     REQUIRE(newer && type_catalog_find("Charge")->size != type->size);
-    player = game_player_new(&spec, error, sizeof error);
-    REQUIRE(player);
-    ecs_world *own = game_world_ecs(game_player_world(player));
+    test_player = player_new(&spec, error, sizeof error);
+    REQUIRE(test_player);
+    ecs_world *own = world_ecs(player_world(test_player));
     REQUIRE(ecs_world_component(own, charge_id)->type == type);
-    game_player_free(player);
-    player = NULL;
+    player_free(test_player);
+    test_player = NULL;
     declared_components_free(newer);
-    game_player_application application = { 0 };
+    player_application application = { 0 };
     size_t length;
     /* A map the world would reject, such as a count without actions or an
      * action without controls, is rejected before it is written. */
@@ -1616,22 +1581,22 @@ TEST_CASE(native_player_reads_declared_components)
     for (int i = 0; i < 2; i++) {
         spec.world.actions = rejected[i];
         REQUIRE(
-            !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+            !player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
         );
         REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
     }
     spec.world.actions = &jump_map;
     REQUIRE(
-        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+        player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
-    game_scene_free(scene);
-    scene = NULL;
+    scene_free(test_scene);
+    test_scene = NULL;
     declared_components_free(declared);
     REQUIRE(!type_catalog_find("Charge") && type_catalog_find("Battery"));
     REQUIRE(script_catalog_project() == declared_components_catalog(older));
     declared_components_free(older);
     REQUIRE(!type_catalog_find("Battery") && !script_catalog_project());
-    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    REQUIRE(project_components().component_count == REGISTRY_COMPONENT_COUNT);
     /* A measure's unit and range reach its type field for editors. */
     declared_field rate = { .name = "rate",
                             .type = "number",
@@ -1647,11 +1612,11 @@ TEST_CASE(native_player_reads_declared_components)
         hint->max == 10
     );
     declared_components_free(hinted);
-    game_player_host player_host_context = {
-        .components = { .components = GAME_REGISTRY_COMPONENTS,
-                        .component_count = GAME_REGISTRY_COMPONENT_COUNT }
+    player_host player_host_context = {
+        .components = { .components = REGISTRY_COMPONENTS,
+                        .component_count = REGISTRY_COMPONENT_COUNT }
     };
-    player = game_player_prepared_read(
+    test_player = player_prepared_read(
         player_bytes,
         length,
         &player_host_context,
@@ -1659,19 +1624,19 @@ TEST_CASE(native_player_reads_declared_components)
         error,
         sizeof error
     );
-    if (!player) {
+    if (!test_player) {
         fprintf(stderr, "prepared player: %s\n", error);
     }
-    REQUIRE(player);
+    REQUIRE(test_player);
     REQUIRE(type_catalog_find("Charge"));
-    ecs_world *ecs = game_world_ecs(game_player_world(player));
-    ecs_entity cell = game_scene_instance_entity(game_player_scene(player), 0);
+    ecs_world *ecs = world_ecs(player_world(test_player));
+    ecs_entity cell = scene_instance_entity(player_scene(test_player), 0);
     const charge *read = ecs_component_data_const(ecs, cell, charge_id);
     REQUIRE(read && read->level == 1.25f && read->cycles == 2 && read->full);
     REQUIRE(read->drift.x == 1 && read->drift.y == -1);
-    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
-    game_player_free(player);
-    player = NULL;
+    REQUIRE(project_components().component_count == REGISTRY_COMPONENT_COUNT + 1);
+    player_free(test_player);
+    test_player = NULL;
     REQUIRE(!type_catalog_find("Charge"));
     return true;
 }

@@ -269,8 +269,8 @@ declared_components *declared_components_new(
         }
     }
     c->catalog = (script_catalog){ .types = c->script_types, .type_count = count };
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        apush(c->project, GAME_REGISTRY_COMPONENTS[i]);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        apush(c->project, REGISTRY_COMPONENTS[i]);
     }
     for (int i = 0; i < count; i++) {
         apush(c->project, c->desc_list[i]);
@@ -331,8 +331,7 @@ const script_catalog *declared_components_catalog(const declared_components *c)
 ecs_component_catalog project_components()
 {
     if (!acount(alive)) {
-        return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
-                                        GAME_REGISTRY_COMPONENT_COUNT };
+        return (ecs_component_catalog){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     }
     const declared_components *c = alast(alive);
     return (ecs_component_catalog){ c->project, acount(c->project) };

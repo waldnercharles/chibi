@@ -10,7 +10,7 @@
 
 The native Metal preview in `imported-folded-card.png` uses a 640 × 400 output and fixed half-resolution HRC (320 × 200). The texture also supplies emission so its four regions remain visible without external lights. This is a correctness fixture, not a performance benchmark.
 
-`GameCamera.focal_distance` optionally projects meshes in perspective. Collision and HRC light transport remain planar. Studio's scene selection bounds and mesh picking also use planar coordinates, so they do not yet follow perspective projection.
+`Camera.focal_distance` optionally projects meshes in perspective. Collision and HRC light transport remain planar. Studio's scene selection bounds and mesh picking also use planar coordinates, so they do not yet follow perspective projection.
 
 Run the CPU and native GPU mesh regressions with:
 

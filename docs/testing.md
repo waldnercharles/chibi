@@ -73,7 +73,7 @@ prototype run the prototype's list. A prototype's children spawn with each of
 its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
-`add_component("GAME.Heat")`; a system query alone matches nothing without
+`add_component("Heat")`; a system query alone matches nothing without
 them, so it does not count.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and

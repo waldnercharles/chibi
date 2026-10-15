@@ -234,10 +234,10 @@ static void huge_sweep()
 static int ecs_contact_spray_count(int maximum)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     ecs_entity settings = ecs_world_create_entity(world);
     MaterialFluidWorld config = { .chunk_size = 64,
                                   .buffer = 32,
@@ -248,11 +248,11 @@ static int ecs_contact_spray_count(int maximum)
                                   .gas_wake_count = maximum,
                                   .gas_wake_lifetime = .5f };
     assert(
-        ecs_world_record_add(world, settings, GAME_COMPONENT_MaterialFluidWorld.id, &config, 0) == ECS_OK
+        ecs_world_record_add(world, settings, COMPONENT_MaterialFluidWorld.id, &config, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->runtime->materials));
-    assert(game_materials_emit(
+    assert(!materials_prepare(live->runtime->materials));
+    assert(materials_emit(
         live->runtime->materials,
         (
             fluid_particle
@@ -260,16 +260,16 @@ static int ecs_contact_spray_count(int maximum)
     ));
     fluid_body body = { .velocity = { 0, 80 }, .owner = 48 };
     fluid_obstacle obstacle = { .body = 0, .half_size = { 10, 10 } };
-    game_materials_tick(live->runtime->materials, 1.f / 60, &body, 1, &obstacle, 1);
-    game_material_state state = game_materials_inspect(live->runtime->materials);
+    materials_tick(live->runtime->materials, 1.f / 60, &body, 1, &obstacle, 1);
+    material_state state = materials_inspect(live->runtime->materials);
     assert(state.particles == 1 && state.active_particles == 1);
-    int emitted = game_particles_count(live->runtime->particles);
+    int emitted = particles_count(live->runtime->particles);
     if (maximum) {
         assert(emitted > 0 && emitted <= maximum);
     } else {
         assert(emitted == 0);
     }
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return emitted;
 }

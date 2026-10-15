@@ -21,10 +21,10 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
 }
 
 static void spawn_tile(
-    game_materials *materials,
+    materials *materials,
     ecs_entity source,
     MaterialTerrain terrain,
-    GameTransform origin,
+    Transform origin,
     field_grid grid,
     material_mask *mask,
     uint64_t key,
@@ -33,44 +33,43 @@ static void spawn_tile(
 {
     ecs_world *world = materials->world;
     /* Snapshot the controlled component bundle before entity growth. */
-    const GameAppearance *look = GAME_GameAppearance_get_const(world, source);
-    GameAppearance appearance = look ? *look
-                                     : (GameAppearance){ .color = 0xffffffffu };
-    const GameMaterial *surface = GAME_GameMaterial_get_const(world, source);
-    GameMaterial material = surface ? *surface : (GameMaterial){ 0 };
-    const GameShader *binding = GAME_GameShader_get_const(world, source);
+    const Appearance *look = Appearance_get_const(world, source);
+    Appearance appearance = look ? *look : (Appearance){ .color = 0xffffffffu };
+    const Material *surface = Material_get_const(world, source);
+    Material material = surface ? *surface : (Material){ 0 };
+    const Shader *binding = Shader_get_const(world, source);
     bool has_shader = binding != NULL;
-    GameShader shader = binding ? *binding : (GameShader){ 0 };
-    const GameSubstance *sub = GAME_GameSubstance_get_const(world, source);
-    GameSubstance substance = sub ? *sub : (GameSubstance){ 0 };
-    const GameReflection *ref = GAME_GameReflection_get_const(world, source);
-    GameReflection reflection = ref ? *ref : (GameReflection){ 0 };
+    Shader shader = binding ? *binding : (Shader){ 0 };
+    const Substance *sub = Substance_get_const(world, source);
+    Substance substance = sub ? *sub : (Substance){ 0 };
+    const Reflection *ref = Reflection_get_const(world, source);
+    Reflection reflection = ref ? *ref : (Reflection){ 0 };
     MaterialBreakProfile profile = material_ecs_break_profile(materials, source);
     ecs_entity entity = ecs_world_create_entity(world);
-    GameTransform transform = { origin.x + grid.center_x, origin.y + grid.center_y };
-    GameCollider collider = { .shape = GAME_COLLIDER_BOX,
-                              .width = grid.width * terrain.cell_size,
-                              .height = grid.height * terrain.cell_size,
-                              .category = terrain.category,
-                              .mask = terrain.mask };
-    GameDestructible destructible = { .cell_size = terrain.cell_size,
-                                      .min_fragment_cells = terrain.min_fragment_cells };
+    Transform transform = { origin.x + grid.center_x, origin.y + grid.center_y };
+    Collider collider = { .shape = COLLIDER_BOX,
+                          .width = grid.width * terrain.cell_size,
+                          .height = grid.height * terrain.cell_size,
+                          .category = terrain.category,
+                          .mask = terrain.mask };
+    Destructible destructible = { .cell_size = terrain.cell_size,
+                                  .min_fragment_cells = terrain.min_fragment_cells };
     appearance.width = collider.width;
     appearance.height = collider.height;
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameTransform, &transform);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameCollider, &collider);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameDestructible, &destructible);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameAppearance, &appearance);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_GameMaterial, &material);
-    material_ecs_add_component(world, entity, &GAME_COMPONENT_MaterialBreakProfile, &profile);
+    material_ecs_add_component(world, entity, &COMPONENT_Transform, &transform);
+    material_ecs_add_component(world, entity, &COMPONENT_Collider, &collider);
+    material_ecs_add_component(world, entity, &COMPONENT_Destructible, &destructible);
+    material_ecs_add_component(world, entity, &COMPONENT_Appearance, &appearance);
+    material_ecs_add_component(world, entity, &COMPONENT_Material, &material);
+    material_ecs_add_component(world, entity, &COMPONENT_MaterialBreakProfile, &profile);
     if (substance.hardness > 0) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameSubstance, &substance);
+        material_ecs_add_component(world, entity, &COMPONENT_Substance, &substance);
     }
     if (reflection.strength > 0) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameReflection, &reflection);
+        material_ecs_add_component(world, entity, &COMPONENT_Reflection, &reflection);
     }
     if (has_shader) {
-        material_ecs_add_component(world, entity, &GAME_COMPONENT_GameShader, &shader);
+        material_ecs_add_component(world, entity, &COMPONENT_Shader, &shader);
     }
     int result = ecs_world_apply_commands(world);
     assert(result == ECS_OK);
@@ -83,7 +82,7 @@ static void spawn_tile(
     record->initial_cells = record->mask->count;
 }
 
-static void discard_terrain(game_materials *materials, ecs_entity source)
+static void discard_terrain(materials *materials, ecs_entity source)
 {
     for (int i = 0; i < acount(materials->records); i++) {
         material_record *r = &materials->records[i];
@@ -106,10 +105,10 @@ static void discard_terrain(game_materials *materials, ecs_entity source)
 }
 
 static const char *stream_terrain(
-    game_materials *materials,
+    materials *materials,
     ecs_entity source,
     MaterialTerrain terrain,
-    GameTransform origin,
+    Transform origin,
     uint64_t hash
 )
 {
@@ -136,15 +135,14 @@ static const char *stream_terrain(
             .field = terrain.field,
             .context = context,
             .island_cells = terrain.island_cells,
-            .tasks = game_task_pool_tasks(materials->pool) });
+            .tasks = task_pool_tasks(materials->pool) });
         record->terrain = true;
         record->terrain_hash = hash;
     }
     material_stream *stream = record->stream;
     aclear(materials->terrain_views);
     ecs_world *world = materials->world;
-    ecs_component_id ids[] = { GAME_COMPONENT_GameCamera.id,
-                               GAME_COMPONENT_GameTransform.id };
+    ecs_component_id ids[] = { COMPONENT_Camera.id, COMPONENT_Transform.id };
     if (ecs_world_component(world, ids[0])) {
         ecs_query query;
         int result = ecs_query_begin(world, &query, ids, 2);
@@ -152,11 +150,11 @@ static const char *stream_terrain(
         (void)result;
         ecs_entity e;
         while (ecs_query_next(&query, &e)) {
-            const GameCamera *camera = GAME_GameCamera_get_const(world, e);
+            const Camera *camera = Camera_get_const(world, e);
             if (camera->disabled) {
                 continue;
             }
-            CF_V2 p = game_transform_world_2d(world, e).position;
+            CF_V2 p = transform_world_2d(world, e).position;
             float seen = fmaxf(camera->width, camera->height) * .5f;
             apush(
                 materials->terrain_views,
@@ -175,9 +173,9 @@ static const char *stream_terrain(
         apush(materials->terrain_views, view);
     }
     /* A moving body can retain a local interaction outside the camera buffer. */
-    ecs_component_id moving[] = { GAME_COMPONENT_GameBody.id,
-                                  GAME_COMPONENT_GameTransform.id,
-                                  GAME_COMPONENT_GameVelocity.id };
+    ecs_component_id moving[] = { COMPONENT_Body.id,
+                                  COMPONENT_Transform.id,
+                                  COMPONENT_Velocity.id };
     if (ecs_world_component(world, moving[0]) &&
         ecs_world_component(world, moving[2])) {
         ecs_query query;
@@ -186,11 +184,11 @@ static const char *stream_terrain(
         (void)result;
         ecs_entity e;
         while (ecs_query_next(&query, &e)) {
-            const GameVelocity *velocity = GAME_GameVelocity_get_const(world, e);
+            const Velocity *velocity = Velocity_get_const(world, e);
             if (fabsf(velocity->x) + fabsf(velocity->y) < 1) {
                 continue;
             }
-            CF_V2 p = game_transform_world_2d(world, e).position;
+            CF_V2 p = transform_world_2d(world, e).position;
             apush(
                 materials->terrain_views,
                 ((material_stream_view){ p.x - origin.x,
@@ -201,7 +199,7 @@ static const char *stream_terrain(
         }
         ecs_query_end(&query);
     }
-    game_task_pool_begin(materials->pool, true);
+    task_pool_begin(materials->pool, true);
     bool ok = material_stream_update(
         stream,
         materials->fields,
@@ -211,7 +209,7 @@ static const char *stream_terrain(
         materials->error,
         sizeof materials->error
     );
-    game_task_pool_end(materials->pool);
+    task_pool_end(materials->pool);
     aclear(materials->terrain_views);
     int count;
     const material_stream_tile *tiles = material_stream_tiles(stream, &count);
@@ -263,16 +261,16 @@ static const char *stream_terrain(
     return NULL;
 }
 
-static const char *generate_terrain(game_materials *materials, ecs_entity source)
+static const char *generate_terrain(materials *materials, ecs_entity source)
 {
     ecs_world *world = materials->world;
-    MaterialTerrain terrain = *GAME_MaterialTerrain_get_const(world, source);
-    if (!GAME_GameTransform_get_const(world, source)) {
+    MaterialTerrain terrain = *MaterialTerrain_get_const(world, source);
+    if (!Transform_get_const(world, source)) {
         return "Terrain requires a Transform";
     }
     /* Tiles are placed in the world, at their source's world position, and
      * laid out along the world's axes. */
-    GameGlobalTransform2D pose = game_transform_world_2d(world, source);
+    GlobalTransform2D pose = transform_world_2d(world, source);
     if (pose.radians != 0) {
         return "Terrain requires an unrotated placement";
     }
@@ -326,7 +324,7 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     if (terrain.parameters) {
         hash = hash_bytes(hash, terrain.parameters, strlen(terrain.parameters));
     }
-    GameTransform origin = { position.x, position.y };
+    Transform origin = { position.x, position.y };
     if (terrain.stream_radius > 0) {
         return stream_terrain(materials, source, terrain, origin, hash);
     }
@@ -350,18 +348,18 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
         free(field);
         return materials->error;
     }
-    game_task_pool_begin(materials->pool, true);
+    task_pool_begin(materials->pool, true);
     bool baked = material_field_bake(
         materials->fields,
         terrain.field,
         context,
         grid,
         field,
-        game_task_pool_tasks(materials->pool),
+        task_pool_tasks(materials->pool),
         materials->error,
         sizeof materials->error
     );
-    game_task_pool_end(materials->pool);
+    task_pool_end(materials->pool);
     if (!baked) {
         free(field);
         return materials->error;
@@ -396,9 +394,9 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     return NULL;
 }
 
-const char *material_ecs_generate_terrains(game_materials *materials)
+const char *material_ecs_generate_terrains(materials *materials)
 {
-    ecs_component_id id = GAME_COMPONENT_MaterialTerrain.id;
+    ecs_component_id id = COMPONENT_MaterialTerrain.id;
     if (!ecs_world_component(materials->world, id)) {
         return NULL;
     }
@@ -408,7 +406,7 @@ const char *material_ecs_generate_terrains(game_materials *materials)
     assert(result == ECS_OK);
     (void)result;
     while (ecs_query_next(&query, &entity)) {
-        if (!game_entities_is_retiring(materials->entities, entity)) {
+        if (!entities_is_retiring(materials->entities, entity)) {
             apush(sources, entity);
         }
     }

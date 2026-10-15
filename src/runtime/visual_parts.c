@@ -3,18 +3,18 @@
 #include <assert.h>
 #include <math.h>
 
-int game_visual_part_count(int primitive)
+int visual_part_count(int primitive)
 {
-    assert(primitive >= GAME_PRIMITIVE_BOX && primitive < GAME_PRIMITIVE_COUNT);
-    return primitive == GAME_PRIMITIVE_BOX_FRAME ? 12 : 1;
+    assert(primitive >= PRIMITIVE_BOX && primitive < PRIMITIVE_COUNT);
+    return primitive == PRIMITIVE_BOX_FRAME ? 12 : 1;
 }
 
-game_visual_part game_visual_part_at(GameGeometry3D shape, int index)
+visual_part visual_part_at(Geometry3D shape, int index)
 {
-    assert(index >= 0 && index < game_visual_part_count(shape.primitive));
-    game_visual_part part = { .primitive = shape.primitive,
-                              .dimensions = { shape.width, shape.height, shape.depth } };
-    if (shape.primitive != GAME_PRIMITIVE_BOX_FRAME) {
+    assert(index >= 0 && index < visual_part_count(shape.primitive));
+    visual_part part = { .primitive = shape.primitive,
+                         .dimensions = { shape.width, shape.height, shape.depth } };
+    if (shape.primitive != PRIMITIVE_BOX_FRAME) {
         return part;
     }
     const float thickness = .18f;
@@ -36,7 +36,7 @@ game_visual_part game_visual_part_at(GameGeometry3D shape, int index)
             offset = (CF_V3){ a, b, 0 };
             break;
     }
-    part.primitive = GAME_PRIMITIVE_BOX;
+    part.primitive = PRIMITIVE_BOX;
     part.center = (CF_V3){ offset.x * shape.width,
                            offset.y * shape.height,
                            offset.z * shape.depth };
@@ -48,8 +48,8 @@ game_visual_part game_visual_part_at(GameGeometry3D shape, int index)
 
 /* The NODE_READ declaration in runtime/interface.h generates the graph
  * adapter. This function keeps the geometry policy and validation. */
-const char *game_visual_primitive_part(
-    GameGeometry3D shape,
+const char *visual_primitive_part(
+    Geometry3D shape,
     int index,
     int *count,
     int *primitive,
@@ -60,17 +60,17 @@ const char *game_visual_primitive_part(
     float *depth
 )
 {
-    if (shape.primitive < GAME_PRIMITIVE_BOX || shape.primitive >= GAME_PRIMITIVE_COUNT ||
+    if (shape.primitive < PRIMITIVE_BOX || shape.primitive >= PRIMITIVE_COUNT ||
         !isfinite(shape.width + shape.height + shape.depth) ||
         shape.width <= 0 || shape.height <= 0 || shape.depth <= 0) {
         return "Primitive Part needs a valid primitive and positive finite "
                "dimensions";
     }
-    *count = game_visual_part_count(shape.primitive);
+    *count = visual_part_count(shape.primitive);
     if (index < 0 || index >= *count) {
         return "Primitive Part index is outside the primitive's part count";
     }
-    game_visual_part part = game_visual_part_at(shape, index);
+    visual_part part = visual_part_at(shape, index);
     *primitive = part.primitive;
     *center = (CF_V2){ part.center.x, part.center.z };
     *elevation = part.center.y;

@@ -190,7 +190,7 @@ type_catalog_pack type_catalog_pack_at(int index)
             return test_shader_parameters_types();
         }
 #endif
-        return index ? TEST_REFLECTED_TYPES_PACK : GAME_TYPE_PACK;
+        return index ? TEST_REFLECTED_TYPES_PACK : TYPE_PACK;
     }
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME

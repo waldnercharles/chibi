@@ -91,15 +91,15 @@ static bool orientation_reset(CF_Texture textures[INPUTS], float data[INPUTS][PI
     CF_CanvasParams p = cf_canvas_defaults(SIDE, SIDE);
     p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas output = cf_make_canvas(p);
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = false;
     lighting.feedback = false;
     lighting.resolution = lighting.color_resolution = 1;
-    lighting.surface_mode = GAME_HRC_SURFACE_GATHER;
+    lighting.surface_mode = HRC_SURFACE_GATHER;
     lighting.surface_radius = 8;
     lighting.surface_relief = 1;
     lighting.radiance_hysteresis = .05f;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lighting.debug_view = HRC_DEBUG_SURFACE_LIGHT;
     lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
     bool ok = r && output.id && render_radiance_set_lighting(r, lighting) &&
               render_radiance_resize(r, SIDE, SIDE);

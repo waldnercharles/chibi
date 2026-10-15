@@ -306,23 +306,23 @@ static void perspective_model_selection()
     shader_error error = { 0 };
     assert(render_shader_upsert(asset, &error));
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ecs_entity entity = ecs_world_create_entity(world);
-    GameTransform transform = { -7, 8 };
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = .25f,
-                                .height = .25f,
-                                .depth = .25f };
-    GameVisualTransform visual = { .scale = 1.5f };
-    GameSdfSurface3D surface = { .enabled = true };
-    GameShader binding = { .shape = asset->name };
-    set_component(world, entity, &GAME_COMPONENT_GameTransform, &transform);
-    set_component(world, entity, &GAME_COMPONENT_GameGeometry3D, &geometry);
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &visual);
-    set_component(world, entity, &GAME_COMPONENT_GameSdfSurface3D, &surface);
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
+    Transform transform = { -7, 8 };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX,
+                            .width = .25f,
+                            .height = .25f,
+                            .depth = .25f };
+    VisualTransform visual = { .scale = 1.5f };
+    SdfSurface3D surface = { .enabled = true };
+    Shader binding = { .shape = asset->name };
+    set_component(world, entity, &COMPONENT_Transform, &transform);
+    set_component(world, entity, &COMPONENT_Geometry3D, &geometry);
+    set_component(world, entity, &COMPONENT_VisualTransform, &visual);
+    set_component(world, entity, &COMPONENT_SdfSurface3D, &surface);
+    set_component(world, entity, &COMPONENT_Shader, &binding);
     CF_V3 corners[8];
     assert(render_scene3d_entity_bounds(world, entity, corners));
     CF_V3 minimum = { 20, 6, 9.5f }, maximum = { 26, 12, 15.5f };
@@ -349,10 +349,10 @@ static void perspective_model_selection()
     assert(!ecs_entity_to_u64(picked));
     /* A raw primitive retains its manual dimensions and original picking path. */
     ecs_entity raw = ecs_world_create_entity(world);
-    geometry.primitive = GAME_PRIMITIVE_SPHERE;
+    geometry.primitive = PRIMITIVE_SPHERE;
     geometry.width = geometry.height = geometry.depth = 2;
-    set_component(world, raw, &GAME_COMPONENT_GameTransform, &transform);
-    set_component(world, raw, &GAME_COMPONENT_GameGeometry3D, &geometry);
+    set_component(world, raw, &COMPONENT_Transform, &transform);
+    set_component(world, raw, &COMPONENT_Geometry3D, &geometry);
     picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(ecs_entity_to_u64(picked) == ecs_entity_to_u64(raw));
     render_shader_model_stats_reset();
@@ -364,7 +364,7 @@ static void perspective_model_selection()
     behavior_asset *empty = empty_intersection();
     assert(render_shader_upsert(empty, &error));
     binding.shape = empty->name;
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
+    set_component(world, entity, &COMPONENT_Shader, &binding);
     assert(!render_scene3d_entity_bounds(world, entity, corners));
     picked = render_scene3d_pick(world, &camera, (CF_V2){ projected.x, projected.y }, (render_skip){ 0 });
     assert(!ecs_entity_to_u64(picked));
@@ -388,20 +388,20 @@ void test_model_surface()
     shader_error diagnostic = { 0 };
     assert(render_shader_upsert(asset, &diagnostic));
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ecs_entity entity = ecs_world_create_entity(world);
-    GameTransform position = { 10, 20 };
-    GameGeometry3D geometry = { .width = .01f, .height = .02f, .depth = .03f, .elevation = 7 };
-    GameSdfSurface3D marker = { .enabled = true };
-    GameShader binding = { .shape = asset->name };
-    GameVisualTransform pose = { .scale = 2 };
-    set_component(world, entity, &GAME_COMPONENT_GameTransform, &position);
-    set_component(world, entity, &GAME_COMPONENT_GameGeometry3D, &geometry);
-    set_component(world, entity, &GAME_COMPONENT_GameSdfSurface3D, &marker);
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &pose);
+    Transform position = { 10, 20 };
+    Geometry3D geometry = { .width = .01f, .height = .02f, .depth = .03f, .elevation = 7 };
+    SdfSurface3D marker = { .enabled = true };
+    Shader binding = { .shape = asset->name };
+    VisualTransform pose = { .scale = 2 };
+    set_component(world, entity, &COMPONENT_Transform, &position);
+    set_component(world, entity, &COMPONENT_Geometry3D, &geometry);
+    set_component(world, entity, &COMPONENT_SdfSurface3D, &marker);
+    set_component(world, entity, &COMPONENT_Shader, &binding);
+    set_component(world, entity, &COMPONENT_VisualTransform, &pose);
     render_mesh_surface surface = { 0 };
     char error[256];
     assert(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
@@ -422,9 +422,9 @@ void test_model_surface()
     assert(reloaded && reloaded->domain == BEHAVIOR_DOMAIN_MODEL);
     assert(render_shader_upsert(reloaded, &diagnostic));
     binding.shape = reloaded->name;
-    GameOrientation orientation = { .radians = 1.5707963268f };
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
-    set_component(world, entity, &GAME_COMPONENT_GameOrientation, &orientation);
+    Orientation orientation = { .radians = 1.5707963268f };
+    set_component(world, entity, &COMPONENT_Shader, &binding);
+    set_component(world, entity, &COMPONENT_Orientation, &orientation);
     assert(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     assert(acount(surface.parts) == 1);
     /* A box of half-size (1,2,3), offset (2,3,4), then quarter-turned about Z
@@ -449,23 +449,23 @@ void test_model_surface()
     behavior_asset *empty = empty_intersection();
     assert(render_shader_upsert(empty, &diagnostic));
     binding.shape = empty->name;
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
+    set_component(world, entity, &COMPONENT_Shader, &binding);
     assert(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     assert(acount(surface.parts) == 0);
     CF_V2 lo, hi;
     assert(!render_mesh_surface_bounds(world, entity, NULL, &lo, &hi, error, sizeof error));
     binding.shape = asset->name;
-    set_component(world, entity, &GAME_COMPONENT_GameShader, &binding);
+    set_component(world, entity, &COMPONENT_Shader, &binding);
     behavior_asset_free(empty);
     behavior_asset_free(reloaded);
     behavior_asset_free(offset);
     free(source);
     pose.scale = 0;
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &pose);
+    set_component(world, entity, &COMPONENT_VisualTransform, &pose);
     assert(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     assert(acount(surface.parts) == 0);
     pose.scale = -1;
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &pose);
+    set_component(world, entity, &COMPONENT_VisualTransform, &pose);
     assert(!render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     assert(strstr(error, "positive bounds"));
     render_mesh_surface_free(&surface);

@@ -1,8 +1,8 @@
 behavior "ProjectileBehavior" {
-    action set_gameprojectile_age = set_game_projectile_age(self.Projectile.age + delta_time())
+    action set_gameprojectile_age = set_projectile_age(self.Projectile.age + delta_time())
     on Tick {
         await "Face Direction"(self.Velocity.x, self.Velocity.y)
-        set_gameprojectile_age()
+        set_projectile_age()
     }
     after set_gameprojectile_age {
         if set_gameprojectile_age.Value.age >= set_gameprojectile_age.Value.lifetime {

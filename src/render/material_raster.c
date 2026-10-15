@@ -100,7 +100,7 @@ struct render_material_raster
     draw_order *order;
     int width, height, tiles, capacity, index_capacity;
     int sdf_batch_limit;
-    GameSurfaceQuality quality;
+    SurfaceQuality quality;
     bool sdf_trace_debug;
     render_mesh_material_work mesh_work;
 };
@@ -137,7 +137,7 @@ void render_material_raster_set_sdf_batch_limit(render_material_raster *r, int l
     }
 }
 
-void render_material_raster_set_quality(render_material_raster *r, GameSurfaceQuality quality)
+void render_material_raster_set_quality(render_material_raster *r, SurfaceQuality quality)
 {
     r->quality = quality;
     if (r->mesh_pass) {
@@ -1279,14 +1279,13 @@ bool render_material_raster_capture_emitters(
     aclear(r->emitter_vertices);
     r->emitter_sources = 0;
     for (int i = 0; i < mesh_count; i++) {
-        const GameShader *binding = GAME_GameShader_get_const(world, meshes[i].entity);
-        const GameMaterial
-            *material = GAME_GameMaterial_get_const(world, meshes[i].entity);
+        const Shader *binding = Shader_get_const(world, meshes[i].entity);
+        const Material *material = Material_get_const(world, meshes[i].entity);
         if (!material || (binding && binding->material && *binding->material)) {
             continue;
         }
-        game_material_coefficients color;
-        if (!game_material_extract(material, &color)) {
+        material_coefficients color;
+        if (!material_extract(material, &color)) {
             return false;
         }
         if (color.emission[0] + color.emission[1] + color.emission[2] <= 0) {

@@ -27,7 +27,7 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
     }
     REQUIRE(native);
     const script_catalog *catalog = native_capabilities_catalog(native);
-    int index = script_catalog_find_capability(catalog, "game_move_transform", SCRIPT_CAPABILITY_FUNCTION);
+    int index = script_catalog_find_capability(catalog, "move_transform", SCRIPT_CAPABILITY_FUNCTION);
     REQUIRE(index >= 0);
     const script_catalog_capability *declaration = &catalog->capabilities[index];
     const native_capability_binding *binding = native_capabilities_find(
@@ -36,18 +36,18 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
         script_catalog_capability_abi(catalog, declaration)
     );
     REQUIRE(binding && binding->call && binding->call->context);
-    GameTransform input = { .x = 2, .y = 3 }, output = { 0 };
+    Transform input = { .x = 2, .y = 3 }, output = { 0 };
     const pin_value arguments[] = {
-        { .type = PIN_STRUCT, .type_name = "GameTransform", .ptr = &input },
+        { .type = PIN_STRUCT, .type_name = "Transform", .ptr = &input },
         { .type = PIN_F32, .f = -5 },
         { .type = PIN_F32, .f = 7 },
     };
-    pin_value result = { .type = PIN_STRUCT, .type_name = "GameTransform", .ptr = &output };
+    pin_value result = { .type = PIN_STRUCT, .type_name = "Transform", .ptr = &output };
     behavior_function_context context = { .value_storage = &values };
     REQUIRE(!binding->call->context(&context, NULL, arguments, &result));
-    input = (GameTransform){ 99, 99 };
+    input = (Transform){ 99, 99 };
     REQUIRE(output.x == -3 && output.y == 10);
-    REQUIRE(result.type == PIN_STRUCT && !strcmp(result.type_name, "GameTransform"));
+    REQUIRE(result.type == PIN_STRUCT && !strcmp(result.type_name, "Transform"));
     /* Actions are read by name; the input map declares their events. */
     index = script_catalog_find_capability(catalog, "Action Held", SCRIPT_CAPABILITY_FUNCTION);
     REQUIRE(index >= 0);

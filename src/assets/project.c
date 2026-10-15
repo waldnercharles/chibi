@@ -92,18 +92,11 @@ static char *manifest_text(const char *name)
     return text;
 }
 
-static char *start_scene_text()
-{
-    av_doc *doc = av_doc_new();
-    av_value *root = av_obj(doc);
-    av_doc_set_root(doc, root);
-    av_obj_add_int(doc, root, "version", 1);
-    av_obj_add_str(doc, root, "name", "Start");
-    av_obj_add_arr(doc, root, "entities");
-    char *text = av_doc_write(doc);
-    av_doc_free(doc);
-    return text;
-}
+/* Authored KDL, embedded so installed and browser SDKs create the same project. */
+extern const unsigned char chibi_starter_Start[], chibi_starter_Cube[],
+    chibi_starter_Camera[], chibi_starter_Light[];
+extern const size_t chibi_starter_Start_size, chibi_starter_Cube_size,
+    chibi_starter_Camera_size, chibi_starter_Light_size;
 
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size)
 {
@@ -150,18 +143,42 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     char *content = join_path(root, "content");
     char *scenes = join_path(content, "scenes");
-    bool folders = mkdir(content, 0755) == 0 && mkdir(scenes, 0755) == 0;
+    char *prototypes = join_path(content, "prototypes");
+    bool folders = mkdir(content, 0755) == 0 && mkdir(scenes, 0755) == 0 &&
+                   mkdir(prototypes, 0755) == 0;
     char *manifest_path = join_path(root, CHIBI_PROJECT_MANIFEST);
-    char *scene_path = join_path(scenes, "Start" DECLARATIVE_ASSET_EXTENSION);
     char *manifest = manifest_text(name);
-    char *scene = start_scene_text();
-    bool written = folders && manifest && scene &&
-                   write_asset_file(manifest_path, manifest, 0, error, error_size) == 0 &&
-                   write_asset_file(scene_path, scene, 0, error, error_size) == 0;
+    const struct
+    {
+        const char *path;
+        const unsigned char *data;
+        size_t size;
+    } files[] = {
+        { "scenes/Start.kdl", chibi_starter_Start, chibi_starter_Start_size },
+        { "prototypes/Cube.kdl", chibi_starter_Cube, chibi_starter_Cube_size },
+        { "prototypes/Camera.kdl", chibi_starter_Camera, chibi_starter_Camera_size },
+        { "prototypes/Light.kdl", chibi_starter_Light, chibi_starter_Light_size },
+    };
+    bool written = folders && manifest &&
+                   write_asset_file(manifest_path, manifest, 0, error, error_size) == 0;
+    for (int i = 0; written && i < (int)(sizeof files / sizeof *files); i++) {
+        char *path = join_path(content, files[i].path);
+        char *text = xmalloc(files[i].size + 1);
+        memcpy(text, files[i].data, files[i].size);
+        text[files[i].size] = '\0';
+        written = write_asset_file(path, text, 0, error, error_size) == 0;
+        free(text);
+        free(path);
+    }
     if (!written) {
         int failure = errno ? errno : EIO;
-        unlink(scene_path);
+        for (int i = 0; i < (int)(sizeof files / sizeof *files); i++) {
+            char *path = join_path(content, files[i].path);
+            unlink(path);
+            free(path);
+        }
         unlink(manifest_path);
+        rmdir(prototypes);
         rmdir(scenes);
         rmdir(content);
         rmdir(root);
@@ -173,9 +190,8 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
         error[0] = '\0';
     }
     free(manifest);
-    free(scene);
-    free(scene_path);
     free(manifest_path);
+    free(prototypes);
     free(scenes);
     free(content);
     return written ? 0 : -1;

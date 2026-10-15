@@ -29,9 +29,9 @@ distance, an ECS entity, or a serialized process pointer. Connect the finished
 geometry to `Model Output`; required geometry inputs cannot be left empty.
 `Profile2D` is a separate construction type used by extrusion and revolution.
 
-Bind a model through the existing `GameShader.shape` field. Model and raw shape
+Bind a model through the existing `Shader.shape` field. Model and raw shape
 names share this reference namespace; ambiguous names are rejected. A model's
-computed bounds are authoritative. `GameGeometry3D` dimensions continue to bound
+computed bounds are authoritative. `Geometry3D` dimensions continue to bound
 raw shapes but do not resize a model. Change model dimensions through its
 parameters, and change instance scale through the visual transform.
 
@@ -76,7 +76,7 @@ smooth joins, including a smooth join that revives an otherwise empty
 intersection.
 
 Model rotation and runtime entity rotation are separate contracts.
-`GameVisualTransform.pitch/yaw/roll` uses the existing `game_visual_rotation`
+`VisualTransform.pitch/yaw/roll` uses the existing `visual_rotation`
 mapping: yaw is about Y with angle `-heading - yaw`, pitch is about Z, and roll
 is about X; the quaternion composition is `yaw * pitch * roll`. Those fields
 must not be interpreted as the model node's X/Y/Z rotation sequence.
@@ -104,7 +104,7 @@ alone does not make every combination of radii or offsets valid.
 The shared `Set Shape Parameter` behavior node updates one entity's shape/model
 parameter. It validates the proposed parameter snapshot and derived bounds
 before accepting the change. Public uniform changes reuse geometry code;
-structural edits recompile. `GameShader.parameters` is a KDL object value in
+structural edits recompile. `Shader.parameters` is a KDL object value in
 a reflected string field. `shape.<name>` and `material.<name>` disambiguate the
 two binding namespaces. Read the public parameter names returned by
 `inspect_graph` rather than inventing flattened instance names.
@@ -371,9 +371,9 @@ The ordinary imported mesh renderer uses those groups and frames for live
 material graphs, including coordinate-based bump detail. The optional group
 `material_scope` preserves qualified overrides such as
 `material.ImageSlot.Roughness` when the same material is reused across parts;
-geometry and other-slot bindings are not consumed as material parameters. Use `GameMeshAsset`
+geometry and other-slot bindings are not consumed as material parameters. Use `MeshAsset`
 with dimensions `(1,1,1)`, retain the entity's material binding for unassigned
-parts, and enable `GameMeshSurface2D` instead of `GameSdfSurface3D` to select the
+parts, and enable `MeshSurface2D` instead of `SdfSurface3D` to select the
 fallback. Copy `model.mesh` into project content and bind a source such as
 `content/meshes/Camera.mesh`; absolute mesh paths, parent traversal and other
 extensions are rejected by the importer. The editable model remains available for

@@ -124,15 +124,13 @@ void test_model_material_scope()
     ));
     near_value(values[0][0], .35f);
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ecs_entity entity = ecs_world_create_entity(world),
                other = ecs_world_create_entity(world);
-    GameShader binding = { .material = material->name };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
+    Shader binding = { .material = material->name };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     const node_desc *setter = registry_node_by_name("Set Material Parameter");
     assert(setter && setter->host_call);

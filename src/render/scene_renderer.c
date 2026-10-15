@@ -59,22 +59,22 @@ struct app_scene_renderer
     render_material_raster *raster;
     render_model_inspection inspection;
     int sdf_batch_limit;
-    GameSurfaceQuality surface_quality;
-    GameHRCShadowMode shadow_mode;
+    SurfaceQuality surface_quality;
+    HRCShadowMode shadow_mode;
     bool quality_override, shadow_override, sdf_trace_debug;
     bool hidden_rejection, spatial_scratch;
     unsigned horizon_reuse_mask;
-    GameHRC2D horizon_reuse;
+    HRC2D horizon_reuse;
     render_fluid_raster *fluid;
     render_radiance *radiance;
     /* HDR presentation for tone-mapped 2D scenes. */
     render_post_2d *hdr;
-    GameHRC2D lighting;
+    HRC2D lighting;
     render_reflections *reflections;
     render_reflection *reflectors;
     CF_Canvas output, background;
     CF_Shader background_shader, unlit_shader;
-    GameStarfield2D background_style;
+    Starfield2D background_style;
     engine_viewport_camera background_camera;
     bool background_valid, gpu_clock;
     /* A host's grid under the scene (app_scene_renderer_set_grid), and the
@@ -265,17 +265,17 @@ static bool entity_shown(
     if (!renderer->fogless) {
         return engine_entity_visible(runtime, world, entity);
     }
-    const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+    const RenderState *state = RenderState_get_const(world, entity);
     return !runtime || !state || !state->hidden;
 }
 
-static bool scene3d_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
+static bool scene3d_environment(app_scene_renderer *renderer, ecs_world *world, Environment *settings)
 {
-    *settings = game_environment_defaults();
-    if (!ecs_world_component(world, GAME_COMPONENT_GameEnvironment.id)) {
+    *settings = environment_defaults();
+    if (!ecs_world_component(world, COMPONENT_Environment.id)) {
         return true;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameEnvironment.id };
+    ecs_component_id required[] = { COMPONENT_Environment.id };
     ecs_query query;
     int result = ecs_query_begin(world, &query, required, 1);
     assert(result == ECS_OK);
@@ -288,7 +288,7 @@ static bool scene3d_environment(app_scene_renderer *renderer, ecs_world *world, 
             valid = false;
             break;
         }
-        *settings = *GAME_GameEnvironment_get_const(world, entity);
+        *settings = *Environment_get_const(world, entity);
         found = true;
     }
     ecs_query_end(&query);
@@ -308,7 +308,7 @@ static void scene3d_present(app_scene_renderer *renderer)
     cf_draw_pop();
 }
 
-static bool scene3d_prepare(app_scene_renderer *renderer, int width, int height, const GameEnvironment *settings)
+static bool scene3d_prepare(app_scene_renderer *renderer, int width, int height, const Environment *settings)
 {
     if (render_scene3d_post_prepare(renderer->post, width, height, settings)) {
         return true;
@@ -351,7 +351,7 @@ static bool scene3d_finish(app_scene_renderer *renderer, bool submitted)
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const render_scene3d_camera *camera,
     engine_viewport *viewport,
     const engine *runtime,
@@ -366,7 +366,7 @@ bool app_scene_renderer_draw3d(
         return false;
     }
     renderer->error[0] = 0;
-    GameEnvironment settings;
+    Environment settings;
     if (!scene3d_environment(renderer, world, &settings)) {
         scene3d_present(renderer);
         return false;
@@ -463,7 +463,7 @@ static bool prepare_fragments(app_scene_renderer *renderer)
     return true;
 }
 
-static void copy_material(render_material_entity *entity, const game_material_coefficients *material)
+static void copy_material(render_material_entity *entity, const material_coefficients *material)
 {
     memcpy(entity->scene, material->scene, sizeof entity->scene);
     memcpy(entity->emission, material->emission, sizeof entity->emission);
@@ -477,27 +477,27 @@ static void copy_material(render_material_entity *entity, const game_material_co
 
 static bool append_entity(
     app_scene_renderer *renderer,
-    const GameTransform *position,
-    const GameAppearance *appearance,
+    const Transform *position,
+    const Appearance *appearance,
     float angle,
-    const GameMaterial *material
+    const Material *material
 )
 {
     CF_V2 min, max;
     if (!isfinite(position->x) || !isfinite(position->y) ||
-        !game_appearance_rotated_bounds(appearance, angle, &min, &max)) {
+        !appearance_rotated_bounds(appearance, angle, &min, &max)) {
         return false;
     }
-    game_material_coefficients coefficients;
-    GameMaterial fallback = { .scene = appearance->color,
-                              .albedo = appearance->color,
-                              .emission_color = appearance->border_color,
-                              .border_scene = appearance->border_color,
-                              .border_albedo = appearance->border_color,
-                              .border_emission_color = appearance->border_color,
-                              .emission_intensity = 0.035f,
-                              .emission_multiplier = 1 };
-    if (!game_material_extract(material ? material : &fallback, &coefficients)) {
+    material_coefficients coefficients;
+    Material fallback = { .scene = appearance->color,
+                          .albedo = appearance->color,
+                          .emission_color = appearance->border_color,
+                          .border_scene = appearance->border_color,
+                          .border_albedo = appearance->border_color,
+                          .border_emission_color = appearance->border_color,
+                          .emission_intensity = 0.035f,
+                          .emission_multiplier = 1 };
+    if (!material_extract(material ? material : &fallback, &coefficients)) {
         return false;
     }
     float aa = isfinite(appearance->antialias) ? fmaxf(appearance->antialias, 0) : 1;
@@ -514,11 +514,11 @@ static bool append_entity(
     };
     float half_x = appearance->width * 0.5f, half_y = appearance->height * 0.5f;
     switch (appearance->shape) {
-        case GAME_SHAPE_CIRCLE:
+        case SHAPE_CIRCLE:
             entity.shape_type = RENDER_SHAPE_CIRCLE;
             entity.radius = fminf(half_x, half_y);
             break;
-        case GAME_SHAPE_CAPSULE: {
+        case SHAPE_CAPSULE: {
             entity.shape_type = RENDER_SHAPE_CAPSULE;
             entity.radius = fminf(half_x, half_y);
             entity.points[0] = -(half_x - entity.radius);
@@ -527,16 +527,16 @@ static bool append_entity(
             entity.points[3] = -entity.points[1];
             break;
         }
-        case GAME_SHAPE_DIAMOND:
-        case GAME_SHAPE_CHEVRON:
-        case GAME_SHAPE_STROKED_CHEVRON:
-        case GAME_SHAPE_TRIANGLE:
-        case GAME_SHAPE_STROKED_TRIANGLE: {
+        case SHAPE_DIAMOND:
+        case SHAPE_CHEVRON:
+        case SHAPE_STROKED_CHEVRON:
+        case SHAPE_TRIANGLE:
+        case SHAPE_STROKED_TRIANGLE: {
             CF_V2 points[4];
-            int count = game_appearance_points(appearance, points);
+            int count = appearance_points(appearance, points);
             entity.point_count = (unsigned)count;
-            entity.shape_type = appearance->shape == GAME_SHAPE_STROKED_CHEVRON ||
-                                        appearance->shape == GAME_SHAPE_STROKED_TRIANGLE
+            entity.shape_type = appearance->shape == SHAPE_STROKED_CHEVRON ||
+                                        appearance->shape == SHAPE_STROKED_TRIANGLE
                                   ? RENDER_SHAPE_POLY
                                   : RENDER_SHAPE_POLY_FILL;
             entity.thickness = appearance->stroke_width;
@@ -592,10 +592,10 @@ static bool load_sprite_atlas(
  * texels, so a Material tints it. Tilemaps resolve their atlas once per draw. */
 static bool append_sprite_frame(
     app_scene_renderer *renderer,
-    const GameTransform *position,
-    const GameSprite *sprite,
+    const Transform *position,
+    const Sprite *sprite,
     float angle,
-    const GameMaterial *material,
+    const Material *material,
     const sprite_atlas *atlas
 )
 {
@@ -610,10 +610,10 @@ static bool append_sprite_frame(
         );
         return false;
     }
-    GameAppearance box = { .width = (float)atlas->cell_width,
-                           .height = (float)atlas->cell_height,
-                           .color = 0xffffffffu,
-                           .layer = sprite->layer };
+    Appearance box = { .width = (float)atlas->cell_width,
+                       .height = (float)atlas->cell_height,
+                       .color = 0xffffffffu,
+                       .layer = sprite->layer };
     if (!append_entity(renderer, position, &box, angle, material)) {
         return true;
     }
@@ -634,10 +634,10 @@ static bool append_sprite_frame(
 
 static bool append_sprite(
     app_scene_renderer *renderer,
-    const GameTransform *position,
-    const GameSprite *sprite,
+    const Transform *position,
+    const Sprite *sprite,
     float angle,
-    const GameMaterial *material
+    const Material *material
 )
 {
     sprite_atlas atlas;
@@ -665,10 +665,10 @@ static unsigned particle_color(unsigned start, unsigned end, float age)
 static void reflect_rect(
     app_scene_renderer *renderer,
     material_rect rect,
-    GameTransform origin,
+    Transform origin,
     float heading,
-    GameReflection style,
-    const GameMaterial *material
+    Reflection style,
+    const Material *material
 )
 {
     if (!isfinite(style.strength + style.roughness + style.angle + style.offset) ||
@@ -707,16 +707,16 @@ static void reflect_rect(
 static void mask_edges(
     app_scene_renderer *renderer,
     const material_mask *mask,
-    GameTransform position,
+    Transform position,
     float heading,
-    const GameAppearance *look,
-    const GameMaterial *material
+    const Appearance *look,
+    const Material *material
 )
 {
     if (!material || look->border_width <= 0) {
         return;
     }
-    GameMaterial edge = *material;
+    Material edge = *material;
     edge.scene = material->border_scene;
     edge.albedo = material->border_albedo;
     edge.filter = material->border_filter;
@@ -734,12 +734,12 @@ static void mask_edges(
         render_material_border_rect rect = border.rects[i];
         float px = (rect.x + rect.width * .5f - mask->width * .5f) * mask->cell_size;
         float py = (rect.y + rect.height * .5f - mask->height * .5f) * mask->cell_size;
-        GameTransform p = { position.x + c * px - s * py, position.y + s * px + c * py };
-        GameAppearance cells = { .shape = GAME_SHAPE_BOX,
-                                 .width = rect.width * mask->cell_size,
-                                 .height = rect.height * mask->cell_size,
-                                 .antialias = .1f,
-                                 .color = look->border_color };
+        Transform p = { position.x + c * px - s * py, position.y + s * px + c * py };
+        Appearance cells = { .shape = SHAPE_BOX,
+                             .width = rect.width * mask->cell_size,
+                             .height = rect.height * mask->cell_size,
+                             .antialias = .1f,
+                             .color = look->border_color };
         append_entity(renderer, &p, &cells, -heading, &edge);
     }
 }
@@ -802,7 +802,7 @@ static bool polygon_cut(const material_polygon *polygon, material_rect rect, flo
 
 static bool mask_visible(
     render_material_view view,
-    GameTransform origin,
+    Transform origin,
     material_rect rect,
     float heading,
     float padding
@@ -833,9 +833,9 @@ static bool mask_visible(
 static bool append_tilemap(
     app_scene_renderer *renderer,
     ecs_entity entity,
-    GameGlobalTransform2D shown,
-    const GameTilemap *map,
-    const GameMaterial *material,
+    GlobalTransform2D shown,
+    const Tilemap *map,
+    const Material *material,
     render_material_view view
 )
 {
@@ -866,7 +866,7 @@ static bool append_tilemap(
         return false;
     }
     float c = cosf(shown.radians), s = sinf(shown.radians);
-    GameSprite sprite = { .image = map->image, .layer = map->layer };
+    Sprite sprite = { .image = map->image, .layer = map->layer };
     material_rect bounds = { .width = (float)map->frame_width,
                              .height = (float)map->frame_height };
     for (int row = 0; row < map->rows; row++) {
@@ -877,8 +877,8 @@ static bool append_tilemap(
             }
             float x = (column + .5f) * map->frame_width;
             float y = (row + .5f) * map->frame_height;
-            GameTransform center = { shown.position.x + c * x - s * y,
-                                     shown.position.y + s * x + c * y };
+            Transform center = { shown.position.x + c * x - s * y,
+                                 shown.position.y + s * x + c * y };
             if (!mask_visible(view, center, bounds, shown.radians, renderer->pixel_aa)) {
                 continue;
             }
@@ -902,16 +902,16 @@ static int compare_actors(const void *left, const void *right)
 static void collect_order(app_scene_renderer *renderer, ecs_world *world)
 {
     aclear(renderer->actors);
-    ecs_component_id component = GAME_COMPONENT_GameTransform.id;
+    ecs_component_id component = COMPONENT_Transform.id;
     ecs_query query;
     if (ecs_query_begin(world, &query, &component, 1) != ECS_OK) {
         return;
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
-        const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
-        const GameTilemap *tilemap = GAME_GameTilemap_get_const(world, entity);
+        const Appearance *appearance = Appearance_get_const(world, entity);
+        const Sprite *sprite = Sprite_get_const(world, entity);
+        const Tilemap *tilemap = Tilemap_get_const(world, entity);
         int layer = tilemap    ? tilemap->layer
                   : sprite     ? sprite->layer
                   : appearance ? appearance->layer
@@ -934,10 +934,10 @@ static void collect_chunks(
 )
 {
     int count;
-    const material_chunk *chunks = game_materials_chunks(engine_materials(runtime), &count);
+    const material_chunk *chunks = materials_chunks(engine_materials(runtime), &count);
     uint64_t cached = 0;
-    const GameMaterial *material = NULL;
-    const GameAppearance *look = NULL;
+    const Material *material = NULL;
+    const Appearance *look = NULL;
     const MaterialBreakProfile *profile = NULL;
     int shader = 0;
     float parameters[32][4] = { 0 };
@@ -947,7 +947,7 @@ static void collect_chunks(
         if (radius <= .05f ||
             !mask_visible(
                 view,
-                (GameTransform){ chunk->position.x, chunk->position.y },
+                (Transform){ chunk->position.x, chunk->position.y },
                 (material_rect){ .width = radius * 2, .height = radius * 2 },
                 0,
                 0
@@ -958,11 +958,10 @@ static void collect_chunks(
             cached = chunk->source;
             ecs_entity source = ecs_entity_from_u64(chunk->source);
             bool alive = ecs_entity_is_alive(world, source);
-            material = alive ? GAME_GameMaterial_get_const(world, source) : NULL;
-            look = alive ? GAME_GameAppearance_get_const(world, source) : NULL;
-            profile = alive ? GAME_MaterialBreakProfile_get_const(world, source) : NULL;
-            const GameShader *binding = alive ? GAME_GameShader_get_const(world, source)
-                                              : NULL;
+            material = alive ? Material_get_const(world, source) : NULL;
+            look = alive ? Appearance_get_const(world, source) : NULL;
+            profile = alive ? MaterialBreakProfile_get_const(world, source) : NULL;
+            const Shader *binding = alive ? Shader_get_const(world, source) : NULL;
             shader = binding ? render_shader_find(binding->material) : 0;
             if (shader && render_shader_is_shape(shader)) {
                 shader = 0;
@@ -971,16 +970,16 @@ static void collect_chunks(
                 render_shader_parameters(shader, world, source, binding->parameters, parameters);
             }
         }
-        GameTransform position = { chunk->position.x, chunk->position.y };
-        GameAppearance part = { .width = 2 * radius,
-                                .height = 2 * radius,
-                                .shape = GAME_SHAPE_BOX,
-                                .color = look ? look->color : 0x4a4744ffu,
-                                .antialias = look ? look->antialias : 0 };
+        Transform position = { chunk->position.x, chunk->position.y };
+        Appearance part = { .width = 2 * radius,
+                            .height = 2 * radius,
+                            .shape = SHAPE_BOX,
+                            .color = look ? look->color : 0x4a4744ffu,
+                            .antialias = look ? look->antialias : 0 };
         /* A hot chunk glows in its material's spark color until it cools
          * enough to show the material's pattern. */
         bool hot = profile && chunk->heat > .05f;
-        GameMaterial glow = material ? *material : (GameMaterial){ 0 };
+        Material glow = material ? *material : (Material){ 0 };
         if (hot) {
             glow.emission_color = profile->spark_color;
             glow.emission_intensity = chunk->heat * profile->spark_emission;
@@ -1009,7 +1008,7 @@ static void collect_chunks(
 static bool collect(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const engine *runtime,
     render_material_view view
 )
@@ -1043,21 +1042,21 @@ static bool collect(
             render_skip_has(renderer->skip, entity)) {
             continue;
         }
-        GameGlobalTransform2D shown = engine_render_transform(runtime, world, entity);
-        const GameShader *binding = GAME_GameShader_get_const(world, entity);
-        const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
-        const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+        GlobalTransform2D shown = engine_render_transform(runtime, world, entity);
+        const Shader *binding = Shader_get_const(world, entity);
+        const MeshSurface2D *mesh = MeshSurface2D_get_const(world, entity);
+        const SdfSurface3D *sdf = SdfSurface3D_get_const(world, entity);
         if ((mesh && mesh->enabled) || (sdf && sdf->enabled)) {
-            const GameVisualTransform *pose = GAME_GameVisualTransform_get_const(world, entity);
+            const VisualTransform *pose = VisualTransform_get_const(world, entity);
             if (pose && pose->scale == 0) {
                 continue;
             }
-            GameTransform position = shown.position;
+            Transform position = shown.position;
             model_bounds selected_bounds, *override = NULL;
             if (ecs_entity_to_u64(entity) ==
                     ecs_entity_to_u64(renderer->inspection.entity) &&
                 renderer->inspection.part >= 0) {
-                const GameShader *binding = GAME_GameShader_get_const(world, entity);
+                const Shader *binding = Shader_get_const(world, entity);
                 shader_error diagnostic = { 0 };
                 if (!binding || !render_shader_model_preview_snapshot(
                                     render_shader_find(binding->shape),
@@ -1133,42 +1132,35 @@ static bool collect(
             apush(renderer->entities, draw);
             continue;
         }
-        const GameTilemap *tilemap = GAME_GameTilemap_get_const(world, entity);
+        const Tilemap *tilemap = Tilemap_get_const(world, entity);
         if (tilemap) {
-            if (!append_tilemap(renderer, entity, shown, tilemap, GAME_GameMaterial_get_const(world, entity), view)) {
+            if (!append_tilemap(renderer, entity, shown, tilemap, Material_get_const(world, entity), view)) {
                 return false;
             }
             continue;
         }
-        const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
+        const Sprite *sprite = Sprite_get_const(world, entity);
         if (sprite) {
-            GameTransform position = shown.position;
-            if (!append_sprite(
-                    renderer,
-                    &position,
-                    sprite,
-                    -shown.radians,
-                    GAME_GameMaterial_get_const(world, entity)
-                )) {
+            Transform position = shown.position;
+            if (!append_sprite(renderer, &position, sprite, -shown.radians, Material_get_const(world, entity))) {
                 return false;
             }
             continue;
         }
-        const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);
-        const GameGeometry3D *geometry = GAME_GameGeometry3D_get_const(world, entity);
+        const Appearance *authored = Appearance_get_const(world, entity);
+        const Geometry3D *geometry = Geometry3D_get_const(world, entity);
         if (!authored && !geometry) {
             continue;
         }
-        GameAppearance fallback = authored
-                                    ? *authored
-                                    : (GameAppearance){ .width = geometry->width,
-                                                        .height = geometry->depth,
-                                                        .color = 0xffffffffu,
-                                                        .shape = GAME_SHAPE_BOX,
-                                                        .antialias = 1 };
-        const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+        Appearance fallback = authored ? *authored
+                                       : (Appearance){ .width = geometry->width,
+                                                       .height = geometry->depth,
+                                                       .color = 0xffffffffu,
+                                                       .shape = SHAPE_BOX,
+                                                       .antialias = 1 };
+        const VisualTransform *visual = VisualTransform_get_const(world, entity);
         float heading = shown.radians;
-        GameAppearance appearance;
+        Appearance appearance;
         float angle;
         if (!render_geometry_2d_project(authored ? NULL : geometry, &fallback, visual, heading, &appearance, &angle)) {
             continue;
@@ -1177,7 +1169,7 @@ static bool collect(
         float bounds[2];
         if (!authored && render_shader_bounds(shape, bounds)) {
             float scale = visual ? visual->scale : 1;
-            appearance.shape = GAME_SHAPE_BOX;
+            appearance.shape = SHAPE_BOX;
             appearance.width = 2 *
                                (binding->bounds_x > 0 ? binding->bounds_x : bounds[0]) *
                                scale;
@@ -1186,8 +1178,8 @@ static bool collect(
                                                        : bounds[1]) *
                                 scale;
         }
-        GameTransform position = shown.position;
-        const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
+        Transform position = shown.position;
+        const material_mask *mask = materials_mask(engine_materials(runtime), entity);
         if (mask) {
             /* Distant masks draw a coarser level, about a piece per pixel. */
             int level = render_material_lod_level(
@@ -1195,8 +1187,7 @@ static bool collect(
                 mask->cell_size,
                 .5f / renderer->pixel_aa
             );
-            if (appearance.border_width > 0 &&
-                GAME_GameMaterial_get_const(world, entity)) {
+            if (appearance.border_width > 0 && Material_get_const(world, entity)) {
                 level = border_level(mask, appearance.border_width, level);
             }
             mask = render_material_lod_get(renderer->lod, mask, level);
@@ -1213,8 +1204,8 @@ static bool collect(
             if (shader && !render_shader_is_shape(shader)) {
                 render_shader_parameters(shader, world, entity, binding->parameters, parameters);
             }
-            const GameMaterialFrame *frame = GAME_GameMaterialFrame_get_const(world, entity);
-            const GameReflection *reflection = GAME_GameReflection_get_const(world, entity);
+            const MaterialFrame *frame = MaterialFrame_get_const(world, entity);
+            const Reflection *reflection = Reflection_get_const(world, entity);
             if (reflection) {
                 for (int i = 0; i < material_mask_collision(mask).count; i++) {
                     reflect_rect(
@@ -1223,7 +1214,7 @@ static bool collect(
                         position,
                         heading,
                         *reflection,
-                        GAME_GameMaterial_get_const(world, entity)
+                        Material_get_const(world, entity)
                     );
                 }
             }
@@ -1231,7 +1222,7 @@ static bool collect(
              * lays over the fill that follows. */
             float group = (float)++renderer->tile_groups;
             int first = acount(renderer->entities);
-            mask_edges(renderer, mask, position, heading, &appearance, GAME_GameMaterial_get_const(world, entity));
+            mask_edges(renderer, mask, position, heading, &appearance, Material_get_const(world, entity));
             tile_group(renderer, first, group + .5f);
             first = acount(renderer->entities);
             for (int i = 0; i < material_mask_surface(mask).count; i++) {
@@ -1251,16 +1242,16 @@ static bool collect(
                 if (!mask_visible(view, position, rect, heading, padding)) {
                     continue;
                 }
-                GameTransform p = {
+                Transform p = {
                     position.x + cosf(heading) * rect.x - sinf(heading) * rect.y,
                     position.y + sinf(heading) * rect.x + cosf(heading) * rect.y
                 };
-                GameAppearance part = { .width = rect.width,
-                                        .height = rect.height,
-                                        .shape = GAME_SHAPE_BOX,
-                                        .color = appearance.color,
-                                        .antialias = appearance.antialias };
-                if (!append_entity(renderer, &p, &part, -heading, GAME_GameMaterial_get_const(world, entity))) {
+                Appearance part = { .width = rect.width,
+                                    .height = rect.height,
+                                    .shape = SHAPE_BOX,
+                                    .color = appearance.color,
+                                    .antialias = appearance.antialias };
+                if (!append_entity(renderer, &p, &part, -heading, Material_get_const(world, entity))) {
                     continue;
                 }
                 render_material_entity *draw = &alast(renderer->entities);
@@ -1286,7 +1277,7 @@ static bool collect(
             tile_group(renderer, first, group);
             continue;
         }
-        if (!append_entity(renderer, &position, &appearance, angle, GAME_GameMaterial_get_const(world, entity))) {
+        if (!append_entity(renderer, &position, &appearance, angle, Material_get_const(world, entity))) {
             continue;
         }
         /* Appearance owns the 2D footprint; its shader still owns the
@@ -1305,21 +1296,21 @@ static bool collect(
         }
     }
     collect_chunks(renderer, world, runtime, view);
-    const game_particle *items = game_particles_data(particles);
-    for (int i = 0; i < game_particles_count(particles); i++) {
-        const game_particle *particle = &items[i];
+    const particle *items = particles_data(particles);
+    for (int i = 0; i < particles_count(particles); i++) {
+        const particle *particle = &items[i];
         float life = 1 - particle->age / particle->lifetime;
         if (particle->size > 0) {
             float age = 1 - life;
-            float diameter = 2 * game_particle_curve_value(
+            float diameter = 2 * particle_curve_value(
                                      particle->size,
                                      particle->size_end,
                                      particle->size_exponent,
                                      age
                                  );
-            bool ring = particle->shape == GAME_PARTICLE_RING;
-            bool triangle = particle->shape == GAME_PARTICLE_TRIANGLE ||
-                            particle->shape == GAME_PARTICLE_TRIANGLE_OUTLINE;
+            bool ring = particle->shape == PARTICLE_RING;
+            bool triangle = particle->shape == PARTICLE_TRIANGLE ||
+                            particle->shape == PARTICLE_TRIANGLE_OUTLINE;
             if (ring) {
                 diameter = 2 * particle->size * (.45f + .55f * age);
             }
@@ -1330,17 +1321,16 @@ static bool collect(
             float perspective = focal / fmaxf(1, focal + particle->elevation);
             diameter *= perspective;
             length *= perspective;
-            GameAppearance appearance = {
-                .width = diameter +
-                         (particle->shape == GAME_PARTICLE_STREAK ? length : 0),
+            Appearance appearance = {
+                .width = diameter + (particle->shape == PARTICLE_STREAK ? length : 0),
                 .height = diameter,
                 .color = ring ? color & 0xffffff00u : color,
                 .border_color = color,
                 .border_width = ring ? diameter * .07f : 0,
-                .shape = particle->shape == GAME_PARTICLE_STREAK ? GAME_SHAPE_CAPSULE
-                       : triangle ? GAME_SHAPE_BOX
-                                  : GAME_SHAPE_CIRCLE,
-                .antialias = game_particle_curve_value(
+                .shape = particle->shape == PARTICLE_STREAK ? SHAPE_CAPSULE
+                       : triangle                           ? SHAPE_BOX
+                                                            : SHAPE_CIRCLE,
+                .antialias = particle_curve_value(
                     particle->antialias,
                     particle->antialias_end,
                     particle->antialias_exponent,
@@ -1349,20 +1339,20 @@ static bool collect(
             };
             /* Particles are matter: they reflect received light as well as
              * emitting their own. */
-            GameMaterial material = { .scene = appearance.color,
-                                      .albedo = appearance.color,
-                                      .emission_color = appearance.color,
-                                      .border_scene = color,
-                                      .border_emission_color = color,
-                                      .emission_intensity = game_particle_curve_value(
-                                          particle->emission,
-                                          particle->emission_end,
-                                          particle->emission_exponent,
-                                          age
-                                      ),
-                                      .emission_multiplier = 1,
-                                      .absorption = particle->absorption };
-            GameTransform position = { particle->position.x, particle->position.y };
+            Material material = { .scene = appearance.color,
+                                  .albedo = appearance.color,
+                                  .emission_color = appearance.color,
+                                  .border_scene = color,
+                                  .border_emission_color = color,
+                                  .emission_intensity = particle_curve_value(
+                                      particle->emission,
+                                      particle->emission_end,
+                                      particle->emission_exponent,
+                                      age
+                                  ),
+                                  .emission_multiplier = 1,
+                                  .absorption = particle->absorption };
+            Transform position = { particle->position.x, particle->position.y };
             if (diameter <= 0) {
                 continue;
             }
@@ -1378,7 +1368,7 @@ static bool collect(
             if (triangle) {
                 render_material_entity
                     *draw = &renderer->entities[acount(renderer->entities) - 1];
-                bool outline = particle->shape == GAME_PARTICLE_TRIANGLE_OUTLINE;
+                bool outline = particle->shape == PARTICLE_TRIANGLE_OUTLINE;
                 draw->shape_type = outline ? RENDER_SHAPE_POLY : RENDER_SHAPE_POLY_FILL;
                 draw->point_count = 3;
                 draw->thickness = diameter * .08f;
@@ -1397,12 +1387,12 @@ static bool collect(
         }
         unsigned color = (particle->color & 0xffffff00u) |
                          (unsigned)((particle->color & 255u) * life);
-        GameAppearance appearance = { .width = 1 + 3 * life,
-                                      .height = 1 + 3 * life,
-                                      .color = color,
-                                      .shape = GAME_SHAPE_BOX,
-                                      .antialias = 1 };
-        GameTransform position = { particle->position.x, particle->position.y };
+        Appearance appearance = { .width = 1 + 3 * life,
+                                  .height = 1 + 3 * life,
+                                  .color = color,
+                                  .shape = SHAPE_BOX,
+                                  .antialias = 1 };
+        Transform position = { particle->position.x, particle->position.y };
         append_entity(renderer, &position, &appearance, 0, NULL);
     }
     for (int i = 0; i < acount(renderer->meshes); i++) {
@@ -1443,10 +1433,9 @@ static render_view_2d padded_view(
 
 static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2 *flat)
 {
-    GameHRC2D lighting = renderer->radiance
-                           ? game_hrc2d_defaults()
-                           : (GameHRC2D){ .ambient = 1, .intensity = 1 };
-    ecs_component_id component = GAME_COMPONENT_GameHRC2D.id;
+    HRC2D lighting = renderer->radiance ? hrc2d_defaults()
+                                        : (HRC2D){ .ambient = 1, .intensity = 1 };
+    ecs_component_id component = COMPONENT_HRC2D.id;
     ecs_query query;
     int settings = 0;
     if (ecs_world_component(world, component) &&
@@ -1454,7 +1443,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
             if (!ecs_entity_is_retiring(world, entity) && settings++ == 0) {
-                lighting = *GAME_GameHRC2D_get_const(world, entity);
+                lighting = *HRC2D_get_const(world, entity);
             }
         }
         ecs_query_end(&query);
@@ -1475,8 +1464,8 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         lighting.horizon_hierarchy = renderer->horizon_reuse.horizon_hierarchy;
     }
     if (renderer->sdf_trace_debug) {
-        lighting.debug_view = GAME_HRC_DEBUG_SCENE;
-        lighting.tone_mapping = GAME_HRC_TONE_CLAMP;
+        lighting.debug_view = HRC_DEBUG_SCENE;
+        lighting.tone_mapping = HRC_TONE_CLAMP;
         lighting.bloom = 0;
     }
     char notes[400] = "";
@@ -1485,12 +1474,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
     }
     renderer->warning[0] = '\0';
     if (settings > 1) {
-        snprintf(
-            renderer->warning,
-            sizeof renderer->warning,
-            "Lighting uses the first of %d GameHRC2D entities. ",
-            settings
-        );
+        snprintf(renderer->warning, sizeof renderer->warning, "Lighting uses the first of %d HRC2D entities. ", settings);
     }
     if (notes[0]) {
         size_t used = strlen(renderer->warning);
@@ -1509,28 +1493,27 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
 
 static bool scene_surface_quality(app_scene_renderer *renderer, ecs_world *world)
 {
-    GameSurfaceQuality quality = renderer->surface_quality;
+    SurfaceQuality quality = renderer->surface_quality;
     if (!renderer->quality_override) {
-        quality = (GameSurfaceQuality){ 0 };
-        ecs_component_id component = GAME_COMPONENT_GameSurfaceQuality.id;
+        quality = (SurfaceQuality){ 0 };
+        ecs_component_id component = COMPONENT_SurfaceQuality.id;
         ecs_query query;
         if (ecs_world_component(world, component) &&
             ecs_query_begin(world, &query, &component, 1) == ECS_OK) {
             ecs_entity entity;
             while (ecs_query_next(&query, &entity)) {
                 if (!ecs_entity_is_retiring(world, entity)) {
-                    quality = *GAME_GameSurfaceQuality_get_const(world, entity);
+                    quality = *SurfaceQuality_get_const(world, entity);
                     break;
                 }
             }
             ecs_query_end(&query);
         }
     }
-    if (quality.resolution < GAME_SURFACE_SUPERSAMPLED ||
-        quality.resolution > GAME_SURFACE_FULL || !isfinite(quality.sdf_pixel_error) ||
-        quality.sdf_pixel_error < 0 || quality.sdf_pixel_error > 1 ||
-        quality.sdf_normal_mode < GAME_SDF_NORMAL_CENTRAL ||
-        quality.sdf_normal_mode > GAME_SDF_NORMAL_ANALYTIC) {
+    if (quality.resolution < SURFACE_SUPERSAMPLED || quality.resolution > SURFACE_FULL ||
+        !isfinite(quality.sdf_pixel_error) || quality.sdf_pixel_error < 0 ||
+        quality.sdf_pixel_error > 1 || quality.sdf_normal_mode < SDF_NORMAL_CENTRAL ||
+        quality.sdf_normal_mode > SDF_NORMAL_ANALYTIC) {
         snprintf(renderer->error, sizeof renderer->error, "Invalid surface quality settings.");
         return false;
     }
@@ -1540,9 +1523,9 @@ static bool scene_surface_quality(app_scene_renderer *renderer, ecs_world *world
     return true;
 }
 
-static bool starfield(ecs_world *world, GameStarfield2D *style)
+static bool starfield(ecs_world *world, Starfield2D *style)
 {
-    ecs_component_id component = GAME_COMPONENT_GameStarfield2D.id;
+    ecs_component_id component = COMPONENT_Starfield2D.id;
     if (!ecs_world_component(world, component)) {
         return false;
     }
@@ -1553,13 +1536,13 @@ static bool starfield(ecs_world *world, GameStarfield2D *style)
     ecs_entity entity;
     bool found = ecs_query_next(&query, &entity);
     if (found) {
-        *style = *GAME_GameStarfield2D_get_const(world, entity);
+        *style = *Starfield2D_get_const(world, entity);
     }
     ecs_query_end(&query);
     return found;
 }
 
-static void draw_starfield(app_scene_renderer *renderer, GameStarfield2D *style, CF_Aabb screen)
+static void draw_starfield(app_scene_renderer *renderer, Starfield2D *style, CF_Aabb screen)
 {
     if (!renderer->background_shader.id) {
         renderer->background_shader = cf_make_draw_shader("starfield.shd");
@@ -1597,7 +1580,7 @@ static CF_Texture scene_background(
     const engine_viewport_camera *camera
 )
 {
-    GameStarfield2D style = { 0 };
+    Starfield2D style = { 0 };
     bool stars = starfield(world, &style);
     if (!stars && !renderer->grid) {
         return (CF_Texture){ 0 };
@@ -1684,7 +1667,7 @@ void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment)
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     engine_viewport *viewport,
     const engine *runtime,
     render_skip skip
@@ -1718,7 +1701,7 @@ bool app_scene_renderer_draw(
     renderer->error[0] = 0;
     /* Hosts may draw edits, loads and hand-built worlds that no engine frame
      * has propagated yet, so drawing starts from current global transforms. */
-    int propagated = game_transform_propagate(world);
+    int propagated = transform_propagate(world);
     if (propagated != ECS_OK) {
         snprintf(renderer->error, sizeof renderer->error, "Transform propagation failed (%d).", propagated);
         return false;
@@ -1883,10 +1866,10 @@ bool app_scene_renderer_draw(
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
     bool emitter_proxies = !renderer->unlit &&
-                           renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
+                           renderer->lighting.surface_mode == HRC_SURFACE_DEPTH &&
                            renderer->lighting.surface_depth_gain > 0 &&
                            renderer->lighting.surface_depth_emitters ==
-                               GAME_HRC_DEPTH_EMITTERS_PROXIES;
+                               HRC_DEPTH_EMITTERS_PROXIES;
     render_material_raster_set_capture_emitters(renderer->raster, emitter_proxies);
     if (!render_material_raster_capture_emitters(
             renderer->raster,
@@ -1904,14 +1887,14 @@ bool app_scene_renderer_draw(
         render_gpu_timing_mark("Emitter proxies");
     }
 
-    const game_materials *materials = engine_materials(runtime);
-    if (materials && game_materials_fluid(materials)) {
+    const materials *materials = engine_materials(runtime);
+    if (materials && materials_fluid(materials)) {
         if (!renderer->fluid) {
             renderer->fluid = render_fluid_raster_new();
         }
         if (!renderer->fluid || !render_fluid_raster_draw(
                                     renderer->fluid,
-                                    game_materials_fluid(materials),
+                                    materials_fluid(materials),
                                     render_material_raster_canvas(renderer->raster),
                                     view,
                                     raster_width,
@@ -2057,7 +2040,7 @@ void app_scene_renderer_set_spatial_scratch(app_scene_renderer *renderer, bool e
     }
 }
 
-void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, GameSurfaceQuality quality)
+void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, SurfaceQuality quality)
 {
     renderer->surface_quality = quality;
     renderer->quality_override = true;
@@ -2066,13 +2049,13 @@ void app_scene_renderer_set_sdf_trace_debug(app_scene_renderer *renderer, bool e
 {
     renderer->sdf_trace_debug = enabled;
 }
-void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCShadowMode mode)
+void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, HRCShadowMode mode)
 {
-    assert(mode >= GAME_HRC_SHADOW_REFERENCE && mode <= GAME_HRC_SHADOW_HORIZON8);
+    assert(mode >= HRC_SHADOW_REFERENCE && mode <= HRC_SHADOW_HORIZON8);
     renderer->shadow_mode = mode;
     renderer->shadow_override = true;
 }
-void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, GameHRC2D values)
+void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, HRC2D values)
 {
     renderer->horizon_reuse_mask = mask;
     renderer->horizon_reuse = values;

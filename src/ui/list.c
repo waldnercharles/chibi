@@ -62,10 +62,9 @@ static float follow(ui_list_state *state, const ui_list *list, float total, floa
 
 /* Scrolls the least to bring a newly revealed row into view, its top
    `above` dp below the scroller's padding edge. */
-static float reveal(const ui_list_state *state, const ui_list *list, float row, float above, float view, float scroll)
+static float reveal(const ui_list *list, float row, float above, float view, float scroll)
 {
-    if (list->reveal < 0 || list->reveal >= list->count ||
-        list->reveal == state->revealed) {
+    if (list->reveal < 0 || list->reveal >= list->count) {
         return scroll;
     }
     float top = above + top_of(list, row, list->reveal),
@@ -106,13 +105,24 @@ int ui_list_window(rml_element *scroller, const ui_list *list, ui_list_state *st
     float view = rml_element_client_height(scroller) / ratio;
     float scrolled = rml_element_scroll_top(scroller);
     float scroll = follow(state, list, total, view, scrolled / ratio);
-    scroll = reveal(state, list, row, above / ratio, view, scroll);
+    if (list->reveal >= 0 && list->reveal < list->count &&
+        list->reveal != state->revealed) {
+        state->reveal_row = list->reveal;
+        state->reveal_pending = true;
+    }
     state->revealed = list->reveal;
+    ui_list requested = *list;
+    requested.reveal = state->reveal_pending ? state->reveal_row : -1;
+    scroll = reveal(&requested, row, above / ratio, view, scroll);
     scroll = fminf(fmaxf(scroll, 0), fmaxf(total - view, 0));
     if (fabsf(scroll * ratio - scrolled) >= 1) {
         rml_element_set_scroll_top(scroller, scroll * ratio);
     }
     state->scroll = rml_element_scroll_top(scroller) / ratio;
+    /* A growing spacer may still have its previous scroll range until Rml
+     * lays it out. Retry the reveal instead of consuming the clamped scroll. */
+    state->reveal_pending = state->reveal_pending && state->reveal_row < list->count &&
+                            fabsf(state->scroll - scroll) >= 1 / ratio;
     state->total = total;
     float overscan = list->overscan > 0 ? list->overscan : DEFAULT_OVERSCAN;
     float extent = view > 0 ? view : UNLAID_VIEW;

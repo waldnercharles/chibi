@@ -28,7 +28,7 @@ enum
     MAX_DEPTH = 16,
     MAX_PATH = 4096,
     MAX_VALUES = 65536,
-    /* GAME_SCENE_DEPTH_MAX: a scene nested deeper does not load. */
+    /* SCENE_DEPTH_MAX: a scene nested deeper does not load. */
     MAX_ENTITY_DEPTH = 256
 };
 typedef enum
@@ -324,6 +324,25 @@ static void project_references(
         value_reference(c, path, text, av_arr_get(behaviors, i), SOURCE_REFERENCE_PROGRAM);
     }
     const av_value *components = av_obj_get(value, "components");
+    const av_value *binding = av_obj_get(av_obj_get(components, "GlobalBinding"), "name");
+    const char *binding_name = av_get_str(binding);
+    if (binding_name && binding_name[0]) {
+        size_t size = strlen(binding_name) + sizeof "SceneGlobals.";
+        char *field = arena_alloc(&c->storage, size);
+        snprintf(field, size, "SceneGlobals.%s", binding_name);
+        apush(
+            c->definitions,
+            ((source_catalog_definition){
+                .id = script_catalog_id("field", field),
+                .name = own(c, binding_name),
+                .path = path,
+                .text = text,
+                .range = value_range(text, binding),
+                .field = true,
+                .owner = script_catalog_id("type", "SceneGlobals"),
+            })
+        );
+    }
     for (size_t i = 0; i < av_obj_size(components); i++) {
         if (!project_value(c, path)) {
             return;
@@ -615,6 +634,89 @@ static bool has_global(const source_catalog *c, const char *name)
         }
     }
     return false;
+}
+/* Named entity bindings are project declarations. Discover them from authored
+ * KDL, without expanding a scene or depending on the running world. */
+static void global_declarations(source_catalog *c)
+{
+    script_catalog_field *fields = NULL;
+    for (int i = 0; i < acount(c->definitions); i++) {
+        const source_catalog_definition *definition = &c->definitions[i];
+        if (!definition->field) {
+            continue;
+        }
+        bool found = false;
+        for (int j = 0; j < acount(fields); j++) {
+            found |= fields[j].id == definition->id;
+        }
+        if (!found) {
+            apush(
+                fields,
+                ((script_catalog_field){
+                    .id = definition->id,
+                    .name = definition->name,
+                    .type = { .storage = PIN_HANDLE, .nominal = c->view.entity_type },
+                    .read = script_catalog_id("capability", "Get Global Variable"),
+                    .read_key = definition->name,
+                })
+            );
+        }
+    }
+    int count = acount(fields);
+    if (!count) {
+        afree(fields);
+        return;
+    }
+    const source_catalog_definition *definition = NULL;
+    for (int i = 0; !definition && i < acount(c->definitions); i++) {
+        if (c->definitions[i].field) {
+            definition = &c->definitions[i];
+        }
+    }
+    assert(definition);
+    const char *message = NULL;
+    if (has_global(c, "globals")) {
+        message = "Scene bindings need the global name globals; rename the "
+                  "global that uses it";
+    } else if (script_catalog_find_type(&c->view, "SceneGlobals") >= 0) {
+        message = "Scene bindings need the type name SceneGlobals; rename the "
+                  "type that uses it";
+    } else if (!script_catalog_capability_by_id(&c->view, fields[0].read)) {
+        message = "Scene bindings need the native global read capability";
+    }
+    if (message) {
+        error(c, definition->path, definition->range, message);
+        int kept = 0;
+        for (int i = 0; i < acount(c->definitions); i++) {
+            if (!c->definitions[i].field) {
+                c->definitions[kept++] = c->definitions[i];
+            }
+        }
+        asetlen(c->definitions, kept);
+        afree(fields);
+        return;
+    }
+    script_catalog_field *owned = arena_alloc(&c->storage, (size_t)count * sizeof *owned);
+    memcpy(owned, fields, (size_t)count * sizeof *owned);
+    afree(fields);
+    uint64_t id = script_catalog_id("type", "SceneGlobals");
+    script_type scope = { .storage = PIN_STR, .nominal = id, .flags = SCRIPT_TYPE_NAMESPACE };
+    script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 1, sizeof *types);
+    types[c->view.type_count++] = (script_catalog_type){
+        .id = id,
+        .name = "SceneGlobals",
+        .type = scope,
+        .fields = owned,
+        .field_count = count,
+    };
+    c->view.types = types;
+    script_catalog_global *globals = grow(c, c->view.globals, c->view.global_count, 1, sizeof *globals);
+    globals[c->view.global_count++] = (script_catalog_global){
+        .id = script_catalog_id("global", "globals"),
+        .name = "globals",
+        .type = scope,
+    };
+    c->view.globals = globals;
 }
 /* Each action is the event of its name, so an action named like a host
  * event (Tick, Begin, ...) would dispatch that event when pressed. Project
@@ -1003,6 +1105,7 @@ static source_catalog *build(
             load_file(c, edits[i].path, edit_kind(root, edits[i].path));
         }
     }
+    global_declarations(c);
     free(c->edit_used);
     c->edit_used = NULL;
     c->edits = NULL;

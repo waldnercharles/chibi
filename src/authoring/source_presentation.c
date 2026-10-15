@@ -74,6 +74,18 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(e->partial);
         MIX(e->argument_count);
         MIX(e->result_count);
+        if (e->kind == SCRIPT_EXPR_MEMBER && e->left >= 0) {
+            const script_catalog_type *type = script_catalog_type_by_id(
+                catalog,
+                a->expressions[e->left].type.nominal
+            );
+            for (int j = 0; type && j < type->field_count; j++) {
+                if (type->fields[j].id == e->member) {
+                    NAME(type->fields[j].read_key);
+                    break;
+                }
+            }
+        }
         for (int j = 0; j < e->argument_count; j++) {
             MIX(e->arguments[j].value);
             MIX(e->arguments[j].parameter);
@@ -158,6 +170,37 @@ bool authoring_source_presentation_matches(
 {
     return !strcmp(p->text, a->text) && !strcmp(p->identity, a->identity) &&
            p->semantic_generation == semantic_generation(a, catalog);
+}
+uint64_t authoring_source_presentation_call_graph(
+    const authoring_source_presentation *p,
+    uint64_t graph_id,
+    uint64_t node_id
+)
+{
+    int callee = -1;
+    for (int i = 0; i < acount(p->origins); i++) {
+        const source_presentation_origin *o = &p->origins[i];
+        if (o->graph == graph_id && o->node == node_id && !o->pin &&
+            o->kind == SOURCE_PRESENTATION_EXPRESSION &&
+            o->operation == SCRIPT_EXPR_CALL) {
+            callee = o->called_function;
+            break;
+        }
+    }
+    if (callee < 0) {
+        return 0;
+    }
+    for (int i = 0; i < acount(p->origins); i++) {
+        const source_presentation_origin *o = &p->origins[i];
+        if (o->kind != SOURCE_PRESENTATION_FUNCTION || o->record != callee || o->pin) {
+            continue;
+        }
+        const graph *g = behavior_asset_find_graph(p->view, o->graph);
+        if (g && g->entry_id == o->node) {
+            return g->graph_id;
+        }
+    }
+    return 0;
 }
 authoring_source_presentation *authoring_source_presentation_new(
     const script_analysis *analysis,
@@ -272,6 +315,12 @@ static node *clone_node(graph *g, const node *source)
     node_desc *desc = graph_own_block(g, sizeof *desc);
     *desc = *source->desc;
     desc->name = source_view_own(g, source->desc->name);
+    if (source->desc->category) {
+        desc->category = source_view_own(g, source->desc->category);
+    }
+    if (source->desc->description) {
+        desc->description = source_view_own(g, source->desc->description);
+    }
     desc->input_count = source->input_count;
     desc->output_count = source->output_count;
     desc->inputs = graph_own_block(

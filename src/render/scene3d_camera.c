@@ -7,9 +7,10 @@
 static const float camera_fov = 0.6108652382f; /* 35 degrees vertically by default. */
 static const float camera_tilt = 0.1745329252f; /* 10 degrees from overhead. */
 
-static CF_V3 camera_direction()
+static CF_V3 camera_direction(float yaw, float pitch)
 {
-    return (CF_V3){ 0, cosf(camera_tilt), sinf(camera_tilt) };
+    float tilt = camera_tilt + pitch;
+    return (CF_V3){ sinf(yaw) * sinf(tilt), cosf(tilt), cosf(yaw) * sinf(tilt) };
 }
 
 render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *frame)
@@ -24,9 +25,10 @@ render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *
     assert(!clipped || lens.far_clip > lens.near_clip);
     float distance = frame->span_height * 0.5f / tanf(fov * 0.5f);
     if (cf_dot_v3(lens.forward, lens.forward) == 0) {
-        CF_V3 target = { frame->center_x, 0, -frame->center_y };
-        lens.eye = cf_add_v3(target, cf_mul_v3_f(camera_direction(), distance));
-        lens.forward = cf_neg_v3(camera_direction());
+        CF_V3 target = { frame->center_x, frame->target_elevation, -frame->center_y };
+        CF_V3 direction = camera_direction(frame->yaw, frame->pitch);
+        lens.eye = cf_add_v3(target, cf_mul_v3_f(direction, distance));
+        lens.forward = cf_neg_v3(direction);
         lens.up = (CF_V3){ 0, 1, 0 };
     }
     /* Default clips scale with the framing distance, floored at 10 so close
@@ -63,7 +65,7 @@ render_scene3d_camera render_scene3d_camera_make(float center_x, float center_y,
 CF_Aabb render_scene3d_fit(const CF_V3 *points, int count, float aspect)
 {
     assert(count > 0 && isfinite(aspect) && aspect > 0);
-    CF_V3 direction = camera_direction();
+    CF_V3 direction = camera_direction(0, 0);
     CF_V3 up = { 0, direction.z, -direction.y };
     CF_Aabb plane = { { FLT_MAX, FLT_MAX }, { -FLT_MAX, -FLT_MAX } };
     for (int i = 0; i < count; i++) {
@@ -87,6 +89,36 @@ CF_Aabb render_scene3d_fit(const CF_V3 *points, int count, float aspect)
     float width = height * aspect;
     return (CF_Aabb){ { target.x - width, -target.z - height },
                       { target.x + width, -target.z + height } };
+}
+
+void render_scene3d_fit_view(const CF_V3 *points, int count, float aspect, engine_viewport_view *view)
+{
+    assert(count > 0 && isfinite(aspect) && aspect > 0);
+    CF_V3 minimum = points[0], maximum = points[0];
+    for (int i = 1; i < count; i++) {
+        minimum = cf_min_v3(minimum, points[i]);
+        maximum = cf_max_v3(maximum, points[i]);
+    }
+    CF_V3 target = cf_mul_v3_f(cf_add_v3(minimum, maximum), .5f);
+    CF_V3 direction = camera_direction(view->yaw, view->pitch);
+    CF_V3 right = { cosf(view->yaw), 0, -sinf(view->yaw) };
+    CF_V3 up = cf_cross_v3(direction, right);
+    float tangent = tanf(camera_fov * .5f);
+    float distance = 1;
+    for (int i = 0; i < count; i++) {
+        CF_V3 relative = cf_sub_v3(points[i], target);
+        float extent = fmaxf(
+            fabsf(cf_dot_v3(relative, right)) / aspect,
+            fabsf(cf_dot_v3(relative, up))
+        );
+        distance = fmaxf(distance, cf_dot_v3(relative, direction) + extent * 1.2f / tangent);
+    }
+    view->center_x = target.x;
+    view->center_y = -target.z;
+    view->target_elevation = target.y;
+    view->height = 2 * distance * tangent;
+    view->width = view->height * aspect;
+    view->lens = (engine_viewport_lens){ 0 };
 }
 
 static void expand_projected(CF_Aabb *bounds, CF_V4 point)

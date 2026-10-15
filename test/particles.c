@@ -6,18 +6,18 @@
 #include <math.h>
 #include <stdio.h>
 
-static void equal_particle(const game_particle *a, const game_particle *b)
+static void equal_particle(const particle *a, const particle *b)
 {
     assert(a->position.x == b->position.x && a->position.y == b->position.y);
     assert(a->velocity.x == b->velocity.x && a->velocity.y == b->velocity.y);
     assert(a->color == b->color && a->age == b->age && a->lifetime == b->lifetime);
 }
 
-static void invalid_inputs(game_particles *particles, game_particle_burst burst)
+static void invalid_inputs(particles *particles, particle_burst burst)
 {
-    game_particle original = game_particles_data(particles)[0];
-    game_particle_burst invalid[] = { burst, burst, burst, burst,
-                                      burst, burst, burst, burst };
+    particle original = particles_data(particles)[0];
+    particle_burst invalid[] = { burst, burst, burst, burst,
+                                 burst, burst, burst, burst };
     invalid[0].position.x = NAN;
     invalid[1].position.y = INFINITY;
     invalid[2].speed = NAN;
@@ -28,127 +28,122 @@ static void invalid_inputs(game_particles *particles, game_particle_burst burst)
     invalid[7].speed = FLT_MAX;
     invalid[7].lifetime = FLT_MAX;
     for (int i = 0; i < 8; i++) {
-        assert(game_particles_emit(particles, &invalid[i]) == -1);
-        assert(game_particles_count(particles) == 1);
-        equal_particle(&original, game_particles_data(particles));
+        assert(particles_emit(particles, &invalid[i]) == -1);
+        assert(particles_count(particles) == 1);
+        equal_particle(&original, particles_data(particles));
     }
-    assert(game_particles_tick(particles, NAN) == -1);
-    assert(game_particles_tick(particles, INFINITY) == -1);
-    assert(game_particles_tick(particles, -1) == -1);
-    assert(game_particles_tick(particles, 0) == 0);
-    equal_particle(&original, game_particles_data(particles));
+    assert(particles_tick(particles, NAN) == -1);
+    assert(particles_tick(particles, INFINITY) == -1);
+    assert(particles_tick(particles, -1) == -1);
+    assert(particles_tick(particles, 0) == 0);
+    equal_particle(&original, particles_data(particles));
 }
 
 void test_particles()
 {
-    assert(fabsf(game_particle_curve_value(4, 0, 2, .5f) - 3) < .00001f);
-    assert(game_particle_curve_value(4, 0, 0, .8f) == 4);
-    assert(game_particle_curve_value(4, 2, 1, 1) == 2);
-    game_particle curved = { .lifetime = 2,
-                             .velocity = { 100, 0 },
-                             .drag = 2,
-                             .drag_end = 6,
-                             .drag_exponent = 1 };
-    game_particle split = curved;
-    game_particle_advance(&curved, 1);
+    assert(fabsf(particle_curve_value(4, 0, 2, .5f) - 3) < .00001f);
+    assert(particle_curve_value(4, 0, 0, .8f) == 4);
+    assert(particle_curve_value(4, 2, 1, 1) == 2);
+    particle curved = { .lifetime = 2,
+                        .velocity = { 100, 0 },
+                        .drag = 2,
+                        .drag_end = 6,
+                        .drag_exponent = 1 };
+    particle split = curved;
+    particle_advance(&curved, 1);
     for (int i = 0; i < 60; i++) {
-        game_particle_advance(&split, 1.0 / 60);
+        particle_advance(&split, 1.0 / 60);
     }
     assert(fabsf(curved.velocity.x - 100 * expf(-3)) < .00001f);
     assert(fabsf(curved.position.x - split.position.x) < .0001f);
-    game_particles *one_step = game_particles_new(),
-                   *many_steps = game_particles_new();
-    game_particle spatial = { .position = { 3, 4 },
-                              .elevation = 8,
-                              .velocity = { 20, -10 },
-                              .elevation_velocity = 5,
-                              .size = 2,
-                              .size_exponent = 1,
-                              .lifetime = 1,
-                              .drag = 3,
-                              .shape = GAME_PARTICLE_TRIANGLE };
-    assert(game_particles_emit_particle(one_step, &spatial) == 1);
-    assert(game_particles_emit_particle(many_steps, &spatial) == 1);
-    assert(game_particles_tick(one_step, .5) == 0);
+    particles *one_step = particles_new(), *many_steps = particles_new();
+    particle spatial = { .position = { 3, 4 },
+                         .elevation = 8,
+                         .velocity = { 20, -10 },
+                         .elevation_velocity = 5,
+                         .size = 2,
+                         .size_exponent = 1,
+                         .lifetime = 1,
+                         .drag = 3,
+                         .shape = PARTICLE_TRIANGLE };
+    assert(particles_emit_particle(one_step, &spatial) == 1);
+    assert(particles_emit_particle(many_steps, &spatial) == 1);
+    assert(particles_tick(one_step, .5) == 0);
     for (int i = 0; i < 10; i++) {
-        assert(game_particles_tick(many_steps, .05) == 0);
+        assert(particles_tick(many_steps, .05) == 0);
     }
-    const game_particle *a = game_particles_data(one_step),
-                        *b = game_particles_data(many_steps);
+    const particle *a = particles_data(one_step), *b = particles_data(many_steps);
     assert(
         fabsf(a->position.x - b->position.x) < .00001f &&
         fabsf(a->position.y - b->position.y) < .00001f
     );
-    assert(fabsf(a->elevation - b->elevation) < .00001f && a->shape == GAME_PARTICLE_TRIANGLE);
-    spatial.shape = GAME_PARTICLE_SHAPE_COUNT;
-    assert(
-        game_particles_emit_particle(one_step, &spatial) == -1 &&
-        game_particles_count(one_step) == 1
-    );
-    game_particles_free(one_step);
-    game_particles_free(many_steps);
-    game_particles *particles = game_particles_new();
-    assert(game_particles_count(particles) == 0);
-    assert(game_particles_tick(particles, 1) == 0);
-    game_particle_burst burst = { .position = { 3, -4 },
-                                  .color = 0xff8844ffu,
-                                  .count = 1,
-                                  .speed = 20,
-                                  .lifetime = 1 };
-    assert(game_particles_emit(particles, &burst) == 1);
-    game_particle first = game_particles_data(particles)[0];
+    assert(fabsf(a->elevation - b->elevation) < .00001f && a->shape == PARTICLE_TRIANGLE);
+    spatial.shape = PARTICLE_SHAPE_COUNT;
+    assert(particles_emit_particle(one_step, &spatial) == -1 && particles_count(one_step) == 1);
+    particles_free(one_step);
+    particles_free(many_steps);
+    particles *particles = particles_new();
+    assert(particles_count(particles) == 0);
+    assert(particles_tick(particles, 1) == 0);
+    particle_burst burst = { .position = { 3, -4 },
+                             .color = 0xff8844ffu,
+                             .count = 1,
+                             .speed = 20,
+                             .lifetime = 1 };
+    assert(particles_emit(particles, &burst) == 1);
+    particle first = particles_data(particles)[0];
     assert(
         first.position.x == 3 && first.position.y == -4 && first.color == burst.color
     );
     assert(first.age == 0 && first.lifetime == 1);
     invalid_inputs(particles, burst);
-    assert(game_particles_tick(particles, 0.25) == 0);
-    const game_particle *moved = game_particles_data(particles);
+    assert(particles_tick(particles, 0.25) == 0);
+    const particle *moved = particles_data(particles);
     assert(moved->age == 0.25f);
     assert(fabsf(moved->position.x - (3 + first.velocity.x * 0.25f)) < 0.00001f);
     assert(fabsf(moved->position.y - (-4 + first.velocity.y * 0.25f)) < 0.00001f);
-    assert(game_particles_tick(particles, 0.75) == 0);
-    assert(game_particles_count(particles) == 0);
-    game_particles_clear(particles);
-    assert(game_particles_emit(particles, &burst) == 1);
-    equal_particle(&first, game_particles_data(particles));
+    assert(particles_tick(particles, 0.75) == 0);
+    assert(particles_count(particles) == 0);
+    particles_clear(particles);
+    assert(particles_emit(particles, &burst) == 1);
+    equal_particle(&first, particles_data(particles));
 
-    game_particles *reference = game_particles_new();
-    assert(game_particles_emit(reference, &burst) == 1);
+    particles *reference = particles_new();
+    assert(particles_emit(reference, &burst) == 1);
     invalid_inputs(particles, burst);
-    assert(game_particles_emit(particles, &burst) == 1);
-    assert(game_particles_emit(reference, &burst) == 1);
-    equal_particle(&game_particles_data(particles)[1], &game_particles_data(reference)[1]);
-    game_particles_free(reference);
+    assert(particles_emit(particles, &burst) == 1);
+    assert(particles_emit(reference, &burst) == 1);
+    equal_particle(&particles_data(particles)[1], &particles_data(reference)[1]);
+    particles_free(reference);
 
-    game_particles_clear(particles);
+    particles_clear(particles);
     burst.count = 0;
-    assert(game_particles_emit(particles, &burst) == 0);
-    assert(game_particles_count(particles) == 0);
+    assert(particles_emit(particles, &burst) == 0);
+    assert(particles_count(particles) == 0);
     burst.count = INT_MAX;
-    assert(game_particles_emit(particles, &burst) == GAME_PARTICLE_LIMIT);
-    assert(game_particles_count(particles) == GAME_PARTICLE_LIMIT);
-    assert(game_particles_emit(particles, &burst) == 0);
-    const game_particle *items = game_particles_data(particles);
-    for (int i = 0; i < game_particles_count(particles); i++) {
+    assert(particles_emit(particles, &burst) == PARTICLE_LIMIT);
+    assert(particles_count(particles) == PARTICLE_LIMIT);
+    assert(particles_emit(particles, &burst) == 0);
+    const particle *items = particles_data(particles);
+    for (int i = 0; i < particles_count(particles); i++) {
         assert(isfinite(items[i].position.x) && isfinite(items[i].position.y));
         assert(isfinite(items[i].velocity.x) && isfinite(items[i].velocity.y));
         assert(hypotf(items[i].velocity.x, items[i].velocity.y) <= burst.speed * 1.00001f);
     }
-    assert(game_particles_tick(particles, DBL_MAX) == 0);
-    assert(game_particles_count(particles) == 0);
+    assert(particles_tick(particles, DBL_MAX) == 0);
+    assert(particles_count(particles) == 0);
     burst.count = 1;
     burst.speed = 0;
     burst.lifetime = 0.5f;
-    assert(game_particles_emit(particles, &burst) == 1);
+    assert(particles_emit(particles, &burst) == 1);
     burst.lifetime = 1;
-    assert(game_particles_emit(particles, &burst) == 1);
-    assert(game_particles_tick(particles, 0.5) == 0);
-    assert(game_particles_count(particles) == 1);
-    assert(game_particles_data(particles)[0].lifetime == 1);
-    assert(game_particles_data(particles)[0].position.x == 3);
-    game_particles_clear(particles);
-    assert(game_particles_count(particles) == 0);
-    game_particles_free(particles);
+    assert(particles_emit(particles, &burst) == 1);
+    assert(particles_tick(particles, 0.5) == 0);
+    assert(particles_count(particles) == 1);
+    assert(particles_data(particles)[0].lifetime == 1);
+    assert(particles_data(particles)[0].position.x == 3);
+    particles_clear(particles);
+    assert(particles_count(particles) == 0);
+    particles_free(particles);
     puts("particles PASS: deterministic bounded bursts, finite values, expiration and reset");
 }

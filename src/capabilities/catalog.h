@@ -23,6 +23,8 @@ enum
     SCRIPT_TYPE_GENERIC = 1u << 5,
     /* A task handle; its nominal names the function that started it, if known. */
     SCRIPT_TYPE_TASK = 1u << 6,
+    /* A named capability scope; only its fields produce executable values. */
+    SCRIPT_TYPE_NAMESPACE = 1u << 7,
 };
 enum
 {
@@ -41,6 +43,8 @@ typedef struct
     size_t offset;
     /* Getter and setter capabilities; a getter takes the receiver. */
     uint64_t read, write;
+    /* A keyed getter takes this static name instead of receiver storage. */
+    const char *read_key;
     bool writable;
     /* Reads as its own name, a string constant, with no receiver storage. */
     bool constant;

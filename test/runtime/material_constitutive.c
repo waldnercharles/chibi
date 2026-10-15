@@ -16,13 +16,13 @@ static void add_component(
     assert(ecs_world_record_add(world, entity, type->id, value, 0) == ECS_OK);
 }
 
-static game_preview_world *authored_world(ecs_world **world, int solver)
+static preview_world *authored_world(ecs_world **world, int solver)
 {
     *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(*world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(*world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(*world);
+    preview_world *live = preview_world_new(*world);
     ecs_entity config = ecs_world_create_entity(*world);
     MaterialFluidWorld settings = { .chunk_size = 64,
                                     .buffer = 32,
@@ -31,7 +31,7 @@ static game_preview_world *authored_world(ecs_world **world, int solver)
                                     .solver = solver,
                                     .mpm_cell_size = 2,
                                     .mpm_max_substeps = 32 };
-    add_component(*world, config, &GAME_COMPONENT_MaterialFluidWorld, &settings);
+    add_component(*world, config, &COMPONENT_MaterialFluidWorld, &settings);
     assert(ecs_world_apply_commands(*world) == ECS_OK);
     return live;
 }
@@ -39,25 +39,21 @@ static game_preview_world *authored_world(ecs_world **world, int solver)
 static ecs_entity add_source(ecs_world *world, bool emitter, int kind, const MaterialConstitutive *model)
 {
     ecs_entity entity = ecs_world_create_entity(world);
-    add_component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    add_component(world, entity, &COMPONENT_Transform, &(Transform){ 0 });
     if (emitter) {
-        GameParticleEmitter style = game_particle_emitter_defaults();
+        ParticleEmitter style = particle_emitter_defaults();
         style.fluid = true;
         style.fluid_kind = kind;
         style.fluid_mass = 3;
         style.rate = 0;
         style.burst_count = 1;
-        add_component(world, entity, &GAME_COMPONENT_GameParticleEmitter, &style);
+        add_component(world, entity, &COMPONENT_ParticleEmitter, &style);
     } else {
-        GameFluidVolume volume = { .kind = kind,
-                                   .width = 1,
-                                   .height = 1,
-                                   .spacing = 4,
-                                   .mass = 3 };
-        add_component(world, entity, &GAME_COMPONENT_GameFluidVolume, &volume);
+        FluidVolume volume = { .kind = kind, .width = 1, .height = 1, .spacing = 4, .mass = 3 };
+        add_component(world, entity, &COMPONENT_FluidVolume, &volume);
     }
     if (model) {
-        add_component(world, entity, &GAME_COMPONENT_MaterialConstitutive, model);
+        add_component(world, entity, &COMPONENT_MaterialConstitutive, model);
     }
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
@@ -76,18 +72,18 @@ static void identity(fluid_particle p)
 static void propagated_models()
 {
     ecs_world *world;
-    game_preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
+    preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
     MaterialConstitutive volume_model = { 2, 80, 12 };
     add_source(world, false, FLUID_LIQUID, &volume_model);
-    assert(!game_materials_prepare(live->runtime->materials));
-    const material_fluid *fluid = game_materials_fluid(live->runtime->materials);
+    assert(!materials_prepare(live->runtime->materials));
+    const material_fluid *fluid = materials_fluid(live->runtime->materials);
     assert(material_fluid_solver(fluid) == FLUID_SOLVER_MPM);
     MaterialConstitutive emitter_model = { 4, 160, 24 };
     ecs_entity source = add_source(world, true, FLUID_LIQUID, &emitter_model);
-    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
-    game_particle_emitters_bind_materials(emitters, live->runtime->materials);
+    particle_emitters *emitters = particle_emitters_new(NULL);
+    particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256] = { 0 };
-    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+    assert(particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
     int count;
     const fluid_particle *p = material_fluid_particles(fluid, &count);
     assert(count == 2);
@@ -101,67 +97,62 @@ static void propagated_models()
         p[1].constitutive.density == 4 && p[1].constitutive.bulk_modulus == 160 &&
         p[1].constitutive.shear_modulus == 24
     );
-    uint64_t before = game_materials_inspect(live->runtime->materials).hash;
-    MaterialConstitutive *model = ecs_component_data(
-        world,
-        source,
-        GAME_COMPONENT_MaterialConstitutive.id
-    );
+    uint64_t before = materials_inspect(live->runtime->materials).hash;
+    MaterialConstitutive *
+        model = ecs_component_data(world, source, COMPONENT_MaterialConstitutive.id);
     model->bulk_modulus = NAN;
-    assert(!game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof(error)));
-    assert(error[0] && game_materials_inspect(live->runtime->materials).hash == before);
-    game_particle_emitters_free(emitters);
-    game_preview_world_free(live);
+    assert(!particle_emitters_collect(emitters, world, NULL, .1, error, sizeof(error)));
+    assert(error[0] && materials_inspect(live->runtime->materials).hash == before);
+    particle_emitters_free(emitters);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
 static void rejected_model(bool emitter, const MaterialConstitutive *model)
 {
     ecs_world *world;
-    game_preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
+    preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
     if (emitter) {
-        assert(!game_materials_prepare(live->runtime->materials));
+        assert(!materials_prepare(live->runtime->materials));
     }
     add_source(world, emitter, FLUID_LIQUID, model);
     if (emitter) {
-        game_particle_emitters *emitters = game_particle_emitters_new(NULL);
-        game_particle_emitters_bind_materials(emitters, live->runtime->materials);
+        particle_emitters *emitters = particle_emitters_new(NULL);
+        particle_emitters_bind_materials(emitters, live->runtime->materials);
         char error[256] = { 0 };
-        assert(!game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+        assert(!particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
         assert(error[0]);
-        game_particle_emitters_free(emitters);
+        particle_emitters_free(emitters);
     } else {
-        assert(game_materials_prepare(live->runtime->materials));
+        assert(materials_prepare(live->runtime->materials));
     }
     int count;
-    material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
+    material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(count == 0);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
 static void optional_model(int solver, int kind)
 {
     ecs_world *world;
-    game_preview_world *live = authored_world(&world, solver);
+    preview_world *live = authored_world(&world, solver);
     add_source(world, false, kind, NULL);
-    assert(!game_materials_prepare(live->runtime->materials));
+    assert(!materials_prepare(live->runtime->materials));
     add_source(world, true, kind, NULL);
-    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
-    game_particle_emitters_bind_materials(emitters, live->runtime->materials);
+    particle_emitters *emitters = particle_emitters_new(NULL);
+    particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256] = { 0 };
-    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+    assert(particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
     int count;
-    const fluid_particle *p = material_fluid_particles(
-        game_materials_fluid(live->runtime->materials),
-        &count
-    );
+    const fluid_particle
+        *p = material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(count == 2 && p[0].kind == kind && p[1].kind == kind);
     identity(p[0]);
     identity(p[1]);
     assert(p[0].constitutive.density == 0 && p[1].constitutive.density == 0);
-    game_particle_emitters_free(emitters);
-    game_preview_world_free(live);
+    particle_emitters_free(emitters);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 

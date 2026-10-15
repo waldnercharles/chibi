@@ -61,7 +61,7 @@
     PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE) \
     PHYSICS3D_PORT(X, AMOUNT, PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_PUSH_OUTPUTS(X) PHYSICS3D_EXEC(X, "Then")
-extern const native_definition_pack GAME_PHYSICS3D_DEFINITION_PACK;
+extern const native_definition_pack PHYSICS3D_DEFINITION_PACK;
 
 #define PHYSICS3D_RAY_PRESENTATION                                                  \
     .category = "Physics", .keywords = "ray segment line sight wall hit normal 3d", \

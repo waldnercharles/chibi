@@ -13,7 +13,7 @@ static void near(float actual, float expected)
 
 void test_material()
 {
-    GameMaterial material = {
+    Material material = {
         .scene = 0x20408080,
         .albedo = 0x40608020,
         .filter = 0xFF800000,
@@ -26,8 +26,8 @@ void test_material()
         .border_albedo = 0x10203040,
         .border_filter = 0x00FF80FF,
     };
-    game_material_coefficients result;
-    assert(game_material_extract(&material, &result));
+    material_coefficients result;
+    assert(material_extract(&material, &result));
     near(result.scene[0], 32 / 255.0f);
     near(result.scene[3], 128 / 255.0f);
     near(result.albedo[2], 128 / 255.0f);
@@ -50,7 +50,7 @@ void test_material()
 
     material.emission_multiplier = 0;
     material.scene &= 0xFFFFFF00u;
-    assert(game_material_extract(&material, &result));
+    assert(material_extract(&material, &result));
     for (int i = 0; i < 4; i++) {
         near(result.emission[i], 0);
         near(result.border_emission[i], 0);
@@ -59,20 +59,20 @@ void test_material()
     near(result.border_absorption[3], 1);
     material.emission_multiplier = -1;
     material.absorption = 0;
-    assert(game_material_extract(&material, &result));
+    assert(material_extract(&material, &result));
     near(result.emission[3], 0);
     near(result.border_absorption[3], 0);
 
-    game_material_coefficients before = result;
+    material_coefficients before = result;
     material.absorption = NAN;
-    assert(!game_material_extract(&material, &result));
+    assert(!material_extract(&material, &result));
     assert(memcmp(&before, &result, sizeof result) == 0);
     material.absorption = 1;
     material.emission_intensity = FLT_MAX;
     material.emission_multiplier = 2;
-    assert(!game_material_extract(&material, &result));
+    assert(!material_extract(&material, &result));
     assert(memcmp(&before, &result, sizeof result) == 0);
     material.emission_multiplier = INFINITY;
-    assert(!game_material_extract(&material, &result));
+    assert(!material_extract(&material, &result));
     puts("material PASS: linear coefficients, HDR emission, independent border absorption and invalid inputs");
 }

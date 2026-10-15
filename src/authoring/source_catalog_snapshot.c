@@ -65,6 +65,7 @@ bool source_catalog_snapshot(arena *storage, const script_catalog *source, scrip
             fields[j] = types[i].fields[j];
             fields[j].name = text(storage, fields[j].name);
             fields[j].unit = text(storage, fields[j].unit);
+            fields[j].read_key = text(storage, fields[j].read_key);
         }
         types[i].fields = fields;
     }

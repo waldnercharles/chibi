@@ -43,7 +43,7 @@ typedef struct
 {
     char *key, *text;
 } save_entry;
-struct game_save
+struct save
 {
     save_entry *entries;
     char *committed;
@@ -52,7 +52,7 @@ struct game_save
     uint64_t revision;
 };
 
-static bool fail(game_save *save, const char *message)
+static bool fail(save *save, const char *message)
 {
     snprintf(save->error, sizeof save->error, "%s", message);
     return false;
@@ -67,14 +67,14 @@ static void clear_entries(save_entry **entries)
     afree(*entries);
 }
 
-game_save *game_save_new()
+save *save_new()
 {
-    game_save *save = xcalloc(1, sizeof *save);
+    save *save = xcalloc(1, sizeof *save);
     save->committed = xstrdup("{}");
     return save;
 }
 
-void game_save_free(game_save *save)
+void save_free(save *save)
 {
     clear_entries(&save->entries);
     free(save->committed);
@@ -82,7 +82,7 @@ void game_save_free(game_save *save)
     free(save);
 }
 
-static int find_entry(const game_save *save, const char *key)
+static int find_entry(const save *save, const char *key)
 {
     for (int i = 0; key && i < acount(save->entries); i++) {
         if (!strcmp(save->entries[i].key, key)) {
@@ -92,13 +92,13 @@ static int find_entry(const game_save *save, const char *key)
     return -1;
 }
 
-const char *game_save_get(const game_save *save, const char *key)
+const char *save_get(const save *save, const char *key)
 {
     int index = find_entry(save, key);
     return index < 0 ? NULL : save->entries[index].text;
 }
 
-bool game_save_set(game_save *save, const char *key, const char *text)
+bool save_set(save *save, const char *key, const char *text)
 {
     if (!key || !key[0] || strlen(key) > 256 || !text || strlen(text) > SAVE_TEXT_MAX) {
         return fail(save, "Save keys must contain 1-256 bytes and values at most 65536 bytes");
@@ -131,7 +131,7 @@ bool game_save_set(game_save *save, const char *key, const char *text)
     return true;
 }
 
-bool game_save_remove(game_save *save, const char *key)
+bool save_remove(save *save, const char *key)
 {
     int index = find_entry(save, key);
     if (index >= 0) {
@@ -144,18 +144,18 @@ bool game_save_remove(game_save *save, const char *key)
     return true;
 }
 
-int game_save_count(const game_save *save)
+int save_count(const save *save)
 {
     return acount(save->entries);
 }
 
-const char *game_save_key(const game_save *save, int index)
+const char *save_key(const save *save, int index)
 {
     assert(index >= 0 && index < acount(save->entries));
     return save->entries[index].key;
 }
 
-uint64_t game_save_revision(const game_save *save)
+uint64_t save_revision(const save *save)
 {
     return save->revision;
 }
@@ -168,7 +168,7 @@ static int compare_entries(const void *a, const void *b)
     );
 }
 
-static char *serialize(const game_save *save)
+static char *serialize(const save *save)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
@@ -189,14 +189,14 @@ static char *serialize(const game_save *save)
     return json;
 }
 
-bool game_save_import(game_save *save, const char *json)
+bool save_import(save *store, const char *json)
 {
     if (!json || strlen(json) > SAVE_BYTES_MAX * 6) {
-        return fail(save, "Invalid save document size");
+        return fail(store, "Invalid save document size");
     }
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
-    game_save *candidate = game_save_new();
+    save *candidate = save_new();
     bool valid = yyjson_is_obj(root);
     size_t i, max;
     yyjson_val *key, *value;
@@ -205,28 +205,28 @@ bool game_save_import(game_save *save, const char *json)
         const char *name = yyjson_get_str(key);
         if (!yyjson_is_str(value) || strlen(name) != yyjson_get_len(key) ||
             strlen(yyjson_get_str(value)) != yyjson_get_len(value) ||
-            game_save_get(candidate, name) ||
-            !game_save_set(candidate, name, yyjson_get_str(value))) {
+            save_get(candidate, name) ||
+            !save_set(candidate, name, yyjson_get_str(value))) {
             valid = false;
             break;
         }
     }
     yyjson_doc_free(doc);
     if (valid) {
-        clear_entries(&save->entries);
-        save->entries = candidate->entries;
+        clear_entries(&store->entries);
+        store->entries = candidate->entries;
         candidate->entries = NULL;
-        free(save->committed);
-        save->committed = serialize(save);
-        save->error[0] = 0;
-        save->revision++;
+        free(store->committed);
+        store->committed = serialize(store);
+        store->error[0] = 0;
+        store->revision++;
     }
-    game_save_free(candidate);
+    save_free(candidate);
     return valid ||
-           fail(save, "Save document must contain unique text keys and bounded text values");
+           fail(store, "Save document must contain unique text keys and bounded text values");
 }
 
-bool game_save_open(game_save *save, const char *path)
+bool save_open(save *save, const char *path)
 {
     if (!path || !path[0]) {
         return fail(save, "Save storage path is empty");
@@ -243,7 +243,7 @@ bool game_save_open(game_save *save, const char *path)
         return fail(save, "Could not read save storage");
     }
 #endif
-    bool loaded = game_save_import(save, json ? json : "{}");
+    bool loaded = save_import(save, json ? json : "{}");
     free(json);
     if (loaded) {
         free(save->path);
@@ -252,7 +252,7 @@ bool game_save_open(game_save *save, const char *path)
     return loaded;
 }
 
-static bool write_storage(game_save *save, const char *json)
+static bool write_storage(save *save, const char *json)
 {
     if (!save->path) {
         return true;
@@ -286,7 +286,7 @@ static bool write_storage(game_save *save, const char *json)
 #endif
 }
 
-bool game_save_commit(game_save *save)
+bool save_commit(save *save)
 {
     char *json = serialize(save);
     if (!write_storage(save, json)) {
@@ -299,19 +299,19 @@ bool game_save_commit(game_save *save)
     return true;
 }
 
-void game_save_discard(game_save *save)
+void save_discard(save *save)
 {
-    char *json = game_save_export(save);
-    game_save_import(save, json);
+    char *json = save_export(save);
+    save_import(save, json);
     free(json);
 }
 
-char *game_save_export(const game_save *save)
+char *save_export(const save *save)
 {
     return xstrdup(save->committed);
 }
 
-const char *game_save_error(const game_save *save)
+const char *save_error(const save *save)
 {
     return save->error;
 }

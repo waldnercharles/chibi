@@ -508,14 +508,19 @@ static bool follow_width(entry *e, rml_element *el)
     return true;
 }
 
-/* --available-height gives the window's height less its margins, as Base
-   UI's gives the room beside the anchor, so a menu taller than the window
-   scrolls; true when it changed. */
+/* --available-height gives the window's height less its margins, capped by
+   an optional --popover-max-height in dp; true when it changed. */
 static bool follow_height(entry *e, rml_element *el)
 {
     rml_element *root = rml_context_root(e->context);
     float height = rml_element_box_size(root, RML_BOX_BORDER).y -
                    2 * MARGIN * control_dp(el);
+    char limit[32];
+    rml_element_property(el, "--popover-max-height", limit, sizeof limit);
+    float cap = strtof(limit, NULL);
+    if (isfinite(cap) && cap > 0) {
+        height = math_min(height, cap * control_dp(el));
+    }
     if (height == e->available_height) {
         return false;
     }

@@ -924,3 +924,29 @@ steps on both VM and SLJIT. These are bounded execution results, not full render
 or browser acceptance. Game extraction retired 283 byte-identical originals
 after checking their replacement repositories; the differing SpaceCadet README,
 Studio originals and held historical test oracles remain preserved.
+
+## Remove component and runtime name prefixes, 2026-10-11
+
+The runtime component declarations and reflection generator remain the source of
+truth. Remove GAME., GAME_, Game and game_ prefixes from active engine code,
+authored assets and SDK consumers. Preserve numeric component IDs, use bare
+canonical names, and resolve real C identifier collisions with capability names.
+Project version 22 migrates saved component keys and source references; older
+migration inputs and archival evidence retain the spelling they describe.
+
+Update native headers/callers, reflection output and manifest names, authoring
+catalogs and test expectations together. Regenerate bindings, migrate and format
+engine fixtures and active consumer projects, then verify engine products and
+the installed-SDK Studio consumer. Run admitted native, language and tooling
+checks under their production 60-second deadlines. Preserve concurrent edits.
+
+Completed the rename and version 22 migration while preserving all 75 numeric
+component IDs. Engine build, SDK packaging, installed-SDK Studio build,
+check-format, test-tools, test-native and test-language-all passed. Native tests
+also emitted Box3D dependency alignment warnings. Supported fixture and consumer
+projects migrated; formatting passed except Tetris's existing input-map fields,
+which the current parser rejects. Neon Swarm remains version 5, below the current
+migrator's supported range; its names were updated but migration was rejected.
+Full/render/Studio runtime suites remain quarantined. Changes are uncommitted;
+validation logs and the captured pre-change patch are in
+`.chibi/remove-game-prefix/`.

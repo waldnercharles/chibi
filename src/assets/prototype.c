@@ -28,19 +28,19 @@ static char *name_identity(const char *name)
     return xstrdup(identity);
 }
 
-static void setup_tag(game_prototype *prototype)
+static void setup_tag(prototype *document)
 {
-    prototype->tag.name = xmalloc(strlen(prototype->identity) + 16);
+    document->tag.name = xmalloc(strlen(document->identity) + 16);
     snprintf(
-        prototype->tag.name,
-        strlen(prototype->identity) + 16,
+        document->tag.name,
+        strlen(document->identity) + 16,
         "PrototypeTag:%s",
-        prototype->identity
+        document->identity
     );
-    prototype->tag.desc = (ecs_component_desc){
-        .id = ecs_component_marker_id(prototype->identity),
-        .key = prototype->identity,
-        .name = prototype->tag.name,
+    document->tag.desc = (ecs_component_desc){
+        .id = ecs_component_marker_id(document->identity),
+        .key = document->identity,
+        .name = document->tag.name,
         .element_size = 1,
         .type = &TYPE_MARKER,
         .index = ECS_INDEX_BITSET,
@@ -58,14 +58,14 @@ static void set_error(char *error, size_t size, const char *format, ...)
     va_end(args);
 }
 
-static char *own_string(game_prototype *prototype, const char *text)
+static char *own_string(prototype *document, const char *text)
 {
     char *copy = xstrdup(text ? text : "");
-    apush(prototype->strings, copy);
+    apush(document->strings, copy);
     return copy;
 }
 
-void game_prototype_owned_strings_free(char **strings)
+void prototype_owned_strings_free(char **strings)
 {
     for (int i = 0; i < acount(strings); i++) {
         free(strings[i]);
@@ -73,10 +73,7 @@ void game_prototype_owned_strings_free(char **strings)
     afree(strings);
 }
 
-const ecs_component_desc *game_prototype_registry_find(
-    const game_prototype_registry *registry,
-    const char *name
-)
+const ecs_component_desc *prototype_registry_find(const prototype_registry *registry, const char *name)
 {
     return ecs_component_catalog_find(
         (ecs_component_catalog){ registry->components, registry->component_count },
@@ -84,7 +81,7 @@ const ecs_component_desc *game_prototype_registry_find(
     );
 }
 
-static const type_desc *find_type(const game_prototype_registry *registry, const char *name)
+static const type_desc *find_type(const prototype_registry *registry, const char *name)
 {
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
@@ -95,7 +92,7 @@ static const type_desc *find_type(const game_prototype_registry *registry, const
     return type_catalog_find(name);
 }
 
-static game_prototype_component *find_component_in(game_prototype_component *components, const char *name)
+static prototype_component *find_component_in(prototype_component *components, const char *name)
 {
     for (int i = 0; i < acount(components); i++) {
         const ecs_component_desc *desc = components[i].desc;
@@ -107,9 +104,9 @@ static game_prototype_component *find_component_in(game_prototype_component *com
     return NULL;
 }
 
-static game_prototype_component *find_component(game_prototype *prototype, const char *name)
+static prototype_component *find_component(prototype *document, const char *name)
 {
-    return find_component_in(prototype->components, name);
+    return find_component_in(document->components, name);
 }
 
 static const type_field *find_field(const type_desc *type, const char *name)
@@ -122,8 +119,8 @@ static const type_field *find_field(const type_desc *type, const char *name)
     return NULL;
 }
 
-static const game_prototype_link *find_link(
-    const game_prototype_link *links,
+static const prototype_link *find_link(
+    const prototype_link *links,
     const ecs_component_desc *component,
     int field
 )
@@ -137,7 +134,7 @@ static const game_prototype_link *find_link(
 }
 
 /* Drops the component's links, or only the field's when it is not -1. */
-static void drop_links(game_prototype_link *links, const ecs_component_desc *component, int field)
+static void drop_links(prototype_link *links, const ecs_component_desc *component, int field)
 {
     for (int i = acount(links) - 1; i >= 0; i--) {
         if (links[i].component->id == component->id &&
@@ -148,7 +145,7 @@ static void drop_links(game_prototype_link *links, const ecs_component_desc *com
     }
 }
 
-void game_prototype_links_free(game_prototype_link *links)
+void prototype_links_free(prototype_link *links)
 {
     for (int i = 0; i < acount(links); i++) {
         free(links[i].path);
@@ -212,8 +209,8 @@ static int read_unsigned_range(av_value *value, uint64_t maximum, uint64_t *out)
 }
 
 static int parse_fields(
-    game_prototype *prototype,
-    const game_prototype_registry *registry,
+    prototype *document,
+    const prototype_registry *registry,
     void *base,
     const type_desc *type,
     av_value *object,
@@ -223,8 +220,8 @@ static int parse_fields(
 );
 
 static int parse_field(
-    game_prototype *prototype,
-    const game_prototype_registry *registry,
+    prototype *document,
+    const prototype_registry *registry,
     void *base,
     const type_field *field,
     av_value *json,
@@ -307,13 +304,13 @@ static int parse_field(
         case PIN_NAME:
         case PIN_STR:
             result = !av_is_str(json);
-            value.str = result ? NULL : own_string(prototype, av_get_str(json));
+            value.str = result ? NULL : own_string(document, av_get_str(json));
             break;
         case PIN_STRUCT: {
             const type_desc *nested = find_type(registry, field->type_name);
             void *nested_value = xcalloc(1, field->size);
             result = !nested ||
-                     parse_fields(prototype, registry, nested_value, nested, json, NULL, error, error_size);
+                     parse_fields(document, registry, nested_value, nested, json, NULL, error, error_size);
             if (!result) {
                 value.ptr = nested_value;
                 pin_write_field(base, field, value);
@@ -327,15 +324,14 @@ static int parse_field(
             bool path = scope && av_is_str(json) && av_get_len(json);
             result = !path && !av_is_null(json);
             if (!result && scope) {
-                game_prototype_link link = { scope->component,
-                                             (int)(field -
-                                                   scope->component->type->fields),
-                                             NULL,
-                                             scope->outer };
-                drop_links(prototype->links, link.component, link.field);
+                prototype_link link = { scope->component,
+                                        (int)(field - scope->component->type->fields),
+                                        NULL,
+                                        scope->outer };
+                drop_links(document->links, link.component, link.field);
                 if (path) {
                     link.path = xstrdup(av_get_str(json));
-                    apush(prototype->links, link);
+                    apush(document->links, link);
                 }
             }
             break;
@@ -351,8 +347,8 @@ static int parse_field(
 }
 
 static int parse_fields(
-    game_prototype *prototype,
-    const game_prototype_registry *registry,
+    prototype *document,
+    const prototype_registry *registry,
     void *base,
     const type_desc *type,
     av_value *object,
@@ -374,7 +370,7 @@ static int parse_fields(
             set_error(error, error_size, "component %s has unknown field %s", type->name, name);
             return -1;
         }
-        if (parse_field(prototype, registry, base, field, av_obj_iter_get_val(key), scope, error, error_size)) {
+        if (parse_field(document, registry, base, field, av_obj_iter_get_val(key), scope, error, error_size)) {
             return -1;
         }
     }
@@ -382,8 +378,8 @@ static int parse_fields(
 }
 
 static int parse_components(
-    game_prototype *prototype,
-    game_prototype_component **components,
+    prototype *document,
+    prototype_component **components,
     av_value *object,
     bool outer,
     char *error,
@@ -401,7 +397,7 @@ static int parse_components(
     av_value *key;
     while ((key = av_obj_iter_next(&iterator))) {
         const char *name = av_get_str(key);
-        const ecs_component_desc *desc = game_prototype_registry_find(prototype->registry, name);
+        const ecs_component_desc *desc = prototype_registry_find(document->registry, name);
         av_value *value = av_obj_iter_get_val(key);
         if (!desc) {
             set_error(error, error_size, "component %s is unavailable", name);
@@ -411,9 +407,9 @@ static int parse_components(
             set_error(error, error_size, "component %s is computed by the engine and cannot be authored", name);
             return -1;
         }
-        game_prototype_component *component = find_component_in(*components, name);
+        prototype_component *component = find_component_in(*components, name);
         if (!component) {
-            component = &(game_prototype_component){
+            component = &(prototype_component){
                 .desc = desc,
                 .data = xcalloc(1, desc->element_size),
             };
@@ -421,7 +417,7 @@ static int parse_components(
             component = &alast(*components);
         }
         field_scope scope = { desc, outer };
-        if (parse_fields(prototype, prototype->registry, component->data, desc->type, value, &scope, error, error_size)) {
+        if (parse_fields(document, document->registry, component->data, desc->type, value, &scope, error, error_size)) {
             return -1;
         }
     }
@@ -438,7 +434,7 @@ static int contains_name(char *const *stack, int count, const char *name)
     return 0;
 }
 
-static void move_strings(game_prototype *dst, game_prototype *src)
+static void move_strings(prototype *dst, prototype *src)
 {
     for (int i = 0; i < acount(src->strings); i++) {
         apush(dst->strings, src->strings[i]);
@@ -448,29 +444,29 @@ static void move_strings(game_prototype *dst, game_prototype *src)
 
 /* Counts what `src` read toward `dst`'s load; false once the load reads too
  * many documents or bytes. */
-static bool expand(game_prototype *dst, const game_prototype *src, char *error, size_t error_size)
+static bool expand(prototype *dst, const prototype *src, char *error, size_t error_size)
 {
     dst->expanded += 1 + src->expanded;
     dst->read += src->read;
-    if (dst->expanded >= GAME_PROTOTYPE_EXPANSION_MAX) {
+    if (dst->expanded >= PROTOTYPE_EXPANSION_MAX) {
         set_error(
             error,
             error_size,
             "prototype %s reads more than %d prototypes through its includes "
             "and children",
             dst->name,
-            GAME_PROTOTYPE_EXPANSION_MAX
+            PROTOTYPE_EXPANSION_MAX
         );
         return false;
     }
-    if (dst->read >= GAME_PROTOTYPE_READ_MAX) {
+    if (dst->read >= PROTOTYPE_READ_MAX) {
         set_error(
             error,
             error_size,
             "prototype %s reads more than %d MiB of prototypes through its "
             "includes and children",
             dst->name,
-            GAME_PROTOTYPE_READ_MAX >> 20
+            PROTOTYPE_READ_MAX >> 20
         );
         return false;
     }
@@ -478,7 +474,7 @@ static bool expand(game_prototype *dst, const game_prototype *src, char *error, 
 }
 
 /* An include's children come before the including prototype's own. */
-static bool merge_children(game_prototype *dst, game_prototype *src, char *error, size_t error_size)
+static bool merge_children(prototype *dst, prototype *src, char *error, size_t error_size)
 {
     if (!src->children) {
         return true;
@@ -486,7 +482,7 @@ static bool merge_children(game_prototype *dst, game_prototype *src, char *error
     if (!dst->children) {
         dst->children = src->children;
         src->children = NULL;
-    } else if (game_scene_document_take_entities(dst->children, src->children, error, error_size)) {
+    } else if (scene_document_take_entities(dst->children, src->children, error, error_size)) {
         return false;
     }
     for (int i = 0; i < acount(src->child_prototypes); i++) {
@@ -496,14 +492,14 @@ static bool merge_children(game_prototype *dst, game_prototype *src, char *error
     return true;
 }
 
-static bool merge_prototype(game_prototype *dst, game_prototype *src, char *error, size_t error_size)
+static bool merge_prototype(prototype *dst, prototype *src, char *error, size_t error_size)
 {
     if (!merge_children(dst, src, error, error_size)) {
         return false;
     }
     move_strings(dst, src);
     /* Only attached components merge, so only their links do. */
-    game_prototype_link *links = NULL;
+    prototype_link *links = NULL;
     for (int i = 0; i < acount(src->links); i++) {
         if (find_component(src, src->links[i].component->name)) {
             apush(links, src->links[i]);
@@ -513,8 +509,8 @@ static bool merge_prototype(game_prototype *dst, game_prototype *src, char *erro
     }
     aclear(src->links);
     for (int i = 0; i < acount(src->components); i++) {
-        game_prototype_component component = src->components[i];
-        game_prototype_component *existing = find_component(dst, component.desc->name);
+        prototype_component component = src->components[i];
+        prototype_component *existing = find_component(dst, component.desc->name);
         if (existing) {
             memcpy(existing->data, component.data, component.desc->element_size);
             free(component.data);
@@ -535,9 +531,9 @@ static bool merge_prototype(game_prototype *dst, game_prototype *src, char *erro
     return true;
 }
 
-static game_prototype *load_document(
+static prototype *load_document(
     const char *text,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char *const *stack,
     int stack_count,
     char *error,
@@ -546,8 +542,8 @@ static game_prototype *load_document(
 
 /* The prototype the resolver gives for `name`, loaded under `stack`; `role`
  * says in errors what named it. */
-static game_prototype *load_named(
-    const game_prototype_registry *registry,
+static prototype *load_named(
+    const prototype_registry *registry,
     const char *role,
     const char *name,
     char *const *stack,
@@ -561,21 +557,21 @@ static game_prototype *load_named(
         set_error(error, error_size, "%s %s is unavailable", role, name);
         return NULL;
     }
-    game_prototype *prototype = load_document(source, registry, stack, stack_count, error, error_size);
-    if (prototype) {
-        prototype->read += strlen(source);
+    prototype *document = load_document(source, registry, stack, stack_count, error, error_size);
+    if (document) {
+        document->read += strlen(source);
     }
-    if (prototype && strcmp(prototype->name, name)) {
-        set_error(error, error_size, "%s %s is named %s", role, name, prototype->name);
-        game_prototype_free(prototype);
+    if (document && strcmp(document->name, name)) {
+        set_error(error, error_size, "%s %s is named %s", role, name, document->name);
+        prototype_free(document);
         return NULL;
     }
-    return prototype;
+    return document;
 }
 
 /* Folds the included prototype's content into `prototype`, before its own. */
 static bool merge_include(
-    game_prototype *prototype,
+    prototype *document,
     const char *name,
     char *const *stack,
     int stack_count,
@@ -583,63 +579,47 @@ static bool merge_include(
     size_t error_size
 )
 {
-    game_prototype *base = load_named(
-        prototype->registry,
-        "prototype include",
-        name,
-        stack,
-        stack_count,
-        error,
-        error_size
-    );
-    bool merged = base && expand(prototype, base, error, error_size) &&
-                  merge_prototype(prototype, base, error, error_size);
-    game_prototype_free(base);
+    prototype *base = load_named(document->registry, "prototype include", name, stack, stack_count, error, error_size);
+    bool merged = base && expand(document, base, error, error_size) &&
+                  merge_prototype(document, base, error, error_size);
+    prototype_free(base);
     return merged;
 }
 
 /* What the child spawns as: its prototype with its components and behaviors,
  * under its own name. */
-static game_prototype *resolve_child(
-    const game_prototype_registry *registry,
-    const game_scene_entity *child,
+static prototype *resolve_child(
+    const prototype_registry *registry,
+    const scene_entity *child,
     char *const *stack,
     int stack_count,
     char *error,
     size_t error_size
 )
 {
-    game_prototype *prototype = load_named(
-        registry,
-        "child prototype",
-        child->prototype,
-        stack,
-        stack_count,
-        error,
-        error_size
-    );
-    if (!prototype) {
+    prototype *document = load_named(registry, "child prototype", child->prototype, stack, stack_count, error, error_size);
+    if (!document) {
         return NULL;
     }
-    if (parse_components(prototype, &prototype->components, child->components, true, error, error_size)) {
-        game_prototype_free(prototype);
+    if (parse_components(document, &document->components, child->components, true, error, error_size)) {
+        prototype_free(document);
         return NULL;
     }
     if (child->own_behaviors) {
-        aclear(prototype->graphs);
+        aclear(document->graphs);
         for (int i = 0; i < acount(child->behaviors); i++) {
-            apush(prototype->graphs, own_string(prototype, child->behaviors[i]));
+            apush(document->graphs, own_string(document, child->behaviors[i]));
         }
     }
-    free(prototype->name);
-    prototype->name = xstrdup(child->name);
-    return prototype;
+    free(document->name);
+    document->name = xstrdup(child->name);
+    return document;
 }
 
 /* Reads the document's children after any its includes gave it and, unless
  * `authored`, resolves each. */
 static bool read_children(
-    game_prototype *prototype,
+    prototype *document,
     av_value *children,
     bool authored,
     char *const *stack,
@@ -648,23 +628,23 @@ static bool read_children(
     size_t error_size
 )
 {
-    if (!authored && !prototype->registry->include) {
+    if (!authored && !document->registry->include) {
         set_error(error, error_size, "prototype children need a resolver");
         return false;
     }
-    if (!prototype->children) {
-        prototype->children = game_scene_document_new(prototype->name);
+    if (!document->children) {
+        document->children = scene_document_new(document->name);
     }
-    int first = acount(prototype->children->entities);
+    int first = acount(document->children->entities);
     char reason[256];
-    if (game_scene_document_read_entities(prototype->children, children, reason, sizeof reason)) {
-        set_error(error, error_size, "children of prototype %s: %s", prototype->name, reason);
+    if (scene_document_read_entities(document->children, children, reason, sizeof reason)) {
+        set_error(error, error_size, "children of prototype %s: %s", document->name, reason);
         return false;
     }
-    for (int i = first; !authored && i < acount(prototype->children->entities); i++) {
-        game_prototype *child = resolve_child(
-            prototype->registry,
-            &prototype->children->entities[i],
+    for (int i = first; !authored && i < acount(document->children->entities); i++) {
+        prototype *child = resolve_child(
+            document->registry,
+            &document->children->entities[i],
             stack,
             stack_count,
             error,
@@ -673,8 +653,8 @@ static bool read_children(
         if (!child) {
             return false;
         }
-        apush(prototype->child_prototypes, child);
-        if (!expand(prototype, child, error, error_size)) {
+        apush(document->child_prototypes, child);
+        if (!expand(document, child, error, error_size)) {
             return false;
         }
     }
@@ -683,9 +663,9 @@ static bool read_children(
 
 /* With `authored`, the included prototypes are named but not loaded, so the
  * result holds only what the document itself says. */
-static game_prototype *load_value_document(
+static prototype *load_value_document(
     av_value *root,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     bool authored,
     char *const *stack,
     int stack_count,
@@ -703,39 +683,39 @@ static game_prototype *load_value_document(
         set_error(error, error_size, "prototype include cycle at %s", name);
         return NULL;
     }
-    game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
-    prototype->name = xstrdup(name);
-    prototype->identity = name_identity(name);
-    prototype->authored = authored;
-    prototype->registry_storage = *registry;
-    prototype->registry = &prototype->registry_storage;
+    prototype *document = (prototype *)xcalloc(1, sizeof *document);
+    document->name = xstrdup(name);
+    document->identity = name_identity(name);
+    document->authored = authored;
+    document->registry_storage = *registry;
+    document->registry = &document->registry_storage;
     av_value *identity = av_obj_get(root, "identity");
     if (identity) {
         if (!av_is_str(identity) || !av_get_len(identity)) {
             set_error(error, error_size, "prototype identity must be a non-empty string");
-            game_prototype_free(prototype);
+            prototype_free(document);
             return NULL;
         }
-        free(prototype->identity);
-        prototype->identity = xstrdup(av_get_str(identity));
+        free(document->identity);
+        document->identity = xstrdup(av_get_str(identity));
     }
-    setup_tag(prototype);
+    setup_tag(document);
     char *next_stack[64];
     if (stack_count >= (int)(sizeof next_stack / sizeof next_stack[0])) {
         set_error(error, error_size, "prototype include depth exceeded");
-        game_prototype_free(prototype);
+        prototype_free(document);
         return NULL;
     }
     for (int i = 0; i < stack_count; i++) {
         next_stack[i] = (char *)stack[i];
     }
-    next_stack[stack_count] = prototype->name;
+    next_stack[stack_count] = document->name;
 
     av_value *includes = av_obj_get(root, "includes");
     if (includes) {
         if (!av_is_arr(includes) || (!authored && !registry->include)) {
             set_error(error, error_size, "prototype includes need a resolver");
-            game_prototype_free(prototype);
+            prototype_free(document);
             return NULL;
         }
         av_arr_iter iterator = av_arr_iter_with(includes);
@@ -743,48 +723,48 @@ static game_prototype *load_value_document(
         while ((include = av_arr_iter_next(&iterator))) {
             if (!av_is_str(include)) {
                 set_error(error, error_size, "prototype include name is not a string");
-                game_prototype_free(prototype);
+                prototype_free(document);
                 return NULL;
             }
             if (!authored &&
-                !merge_include(prototype, av_get_str(include), next_stack, stack_count + 1, error, error_size)) {
-                game_prototype_free(prototype);
+                !merge_include(document, av_get_str(include), next_stack, stack_count + 1, error, error_size)) {
+                prototype_free(document);
                 return NULL;
             }
-            apush(prototype->includes, own_string(prototype, av_get_str(include)));
+            apush(document->includes, own_string(document, av_get_str(include)));
         }
     }
-    if (parse_components(prototype, &prototype->components, av_obj_get(root, "components"), false, error, error_size) ||
+    if (parse_components(document, &document->components, av_obj_get(root, "components"), false, error, error_size) ||
         parse_components(
-            prototype,
-            &prototype->detached_components,
+            document,
+            &document->detached_components,
             av_obj_get(root, "detached_components"),
             false,
             error,
             error_size
         )) {
-        game_prototype_free(prototype);
+        prototype_free(document);
         return NULL;
     }
-    for (int i = 0; i < acount(prototype->detached_components); i++) {
-        const char *name = prototype->detached_components[i].desc->name;
-        if (find_component(prototype, name)) {
+    for (int i = 0; i < acount(document->detached_components); i++) {
+        const char *name = document->detached_components[i].desc->name;
+        if (find_component(document, name)) {
             set_error(error, error_size, "component %s is both attached and detached", name);
-            game_prototype_free(prototype);
+            prototype_free(document);
             return NULL;
         }
     }
     av_value *children = av_obj_get(root, "children");
     if (children &&
-        !read_children(prototype, children, authored, next_stack, stack_count + 1, error, error_size)) {
-        game_prototype_free(prototype);
+        !read_children(document, children, authored, next_stack, stack_count + 1, error, error_size)) {
+        prototype_free(document);
         return NULL;
     }
     av_value *graphs = av_obj_get(root, "behaviors");
     if (graphs) {
         if (!av_is_arr(graphs)) {
             set_error(error, error_size, "behaviors must be an array");
-            game_prototype_free(prototype);
+            prototype_free(document);
             return NULL;
         }
         av_arr_iter iterator = av_arr_iter_with(graphs);
@@ -792,18 +772,18 @@ static game_prototype *load_value_document(
         while ((graph = av_arr_iter_next(&iterator))) {
             if (!av_is_str(graph)) {
                 set_error(error, error_size, "behavior graph name is not a string");
-                game_prototype_free(prototype);
+                prototype_free(document);
                 return NULL;
             }
-            apush(prototype->graphs, own_string(prototype, av_get_str(graph)));
+            apush(document->graphs, own_string(document, av_get_str(graph)));
         }
     }
-    return prototype;
+    return document;
 }
 
-static game_prototype *load_document(
+static prototype *load_document(
     const char *text,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char *const *stack,
     int stack_count,
     char *error,
@@ -811,36 +791,19 @@ static game_prototype *load_document(
 )
 {
     av_doc *doc = asset_text_read(text, error, error_size);
-    game_prototype *result = doc ? load_value_document(
-                                       av_doc_root(doc),
-                                       registry,
-                                       false,
-                                       stack,
-                                       stack_count,
-                                       error,
-                                       error_size
-                                   )
-                                 : NULL;
+    prototype *result = doc
+                          ? load_value_document(av_doc_root(doc), registry, false, stack, stack_count, error, error_size)
+                          : NULL;
     av_doc_free(doc);
     return result;
 }
 
-game_prototype *game_prototype_load_value(
-    av_value *value,
-    const game_prototype_registry *registry,
-    char *error,
-    size_t error_size
-)
+prototype *prototype_load_value(av_value *value, const prototype_registry *registry, char *error, size_t error_size)
 {
     return load_value_document(value, registry, false, NULL, 0, error, error_size);
 }
 
-game_prototype *game_prototype_load(
-    const char *json,
-    const game_prototype_registry *registry,
-    char *error,
-    size_t error_size
-)
+prototype *prototype_load(const char *json, const prototype_registry *registry, char *error, size_t error_size)
 {
     if (!json || !registry || registry->component_count < 0 ||
         (registry->component_count && !registry->components)) {
@@ -853,121 +816,113 @@ game_prototype *game_prototype_load(
     return load_document(json, registry, NULL, 0, error, error_size);
 }
 
-game_prototype *game_prototype_load_authored(
+prototype *prototype_load_authored(
     const char *text,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char *error,
     size_t error_size
 )
 {
     av_doc *doc = asset_text_read(text, error, error_size);
-    game_prototype *result = doc
-                               ? load_value_document(av_doc_root(doc), registry, true, NULL, 0, error, error_size)
-                               : NULL;
+    prototype *result = doc
+                          ? load_value_document(av_doc_root(doc), registry, true, NULL, 0, error, error_size)
+                          : NULL;
     av_doc_free(doc);
     return result;
 }
 
-int game_prototype_apply_entity_components(
-    game_prototype *prototype,
-    av_value *components,
-    char *error,
-    size_t error_size
-)
+int prototype_apply_entity_components(prototype *document, av_value *components, char *error, size_t error_size)
 {
-    return parse_components(prototype, &prototype->components, components, true, error, error_size);
+    return parse_components(document, &document->components, components, true, error, error_size);
 }
 
-game_prototype_link *game_prototype_components_links(
-    const game_prototype_registry *registry,
-    av_value *components
-)
+prototype_link *prototype_components_links(const prototype_registry *registry, av_value *components)
 {
     assert(av_is_obj(components));
-    game_prototype_link *links = NULL;
+    prototype_link *links = NULL;
     av_obj_iter iterator = av_obj_iter_with(components);
     av_value *key;
     while ((key = av_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
+        const ecs_component_desc *desc = prototype_registry_find(registry, av_get_str(key));
         av_value *fields = av_obj_iter_get_val(key);
         for (int i = 0; desc && av_is_obj(fields) && i < desc->type->field_count; i++) {
             av_value *path = av_obj_get(fields, desc->type->fields[i].name);
             if (desc->type->fields[i].type == PIN_HANDLE && av_is_str(path) &&
                 av_get_len(path)) {
-                apush(links, ((game_prototype_link){ desc, i, xstrdup(av_get_str(path)), true }));
+                apush(links, ((prototype_link){ desc, i, xstrdup(av_get_str(path)), true }));
             }
         }
     }
     return links;
 }
 
-game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size)
+prototype *prototype_clone(const prototype *document, char *error, size_t error_size)
 {
-    if (!prototype || !prototype->registry) {
+    if (!document || !document->registry) {
         set_error(error, error_size, "invalid prototype clone arguments");
         return NULL;
     }
-    av_value *value = game_prototype_to_value(prototype);
-    game_prototype *copy = value
-                             ? game_prototype_load_value(value, prototype->registry, error, error_size)
-                             : NULL;
+    av_value *value = prototype_to_value(document);
+    prototype *copy = value
+                        ? prototype_load_value(value, document->registry, error, error_size)
+                        : NULL;
     av_value_free(value);
     if (!copy) {
         return NULL;
     }
     /* The document cannot say which paths its holder authored. */
-    game_prototype_links_free(copy->links);
+    prototype_links_free(copy->links);
     copy->links = NULL;
-    for (int i = 0; i < acount(prototype->links); i++) {
-        game_prototype_link link = prototype->links[i];
+    for (int i = 0; i < acount(document->links); i++) {
+        prototype_link link = document->links[i];
         link.path = xstrdup(link.path);
         apush(copy->links, link);
     }
     return copy;
 }
 
-const char *game_prototype_identity(const game_prototype *prototype)
+const char *prototype_identity(const prototype *document)
 {
-    return prototype ? prototype->identity : NULL;
+    return document ? document->identity : NULL;
 }
 
-const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype)
+const ecs_component_desc *prototype_tag_desc(const prototype *document)
 {
-    return prototype ? &prototype->tag.desc : NULL;
+    return document ? &document->tag.desc : NULL;
 }
 
-static int game_prototype_register_tag(const game_prototype *prototype, ecs_world *world)
+static int prototype_register_tag(const prototype *document, ecs_world *world)
 {
-    if (!prototype || !world) {
+    if (!document || !world) {
         return ECS_ERR_ARGUMENT;
     }
     for (int i = 0; i < ecs_world_component_count(world); i++) {
         const ecs_component_desc *desc = ecs_world_component_at(world, i);
-        if (desc->id == prototype->tag.desc.id) {
-            return desc->key && strcmp(desc->key, prototype->identity) == 0
+        if (desc->id == document->tag.desc.id) {
+            return desc->key && strcmp(desc->key, document->identity) == 0
                      ? ECS_OK
                      : ECS_ERR_DUPLICATE;
         }
     }
-    return ecs_world_register_component(world, &prototype->tag.desc, NULL);
+    return ecs_world_register_component(world, &document->tag.desc, NULL);
 }
 
-game_prototype *game_prototype_new(const char *name)
+prototype *prototype_new(const char *name)
 {
     assert(name && name[0]);
-    game_prototype *prototype = (game_prototype *)xcalloc(1, sizeof *prototype);
-    prototype->name = xstrdup(name);
-    prototype->identity = name_identity(name);
-    prototype->registry = &prototype->registry_storage;
-    setup_tag(prototype);
-    return prototype;
+    prototype *document = (prototype *)xcalloc(1, sizeof *document);
+    document->name = xstrdup(name);
+    document->identity = name_identity(name);
+    document->registry = &document->registry_storage;
+    setup_tag(document);
+    return document;
 }
 
-game_prototype *game_prototype_capture_entity(
+prototype *prototype_capture_entity(
     const char *name,
     const ecs_world *world,
     ecs_entity entity,
-    const game_prototype_registry *registry
+    const prototype_registry *registry
 )
 {
     if (!name || !name[0] || !world || !registry || registry->component_count < 0 ||
@@ -975,50 +930,50 @@ game_prototype *game_prototype_capture_entity(
         !ecs_entity_is_alive(world, entity)) {
         return NULL;
     }
-    game_prototype *prototype = game_prototype_new(name);
-    prototype->registry_storage = *registry;
+    prototype *document = prototype_new(name);
+    document->registry_storage = *registry;
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
         if (!desc || desc->derived_from ||
             !ecs_component_has(world, entity, desc->id)) {
             continue;
         }
-        game_prototype_component component = {
+        prototype_component component = {
             .desc = desc,
             .data = xmalloc(desc->element_size),
         };
         memcpy(component.data, ecs_component_data_const(world, entity, desc->id), desc->element_size);
-        apush(prototype->components, component);
+        apush(document->components, component);
     }
-    return prototype;
+    return document;
 }
 
-void game_prototype_free(game_prototype *prototype)
+void prototype_free(prototype *document)
 {
-    if (!prototype) {
+    if (!document) {
         return;
     }
-    for (int i = 0; i < acount(prototype->components); i++) {
-        free(prototype->components[i].data);
+    for (int i = 0; i < acount(document->components); i++) {
+        free(document->components[i].data);
     }
-    afree(prototype->components);
-    for (int i = 0; i < acount(prototype->detached_components); i++) {
-        free(prototype->detached_components[i].data);
+    afree(document->components);
+    for (int i = 0; i < acount(document->detached_components); i++) {
+        free(document->detached_components[i].data);
     }
-    afree(prototype->detached_components);
-    game_prototype_links_free(prototype->links);
-    afree(prototype->graphs);
-    afree(prototype->includes);
-    game_scene_document_free(prototype->children);
-    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
-        game_prototype_free(prototype->child_prototypes[i]);
+    afree(document->detached_components);
+    prototype_links_free(document->links);
+    afree(document->graphs);
+    afree(document->includes);
+    scene_document_free(document->children);
+    for (int i = 0; i < acount(document->child_prototypes); i++) {
+        prototype_free(document->child_prototypes[i]);
     }
-    afree(prototype->child_prototypes);
-    game_prototype_owned_strings_free(prototype->strings);
-    free(prototype->name);
-    free(prototype->identity);
-    free(prototype->tag.name);
-    free(prototype);
+    afree(document->child_prototypes);
+    prototype_owned_strings_free(document->strings);
+    free(document->name);
+    free(document->identity);
+    free(document->tag.name);
+    free(document);
 }
 
 static int compare_strings(const void *left_ptr, const void *right_ptr)
@@ -1033,7 +988,7 @@ static int compare_strings(const void *left_ptr, const void *right_ptr)
 static void write_struct_fields(
     av_doc *doc,
     av_value *object,
-    const game_prototype *prototype,
+    const prototype *document,
     const ecs_component_desc *component,
     const void *base,
     const type_desc *type,
@@ -1067,12 +1022,7 @@ static bool zero_field(const void *base, const type_field *field)
     return false;
 }
 
-static av_value *write_value(
-    av_doc *doc,
-    const game_prototype *prototype,
-    const void *base,
-    const type_field *field
-)
+static av_value *write_value(av_doc *doc, const prototype *document, const void *base, const type_field *field)
 {
     pin_value value;
     pin_read_field(base, field, &value);
@@ -1097,9 +1047,9 @@ static av_value *write_value(
         case PIN_STR: return av_str(doc, value.str ? value.str : "");
         case PIN_STRUCT: {
             av_value *object = av_obj(doc);
-            const type_desc *nested = find_type(prototype->registry, field->type_name);
+            const type_desc *nested = find_type(document->registry, field->type_name);
             if (nested && value.ptr) {
-                write_struct_fields(doc, object, prototype, NULL, value.ptr, nested, false);
+                write_struct_fields(doc, object, document, NULL, value.ptr, nested, false);
             }
             return object;
         }
@@ -1112,7 +1062,7 @@ static av_value *write_value(
 static void write_struct_fields(
     av_doc *doc,
     av_value *object,
-    const game_prototype *prototype,
+    const prototype *document,
     const ecs_component_desc *component,
     const void *base,
     const type_desc *type,
@@ -1135,9 +1085,9 @@ static void write_struct_fields(
     }
     for (int i = 0; i < acount(order); i++) {
         const type_field *field = &type->fields[order[i]];
-        const game_prototype_link *link = component
-                                            ? find_link(prototype->links, component, order[i])
-                                            : NULL;
+        const prototype_link *link = component
+                                       ? find_link(document->links, component, order[i])
+                                       : NULL;
         if (link) {
             av_obj_add_val(doc, object, field->name, av_str(doc, link->path));
             continue;
@@ -1153,29 +1103,24 @@ static void write_struct_fields(
             write_struct_fields(
                 doc,
                 json,
-                prototype,
+                document,
                 NULL,
                 value.ptr,
-                find_type(prototype->registry, field->type_name),
+                find_type(document->registry, field->type_name),
                 sparse
             );
             if (sparse && !av_obj_size(json)) {
                 continue;
             }
         } else {
-            json = write_value(doc, prototype, base, field);
+            json = write_value(doc, document, base, field);
         }
         av_obj_add_val(doc, object, field->name, json);
     }
     afree(order);
 }
 
-static av_value *write_components(
-    av_doc *doc,
-    const game_prototype *prototype,
-    game_prototype_component *values,
-    bool sparse
-)
+static av_value *write_components(av_doc *doc, const prototype *document, prototype_component *values, bool sparse)
 {
     av_value *components = av_obj(doc);
     int *order = NULL;
@@ -1193,12 +1138,12 @@ static av_value *write_components(
         order[at] = value;
     }
     for (int i = 0; i < acount(order); i++) {
-        game_prototype_component *component = &values[order[i]];
+        prototype_component *component = &values[order[i]];
         av_value *object = av_obj(doc);
         write_struct_fields(
             doc,
             object,
-            prototype,
+            document,
             component->desc,
             component->data,
             component->desc->type,
@@ -1215,24 +1160,24 @@ static av_value *write_components(
     return components;
 }
 
-av_value *game_prototype_to_value(const game_prototype *prototype)
+av_value *prototype_to_value(const prototype *document)
 {
-    if (!prototype) {
+    if (!document) {
         return NULL;
     }
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_doc_set_root(doc, root);
-    av_obj_add_strcpy(doc, root, "name", prototype->name);
-    char *identity = name_identity(prototype->name);
-    if (strcmp(identity, prototype->identity) != 0) {
-        av_obj_add_strcpy(doc, root, "identity", prototype->identity);
+    av_obj_add_strcpy(doc, root, "name", document->name);
+    char *identity = name_identity(document->name);
+    if (strcmp(identity, document->identity) != 0) {
+        av_obj_add_strcpy(doc, root, "identity", document->identity);
     }
     free(identity);
-    if (prototype->authored && acount(prototype->includes)) {
+    if (document->authored && acount(document->includes)) {
         av_value *includes = av_arr(doc);
-        for (int i = 0; i < acount(prototype->includes); i++) {
-            av_arr_add_strcpy(doc, includes, prototype->includes[i]);
+        for (int i = 0; i < acount(document->includes); i++) {
+            av_arr_add_strcpy(doc, includes, document->includes[i]);
         }
         av_obj_add_val(doc, root, "includes", includes);
     }
@@ -1240,20 +1185,20 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
         doc,
         root,
         "components",
-        write_components(doc, prototype, prototype->components, true)
+        write_components(doc, document, document->components, true)
     );
-    if (acount(prototype->detached_components)) {
+    if (acount(document->detached_components)) {
         av_obj_add_val(
             doc,
             root,
             "detached_components",
-            write_components(doc, prototype, prototype->detached_components, true)
+            write_components(doc, document, document->detached_components, true)
         );
     }
-    if (acount(prototype->graphs)) {
+    if (acount(document->graphs)) {
         char **graphs = NULL;
-        for (int i = 0; i < acount(prototype->graphs); i++) {
-            apush(graphs, prototype->graphs[i]);
+        for (int i = 0; i < acount(document->graphs); i++) {
+            apush(graphs, document->graphs[i]);
         }
         asort(graphs, compare_strings);
         av_value *array = av_arr(doc);
@@ -1263,14 +1208,14 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
         av_obj_add_val(doc, root, "behaviors", array);
         afree(graphs);
     }
-    if (prototype->children && acount(prototype->children->entities)) {
-        ecs_component_catalog catalog = { prototype->registry->components,
-                                          prototype->registry->component_count };
+    if (document->children && acount(document->children->entities)) {
+        ecs_component_catalog catalog = { document->registry->components,
+                                          document->registry->component_count };
         av_obj_add_val(
             doc,
             root,
             "children",
-            game_scene_document_entities_value(doc, prototype->children, catalog)
+            scene_document_entities_value(doc, document->children, catalog)
         );
     }
     av_value *result = av_value_copy(av_doc_root(doc));
@@ -1278,46 +1223,46 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
     return result;
 }
 
-char *game_prototype_save(const game_prototype *prototype)
+char *prototype_save(const prototype *document)
 {
-    av_value *value = game_prototype_to_value(prototype);
+    av_value *value = prototype_to_value(document);
     char *text = value ? asset_text_write(value) : NULL;
     av_value_free(value);
     return text;
 }
 
-av_value *game_prototype_components_value(const game_prototype *prototype)
+av_value *prototype_components_value(const prototype *document)
 {
-    if (!prototype) {
+    if (!document) {
         return NULL;
     }
     av_doc *doc = av_doc_new();
-    av_doc_set_root(doc, write_components(doc, prototype, prototype->components, false));
+    av_doc_set_root(doc, write_components(doc, document, document->components, false));
     av_value *result = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
     return result;
 }
 
-av_value *game_prototype_component_value(const game_prototype *prototype, const char *name)
+av_value *prototype_component_value(const prototype *document, const char *name)
 {
-    const game_prototype_component *component = find_component((game_prototype *)prototype, name);
-    game_prototype_component *values = NULL;
+    const prototype_component *component = find_component((prototype *)document, name);
+    prototype_component *values = NULL;
     if (component) {
         apush(values, *component);
     }
     av_doc *doc = av_doc_new();
-    av_doc_set_root(doc, write_components(doc, prototype, values, false));
+    av_doc_set_root(doc, write_components(doc, document, values, false));
     av_value *json = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
     afree(values);
     return json;
 }
 
-av_value *game_prototype_entity_component_value(
+av_value *prototype_entity_component_value(
     const ecs_world *world,
     ecs_entity entity,
     const ecs_component_desc *desc,
-    const game_prototype_registry *registry
+    const prototype_registry *registry
 )
 {
     if (!world || !desc || !registry || !ecs_entity_is_alive(world, entity)) {
@@ -1327,7 +1272,7 @@ av_value *game_prototype_entity_component_value(
     if (!data) {
         return NULL;
     }
-    game_prototype schema = { .registry = registry };
+    prototype schema = { .registry = registry };
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_value *fields = av_obj(doc);
@@ -1339,22 +1284,17 @@ av_value *game_prototype_entity_component_value(
     return json;
 }
 
-static int field_equal(
-    const game_prototype *prototype,
-    const type_field *field,
-    const void *left,
-    const void *right
-)
+static int field_equal(const prototype *document, const type_field *field, const void *left, const void *right)
 {
     if (field->type == PIN_STRUCT) {
-        const type_desc *nested = find_type(prototype->registry, field->type_name);
+        const type_desc *nested = find_type(document->registry, field->type_name);
         if (!nested) {
             return 0;
         }
         const unsigned char *left_value = (const unsigned char *)left + field->offset;
         const unsigned char *right_value = (const unsigned char *)right + field->offset;
         for (int i = 0; i < nested->field_count; i++) {
-            if (!field_equal(prototype, &nested->fields[i], left_value, right_value)) {
+            if (!field_equal(document, &nested->fields[i], left_value, right_value)) {
                 return 0;
             }
         }
@@ -1372,17 +1312,17 @@ static int field_equal(
  * the base's: it may be a captured entity, whose handles never save. */
 static av_value *link_override(
     av_doc *doc,
-    const game_prototype *base,
-    const game_prototype *current,
+    const prototype *base,
+    const prototype *current,
     const ecs_component_desc *component,
     int field
 )
 {
-    const game_prototype_link *now = find_link(current->links, component, field);
+    const prototype_link *now = find_link(current->links, component, field);
     if (!now) {
         return NULL;
     }
-    const game_prototype_link *was = find_link(base->links, component, field);
+    const prototype_link *was = find_link(base->links, component, field);
     return was && was->outer == now->outer && !strcmp(was->path, now->path)
              ? NULL
              : av_str(doc, now->path);
@@ -1391,13 +1331,13 @@ static av_value *link_override(
 /* `current` holds the entity paths of current_components, or is NULL when
  * they are a live entity's, whose handles never save. */
 static av_value *component_overrides_value(
-    const game_prototype *base,
-    const game_prototype_component *current_components,
-    const game_prototype *current
+    const prototype *base,
+    const prototype_component *current_components,
+    const prototype *current
 )
 {
-    game_prototype view = { .registry = base->registry,
-                            .links = current ? current->links : NULL };
+    prototype view = { .registry = base->registry,
+                       .links = current ? current->links : NULL };
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_value *components = av_obj(doc);
@@ -1420,7 +1360,7 @@ static av_value *component_overrides_value(
         order[at] = value;
     }
     for (int i = 0; i < acount(order); i++) {
-        const game_prototype_component *component = &base->components[order[i]];
+        const prototype_component *component = &base->components[order[i]];
         const void *data = NULL;
         for (int j = 0; j < acount(current_components); j++) {
             if (current_components[j].desc->id == component->desc->id) {
@@ -1468,7 +1408,7 @@ static av_value *component_overrides_value(
     }
     afree(order);
     for (int i = 0; i < acount(current_components); i++) {
-        const game_prototype_component *component = &current_components[i];
+        const prototype_component *component = &current_components[i];
         bool existed = false;
         for (int j = 0; j < acount(base->components); j++) {
             existed |= base->components[j].desc->id == component->desc->id;
@@ -1498,7 +1438,7 @@ static av_value *component_overrides_value(
     return result;
 }
 
-av_value *game_prototype_overrides_value(const game_prototype *base, const game_prototype *current)
+av_value *prototype_overrides_value(const prototype *base, const prototype *current)
 {
     if (!base || !current) {
         return NULL;
@@ -1506,22 +1446,18 @@ av_value *game_prototype_overrides_value(const game_prototype *base, const game_
     return component_overrides_value(base, current->components, current);
 }
 
-av_value *game_prototype_capture_overrides_value(
-    const game_prototype *base,
-    const ecs_world *world,
-    ecs_entity entity
-)
+av_value *prototype_capture_overrides_value(const prototype *base, const ecs_world *world, ecs_entity entity)
 {
     if (!base || !world || !ecs_entity_is_alive(world, entity)) {
         return NULL;
     }
-    game_prototype_component *components = NULL;
+    prototype_component *components = NULL;
     for (int i = 0; i < base->registry->component_count; i++) {
         const ecs_component_desc *desc = base->registry->components[i];
         if (desc->derived_from || !ecs_component_has(world, entity, desc->id)) {
             continue;
         }
-        game_prototype_component component = {
+        prototype_component component = {
             .desc = desc,
             .data = (void *)ecs_component_data_const(world, entity, desc->id),
         };
@@ -1533,8 +1469,8 @@ av_value *game_prototype_capture_overrides_value(
 }
 
 static int apply_override_fields(
-    game_prototype *parser,
-    const game_prototype_registry *registry,
+    prototype *parser,
+    const prototype_registry *registry,
     void *base,
     const type_desc *type,
     av_value *fields,
@@ -1587,10 +1523,10 @@ static int apply_override_fields(
 }
 
 static int apply_component_override(
-    game_prototype *parser,
+    prototype *parser,
     ecs_world *world,
     ecs_entity entity,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     const ecs_component_desc *desc,
     av_value *fields,
     char *error,
@@ -1608,21 +1544,21 @@ static int apply_component_override(
 
 /* Hands the parser's strings to the caller, whose components use them, and
  * drops its links: live entities hold no paths. */
-static int release_parser(game_prototype *parser, char ***owned_strings, int result)
+static int release_parser(prototype *parser, char ***owned_strings, int result)
 {
     for (int i = 0; i < acount(parser->strings); i++) {
         apush(*owned_strings, parser->strings[i]);
     }
     afree(parser->strings);
-    game_prototype_links_free(parser->links);
+    prototype_links_free(parser->links);
     return result;
 }
 
-int game_prototype_apply_components_value(
+int prototype_apply_components_value(
     ecs_world *world,
     ecs_entity entity,
     av_value *components,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char ***owned_strings,
     char *error,
     size_t error_size
@@ -1638,11 +1574,11 @@ int game_prototype_apply_components_value(
         set_error(error, error_size, "component overrides must be an object");
         return -1;
     }
-    game_prototype parser = { .registry = registry };
+    prototype parser = { .registry = registry };
     av_obj_iter iterator = av_obj_iter_with(root);
     av_value *key;
     while ((key = av_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
+        const ecs_component_desc *desc = prototype_registry_find(registry, av_get_str(key));
         if (!desc || desc->derived_from) {
             set_error(
                 error,
@@ -1672,7 +1608,7 @@ int game_prototype_apply_components_value(
     }
     iterator = av_obj_iter_with(root);
     while ((key = av_obj_iter_next(&iterator))) {
-        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
+        const ecs_component_desc *desc = prototype_registry_find(registry, av_get_str(key));
         if (av_is_null(av_obj_iter_get_val(key))) {
             continue;
         }
@@ -1689,21 +1625,21 @@ int game_prototype_apply_components_value(
 static int write_links(
     ecs_world *world,
     ecs_entity at,
-    const game_prototype *named,
+    const prototype *named,
     bool outer,
-    const game_prototype *holder,
+    const prototype *holder,
     const ecs_entity *spawned,
     char *error,
     size_t error_size
 )
 {
     for (int i = 0; i < acount(named->links); i++) {
-        const game_prototype_link *link = &named->links[i];
+        const prototype_link *link = &named->links[i];
         if (link->outer != outer ||
             !find_component_in(named->components, link->component->name)) {
             continue;
         }
-        int child = game_scene_document_entity_index(holder->children, link->path);
+        int child = scene_document_entity_index(holder->children, link->path);
         const type_field *field = &link->component->type->fields[link->field];
         if (child < 0) {
             set_error(
@@ -1737,16 +1673,16 @@ static int write_links(
 /* Creates the prototype's entity under `parent`, unless that is zero, then its
  * children under it, appending each entity with what it spawned as. */
 static int create_tree(
-    const game_prototype *prototype,
+    const prototype *document,
     ecs_world *world,
     ecs_entity parent,
     ecs_entity **entities,
-    const game_prototype ***prototypes,
+    const prototype ***prototypes,
     char *error,
     size_t error_size
 )
 {
-    if (game_prototype_register_tag(prototype, world) != ECS_OK) {
+    if (prototype_register_tag(document, world) != ECS_OK) {
         set_error(error, error_size, "prototype identity tag could not be registered");
         return ECS_ERR_DUPLICATE;
     }
@@ -1756,9 +1692,9 @@ static int create_tree(
         return ECS_ERR_CAPACITY;
     }
     apush(*entities, entity);
-    apush(*prototypes, prototype);
-    for (int i = 0; i < acount(prototype->components); i++) {
-        const game_prototype_component *component = &prototype->components[i];
+    apush(*prototypes, document);
+    for (int i = 0; i < acount(document->components); i++) {
+        const prototype_component *component = &document->components[i];
         if (ecs_world_record_add(world, entity, component->desc->id, NULL, (uint64_t)i + 1)) {
             set_error(
                 error,
@@ -1769,14 +1705,14 @@ static int create_tree(
             return ECS_ERR_COMPONENT;
         }
     }
-    if (ecs_world_record_add(world, entity, prototype->tag.desc.id, NULL, 0) ||
+    if (ecs_world_record_add(world, entity, document->tag.desc.id, NULL, 0) ||
         (parent.slot &&
          ecs_world_record_add_pair(world, entity, ECS_CHILD_OF, parent, 0))) {
         set_error(
             error,
             error_size,
             "prototype %s could not be placed",
-            prototype->name
+            document->name
         );
         return ECS_ERR_COMPONENT;
     }
@@ -1784,8 +1720,8 @@ static int create_tree(
         set_error(error, error_size, "prototype component application failed");
         return ECS_ERR_COMMAND;
     }
-    for (int i = 0; i < acount(prototype->components); i++) {
-        const game_prototype_component *component = &prototype->components[i];
+    for (int i = 0; i < acount(document->components); i++) {
+        const prototype_component *component = &document->components[i];
         for (int field = 0; field < component->desc->type->field_count; field++) {
             pin_value value;
             pin_read_field(component->data, &component->desc->type->fields[field], &value);
@@ -1801,15 +1737,15 @@ static int create_tree(
             }
         }
     }
-    int count = prototype->children ? acount(prototype->children->entities) : 0;
-    assert(acount(prototype->child_prototypes) == count);
+    int count = document->children ? acount(document->children->entities) : 0;
+    assert(acount(document->child_prototypes) == count);
     int *children = NULL; /* where each child's entity lands in `entities` */
     int result = ECS_OK;
     for (int i = 0; !result && i < count; i++) {
-        int index = prototype->children->entities[i].parent;
+        int index = document->children->entities[i].parent;
         apush(children, acount(*entities));
         result = create_tree(
-            prototype->child_prototypes[i],
+            document->child_prototypes[i],
             world,
             index < 0 ? entity : (*entities)[children[index]],
             entities,
@@ -1824,19 +1760,10 @@ static int create_tree(
         apush(spawned, (*entities)[children[i]]);
     }
     if (!result) {
-        result = write_links(world, entity, prototype, false, prototype, spawned, error, error_size);
+        result = write_links(world, entity, document, false, document, spawned, error, error_size);
     }
     for (int i = 0; !result && i < count; i++) {
-        result = write_links(
-            world,
-            spawned[i],
-            prototype->child_prototypes[i],
-            true,
-            prototype,
-            spawned,
-            error,
-            error_size
-        );
+        result = write_links(world, spawned[i], document->child_prototypes[i], true, document, spawned, error, error_size);
     }
     afree(spawned);
     afree(children);
@@ -1845,13 +1772,13 @@ static int create_tree(
 
 /* Every entity exists before any behavior attaches; without hooks none do. */
 /* Whether the prototype or any of its children attaches a behavior. */
-static bool has_graphs(const game_prototype *prototype)
+static bool has_graphs(const prototype *document)
 {
-    if (acount(prototype->graphs)) {
+    if (acount(document->graphs)) {
         return true;
     }
-    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
-        if (has_graphs(prototype->child_prototypes[i])) {
+    for (int i = 0; i < acount(document->child_prototypes); i++) {
+        if (has_graphs(document->child_prototypes[i])) {
             return true;
         }
     }
@@ -1859,19 +1786,19 @@ static bool has_graphs(const game_prototype *prototype)
 }
 
 static int spawn_tree(
-    const game_prototype *prototype,
+    const prototype *document,
     ecs_world *world,
-    const game_prototype_spawn_hooks *hooks,
+    const prototype_spawn_hooks *hooks,
     ecs_entity *out_entity,
     char *error,
     size_t error_size
 )
 {
     ecs_entity *entities = NULL;
-    const game_prototype **prototypes = NULL;
-    int result = create_tree(prototype, world, (ecs_entity){ 0 }, &entities, &prototypes, error, error_size);
+    const prototype **prototypes = NULL;
+    int result = create_tree(document, world, (ecs_entity){ 0 }, &entities, &prototypes, error, error_size);
     for (int i = 0; !result && hooks && i < acount(entities); i++) {
-        const game_prototype *spawned = prototypes[i];
+        const prototype *spawned = prototypes[i];
         for (int j = 0; !result && j < acount(spawned->graphs); j++) {
             if (hooks->attach(world, entities[i], spawned->graphs[j], hooks->attach_user)) {
                 set_error(
@@ -1902,52 +1829,52 @@ static int spawn_tree(
     return result;
 }
 
-int game_prototype_spawn_components(
-    const game_prototype *prototype,
+int prototype_spawn_components(
+    const prototype *document,
     ecs_world *world,
     ecs_entity *entity,
     char *error,
     size_t error_size
 )
 {
-    if (!prototype || !world || !entity) {
+    if (!document || !world || !entity) {
         set_error(error, error_size, "invalid prototype spawn arguments");
         return ECS_ERR_ARGUMENT;
     }
-    return spawn_tree(prototype, world, NULL, entity, error, error_size);
+    return spawn_tree(document, world, NULL, entity, error, error_size);
 }
 
-int game_prototype_spawn(
-    const game_prototype *prototype,
+int prototype_spawn(
+    const prototype *document,
     ecs_world *world,
-    const game_prototype_spawn_hooks *hooks,
+    const prototype_spawn_hooks *hooks,
     ecs_entity *out_entity,
     char *error,
     size_t error_size
 )
 {
-    if (!prototype || !world || !out_entity) {
+    if (!document || !world || !out_entity) {
         set_error(error, error_size, "invalid prototype spawn arguments");
         return ECS_ERR_ARGUMENT;
     }
-    if ((!hooks || !hooks->attach) && has_graphs(prototype)) {
+    if ((!hooks || !hooks->attach) && has_graphs(document)) {
         set_error(error, error_size, "prototype has behavior graphs but no attach hook");
         return ECS_ERR_ARGUMENT;
     }
-    return spawn_tree(prototype, world, hooks, out_entity, error, error_size);
+    return spawn_tree(document, world, hooks, out_entity, error, error_size);
 }
 
-int game_prototype_read_field(
-    const game_prototype *prototype,
+int prototype_read_field(
+    const prototype *document,
     const char *component_name,
     const char *field_name,
     pin_value *out
 )
 {
-    if (!prototype || !component_name || !field_name || !out) {
+    if (!document || !component_name || !field_name || !out) {
         return -1;
     }
-    game_prototype_component *component = find_component((game_prototype *)prototype, component_name);
+    prototype_component *component = find_component((prototype *)document, component_name);
     const type_field *field = component
                                 ? find_field(component->desc->type, field_name)
                                 : NULL;
@@ -1958,17 +1885,12 @@ int game_prototype_read_field(
     return 0;
 }
 
-int game_prototype_write_field(
-    game_prototype *prototype,
-    const char *component_name,
-    const char *field_name,
-    pin_value value
-)
+int prototype_write_field(prototype *document, const char *component_name, const char *field_name, pin_value value)
 {
-    if (!prototype || !component_name || !field_name) {
+    if (!document || !component_name || !field_name) {
         return -1;
     }
-    game_prototype_component *component = find_component(prototype, component_name);
+    prototype_component *component = find_component(document, component_name);
     const type_field *field = component
                                 ? find_field(component->desc->type, field_name)
                                 : NULL;
@@ -1976,11 +1898,11 @@ int game_prototype_write_field(
         return -1;
     }
     if (field->type == PIN_NAME || field->type == PIN_STR) {
-        value.str = own_string(prototype, value.str);
+        value.str = own_string(document, value.str);
     }
     if (field->type == PIN_HANDLE) {
         drop_links(
-            prototype->links,
+            document->links,
             component->desc,
             (int)(field - component->desc->type->fields)
         );
@@ -1989,8 +1911,8 @@ int game_prototype_write_field(
     return 0;
 }
 
-int game_prototype_write_field_value(
-    game_prototype *prototype,
+int prototype_write_field_value(
+    prototype *document,
     const char *component_name,
     const char *field_name,
     av_value *json,
@@ -1998,11 +1920,11 @@ int game_prototype_write_field_value(
     size_t error_size
 )
 {
-    if (!prototype || !component_name || !field_name || !json) {
+    if (!document || !component_name || !field_name || !json) {
         set_error(error, error_size, "prototype field arguments are required");
         return -1;
     }
-    game_prototype_component *component = find_component(prototype, component_name);
+    prototype_component *component = find_component(document, component_name);
     const type_field *field = component
                                 ? find_field(component->desc->type, field_name)
                                 : NULL;
@@ -2015,7 +1937,7 @@ int game_prototype_write_field_value(
         return -1;
     }
     field_scope scope = { component->desc, false };
-    return parse_field(prototype, prototype->registry, component->data, field, json, &scope, error, error_size);
+    return parse_field(document, document->registry, component->data, field, json, &scope, error, error_size);
 }
 
 static av_value *rebase_fields(av_doc *doc, av_value *values, av_value *previous, av_value *current)
@@ -2043,11 +1965,7 @@ static av_value *rebase_fields(av_doc *doc, av_value *values, av_value *previous
     return result;
 }
 
-av_value *game_prototype_rebase_component_value(
-    av_value *values,
-    av_value *previous_defaults,
-    av_value *current_defaults
-)
+av_value *prototype_rebase_component_value(av_value *values, av_value *previous_defaults, av_value *current_defaults)
 {
     assert(values && previous_defaults && current_defaults);
     av_value *root[] = { values, previous_defaults, current_defaults };
@@ -2115,7 +2033,7 @@ static bool default_field_valid(const type_field *field, size_t row_size)
 }
 
 static int copy_default_fields(
-    game_prototype *prototype,
+    prototype *document,
     void *out,
     const void *initial,
     const type_desc *type,
@@ -2134,146 +2052,136 @@ static int copy_default_fields(
         pin_value value;
         pin_read_field(initial, field, &value);
         if (field->type == PIN_STRUCT) {
-            const type_desc *nested = find_type(prototype->registry, field->type_name);
+            const type_desc *nested = find_type(document->registry, field->type_name);
             if (!nested || nested->size != field->size ||
-                copy_default_fields(
-                    prototype,
-                    (char *)out + field->offset,
-                    value.ptr,
-                    nested,
-                    depth + 1
-                )) {
+                copy_default_fields(document, (char *)out + field->offset, value.ptr, nested, depth + 1)) {
                 return -1;
             }
             continue;
         }
         if ((field->type == PIN_STR || field->type == PIN_NAME) && value.str) {
-            value.str = own_string(prototype, value.str);
+            value.str = own_string(document, value.str);
         }
         pin_write_field(out, field, value);
     }
     return 0;
 }
 
-int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc)
+int prototype_add_component(prototype *document, const ecs_component_desc *desc)
 {
-    if (!prototype || !desc || !desc->name || desc->derived_from ||
-        find_component(prototype, desc->name)) {
+    if (!document || !desc || !desc->name || desc->derived_from ||
+        find_component(document, desc->name)) {
         return -1;
     }
-    game_prototype_component
-        *detached = find_component_in(prototype->detached_components, desc->name);
+    prototype_component *detached = find_component_in(document->detached_components, desc->name);
     if (detached) {
-        int index = (int)(detached - prototype->detached_components);
-        apush(prototype->components, *detached);
-        adel(prototype->detached_components, index);
+        int index = (int)(detached - document->detached_components);
+        apush(document->components, *detached);
+        adel(document->detached_components, index);
         return 0;
     }
-    game_prototype_component component = { .desc = desc,
-                                           .data = xcalloc(1, desc->element_size) };
-    const game_prototype_registry *registry = prototype->registry;
-    int strings = acount(prototype->strings);
+    prototype_component component = { .desc = desc,
+                                      .data = xcalloc(1, desc->element_size) };
+    const prototype_registry *registry = document->registry;
+    int strings = acount(document->strings);
     for (int i = 0; i < registry->default_count; i++) {
-        const game_prototype_default *initial = &registry->defaults[i];
+        const prototype_default *initial = &registry->defaults[i];
         if (initial->component != desc->id) {
             continue;
         }
         if (!initial->data || initial->size != desc->element_size ||
             !desc->type || desc->type->size != desc->element_size ||
-            copy_default_fields(prototype, component.data, initial->data, desc->type, 0)) {
-            for (int j = strings; j < acount(prototype->strings); j++) {
-                free(prototype->strings[j]);
+            copy_default_fields(document, component.data, initial->data, desc->type, 0)) {
+            for (int j = strings; j < acount(document->strings); j++) {
+                free(document->strings[j]);
             }
-            asetlen(prototype->strings, strings);
+            asetlen(document->strings, strings);
             free(component.data);
             return -1;
         }
         break;
     }
-    apush(prototype->components, component);
+    apush(document->components, component);
     return 0;
 }
 
-int game_prototype_detach_component(game_prototype *prototype, const char *component_name)
+int prototype_detach_component(prototype *document, const char *component_name)
 {
-    if (!prototype || !component_name) {
+    if (!document || !component_name) {
         return -1;
     }
-    game_prototype_component *component = find_component(prototype, component_name);
+    prototype_component *component = find_component(document, component_name);
     if (!component) {
         return -1;
     }
-    int index = (int)(component - prototype->components);
-    apush(prototype->detached_components, *component);
-    adel(prototype->components, index);
+    int index = (int)(component - document->components);
+    apush(document->detached_components, *component);
+    adel(document->components, index);
     return 0;
 }
 
-av_value *game_prototype_component_defaults_value(
-    const game_prototype_registry *registry,
-    const ecs_component_desc *desc
-)
+av_value *prototype_component_defaults_value(const prototype_registry *registry, const ecs_component_desc *desc)
 {
-    game_prototype *defaults = xcalloc(1, sizeof *defaults);
+    prototype *defaults = xcalloc(1, sizeof *defaults);
     defaults->registry = registry;
-    av_value *json = game_prototype_add_component(defaults, desc) == 0
-                       ? game_prototype_component_value(defaults, desc->name)
+    av_value *json = prototype_add_component(defaults, desc) == 0
+                       ? prototype_component_value(defaults, desc->name)
                        : NULL;
-    game_prototype_free(defaults);
+    prototype_free(defaults);
     return json;
 }
 
-int game_prototype_remove_component(game_prototype *prototype, const char *component_name)
+int prototype_remove_component(prototype *document, const char *component_name)
 {
-    if (!prototype || !component_name) {
+    if (!document || !component_name) {
         return -1;
     }
-    for (int i = 0; i < acount(prototype->components); i++) {
-        game_prototype_component *component = &prototype->components[i];
+    for (int i = 0; i < acount(document->components); i++) {
+        prototype_component *component = &document->components[i];
         if (strcmp(component->desc->name, component_name) != 0) {
             continue;
         }
-        drop_links(prototype->links, component->desc, -1);
+        drop_links(document->links, component->desc, -1);
         free(component->data);
-        adel(prototype->components, i);
+        adel(document->components, i);
         return 0;
     }
     return -1;
 }
 
-int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name)
+int prototype_has_graph(const prototype *document, const char *asset_name)
 {
-    if (!prototype || !asset_name || !asset_name[0]) {
+    if (!document || !asset_name || !asset_name[0]) {
         return 0;
     }
-    for (int i = 0; i < acount(prototype->graphs); i++) {
-        if (strcmp(prototype->graphs[i], asset_name) == 0) {
+    for (int i = 0; i < acount(document->graphs); i++) {
+        if (strcmp(document->graphs[i], asset_name) == 0) {
             return 1;
         }
     }
     return 0;
 }
 
-int game_prototype_add_graph(game_prototype *prototype, const char *asset_name)
+int prototype_add_graph(prototype *document, const char *asset_name)
 {
-    if (!prototype || !asset_name || !asset_name[0] ||
-        game_prototype_has_graph(prototype, asset_name)) {
+    if (!document || !asset_name || !asset_name[0] ||
+        prototype_has_graph(document, asset_name)) {
         return -1;
     }
-    apush(prototype->graphs, own_string(prototype, asset_name));
+    apush(document->graphs, own_string(document, asset_name));
     return 0;
 }
 
-int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name)
+int prototype_remove_graph(prototype *document, const char *asset_name)
 {
-    if (!prototype || !asset_name) {
+    if (!document || !asset_name) {
         return -1;
     }
-    for (int i = 0; i < acount(prototype->graphs); i++) {
-        if (strcmp(prototype->graphs[i], asset_name) != 0) {
+    for (int i = 0; i < acount(document->graphs); i++) {
+        if (strcmp(document->graphs[i], asset_name) != 0) {
             continue;
         }
-        adel(prototype->graphs, i);
+        adel(document->graphs, i);
         return 0;
     }
     return -1;

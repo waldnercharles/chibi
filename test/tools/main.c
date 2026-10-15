@@ -47,6 +47,7 @@ void test_render_resources();
 void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_scene3d(bool gles);
+void test_scene3d_camera();
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
@@ -158,8 +159,8 @@ int main(int argc, char **argv)
          physics = false, physics3d = false, transforms = false,
          render_resources = false, interior_border = false,
          viewport_resize = false, sdf_visibility = false, scene3d = false,
-         material_ramps = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         scene3d_camera = false, material_ramps = false, box3d = false,
+         sky_files = false, mesh_files = false, model_import = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -201,6 +202,7 @@ int main(int argc, char **argv)
     source_material = argc == 2 && !strcmp(argv[1], "--source-native-material");
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+    scene3d_camera = argc == 2 && !strcmp(argv[1], "--scene3d-camera");
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
@@ -239,8 +241,8 @@ int main(int argc, char **argv)
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
+        !sdf_visibility && !scene3d && !scene3d_camera && !material_ramps &&
+        !box3d && !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -257,7 +259,8 @@ int main(int argc, char **argv)
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics | --physics3d | --transforms "
-            "| --render-resources | --interior-border | --viewport-resize | "
+            "| --render-resources | --scene3d-camera | --interior-border | "
+            "--viewport-resize | "
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --material-ramps | "
             "--box3d | "
@@ -345,8 +348,11 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || viewport_resize || scene3d) {
-        if (interior_border) {
+    if (render_resources || interior_border || viewport_resize || scene3d ||
+        scene3d_camera) {
+        if (scene3d_camera) {
+            test_scene3d_camera();
+        } else if (interior_border) {
             test_render_interior_border();
         } else if (viewport_resize) {
             test_render_viewport_resize();

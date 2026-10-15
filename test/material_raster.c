@@ -61,24 +61,21 @@ static behavior_asset *graph_fixture(bool material)
 static ecs_entity mesh_actor(ecs_world *world)
 {
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = 12,
-                                .depth = 12,
-                                .height = 2 };
-    GameVisualTransform visual = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMeshSurface2D enabled = { true };
-    GameMaterial material = { .scene = 0x0000ffff,
-                              .albedo = 0x0000ffff,
-                              .absorption = 1,
-                              .edge_light = 1 };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX, .width = 12, .depth = 12, .height = 2 };
+    VisualTransform visual = { .scale = 1 };
+    Orientation orientation = { 0 };
+    MeshSurface2D enabled = { true };
+    Material material = { .scene = 0x0000ffff,
+                          .albedo = 0x0000ffff,
+                          .absorption = 1,
+                          .edge_light = 1 };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_##type.id, &(value), 0) == ECS_OK)
-    ADD(GameGeometry3D, geometry);
-    ADD(GameVisualTransform, visual);
-    ADD(GameOrientation, orientation);
-    ADD(GameMeshSurface2D, enabled);
-    ADD(GameMaterial, material);
+    assert(ecs_world_record_add(world, e, COMPONENT_##type.id, &(value), 0) == ECS_OK)
+    ADD(Geometry3D, geometry);
+    ADD(VisualTransform, visual);
+    ADD(Orientation, orientation);
+    ADD(MeshSurface2D, enabled);
+    ADD(Material, material);
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
@@ -202,11 +199,11 @@ bool test_material_raster_uploads()
     int material_id = render_shader_find(material->name),
         shape_id = render_shader_find(shape->name);
     ecs_world *world = ecs_world_new();
-    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameGeometry3D,
-                                               &GAME_COMPONENT_GameVisualTransform,
-                                               &GAME_COMPONENT_GameOrientation,
-                                               &GAME_COMPONENT_GameMaterial,
-                                               &GAME_COMPONENT_GameMeshSurface2D };
+    const ecs_component_desc *components[] = { &COMPONENT_Geometry3D,
+                                               &COMPONENT_VisualTransform,
+                                               &COMPONENT_Orientation,
+                                               &COMPONENT_Material,
+                                               &COMPONENT_MeshSurface2D };
     for (int i = 0; i < 5; i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }

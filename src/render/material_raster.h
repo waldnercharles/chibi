@@ -112,7 +112,7 @@ struct render_mesh_surface;
 typedef struct
 {
     ecs_entity entity;
-    GameTransform position;
+    Transform position;
     const struct render_mesh_surface *surface; /* Borrowed for this draw. */
     const char *sdf_shape; /* Optional authored detail graph; parameters remain entity-bound. */
 } render_mesh_material_actor;
@@ -165,7 +165,7 @@ const char *render_material_raster_error(const render_material_raster *raster);
 bool render_material_raster_resize(render_material_raster *raster, int width, int height);
 /* Zero uses the default limit; one permits matched unbatched comparisons. */
 void render_material_raster_set_sdf_batch_limit(render_material_raster *raster, int limit);
-void render_material_raster_set_quality(render_material_raster *raster, GameSurfaceQuality quality);
+void render_material_raster_set_quality(render_material_raster *raster, SurfaceQuality quality);
 void render_material_raster_set_sdf_trace_debug(render_material_raster *raster, bool enabled);
 /* Both optimizations default on; disable for matched rendering comparisons. */
 void render_material_raster_set_spatial_scratch(render_material_raster *raster, bool enabled);

@@ -43,7 +43,7 @@ static void free_names(char ***names)
     afree(*names);
 }
 
-static void free_entity(game_scene_entity *entity)
+static void free_entity(scene_entity *entity)
 {
     free(entity->name);
     free(entity->prototype);
@@ -93,18 +93,18 @@ static int copy_names(char ***out, const char *const *names, int count)
     return 0;
 }
 
-game_scene_document *game_scene_document_new(const char *name)
+scene_document *scene_document_new(const char *name)
 {
     if (!name || !name[0]) {
         return NULL;
     }
-    game_scene_document *document = (game_scene_document *)xcalloc(1, sizeof *document);
+    scene_document *document = (scene_document *)xcalloc(1, sizeof *document);
     document->name = xstrdup(name);
-    document->physics = game_physics_defaults();
+    document->physics = physics_defaults();
     return document;
 }
 
-void game_scene_document_free(game_scene_document *document)
+void scene_document_free(scene_document *document)
 {
     if (!document) {
         return;
@@ -118,13 +118,13 @@ void game_scene_document_free(game_scene_document *document)
     free(document);
 }
 
-void game_scene_document_set_ui(game_scene_document *document, const char *ui)
+void scene_document_set_ui(scene_document *document, const char *ui)
 {
     free(document->ui);
     document->ui = ui && ui[0] ? xstrdup(ui) : NULL;
 }
 
-int game_scene_document_set_perspective(game_scene_document *document, bool perspective)
+int scene_document_set_perspective(scene_document *document, bool perspective)
 {
     if (!document) {
         return -1;
@@ -133,10 +133,10 @@ int game_scene_document_set_perspective(game_scene_document *document, bool pers
     return 0;
 }
 
-static int child_named(const game_scene_document *document, int parent, const char *name, size_t length)
+static int child_named(const scene_document *document, int parent, const char *name, size_t length)
 {
     for (int i = parent + 1; i < acount(document->entities); i++) {
-        const game_scene_entity *entity = &document->entities[i];
+        const scene_entity *entity = &document->entities[i];
         if (entity->parent == parent && !strncmp(entity->name, name, length) &&
             !entity->name[length]) {
             return i;
@@ -145,7 +145,7 @@ static int child_named(const game_scene_document *document, int parent, const ch
     return -1;
 }
 
-int game_scene_document_entity_index(const game_scene_document *document, const char *path)
+int scene_document_entity_index(const scene_document *document, const char *path)
 {
     if (!document || !path || !path[0]) {
         return -1;
@@ -160,14 +160,14 @@ int game_scene_document_entity_index(const game_scene_document *document, const 
     }
 }
 
-char *game_scene_document_entity_path(const game_scene_document *document, int index)
+char *scene_document_entity_path(const scene_document *document, int index)
 {
     assert(index >= 0 && index < acount(document->entities));
-    const game_scene_entity *entity = &document->entities[index];
+    const scene_entity *entity = &document->entities[index];
     if (entity->parent < 0) {
         return xstrdup(entity->name);
     }
-    char *parent = game_scene_document_entity_path(document, entity->parent);
+    char *parent = scene_document_entity_path(document, entity->parent);
     size_t size = strlen(parent) + strlen(entity->name) + 2;
     char *path = xmalloc(size);
     snprintf(path, size, "%s.%s", parent, entity->name);
@@ -175,7 +175,7 @@ char *game_scene_document_entity_path(const game_scene_document *document, int i
     return path;
 }
 
-int game_scene_entity_validate_name(const char *name, bool name_used, char *error, size_t error_size)
+int scene_entity_validate_name(const char *name, bool name_used, char *error, size_t error_size)
 {
     if (!name || !name[0]) {
         set_error(error, error_size, "An object needs a name.");
@@ -192,19 +192,13 @@ int game_scene_entity_validate_name(const char *name, bool name_used, char *erro
     return 0;
 }
 
-int game_scene_document_rename_entity(
-    game_scene_document *document,
-    int index,
-    const char *name,
-    char *error,
-    size_t error_size
-)
+int scene_document_rename_entity(scene_document *document, int index, const char *name, char *error, size_t error_size)
 {
     assert(index >= 0 && index < acount(document->entities));
     int existing = name
                      ? child_named(document, document->entities[index].parent, name, strlen(name))
                      : -1;
-    if (game_scene_entity_validate_name(name, existing >= 0 && existing != index, error, error_size)) {
+    if (scene_entity_validate_name(name, existing >= 0 && existing != index, error, error_size)) {
         return -1;
     }
     if (existing == index) {
@@ -217,7 +211,7 @@ int game_scene_document_rename_entity(
 }
 
 /* How many levels deep a child of parent would nest. */
-static int child_depth(const game_scene_document *document, int parent)
+static int child_depth(const scene_document *document, int parent)
 {
     int depth = 1;
     for (int at = parent; at >= 0; at = document->entities[at].parent) {
@@ -226,21 +220,16 @@ static int child_depth(const game_scene_document *document, int parent)
     return depth;
 }
 
-int game_scene_document_add_entity(
-    game_scene_document *document,
-    int parent,
-    const char *name,
-    const char *prototype
-)
+int scene_document_add_entity(scene_document *document, int parent, const char *name, const char *prototype)
 {
     if (parent < -1 || parent >= acount(document->entities) ||
-        child_depth(document, parent) > GAME_SCENE_DEPTH_MAX ||
-        game_scene_entity_validate_name(name, false, NULL, 0) ||
+        child_depth(document, parent) > SCENE_DEPTH_MAX ||
+        scene_entity_validate_name(name, false, NULL, 0) ||
         child_named(document, parent, name, strlen(name)) >= 0 || !prototype ||
         !prototype[0]) {
         return -1;
     }
-    game_scene_entity entity = {
+    scene_entity entity = {
         .name = xstrdup(name),
         .parent = parent,
         .prototype = xstrdup(prototype),
@@ -249,7 +238,7 @@ int game_scene_document_add_entity(
     return 0;
 }
 
-int game_scene_document_remove_entity(game_scene_document *document, int index)
+int scene_document_remove_entity(scene_document *document, int index)
 {
     if (!document || index < 0 || index >= acount(document->entities)) {
         return -1;
@@ -258,7 +247,7 @@ int game_scene_document_remove_entity(game_scene_document *document, int index)
     int count = acount(document->entities), kept = 0;
     int *moved = xmalloc((size_t)count * sizeof *moved);
     for (int i = 0; i < count; i++) {
-        game_scene_entity entity = document->entities[i];
+        scene_entity entity = document->entities[i];
         if (i == index || (entity.parent >= 0 && moved[entity.parent] < 0)) {
             free_entity(&entity);
             moved[i] = -1;
@@ -273,7 +262,7 @@ int game_scene_document_remove_entity(game_scene_document *document, int index)
     return 0;
 }
 
-int game_scene_document_set_entity_prototype(game_scene_document *document, int index, const char *prototype)
+int scene_document_set_entity_prototype(scene_document *document, int index, const char *prototype)
 {
     if (!document || index < 0 || index >= acount(document->entities) ||
         !prototype || !prototype[0]) {
@@ -285,8 +274,8 @@ int game_scene_document_set_entity_prototype(game_scene_document *document, int 
     return 0;
 }
 
-int game_scene_document_set_entity_behaviors(
-    game_scene_document *document,
+int scene_document_set_entity_behaviors(
+    scene_document *document,
     int index,
     const char *const *behaviors,
     int behavior_count
@@ -318,13 +307,13 @@ static int set_object_value(av_value **target, av_value *value)
     return 0;
 }
 
-int game_scene_document_set_entity_components(game_scene_document *document, int index, av_value *value)
+int scene_document_set_entity_components(scene_document *document, int index, av_value *value)
 {
     assert(index >= 0 && index < acount(document->entities));
     return set_object_value(&document->entities[index].components, value);
 }
 
-int game_scene_document_set_entity_retained(game_scene_document *document, int index, av_value *value)
+int scene_document_set_entity_retained(scene_document *document, int index, av_value *value)
 {
     assert(index >= 0 && index < acount(document->entities));
     return set_object_value(&document->entities[index].retained, value);
@@ -401,7 +390,7 @@ static av_value *components_value(av_doc *doc, av_value *components, ecs_compone
 typedef struct
 {
     av_doc *json;
-    const game_scene_document *document;
+    const scene_document *document;
     ecs_component_catalog components;
     int *first_child, *next_sibling;
 } scene_writer;
@@ -409,7 +398,7 @@ typedef struct
 static av_value *entity_value(const scene_writer *writer, int index)
 {
     av_doc *json = writer->json;
-    const game_scene_entity *entity = &writer->document->entities[index];
+    const scene_entity *entity = &writer->document->entities[index];
     av_value *value = av_obj(json);
     av_obj_add_strcpy(json, value, "name", entity->name);
     av_obj_add_strcpy(json, value, "prototype", entity->prototype);
@@ -443,11 +432,7 @@ static av_value *entity_value(const scene_writer *writer, int index)
     return value;
 }
 
-av_value *game_scene_document_entities_value(
-    av_doc *doc,
-    const game_scene_document *document,
-    ecs_component_catalog components
-)
+av_value *scene_document_entities_value(av_doc *doc, const scene_document *document, ecs_component_catalog components)
 {
     int count = acount(document->entities), first_root = -1;
     scene_writer writer = { .json = doc,
@@ -474,7 +459,7 @@ av_value *game_scene_document_entities_value(
     return entities;
 }
 
-av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components)
+av_value *scene_document_to_value(const scene_document *document, ecs_component_catalog components)
 {
     av_doc *json = av_doc_new();
     av_value *root = av_obj(json);
@@ -487,34 +472,34 @@ av_value *game_scene_document_to_value(const game_scene_document *document, ecs_
     if (document->perspective) {
         av_obj_add_str(json, root, "presentation", "3d");
     }
-    av_value *physics = game_physics_settings_write(json, document->physics);
+    av_value *physics = physics_settings_write(json, document->physics);
     if (av_obj_size(physics)) {
         av_obj_add_val(json, root, "physics", physics);
     }
-    av_obj_add_val(json, root, "entities", game_scene_document_entities_value(json, document, components));
+    av_obj_add_val(json, root, "entities", scene_document_entities_value(json, document, components));
     av_value *result = av_value_copy(av_doc_root(json));
     av_doc_free(json);
     return result;
 }
 
-char *game_scene_document_save(const game_scene_document *document, ecs_component_catalog components)
+char *scene_document_save(const scene_document *document, ecs_component_catalog components)
 {
-    av_value *value = game_scene_document_to_value(document, components);
+    av_value *value = scene_document_to_value(document, components);
     char *text = asset_text_write(value);
     av_value_free(value);
     return text;
 }
 
-static void load_fail(game_scene_document *document, av_doc *parsed)
+static void load_fail(scene_document *document, av_doc *parsed)
 {
-    game_scene_document_free(document);
+    scene_document_free(document);
     av_doc_free(parsed);
 }
 
 /* Reads entities and their children depth first; index counts them in that
  * order for error messages. */
 static bool read_entities(
-    game_scene_document *document,
+    scene_document *document,
     av_value *entities,
     int parent,
     int *index,
@@ -538,23 +523,23 @@ static bool read_entities(
             set_error(error, error_size, "invalid scene entity at index %d", *index);
             return false;
         }
-        if (child_depth(document, parent) > GAME_SCENE_DEPTH_MAX) {
+        if (child_depth(document, parent) > SCENE_DEPTH_MAX) {
             set_error(
                 error,
                 error_size,
                 "scene entity at index %d nests deeper than %d levels",
                 *index,
-                GAME_SCENE_DEPTH_MAX
+                SCENE_DEPTH_MAX
             );
             return false;
         }
-        if (game_scene_document_add_entity(document, parent, av_get_str(name), av_get_str(prototype)) !=
+        if (scene_document_add_entity(document, parent, av_get_str(name), av_get_str(prototype)) !=
             0) {
             set_error(error, error_size, "duplicate or invalid scene entity at index %d", *index);
             return false;
         }
         int entity_index = acount(document->entities) - 1;
-        game_scene_entity *entity = &document->entities[entity_index];
+        scene_entity *entity = &document->entities[entity_index];
         entity->own_behaviors = behaviors != NULL;
         if (read_name_array(behaviors, &entity->behaviors, error, error_size, *index, "behaviors") !=
             0) {
@@ -562,12 +547,12 @@ static bool read_entities(
         }
         av_value *retained = av_obj_get(value, "retained_components");
         if (retained &&
-            game_scene_document_set_entity_retained(document, entity_index, retained)) {
+            scene_document_set_entity_retained(document, entity_index, retained)) {
             set_error(error, error_size, "invalid retained components at scene entity %d", *index);
             return false;
         }
         if (components &&
-            game_scene_document_set_entity_components(document, entity_index, components)) {
+            scene_document_set_entity_components(document, entity_index, components)) {
             set_error(error, error_size, "invalid components at scene entity %d", *index);
             return false;
         }
@@ -580,12 +565,7 @@ static bool read_entities(
     return true;
 }
 
-int game_scene_document_read_entities(
-    game_scene_document *document,
-    av_value *entities,
-    char *error,
-    size_t error_size
-)
+int scene_document_read_entities(scene_document *document, av_value *entities, char *error, size_t error_size)
 {
     int index = 0;
     if (!av_is_arr(entities)) {
@@ -595,15 +575,10 @@ int game_scene_document_read_entities(
     return read_entities(document, entities, -1, &index, error, error_size) ? 0 : -1;
 }
 
-int game_scene_document_take_entities(
-    game_scene_document *document,
-    game_scene_document *from,
-    char *error,
-    size_t error_size
-)
+int scene_document_take_entities(scene_document *document, scene_document *from, char *error, size_t error_size)
 {
     for (int i = 0; i < acount(from->entities); i++) {
-        const game_scene_entity *entity = &from->entities[i];
+        const scene_entity *entity = &from->entities[i];
         if (entity->parent < 0 &&
             child_named(document, -1, entity->name, strlen(entity->name)) >= 0) {
             set_error(
@@ -617,7 +592,7 @@ int game_scene_document_take_entities(
     }
     int offset = acount(document->entities);
     for (int i = 0; i < acount(from->entities); i++) {
-        game_scene_entity entity = from->entities[i];
+        scene_entity entity = from->entities[i];
         entity.parent = entity.parent < 0 ? -1 : entity.parent + offset;
         apush(document->entities, entity);
     }
@@ -625,7 +600,7 @@ int game_scene_document_take_entities(
     return 0;
 }
 
-static game_scene_document *load_document_value(av_doc *parsed, char *error, size_t error_size)
+static scene_document *load_document_value(av_doc *parsed, char *error, size_t error_size)
 {
     av_value *root = av_doc_root(parsed);
     av_value *version = av_is_obj(root) ? av_obj_get(root, "version") : NULL;
@@ -637,10 +612,10 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
         av_doc_free(parsed);
         return NULL;
     }
-    game_scene_document *document = game_scene_document_new(av_get_str(name));
-    if (!game_physics_settings_read(av_obj_get(root, "physics"), &document->physics)) {
+    scene_document *document = scene_document_new(av_get_str(name));
+    if (!physics_settings_read(av_obj_get(root, "physics"), &document->physics)) {
         set_error(error, error_size, "invalid scene physics settings");
-        game_scene_document_free(document);
+        scene_document_free(document);
         av_doc_free(parsed);
         return NULL;
     }
@@ -649,7 +624,7 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
         (!av_is_str(presentation) || (strcmp(av_get_str(presentation), "2d") &&
                                       strcmp(av_get_str(presentation), "3d")))) {
         set_error(error, error_size, "scene presentation must be 2d or 3d");
-        game_scene_document_free(document);
+        scene_document_free(document);
         av_doc_free(parsed);
         return NULL;
     }
@@ -657,12 +632,12 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
     av_value *ui = av_obj_get(root, "ui");
     if (ui && (!av_is_str(ui) || !av_get_len(ui))) {
         set_error(error, error_size, "scene ui must name a ui asset");
-        game_scene_document_free(document);
+        scene_document_free(document);
         av_doc_free(parsed);
         return NULL;
     }
-    game_scene_document_set_ui(document, av_get_str(ui));
-    if (game_scene_document_read_entities(document, entities, error, error_size)) {
+    scene_document_set_ui(document, av_get_str(ui));
+    if (scene_document_read_entities(document, entities, error, error_size)) {
         load_fail(document, parsed);
         return NULL;
     }
@@ -670,7 +645,7 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
     return document;
 }
 
-game_scene_document *game_scene_document_load_value(av_value *value, char *error, size_t error_size)
+scene_document *scene_document_load_value(av_value *value, char *error, size_t error_size)
 {
     if (!value) {
         set_error(error, error_size, "scene document is missing");
@@ -679,7 +654,7 @@ game_scene_document *game_scene_document_load_value(av_value *value, char *error
     return load_document_value(av_doc_clone_value(value), error, error_size);
 }
 
-game_scene_document *game_scene_document_load(const char *text, char *error, size_t error_size)
+scene_document *scene_document_load(const char *text, char *error, size_t error_size)
 {
     av_doc *parsed = text ? asset_text_read(text, error, error_size) : NULL;
     return parsed ? load_document_value(parsed, error, error_size) : NULL;

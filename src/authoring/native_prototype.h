@@ -6,7 +6,7 @@
 /* Concrete engine authoring policy: visual/physics component creation values
  * and inherited VisualMotion placement. Detached values retain precedence.
  * Temporary default rows are copied synchronously into the prototype. */
-int game_prototype_add_native_component(game_prototype *, const ecs_component_desc *);
-av_value *game_prototype_native_defaults_value(const game_prototype_registry *, const ecs_component_desc *);
+int prototype_add_native_component(prototype *, const ecs_component_desc *);
+av_value *prototype_native_defaults_value(const prototype_registry *, const ecs_component_desc *);
 
 #endif

@@ -41,7 +41,7 @@ struct ui_mount
     char *markup, *style; /* from the last valid asset */
     rcss_map map;         /* where each line of style came from */
     char error[256];
-    rml_element *root;
+    rml_element_ref *root; /* expires when a conditional host is destroyed */
     bool installed; /* root holds the current markup */
     ui_activation *pending;
     rml_element_ref *taken; /* the anchor of the activation last taken */
@@ -95,6 +95,7 @@ void ui_mount_free(ui_mount *m)
     }
     afree(m->pending);
     rml_element_ref_destroy(m->taken);
+    rml_element_ref_destroy(m->root);
     forget_lists(m);
     afree(m->lists);
     free(m->content_root);
@@ -142,15 +143,14 @@ void ui_mount_set_loader(ui_mount *m, const render_ui_loader *loader)
  * replaced the markup and RCSS. An invalid edit keeps the last valid ones. */
 static bool read_asset(ui_mount *m, double time)
 {
-    if (m->prepared_only || !m->loader.open || game_ui_documents_active()) {
-        uint64_t generation = game_ui_documents_revision();
+    if (m->prepared_only || !m->loader.open || ui_documents_active()) {
+        uint64_t generation = ui_documents_revision();
         if (m->prepared_loaded && m->prepared_revision == generation) {
             return false;
         }
-        const game_ui_document
-            *record = game_ui_documents_active()
-                        ? game_ui_documents_find(game_ui_documents_current(), m->name)
-                        : NULL;
+        const prepared_ui_document *record = ui_documents_active()
+                                               ? ui_documents_find(ui_documents_current(), m->name)
+                                               : NULL;
         if (!record || record->body) {
             snprintf(
                 m->error,
@@ -201,8 +201,9 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     char mounted[256] = "";
     bool same_mount = rml_element_attribute(root, "data-ui", mounted, sizeof mounted) &&
                       !strcmp(mounted, m->name);
-    if (root != m->root || !same_mount) {
-        m->root = root;
+    if (root != ui_mount_root(m) || !same_mount) {
+        rml_element_ref_destroy(m->root);
+        m->root = rml_element_ref_create(root);
         m->installed = false;
         /* Binding moves the root, which binds its children's views again;
            another panel's evaluated markup would leave views RmlUi adds but
@@ -243,26 +244,28 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     return restyled;
 }
 
-/* A conditional host can disappear and a new element can reuse its address.
-   Forget it before its owner removes it so a later mount installs fresh markup. */
+/* Drop a host explicitly when its owner switches panels. Destruction also
+ * expires the root reference, so reused element addresses remain unmounted. */
 void ui_mount_detach(ui_mount *m)
 {
     if (!m) {
         return;
     }
+    rml_element_ref_destroy(m->root);
     m->root = NULL;
     m->installed = false;
 }
 
 rml_element *ui_mount_root(const ui_mount *m)
 {
-    return m->root;
+    return m->root ? rml_element_ref_get(m->root) : NULL;
 }
 
 bool ui_mount_holds(const ui_mount *m, rml_element *element)
 {
+    rml_element *root = ui_mount_root(m);
     for (; element; element = rml_element_parent(element)) {
-        if (element == m->root) {
+        if (element == root) {
             return true;
         }
     }
@@ -345,8 +348,9 @@ static void listen_key(ui_mount *m, const rml_event *event)
 {
     char letter[2];
     const char *key = key_name(event->key, letter);
-    for (rml_element *el = event->target;
-         key && el && el != rml_element_parent(m->root);
+    rml_element *root = ui_mount_root(m);
+    assert(root);
+    for (rml_element *el = event->target; key && el && el != rml_element_parent(root);
          el = rml_element_parent(el)) {
         char bindings[256], name[128];
         if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
@@ -373,8 +377,9 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
 
 bool ui_mount_area_key(ui_mount *m, const char *key)
 {
-    rml_element *el = m->installed
-                        ? rml_element_query_selector(m->root, "[data-area-keys]")
+    rml_element *root = ui_mount_root(m);
+    rml_element *el = m->installed && root
+                        ? rml_element_query_selector(root, "[data-area-keys]")
                         : NULL;
     char bindings[256], name[128];
     if (!el ||
@@ -576,7 +581,7 @@ static void escape_text(char *out, size_t size, const char *text)
     out[n] = '\0';
 }
 
-static void apply_to(rml_element *element, const game_ui_element *e)
+static void apply_to(rml_element *element, const ui_element *e)
 {
     if (e->text) {
         char text[1024];
@@ -587,7 +592,7 @@ static void apply_to(rml_element *element, const game_ui_element *e)
         rml_element_set_class(element, e->classes[i].name, e->classes[i].on);
     }
     for (int i = 0; i < acount(e->styles); i++) {
-        const game_ui_style *style = &e->styles[i];
+        const ui_property_override *style = &e->styles[i];
         if (style->value) {
             rml_element_set_property(element, style->property, style->value);
         } else {
@@ -625,7 +630,7 @@ static void move_focus(rml_element *root, rml_element **matches, int count, int 
 
 /* Applies the setting to every element its selector matches in `root`;
  * focus goes to the first. */
-static void apply_element(rml_element *root, game_ui_element *e)
+static void apply_element(rml_element *root, ui_element *e)
 {
     int count = rml_element_query_selector_all(root, e->selector, NULL, 0);
     rml_element **matches = count ? xmalloc((size_t)count * sizeof *matches) : NULL;
@@ -660,18 +665,19 @@ static void apply_element(rml_element *root, game_ui_element *e)
     free(matches);
 }
 
-void ui_mount_apply(ui_mount *m, game_ui *model, uint64_t entity)
+void ui_mount_apply(ui_mount *m, ui *model, uint64_t entity)
 {
-    if (!m->installed) {
+    rml_element *root = ui_mount_root(m);
+    if (!m->installed || !root) {
         return;
     }
-    for (int i = 0; i < game_ui_element_count(model); i++) {
-        game_ui_element *e = game_ui_element_at(model, i);
+    for (int i = 0; i < ui_element_count(model); i++) {
+        ui_element *e = ui_element_at(model, i);
         if (e->entity == entity && e->revision > m->applied) {
-            apply_element(m->root, e);
+            apply_element(root, e);
         }
     }
-    m->applied = game_ui_revision(model);
+    m->applied = ui_revision(model);
 }
 
 /* What the mount keeps for list `element`, kept from its first window. */
@@ -697,10 +703,10 @@ static mount_list *list_of(ui_mount *m, rml_element *element)
    once, as Reveal UI List Row asks, and sends `window` (ev.first, ev.count)
    when the rows to show change, as Virtuoso's rangeChanged does, so its
    document's behaviors fill the window in the same frame. */
-static void window_lists(ui_mount *m)
+static void window_lists(ui_mount *m, rml_element *root)
 {
     rml_element *found[8];
-    int count = rml_element_query_selector_all(m->root, "[data-list-rows]", found, 8);
+    int count = rml_element_query_selector_all(root, "[data-list-rows]", found, 8);
     for (int i = 0; i < count && i < 8; i++) {
         char text[32] = "";
         rml_element_attribute(found[i], "data-list-rows", text, sizeof text);
@@ -730,19 +736,20 @@ static void window_lists(ui_mount *m)
     }
 }
 
-void ui_mount_measure(ui_mount *m, game_ui *model, uint64_t entity)
+void ui_mount_measure(ui_mount *m, ui *model, uint64_t entity)
 {
-    if (!m->installed) {
+    rml_element *root = ui_mount_root(m);
+    if (!m->installed || !root) {
         return;
     }
-    window_lists(m);
+    window_lists(m, root);
     rml_element *found[16];
-    int count = rml_element_query_selector_all(m->root, "[id][data-event-scroll]", found, 16);
-    float dp = rml_context_dp_ratio(rml_element_context(m->root));
+    int count = rml_element_query_selector_all(root, "[id][data-event-scroll]", found, 16);
+    float dp = rml_context_dp_ratio(rml_element_context(root));
     for (int i = 0; i < count && i < 16; i++) {
         char selector[160];
         snprintf(selector, sizeof selector, "#%s", rml_element_id(found[i]));
-        game_ui_measure(
+        ui_measure(
             model,
             entity,
             selector,
@@ -849,17 +856,17 @@ static bool saved_number(const char *text, double *number)
 
 /* Shows `save`'s keys in `shown`, changing only the values that differ, so
  * a long session does not grow the JSON; removed keys read as null. */
-static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const game_save *save)
+static void show_save(yyjson_mut_doc *doc, yyjson_mut_val *shown, const save *save)
 {
     yyjson_mut_val *key;
     yyjson_mut_obj_iter iter = yyjson_mut_obj_iter_with(shown);
     while ((key = yyjson_mut_obj_iter_next(&iter))) {
-        if (!save || !game_save_get(save, yyjson_mut_get_str(key))) {
+        if (!save || !save_get(save, yyjson_mut_get_str(key))) {
             yyjson_mut_set_null(yyjson_mut_obj_iter_get_val(key));
         }
     }
-    for (int i = 0; save && i < game_save_count(save); i++) {
-        const char *name = game_save_key(save, i), *text = game_save_get(save, name);
+    for (int i = 0; save && i < save_count(save); i++) {
+        const char *name = save_key(save, i), *text = save_get(save, name);
         yyjson_mut_val *value = yyjson_mut_obj_get(shown, name);
         if (!value) {
             value = yyjson_mut_null(doc);
@@ -906,7 +913,7 @@ static const char *shown_key(yyjson_mut_val *shown, const yyjson_mut_val *value)
 
 /* Saves in `save` the shown keys bindings changed, and only those: a key the
  * save changed since it was shown keeps the save's value. */
-static void save_written(ui_data *d, yyjson_mut_val *shown, game_save *save)
+static void save_written(ui_data *d, yyjson_mut_val *shown, save *save)
 {
     yyjson_mut_val *value;
     while (rml_data_model_take_written(d->model, &value)) {
@@ -914,17 +921,17 @@ static void save_written(ui_data *d, yyjson_mut_val *shown, game_save *save)
         const char *key = save && save == d->save ? shown_key(shown, value) : NULL;
         const char *text = key ? saved_text(value, number, sizeof number) : NULL;
         if (text) {
-            game_save_set(save, key, text);
+            save_set(save, key, text);
         }
     }
 }
 
-void ui_data_sync(ui_data *d, game_save *save)
+void ui_data_sync(ui_data *d, save *save)
 {
     show_system(d);
     yyjson_mut_val *shown = yyjson_mut_obj_get(yyjson_mut_doc_get_root(d->doc), "save");
     save_written(d, shown, save);
-    uint64_t revision = save ? game_save_revision(save) : 0;
+    uint64_t revision = save ? save_revision(save) : 0;
     if (save == d->save && revision == d->save_seen) {
         return;
     }
@@ -1066,18 +1073,18 @@ static yyjson_mut_val *data_at(yyjson_mut_doc *doc, yyjson_mut_val *data, const 
 
 static int by_revision(const void *a, const void *b)
 {
-    uint64_t x = (*(const game_ui_datum *const *)a)->revision;
-    uint64_t y = (*(const game_ui_datum *const *)b)->revision;
+    uint64_t x = (*(const ui_datum *const *)a)->revision;
+    uint64_t y = (*(const ui_datum *const *)b)->revision;
     return x < y ? -1 : x > y;
 }
 
-void ui_data_show_entities(ui_data *d, const game_ui *model)
+void ui_data_show_entities(ui_data *d, const ui *model)
 {
     /* In the order behaviors set them, so a list set after one of its rows
        replaces it, and a row set after its list changes it. */
-    const game_ui_datum **changed = NULL;
-    for (int i = 0; model && i < game_ui_data_count(model); i++) {
-        const game_ui_datum *datum = game_ui_data_at(model, i);
+    const ui_datum **changed = NULL;
+    for (int i = 0; model && i < ui_data_count(model); i++) {
+        const ui_datum *datum = ui_data_at(model, i);
         if (datum->revision > d->data_seen) {
             apush(changed, datum);
         }
@@ -1088,7 +1095,7 @@ void ui_data_show_entities(ui_data *d, const game_ui *model)
     asort(changed, by_revision);
     uint64_t *dirty = NULL;
     for (int i = 0; i < acount(changed); i++) {
-        const game_ui_datum *datum = changed[i];
+        const ui_datum *datum = changed[i];
         yyjson_mut_val
             *shown = data_at(d->doc, entity_data(d, datum->entity), datum->name);
         assign(d->doc, shown, datum->value);
@@ -1147,14 +1154,14 @@ bool ui_page_sync(ui_page *p, const char *content_root, const char *name, double
     if (!name[0]) {
         return renamed;
     }
-    if (p->prepared_only || !p->loader.open || game_ui_documents_active()) {
-        uint64_t generation = game_ui_documents_revision();
+    if (p->prepared_only || !p->loader.open || ui_documents_active()) {
+        uint64_t generation = ui_documents_revision();
         if (p->prepared_loaded && p->prepared_revision == generation && !renamed) {
             return false;
         }
-        const game_ui_document *record = game_ui_documents_active()
-                                           ? game_ui_documents_find(game_ui_documents_current(), name)
-                                           : NULL;
+        const prepared_ui_document *record = ui_documents_active()
+                                               ? ui_documents_find(ui_documents_current(), name)
+                                               : NULL;
         if (!record) {
             snprintf(p->error, sizeof p->error, "Prepared UI page is missing: %.120s", name);
             return renamed;
@@ -1219,7 +1226,7 @@ void ui_page_set_loader(ui_page *p, const render_ui_loader *loader)
 
 /* The reference height at which one RCSS dp is one pixel. */
 #define UI_REFERENCE_HEIGHT 720.0f
-/* The overlay's z-index, above any authored GameUi order. */
+/* The overlay's z-index, above any authored Ui order. */
 #define OVERLAY_ORDER "1000000"
 
 /* The game document's own style: the editor's face, a pointer that passes
@@ -1254,7 +1261,7 @@ static const char BASE_RCSS[] =
     "[popover]:not([data-open]) { display: none; }\n"
     "[popover][data-unplaced] { visibility: hidden; }\n";
 
-/* One GameUi entity's mount, or the host's overlay. */
+/* One Ui entity's mount, or the host's overlay. */
 typedef struct ui_view
 {
     uint64_t entity;
@@ -1333,9 +1340,7 @@ static char *page_text(const ui_page *page)
         .rcss = "",
         .body = frame_body(
             d->body,
-            (page->prepared_only || !page->loader.open || game_ui_documents_active())
-                ? page->name
-                : NULL
+            (page->prepared_only || !page->loader.open || ui_documents_active()) ? page->name : NULL
         ),
     };
     char *text = ui_document_compose(&body, "");
@@ -1391,7 +1396,7 @@ static render_ui *new_ui(const char *content_root, yyjson_mut_doc *data, bool pr
     if (ui->backend) {
         rml_backend_require_resident_images(
             ui->backend,
-            prepared_only || !ui->loader.open || game_ui_documents_active()
+            prepared_only || !ui->loader.open || ui_documents_active()
         );
     }
     ui->listener = rml_listener_create(on_event, ui);
@@ -1421,7 +1426,7 @@ void render_ui_set_loader(render_ui *ui, const render_ui_loader *loader)
             ui_mount_set_loader(ui->views[i].mount, loader);
         }
     }
-    rml_backend_require_resident_images(ui->backend, !ui->loader.open || game_ui_documents_active());
+    rml_backend_require_resident_images(ui->backend, !ui->loader.open || ui_documents_active());
 }
 
 void render_ui_free(render_ui *ui)
@@ -1577,18 +1582,18 @@ bool render_ui_wants_text(const render_ui *ui)
 
 /* Mod's modifier bits in a game, whose hosts trade Command and Control on a
  * Mac as they do for keys (viewport.c). */
-#define GAME_PRIMARY RML_KM_CTRL
+#define PRIMARY RML_KM_CTRL
 
 /* Sends each view's activations to its entity's behaviors now, an input's
  * value first, so what they set shows in this update. They wait while a
  * spawn initializes, as the engine holds the events it queues. */
-static void send_activations(render_ui *ui, const ui_world *world)
+static void send_activations(render_ui *renderer, const ui_world *world)
 {
-    game_ui *model = world->model;
+    ui *model = world->model;
     const render_ui_host *host = &world->host;
-    ui->failure[0] = '\0';
-    for (int i = 0; i < acount(ui->views); i++) {
-        ui_view *view = &ui->views[i];
+    renderer->failure[0] = '\0';
+    for (int i = 0; i < acount(renderer->views); i++) {
+        ui_view *view = &renderer->views[i];
         ui_activation a;
         if (view->mount && model) {
             ui_mount_measure(view->mount, model, view->entity);
@@ -1599,24 +1604,24 @@ static void send_activations(render_ui *ui, const ui_world *world)
             if (model && a.has_value && a.id[0]) {
                 char selector[160];
                 snprintf(selector, sizeof selector, "#%s", a.id);
-                game_ui_set_value(model, view->entity, selector, a.value);
+                ui_set_value(model, view->entity, selector, a.value);
             }
             if (!host->dispatch) {
                 continue;
             }
-            int status = activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY);
+            int status = activation_send(host, ecs_entity_from_u64(view->entity), &a, PRIMARY);
             const char *why = host->failure ? host->failure(host->context) : "";
             if (status == UNCARRIED) {
                 snprintf(
-                    ui->failure,
-                    sizeof ui->failure,
+                    renderer->failure,
+                    sizeof renderer->failure,
                     "%s declares a payload a UI event cannot carry",
                     a.event
                 );
             } else if (status < 0 && why[0]) {
-                snprintf(ui->failure, sizeof ui->failure, "%s failed: %s", a.event, why);
+                snprintf(renderer->failure, sizeof renderer->failure, "%s failed: %s", a.event, why);
             } else if (status < 0) {
-                snprintf(ui->failure, sizeof ui->failure, "%s failed", a.event);
+                snprintf(renderer->failure, sizeof renderer->failure, "%s failed", a.event);
             }
         }
     }
@@ -1632,7 +1637,7 @@ static ui_view *find_view(render_ui *ui, uint64_t entity)
     return NULL;
 }
 
-static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, bool shown)
+static void show_view(render_ui *ui, uint64_t entity, const Ui *component, bool shown)
 {
     ui_view *view = find_view(ui, entity);
     if (!view) {
@@ -1658,22 +1663,22 @@ static void show_view(render_ui *ui, uint64_t entity, const GameUi *component, b
     rml_element_set_property(view->root, "display", shown ? "block" : "none");
 }
 
-/* Drops the views whose entity no longer shows a GameUi. */
-static void close_unseen(render_ui *ui, game_ui *model)
+/* Drops the views whose entity no longer shows a Ui. */
+static void close_unseen(render_ui *renderer, ui *model)
 {
     int kept = 0;
-    for (int i = 0; i < acount(ui->views); i++) {
-        if (ui->views[i].seen) {
-            ui->views[kept++] = ui->views[i];
+    for (int i = 0; i < acount(renderer->views); i++) {
+        if (renderer->views[i].seen) {
+            renderer->views[kept++] = renderer->views[i];
             continue;
         }
         if (model) {
-            game_ui_forget(model, ui->views[i].entity);
+            ui_forget(model, renderer->views[i].entity);
         }
-        ui_data_forget_entity(&ui->data, ui->views[i].entity);
-        close_view(ui, &ui->views[i]);
+        ui_data_forget_entity(&renderer->data, renderer->views[i].entity);
+        close_view(renderer, &renderer->views[i]);
     }
-    asetlen(ui->views, kept);
+    asetlen(renderer->views, kept);
 }
 
 /* The overlay's mount for i < 0, else view i's. */
@@ -1738,7 +1743,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     send_activations(ui, w);
     rml_backend_require_resident_images(
         ui->backend,
-        ui->prepared_only || !ui->loader.open || game_ui_documents_active()
+        ui->prepared_only || !ui->loader.open || ui_documents_active()
     );
     if (ui_page_sync(&ui->page, ui->content_root, w->page ? w->page : "", ui->time)) {
         load_page(ui);
@@ -1754,7 +1759,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
     for (int i = 0; i < acount(ui->views); i++) {
         ui->views[i].seen = false;
     }
-    ecs_component_id component = GAME_COMPONENT_GameUi.id;
+    ecs_component_id component = COMPONENT_Ui.id;
     ecs_query query;
     if (ecs_world_component(world, component) &&
         ecs_query_begin(world, &query, &component, 1) == ECS_OK) {
@@ -1762,7 +1767,7 @@ void render_ui_update(render_ui *ui, const ui_world *w, int width, int height, d
         while (ecs_query_next(&query, &entity)) {
             uint64_t id = ecs_entity_to_u64(entity);
             if (!ecs_entity_is_retiring(world, entity)) {
-                const GameUi *component = GAME_GameUi_get_const(world, entity);
+                const Ui *component = Ui_get_const(world, entity);
                 bool shown = (!component->hidden || w->preview || id == w->revealed) &&
                              !render_skip_has(w->hidden, entity);
                 show_view(ui, id, component, shown);

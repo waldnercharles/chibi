@@ -44,6 +44,9 @@ bool render_scene3d_screen_bounds(
 );
 /* Canvas framing rectangle with a 20 percent fit margin. */
 CF_Aabb render_scene3d_fit(const CF_V3 *points, int count, float aspect);
+/* Fits actual 3D bounds with the same margin, retaining yaw and pitch. The
+ * target is the bounds' center; the lens resets to the default field of view. */
+void render_scene3d_fit_view(const CF_V3 *points, int count, float aspect, engine_viewport_view *view);
 
 /* The nearest entity under `ndc` that `skip` does not hold. */
 ecs_entity render_scene3d_pick(
@@ -78,11 +81,11 @@ int render_scene3d_particle_count(const render_scene3d *scene3d);
 bool render_scene3d_draw(
     render_scene3d *scene3d,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const render_scene3d_camera *camera,
     float time,
     const struct engine *runtime,
-    const GameEnvironment *environment,
+    const Environment *environment,
     render_skip skip
 );
 #define RENDER_SCENE3D_PREVIEW_RADIUS 50.0f

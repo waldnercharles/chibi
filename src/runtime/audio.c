@@ -30,38 +30,38 @@ typedef struct
     void *data;
     size_t length;
 } sound;
-struct game_audio
+struct audio
 {
     sound *sounds;
-    game_voice pending[VOICE_QUEUE];
+    audio_voice pending[VOICE_QUEUE];
     int count;
     int music;
-    float fade, volumes[GAME_AUDIO_BUSES];
+    float fade, volumes[AUDIO_BUSES];
     uint64_t music_serial, generation, emitted, hash;
     char message[192];
 };
 /* Unique across queues, so a host never mistakes a new queue for an old one. */
 static _Atomic uint64_t generations;
-static void restore(game_audio *audio)
+static void restore(audio *audio)
 {
     audio->count = 0;
     audio->music = -1;
     audio->fade = 0;
     audio->music_serial++;
-    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
+    for (int i = 0; i < AUDIO_BUSES; i++) {
         audio->volumes[i] = 1;
     }
     audio->emitted = 0;
     audio->hash = 0;
     audio->generation = ++generations;
 }
-game_audio *game_audio_new()
+audio *audio_new()
 {
-    game_audio *audio = xcalloc(1, sizeof(game_audio));
+    audio *audio = xcalloc(1, sizeof *audio);
     restore(audio);
     return audio;
 }
-void game_audio_free(game_audio *audio)
+void audio_free(audio *audio)
 {
     for (int i = 0; i < acount(audio->sounds); i++) {
         free(audio->sounds[i].name);
@@ -70,11 +70,11 @@ void game_audio_free(game_audio *audio)
     afree(audio->sounds);
     free(audio);
 }
-void game_audio_reset(game_audio *audio)
+void audio_reset(audio *audio)
 {
     restore(audio);
 }
-static int find(const game_audio *audio, const char *name)
+static int find(const audio *audio, const char *name)
 {
     for (int i = 0; i < acount(audio->sounds); i++) {
         if (!strcmp(audio->sounds[i].name, name)) {
@@ -169,35 +169,35 @@ static bool ogg_vorbis(const unsigned char *bytes, size_t length)
     }
     return false;
 }
-game_sound_format game_sound_format_of(const void *data, size_t length)
+sound_format sound_format_of(const void *data, size_t length)
 {
     const unsigned char *bytes = data;
     if (length > 4 && !memcmp(bytes, "OggS", 4)) {
-        return ogg_vorbis(bytes, length) ? GAME_SOUND_OGG : GAME_SOUND_INVALID;
+        return ogg_vorbis(bytes, length) ? SOUND_OGG : SOUND_INVALID;
     }
     if (length > 12 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4)) {
-        return wav_playable(bytes, length) ? GAME_SOUND_WAV : GAME_SOUND_INVALID;
+        return wav_playable(bytes, length) ? SOUND_WAV : SOUND_INVALID;
     }
-    return GAME_SOUND_INVALID;
+    return SOUND_INVALID;
 }
-void game_audio_reserve_sounds(game_audio *audio, int count)
+void audio_reserve_sounds(audio *audio, int count)
 {
     assert(count >= 0);
     asetcap(audio->sounds, acount(audio->sounds) + count);
 }
-void game_audio_add_sound(game_audio *audio, const char *name, const void *data, size_t length)
+void audio_add_sound(audio *audio, const char *name, const void *data, size_t length)
 {
-    assert(find(audio, name) < 0 && game_sound_format_of(data, length));
+    assert(find(audio, name) < 0 && sound_format_of(data, length));
     void *copy = xmalloc(length);
     memcpy(copy, data, length);
     apush(audio->sounds, ((sound){ xstrdup(name), copy, length }));
     audio->generation = ++generations;
 }
-int game_audio_sound_count(const game_audio *audio)
+int audio_sound_count(const audio *audio)
 {
     return acount(audio->sounds);
 }
-size_t game_audio_sound_storage_bytes(const game_audio *audio)
+size_t audio_sound_storage_bytes(const audio *audio)
 {
     size_t bytes = audio->sounds
                      ? sizeof(dyna_hdr) + (size_t)acap(audio->sounds) * sizeof(sound)
@@ -215,7 +215,7 @@ static uint64_t fnv(uint64_t hash, const void *data, size_t length)
     }
     return hash;
 }
-uint64_t game_audio_library_hash(const game_audio *audio)
+uint64_t audio_library_hash(const audio *audio)
 {
     uint64_t hash = UINT64_C(14695981039346656037);
     for (int i = 0; i < acount(audio->sounds); i++) {
@@ -225,37 +225,37 @@ uint64_t game_audio_library_hash(const game_audio *audio)
     }
     return hash;
 }
-const void *game_audio_sound(const game_audio *audio, int index, size_t *length)
+const void *audio_sound(const audio *audio, int index, size_t *length)
 {
     assert(index >= 0 && index < acount(audio->sounds));
     *length = audio->sounds[index].length;
     return audio->sounds[index].data;
 }
-int game_audio_music(const game_audio *audio, float *fade, uint64_t *serial)
+int audio_music(const audio *audio, float *fade, uint64_t *serial)
 {
     *fade = audio->fade;
     *serial = audio->music_serial;
     return audio->music;
 }
-float game_audio_volume(const game_audio *audio, game_audio_bus bus)
+float audio_volume(const audio *audio, audio_bus bus)
 {
     return audio->volumes[bus];
 }
-uint64_t game_audio_generation(const game_audio *audio)
+uint64_t audio_generation(const audio *audio)
 {
     return audio->generation;
 }
-uint64_t game_audio_count(const game_audio *audio)
+uint64_t audio_count(const audio *audio)
 {
     return audio->emitted;
 }
-uint64_t game_audio_hash(const game_audio *audio)
+uint64_t audio_hash(const audio *audio)
 {
     return audio->hash;
 }
 
 /* Every request joins the deterministic history in order. */
-static void mix(game_audio *audio, unsigned char tag, const float *values, int count)
+static void mix(audio *audio, unsigned char tag, const float *values, int count)
 {
     uint64_t hash = audio->hash ? audio->hash : UINT64_C(14695981039346656037);
     audio->hash = fnv(fnv(hash, &tag, 1), values, (size_t)count * sizeof *values);
@@ -264,7 +264,7 @@ static bool unit(float x)
 {
     return isfinite(x) && x >= 0 && x <= 1;
 }
-static bool valid(game_tone t)
+static bool valid(tone t)
 {
     return isfinite(t.frequency) && t.frequency >= 20 && t.frequency <= 10000 &&
            isfinite(t.end_frequency) && t.end_frequency >= 20 &&
@@ -274,10 +274,10 @@ static bool valid(game_tone t)
 
 /* Presentation overload drops the oldest queued voice. Gameplay and the
  * deterministic cue history still observe every requested sound. */
-static void push(game_audio *audio, game_voice voice)
+static void push(audio *audio, audio_voice voice)
 {
     if (audio->count == VOICE_QUEUE) {
-        memmove(audio->pending, audio->pending + 1, sizeof(game_voice) * (VOICE_QUEUE - 1));
+        memmove(audio->pending, audio->pending + 1, sizeof(audio_voice) * (VOICE_QUEUE - 1));
         audio->count--;
     }
     audio->pending[audio->count++] = voice;
@@ -291,16 +291,16 @@ static void push(game_audio *audio, game_voice voice)
                              voice.pan };
     mix(audio, TAG_VOICE, values, sizeof values / sizeof *values);
 }
-bool game_audio_tone(game_audio *audio, game_tone tone)
+bool audio_tone(audio *audio, tone tone)
 {
     if (!valid(tone)) {
         return false;
     }
-    push(audio, (game_voice){ -1, tone, tone.volume, tone.pan });
+    push(audio, (audio_voice){ -1, tone, tone.volume, tone.pan });
     return true;
 }
 
-int game_audio_take(game_audio *audio, game_voice *out, int capacity)
+int audio_take(audio *audio, audio_voice *out, int capacity)
 {
     int count = audio->count < capacity ? audio->count : capacity;
     memcpy(out, audio->pending, (size_t)count * sizeof *out);
@@ -320,7 +320,7 @@ static void u16(unsigned char *p, uint16_t x)
     p[0] = (unsigned char)x;
     p[1] = (unsigned char)(x >> 8);
 }
-unsigned char *game_tone_wav(game_tone tone, int *size)
+unsigned char *tone_wav(tone tone, int *size)
 {
     if (!valid(tone)) {
         return NULL;
@@ -359,7 +359,7 @@ unsigned char *game_tone_wav(game_tone tone, int *size)
     return wav;
 }
 
-static int named(game_audio *audio, const pin_value *value, const char **error)
+static int named(audio *audio, const pin_value *value, const char **error)
 {
     const char *name = value->str ? value->str : "";
     int index = find(audio, name);
@@ -376,8 +376,8 @@ static bool fade(float seconds)
 
 static const char *play_tone(void *service, const pin_value *in, pin_value *)
 {
-    game_tone tone = { in[0].f, in[1].f, in[2].f, in[3].f, in[4].f, in[5].f };
-    if (!game_audio_tone(service, tone)) {
+    tone tone = { in[0].f, in[1].f, in[2].f, in[3].f, in[4].f, in[5].f };
+    if (!audio_tone(service, tone)) {
         return "Tone requires 20-10000 Hz, 0.01-4 seconds, and 0-1 volume, "
                "pan and noise";
     }
@@ -385,7 +385,7 @@ static const char *play_tone(void *service, const pin_value *in, pin_value *)
 }
 static const char *play_sound(void *service, const pin_value *in, pin_value *)
 {
-    game_audio *audio = service;
+    audio *audio = service;
     const char *error = NULL;
     int index = named(audio, &in[0], &error);
     if (index < 0) {
@@ -394,12 +394,12 @@ static const char *play_sound(void *service, const pin_value *in, pin_value *)
     if (!unit(in[1].f) || !unit(in[2].f)) {
         return "Play Sound requires 0-1 volume and pan";
     }
-    push(audio, (game_voice){ .sound = index, .volume = in[1].f, .pan = in[2].f });
+    push(audio, (audio_voice){ .sound = index, .volume = in[1].f, .pan = in[2].f });
     return NULL;
 }
 /* Starting the track that already plays changes nothing, so music runs on
  * across scenes that each ask for it. */
-static const char *change_music(game_audio *audio, int index, float seconds)
+static const char *change_music(audio *audio, int index, float seconds)
 {
     if (!fade(seconds)) {
         return "Music fades take 0-60 seconds";
@@ -416,7 +416,7 @@ static const char *change_music(game_audio *audio, int index, float seconds)
 }
 static const char *play_music(void *service, const pin_value *in, pin_value *)
 {
-    game_audio *audio = service;
+    audio *audio = service;
     const char *error = NULL;
     int index = named(audio, &in[0], &error);
     return index < 0 ? error : change_music(audio, index, in[1].f);
@@ -425,7 +425,7 @@ static const char *stop_music(void *service, const pin_value *in, pin_value *)
 {
     return change_music(service, -1, in[0].f);
 }
-static const char *set_volume(game_audio *audio, game_audio_bus bus, float volume)
+static const char *set_volume(audio *audio, audio_bus bus, float volume)
 {
     if (!unit(volume)) {
         return "Volume must be 0-1";
@@ -437,15 +437,15 @@ static const char *set_volume(game_audio *audio, game_audio_bus bus, float volum
 }
 static const char *master_volume(void *service, const pin_value *in, pin_value *)
 {
-    return set_volume(service, GAME_AUDIO_MASTER, in[0].f);
+    return set_volume(service, AUDIO_MASTER, in[0].f);
 }
 static const char *music_volume(void *service, const pin_value *in, pin_value *)
 {
-    return set_volume(service, GAME_AUDIO_MUSIC, in[0].f);
+    return set_volume(service, AUDIO_MUSIC, in[0].f);
 }
 static const char *sound_volume(void *service, const pin_value *in, pin_value *)
 {
-    return set_volume(service, GAME_AUDIO_SOUNDS, in[0].f);
+    return set_volume(service, AUDIO_SOUNDS, in[0].f);
 }
 #define CALL(NAME, INVOKE)                                                     \
     const node_host_call NAME = {                                              \
@@ -453,11 +453,11 @@ static const char *sound_volume(void *service, const pin_value *in, pin_value *)
         .invoke = INVOKE,                                                      \
         .missing_service = "Audio requires a game world"                       \
     }
-CALL(GAME_AUDIO_TONE_CALL, play_tone);
-CALL(GAME_AUDIO_SOUND_CALL, play_sound);
-CALL(GAME_AUDIO_MUSIC_CALL, play_music);
-CALL(GAME_AUDIO_STOP_MUSIC_CALL, stop_music);
-CALL(GAME_AUDIO_MASTER_VOLUME_CALL, master_volume);
-CALL(GAME_AUDIO_MUSIC_VOLUME_CALL, music_volume);
-CALL(GAME_AUDIO_SOUND_VOLUME_CALL, sound_volume);
-const node_access GAME_AUDIO_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+CALL(AUDIO_TONE_CALL, play_tone);
+CALL(AUDIO_SOUND_CALL, play_sound);
+CALL(AUDIO_MUSIC_CALL, play_music);
+CALL(AUDIO_STOP_MUSIC_CALL, stop_music);
+CALL(AUDIO_MASTER_VOLUME_CALL, master_volume);
+CALL(AUDIO_MUSIC_VOLUME_CALL, music_volume);
+CALL(AUDIO_SOUND_VOLUME_CALL, sound_volume);
+const node_access AUDIO_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

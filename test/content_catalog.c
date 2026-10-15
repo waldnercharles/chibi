@@ -55,13 +55,20 @@ static void check_project_creation()
     bool valid = opened && !strcmp(project.name, "Sample: Project") &&
                  !strcmp(project.start_scene, "scenes/Start.kdl") && text &&
                  strstr(text, "(array)entities");
-    test_check(valid, "new projects serialize their name and open with an empty start scene");
+    test_check(valid, "new projects serialize their name and open their starter scene");
     bool duplicate = chibi_project_create(root, "Other", error, sizeof error) != 0;
     test_check(duplicate, "project creation never overwrites an existing folder");
     free(text);
     free(scene);
     chibi_project_free(&project);
     char path[512];
+    const char *prototypes[] = { "Cube", "Camera", "Light" };
+    for (int i = 0; i < (int)(sizeof prototypes / sizeof *prototypes); i++) {
+        snprintf(path, sizeof path, "%s/content/prototypes/%s.kdl", root, prototypes[i]);
+        assert(!unlink(path));
+    }
+    snprintf(path, sizeof path, "%s/content/prototypes", root);
+    assert(!rmdir(path));
     snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
     unlink(path);
     snprintf(path, sizeof path, "%s/project.kdl", root);

@@ -14,7 +14,7 @@ typedef struct
     CF_V2 aim;
     bool aim_point; /* aim is a world position rather than a direction */
     bool firing;
-    uint64_t controls; /* held GameControl bits */
+    uint64_t controls; /* held Control bits */
 } input_keyframe;
 
 /* Whether two keys hold the same input, whatever their steps. */

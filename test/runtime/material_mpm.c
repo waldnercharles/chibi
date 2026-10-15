@@ -223,18 +223,18 @@ static void ordered_worker_parity()
         serial[i].deformation.affine[2] = -.03f;
     }
     memcpy(parallel, serial, COUNT * sizeof *serial);
-    game_task_pool *pool = game_task_pool_acquire_workers(4);
+    task_pool *pool = task_pool_acquire_workers(4);
     material_mpm *a = material_mpm_new(), *b = material_mpm_new();
     for (int step = 0; step < 8; step++) {
         assert(material_mpm_step(a, settings(), .001f, serial, active, COUNT, NULL));
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         assert(
-            material_mpm_step(b, settings(), .001f, parallel, active, COUNT, game_task_pool_tasks(pool))
+            material_mpm_step(b, settings(), .001f, parallel, active, COUNT, task_pool_tasks(pool))
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
     }
     assert(material_mpm_node_count(a) >= 2048);
-    assert(game_task_pool_tasks(pool)->workers <= 1 || game_task_pool_started(pool));
+    assert(task_pool_tasks(pool)->workers <= 1 || task_pool_started(pool));
     assert(!memcmp(serial, parallel, COUNT * sizeof *serial));
     fluid_body body_a = { 0 }, body_b = { 0 };
     fluid_obstacle floor = { .center = { 0, -50 }, .half_size = { 100, 20 } };
@@ -243,17 +243,17 @@ static void ordered_worker_parity()
     assert(
         material_mpm_step_colliders(a, settings(), .001f, serial, active, COUNT, NULL, contacts_a)
     );
-    game_task_pool_begin(pool, true);
+    task_pool_begin(pool, true);
     assert(
-        material_mpm_step_colliders(b, settings(), .001f, parallel, active, COUNT, game_task_pool_tasks(pool), contacts_b)
+        material_mpm_step_colliders(b, settings(), .001f, parallel, active, COUNT, task_pool_tasks(pool), contacts_b)
     );
-    game_task_pool_end(pool);
+    task_pool_end(pool);
     assert(body_a.impulse.y < 0);
     assert(!memcmp(serial, parallel, COUNT * sizeof *serial));
     assert(!memcmp(&body_a, &body_b, sizeof body_a));
     material_mpm_free(a);
     material_mpm_free(b);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     free(serial);
     free(parallel);
     free(active);
@@ -261,11 +261,11 @@ static void ordered_worker_parity()
 
 typedef struct
 {
-    const game_task_system *executor;
+    const task_system *executor;
     int dense_deposits;
 } dispatch_record;
 
-static void *record_enqueue(game_task_range *fn, int count, int grain, void *context, void *user)
+static void *record_enqueue(task_range *fn, int count, int grain, void *context, void *user)
 {
     dispatch_record *record = user;
     if (count < 2048) {
@@ -302,12 +302,12 @@ static void dense_worker_parity()
         serial[i].deformation.affine[2] = -.03f;
     }
     memcpy(parallel, serial, COUNT * sizeof *serial);
-    game_task_pool *pool = game_task_pool_acquire_workers(4);
-    dispatch_record record = { .executor = game_task_pool_tasks(pool) };
-    game_task_system tasks = { .workers = record.executor->workers,
-                               .user = &record,
-                               .enqueue = record_enqueue,
-                               .finish = record_finish };
+    task_pool *pool = task_pool_acquire_workers(4);
+    dispatch_record record = { .executor = task_pool_tasks(pool) };
+    task_system tasks = { .workers = record.executor->workers,
+                          .user = &record,
+                          .enqueue = record_enqueue,
+                          .finish = record_finish };
     fluid_mpm_settings config = { .cell_size = 1, .max_substeps = 64 };
     material_mpm *a = material_mpm_new(), *b = material_mpm_new();
     fluid_body body_a = { 0 }, body_b = { 0 };
@@ -318,20 +318,20 @@ static void dense_worker_parity()
         assert(
             material_mpm_step_colliders(a, config, .001f, serial, active, COUNT, NULL, contacts_a)
         );
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         assert(
             material_mpm_step_colliders(b, config, .001f, parallel, active, COUNT, &tasks, contacts_b)
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         assert(material_mpm_node_count(b) > 0 && material_mpm_node_count(b) < 2048);
     }
-    assert(tasks.workers <= 1 || (record.dense_deposits == 8 && game_task_pool_started(pool)));
+    assert(tasks.workers <= 1 || (record.dense_deposits == 8 && task_pool_started(pool)));
     assert(body_a.impulse.y < 0);
     assert(!memcmp(serial, parallel, COUNT * sizeof *serial));
     assert(!memcmp(&body_a, &body_b, sizeof body_a));
     material_mpm_free(a);
     material_mpm_free(b);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     free(serial);
     free(parallel);
     free(active);

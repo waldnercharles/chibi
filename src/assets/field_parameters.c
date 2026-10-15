@@ -117,7 +117,7 @@ bool material_field_bake_text(
     unsigned seed,
     field_grid grid,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )
@@ -133,7 +133,7 @@ bool material_field_bake_rows_text(
     int first,
     int count,
     float *out,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )
@@ -162,7 +162,7 @@ material_field_session *material_field_session_new_text(
     const char *name,
     const char *text,
     unsigned seed,
-    const game_task_system *tasks,
+    const task_system *tasks,
     char *error,
     size_t size
 )

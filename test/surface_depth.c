@@ -139,7 +139,7 @@ static bool draw(
     CF_Canvas output,
     CF_Texture textures[INPUTS],
     float data[INPUTS][PIXELS][4],
-    GameHRC2D lighting,
+    HRC2D lighting,
     render_view_2d view,
     float color[4],
     render_surface_work *work
@@ -168,13 +168,13 @@ static bool fill_tests(
     CF_Canvas output,
     CF_Texture textures[INPUTS],
     float data[INPUTS][PIXELS][4],
-    GameHRC2D lighting,
+    HRC2D lighting,
     render_view_2d view
 )
 {
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
-    lighting.debug_view = GAME_HRC_DEBUG_NORMAL;
-    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
+    lighting.debug_view = HRC_DEBUG_NORMAL;
+    lighting.tone_mapping = HRC_TONE_AGX;
     lighting.intensity = .5f;
     lighting.specular = 0;
     render_surface_work work = { 0 };
@@ -331,15 +331,15 @@ static bool source_stability()
     p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas output = cf_make_canvas(p);
     render_radiance *r = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.resolution = lighting.color_resolution = 1;
     lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
     lighting.specular = 0;
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     lighting.surface_radius = lighting.surface_depth_radius = 128;
     lighting.surface_thickness = 0;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lighting.debug_view = HRC_DEBUG_SURFACE_LIGHT;
     render_view_2d view = {
         -64, 64, WIDTH, WIDTH, .crop_max_u = 1, .crop_max_v = 1
     };
@@ -475,16 +475,16 @@ static bool segment_reconstruction_tests()
     p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas output = cf_make_canvas(p);
     render_radiance *r = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.resolution = lighting.color_resolution = 1;
     lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
     lighting.specular = 0;
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     lighting.surface_radius = lighting.surface_depth_radius = 384;
     lighting.surface_thickness = 12;
-    lighting.surface_depth_visibility = GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lighting.surface_depth_visibility = HRC_DEPTH_VISIBILITY_SEGMENTS;
+    lighting.debug_view = HRC_DEBUG_SURFACE_LIGHT;
     render_view_2d view = { -128,           128, WIDTH, WIDTH, .crop_max_u = 1,
                             .crop_max_v = 1 };
     render_radiance_inputs input = { .material = { .scene = textures[SCENE],
@@ -626,7 +626,7 @@ static bool temporal_response(
     CF_Canvas output,
     CF_Texture textures[INPUTS],
     float data[INPUTS][PIXELS][4],
-    GameHRC2D lighting,
+    HRC2D lighting,
     render_view_2d view
 )
 {
@@ -714,17 +714,17 @@ static bool option_tests(
     CF_Canvas output,
     CF_Texture textures[INPUTS],
     float data[INPUTS][PIXELS][4],
-    GameHRC2D lighting,
+    HRC2D lighting,
     render_view_2d view
 )
 {
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
+    lighting.debug_view = HRC_DEBUG_SURFACE_LIGHT;
     lighting.surface_depth_radius = 16;
     lighting.surface_depth_temporal = false;
     render_surface_work work = { 0 };
     bool ok = true, quality = true;
-    for (int q = GAME_HRC_DEPTH_LOW; q <= GAME_HRC_DEPTH_HIGH; q++) {
+    for (int q = HRC_DEPTH_LOW; q <= HRC_DEPTH_HIGH; q++) {
         lighting.surface_depth_quality = q;
         for (int near = 0; near < 2; near++) {
             lighting.surface_depth_near_detail = near;
@@ -743,7 +743,7 @@ static bool option_tests(
     }
     printf("Surface depth quality, near detail and soft visibility: %s\n", quality ? "PASS" : "FAIL");
     ok &= quality;
-    lighting.surface_depth_quality = GAME_HRC_DEPTH_BALANCED;
+    lighting.surface_depth_quality = HRC_DEPTH_BALANCED;
     lighting.surface_depth_near_detail = false;
     lighting.surface_depth_shadow_softness = 0;
     lighting.surface_depth_history = .9f;
@@ -834,7 +834,7 @@ bool test_surface_depth()
     p.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas output = cf_make_canvas(p);
     render_radiance *r = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.resolution = lighting.color_resolution = 1;
     lighting.radiance_hysteresis = 1;
@@ -844,8 +844,8 @@ bool test_surface_depth()
     lighting.surface_depth_radius = 16;
     lighting.surface_thickness = 12;
     lighting.specular = 0;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
-    lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+    lighting.debug_view = HRC_DEBUG_SURFACE_LIGHT;
+    lighting.surface_mode = HRC_SURFACE_BLUR;
     render_view_2d view = { -.5f * SIDE, .5f * SIDE,      SIDE,
                             SIDE,        .crop_max_u = 1, .crop_max_v = 1 };
     bool ok = r && output.id && render_radiance_resize(r, SIDE, SIDE);
@@ -856,9 +856,9 @@ bool test_surface_depth()
     render_surface_work work = { 0 };
     inputs(data, 0);
     ok = draw(r, output, textures, data, lighting, view, off, &work) && ok;
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     ok = draw(r, output, textures, data, lighting, view, open, &work) && ok;
-    bool budget = work.mode == GAME_HRC_SURFACE_DEPTH && work.block == 4 &&
+    bool budget = work.mode == HRC_SURFACE_DEPTH && work.block == 4 &&
                   work.cells == 64 && work.candidates == (size_t)work.cells * 49 &&
                   work.visibility_taps == (size_t)work.cells * 96 &&
                   !work.blur_quadrant_fetches;
@@ -1100,7 +1100,7 @@ bool test_surface_depth()
     printf("Surface depth perspective: %s; receiver %g\n", projected ? "PASS" : "FAIL", perspective[0]);
     ok &= projected;
     view.focal_distance = 0;
-    lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+    lighting.surface_mode = HRC_SURFACE_BLUR;
     ok = draw(r, output, textures, data, lighting, view, restored, &work) && ok;
     bool reset = fabsf(restored[0] - off[0]) < .001f &&
                  fabsf(restored[1] - off[1]) < .001f &&

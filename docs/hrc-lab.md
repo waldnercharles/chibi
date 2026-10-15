@@ -20,7 +20,7 @@ intensity is a later composite gain and affects received light as well.
 
 ## Tuning safely
 
-The renderer fits `GameHRC2D` into what HRC supports instead of rejecting it.
+The renderer fits `HRC2D` into what HRC supports instead of rejecting it.
 Each change it makes appears as `field from -> to`: Studio shows a "Lighting
 adjusted" notice in the Scene toolbar, whose tooltip lists the changes, and a
 running game prints them once. The Inspector draws sliders over useful ranges,

@@ -24,7 +24,7 @@ void render_mesh_material_set_model_inspection(
     const render_model_inspection *inspection
 );
 void render_mesh_material_set_sdf_batch_limit(render_mesh_material *pass, int limit);
-void render_mesh_material_set_quality(render_mesh_material *pass, GameSurfaceQuality quality);
+void render_mesh_material_set_quality(render_mesh_material *pass, SurfaceQuality quality);
 /* 0: shaded output; 1: surviving trace/normal calls; 2: include hidden rejects. */
 void render_mesh_material_set_sdf_trace_debug(render_mesh_material *pass, int mode);
 void render_mesh_material_set_hidden_rejection(render_mesh_material *pass, bool enabled);

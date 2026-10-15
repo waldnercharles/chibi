@@ -11,6 +11,13 @@ const collect_ctx *g_collection;
 static char g_prefix_storage[128];
 const char *g_prefix = "REFLECTION";
 
+const char *symbol_prefix()
+{
+    static char prefix[130];
+    snprintf(prefix, sizeof prefix, "%s%s", g_prefix, *g_prefix ? "_" : "");
+    return prefix;
+}
+
 /* Keep the lock inode stable: other native build directories share it. */
 static int lock_manifest(const char *path)
 {
@@ -202,13 +209,16 @@ int main(int argc, char **argv)
     args[nargs++] = "-isystem";
     args[nargs++] = CHIBI_REFLECT_RESOURCE_INCLUDE_DIR;
 
-    if (!types_output || !*types_output || !runtime_output || !*runtime_output ||
-        !strcmp(types_output, runtime_output) || (prefix && !*prefix)) {
+    if (!types_output || !*types_output || !runtime_output ||
+        !*runtime_output || !strcmp(types_output, runtime_output)) {
         fprintf(stderr, "reflect: distinct --types-output and --runtime-output paths are required\n");
         clang_disposeIndex(idx);
         return 2;
     }
     set_prefix(prefix ? prefix : types_output);
+    if (prefix && !*prefix) {
+        g_prefix = "";
+    }
 
     CXTranslationUnit tu = clang_parseTranslationUnit(idx, input, args, nargs, NULL, 0, CXTranslationUnit_None);
     if (!tu) {

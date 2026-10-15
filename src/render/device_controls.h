@@ -5,21 +5,21 @@
 
 #include <cute_input.h>
 
-/* GameControl sources read from the desktop's keyboard, mouse and first
+/* Control sources read from the desktop's keyboard, mouse and first
  * controller, shared by every host so play feels the same everywhere. */
 
 /* The control a key press latches, so a press released within one frame still
- * counts, or GAME_CONTROL_NONE. */
-GameControl game_control_for_key(CF_KeyButton key);
-bool game_control_down(GameControl control);
-/* Every held control as GameControl bits. */
-uint64_t game_controls_down();
+ * counts, or CONTROL_NONE. */
+Control control_for_key(CF_KeyButton key);
+bool control_down(Control control);
+/* Every held control as Control bits. */
+uint64_t controls_down();
 /* The left stick, else WASD or the arrow keys; at most length 1. */
-CF_V2 game_controls_movement();
+CF_V2 controls_movement();
 /* The right stick's unit direction, or zero inside its dead zone. */
-CF_V2 game_controls_aim();
+CF_V2 controls_aim();
 /* A stick deflection in [-1, 1] with its radial dead zone removed: zero
  * inside it, then rescaled so the edge reads 0 and full deflection reads 1. */
-CF_V2 game_controls_dead_zone(CF_V2 stick);
+CF_V2 controls_dead_zone(CF_V2 stick);
 
 #endif

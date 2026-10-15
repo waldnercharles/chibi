@@ -48,8 +48,8 @@ void test_ui_pages()
         "<slot/>\n",
         "<slot/>\n",
     };
-    game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
-                                         .component_count = GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { .components = REGISTRY_COMPONENTS,
+                                    .component_count = REGISTRY_COMPONENT_COUNT };
     refactor_project project = { index, texts, &registry };
     refactor_plan plan = { 0 };
     char error[256] = "";

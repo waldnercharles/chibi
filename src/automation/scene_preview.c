@@ -29,7 +29,7 @@
 
 typedef struct
 {
-    game_prototype_preview *preview;
+    prototype_preview *preview;
     app_scene_renderer *renderer;
     engine_viewport *viewport;
     bool failed;
@@ -38,9 +38,9 @@ typedef struct
 static void draw_scene(void *user)
 {
     scene_preview *scene = user;
-    ecs_world *world = game_prototype_preview_world(scene->preview);
-    engine *runtime = game_prototype_preview_runtime(scene->preview);
-    const game_particles *particles = game_prototype_preview_particles(scene->preview);
+    ecs_world *world = prototype_preview_world(scene->preview);
+    engine *runtime = prototype_preview_runtime(scene->preview);
+    const particles *particles = prototype_preview_particles(scene->preview);
     if (engine_viewport_perspective(scene->viewport)) {
         render_scene3d_camera camera;
         engine_viewport_get_camera3d(scene->viewport, &camera);
@@ -90,10 +90,10 @@ typedef struct
     bool frozen, pass_timing, pass_detail;
     bool quality_override, shadow_override, sdf_trace_debug;
     bool hidden_rejection, spatial_scratch;
-    GameSurfaceQuality quality;
-    GameHRCShadowMode shadow_mode;
+    SurfaceQuality quality;
+    HRCShadowMode shadow_mode;
     unsigned horizon_reuse_mask;
-    GameHRC2D horizon_reuse;
+    HRC2D horizon_reuse;
     const char *capture_path;
     /* Optional raw RGBA8 file receiving every measured frame. */
     const char *frames_path;
@@ -198,22 +198,22 @@ static bool render_scene(
         app_scene_renderer_set_sdf_trace_debug(scene.renderer, options->sdf_trace_debug);
         app_scene_renderer_set_hidden_rejection(scene.renderer, options->hidden_rejection);
         app_scene_renderer_set_spatial_scratch(scene.renderer, options->spatial_scratch);
-        engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
+        engine *preview_runtime = prototype_preview_runtime(scene.preview);
         content_root = chibi_automation_content(root);
         ui = (ui_world){
-            .ecs = game_prototype_preview_world(scene.preview),
+            .ecs = prototype_preview_world(scene.preview),
             .model = engine_ui(preview_runtime),
-            .host = authoring_ui_events(game_prototype_preview_live(scene.preview))
+            .host = authoring_ui_events(prototype_preview_live(scene.preview))
         };
         show_scene(&scene, run, &ui, content_root);
         engine_viewport_view view;
-        int camera = game_camera_view(
-            game_prototype_preview_world(scene.preview),
-            game_prototype_preview_runtime(scene.preview),
+        int camera = camera_view(
+            prototype_preview_world(scene.preview),
+            prototype_preview_runtime(scene.preview),
             &view
         );
         if (camera < 0) {
-            snprintf(error, size, "GameCamera requires one enabled camera, a transform, positive view dimensions, and a field of view, clips and 3D pose the 3D view can use");
+            snprintf(error, size, "Camera requires one enabled camera, a transform, positive view dimensions, and a field of view, clips and 3D pose the 3D view can use");
             ok = false;
         }
         if (camera > 0) {
@@ -227,7 +227,7 @@ static bool render_scene(
     double timings[3600];
     int count = 0;
     double simulation_ms = 0, render_ms = 0;
-    engine *runtime = ok ? game_prototype_preview_runtime(scene.preview) : NULL;
+    engine *runtime = ok ? prototype_preview_runtime(scene.preview) : NULL;
     int warmup = options->bounded ? options->warmup : (render_frames > 2 ? 240 : 0);
     int skip = options->bounded ? 0 : 16;
     /* Command buffer timestamps avoid the per-pass waits of sync timing. */
@@ -284,10 +284,9 @@ static bool render_scene(
         }
         double simulation_elapsed = advance ? (seconds() - simulation_start) * 1000
                                             : 0;
-        engine_viewport_view camera_view;
-        if (game_camera_view(game_prototype_preview_world(scene.preview), runtime, &camera_view) >
-            0) {
-            engine_viewport_set_view(scene.viewport, &camera_view);
+        engine_viewport_view view;
+        if (camera_view(prototype_preview_world(scene.preview), runtime, &view) > 0) {
+            engine_viewport_set_view(scene.viewport, &view);
         }
         app_scene_renderer_set_time(
             scene.renderer,
@@ -358,11 +357,11 @@ static bool render_scene(
     }
     if (ok) {
         measurement->final_state = chibi_preview_state(run);
-        measurement->particles = game_particles_count(
-            game_prototype_preview_particles(scene.preview)
+        measurement->particles = particles_count(
+            prototype_preview_particles(scene.preview)
         );
         measurement->entities = ecs_world_live_count(
-            game_prototype_preview_world(scene.preview)
+            prototype_preview_world(scene.preview)
         );
         render_radiance_status lighting = { 0 };
         app_scene_renderer_lighting_status(scene.renderer, &lighting);
@@ -408,15 +407,14 @@ static bool surface_quality_options(yyjson_val *root, preview_options *options, 
             snprintf(error, size, "surface_quality requires samples 1 or 2, pixel_error 0 to 1, normal_samples 0, 4 or 6, and boolean lod");
             return false;
         }
-        options->quality = (GameSurfaceQuality){
-            .resolution = samples && yyjson_get_sint(samples) == 1
-                            ? GAME_SURFACE_FULL
-                            : GAME_SURFACE_SUPERSAMPLED,
+        options->quality = (SurfaceQuality){
+            .resolution = samples && yyjson_get_sint(samples) == 1 ? SURFACE_FULL
+                                                                   : SURFACE_SUPERSAMPLED,
             .sdf_pixel_error = pixel ? (float)yyjson_get_num(pixel) : 0,
-            .sdf_normal_mode = normal && yyjson_get_sint(normal) == 0 ? GAME_SDF_NORMAL_ANALYTIC
+            .sdf_normal_mode = normal && yyjson_get_sint(normal) == 0 ? SDF_NORMAL_ANALYTIC
                              : normal && yyjson_get_sint(normal) == 4
-                                 ? GAME_SDF_NORMAL_TETRAHEDRAL
-                                 : GAME_SDF_NORMAL_CENTRAL,
+                                 ? SDF_NORMAL_TETRAHEDRAL
+                                 : SDF_NORMAL_CENTRAL,
             .disable_sdf_lod = lod && !yyjson_get_bool(lod)
         };
     }
@@ -428,9 +426,9 @@ static bool surface_quality_options(yyjson_val *root, preview_options *options, 
             snprintf(error, size, "horizon_directions must be 0, 4 or 8");
             return false;
         }
-        options->shadow_mode = value == 8 ? GAME_HRC_SHADOW_HORIZON8
-                             : value == 4 ? GAME_HRC_SHADOW_HORIZON4
-                                          : GAME_HRC_SHADOW_REFERENCE;
+        options->shadow_mode = value == 8 ? HRC_SHADOW_HORIZON8
+                             : value == 4 ? HRC_SHADOW_HORIZON4
+                                          : HRC_SHADOW_REFERENCE;
     }
     yyjson_val *reuse = yyjson_obj_get(root, "horizon_reuse");
     if (reuse) {

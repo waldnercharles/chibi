@@ -17,7 +17,8 @@ installed authoring tool rather than mounting a game under the engine checkout.
 ## Start a project
 
 Scaffold files with the controller instead of copying another project. `new_project`
-writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
+writes `project.kdl`, a 3D `content/scenes/Start.kdl`, and editable Cube, Camera
+and Light prototypes. The cube is centered at the origin. `new_asset` writes an
 empty asset of one kind in its content folder, the same form Studio's New menu
 starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
 a bad name or path with `invalid_request`, and a disk that refuses the write with
@@ -52,7 +53,7 @@ included components in.
 
 ## Tilemap layers
 
-Put a `GAME.GameTilemap` on one transformed entity to draw an atlas-backed grid.
+Put a `Tilemap` on one transformed entity to draw an atlas-backed grid.
 `image` names the atlas, `columns` and `rows` give the grid dimensions, and
 `frame_width` and `frame_height` set both cell size in project units and atlas
 frame size in pixels. `cells` contains whitespace-separated row-major frame
@@ -102,7 +103,7 @@ runs. `*` and `/` combine them, so `charge.rate * dt` is in `charge` because
 same unit on both sides. A plain number literal takes the unit it meets in a
 sum or comparison, and as a factor it may carry any unit, so `3 * dt` is not
 checked. A value nothing measures, such as a local set to `0` or a function's
-result, is never checked either. The engine's own fields carry units too: a `GameMovement.speed` is in
+result, is never checked either. The engine's own fields carry units too: a `Movement.speed` is in
 `u/s` and a collider's `radius` is in `u`. A mismatch is a warning for now.
 `validate_project` lists it with its line, and the program still runs:
 
@@ -151,7 +152,7 @@ be unique among its siblings and cannot contain `.`; a path such as
                 name "Turret"
                 prototype "Turret"
                 components {
-                    GameTransform x=0.0 y=-12.0
+                    Transform x=0.0 y=-12.0
                 }
             }
         }
@@ -169,14 +170,14 @@ includes, and snapshots name only the scene's own entities.
 ```kdl
 name "Ship"
 components {
-    GameTransform x=0.0 y=0.0
+    Transform x=0.0 y=0.0
 }
 (array)children {
     - {
         name "Turret"
         prototype "Turret"
         components {
-            GameTransform x=0.0 y=-12.0
+            Transform x=0.0 y=-12.0
         }
     }
 }
@@ -258,7 +259,7 @@ takes effect after the frame: the host destroys every entity, discards
 uncommitted save changes, keeps committed save data, and starts the scene, whose
 Begin runs before its first frame. Time, held input and audio carry on.
 `chibi-compile` prepares every scene in `content/scenes`, so the player can load
-any of them, and refuses a scene that binds one `GameGlobalBinding` name to two
+any of them, and refuses a scene that binds one `GlobalBinding` name to two
 entities. Scene scenarios (`run_scenario`, `runtime_snapshot`,
 `profile_scenario` and recordings) follow requests the same way. Studio play
 mode cannot load scenes yet, so a request there fails with "This host cannot
@@ -287,7 +288,7 @@ tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 
 ## Simulate 3D bodies
 
-An entity with `GAME.GameTransform3D` and `GAME.GameCollider3D` collides in the
+An entity with `Transform3D` and `Collider3D` collides in the
 scene's Box3D world. A collider is a box (`size` is its full extents), a sphere
 (`radius`) or a capsule (`radius`, and `height` along local Y), scaled by the
 entity's world scale. A `shape="Hull"` collider wraps the vertices of `mesh`, a
@@ -296,7 +297,7 @@ is that mesh's triangles. A mesh collider is static and a root, and it touches
 only the other shapes, never another mesh. Hulls and meshes need a scale of at
 least .01 on each axis, and a negative scale mirrors them. Lengths are units,
 32 to the meter. Without
-`GAME.GameBody3D` the collider is static; with one it is kinematic, moving at its
+`Body3D` the collider is static; with one it is kinematic, moving at its
 velocities, or dynamic, and physics writes a dynamic body's position, rotation
 and velocities back each step. Dynamic bodies must be roots. Any other body
 under a ChildOf parent with a Transform3D follows it and ignores its own
@@ -305,16 +306,16 @@ becomes part of that body: it moves exactly with it, adds its mass (a sensor
 adds none), and its hits push the body while contact events name the child.
 Otherwise the child teleports when a script moves its parents. Moving a body's
 Transform3D from a script teleports it. Gravity is 9.81 meters per second
-squared down Y unless one entity's `GAME.GameGravity3D` sets it. 2D bodies
-fall only when one entity's `GAME.GameGravity` sets an `acceleration` in units
+squared down Y unless one entity's `Gravity3D` sets it. 2D bodies
+fall only when one entity's `Gravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 `on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
 and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
-renderer draws a body's `GAME.GameGeometry3D` at its Transform3D pose (see
+renderer draws a body's `Geometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).
 
-`GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
+`Character3D` turns a kinematic body with a solid capsule collider
 into a character that walks and slides. Each step physics moves it by its
 `linear_velocity` until it meets something solid, slides along what it meets,
 and drops the part of the velocity that pushes into it, so a script can add
@@ -326,7 +327,7 @@ at least 2 cm. Colliders under it must be sensors, because only its capsule
 moves and slides. It turns by its `Transform3D`; physics keeps its body's
 `angular_velocity` at zero.
 
-`GAME.GameJoint3D` joins the body at or above its entity to the body at or
+`Joint3D` joins the body at or above its entity to the body at or
 above `other`, or to the world when `other` is zero, at the entity's position.
 Put it on the body itself, or on a child entity with a Transform3D to place and
 turn the joint. `kind` is `Hinge`, turning about the entity's local Y axis;
@@ -342,18 +343,18 @@ limit and motor act only with its spring, so a spring of zero hertz and a limit
 make a slack rope. `collide` lets the two bodies touch. A joint holds the bodies
 as they were when it was made and is made again when its fields change or its
 entity moves on its body; a joint whose `other` is destroyed holds nothing.
-A scene names `other` by its path, such as `GAME.GameJoint3D other="Frame.Anchor"`,
+A scene names `other` by its path, such as `Joint3D other="Frame.Anchor"`,
 and a prototype names one of its children the same way, in its own components
 or a child's. A scene's paths reach only its own entities, not its instances'
 children. Any entity handle at the top of a component takes a path; loading
 the scene or spawning the prototype writes the entity there, and a path that
 names no entity fails validation and loading. Scripts may still set `other`.
 
-`GAME.GameJoint` joins 2D bodies the same way at the entity's `Transform`, with
+`Joint` joins 2D bodies the same way at the entity's `Transform`, with
 `Hinge`, `Slider`, `Weld` and `Distance` and no ball: a hinge turns about the
 entity, a slider moves along its local Y axis, and a hinge's limits stay within
 0.99 pi radians either way. A dynamic body turns only with `allow_rotation`, so
-a hinged door needs it and a `GAME.GameOrientation` to show its angle.
+a hinged door needs it and a `Orientation` to show its angle.
 
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and
@@ -374,18 +375,18 @@ vectors. A 3D body weighs 1000 kg per cubic meter, the density of water, and a
 and a force in kilogram units per second squared. Pushes act through the
 center of mass and add up, and they fail on an entity without a dynamic body.
 After each step physics writes a dynamic body's mass, with the solid colliders
-it carries, to `mass` on its `GAME.GameBody3D` or `GAME.GameBody`, so
+it carries, to `mass` on its `Body3D` or `Body`, so
 `self.Body3D.mass` times a change of speed is the impulse that makes it. The
 mass reads zero until the body's first step.
 
 ```kdl
 name "Crate"
 components {
-    GAME.GameBody3D type="Dynamic"
-    GAME.GameCollider3D category=1 mask=1 friction=0.6 {
+    Body3D type="Dynamic"
+    Collider3D category=1 mask=1 friction=0.6 {
         size x=32.0 y=32.0 z=32.0
     }
-    GAME.GameTransform3D {
+    Transform3D {
         position y=64.0
         scale x=1.0 y=1.0 z=1.0
     }

@@ -52,7 +52,7 @@ struct render_scene3d_post
     post_exposure exposure;
     CF_Canvas output, pending_output;
     CF_Shader downsample, blur, composite;
-    GameEnvironment settings;
+    Environment settings;
     bool ready;
     char error[512];
 };
@@ -231,7 +231,7 @@ static bool in_range(float value, float low, float high)
     return isfinite(value) && value >= low && value <= high;
 }
 
-bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int height, const GameEnvironment *settings)
+bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int height, const Environment *settings)
 {
     assert(post && settings);
     post->ready = false;
@@ -242,7 +242,7 @@ bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int heigh
         !in_range(settings->bloom_radius, 0, 0.25f) ||
         (settings->adaptation_speed != 0 &&
          !in_range(settings->adaptation_speed, slowest_adaptation, 100)) ||
-        (unsigned)settings->tone_mapping > GAME_TONE_MAPPING_NEUTRAL) {
+        (unsigned)settings->tone_mapping > TONE_MAPPING_NEUTRAL) {
         snprintf(
             post->error,
             sizeof post->error,
@@ -376,7 +376,7 @@ bool render_scene3d_post_process(render_scene3d_post *post, float time)
     cf_draw_push_filter(CF_DRAW_FILTER_LINEAR);
     cf_draw_push_alpha_discard(false);
 
-    GameEnvironment settings = post->settings;
+    Environment settings = post->settings;
     bool bloom = settings.bloom_strength > 0 && settings.bloom_radius > 0;
     float lod = fmaxf(0, log2f(fmaxf(settings.bloom_radius * post->targets.height / 4, 1)));
     lod = fminf(lod, post->targets.count - 1);

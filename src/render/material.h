@@ -1,5 +1,5 @@
-#ifndef CHIBI_GAME_MATERIAL_H
-#define CHIBI_GAME_MATERIAL_H
+#ifndef CHIBI_MATERIAL_H
+#define CHIBI_MATERIAL_H
 
 #include "runtime/components.h"
 #include "runtime/material_mask.h"
@@ -17,12 +17,12 @@ typedef struct
     float border_emission[4];
     float border_absorption[4];
     float border_albedo[4];
-} game_material_coefficients;
+} material_coefficients;
 
 /* Unpremultiplied linear coefficients matching Neon-Swarm's entity raster.
  * Absorption stores optical depth, not 1-absorption. Packed colors are RGBA8;
  * emission RGB remains HDR. Invalid/overflowing scalars leave output untouched. */
-bool game_material_extract(const GameMaterial *material, game_material_coefficients *out);
+bool material_extract(const Material *material, material_coefficients *out);
 
 typedef struct
 {

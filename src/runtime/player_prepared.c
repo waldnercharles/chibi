@@ -21,15 +21,15 @@ static bool fail(char *error, size_t size, const char *message)
 }
 static void header(execution_wire *wire)
 {
-    uint64_t identity = magic, version = GAME_PLAYER_PREPARED_VERSION;
+    uint64_t identity = magic, version = PLAYER_PREPARED_VERSION;
     execution_wire_u64(wire, &identity);
     execution_wire_u64(wire, &version);
-    if (!wire->error && (identity != magic || version != GAME_PLAYER_PREPARED_VERSION)) {
+    if (!wire->error && (identity != magic || version != PLAYER_PREPARED_VERSION)) {
         wire->error = "Prepared player magic or version is unsupported";
     }
 }
 /* The front of the artifact: bounded window settings any host can read alone. */
-static void application(execution_wire *wire, game_player_application *app)
+static void application(execution_wire *wire, player_application *app)
 {
     const char *title = app->title, *icon = app->icon;
     uint64_t width = (uint64_t)app->width, height = (uint64_t)app->height;
@@ -41,11 +41,10 @@ static void application(execution_wire *wire, game_player_application *app)
     if (wire->error) {
         return;
     }
-    if ((title && (!title[0] || strlen(title) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
-        (icon && (strlen(icon) > GAME_PLAYER_APPLICATION_TEXT_MAX ||
-                  !game_player_relative_path(icon))) ||
-        width > GAME_PLAYER_APPLICATION_SIZE_MAX ||
-        height > GAME_PLAYER_APPLICATION_SIZE_MAX) {
+    if ((title && (!title[0] || strlen(title) > PLAYER_APPLICATION_TEXT_MAX)) ||
+        (icon && (strlen(icon) > PLAYER_APPLICATION_TEXT_MAX ||
+                  !player_relative_path(icon))) ||
+        width > PLAYER_APPLICATION_SIZE_MAX || height > PLAYER_APPLICATION_SIZE_MAX) {
         wire->error = "Prepared player application settings are invalid";
         return;
     }
@@ -60,10 +59,10 @@ static const void *blob(execution_wire *wire, const void *data, size_t *length)
     if (wire->error) {
         return NULL;
     }
-    if (*length > GAME_PLAYER_PREPARED_MAX_BYTES ||
+    if (*length > PLAYER_PREPARED_MAX_BYTES ||
         (wire->reading && *length > wire->size - wire->offset) ||
         (!wire->reading &&
-         *length > GAME_PLAYER_PREPARED_MAX_BYTES - (size_t)acount(wire->data))) {
+         *length > PLAYER_PREPARED_MAX_BYTES - (size_t)acount(wire->data))) {
         wire->error = "Prepared player payload exceeds byte limit";
         return NULL;
     }
@@ -88,7 +87,7 @@ static const void *blob(execution_wire *wire, const void *data, size_t *length)
 static void count(execution_wire *wire, int *value)
 {
     execution_wire_count(wire, value, 1);
-    if (!wire->error && *value > GAME_PACKAGE_MAX_MODULES) {
+    if (!wire->error && *value > PACKAGE_MAX_MODULES) {
         wire->error = "Prepared player record count exceeds limit";
     }
 }
@@ -99,23 +98,22 @@ static void wire_name(execution_wire *wire, const char **value)
         wire->error = "Prepared player record name is invalid";
     }
 }
-static void assets(execution_wire *wire, game_player_asset **records, int *count)
+static void assets(execution_wire *wire, player_asset **records, int *count)
 {
     execution_wire_count(wire, count, 5);
-    if (!wire->error && *count > GAME_PLAYER_MAX_ASSETS) {
+    if (!wire->error && *count > PLAYER_MAX_ASSETS) {
         wire->error = "Prepared player resource count exceeds limit";
     }
     size_t bytes = 0;
     for (int i = 0; i < *count && !wire->error; i++) {
-        game_player_asset asset = wire->reading ? (game_player_asset){ 0 }
-                                                : (*records)[i];
+        player_asset asset = wire->reading ? (player_asset){ 0 } : (*records)[i];
         uint64_t kind = asset.kind;
         wire_name(wire, &asset.name);
         execution_wire_u64(wire, &kind);
-        if (!wire->error && kind >= GAME_PLAYER_ASSET_COUNT) {
+        if (!wire->error && kind >= PLAYER_ASSET_COUNT) {
             wire->error = "Prepared player resource kind is invalid";
         }
-        asset.kind = (game_player_asset_kind)kind;
+        asset.kind = (player_asset_kind)kind;
         execution_wire_bool(wire, &asset.external);
         execution_wire_string(wire, &asset.path);
         execution_wire_u64(wire, &asset.content_hash);
@@ -127,8 +125,8 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
                 wire->error = "Prepared player resource length mismatch";
             }
         }
-        if (!wire->error && (!game_player_asset_valid(&asset) ||
-                             asset.length > GAME_PLAYER_MAX_ASSET_BYTES - bytes)) {
+        if (!wire->error && (!player_asset_valid(&asset) ||
+                             asset.length > PLAYER_MAX_ASSET_BYTES - bytes)) {
             wire->error = "Prepared player resource metadata is invalid";
         }
         bytes += asset.length;
@@ -157,13 +155,12 @@ static void actions(execution_wire *wire, input_action **records, int *count)
     }
 }
 /* Refuses a scene the player would refuse to enter, so compiling catches it. */
-static void scene_write(execution_wire *wire, const game_scene *scene, char *error, size_t size)
+static void scene_write(execution_wire *wire, const scene *scene, char *error, size_t size)
 {
     unsigned char *data = NULL;
     size_t length = 0;
-    if (!wire->error &&
-        (!scene || !game_player_scene_bindings_valid(scene, error, size) ||
-         !game_scene_prepared_write(scene, &data, &length, error, size))) {
+    if (!wire->error && (!scene || !player_scene_bindings_valid(scene, error, size) ||
+                         !scene_prepared_write(scene, &data, &length, error, size))) {
         wire->error = "Prepared player scene encoding failed";
     }
     if (!wire->error) {
@@ -171,9 +168,9 @@ static void scene_write(execution_wire *wire, const game_scene *scene, char *err
     }
     free(data);
 }
-bool game_player_prepared_write(
-    const game_player_spec *spec,
-    const game_player_application *app,
+bool player_prepared_write(
+    const player_spec *spec,
+    const player_application *app,
     unsigned char **data,
     size_t *length,
     char *error,
@@ -187,29 +184,27 @@ bool game_player_prepared_write(
         error[0] = 0;
     }
     if (!spec->scene || spec->module_count < 0 ||
-        spec->module_count > GAME_PACKAGE_MAX_MODULES ||
+        spec->module_count > PACKAGE_MAX_MODULES ||
         (spec->module_count && !spec->modules) || spec->prototype_count < 0 ||
-        spec->prototype_count > GAME_PACKAGE_MAX_MODULES ||
+        spec->prototype_count > PACKAGE_MAX_MODULES ||
         (spec->prototype_count && !spec->prototypes) || spec->scene_count < 0 ||
-        spec->scene_count > GAME_PACKAGE_MAX_MODULES ||
+        spec->scene_count > PACKAGE_MAX_MODULES ||
         (spec->scene_count && !spec->scenes) || spec->world.ecs ||
-        (spec->world.modules & ~GAME_WORLD_MODULES_ALL) ||
-        spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
-        (spec->asset_count && !spec->assets) ||
-        !game_world_actions_valid(spec->world.actions, spec->world.action_count)) {
+        (spec->world.modules & ~WORLD_MODULES_ALL) || spec->asset_count < 0 ||
+        spec->asset_count > PLAYER_MAX_ASSETS || (spec->asset_count && !spec->assets) ||
+        !world_actions_valid(spec->world.actions, spec->world.action_count)) {
         return fail(error, size, "Invalid prepared player record metadata");
     }
     execution_wire wire = { 0 };
     header(&wire);
-    game_player_application settings = *app;
+    player_application settings = *app;
     application(&wire, &settings);
     uint64_t flags = spec->world.modules;
     execution_wire_u64(&wire, &flags);
     declared_components *declared = spec->declared;
     declared_components_wire(&wire, &declared);
     scene_write(&wire, spec->scene, error, size);
-    const char *start = spec->scene_name ? spec->scene_name
-                                         : game_scene_name(spec->scene);
+    const char *start = spec->scene_name ? spec->scene_name : scene_name(spec->scene);
     wire_name(&wire, &start);
     unsigned char *fields = NULL;
     size_t field_length = 0;
@@ -224,7 +219,7 @@ bool game_player_prepared_write(
     unsigned char *events = NULL;
     size_t event_length = 0;
     if (!wire.error && spec->world.events &&
-        !game_event_catalog_write(spec->world.events, &events, &event_length, error, size)) {
+        !event_catalog_write(spec->world.events, &events, &event_length, error, size)) {
         wire.error = "Prepared player event catalog encoding failed";
     }
     if (!wire.error) {
@@ -237,7 +232,7 @@ bool game_player_prepared_write(
     int modules = spec->module_count;
     count(&wire, &modules);
     for (int i = 0; i < modules && !wire.error; i++) {
-        const game_package_module *m = &spec->modules[i];
+        const package_module *m = &spec->modules[i];
         const char *name = m->name;
         uint64_t id = m->id;
         if (!name || !name[0] || !id || !m->length) {
@@ -252,9 +247,9 @@ bool game_player_prepared_write(
     int prototypes = spec->prototype_count;
     count(&wire, &prototypes);
     for (int i = 0; i < prototypes && !wire.error; i++) {
-        const game_player_prototype *p = &spec->prototypes[i];
+        const player_prototype *p = &spec->prototypes[i];
         const char *name = p->name;
-        if (!name || !name[0] || !p->scene || !game_scene_is_tree(p->scene)) {
+        if (!name || !name[0] || !p->scene || !scene_is_tree(p->scene)) {
             wire.error = "Prepared player prototype record is incomplete";
             break;
         }
@@ -268,7 +263,7 @@ bool game_player_prepared_write(
         wire_name(&wire, &name);
         scene_write(&wire, spec->scenes[i].scene, error, size);
     }
-    game_player_asset *asset_records = (game_player_asset *)spec->assets;
+    player_asset *asset_records = (player_asset *)spec->assets;
     int asset_count = spec->asset_count;
     assets(&wire, &asset_records, &asset_count);
     if (wire.error) {
@@ -284,7 +279,7 @@ bool game_player_prepared_write(
     afree(wire.data);
     return true;
 }
-static game_scene *scene_read(
+static scene *scene_read(
     execution_wire *wire,
     ecs_component_catalog catalog,
     size_t *remaining,
@@ -297,16 +292,16 @@ static game_scene *scene_read(
     if (wire->error) {
         return NULL;
     }
-    game_scene *scene = game_scene_prepared_read_budget(data, length, catalog, remaining, error, size);
+    scene *scene = scene_prepared_read_budget(data, length, catalog, remaining, error, size);
     if (!scene) {
         wire->error = "Prepared player scene decoding failed";
     }
     return scene;
 }
-game_player *game_player_prepared_read(
+player *player_prepared_read(
     const void *data,
     size_t length,
-    const game_player_host *host,
+    const player_host *host,
     behavior_backend backend,
     char *error,
     size_t size
@@ -316,23 +311,23 @@ game_player *game_player_prepared_read(
     if (size) {
         error[0] = 0;
     }
-    if (!data || length > GAME_PLAYER_PREPARED_MAX_BYTES) {
+    if (!data || length > PLAYER_PREPARED_MAX_BYTES) {
         fail(error, size, "Invalid prepared player bytes");
         return NULL;
     }
     arena storage = { 0 };
-    size_t metadata_budget = GAME_PLAYER_PREPARED_MAX_BYTES;
+    size_t metadata_budget = PLAYER_PREPARED_MAX_BYTES;
     execution_wire wire = { .data = (unsigned char *)data,
                             .size = length,
                             .reading = true,
                             .storage = &storage,
                             .storage_budget = &metadata_budget };
     header(&wire);
-    game_player_application settings = { 0 };
+    player_application settings = { 0 };
     application(&wire, &settings);
     uint64_t flags = 0;
     execution_wire_u64(&wire, &flags);
-    if (!wire.error && (flags & ~(uint64_t)GAME_WORLD_MODULES_ALL)) {
+    if (!wire.error && (flags & ~(uint64_t)WORLD_MODULES_ALL)) {
         wire.error = "Prepared player module selection is invalid";
     }
     /* Declared components precede everything that stores their rows. */
@@ -352,20 +347,20 @@ game_player *game_player_prepared_read(
     execution_prepared_linker linker = host->linker
                                          ? declared_components_linker(&linking)
                                          : (execution_prepared_linker){ 0 };
-    game_player_spec spec = { .world = { .modules = (unsigned)flags,
-                                         .components = catalog,
-                                         .log = host->log },
-                              .declared = declared,
-                              .linker = host->linker ? &linker : NULL,
-                              .backend = backend };
-    game_player *player = NULL;
-    game_package_module *modules = NULL;
-    game_player_prototype *prototypes = NULL;
-    game_player_named_scene *scenes = NULL;
-    game_player_asset *asset_records = NULL;
+    player_spec spec = { .world = { .modules = (unsigned)flags,
+                                    .components = catalog,
+                                    .log = host->log },
+                         .declared = declared,
+                         .linker = host->linker ? &linker : NULL,
+                         .backend = backend };
+    player *player = NULL;
+    package_module *modules = NULL;
+    player_prototype *prototypes = NULL;
+    player_named_scene *scenes = NULL;
+    player_asset *asset_records = NULL;
     spec.resources = host->resources;
     size_t decoded_budget = host->decoded_budget ? host->decoded_budget
-                                                 : GAME_PLAYER_PREPARED_MAX_BYTES;
+                                                 : PLAYER_PREPARED_MAX_BYTES;
     spec.decoded_remaining = &decoded_budget;
     spec.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
     wire_name(&wire, &spec.scene_name);
@@ -386,7 +381,7 @@ game_player *game_player_prepared_read(
     size_t event_length = 0;
     const void *events = blob(&wire, NULL, &event_length);
     if (!wire.error && event_length) {
-        spec.world.events = game_event_catalog_read_budget(
+        spec.world.events = event_catalog_read_budget(
             events,
             event_length,
             spec.linker,
@@ -403,7 +398,7 @@ game_player *game_player_prepared_read(
     spec.world.actions = input;
     count(&wire, &spec.module_count);
     for (int i = 0; i < spec.module_count && !wire.error; i++) {
-        game_package_module m = { 0 };
+        package_module m = { 0 };
         wire_name(&wire, &m.name);
         execution_wire_u64(&wire, &m.id);
         m.data = blob(&wire, NULL, &m.length);
@@ -414,7 +409,7 @@ game_player *game_player_prepared_read(
     spec.modules = modules;
     count(&wire, &spec.prototype_count);
     for (int i = 0; i < spec.prototype_count && !wire.error; i++) {
-        game_player_prototype p = { 0 };
+        player_prototype p = { 0 };
         wire_name(&wire, &p.name);
         p.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
         if (p.scene) {
@@ -424,7 +419,7 @@ game_player *game_player_prepared_read(
     spec.prototypes = prototypes;
     count(&wire, &spec.scene_count);
     for (int i = 0; i < spec.scene_count && !wire.error; i++) {
-        game_player_named_scene named = { 0 };
+        player_named_scene named = { 0 };
         wire_name(&wire, &named.name);
         named.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
         if (named.scene) {
@@ -438,17 +433,17 @@ game_player *game_player_prepared_read(
         wire.error = "Prepared player bytes have trailing data";
     }
     if (!wire.error) {
-        player = game_player_new(&spec, error, size);
+        player = player_new(&spec, error, size);
     } else if (!size || !error[0]) {
         fail(error, size, wire.error);
     }
-    game_scene_free(spec.scene);
+    scene_free(spec.scene);
     for (int i = 0; i < acount(prototypes); i++) {
-        game_scene_free(prototypes[i].scene);
+        scene_free(prototypes[i].scene);
     }
     afree(prototypes);
     for (int i = 0; i < acount(scenes); i++) {
-        game_scene_free(scenes[i].scene);
+        scene_free(scenes[i].scene);
     }
     afree(scenes);
     afree(modules);
@@ -457,18 +452,18 @@ game_player *game_player_prepared_read(
     if (spec.world.fields) {
         material_fields_free(spec.world.fields);
     }
-    game_event_catalog_free(spec.world.events);
+    event_catalog_free(spec.world.events);
     afree(components);
     declared_components_free(declared);
     arena_free(&storage);
     return player;
 }
-bool game_player_application_read(const char *path, game_player_application *app, char *error, size_t size)
+bool player_application_read(const char *path, player_application *app, char *error, size_t size)
 {
     assert(path && app && (!size || error));
-    *app = (game_player_application){ 0 };
+    *app = (player_application){ 0 };
     /* Header, two bounded strings with their sizes, two sizes and a flag. */
-    unsigned char data[2 * GAME_PLAYER_APPLICATION_TEXT_MAX + 256];
+    unsigned char data[2 * PLAYER_APPLICATION_TEXT_MAX + 256];
     FILE *file = fopen(path, "rb");
     if (!file) {
         return fail(error, size, "Prepared player file could not be opened");
@@ -479,7 +474,7 @@ bool game_player_application_read(const char *path, game_player_application *app
     arena storage = { 0 };
     execution_wire wire = { .data = data, .size = length, .reading = true, .storage = &storage };
     header(&wire);
-    game_player_application read = { 0 };
+    player_application read = { 0 };
     application(&wire, &read);
     if (wire.error) {
         arena_free(&storage);
@@ -491,19 +486,13 @@ bool game_player_application_read(const char *path, game_player_application *app
     arena_free(&storage);
     return true;
 }
-void game_player_application_free(game_player_application *app)
+void player_application_free(player_application *app)
 {
     free(app->title);
     free(app->icon);
-    *app = (game_player_application){ 0 };
+    *app = (player_application){ 0 };
 }
-game_player *game_player_open(
-    const char *path,
-    const game_player_host *host,
-    behavior_backend backend,
-    char *error,
-    size_t size
-)
+player *player_open(const char *path, const player_host *host, behavior_backend backend, char *error, size_t size)
 {
     assert(path && host && (!size || error));
     FILE *file = fopen(path, "rb");
@@ -512,20 +501,19 @@ game_player *game_player_open(
         return NULL;
     }
     unsigned char *data = NULL;
-    game_player *player = NULL;
+    player *player = NULL;
     if (fseek(file, 0, SEEK_END)) {
         goto reject;
     }
     long length = ftell(file);
-    if (length < 0 || length > GAME_PLAYER_PREPARED_MAX_BYTES ||
-        fseek(file, 0, SEEK_SET)) {
+    if (length < 0 || length > PLAYER_PREPARED_MAX_BYTES || fseek(file, 0, SEEK_SET)) {
         goto reject;
     }
     data = xmalloc((size_t)length);
     if (fread(data, 1, (size_t)length, file) != (size_t)length) {
         goto reject;
     }
-    player = game_player_prepared_read(data, (size_t)length, host, backend, error, size);
+    player = player_prepared_read(data, (size_t)length, host, backend, error, size);
     free(data);
     fclose(file);
     return player;

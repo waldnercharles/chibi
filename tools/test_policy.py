@@ -19,12 +19,13 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--scene3d-camera',): 'Five fixed CPU camera/framing cases, at most eight corners at three aspect ratios and three ECS cameras, no engine frames, files, processes, network or GPU; shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
-    ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
+    ('--web-storage',): 'First supervised measurement; independently reviewed fifteen C-owned browser storage and platform cases, four bundled KDL inputs and tiny in-memory FS/ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
-    ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
-    ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
+    ('--studio-graph-visibility',): 'Independently reviewed installed Studio graph visibility, grouped choices, graph/code cursor and focus synchronization, entry framing, immediate/reduced-motion camera navigation, empty Variables root, scene draft history and tilemap bounds/layer picking; two temporary entities/four CPU picks, tiny Counter/helper/event and no-state source rewrites in disposable three-file fixture with isolated prefs, ten hidden1920x1080frames at fixed1/60, shared60s',
+    ('--studio-source-edit',): 'Independently reviewed installed Studio source edit/undo/redo on one tiny Counter draft with leading authored comment: fused calls and editable folded Double(3) Value without Target, actual Value pin menu open-function/back and checked inline transaction, two state Get/Set palette creations with exact catalog freshness after inline/undo, Members declaration/Initial rendering and rename, actual Members Rml Variables+ click and queued activation twice with64dp overflowing list, eight finite first-frame panel compositions including post-layout reveal retries and selected-row containment, filtered Add auto-selection/clear, graph/frame and Members-list reveal queued for bool/entity plus Properties rename and Entity type picker callback with no synthetic Initial, selected Entity actual Add/filter clear/selection and undo, Properties Member retention after cached-node invalidation and explicit different-node switch, undo-all current presentation contains only original integer Count, two ed_connect flow gestures (reorder and move into branch); each edit undone to exact draft before baseline literal edit/undo/redo; one crossframe FrameProbe declaration append/reveal/deselect/undo in Both checks visible card then its removal and graph texture revision change within same four frames; disposable three-file fixture and isolated prefs, four hidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -38,10 +39,10 @@ NATIVE = {
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
-    ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
+    ('--source-edit',): 'Independently reviewed fifteen fixed source-edit cases, tiny literal inputs and checked transactions including extraction/inline/signature/binding/capture/layout, fused-call delete/move/expression/insert/extraction, named-action disable/enable edits and Value input replace/connect preserving its assignment destination, source Get/Set creation with qualified quoted state identity/defaults/typed producers and lexical shadow checks, declaration append after leading line/block comments and component compound Get/Set metadata remap with distinct positions/comments/watched pins, checked state retype preserving comments/compatible initializers and rejecting ill-typed uses, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
-    ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
+    ('--source-presentation',): 'Independently reviewed twenty fixed source/palette cases and two component cases: tiny literal programs for ownership/layout, invalid drafts, callable scope/formulas, linear/branch/loop/await projection, Set/Get origins, Value-only setters, editable indexed/component receivers, natural handler completion and explicit End Event, named typed calls/clone/edit, pure single-result folding with watch/breakpoint/shared-use visibility, namespace field projection and keyed catalog generation, implicit empty entity/array declarations without fake Initial versus authored initializer, callable target resolution and owned hover descriptions, one eager named state-read snapshot, explicit and short-circuit effects; static palette and two in-memory component documents, CPU parse/analyze/projection only, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
 }
 TOOLS = {
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
@@ -160,6 +161,8 @@ TOOLS = {
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics'],
     # 3D physics through ECS and Contact 3D events: shapes, gravity, velocities, teleports, followers, sensors, interpolation and parallel steps.
     'physics3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics3d'],
+    # Fixed CPU projection and oblique framing math; no graphics context.
+    'scene3d-camera': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-camera'],
     # Transform hierarchy propagation: 2D and 3D composition, cascade order, moves and reparenting.
     'transforms': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--transforms'],
     'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ui-authoring'],
@@ -201,7 +204,7 @@ TOOLS = {
 }
 # Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms', 'scene3d-camera',
                'box3d', 'sky-files', 'mesh-files', 'model-import', 'tilemap',
                'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
                'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',

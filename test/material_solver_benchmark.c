@@ -145,8 +145,8 @@ static void diagnostics(const material_fluid *fluid, int side, bool collision)
 static uint64_t run(int solver, int side, int frames, int workers, bool collision, bool measured)
 {
     material_fluid *fluid = make_patch(solver, side, collision);
-    game_task_pool *pool = game_task_pool_acquire_workers(workers);
-    material_fluid_set_tasks(fluid, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(workers);
+    material_fluid_set_tasks(fluid, task_pool_tasks(pool));
     /* Keep the entire moving patch active, independent of its spreading. */
     fluid_region region = { -1000000, -1000000, 2000000, 2000000 };
     fluid_body body = { .position = { 0, -side * .5f - 4 } };
@@ -158,7 +158,7 @@ static uint64_t run(int solver, int side, int frames, int workers, bool collisio
     for (int frame = 0; frame < frames; frame++) {
         material_fluid_profile profile = { 0 };
         double start = measured ? clock_ms() : 0;
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_fluid_tick_profiled(
             fluid,
             1.f / 60,
@@ -171,7 +171,7 @@ static uint64_t run(int solver, int side, int frames, int workers, bool collisio
             collision ? 1 : 0,
             measured ? &profile : NULL
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         if (measured) {
             double values[PHASE_COUNT] = {
                 clock_ms() - start,    profile.reactions_ms,
@@ -203,7 +203,7 @@ static uint64_t run(int solver, int side, int frames, int workers, bool collisio
             side,
             frames,
             workers,
-            game_task_pool_tasks(pool)->workers,
+            task_pool_tasks(pool)->workers,
             1.f / 60
         );
         for (int phase = 0; phase < PHASE_COUNT; phase++) {
@@ -236,7 +236,7 @@ static uint64_t run(int solver, int side, int frames, int workers, bool collisio
     uint64_t hash = state_hash(fluid);
     free(samples);
     material_fluid_free(fluid);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return hash;
 }
 

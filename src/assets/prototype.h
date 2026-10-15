@@ -1,5 +1,5 @@
-#ifndef CHIBI_GAME_PROTOTYPE_H
-#define CHIBI_GAME_PROTOTYPE_H
+#ifndef CHIBI_PROTOTYPE_H
+#define CHIBI_PROTOTYPE_H
 
 #include "assets/scene_document.h"
 #include "ecs/ecs.h"
@@ -8,18 +8,18 @@
 #include <stddef.h>
 
 /* The longest name a prototype may declare, in bytes. */
-#define GAME_PROTOTYPE_NAME_MAX 1024
+#define PROTOTYPE_NAME_MAX 1024
 /* The most prototype documents one load, or the loads a project prepares
  * together, may read through includes and children, so a small set of
  * documents cannot expand without bound. A prepared scene holds at most 4096
  * records, so no tree that prepares comes near it. */
-#define GAME_PROTOTYPE_EXPANSION_MAX 16384
+#define PROTOTYPE_EXPANSION_MAX 16384
 /* The most bytes of those documents the same loads may read, the most a
  * prepared player artifact holds, so many instances of one large document
  * cannot multiply its size without bound. */
-#define GAME_PROTOTYPE_READ_MAX (64 * 1024 * 1024)
+#define PROTOTYPE_READ_MAX (64 * 1024 * 1024)
 
-typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
+typedef const char *(*prototype_include_fn)(const char *name, void *user);
 
 /* Borrowed typed rows matching the registered descriptor's native layout.
  * Adding a component copies its fields and retains managed strings. */
@@ -28,42 +28,37 @@ typedef struct
     ecs_component_id component;
     const void *data;
     size_t size;
-} game_prototype_default;
+} prototype_default;
 
 typedef struct
 {
     const ecs_component_desc *const *components;
     int component_count;
-    game_prototype_include_fn include;
+    prototype_include_fn include;
     void *include_user;
-    const game_prototype_default *defaults;
+    const prototype_default *defaults;
     int default_count;
-} game_prototype_registry;
+} prototype_registry;
 
-typedef int (*game_prototype_attach_fn)(
-    ecs_world *world,
-    ecs_entity entity,
-    const char *graph_name,
-    void *user
-);
+typedef int (*prototype_attach_fn)(ecs_world *world, ecs_entity entity, const char *graph_name, void *user);
 
 typedef struct
 {
-    game_prototype_attach_fn attach;
+    prototype_attach_fn attach;
     void *attach_user;
-} game_prototype_spawn_hooks;
+} prototype_spawn_hooks;
 
 typedef struct
 {
     const ecs_component_desc *desc;
     void *data;
-} game_prototype_component;
+} prototype_component;
 
 typedef struct
 {
     ecs_component_desc desc;
     char *name;
-} game_prototype_tag;
+} prototype_tag;
 
 /* A handle field authored as an entity path, which holds zero until a scene
  * or spawn resolves it. The '.'-separated path names an entity from the roots
@@ -76,20 +71,20 @@ typedef struct
     int field;  /* top-level, in the component's type */
     char *path; /* owned */
     bool outer;
-} game_prototype_link;
+} prototype_link;
 
-typedef struct game_prototype
+typedef struct prototype
 {
     char *name;
     char *identity;
     /* Registry value is owned; descriptors, default rows and include context
      * remain borrowed for subsequent authoring operations. */
-    game_prototype_registry registry_storage;
-    const game_prototype_registry *registry;
-    game_prototype_tag tag;
-    game_prototype_component *components;
+    prototype_registry registry_storage;
+    const prototype_registry *registry;
+    prototype_tag tag;
+    prototype_component *components;
     /* Authoring-only values; never included when spawning runtime components. */
-    game_prototype_component *detached_components;
+    prototype_component *detached_components;
     char **graphs;
     char **includes; /* the prototypes its document includes, in order */
     /* Loaded as authored: it holds only its own content, so saving names its
@@ -97,139 +92,119 @@ typedef struct game_prototype
     bool authored;
     /* Its children, nested in the scene entity shape: the document's roots
      * are this prototype's direct children. NULL when it has none. */
-    game_scene_document *children;
+    scene_document *children;
     /* Loaded with an include resolver, each of `children`'s entities as it
      * spawns: its prototype with the child's components and behaviors, named
      * as the child. Empty for an authored load. */
-    struct game_prototype **child_prototypes;
+    struct prototype **child_prototypes;
     /* Its handle fields that name entities, attached or detached. */
-    game_prototype_link *links;
-    int expanded; /* the other documents its load read, at most GAME_PROTOTYPE_EXPANSION_MAX */
-    size_t read; /* their bytes, at most GAME_PROTOTYPE_READ_MAX */
+    prototype_link *links;
+    int expanded; /* the other documents its load read, at most PROTOTYPE_EXPANSION_MAX */
+    size_t read; /* their bytes, at most PROTOTYPE_READ_MAX */
     char **strings;
-} game_prototype;
+} prototype;
 
 /* The component a document names by stable key or reflected name, or NULL. */
-const ecs_component_desc *game_prototype_registry_find(
-    const game_prototype_registry *registry,
-    const char *name
-);
-game_prototype *game_prototype_load(
-    const char *value,
-    const game_prototype_registry *registry,
-    char *error,
-    size_t error_size
-);
+const ecs_component_desc *prototype_registry_find(const prototype_registry *registry, const char *name);
+prototype *prototype_load(const char *value, const prototype_registry *registry, char *error, size_t error_size);
 /* Only what the document itself authors: its includes are named in
  * `includes`, and its children's prototypes in `children`, but neither is
  * loaded, so no resolver is needed. For indexing a
  * prototype's direct references; its components are not what it spawns. */
-game_prototype *game_prototype_load_authored(
+prototype *prototype_load_authored(
     const char *text,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char *error,
     size_t error_size
 );
 /* Applies the entity's component values from the document that holds the
  * prototype as an entity, so the paths they name are `outer`. */
-int game_prototype_apply_entity_components(
-    game_prototype *prototype,
-    av_value *components,
-    char *error,
-    size_t error_size
-);
+int prototype_apply_entity_components(prototype *prototype, av_value *components, char *error, size_t error_size);
 /* The entity paths a document's component values name, as `outer` links; the
- * caller frees them with game_prototype_links_free. */
-game_prototype_link *game_prototype_components_links(
-    const game_prototype_registry *registry,
-    av_value *components
-);
-void game_prototype_links_free(game_prototype_link *links);
+ * caller frees them with prototype_links_free. */
+prototype_link *prototype_components_links(const prototype_registry *registry, av_value *components);
+void prototype_links_free(prototype_link *links);
 /* A prototype named `name` with no components or behaviors. */
-game_prototype *game_prototype_new(const char *name);
-game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
-const char *game_prototype_identity(const game_prototype *prototype);
-const ecs_component_desc *game_prototype_tag_desc(const game_prototype *prototype);
-game_prototype *game_prototype_capture_entity(
+prototype *prototype_new(const char *name);
+prototype *prototype_clone(const prototype *prototype, char *error, size_t error_size);
+const char *prototype_identity(const prototype *prototype);
+const ecs_component_desc *prototype_tag_desc(const prototype *prototype);
+prototype *prototype_capture_entity(
     const char *name,
     const ecs_world *world,
     ecs_entity entity,
-    const game_prototype_registry *registry
+    const prototype_registry *registry
 );
-void game_prototype_free(game_prototype *prototype);
-char *game_prototype_save(const game_prototype *prototype);
-av_value *game_prototype_to_value(const game_prototype *prototype);
-game_prototype *game_prototype_load_value(
+void prototype_free(prototype *prototype);
+char *prototype_save(const prototype *prototype);
+av_value *prototype_to_value(const prototype *prototype);
+prototype *prototype_load_value(
     av_value *value,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char *error,
     size_t error_size
 );
-av_value *game_prototype_components_value(const game_prototype *prototype);
+av_value *prototype_components_value(const prototype *prototype);
 /* Owned single-component native value, including reflected nested fields. */
-av_value *game_prototype_entity_component_value(
+av_value *prototype_entity_component_value(
     const ecs_world *world,
     ecs_entity entity,
     const ecs_component_desc *desc,
-    const game_prototype_registry *registry
+    const prototype_registry *registry
 );
 /* Sparse fields, full added components, and null removed components, using
  * the same semantics as capturing an entity. A handle overrides only where
  * `current` names another entity path, so `current` may be a captured
  * entity's. Caller owns the returned native value. */
-av_value *game_prototype_overrides_value(const game_prototype *base, const game_prototype *current);
-av_value *game_prototype_capture_overrides_value(
-    const game_prototype *base,
-    const ecs_world *world,
-    ecs_entity entity
-);
-/* Entity paths leave their handles zero; game_prototype_components_links
+av_value *prototype_overrides_value(const prototype *base, const prototype *current);
+av_value *prototype_capture_overrides_value(const prototype *base, const ecs_world *world, ecs_entity entity);
+/* Entity paths leave their handles zero; prototype_components_links
  * lists them for the caller to resolve. */
-int game_prototype_apply_components_value(
+int prototype_apply_components_value(
     ecs_world *world,
     ecs_entity entity,
     av_value *components,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     char ***owned_strings,
     char *error,
     size_t error_size
 );
-/* Free strings retained by game_prototype_apply_components_value after their
+/* Free strings retained by prototype_apply_components_value after their
  * ECS component values are no longer used. */
-void game_prototype_owned_strings_free(char **strings);
+void prototype_owned_strings_free(char **strings);
 /* Allocate authored components without running attached behaviors. */
-int game_prototype_spawn_components(
-    const game_prototype *prototype,
+int prototype_spawn_components(
+    const prototype *prototype,
     ecs_world *world,
     ecs_entity *entity,
     char *error,
     size_t error_size
 );
-int game_prototype_spawn(
-    const game_prototype *prototype,
+int prototype_spawn(
+    const prototype *prototype,
     ecs_world *world,
-    const game_prototype_spawn_hooks *hooks,
+    const prototype_spawn_hooks *hooks,
     ecs_entity *out_entity,
     char *error,
     size_t error_size
 );
 
-int game_prototype_read_field(
-    const game_prototype *prototype,
+int prototype_read_field(
+    const prototype *prototype,
     const char *component_name,
     const char *field_name,
     pin_value *out
 );
-int game_prototype_write_field(
-    game_prototype *prototype,
+int prototype_write_field(
+    prototype *prototype,
     const char *component_name,
     const char *field_name,
     pin_value value
 );
 /* Apply one reflected native value field using the same conversion rules as loading a
  * prototype document. The value is borrowed for the duration of the call. */
-int game_prototype_write_field_value(
-    game_prototype *prototype,
+int prototype_write_field_value(
+    prototype *prototype,
     const char *component_name,
     const char *field_name,
     av_value *value,
@@ -238,27 +213,27 @@ int game_prototype_write_field_value(
 );
 /* Restores detached values, otherwise uses the first supplied typed default
  * row for this component, or zero initialization when the registry omits it. */
-int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc);
-int game_prototype_remove_component(game_prototype *prototype, const char *component_name);
+int prototype_add_component(prototype *prototype, const ecs_component_desc *desc);
+int prototype_remove_component(prototype *prototype, const char *component_name);
 /* Detach retains values for add_component to restore, including after save/load. */
-int game_prototype_detach_component(game_prototype *prototype, const char *component_name);
+int prototype_detach_component(prototype *prototype, const char *component_name);
 /* Single-component objects from entity_component_value. Defaults may be {} when
  * the component is local or no longer in the prototype. The owned result keeps
  * local edits and adopts current defaults for unchanged fields, recursively. */
-av_value *game_prototype_rebase_component_value(
+av_value *prototype_rebase_component_value(
     av_value *values,
     av_value *previous_defaults,
     av_value *current_defaults
 );
 /* Owned single-component object; {} if this prototype has no such component. */
-av_value *game_prototype_component_value(const game_prototype *prototype, const char *name);
+av_value *prototype_component_value(const prototype *prototype, const char *name);
 /* Owned default component values shared by prototype and scene attachment. */
-av_value *game_prototype_component_defaults_value(
-    const game_prototype_registry *registry,
+av_value *prototype_component_defaults_value(
+    const prototype_registry *registry,
     const ecs_component_desc *desc
 );
-int game_prototype_add_graph(game_prototype *prototype, const char *asset_name);
-int game_prototype_remove_graph(game_prototype *prototype, const char *asset_name);
-int game_prototype_has_graph(const game_prototype *prototype, const char *asset_name);
+int prototype_add_graph(prototype *prototype, const char *asset_name);
+int prototype_remove_graph(prototype *prototype, const char *asset_name);
+int prototype_has_graph(const prototype *prototype, const char *asset_name);
 
 #endif

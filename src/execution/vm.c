@@ -5,6 +5,7 @@
 
 int behavior_function_run_interpreted(const behavior_function *f, behavior_function_context *ctx)
 {
+    behavior_run_record(EXECUTION_RUN_BYTECODE);
     execution_machine machine;
     execution_machine_begin(&machine, f, ctx, true);
     int instruction_count = acount(machine.instructions);

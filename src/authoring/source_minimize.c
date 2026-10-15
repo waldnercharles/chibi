@@ -1129,7 +1129,36 @@ typedef struct
     const script_catalog *catalog;
     const char *identity;
     const script_analysis *original;
+    const char *text;
+    script_range *comments;
 } oracle;
+
+static void collect_comments(TSNode node, script_range **comments)
+{
+    if (is(node, "comment")) {
+        apush(*comments, script_node_range(node));
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        collect_comments(ts_node_child(node, i), comments);
+    }
+}
+/* Execution equivalence does not protect comments. Reject a rewrite that
+ * changes their exact bytes or order, retaining the original attachment
+ * rather than guessing where a deleted wrapper's comments should move. */
+static bool same_comments(const oracle *o, const script_syntax *syntax)
+{
+    script_range *comments = NULL;
+    collect_comments(ts_tree_root_node(syntax->tree), &comments);
+    bool same = acount(o->comments) == acount(comments);
+    for (int i = 0; same && i < acount(comments); i++) {
+        script_range a = o->comments[i], b = comments[i];
+        same = a.end - a.start == b.end - b.start &&
+               !memcmp(o->text + a.start, syntax->text + b.start, (size_t)(a.end - a.start));
+    }
+    afree(comments);
+    return same;
+}
 
 /* Text with the accepted rewrites and one more applied, or NULL on overlap. */
 static char *apply(const char *text, const rewrite *rewrites, const bool *accepted, int extra)
@@ -1165,7 +1194,8 @@ static bool accepts(const oracle *o, const char *text)
 {
     script_syntax *syntax = script_parse(text);
     bool same = !syntax->diagnostic_count &&
-                !ts_node_has_error(ts_tree_root_node(syntax->tree));
+                !ts_node_has_error(ts_tree_root_node(syntax->tree)) &&
+                same_comments(o, syntax);
     if (same) {
         script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
         same = same_program(&(pair){ o->original, analysis, o->catalog });
@@ -1227,7 +1257,11 @@ char *authoring_source_minimize(const char *text, const script_catalog *catalog,
     script_analysis *original = script_analyze_document(syntax, catalog, identity);
     char *current = xstrdup(text);
     if (original->valid && !original->diagnostic_count && !syntax->diagnostic_count) {
-        oracle o = { catalog, identity, original };
+        oracle o = { .catalog = catalog,
+                     .identity = identity,
+                     .original = original,
+                     .text = text };
+        collect_comments(ts_tree_root_node(syntax->tree), &o.comments);
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
             /* Each round accepts at least one rewrite, so this ends when
              * nothing is left to drop. */
@@ -1236,6 +1270,7 @@ char *authoring_source_minimize(const char *text, const script_catalog *catalog,
                 current = next;
             }
         }
+        afree(o.comments);
     }
     script_analysis_free(original);
     script_syntax_free(syntax);

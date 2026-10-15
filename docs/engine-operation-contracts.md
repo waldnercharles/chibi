@@ -22,7 +22,11 @@ the execution binding; a second producer-supplied binding is rejected.
 - These declarations cannot also describe state, component, aggregate or flow
   access, a receiver, variadic arguments or event sending. Reference/collection
   results, any scalar semantic flags or type parameters, and mismatched physical
-  types are rejected.
+  types are rejected. Their dormant `component`, `component_field`, `aggregate`,
+  `component_entity`, `component_value`, both elements of `flow.inputs`,
+  `flow.results` and `flow.outcomes`, and `flow.break_entry` must all be zero,
+  matching the shared and raw known-operation producers. Active component/flow
+  declarations remain unknown operations and keep their existing ordinal rules.
 - Raw native packs must supply the matching opcode and a valid declaration.
   The lowerer validates all known declarations before emitting code, including
   calls rewritten by analysis into state reads or writes, and independently

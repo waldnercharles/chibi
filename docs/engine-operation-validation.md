@@ -1,6 +1,91 @@
 # Core operation contract validation
 
-## Current combined local validation
+## Reviewed checked-write integration
+
+Candidate `2ae4981bdf7ad6370c904d27a76c114cf05c39d7`, tree
+`5be061a6509e066a57720cb09b9a90c652fdb5d0`, combines the independently tested
+operation fix `f17e7b1406622e8f67f6105c9854aece366cc10c` with eligible main
+`3c65bb60b6f3443aef6ccf4ab15acbe09b04b191`, including checked scalar writes.
+Only the language source list, dispatcher and policy lists needed conflict
+resolution. The lowerer retains the catalog-wide operation guard before the
+checked-write path. The publication ordering, range checks, optimizer barriers,
+register stack-cell reservations and backend implementation remain intact.
+All previous group members and relative order remain; operation, module and
+write selectors each occur once in the 31-selector language and 19-selector
+Wasm groups. The structural sizing subset is not additionally selected.
+
+Independent source/workload review approved this exact combination before the
+five complete production commands below. All exited zero, ran serially, and
+retained their original single shared 60-second deadline. Times exclude builds.
+
+| Invocation | Selectors | Cases passed | Assertions | Seconds |
+| --- | ---: | ---: | ---: | ---: |
+| `group language` | 31 | 412 | 39,562 | 21.345 |
+| `group wasm` | 19 | 256 | 35,641 | 3.531 |
+| `tool native-tools` | 1 | 116 | 33,227 | 23.185 |
+| `tool native-catalog` | 1 | 6 | 346 | 0.103 |
+| `tool language-prepared` | 1 | 19 | 833 | 0.246 |
+
+All nine operation cases ran once per language group, including the complete
+36-rejection matrix and canonical accepts. Module and checked-write cases also
+ran once. Prepared totals combine producer 6/199, runtime-only consumer 12/629
+and parent 1/5. Native-tools uses the compiler-enabled minimal closure; the
+catalog route uses the separately built native/compiler closure with both
+native-runtime and preparation support. Four compile-only currency builds
+passed separately. The 2,897 tracked source files, 89-file/63,497-byte corpus,
+five compiled artifacts and policy worker retained their pre-run identities.
+No unexpected failure, sanitizer report, crash or timeout occurred.
+
+This is exact local-combination evidence, not a claim about a future published
+head. Final documentation/content identity, remote-head verification, current
+integration, server requirements and the explicit publication/merge holds still
+apply. Native VM/SLJIT, Wasm VM/generated execution and the bounded generated-C
+tooling case are covered; browser/GPU/full-engine and leak checks remain unrun.
+The earlier isolated failure and five historical controls below stay separate.
+
+## Isolated dormant metadata regression and repair
+
+A review of published `b255df023158d6b7af3bce644d37c3ca640c29fa` found that
+known-operation declarations rejected active component/aggregate/flow kinds but
+accepted noncanonical dormant metadata. All twelve fields in the
+[closed declaration contract](engine-operation-contracts.md#checked-declaration-and-execution-boundaries)
+are zero in the actual shared and raw Owner/Delta/Delay producers. Active
+unknown-operation contracts can use negative ordinals and are unaffected.
+The three dormant IDs affect the capability ABI; dormant component/flow
+ordinals are not hashed when their kinds are absent, but all twelve fields
+participate in source-catalog snapshot comparison.
+
+Independent review admitted the regression-only
+`d581d39e3a8d393f89170e500bf5840f5640e009`, tree
+`5268109b9919e52032a957336beed3aab49242a1`. The native production route failed
+exactly at `Owner.component = 1`: required declaration rejection was absent.
+It exited one with 8/9 cases passing, 161 assertions, in 0.092 seconds.
+No malformed catalog was lowered or executed; there was no sanitizer finding,
+crash or timeout. The failing source, binary and log are preserved.
+
+Fix `f17e7b1406622e8f67f6105c9854aece366cc10c`, tree
+`434bfcfff23473870c079bd19b46df46dae8151c`, adds only twelve explicit canonical
+zero checks after the unchanged unknown-operation early return. The regression
+inputs, loops and assertions are byte-identical to the failing baseline.
+Independent source review and serial production routes passed under their
+unchanged 60-second ceilings:
+
+| Route | Cases passed | Assertions | Seconds |
+| --- | ---: | ---: | ---: |
+| `language-operations` | 9 | 208 | 0.097 |
+| `wasm-operations` | 9 | 208 | 0.200 |
+
+The full 36-rejection matrix and three canonical raw accepts were reached;
+all eight existing cases passed. Source and five compiled artifact hashes were
+unchanged after both runs. Four compile-only currency builds passed separately.
+The fixed route has 82 catalog attempts (13 accepted, 69 rejected), seven source
+prepare/lower attempts, four finalizations, eight dispatches and two synthetic
+updates capped at 1,000 steps each; prepared bytes remain zero. Only catalog
+construction grew. Newer checked-write main was excluded from this isolated
+red-to-green proof and is integrated separately above. The five older controls
+remain evidence for their exact guard removals, not tests of this new guard.
+
+## Historical operation/module combination
 
 The operation/module combination was independently reviewed and tested on
 2026-10-15 at `a26d0246feb343c93f28979d96cc9e1dd1fd4df8`, tree
@@ -41,7 +126,7 @@ unchanged guards and fixtures; they were not rerun for this combination.
 The following results predate module integration and are not current-combination
 runs. The earlier published `b4d4c1f9` tree also passed its separate five-check
 review on base `62906a50`; integration was then blocked by main advancing. Its
-retained report and hashes remain distinct from the new combined evidence.
+retained report and hashes remain distinct from the later combined evidence.
 The older implementation was validated on 2026-10-15 against eligible main
 `62906a504fee6b2e0bd6349a8eeff1450529cd90`:
 
@@ -51,7 +136,7 @@ The older implementation was validated on 2026-10-15 against eligible main
   tree `c73937726968e019a1137302a4d2dca7c1766902`. Product and fixture sources
   are identical; the policy adds the operation selector once to each group.
 
-This report is a documentation-only follow-up to those tested heads. It covers
+This section records those historical tested heads. It covers
 the [bounded Owner/Delta/Delay contract](engine-operation-contracts.md), not all L16.
 
 ## Historical review and build conditions
@@ -61,7 +146,7 @@ ABI domain separation, incremental invalidation, raw/custom binding validation,
 and the whole-catalog boundary before state-read/write rewrites. Unknown host
 operations gain no guarantees. Delay makes no no-reentry promise. The merged
 query/scalar-read implementation remained intact; module work was excluded at
-that earlier stage and is included only in the current combination above.
+that earlier stage and is included in the later operation/module combination above.
 
 Four build trees were current: native language, compiler-only tools, native tools
 with compiler support, and Wasm language. Native uses Clang 19.1.7 Debug,
@@ -98,7 +183,8 @@ Prepared totals combine producer 6/199, runtime-only consumer 12/629 and parent
 1/5. Native execution covers VM/SLJIT; Wasm covers VM/generated Wasm. Source and
 all five output artifact hashes were unchanged after this selected matrix. The
 subsequent regular-group integration is recorded below. The operation fixture's
-admitted bounds remain eight cases, 42 catalog attempts, seven source preparation/lowering attempts, four tiny
+then-admitted bounds were eight cases, 42 catalog attempts, seven source
+preparation/lowering attempts, four tiny
 finalizations, eight dispatches and two synthetic updates, with 1,000 steps per
 dispatch/update; see [testing](testing.md#temporary-60-second-policy).
 

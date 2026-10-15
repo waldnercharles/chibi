@@ -118,7 +118,7 @@ static bool boundary(const behavior_function *f, const behavior_function_instruc
            i->op == BF_END || i->op == BF_FAIL || i->op == BF_SUSPEND ||
            i->op == BF_DELAY || i->op == BF_INVOKE || i->op == BF_COMMAND ||
            i->op == BF_COMMAND_BEGIN || i->op == BF_QUERY ||
-           i->op == BF_ENTER || i->op == BF_LEAVE ||
+           i->op == BF_COMPONENT_WRITE || i->op == BF_ENTER || i->op == BF_LEAVE ||
            (i->op == BF_HOST_CALL && !intrinsic(f, i) && !isolated_call(f, i));
 }
 

@@ -9,7 +9,8 @@ implementation.
 
 ## Persistence contract
 
-Project manifests are `project.kdl`, with project version 21. Scenes, prototypes,
+Project manifests are `project.kdl`, with project version 24 (the current
+`CHIBI_PROJECT_VERSION` in `src/assets/project.h`). Scenes, prototypes,
 event declarations, models, shapes, materials, fields, shader libraries,
 scenarios and editor configuration use KDL 2. Behaviors, behavior libraries and
 systems use `.chibi`. RML and RCSS remain separate formats.
@@ -58,7 +59,9 @@ The owning SDK targets and scoped headers are declared under `sdk`.
 
 The following records describe the earlier persistence migration and its graph
 execution implementation. They preserve the original proof names and do not
-certify the current version 21 frontend or prepared player.
+certify the current frontend or prepared player. Project format 24 and prepared
+execution format 13 have separate compatibility rules; see the
+[versioned contract](language-contracts/v1.md).
 
 The requirements restart was captured at tree
 `48a953d7578ba091afde0df7120ef30ec3537fea` in

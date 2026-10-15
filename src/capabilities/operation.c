@@ -43,10 +43,19 @@ bool script_catalog_operation_valid(const script_catalog_capability *capability)
         capability->state_kind != NATIVE_STATE_NONE ||
         capability->component_access != SCRIPT_COMPONENT_ACCESS_NONE ||
         capability->struct_access != SCRIPT_STRUCT_ACCESS_NONE ||
-        capability->flow.kind != SCRIPT_FLOW_ACCESS_NONE || capability->receiver ||
+        capability->component || capability->component_field || capability->aggregate ||
+        capability->component_entity || capability->component_value ||
+        capability->flow.kind != SCRIPT_FLOW_ACCESS_NONE ||
+        capability->flow.break_entry || capability->receiver ||
         capability->variadic || capability->variadic_optional ||
         capability->numeric_aggregate || capability->event_sender) {
         return false;
+    }
+    for (int i = 0; i < 2; i++) {
+        if (capability->flow.inputs[i] || capability->flow.results[i] ||
+            capability->flow.outcomes[i]) {
+            return false;
+        }
     }
     if (capability->operation == SCRIPT_OPERATION_DELAY) {
         return capability->kind == SCRIPT_CAPABILITY_ACTION &&

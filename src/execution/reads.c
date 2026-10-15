@@ -25,6 +25,7 @@ static bool barrier(const behavior_function *f, const behavior_function_instruct
         case BF_INVOKE:
         case BF_COMMAND:
         case BF_COMMAND_BEGIN:
+        case BF_COMPONENT_WRITE:
         case BF_QUERY: return true;
         case BF_HOST_CALL: return !reusable_call(f, i);
         default: return false;
@@ -105,9 +106,10 @@ void behavior_function_reuse_reads(behavior_function *f, bool *keep)
             scratch[i->output] = i->left + 1;
         }
         writes[pc] = (i->op == BF_WRITE && !scratch[i->right]) ||
-                     i->op == BF_STORE || i->op == BF_STORE_VALUE ||
-                     i->op == BF_STORE_HEADER || i->op == BF_STORE_TYPE_NAME ||
-                     i->op == BF_SAVE || i->op == BF_ENTER || i->op == BF_LEAVE ||
+                     i->op == BF_COMPONENT_WRITE || i->op == BF_STORE ||
+                     i->op == BF_STORE_VALUE || i->op == BF_STORE_HEADER ||
+                     i->op == BF_STORE_TYPE_NAME || i->op == BF_SAVE ||
+                     i->op == BF_ENTER || i->op == BF_LEAVE ||
                      i->op == BF_RANDOM || i->op == BF_RANDOM_RANGE ||
                      i->op == BF_STATE_SELECT || i->op == BF_RETRIGGER;
         bool call = reusable_call(f, i);

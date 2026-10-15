@@ -29,7 +29,8 @@ add_library(Chibi::execution ALIAS chibi_execution)
 set_target_properties(chibi_execution PROPERTIES EXPORT_NAME execution)
 chibi_sdk_headers(chibi_execution PUBLIC execution/function_builder.h execution/update.h
     execution/module.h execution/module_builder.h execution/intrinsics.h
-    execution/delay.h execution/task.h execution/inspection.h execution/prepared.h execution/ecs_reader.h)
+    execution/delay.h execution/task.h execution/inspection.h execution/prepared.h execution/ecs_reader.h
+    execution/component_write.h)
 target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution")
 target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs chibi_tasks)
 

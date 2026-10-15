@@ -74,7 +74,8 @@ static void enter_locals(FILE *out, const behavior_function *f, int frame)
 }
 static void failure(FILE *out, const behavior_function_instruction *i, behavior_function_failure reason)
 {
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
+        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
         fputs("c->error_message=(const char*)", out);
         type_name(
             out,
@@ -649,6 +650,26 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     i->offset
                 );
                 break;
+            case BF_COMPONENT_WRITE:
+                fprintf(
+                    out,
+                    "{const behavior_function_instruction write={.type=%d,"
+                    ".value={.type=PIN_U64,.u64=UINT64_C(%llu)},"
+                    ".layout=UINT64_C(%llu),.offset=%zu,.target=%d};"
+                    "c->error_message=behavior_component_write(c,&write,&v%d,&"
+                    "v%d);"
+                    "if(c->error_message){",
+                    i->type,
+                    (unsigned long long)i->value.u64,
+                    (unsigned long long)i->layout,
+                    i->offset,
+                    i->target,
+                    i->left,
+                    i->right
+                );
+                failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                fputs("}}\n", out);
+                break;
             case BF_COMPONENT_READ:
                 fprintf(
                     out,
@@ -1107,6 +1128,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         "#include \"execution/scalar.h\"\n#include "
         "\"execution/function.h\"\n#include "
         "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
+        "\"execution/component_write.h\"\n#include "
         "<math.h>\n#include "
         "<string.h>\n#include \"support/cos_sin.h\"\n#include "
         "\"ecs/execution.h\"\n%sint %s",

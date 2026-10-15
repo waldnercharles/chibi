@@ -205,8 +205,9 @@ static inline bool behavior_function_left_slot(behavior_function_op op)
 {
     return (op >= BF_ADD && op <= BF_SAVE && op != BF_STORE_VALUE) ||
            op == BF_BRANCH || op == BF_REQUIRE || op == BF_ASSERT ||
-           op == BF_WRITE || op == BF_RESULT_PRESENT || op == BF_RESULT_TYPE_NAME ||
-           op == BF_STORE_HEADER || op == BF_STORE_TYPE_NAME || op == BF_OWN_NAME ||
+           op == BF_WRITE || op == BF_COMPONENT_WRITE || op == BF_RESULT_PRESENT ||
+           op == BF_RESULT_TYPE_NAME || op == BF_STORE_HEADER ||
+           op == BF_STORE_TYPE_NAME || op == BF_OWN_NAME ||
            op == BF_COPY_STRING || op == BF_COPY_ARRAY || op == BF_INTERN_STRING ||
            op == BF_STRING_EQUAL || op == BF_STATE_SELECT ||
            op == BF_COMMAND_ARGUMENT || op == BF_COMMAND_OUTPUT ||
@@ -219,8 +220,9 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
             op != BF_COLUMN && op != BF_COLUMN_TRY && op != BF_COMPONENT_READ &&
             op != BF_RETRIGGER && op != BF_BIT_NOT && op != BF_NEG && op != BF_ABS &&
             op != BF_CAST && op != BF_CONVERT && !(op >= BF_SIN && op <= BF_ROUND)) ||
-           op == BF_WRITE || op == BF_STORE_HEADER || op == BF_INTERN_STRING ||
-           op == BF_STRING_EQUAL || op == BF_STATE_SELECT || op == BF_RESULT_ARRAY;
+           op == BF_WRITE || op == BF_COMPONENT_WRITE || op == BF_STORE_HEADER ||
+           op == BF_INTERN_STRING || op == BF_STRING_EQUAL ||
+           op == BF_STATE_SELECT || op == BF_RESULT_ARRAY;
 }
 /* Finalize operand metadata, continuation maps and runtime code after lowering. */
 /* Prepared readers reconstruct this canonical definition, then use the same

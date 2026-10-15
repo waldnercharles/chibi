@@ -20,6 +20,12 @@ is stopped. Studio's RML and RCSS assets retain their existing live update path.
 These asset updates do not require a native rebuild. Browser C/WASM changes
 require rebuilding the web application and refreshing the browser.
 
+Authored executable publication still owns immutable modules, state matching,
+task cancellation and late-request safety. See the
+[current source/runtime contract](language-contracts/v1.md#c09-authored-publication-and-project-migration-si)
+and its actual preview/runtime callers. Removing native application replacement
+does not remove those authored-lifetime obligations.
+
 ## Workspace checkpoints
 
 Normal close, Ctrl-C and SIGTERM save the workspace and exit normally. The next
@@ -40,11 +46,14 @@ pointers or generated code.
 
 ## Checks
 
-`make test`, `make test-short` and `make test-tools` run the minimal C tooling
-suite under one shared 60-second deadline. Native host, generation, reflection
-and full editor checkpoint checks remain quarantined, disabled and not passed.
-See [the test inventory](test-quarantine.md). Compilation does not establish
-runtime coverage.
+`make test` and `make test-short` run six pure C execution-policy cases.
+`make test-tools` runs the complete C tooling/process integration group; each
+command has one shared 60-second deadline. Native host/generation check targets
+and the full editor checkpoint check remain quarantined, disabled and not passed.
+Individual admitted reflection/source/publication routes have their own scoped
+coverage; they do not establish workspace recovery. See the current
+[test instructions](testing.md) and [quarantine inventory](test-quarantine.md).
+Compilation does not establish runtime coverage.
 
 The retained `test_host` binary covers native process and state-file handling.
 `check-host` invokes the quarantine guard, which refuses execution. The binary

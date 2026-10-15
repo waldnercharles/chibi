@@ -1834,7 +1834,7 @@ static bool bounded_type(const script_catalog *catalog, const script_catalog_typ
     }
     return false;
 }
-/* A selected scalar getter consumes its private reference immediately. Prove
+/* A selected scalar access consumes its private reference immediately. Prove
  * the reflected byte range before replacing that descriptor with a checked
  * value copy; ordinary member snapshots and escaping references stay generic. */
 static bool scalar_component_field(const script_catalog_type *type, const script_catalog_field *field)
@@ -1912,6 +1912,41 @@ static int component_call(lower *l, const script_expression *e, const script_cat
         if (value < 0) {
             error(l, e->range, "Component write has no typed value");
             return -1;
+        }
+        if (field && scalar_component_field(type, field) && !e->instance &&
+            script_type_equal(e->type, result)) {
+            int owner = entity >= 0
+                          ? expression(l, entity)
+                          : value_op(
+                                l,
+                                (behavior_function_instruction){ .op = BF_OWNER,
+                                                                 .type = PIN_HANDLE },
+                                e->range
+                            );
+            const script_expression *source = &l->a->expressions[value];
+            int updated = expression(l, value);
+            updated = convert(l, updated, source->type, result, e->range);
+            behavior_function_instruction write = {
+                .op = BF_COMPONENT_WRITE,
+                .type = result.storage,
+                .left = owner,
+                .right = updated,
+                .component = behavior_function_builder_component(l->builder, type->component_id, false, true),
+                .value = { .type = PIN_U64, .u64 = type->component_id },
+                .layout = type->layout,
+                .offset = type->size,
+                .target = (int)field->offset
+            };
+            emit(l, write, e->range);
+            /* The generic setter rereads when any field in the root is bounded,
+             * even if this selected field is not. Otherwise its result is the
+             * original converted RHS, not a callback-rewritten row value. */
+            if (bounded_type(l->catalog, type, 0)) {
+                write.op = BF_COMPONENT_READ;
+                write.right = 0;
+                updated = value_op(l, write, e->range);
+            }
+            return updated;
         }
         int root;
         int destination = component_reference(l, e, cap, type, entity, &root);

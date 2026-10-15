@@ -1,6 +1,31 @@
 #ifndef CHIBI_BEHAVIOR_FUNCTION_JIT_INTERNAL_H
 #define CHIBI_BEHAVIOR_FUNCTION_JIT_INTERNAL_H
 #include "execution/definition.h"
+#include "support/array.h"
+
+/* Checked publication takes pointers to both scalar operands. Register-backed
+ * operands therefore also need stack cells, before locals and parent frames. */
+static inline int behavior_jit_stack_slots(const behavior_function *f, const int *registers)
+{
+    int count = 0;
+    for (int slot = 0; slot < acount(f->slots); slot++) {
+        if (!registers[slot]) {
+            count = slot + 1;
+        }
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_COMPONENT_WRITE) {
+            if (i->left >= count) {
+                count = i->left + 1;
+            }
+            if (i->right >= count) {
+                count = i->right + 1;
+            }
+        }
+    }
+    return count;
+}
 #if CHIBI_HAVE_SJLIT
 #include <sljitLir.h>
 

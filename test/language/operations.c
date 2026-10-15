@@ -176,6 +176,62 @@ TEST_CASE(operations_reject_raw_scalar_semantic_metadata)
     }
     return true;
 }
+TEST_CASE(operations_reject_dormant_raw_metadata)
+{
+    REQUIRE(core());
+    for (int operation = SCRIPT_OPERATION_OWNER; operation <= SCRIPT_OPERATION_DELAY;
+         operation++) {
+        const script_catalog_capability original = *declaration(operation);
+        REQUIRE(!original.component && !original.component_field && !original.aggregate);
+        REQUIRE(original.component_entity == 0 && original.component_value == 0);
+        REQUIRE(original.flow.kind == SCRIPT_FLOW_ACCESS_NONE && original.flow.break_entry == 0);
+        for (int i = 0; i < 2; i++) {
+            REQUIRE(
+                original.flow.inputs[i] == 0 && original.flow.results[i] == 0 &&
+                original.flow.outcomes[i] == 0
+            );
+        }
+        script_catalog_capability value = original;
+        const script_catalog catalog = { .capabilities = &value,
+                                         .capability_count = 1 };
+        const native_capability_binding binding = {
+            .id = value.id,
+            .intrinsic = behavior_operation_instruction(operation)
+        };
+        const native_capability_pack pack = { .catalog = &catalog,
+                                              .bindings = &binding,
+                                              .binding_count = 1 };
+        char error[256] = { 0 };
+        other = native_capabilities_new(&pack, 1, error, sizeof error);
+        REQUIRE(other);
+        native_capabilities_free(other);
+        other = NULL;
+        for (int change = 0; change < 12; change++) {
+            value = original;
+            switch (change) {
+                case 0: value.component = 1; break;
+                case 1: value.component_field = 1; break;
+                case 2: value.aggregate = 1; break;
+                case 3: value.component_entity = -1; break;
+                case 4: value.component_value = -1; break;
+                case 5: value.flow.inputs[0] = -1; break;
+                case 6: value.flow.inputs[1] = -1; break;
+                case 7: value.flow.results[0] = -1; break;
+                case 8: value.flow.results[1] = -1; break;
+                case 9: value.flow.outcomes[0] = -1; break;
+                case 10: value.flow.outcomes[1] = -1; break;
+                case 11: value.flow.break_entry = -1; break;
+            }
+            error[0] = '\0';
+            other = native_capabilities_new(&pack, 1, error, sizeof error);
+            if (other || !strstr(error, "Invalid engine operation declaration")) {
+                fprintf(stderr, "dormant metadata: operation %d, field %d: %s\n", operation, change, error);
+            }
+            REQUIRE(!other && strstr(error, "Invalid engine operation declaration"));
+        }
+    }
+    return true;
+}
 static const char *opaque_delta(void *, const pin_value *, pin_value *out)
 {
     out->f = 0.75f;
@@ -417,6 +473,7 @@ void test_language_operations()
     RUN_TEST_CASE(operations_generate_checked_bindings_and_conservative_contracts);
     RUN_TEST_CASE(operations_reject_malformed_shared_declarations);
     RUN_TEST_CASE(operations_reject_raw_scalar_semantic_metadata);
+    RUN_TEST_CASE(operations_reject_dormant_raw_metadata);
     RUN_TEST_CASE(operations_reject_binding_mismatch_and_distinguish_opaque_abi);
     RUN_TEST_CASE(operation_identity_invalidates_source_reuse);
     RUN_TEST_CASE(operations_reject_direct_catalog_state_rewrites);

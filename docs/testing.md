@@ -102,9 +102,12 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 ## Temporary 60-second policy
 
 `language-operations` is the bounded C workload for the checked core operation
-contract. Its eight cases attempt 42 catalog constructions, with at most 20
-capabilities and four globals per catalog, and 13 single-definition malformed
-inputs plus 15 raw-table scalar semantic metadata rejections. It performs seven
+contract. Its nine cases attempt 82 catalog constructions (13 accepted and 69
+rejected), with at most 20 capabilities and four globals per catalog, and 13
+single-definition malformed inputs, 15 raw-table scalar semantic metadata
+rejections and 36 dormant metadata rejections. The latter independently mutate
+twelve fields for each of Owner, Delta and Delay; malformed tables are never
+lowered or executed. It performs seven
 top-level source preparation/lowering attempts (including two direct-catalog
 state rewrite rejections) and four
 tiny module finalizations (two constant-library bytecode modules, one operation fixture on

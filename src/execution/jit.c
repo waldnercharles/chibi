@@ -134,7 +134,8 @@ void behavior_jit_failure(
 )
 {
     struct sljit_compiler *c = m->compiler;
-    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
+    if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN &&
+        i->op != BF_HOST_CALL && i->op != BF_COMPONENT_WRITE) {
         sljit_emit_op1(
             c,
             SLJIT_MOV_P,
@@ -381,12 +382,7 @@ static behavior_layout layout(
             registers[i->target] = 0;
         }
     }
-    int stack_slots = 0;
-    for (int i = 0; i < acount(f->slots); i++) {
-        if (!registers[i]) {
-            stack_slots = i + 1;
-        }
-    }
+    int stack_slots = behavior_jit_stack_slots(f, registers);
     int locals = stack_slots * sizeof(double);
     int parents = locals + acount(f->locals) * sizeof(double);
     int stack_size = parents + (acount(f->frames) > 1

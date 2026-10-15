@@ -148,6 +148,7 @@ void behavior_function_parallel_proof(behavior_function *f)
             case BF_OWNER: out.owner = true; break;
             case BF_ENTITY: out.owner = right.owner; break;
             case BF_COMPONENT_READ:
+            case BF_COMPONENT_WRITE:
                 /* Preserve the generic getter's conservative scheduling proof. */
                 valid = false;
                 break;

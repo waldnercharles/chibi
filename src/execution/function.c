@@ -211,6 +211,13 @@ void behavior_function_own(behavior_function *f)
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
 {
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (f->instructions[pc].op == BF_COMPONENT_WRITE) {
+            /* The publication callback is an observable storage boundary,
+             * independently of optional producer component-write metadata. */
+            return false;
+        }
+    }
     for (int i = 0; i < count; i++) {
         for (int j = 0; j < acount(f->component_writes); j++) {
             if (f->component_writes[j] == components[i]) {

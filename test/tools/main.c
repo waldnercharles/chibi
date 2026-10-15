@@ -73,6 +73,9 @@ void test_tool_scene();
 #ifdef CHIBI_TEST_SCENE_AUTHORING
 void test_scene_hierarchy();
 #endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+void test_scene_snapshot_read();
+#endif
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
@@ -528,9 +531,12 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool controller = argc == 3 && !strcmp(argv[1], "--controller");
-    bool scene_hierarchy = false;
+    bool scene_hierarchy = false, scene_snapshot_read = false;
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
+#endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+    scene_snapshot_read = argc == 2 && !strcmp(argv[1], "--scene-snapshot-read");
 #endif
     bool examples_projects = argc == 3 && !strcmp(argv[1], "--examples-projects");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
@@ -701,17 +707,18 @@ int main(int argc, char **argv)
         !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
-        !scene2d && !scene3d && !material_ramps && !texture_transform &&
-        !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !scene_snapshot_read && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
+        !radiance_depth && !material_sampling && !scene2d && !scene3d &&
+        !material_ramps && !texture_transform && !arena && !render_geometry &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_graphs &&
+        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
+        !material_cameras && !mesh_materials && !sdf_quality && !scene3d_post &&
+        !scene3d_shapes && !persistent_store && !whole_alias && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
+        !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
         !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
         !source_execution_benchmark && !source_systems && !source_query_rows &&
@@ -733,7 +740,8 @@ int main(int argc, char **argv)
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
-            "--scene-prepared | --scene-hierarchy | --native | --native-values "
+            "--scene-prepared | --scene-hierarchy | --scene-snapshot-read | "
+            "--native | --native-values "
             "| --native-catalog "
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --render-geometry | --material-render | "
@@ -1068,6 +1076,13 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     if (scene_hierarchy) {
         test_scene_hierarchy();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+    if (scene_snapshot_read) {
+        test_scene_snapshot_read();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

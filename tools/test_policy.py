@@ -333,6 +333,9 @@ TOOLS = {
     # Fourteen independently reviewed bounded hierarchy/transform/snapshot lifetime cases,
     # including a five-entity codec round trip; at most 257 nodes, no files, process or GPU.
     'scene-hierarchy': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-hierarchy'],
+    # Proposed diagnostic: three fixed scene-read cases on bytecode and SLJIT; six in-test
+    # source preparations, eighteen budgeted dispatches, at most three nodes, no world/process/GPU.
+    'scene-snapshot-read': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-snapshot-read'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
     'model-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--model-runtime'],
     # One independently reviewed finite constant-folding case through the public authoring interface.

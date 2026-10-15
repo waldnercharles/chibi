@@ -336,6 +336,59 @@ TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies)
     return true;
 }
 
+TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope)
+{
+    static const input inputs[] = {
+        { "libraries/Scoped.chibi",
+          "library Scoped { "
+          "First :: () { Helper :: () -> number { return 2; } return Helper(); "
+          "} "
+          "Second :: () { Helper :: () -> number { return 3; } return "
+          "Helper(); } }" },
+        { "behaviors/Caller.chibi",
+          "behavior Caller { offset: number = 0; "
+          "on Tick(cells) { offset = Scoped.First() * 10 + Scoped.Second(); } "
+          "}" }
+    };
+    static const double amounts[] = { 0 }, expected[] = { 23 };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(behavior_backend_available(backends[b]));
+        for (int order = 0; order < 2; order++) {
+            prepare(0, inputs, 2, order, backends[b]);
+            REQUIRE(valid(0));
+            const script_catalog *view = authoring_sources_catalog(collections[0]);
+            REQUIRE(
+                script_catalog_find_capability(view, "Scoped.First", SCRIPT_CAPABILITY_FUNCTION) >= 0
+            );
+            REQUIRE(
+                script_catalog_find_capability(view, "Scoped.Second", SCRIPT_CAPABILITY_FUNCTION) >= 0
+            );
+            REQUIRE(
+                script_catalog_find_capability(view, "Scoped.Helper", SCRIPT_CAPABILITY_FUNCTION) < 0
+            );
+            const script_analysis *a = source(0, "Scoped")->analysis;
+            uint64_t helpers[2] = { 0 };
+            int helper_count = 0;
+            for (int i = 0; i < a->function_count; i++) {
+                const script_function *f = &a->functions[i];
+                if (f->symbol < 0 || strcmp(a->symbols[f->symbol].name, "Helper")) {
+                    continue;
+                }
+                REQUIRE(helper_count < 2);
+                REQUIRE(f->parent >= 0 && f->parent < a->function_count);
+                const script_function *parent = &a->functions[f->parent];
+                REQUIRE(parent->parent < 0 && parent->symbol >= 0);
+                REQUIRE(a->symbols[f->symbol].scope == parent->scope);
+                helpers[helper_count++] = a->symbols[f->symbol].id;
+            }
+            REQUIRE(helper_count == 2 && helpers[0] != helpers[1]);
+            REQUIRE(run(0, "Caller", backends[b], amounts, expected, 1));
+            clear();
+        }
+    }
+    return true;
+}
+
 void test_language_modules()
 {
     pu_setup(setup, cleanup);
@@ -345,4 +398,5 @@ void test_language_modules()
     RUN_TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations);
     RUN_TEST_CASE(modules_library_state_is_not_an_exported_value);
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
+    RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);
 }

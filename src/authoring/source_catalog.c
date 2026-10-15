@@ -1247,7 +1247,7 @@ static source_catalog *build(
         }
         for (int j = 0; j < a->function_count; j++) {
             const script_function *f = &a->functions[j];
-            if (f->kind != SCRIPT_FUNCTION_AUTHORED || f->symbol < 0) {
+            if (f->kind != SCRIPT_FUNCTION_AUTHORED || f->symbol < 0 || f->parent >= 0) {
                 continue;
             }
             const script_symbol *symbol = &a->symbols[f->symbol];

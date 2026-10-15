@@ -1,6 +1,8 @@
 #ifndef CHIBI_EXECUTION_PREPARED_H
 #define CHIBI_EXECUTION_PREPARED_H
 
+/* Payload and semantic changes still require a version change even when the
+ * stable instruction names and ordinals (checked separately) are unchanged. */
 #define EXECUTION_PREPARED_VERSION 13
 #include "execution/host.h"
 #include "execution/module.h"

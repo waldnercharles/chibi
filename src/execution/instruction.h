@@ -28,112 +28,122 @@
     X(POW, Power, pow)                                                         \
     X(ATAN2, Atan2, atan2)
 
+/* One declaration owns both numeric opcodes and prepared schema names. Keep
+ * the order stable; payload and semantic changes still need a prepared version. */
+// clang-format off
+#define BEHAVIOR_FUNCTION_OPS(OP, MATH) \
+    OP(CONSTANT) \
+    OP(VARIABLE) \
+    OP(DELTA) \
+    OP(ARGUMENT) \
+    OP(LOCAL) \
+    OP(PRESENT) \
+    OP(TYPE_NAME) \
+    OP(OWNER) \
+    OP(WORLD) \
+    OP(CONTEXT) \
+    OP(STORAGE_NAME) \
+    OP(ARRAY) \
+    OP(QUERY) \
+    OP(HOST_SLOT) \
+    OP(HOST_SERVICE) \
+    OP(COMMAND_SERVICE) \
+    OP(COMMAND_RESULT) \
+    OP(OWN_NAME) \
+    OP(COPY_STRING) \
+    OP(COPY_ARRAY) \
+    OP(INTERN_STRING) \
+    OP(STRING_EQUAL) \
+    OP(STATE_SELECT) \
+    OP(RANDOM) \
+    OP(ADD) \
+    OP(SUB) \
+    OP(MUL) \
+    OP(DIV) \
+    OP(MOD) \
+    OP(NEG) \
+    OP(ABS) \
+    OP(MIN) \
+    OP(MAX) \
+    OP(CONVERT) \
+    OP(CAST) \
+    OP(FLAGS) \
+    OP(LT) \
+    OP(LE) \
+    OP(GT) \
+    OP(GE) \
+    OP(EQ) \
+    OP(NE) \
+    OP(SELECT) \
+    OP(BIT_AND) \
+    OP(BIT_OR) \
+    OP(BIT_XOR) \
+    OP(BIT_NOT) \
+    OP(SHL) \
+    OP(SHR) \
+    BEHAVIOR_MATH_UNARY(MATH) \
+    BEHAVIOR_MATH_BINARY(MATH) \
+    OP(MOD_F32) \
+    OP(MOD_F64) \
+    OP(HYPOT) \
+    OP(FMA) \
+    OP(RANDOM_RANGE) \
+    OP(ENTITY) \
+    OP(COMPONENT) \
+    OP(COLUMN) \
+    OP(COLUMN_TRY) /* Non-trapping layout guard for speculative read-only work. */ \
+    OP(ROW) /* checked column + live entity slot; no storage-changing effects */ \
+    OP(INDEX) \
+    OP(LOAD) \
+    OP(READ) \
+    OP(RETRIGGER) \
+    OP(STORE) \
+    OP(STORE_VALUE) \
+    OP(RESULT) \
+    OP(SAVE) \
+    OP(RESULT_PRESENT) \
+    OP(RESULT_TYPE_NAME) \
+    OP(RESULT_ARRAY) \
+    OP(STORE_HEADER) \
+    OP(STORE_TYPE_NAME) \
+    OP(REQUIRE) \
+    OP(ASSERT) \
+    OP(WRITE) \
+    OP(COMMAND_ARGUMENT) \
+    OP(COMMAND_OUTPUT) \
+    OP(COMMAND) \
+    OP(COMMAND_BEGIN) \
+    OP(HOST_CALL) \
+    OP(INVOKE) \
+    OP(SUSPEND) \
+    OP(DELAY) \
+    OP(POINT) \
+    OP(WATCH_BEGIN) \
+    OP(WATCH_RESET) \
+    OP(WATCH_VALUE) \
+    OP(WATCH_PRESENT) \
+    OP(WATCH_END) \
+    OP(TRACE) \
+    OP(CHECK) \
+    OP(CALL_CHECK) \
+    OP(ENTER) \
+    OP(LEAVE) \
+    OP(FAIL) \
+    OP(JUMP) \
+    OP(BRANCH) \
+    OP(RETURN) \
+    OP(SOURCE_POINT) \
+    OP(SOURCE_WATCH) \
+    OP(END)
+// clang-format on
+
 typedef enum
 {
-    BF_CONSTANT,
-    BF_VARIABLE,
-    BF_DELTA,
-    BF_ARGUMENT,
-    BF_LOCAL,
-    BF_PRESENT,
-    BF_TYPE_NAME,
-    BF_OWNER,
-    BF_WORLD,
-    BF_CONTEXT,
-    BF_STORAGE_NAME,
-    BF_ARRAY,
-    BF_QUERY,
-    BF_HOST_SLOT,
-    BF_HOST_SERVICE,
-    BF_COMMAND_SERVICE,
-    BF_COMMAND_RESULT,
-    BF_OWN_NAME,
-    BF_COPY_STRING,
-    BF_COPY_ARRAY,
-    BF_INTERN_STRING,
-    BF_STRING_EQUAL,
-    BF_STATE_SELECT,
-    BF_RANDOM,
-    BF_ADD,
-    BF_SUB,
-    BF_MUL,
-    BF_DIV,
-    BF_MOD,
-    BF_NEG,
-    BF_ABS,
-    BF_MIN,
-    BF_MAX,
-    BF_CONVERT,
-    BF_CAST,
-    BF_FLAGS,
-    BF_LT,
-    BF_LE,
-    BF_GT,
-    BF_GE,
-    BF_EQ,
-    BF_NE,
-    BF_SELECT,
-    BF_BIT_AND,
-    BF_BIT_OR,
-    BF_BIT_XOR,
-    BF_BIT_NOT,
-    BF_SHL,
-    BF_SHR,
-#define MATH_OP(op, name, fn) BF_##op,
-    BEHAVIOR_MATH_UNARY(MATH_OP) BEHAVIOR_MATH_BINARY(MATH_OP)
+#define FUNCTION_OP(op) BF_##op,
+#define MATH_OP(op, name, fn) FUNCTION_OP(op)
+    BEHAVIOR_FUNCTION_OPS(FUNCTION_OP, MATH_OP)
 #undef MATH_OP
-        BF_MOD_F32,
-    BF_MOD_F64,
-    BF_HYPOT,
-    BF_FMA,
-    BF_RANDOM_RANGE,
-    BF_ENTITY,
-    BF_COMPONENT,
-    BF_COLUMN,
-    BF_COLUMN_TRY, /* Non-trapping layout guard for speculative read-only work. */
-    BF_ROW, /* checked column + live entity slot; no storage-changing effects */
-    BF_INDEX,
-    BF_LOAD,
-    BF_READ,
-    BF_RETRIGGER,
-    BF_STORE,
-    BF_STORE_VALUE,
-    BF_RESULT,
-    BF_SAVE,
-    BF_RESULT_PRESENT,
-    BF_RESULT_TYPE_NAME,
-    BF_RESULT_ARRAY,
-    BF_STORE_HEADER,
-    BF_STORE_TYPE_NAME,
-    BF_REQUIRE,
-    BF_ASSERT,
-    BF_WRITE,
-    BF_COMMAND_ARGUMENT,
-    BF_COMMAND_OUTPUT,
-    BF_COMMAND,
-    BF_COMMAND_BEGIN,
-    BF_HOST_CALL,
-    BF_INVOKE,
-    BF_SUSPEND,
-    BF_DELAY,
-    BF_POINT,
-    BF_WATCH_BEGIN,
-    BF_WATCH_RESET,
-    BF_WATCH_VALUE,
-    BF_WATCH_PRESENT,
-    BF_WATCH_END,
-    BF_TRACE,
-    BF_CHECK,
-    BF_CALL_CHECK,
-    BF_ENTER,
-    BF_LEAVE,
-    BF_FAIL,
-    BF_JUMP,
-    BF_BRANCH,
-    BF_RETURN,
-    BF_SOURCE_POINT,
-    BF_SOURCE_WATCH,
-    BF_END
+#undef FUNCTION_OP
 } behavior_function_op;
 
 static inline bool behavior_function_bitwise(behavior_function_op op)

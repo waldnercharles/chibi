@@ -3,12 +3,14 @@
 #include "execution/intrinsics.h"
 #include "execution/log.h"
 #include "execution/module_effects.h"
+#include "execution/prepared_internal.h"
 #include "execution/scalar.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "graph/shader/shader_graph.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
@@ -68,6 +70,9 @@ static behavior_function_activation activation;
 static arena storage, managed;
 static int host_calls;
 static service_binding *log_services;
+static execution_module_plan *prepared_plan;
+static execution_module *prepared_module;
+static unsigned char *prepared_bytes, *prepared_mutation;
 
 static void release_invocation()
 {
@@ -80,6 +85,13 @@ static void release_invocation()
 static void cleanup()
 {
     release_invocation();
+    execution_module_plan_free(prepared_plan);
+    execution_module_free(prepared_module);
+    free(prepared_bytes);
+    afree(prepared_mutation);
+    prepared_plan = NULL;
+    prepared_module = NULL;
+    prepared_bytes = prepared_mutation = NULL;
     arena_free(&managed);
     afree(log_services);
     if (builder) {
@@ -1416,9 +1428,140 @@ TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)
     return true;
 }
 
+TEST_CASE(execution_prepared_identity_includes_instruction_schema)
+{
+    enum
+    {
+        SCHEMA_COUNT = BF_END + 1,
+        MAX_BYTES = 4096
+    };
+    const char *names[SCHEMA_COUNT] = {
+#define FUNCTION_NAME(op) [BF_##op] = #op,
+#define MATH_NAME(op, name, fn) FUNCTION_NAME(op)
+        BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
+#undef MATH_NAME
+#undef FUNCTION_NAME
+    };
+    const char *foreign[SCHEMA_COUNT];
+    memcpy(foreign, names, sizeof foreign);
+    foreign[BF_REQUIRE] = names[BF_ASSERT];
+    foreign[BF_ASSERT] = names[BF_REQUIRE];
+    REQUIRE(sizeof names == sizeof foreign);
+    REQUIRE(!strcmp(names[BF_END], foreign[BF_END]));
+    REQUIRE(!strcmp(names[BF_REQUIRE], "REQUIRE"));
+    REQUIRE(!strcmp(foreign[BF_REQUIRE], "ASSERT"));
+    uint64_t current_abi = prepared_abi(names, SCHEMA_COUNT);
+    uint64_t foreign_abi = prepared_abi(foreign, SCHEMA_COUNT);
+    REQUIRE(current_abi != foreign_abi);
+    REQUIRE(current_abi == prepared_abi(names, SCHEMA_COUNT));
+
+    builder = behavior_function_builder_new();
+    int value = slot(PIN_BOOL);
+    emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                          .type = PIN_BOOL,
+                                          .output = value,
+                                          .value = { .type = PIN_BOOL, .b = false } });
+    /* Under the swapped mapping this valid REQUIRE would become ASSERT with
+     * target BUDGET, changing DATA failure into a step-budget failure. */
+    emit((behavior_function_instruction){ .op = BF_REQUIRE,
+                                          .type = PIN_BOOL,
+                                          .left = value,
+                                          .target = BEHAVIOR_FUNCTION_BUDGET,
+                                          .pin = 7 });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(acount(function->instructions) == 3);
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    apush(
+        prepared_plan->functions,
+        ((execution_module_function){ .id = 1,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = function })
+    );
+    function = NULL; /* The plan now owns the definition. */
+    prepared_plan->function_count = 1;
+    char error[192] = { 0 };
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module && !prepared_plan);
+    size_t length = 0;
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, &length, error, sizeof error)
+    );
+    REQUIRE(length > 0 && length < MAX_BYTES);
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    behavior_function_builder_free(builder);
+    builder = NULL;
+
+    /* Decode after retiring the producer, and retain its original failure kind. */
+    prepared_module = execution_prepared_read(prepared_bytes, length, NULL, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module);
+    REQUIRE(execution_module_function_count(prepared_module) == 1);
+    REQUIRE(execution_module_import_count(prepared_module) == 0);
+    const behavior_function *decoded = execution_module_function_at(prepared_module, 0)
+                                           .body;
+    REQUIRE(acount(decoded->instructions) == 3);
+    REQUIRE(decoded->instructions[1].op == BF_REQUIRE);
+    context = (behavior_function_context){ .budget = 16 };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(decoded, &context, NULL, 0));
+    REQUIRE(behavior_function_run(decoded, &context, false) == FLOW_ERR_INVALID_GRAPH);
+    REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA && context.error_pin == 7);
+    release_invocation();
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+
+    execution_wire wire = { .data = prepared_bytes, .size = length, .reading = true };
+    uint64_t header[4] = { 0 };
+    for (int i = 0; i < 4; i++) {
+        execution_wire_u64(&wire, &header[i]);
+    }
+    REQUIRE(!wire.error && wire.offset < length);
+    REQUIRE(header[1] == EXECUTION_PREPARED_VERSION && header[2] == sizeof(void *));
+    /* This fails with the original layout-only header, not an arbitrary bit flip. */
+    REQUIRE(header[3] == current_abi);
+    size_t payload_offset = wire.offset;
+    wire = (execution_wire){ 0 };
+    for (int i = 0; i < 4; i++) {
+        uint64_t field = i == 3 ? foreign_abi : header[i];
+        execution_wire_u64(&wire, &field);
+    }
+    prepared_mutation = wire.data;
+    REQUIRE(!wire.error);
+    for (size_t i = payload_offset; i < length; i++) {
+        apush(prepared_mutation, prepared_bytes[i]);
+    }
+    REQUIRE(acount(prepared_mutation) < MAX_BYTES);
+    const size_t budget = 1024 * 1024;
+    size_t remaining = budget;
+    xalloc_stats before, after;
+    xalloc_stats_get(&before);
+    prepared_module = execution_prepared_read_budget(
+        prepared_mutation,
+        (size_t)acount(prepared_mutation),
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    xalloc_stats_get(&after);
+    REQUIRE(!prepared_module);
+    REQUIRE(!strcmp(error, "prepared target ABI differs"));
+    REQUIRE(remaining == budget);
+    /* Only the empty plan was allocated: no function/artifact decoding or
+     * definition finalization can precede the schema mismatch. */
+    REQUIRE(after.calls - before.calls == 1);
+    REQUIRE(after.requested_bytes - before.requested_bytes == sizeof(execution_module_plan));
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_prepared_identity_includes_instruction_schema);
     RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
     RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);

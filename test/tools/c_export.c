@@ -27,7 +27,9 @@ enum
     QUERY_FIXTURES = 2,
     READ_FIXTURE = QUERY_FIXTURE + QUERY_FIXTURES,
     READ_FIXTURES = 3,
-    FIXTURES = READ_FIXTURE + READ_FIXTURES
+    WRITE_FIXTURE = READ_FIXTURE + READ_FIXTURES,
+    WRITE_FIXTURES = 3,
+    FIXTURES = WRITE_FIXTURE + WRITE_FIXTURES
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
 static behavior_function *functions[FIXTURES];
@@ -837,6 +839,352 @@ static bool reads_exported_current_world_scalars()
     return true;
 }
 
+enum
+{
+    WRITE_SAMPLE_0,
+    WRITE_SAMPLE_1,
+    WRITE_CLAMP,
+    WRITE_RELOCATE,
+    WRITE_NO_WORLD,
+    WRITE_ZERO_SLOT,
+    WRITE_INVALID_SLOT,
+    WRITE_UNOCCUPIED,
+    WRITE_GENERATION,
+    WRITE_NO_MEMBERSHIP,
+    WRITE_NO_COLUMN,
+    WRITE_WRONG_COMPONENT,
+    WRITE_LAYOUT,
+    WRITE_STRIDE,
+    WRITE_NO_CALLBACK,
+    WRITE_REJECT,
+    WRITE_MUTATE_REJECT,
+    WRITE_CASES
+};
+
+static bool write_fixture(int field)
+{
+    pin_value inputs[] = { { .type = field == 1 ? PIN_U64 : PIN_HANDLE },
+                           { .type = read_fields[field].type } };
+    pin_value outputs[] = { inputs[1], inputs[1] };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, inputs, 2, outputs, 2, NULL, 0);
+    int operands[2];
+    for (int i = 0; i < 2; i++) {
+        operands[i] = behavior_function_builder_slot(builder, inputs[i].type);
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = inputs[i].type,
+                                             .output = operands[i],
+                                             .left = i,
+                                             .value = inputs[i] }
+        );
+    }
+    int result = behavior_function_builder_slot(builder, outputs[0].type);
+    int origin = behavior_function_builder_origin(
+        builder,
+        (behavior_function_source){ .asset_name = "ExportWrite",
+                                    .parent = -1,
+                                    .start = 11,
+                                    .end = 29,
+                                    .line = 3,
+                                    .column = 5 }
+    );
+    behavior_function_instruction write = {
+        .op = BF_COMPONENT_WRITE,
+        .type = outputs[0].type,
+        .left = operands[0],
+        .right = operands[1],
+        .component = behavior_function_builder_component(builder, READ_COMPONENT, false, true),
+        .value = { .type = PIN_U64, .u64 = READ_COMPONENT },
+        .layout = READ_LAYOUT,
+        .offset = sizeof(export_read_row),
+        .target = (int)read_fields[field].offset,
+        .source = origin,
+        .pin = 31 + field,
+        .node_id = UINT64_C(0x456789abcdef0123) + (uint64_t)field,
+        .message = "must use the component write diagnostic"
+    };
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_CHECK });
+    behavior_function_builder_emit(builder, write);
+    behavior_function_instruction read = write;
+    read.op = BF_COMPONENT_READ;
+    read.output = result;
+    read.right = 0;
+    read.node_id += 10;
+    behavior_function_builder_emit(builder, read);
+    int results[] = { operands[1], result };
+    for (int i = 0; i < 2; i++) {
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_RESULT,
+                                             .type = outputs[i].type,
+                                             .left = results[i],
+                                             .target = i }
+        );
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    functions[WRITE_FIXTURE + field] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[WRITE_FIXTURE + field]) {
+        fprintf(stderr, "C component write fixture: %s\n", error);
+    }
+    REQUIRE(functions[WRITE_FIXTURE + field]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    char name[40];
+    snprintf(name, sizeof name, "export_write_%d", field);
+    behavior_function_write_c(functions[WRITE_FIXTURE + field], source, name);
+    return true;
+}
+
+typedef struct
+{
+    export_read_world *world, *replacement;
+    export_read_row before;
+    pin_value input, stored;
+    int field, sample, calls;
+    bool valid;
+} export_write_state;
+
+static int export_store_component(
+    behavior_function_context *context,
+    uint64_t entity,
+    uint64_t component,
+    uint64_t layout,
+    size_t offset,
+    pin_value declared,
+    pin_value value
+)
+{
+    export_write_state *state = context->inspection_user;
+    int field = state->field;
+    state->calls++;
+    state->valid = state->calls == 1 && context->world == &state->world->view &&
+                   !context->value_storage && entity == READ_ENTITY &&
+                   component == READ_COMPONENT && layout == READ_LAYOUT &&
+                   offset == read_fields[field].offset &&
+                   declared.type == read_fields[field].type &&
+                   declared.container == PIN_CONTAINER_SINGLE && !declared.type_name &&
+                   !declared.u64 && value.type == state->input.type &&
+                   value.container == PIN_CONTAINER_SINGLE && !value.type_name &&
+                   !memcmp(&value.d, &state->input.d, read_fields[field].size) &&
+                   !memcmp(&state->world->rows[1], &state->before, sizeof state->before);
+    if (!state->valid || state->sample == WRITE_REJECT) {
+        return -1;
+    }
+    export_read_world *world = state->world;
+    if (state->sample == WRITE_RELOCATE) {
+        world = state->replacement;
+        context->world = &world->view;
+    }
+    memcpy(
+        (char *)&world->rows[1] + offset,
+        &state->stored.d,
+        read_fields[field].size
+    );
+    return state->sample == WRITE_MUTATE_REJECT ? -1 : 0;
+}
+
+static bool writes_exported_current_world_scalars()
+{
+    /* Three scalar fixtures, seventeen cases, two inspection modes and two
+     * backends: 102 generated calls paired with 102 bytecode calls. */
+    for (int field = 0; field < WRITE_FIXTURES; field++) {
+        char name[40];
+        snprintf(name, sizeof name, "export_write_%d", field);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        const behavior_function *f = functions[WRITE_FIXTURE + field];
+        const behavior_function_instruction *write = NULL;
+        int reads = 0;
+        for (int pc = 0; pc < acount(f->instructions); pc++) {
+            if (f->instructions[pc].op == BF_COMPONENT_WRITE) {
+                REQUIRE(!write);
+                write = &f->instructions[pc];
+            }
+            reads += f->instructions[pc].op == BF_COMPONENT_READ;
+        }
+        REQUIRE(write && write->source > 0 && reads == 1 && !f->root_steps);
+        REQUIRE(!acount(f->host_calls) && !acount(f->data_values));
+        for (int inspection = 0; inspection < 2; inspection++) {
+            for (int sample = 0; sample < WRITE_CASES; sample++) {
+                pin_value reference[2];
+                int reference_status = 0;
+                for (int backend = 0; backend < 2; backend++) {
+                    export_read_world worlds[2];
+                    read_world(&worlds[0], 1);
+                    read_world(&worlds[1], 1);
+                    worlds[0].rows[1].prefix = 41;
+                    worlds[1].rows[1].prefix = 42;
+                    export_read_row expected[2][2];
+                    memcpy(expected[0], worlds[0].rows, sizeof expected[0]);
+                    memcpy(expected[1], worlds[1].rows, sizeof expected[1]);
+                    ecs_execution_column stale = worlds[0].column;
+                    stale.layout = 0;
+                    const ecs_execution_column *columns[] = { &stale };
+                    ecs_execution_view binding = worlds[0].view;
+                    binding.columns = &stale;
+                    pin_value inputs[] = { { .type = field == 1 ? PIN_U64 : PIN_HANDLE,
+                                             .u64 = READ_ENTITY },
+                                           { .type = read_fields[field].type } };
+                    export_read_world values;
+                    read_world(&values, sample == WRITE_SAMPLE_1);
+                    memcpy(
+                        &inputs[1].d,
+                        (const char *)&values.rows[1] + read_fields[field].offset,
+                        read_fields[field].size
+                    );
+                    if (sample == WRITE_CLAMP && field == 2) {
+                        inputs[1].d = 200;
+                    }
+                    export_write_state state = { .world = &worlds[0],
+                                                 .replacement = &worlds[1],
+                                                 .input = inputs[1],
+                                                 .stored = inputs[1],
+                                                 .field = field,
+                                                 .sample = sample };
+                    memcpy(&state.before, &worlds[0].rows[1], sizeof state.before);
+                    if (sample == WRITE_CLAMP) {
+                        switch (state.stored.type) {
+                            case PIN_BOOL: state.stored.b = false; break;
+                            case PIN_U64: state.stored.u64 = 500; break;
+                            case PIN_F64: state.stored.d = 12.5; break;
+                            default: REQUIRE(false);
+                        }
+                    }
+                    const pin_value sentinel = { .type = read_fields[field].type,
+                                                 .u64 = UINT64_C(0xa5a5a5a5a5a5a5a5) };
+                    pin_value outputs[] = { sentinel, sentinel };
+                    behavior_function_context context = {
+                        .arguments = inputs,
+                        .argument_count = 2,
+                        .results = outputs,
+                        .world = &worlds[0].view,
+                        .columns = columns,
+                        .binding_world = &binding,
+                        .store_component = export_store_component,
+                        .inspection_user = &state,
+                        .inspect = inspection ? inspect : NULL,
+                        .budget = 32,
+                        .steps = 7,
+                        .error_status = -87,
+                        .error_message = "stale component write error",
+                        .failure = BEHAVIOR_FUNCTION_ARGUMENT,
+                        .node_id = 99,
+                        .error_frame = 99,
+                        .error_source = 99,
+                        .error_stack = 99,
+                        .error_pin = 99,
+                        .error_steps = 99
+                    };
+                    switch (sample) {
+                        case WRITE_NO_WORLD: context.world = NULL; break;
+                        case WRITE_ZERO_SLOT:
+                            inputs[0].u64 = UINT64_C(7) << 32;
+                            break;
+                        case WRITE_INVALID_SLOT:
+                            inputs[0].u64 = (UINT64_C(7) << 32) | 2;
+                            break;
+                        case WRITE_UNOCCUPIED: worlds[0].occupied[1] = 0; break;
+                        case WRITE_GENERATION:
+                            worlds[0].generations[1]++;
+                            break;
+                        case WRITE_NO_MEMBERSHIP:
+                            worlds[0].membership = 0;
+                            break;
+                        case WRITE_NO_COLUMN:
+                            worlds[0].view.capacity = 0;
+                            break;
+                        case WRITE_WRONG_COMPONENT:
+                            worlds[0].column.id++;
+                            break;
+                        case WRITE_LAYOUT: worlds[0].column.layout ^= 1; break;
+                        case WRITE_STRIDE: worlds[0].column.stride++; break;
+                        case WRITE_NO_CALLBACK:
+                            context.store_component = NULL;
+                            break;
+                    }
+                    REQUIRE(behavior_function_bind(f, &context, NULL, 0));
+                    int status = backend
+                                   ? generated(&context)
+                                   : behavior_function_run(f, &context, false);
+                    bool success = sample <= WRITE_RELOCATE;
+                    bool callback = success || sample >= WRITE_REJECT;
+                    REQUIRE(status == (success ? FLOW_OK : FLOW_ERR_INVALID_GRAPH));
+                    REQUIRE(state.calls == (callback ? 1 : 0));
+                    REQUIRE(!callback || state.valid);
+                    REQUIRE(!context.value_storage);
+                    if (success || sample == WRITE_MUTATE_REJECT) {
+                        int destination = sample == WRITE_RELOCATE;
+                        memcpy(
+                            (char *)&expected[destination][1] +
+                                read_fields[field].offset,
+                            &state.stored.d,
+                            read_fields[field].size
+                        );
+                    }
+                    for (int world = 0; world < 2; world++) {
+                        REQUIRE(
+                            !memcmp(worlds[world].rows, expected[world], sizeof expected[world])
+                        );
+                    }
+                    REQUIRE(
+                        outputs[0].type == sentinel.type &&
+                        outputs[1].type == sentinel.type
+                    );
+                    if (success) {
+                        REQUIRE(!context.error_message);
+                        REQUIRE(!memcmp(
+                            &outputs[0].d,
+                            &inputs[1].d,
+                            read_fields[field].size
+                        ));
+                        REQUIRE(!memcmp(
+                            &outputs[1].d,
+                            &state.stored.d,
+                            read_fields[field].size
+                        ));
+                    } else {
+                        REQUIRE(
+                            !memcmp(&outputs[0].d, &sentinel.d, sizeof sentinel.d)
+                        );
+                        REQUIRE(
+                            !memcmp(&outputs[1].d, &sentinel.d, sizeof sentinel.d)
+                        );
+                        REQUIRE(
+                            context.error_message &&
+                            !strcmp(
+                                context.error_message,
+                                sample >= WRITE_NO_CALLBACK
+                                    ? "Cannot retain referenced component write"
+                                    : "Referenced storage is unavailable"
+                            )
+                        );
+                        REQUIRE(read_metadata(&context, write));
+                    }
+                    if (!backend) {
+                        reference[0] = outputs[0];
+                        reference[1] = outputs[1];
+                        reference_status = status;
+                    } else {
+                        REQUIRE(status == reference_status);
+                        for (int result = 0; result < 2; result++) {
+                            REQUIRE(!memcmp(
+                                &outputs[result].d,
+                                &reference[result].d,
+                                read_fields[field].size
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
@@ -864,6 +1212,9 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     }
     for (int field = 0; field < READ_FIXTURES; field++) {
         REQUIRE(read_fixture(field));
+    }
+    for (int field = 0; field < WRITE_FIXTURES; field++) {
+        REQUIRE(write_fixture(field));
     }
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
@@ -948,6 +1299,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_call_snapshots_keep_the_standalone_abi());
     REQUIRE(exported_query_variables_preserve_tuple_and_failure_contract());
     REQUIRE(reads_exported_current_world_scalars());
+    REQUIRE(writes_exported_current_world_scalars());
     return true;
 }
 void test_tool_c_export()

@@ -154,10 +154,11 @@ static interval arithmetic(behavior_function_op op, pin_type type, interval a, i
 }
 static bool barrier(behavior_function_op op)
 {
-    return op == BF_BRANCH || op == BF_JUMP || op == BF_ENTER || op == BF_LEAVE ||
-           op == BF_SUSPEND || op == BF_DELAY || op == BF_POINT ||
-           op == BF_SOURCE_POINT || op == BF_HOST_CALL || op == BF_INVOKE ||
-           op == BF_QUERY || op == BF_COMMAND || op == BF_COMMAND_BEGIN;
+    return op == BF_BRANCH || op == BF_JUMP || op == BF_ENTER ||
+           op == BF_LEAVE || op == BF_SUSPEND || op == BF_DELAY ||
+           op == BF_POINT || op == BF_SOURCE_POINT || op == BF_HOST_CALL ||
+           op == BF_INVOKE || op == BF_COMPONENT_WRITE || op == BF_QUERY ||
+           op == BF_COMMAND || op == BF_COMMAND_BEGIN;
 }
 void behavior_function_optimize_ranges(behavior_function *f, const bool *keep)
 {

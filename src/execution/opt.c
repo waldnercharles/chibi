@@ -141,21 +141,22 @@ void behavior_function_optimize(behavior_function *f)
             op->op == BF_RETRIGGER || op->indirect || op->op == BF_OWNER ||
             op->op == BF_WORLD || op->op == BF_CONTEXT ||
             (op->op >= BF_ENTITY && op->op <= BF_LOAD) || op->op == BF_ASSERT ||
-            op->op == BF_WRITE || op->op == BF_PRESENT || op->op == BF_REQUIRE ||
-            op->op == BF_SELECT || op->op == BF_RESULT_PRESENT ||
-            op->op == BF_STORAGE_NAME || op->op == BF_OWN_NAME ||
-            op->op == BF_COPY_STRING || op->op == BF_COPY_ARRAY ||
-            op->op == BF_INTERN_STRING || op->op == BF_STRING_EQUAL ||
-            op->op == BF_STORE_VALUE || op->op == BF_STORE_HEADER ||
-            op->op == BF_STORE_TYPE_NAME || op->op == BF_ARRAY ||
-            op->op == BF_QUERY_VARIABLE || op->op == BF_QUERY || op->op == BF_READ ||
-            op->op == BF_HOST_SLOT || op->op == BF_HOST_SERVICE ||
-            op->op == BF_HOST_CALL || op->op == BF_COMMAND_SERVICE ||
-            op->op == BF_COMMAND_ARGUMENT || op->op == BF_COMMAND ||
-            op->op == BF_COMMAND_OUTPUT || op->op == BF_COMMAND_RESULT ||
-            op->op == BF_COMMAND_BEGIN || op->op == BF_SUSPEND ||
-            op->op == BF_DELAY || op->op == BF_POINT || op->op == BF_SOURCE_POINT ||
-            op->op == BF_SOURCE_WATCH || op->op == BF_INVOKE) {
+            op->op == BF_WRITE || op->op == BF_COMPONENT_WRITE ||
+            op->op == BF_PRESENT || op->op == BF_REQUIRE || op->op == BF_SELECT ||
+            op->op == BF_RESULT_PRESENT || op->op == BF_STORAGE_NAME ||
+            op->op == BF_OWN_NAME || op->op == BF_COPY_STRING ||
+            op->op == BF_COPY_ARRAY || op->op == BF_INTERN_STRING ||
+            op->op == BF_STRING_EQUAL || op->op == BF_STORE_VALUE ||
+            op->op == BF_STORE_HEADER || op->op == BF_STORE_TYPE_NAME ||
+            op->op == BF_ARRAY || op->op == BF_QUERY_VARIABLE ||
+            op->op == BF_QUERY || op->op == BF_READ || op->op == BF_HOST_SLOT ||
+            op->op == BF_HOST_SERVICE || op->op == BF_HOST_CALL ||
+            op->op == BF_COMMAND_SERVICE || op->op == BF_COMMAND_ARGUMENT ||
+            op->op == BF_COMMAND || op->op == BF_COMMAND_OUTPUT ||
+            op->op == BF_COMMAND_RESULT || op->op == BF_COMMAND_BEGIN ||
+            op->op == BF_SUSPEND || op->op == BF_DELAY || op->op == BF_POINT ||
+            op->op == BF_SOURCE_POINT || op->op == BF_SOURCE_WATCH ||
+            op->op == BF_INVOKE) {
             return;
         }
         /* Only borrowed name metadata may occupy pointer slots. Arithmetic
@@ -875,8 +876,9 @@ static void borrow_arrays(behavior_function_instruction *code)
     int count = acount(code);
     for (int pc = 0; pc < count; pc++) {
         behavior_function_op op = code[pc].op;
-        if (op == BF_SUSPEND || op == BF_DELAY || op == BF_INVOKE || op == BF_HOST_CALL ||
-            op == BF_COMMAND || op == BF_COMMAND_BEGIN || op == BF_WRITE) {
+        if (op == BF_SUSPEND || op == BF_DELAY || op == BF_INVOKE ||
+            op == BF_HOST_CALL || op == BF_COMMAND || op == BF_COMMAND_BEGIN ||
+            op == BF_WRITE || op == BF_COMPONENT_WRITE) {
             return;
         }
     }

@@ -197,7 +197,7 @@ static const char *barrier(const behavior_function *f, int first, int last)
     for (int pc = f->reductions[last - 1].end; pc < b->begin; pc++) {
         if (!transparent(f->instructions[pc].op)) {
             behavior_function_op op = f->instructions[pc].op;
-            return op == BF_WRITE || op == BF_STORE || op == BF_STORE_VALUE ? "Separate scan: an intervening write can change query results. Group reads before writes only when that preserves behavior."
+            return op == BF_WRITE || op == BF_COMPONENT_WRITE || op == BF_STORE || op == BF_STORE_VALUE ? "Separate scan: an intervening write can change query results. Group reads before writes only when that preserves behavior."
                  : behavior_function_call(op)
                      ? "Separate scan: an intervening host call may change "
                        "query inputs. Group related reads before the call when "

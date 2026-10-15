@@ -25,7 +25,6 @@ jobs:
     env:
       SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SOURCE_REF: ${{ github.head_ref || github.ref_name }}
-      BUNDLE_DIR: ${{ runner.temp }}/source-bundle
     steps:
       - name: Check out the exact source commit and history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,6 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          BUNDLE_DIR="$RUNNER_TEMP/source-bundle"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test "$(git rev-parse --is-shallow-repository)" = false
           tree=$(git rev-parse 'HEAD^{tree}')
@@ -73,9 +73,9 @@ jobs:
         with:
           name: chibi-source-${{ env.SOURCE_SHA }}-${{ github.run_attempt }}
           path: |
-            ${{ env.BUNDLE_DIR }}/chibi.bundle
-            ${{ env.BUNDLE_DIR }}/manifest.json
-            ${{ env.BUNDLE_DIR }}/SHA256SUMS
+            ${{ runner.temp }}/source-bundle/chibi.bundle
+            ${{ runner.temp }}/source-bundle/manifest.json
+            ${{ runner.temp }}/source-bundle/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

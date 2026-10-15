@@ -330,8 +330,8 @@ TOOLS = {
     'texture-transform': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--texture-transform'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
-    # Nine independently reviewed bounded snapshot hierarchy/transform cases and an in-memory
-    # five-entity scene codec round trip; at most 257 nodes, no files, process or GPU.
+    # Fourteen independently reviewed bounded hierarchy/transform/snapshot lifetime cases,
+    # including a five-entity codec round trip; at most 257 nodes, no files, process or GPU.
     'scene-hierarchy': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-hierarchy'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
     'model-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--model-runtime'],

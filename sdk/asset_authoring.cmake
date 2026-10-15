@@ -1,10 +1,11 @@
 # Asset mutations and declarative language services are authoring utilities.
 # The model export and scenario document packages remain separately selectable.
 add_library(chibi_scene_authoring STATIC
-    "${CHIBI_SDK_ROOT}/src/authoring/scene_hierarchy.c")
+    "${CHIBI_SDK_ROOT}/src/authoring/scene_hierarchy.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/scene_snapshot.c")
 add_library(Chibi::scene_authoring ALIAS chibi_scene_authoring)
 set_target_properties(chibi_scene_authoring PROPERTIES EXPORT_NAME scene_authoring)
-chibi_sdk_headers(chibi_scene_authoring PUBLIC authoring/scene_hierarchy.h)
+chibi_sdk_headers(chibi_scene_authoring PUBLIC authoring/scene_hierarchy.h authoring/scene_snapshot.h)
 target_link_libraries(chibi_scene_authoring PUBLIC chibi_native_types PRIVATE chibi_scene_document)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     # Match the runtime transform propagation's multiply/add rounding.

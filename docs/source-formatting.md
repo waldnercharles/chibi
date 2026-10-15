@@ -71,9 +71,23 @@ A layout map describes only the minimizer's output to the formatted text; it doe
 not map offsets from before semantic rewriting. Do not silently compose those
 coordinate spaces or weaken the CST check to accept token deletions.
 
-This SDK slice does not choose a new canonicalization policy, configuration-file
+The configurable formatter does not choose a new canonicalization policy, configuration-file
 schema, CLI flags, Studio pin or RML/RCSS dependency. Project configuration and
 explicit option precedence, atomic CLI write/check integration, editor undo and
 original-to-final mapping across semantic rewrites need their own caller review
 and validation. No project version bump is needed: this is an additive SDK API
 and whitespace-only transformation, with no persisted contract migration.
+
+### Root persistent storage
+
+The semantic minimizer omits a redundant `state` keyword from a direct
+behavior, library or system declaration. Those root declarations already have
+persistent storage with either spelling. Callable `state` and system `shared`
+keep their keywords and storage semantics. Comments are retained, and every
+candidate rewrite still passes the existing semantic and comment oracles;
+invalid source remains unchanged.
+
+Formatting alone preserves the `state` token. After minimization, reanalyze the
+new text to obtain its declaration and use ranges; the layout map does not map
+positions from before the semantic rewrite. No syntax, runtime storage contract,
+project version or asset migration changes are required by this spelling rule.

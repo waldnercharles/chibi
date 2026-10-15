@@ -216,9 +216,9 @@ static inline bool behavior_function_left_slot(behavior_function_op op)
 static inline bool behavior_function_right_slot(behavior_function_op op)
 {
     return (op >= BF_ADD && op < BF_STORE && op != BF_LOAD && op != BF_READ &&
-            op != BF_COLUMN && op != BF_COLUMN_TRY && op != BF_RETRIGGER &&
-            op != BF_BIT_NOT && op != BF_NEG && op != BF_ABS && op != BF_CAST &&
-            op != BF_CONVERT && !(op >= BF_SIN && op <= BF_ROUND)) ||
+            op != BF_COLUMN && op != BF_COLUMN_TRY && op != BF_COMPONENT_READ &&
+            op != BF_RETRIGGER && op != BF_BIT_NOT && op != BF_NEG && op != BF_ABS &&
+            op != BF_CAST && op != BF_CONVERT && !(op >= BF_SIN && op <= BF_ROUND)) ||
            op == BF_WRITE || op == BF_STORE_HEADER || op == BF_INTERN_STRING ||
            op == BF_STRING_EQUAL || op == BF_STATE_SELECT || op == BF_RESULT_ARRAY;
 }

@@ -89,6 +89,9 @@ typedef enum
     BF_RANDOM_RANGE,
     BF_ENTITY,
     BF_COMPONENT,
+    /* Checked scalar copy from the current world: left=entity, value=ID,
+     * layout=hash, offset=stride, target=field byte offset. No row escapes. */
+    BF_COMPONENT_READ,
     BF_COLUMN,
     BF_COLUMN_TRY, /* Non-trapping layout guard for speculative read-only work. */
     BF_ROW, /* checked column + live entity slot; no storage-changing effects */

@@ -76,7 +76,7 @@ static void failure(FILE *out, const behavior_function_instruction *i, behavior_
 {
     if (i->op != BF_QUERY && i->op != BF_COMMAND_BEGIN && i->op != BF_HOST_CALL) {
         fputs("c->error_message=(const char*)", out);
-        type_name(out, i->message);
+        type_name(out, i->op == BF_COMPONENT_READ ? "Referenced storage is unavailable" : i->message);
         fputs(";", out);
     }
     fprintf(out, "c->error_stack=%d;", i->stack);
@@ -637,6 +637,33 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     i->output,
                     i->right,
                     i->offset
+                );
+                break;
+            case BF_COMPONENT_READ:
+                fprintf(
+                    out,
+                    "{uint32_t "
+                    "row=c->world?ecs_execution_entity(c->world,v%d):0;"
+                    "const ecs_execution_column "
+                    "*column=ecs_execution_component(c->world,row,UINT64_C(%"
+                    "llu));"
+                    "if(!column||column->layout!=UINT64_C(%llu)||column->"
+                    "stride!=%zu){",
+                    i->left,
+                    (unsigned long long)i->value.u64,
+                    (unsigned long long)i->layout,
+                    i->offset
+                );
+                failure(out, i, BEHAVIOR_FUNCTION_HOST_DATA);
+                fprintf(
+                    out,
+                    "}memcpy(&v%d,(const "
+                    "char*)column->data+(size_t)row*column->stride+%d,sizeof(v%"
+                    "d));"
+                    "c->error_message=NULL;}\n",
+                    i->output,
+                    i->target,
+                    i->output
                 );
                 break;
             case BF_COLUMN:

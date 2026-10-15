@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "test/prepared_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -151,7 +152,7 @@ static bool compile_source(const char *source)
     syntax = NULL;
     return true;
 }
-static bool save(const char *name)
+static bool save_checked(const char *name, bool scalar_getter)
 {
     char error[192];
     size_t length = 0, second = 0;
@@ -159,6 +160,11 @@ static bool save(const char *name)
     REQUIRE(length > 32 && length <= PREPARED_TEST_MAX_BYTES);
     REQUIRE(execution_prepared_write(module, &again, &second, error, sizeof error));
     REQUIRE(length == second && !memcmp(bytes, again, length));
+    if (scalar_getter) {
+        size_t target = 0;
+        REQUIRE(length <= 16 * 1024);
+        REQUIRE(prepared_scalar_getter_target(bytes, length, &target));
+    }
     char path[PREPARED_TEST_MAX_PATH];
     int n = snprintf(path, sizeof path, "%s/%s", directory, name);
     REQUIRE(n > 0 && n < (int)sizeof path);
@@ -171,6 +177,10 @@ static bool save(const char *name)
     free(again);
     bytes = again = NULL;
     return true;
+}
+static bool save(const char *name)
+{
+    return save_checked(name, false);
 }
 TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
 {
@@ -440,6 +450,60 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
     return true;
 }
 
+TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement)
+{
+    const script_catalog_field enabled = {
+        .id = 812,
+        .name = "enabled",
+        .type = { .storage = PIN_BOOL },
+        .offset = offsetof(prepared_counter, enabled),
+    };
+    const script_catalog_parameter result = { .name = "enabled",
+                                              .type = { .storage = PIN_BOOL } };
+    const script_catalog_capability getter = {
+        .id = 82,
+        .name = "read_enabled",
+        .kind = SCRIPT_CAPABILITY_FUNCTION,
+        .results = &result,
+        .result_count = 1,
+        .component_access = SCRIPT_COMPONENT_ACCESS_READ,
+        .component = 101,
+        .component_field = 812,
+        .component_entity = -1,
+        .component_value = -1,
+        .effects = SCRIPT_EFFECT_READ,
+    };
+    type = (script_catalog_type){
+        .id = 101,
+        .name = prepared_counter_type.name,
+        .type = { .storage = PIN_STRUCT, .nominal = 101 },
+        .fields = &enabled,
+        .field_count = 1,
+        .size = prepared_counter_type.size,
+        .layout = type_layout_hash(&prepared_counter_type),
+        .component_id = prepared_counter_component.id,
+        .component = true,
+    };
+    catalog = (script_catalog){ .types = &type,
+                                .type_count = 1,
+                                .capabilities = &getter,
+                                .capability_count = 1,
+                                .globals = &owner,
+                                .global_count = 1,
+                                .entity_type = 700 };
+    const type_desc *const reflected[] = { &prepared_counter_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    bool compiled = compile_source("library ScalarRead { Read :: fn()->(enabled:bool){return read_enabled();} }");
+    type_catalog_set_project(NULL);
+    REQUIRE(compiled);
+    catalog = (script_catalog){ 0 };
+    type = (script_catalog_type){ 0 };
+    REQUIRE(!syntax && !analysis && !plan);
+    REQUIRE(save_checked("scalar-read.prepared", true));
+    return true;
+}
+
 void test_language_prepared_write(const char *path)
 {
     directory = path;
@@ -449,5 +513,6 @@ void test_language_prepared_write(const char *path)
     RUN_TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema);
     RUN_TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement);
+    RUN_TEST_CASE(prepared_scalar_getter_write_after_catalog_retirement);
     pu_clear_setup();
 }

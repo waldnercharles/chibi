@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Reviewed bounded C case: twelve tiny I32/I64 DIV/MOD operand-alias fixtures, one authored union pause/detach/continuation fixture and one verified guarded-array fixture, one shared-library compiler child with existing10s limit, source<128KiB, 120 alias executions, two pause/resume samples including negative zero and eleven array calls including saved-bank alias and callback fallback, native POSIX source build with authoring only, same configured C flags/sanitizers; no new executable/frames/GPU/network; shared60s; docs/testing.md',
+    ('--c-export-alias',): 'Reviewed bounded C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures, and three five-instruction scalar-component BOOL/U64/F64 fixtures; one shared-library compiler child with existing 10s limit, source<128KiB, 132 added scalar reads/failures/recoveries with stale cached columns; native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -436,7 +436,7 @@ TOOLS = {
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
     # Bounded scalar proof tests: runtime IR reductions and VM/compiled/inspection parity.
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
-    # Bounded nonescaping union scalar replacement and conservative ownership/control-flow cases.
+    # Bounded union scalar replacement and checked component-read differential/control-flow cases.
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],

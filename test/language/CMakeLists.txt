@@ -22,11 +22,16 @@ target_link_libraries(test_behavior_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 # The backend-specific fixtures inspect private activation storage. Other tests
 # continue to compile solely against their public SDK dependencies.
-set_source_files_properties(wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-add_executable(test_language main.c syntax.c semantic.c execution.c program.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+set_source_files_properties(runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+add_executable(test_language main.c runtime_attribution.c syntax.c semantic.c execution.c program.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(test_language PRIVATE Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::arithmetic_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
 target_compile_options(test_language PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+# Source identity belongs to each diagnostic report, not an inferred module ID.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/runtime_attribution.c")
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/runtime_attribution.c" attribution_fixture_sha)
+set_source_files_properties(runtime_attribution.c PROPERTIES COMPILE_DEFINITIONS
+    "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\";CHIBI_ATTRIBUTION_FIXTURE_SHA=\"${attribution_fixture_sha}\";CHIBI_ATTRIBUTION_BUILD=\"${CMAKE_BUILD_TYPE}\"")
 if(APPLE)
     target_link_options(test_language PRIVATE -Wl,-dead_strip)
 endif()

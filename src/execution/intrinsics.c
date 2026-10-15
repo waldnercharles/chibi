@@ -8,6 +8,7 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -430,12 +431,15 @@ static int snapshot_reference_root(
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
     *out = *source;
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     size_t name_size = strlen(layout->name) + 1;
     char *name = arena_alloc(storage, name_size);
     memcpy(name, layout->name, name_size);
+    pin_copy_record(PIN_COPY_NOMINAL, name_size);
     out->type_name = name;
     out->ptr = arena_alloc(storage, layout->size);
     memcpy(out->ptr, source->ptr, layout->size);
+    pin_copy_record(PIN_COPY_RECORD, layout->size);
     return pin_struct_snapshot_fields(storage, layout, out->ptr);
 }
 static const char *read_reference(arena *storage, const pin_value *args, int count, pin_value *out)

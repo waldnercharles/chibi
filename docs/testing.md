@@ -1540,3 +1540,28 @@ No full-L07, application-scale, benchmark, or scheduling claim follows;
 full/quarantined gates remain disabled, not passed.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
 status is asserted by this local validation.
+
+
+## Selected runtime attribution: admitted fixed workload
+
+`tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
+same six C/pico_unit cases through the existing language dispatcher. Each occurs
+once in its ordinary native-language or serial-Wasm group. This does not add a
+second copy to the separate native `test_tools` selector group.
+
+The fixed envelope is 44 copy API operations, ten scoped copies/VM calls, three
+intern worlds with 32 unique edits and 32 repeats, four task owners with eight
+cycles and four boundaries each, six native/five Wasm backend attempts, and
+5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
+storage cap are unchanged. There are no new frames, GPU/browser/network workers
+or environment-controlled repetitions. Source review and exact artifact
+validation preceded measurement; all commands retain their original shared
+60-second production-supervisor deadline.
+
+The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
+The integrated complete language/Wasm groups, native-tools and installed
+compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
+raw timing samples, log hashes and limitations are in
+[the validation record](evidence/runtime-attribution/validation.md). Counters
+cover selected copy and backend operations; they are not a global allocation
+census or a whole-application performance/retention claim.

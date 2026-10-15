@@ -2,6 +2,7 @@
 
 #include "execution/definition.h"
 #include "execution/machine.h"
+#include "execution/runner.h"
 #include "execution/status.h"
 #include "execution/wasm_emit.h"
 #include "support/array.h"
@@ -302,6 +303,7 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
         machine.instructions = f->runtime_body;
     }
     atomic_fetch_add_explicit(&executions, 1, memory_order_relaxed);
+    behavior_run_record(inspected ? EXECUTION_RUN_INSPECTED_WASM : EXECUTION_RUN_WASM);
     int result = entry(&machine);
     execution_machine_end(&machine, result);
     return result;

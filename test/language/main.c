@@ -5,6 +5,7 @@
 #include <string.h>
 
 void test_language_syntax();
+void test_language_runtime_attribution();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_wasm();
@@ -58,6 +59,7 @@ int main(int argc, char **argv)
     bool borrow_benchmark = argc == 2 && !strcmp(argv[1], "--borrow-benchmark");
     bool incremental_benchmark = argc == 2 &&
                                  !strcmp(argv[1], "--incremental-benchmark");
+    bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
@@ -85,8 +87,8 @@ int main(int argc, char **argv)
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !execution && !semantic && !benchmark &&
          !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !component_write &&
+         !incremental_benchmark && !runtime_attribution && !wasm && !program &&
+         !query_program && !incremental && !modules && !ranges && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
@@ -110,7 +112,7 @@ int main(int argc, char **argv)
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
-            "--model-runtime | "
+            "--model-runtime | --runtime-attribution | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
             argv[0]
@@ -118,7 +120,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (wasm) {
+    if (runtime_attribution) {
+        test_language_runtime_attribution();
+    } else if (wasm) {
         test_language_wasm();
     } else if (benchmark) {
         test_language_benchmark();

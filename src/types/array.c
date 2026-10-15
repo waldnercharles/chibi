@@ -3,6 +3,7 @@
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -15,7 +16,7 @@ static int value_string(pin_type type)
     return type == PIN_STR || type == PIN_NAME;
 }
 
-static char *arena_string(arena *a, const char *s)
+static char *arena_string(arena *a, const char *s, pin_copy_kind kind)
 {
     if (!s) {
         return NULL;
@@ -24,6 +25,7 @@ static char *arena_string(arena *a, const char *s)
     char *copy = (char *)arena_alloc(a, size);
     if (copy) {
         memcpy(copy, s, size);
+        pin_copy_record(kind, size);
     }
     return copy;
 }
@@ -86,6 +88,7 @@ static int pin_array_insert(pin_array *array, int index, const pin_value *value)
         (size_t)(array->count - index) * sizeof *array->items
     );
     array->items[index] = copy;
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     array->count++;
     return index;
 }
@@ -128,7 +131,7 @@ static pin_array *array_clone_arena(arena *a, const pin_array *src)
     }
     *dst = (pin_array){ 0 };
     dst->element_type = src->element_type;
-    dst->type_name = arena_string(a, src->type_name);
+    dst->type_name = arena_string(a, src->type_name, PIN_COPY_NOMINAL);
     dst->count = src->count;
     dst->capacity = src->count;
     dst->items = (pin_value *)(dst + 1);
@@ -169,7 +172,7 @@ static int snapshot_fields(arena *a, const type_desc *type, void *data, int dept
                 return -1;
             }
             const char *text = *(const char **)member;
-            *(const char **)member = arena_string(a, text);
+            *(const char **)member = arena_string(a, text, PIN_COPY_TEXT);
         } else if (field->type == PIN_UNION) {
             if (field->size != sizeof(void *)) {
                 return -1;
@@ -195,7 +198,8 @@ int pin_struct_snapshot_fields(arena *a, const type_desc *type, void *data)
 int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
 {
     *dst = *src;
-    dst->type_name = arena_string(a, src->type_name);
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
+    dst->type_name = arena_string(a, src->type_name, PIN_COPY_NOMINAL);
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_snapshot_to_arena(a, src->ptr);
         if (src->container == PIN_CONTAINER_SET) {
@@ -204,7 +208,7 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return src->ptr && !dst->ptr ? -1 : 0;
     }
     if (value_string(src->type)) {
-        dst->str = arena_string(a, src->str);
+        dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
         return 0;
     }
     if (src->type == PIN_UNION && src->ptr) {
@@ -223,6 +227,7 @@ int pin_value_snapshot_to_arena(arena *a, pin_value *dst, const pin_value *src)
     }
     dst->ptr = arena_alloc(a, type->size);
     memcpy(dst->ptr, src->ptr, type->size);
+    pin_copy_record(PIN_COPY_RECORD, type->size);
     return pin_struct_snapshot_fields(a, type, dst->ptr);
 }
 pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name, int count)
@@ -230,7 +235,7 @@ pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name
     assert(count >= 0);
     pin_array *dst = arena_alloc(a, sizeof *dst + (size_t)count * sizeof(pin_value));
     *dst = (pin_array){ .element_type = type,
-                        .type_name = arena_string(a, name),
+                        .type_name = arena_string(a, name, PIN_COPY_NOMINAL),
                         .count = count,
                         .capacity = count,
                         .items = (pin_value *)(dst + 1) };
@@ -277,6 +282,7 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
         return -1;
     }
     *dst = *src;
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     if (src->container >= PIN_CONTAINER_ARRAY) {
         dst->ptr = pin_array_clone((const pin_array *)src->ptr);
         return !src->ptr || dst->ptr ? 0 : -1;
@@ -286,6 +292,9 @@ int pin_value_copy(pin_value *dst, const pin_value *src)
     }
     if (value_string(src->type) && src->str) {
         dst->str = xstrdup(src->str);
+        if (pin_copy_current) {
+            pin_copy_record(PIN_COPY_TEXT, strlen(src->str) + 1);
+        }
         return 0;
     }
     if (src->type == PIN_STRUCT && src->ptr) {
@@ -300,6 +309,7 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return -1;
     }
     *dst = *src;
+    pin_copy_record(PIN_COPY_VALUE_HEADER, 1);
     if (src->type == PIN_UNION && src->container == PIN_CONTAINER_SINGLE) {
         return pin_value_snapshot_to_arena(a, dst, src);
     }
@@ -311,7 +321,7 @@ int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src)
         return !src->ptr || dst->ptr ? 0 : -1;
     }
     if (value_string(src->type) && src->str) {
-        dst->str = arena_string(a, src->str);
+        dst->str = arena_string(a, src->str, PIN_COPY_TEXT);
     }
     return 0;
 }

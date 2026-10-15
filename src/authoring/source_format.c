@@ -17,6 +17,8 @@ typedef struct
 {
     TSNode node;
     int start, end;
+    int group, pair, flat_width, hard_count;
+    bool wraps;
     bool open, close, end_line, nest_open, nest_close, case_open, case_close;
 } token;
 
@@ -155,6 +157,105 @@ static bool tight_after(token t)
              kind(p, "cast_expression")));
 }
 
+static bool space_between(token previous, token current)
+{
+    return !(previous.open && current.close) &&
+           ((!tight_before(current) && !tight_after(previous)) ||
+            kind(previous.node, "->") || kind(previous.node, "::"));
+}
+
+/* Measure flat groups once, without reparsing or inventing another printer.
+ * Comments and statement bodies keep their line boundaries. Nested groups are
+ * subsequently laid out against the actual column at their opening bracket. */
+static void measure_groups(token *list)
+{
+    int stack[FORMAT_MAX_DEPTH], depth = 0, width = 0, hard = 0;
+    for (int i = 0; i < acount(list); i++) {
+        token *t = &list[i];
+        width += i && space_between(list[i - 1], *t);
+        t->group = depth ? stack[depth - 1] : -1;
+        if (t->nest_open) {
+            assert(depth < FORMAT_MAX_DEPTH);
+            stack[depth++] = i;
+            t->flat_width = width;
+            t->hard_count = hard;
+        }
+        width += t->end - t->start;
+        hard += kind(t->node, "comment") || t->open || t->close;
+        if (t->nest_close) {
+            assert(depth);
+            token *open = &list[stack[--depth]];
+            open->pair = i;
+            open->flat_width = hard == open->hard_count ? width - open->flat_width
+                                                        : FORMAT_MAX_BYTES;
+        }
+    }
+    assert(!depth);
+}
+
+static bool break_after(token previous, token open)
+{
+    TSNode parent = ts_node_parent(previous.node);
+    if (kind(previous.node, ",")) {
+        return ts_node_eq(parent, ts_node_parent(open.node));
+    }
+    return kind(ts_node_parent(open.node), "parenthesized_expression") &&
+           kind(parent, "binary_expression") &&
+           ts_node_eq(previous.node, ts_node_child_by_field_name(parent, "operator", 8));
+}
+
+static void record_edit(
+    authoring_format_edit **edits,
+    const char *before,
+    const char *after,
+    int start,
+    int end,
+    int new_start,
+    int new_end
+)
+{
+    if (end - start != new_end - new_start ||
+        (end > start &&
+         memcmp(before + start, after + new_start, (size_t)(end - start)))) {
+        apush(*edits, ((authoring_format_edit){ start, end, new_start, new_end }));
+    }
+}
+
+authoring_format_options authoring_format_defaults()
+{
+    return (authoring_format_options){ .indent_width = 4 };
+}
+
+void authoring_format_map_free(authoring_format_map *map)
+{
+    afree(map->edits);
+    *map = (authoring_format_map){ 0 };
+}
+
+int authoring_format_map_position(const authoring_format_map *map, int offset, authoring_format_affinity affinity)
+{
+    assert(offset >= 0 && offset <= map->source_size);
+    assert(affinity == AUTHORING_FORMAT_BEFORE || affinity == AUTHORING_FORMAT_AFTER);
+    int delta = 0;
+    for (int i = 0; i < map->count; i++) {
+        authoring_format_edit e = map->edits[i];
+        if (offset < e.start) {
+            break;
+        }
+        if (offset == e.start && e.start != e.end) {
+            return e.new_start;
+        }
+        if (offset < e.end || (offset == e.start && e.start == e.end)) {
+            return affinity == AUTHORING_FORMAT_BEFORE ? e.new_start : e.new_end;
+        }
+        if (offset == e.end) {
+            return e.new_end;
+        }
+        delta = e.new_end - e.end;
+    }
+    return offset + delta;
+}
+
 /* Compare the complete CST, including comments and field relationships. Byte
  * positions alone may change; zero-width automatic terminators are omitted. */
 static bool advance(TSTreeCursor *cursor, int *depth)
@@ -215,9 +316,32 @@ static bool equivalent(TSNode a, TSNode b, const char *before, const char *after
 
 char *authoring_source_format(const script_syntax *source, char *error, size_t size)
 {
+    return authoring_source_format_with_options(source, NULL, NULL, error, size);
+}
+
+char *authoring_source_format_with_options(
+    const script_syntax *source,
+    const authoring_format_options *options,
+    authoring_format_map *map,
+    char *error,
+    size_t size
+)
+{
     assert(source && source->tree && source->text);
     if (size) {
         error[0] = 0;
+    }
+    if (map) {
+        *map = (authoring_format_map){ 0 };
+    }
+    authoring_format_options config = options ? *options
+                                              : authoring_format_defaults();
+    if (config.indent_width < 1 || config.indent_width > 16 ||
+        config.preferred_width < 0 || config.preferred_width > 4096) {
+        if (size) {
+            snprintf(error, size, "Invalid formatter options: indent_width must be 1..16 and preferred_width 0..4096");
+        }
+        return NULL;
     }
     if (source->diagnostic_count ||
         ts_node_has_error(ts_tree_root_node(source->tree))) {
@@ -229,13 +353,18 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
     token *list = NULL;
     char *out = NULL;
     bool *nested = NULL; /* Whether each open bracket indented its lines. */
-    if (ts_node_end_byte(ts_tree_root_node(source->tree)) > FORMAT_MAX_BYTES ||
-        !tokens(source->tree, &list)) {
+    authoring_format_edit *edits = NULL;
+    size_t source_size = strlen(source->text);
+    if (source_size > FORMAT_MAX_BYTES || !tokens(source->tree, &list)) {
         goto limit;
     }
-    int indent = 0;
+    if (config.preferred_width) {
+        measure_groups(list);
+    }
+    int indent = 0, column = 0;
     for (int i = 0; i < acount(list); i++) {
         token current = list[i];
+        int gap_start = acount(out);
         if (current.close) {
             indent--;
         }
@@ -254,7 +383,17 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
             bool empty_block = previous.open && current.close;
             bool chained = previous.close &&
                            (kind(current.node, "else") || kind(current.node, ";"));
-            bool newline = (lines && !chained) ||
+            bool group_break = false;
+            if (config.preferred_width && current.group >= 0) {
+                token open = list[current.group];
+                if (!comment && !kind(previous.node, "comment")) {
+                    lines = 0;
+                }
+                group_break = open.wraps && !inline_comment &&
+                              (i - 1 == current.group || current.nest_close ||
+                               break_after(previous, open));
+            }
+            bool newline = group_break || (lines && !chained) ||
                            (!inline_comment && !empty_block && !chained &&
                             (previous.open || previous.close || previous.end_line ||
                              previous.case_open || current.close));
@@ -263,22 +402,39 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
                     goto limit;
                 }
                 for (int d = 0; d < indent; d++) {
-                    if (!append(&out, "    ", 4)) {
+                    if (!append(
+                            &out,
+                            config.use_tabs ? "\t" : "                ",
+                            config.use_tabs ? 1 : config.indent_width
+                        )) {
                         goto limit;
                     }
                 }
-            } else if (
-                !empty_block &&
-                ((!tight_before(current) && !tight_after(previous)) ||
-                 kind(previous.node, "->") || kind(previous.node, "::"))
-            ) {
+                column = indent * config.indent_width;
+            } else if (space_between(previous, current)) {
                 if (!append(&out, " ", 1)) {
                     goto limit;
                 }
+                column++;
             }
         }
+        if (map) {
+            record_edit(
+                &edits,
+                source->text,
+                out,
+                i ? list[i - 1].end : 0,
+                current.start,
+                gap_start,
+                acount(out)
+            );
+        }
+        int start_column = column;
         if (!append(&out, source->text + current.start, current.end - current.start)) {
             goto limit;
+        }
+        for (int p = current.start; p < current.end; p++) {
+            column = source->text[p] == '\n' ? 0 : column + 1;
         }
         if (current.open || current.case_open) {
             indent++;
@@ -288,16 +444,38 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
         }
         if (current.nest_open) {
             bool wraps = false;
-            for (int p = current.end; i + 1 < acount(list) && p < list[i + 1].start;
-                 p++) {
-                wraps |= source->text[p] == '\n';
+            if (config.preferred_width) {
+                wraps = current.pair > i + 1 &&
+                        current.flat_width > config.preferred_width - start_column;
+                list[i].wraps = wraps;
+            } else {
+                for (int p = current.end;
+                     i + 1 < acount(list) && p < list[i + 1].start;
+                     p++) {
+                    wraps |= source->text[p] == '\n';
+                }
             }
             apush(nested, wraps);
             indent += wraps;
         }
     }
     afree(nested);
-    if (!append(&out, "\n", 1) || !append(&out, "", 1)) {
+    int last = acount(out);
+    if (!append(&out, "\n", 1)) {
+        goto limit;
+    }
+    if (map) {
+        record_edit(
+            &edits,
+            source->text,
+            out,
+            acount(list) ? list[acount(list) - 1].end : 0,
+            (int)source_size,
+            last,
+            acount(out)
+        );
+    }
+    if (!append(&out, "", 1)) {
         goto limit;
     }
     script_syntax *check = script_parse(out);
@@ -313,8 +491,15 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
         if (size) {
             snprintf(error, size, "Formatting would change the syntax tree");
         }
+        afree(edits);
         afree(out);
         return NULL;
+    }
+    if (map) {
+        *map = (authoring_format_map){ .edits = edits,
+                                       .count = acount(edits),
+                                       .source_size = (int)source_size,
+                                       .formatted_size = acount(out) - 1 };
     }
     char *result = xstrdup(out);
     afree(out);
@@ -323,6 +508,7 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
 limit:
     afree(nested);
     afree(list);
+    afree(edits);
     afree(out);
     if (size) {
         snprintf(error, size, "Source exceeds formatter byte, nesting or token limit");

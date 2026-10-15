@@ -10,6 +10,7 @@
 #include "execution/inspection.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
+#include "execution/program_internal.h"
 #include "execution/status.h"
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
@@ -247,6 +248,12 @@ static const script_catalog_capability capabilities[] = {
       .results = &managed_result,
       .result_count = 1,
       .effects = SCRIPT_EFFECT_HOST },
+    { .id = 63,
+      .name = "capture_text",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .results = &managed_result,
+      .result_count = 1,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const script_catalog_global globals[] = {
     { .id = 30, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = 700 } },
@@ -348,6 +355,26 @@ static const char *managed_text(arena *storage, const pin_value *, int count, pi
              : NULL;
 }
 static const node_host_call managed_call = { .value = managed_text };
+#define CAPTURE_TEXT_BYTES 512
+#define CAPTURE_WRITES 32
+#define CAPTURE_KEEP_UPDATES 40
+#define CAPTURE_STORAGE_LIMIT ((size_t)256 * 1024)
+static int capture_text_calls;
+static const char *capture_text(arena *storage, const pin_value *, int count, pin_value *out)
+{
+    assert(count == 0 && capture_text_calls < CAPTURE_WRITES + 2);
+    char text[CAPTURE_TEXT_BYTES + 1];
+    memset(text, 'x', CAPTURE_TEXT_BYTES);
+    text[0] = (char)('A' + capture_text_calls / 26);
+    text[1] = (char)('a' + capture_text_calls % 26);
+    text[CAPTURE_TEXT_BYTES] = 0;
+    capture_text_calls++;
+    const pin_value value = { .type = PIN_STR, .str = text };
+    return pin_value_snapshot_to_arena(storage, out, &value)
+             ? "capture text snapshot failed"
+             : NULL;
+}
+static const node_host_call capture_call = { .value = capture_text };
 static const char *instance_clock(
     const behavior_function_context *context,
     void *,
@@ -409,6 +436,10 @@ static bool host(void *, uint64_t id, script_lower_host *out)
     }
     if (id == 21) {
         *out = (script_lower_host){ .command = &EXECUTION_Delay };
+        return true;
+    }
+    if (id == 63) {
+        *out = (script_lower_host){ .call = &capture_call };
         return true;
     }
     if (id == 50) {
@@ -1593,6 +1624,266 @@ static bool memory_text_state(execution_instance *instance, const char *name, in
     int size = MEMORY_TEXT_MIN + produced * MEMORY_TEXT_STEP;
     return value && value->type == PIN_STR && value->str[0] == 'A' + produced % 26 &&
            strlen(value->str) == (size_t)size && value->str[size - 1] == 'x';
+}
+/* This audit deliberately inspects private box storage: public payload metrics
+ * cover activation arenas, not the detached box's ordinary arena. It measures
+ * retained bytes without declaring arena usage to be semantically live data. */
+static execution_box *capture_box(execution_instance *instance, int *holders)
+{
+    execution_box *box = NULL;
+    *holders = 0;
+    for (int i = 0; i < acount(instance->activations); i++) {
+        execution_activation *activation = instance->activations[i];
+        for (int j = 0; j < acount(activation->held); j++) {
+            assert(!box || box == activation->held[j]);
+            box = activation->held[j];
+            (*holders)++;
+        }
+    }
+    return box;
+}
+static bool capture_text_is(const pin_value *value, int produced)
+{
+    if (!value || value->type != PIN_STR || value->container != PIN_CONTAINER_SINGLE ||
+        strlen(value->str) != CAPTURE_TEXT_BYTES ||
+        value->str[0] != 'A' + produced / 26 || value->str[1] != 'a' + produced % 26) {
+        return false;
+    }
+    for (int i = 2; i < CAPTURE_TEXT_BYTES; i++) {
+        if (value->str[i] != 'x') {
+            return false;
+        }
+    }
+    return true;
+}
+static bool capture_state_is(execution_instance *instance, const char *name, int produced, bool array)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    if (!array) {
+        return capture_text_is(value, produced);
+    }
+    if (!value || value->type != PIN_STR ||
+        value->container != PIN_CONTAINER_ARRAY || !value->ptr) {
+        return false;
+    }
+    const pin_array *items = value->ptr;
+    return items->count == 2 && capture_text_is(&items->items[0], produced) &&
+           capture_text_is(&items->items[1], 1);
+}
+static bool capture_measure(
+    execution_instance *instance,
+    const char *label,
+    behavior_backend backend,
+    bool array,
+    bool attached,
+    int expected_holders,
+    int writes
+)
+{
+    int holders;
+    execution_box *box = capture_box(instance, &holders);
+    REQUIRE(holders == expected_holders);
+    if (!expected_holders) {
+        REQUIRE(!box);
+        printf(
+            "capture backend=%d shape=%s phase=%s writes=%d holders=0 "
+            "boxes=0\n",
+            backend,
+            array ? "array-element" : "string",
+            label,
+            writes
+        );
+        return true;
+    }
+    REQUIRE(box && box->holders == holders + attached);
+    REQUIRE((box->owner == &box->detached) == !attached);
+    REQUIRE(box->value);
+    REQUIRE(attached || box->value == &box->kept);
+    size_t used, capacity;
+    arena_usage(&box->storage, &used, &capacity);
+    size_t backing = arena_storage_bytes(&box->storage);
+    REQUIRE(used <= capacity && capacity <= backing && backing < CAPTURE_STORAGE_LIMIT);
+    /* A fresh owning snapshot is a bounded reference size for the current
+     * value, including nested array headers and strings, not the old versions. */
+    arena current = { 0 };
+    pin_value snapshot;
+    REQUIRE(!pin_value_snapshot_to_arena(&current, &snapshot, box->value));
+    size_t live, live_capacity;
+    arena_usage(&current, &live, &live_capacity);
+    REQUIRE(live >= CAPTURE_TEXT_BYTES && live < 4 * CAPTURE_TEXT_BYTES);
+    REQUIRE(
+        array ? capture_text_is(&((pin_array *)snapshot.ptr)->items[0], writes ? writes + 1 : 0)
+              : capture_text_is(&snapshot, writes)
+    );
+    arena_free(&current);
+    execution_memory_usage memory = execution_program_memory_usage(program);
+    printf(
+        "capture backend=%d shape=%s phase=%s writes=%d attached=%d holders=%d "
+        "box_used=%zu box_capacity=%zu box_backing=%zu current_snapshot=%zu "
+        "activation_payload=%zu activation_capacity=%zu\n",
+        backend,
+        array ? "array-element" : "string",
+        label,
+        writes,
+        attached,
+        box->holders,
+        used,
+        capacity,
+        backing,
+        live,
+        memory.payload_bytes,
+        memory.payload_capacity
+    );
+    return true;
+}
+static bool capture_retention_case(bool array, bool attached, int ending)
+{
+    char source[2048];
+    int length = snprintf(
+        source,
+        sizeof source,
+        "behavior Capture { writer: task; keeper: task; count: double = 0;"
+        "seen: string = \"\"; latest: string = \"\"; tail: string = \"\";"
+        "initial: %s; saved: %s;"
+        "Write :: fn(value: ref %s, alias: ref %s) { yield; i := 0;"
+        "while i < %d { %s = capture_text(); seen = %s; %s"
+        "if i == 7 { saved = alias; } count += 1; i += 1; yield; } }"
+        "Keep :: fn(value: ref %s) { yield; i := 0; while i < %d {"
+        "latest = %s; i += 1; yield; } }"
+        "on Impulse(amount, enabled) { if amount == 0 { v := %s; initial = v;"
+        "writer = Write(v, v); keeper = Keep(v); if enabled { await writer; } }"
+        "else if amount == 1 { cancel writer; } else { cancel keeper; } } }",
+        array ? "string[]" : "string = \"\"",
+        array ? "string[]" : "string = \"\"",
+        array ? "string[]" : "string",
+        array ? "string[]" : "string",
+        CAPTURE_WRITES,
+        array ? "value[0]" : "value",
+        array ? "alias[0]" : "alias",
+        array ? "tail = alias[1];" : "",
+        array ? "string[]" : "string",
+        CAPTURE_KEEP_UPDATES,
+        array ? "value[0]" : "value",
+        array ? "[capture_text(), capture_text()]" : "capture_text()"
+    );
+    REQUIRE(length > 0 && (size_t)length < sizeof source);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        capture_text_calls = 0;
+        REQUIRE(compile(source, backends[b]));
+        REQUIRE(execution_module_backend(module) == backends[b]);
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = attached } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(capture_measure(instance, "start", backends[b], array, attached, 3, 0));
+        int last = ending ? CAPTURE_WRITES / 2 : CAPTURE_WRITES;
+        for (int step = 1; step <= last; step++) {
+            REQUIRE(execution_program_update(program, step, 0, 10000) == FLOW_OK);
+            REQUIRE(number_state(instance, "count", step));
+            REQUIRE(capture_state_is(instance, "seen", step + array, false));
+            REQUIRE(capture_state_is(instance, "initial", 0, array));
+            if (step >= 8) {
+                REQUIRE(capture_state_is(instance, "saved", 8 + array, array));
+            }
+            if (array) {
+                REQUIRE(capture_state_is(instance, "tail", 1, false));
+            }
+            if (step == 8 || step == 16 || step == CAPTURE_WRITES) {
+                REQUIRE(
+                    capture_measure(instance, "overwrite", backends[b], array, attached, 3, step)
+                );
+            }
+        }
+        REQUIRE(capture_text_calls == last + 1 + array);
+        if (ending == 2) {
+            execution_program_detach(program, ecs_entity_to_u64(owner));
+            execution_memory_usage detached = execution_program_memory_usage(program);
+            REQUIRE(
+                !detached.instance_count && !detached.activation_bytes &&
+                !detached.payload_capacity
+            );
+            printf(
+                "capture backend=%d shape=%s phase=owner-detach instances=0 "
+                "activations=0 payload=0\n",
+                backends[b],
+                array ? "array-element" : "string"
+            );
+            continue;
+        }
+        if (ending == 1) {
+            args[0].d = 1;
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, last, 0, 10000) == FLOW_OK);
+        }
+        REQUIRE(execution_program_update(program, last + 1, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "count", last));
+        REQUIRE(capture_state_is(instance, "latest", last + array, false));
+        REQUIRE(capture_measure(
+            instance,
+            ending ? "writer-cancelled" : "writer-complete",
+            backends[b],
+            array,
+            false,
+            1,
+            last
+        ));
+        if (ending == 1) {
+            args[0].d = 2;
+            REQUIRE(
+                execution_instance_dispatch(instance, 11, args, 2, last + 1, 0, 10000) == FLOW_OK
+            );
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(
+                capture_measure(instance, "cancelled-before-update", backends[b], array, false, 1, last)
+            );
+            /* Cancellation stops execution immediately. Finished activations
+             * release their held boxes at the next program safe point. */
+            REQUIRE(execution_program_update(program, last + 2, 0, 10000) == FLOW_OK);
+        } else {
+            for (int step = last + 2; step <= CAPTURE_KEEP_UPDATES + 1; step++) {
+                REQUIRE(execution_program_update(program, step, 0, 10000) == FLOW_OK);
+            }
+        }
+        REQUIRE(capture_measure(
+            instance,
+            ending ? "last-holder-cancelled" : "last-holder-complete",
+            backends[b],
+            array,
+            false,
+            0,
+            last
+        ));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        REQUIRE(capture_state_is(instance, "initial", 0, array));
+        REQUIRE(capture_state_is(instance, "saved", 8 + array, array));
+        REQUIRE(capture_state_is(instance, "seen", last + array, false));
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(!complete.payload_bytes && !complete.payload_capacity);
+        execution_program_detach(program, ecs_entity_to_u64(owner));
+        REQUIRE(!execution_program_memory_usage(program).instance_count);
+    }
+    return true;
+}
+TEST_CASE(program_detached_string_capture_retention_audit)
+{
+    for (int ending = 0; ending < 3; ending++) {
+        REQUIRE(capture_retention_case(false, false, ending));
+    }
+    return true;
+}
+TEST_CASE(program_detached_array_capture_retention_audit)
+{
+    for (int ending = 0; ending < 3; ending++) {
+        REQUIRE(capture_retention_case(true, false, ending));
+    }
+    return true;
+}
+TEST_CASE(program_attached_string_capture_retention_control)
+{
+    REQUIRE(capture_retention_case(false, true, 0));
+    return true;
 }
 TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes)
 {
@@ -7112,6 +7403,9 @@ void test_language_program()
     RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
+    RUN_TEST_CASE(program_detached_string_capture_retention_audit);
+    RUN_TEST_CASE(program_detached_array_capture_retention_audit);
+    RUN_TEST_CASE(program_attached_string_capture_retention_control);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
     RUN_TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows);
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);

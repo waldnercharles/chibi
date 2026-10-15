@@ -14,6 +14,12 @@ The package count is a decomposition for coordination, not an obligation to crea
 
 The `native-reload-audit.md` report verifies that a new native-reload deletion feature is unnecessary at the audited pair. The supplementary `array-storage-design.md` records researched alternatives and external precedents. Its proposed Chibi spellings are not approved syntax or implementation claims.
 
+The supplementary [current language contract](../language-contracts/v1.md) records
+L00's source-backed current semantics at engine `62906a504fee6b2e0bd6349a8eeff1450529cd90`,
+with existing admitted C fixture mappings and a separately labelled capture
+lifetime proposal. It is a documentation prerequisite only: no runtime result,
+new syntax choice, completed L00 status or Stage 0–2 gate is implied.
+
 ## Regeneration and maintenance
 
 This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.

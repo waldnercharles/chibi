@@ -573,7 +573,6 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_COMPONENT_HAS:
                     case EXECUTION_INTRINSIC_QUERY_SOURCE:
                     case EXECUTION_INTRINSIC_QUERY_TARGET:
-                    case EXECUTION_INTRINSIC_QUERY_VARIABLE:
                     case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
                     case EXECUTION_INTRINSIC_BREAK_REQUEST:
                     case EXECUTION_INTRINSIC_BREAK_TAKE:
@@ -2840,24 +2839,11 @@ static int query_variable_value(lower *l, int variable, script_range range)
     if (!variable) {
         return value_op(l, (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE }, range);
     }
-    pin_value headers[] = { { .type = BF_POINTER_TYPE },
-                            { .type = PIN_I32, .i = variable } };
-    int slots[] = { value_op(
-                        l,
-                        (behavior_function_instruction){ .op = BF_CONTEXT,
-                                                         .type = BF_POINTER_TYPE,
-                                                         .target = 1 },
-                        range
-                    ),
-                    -1 };
-    return primitive(
+    return value_op(
         l,
-        &EXECUTION_query_variable_call,
-        &EXECUTION_value_access,
-        headers,
-        slots,
-        2,
-        (script_type){ .storage = PIN_HANDLE },
+        (behavior_function_instruction){ .op = BF_QUERY_VARIABLE,
+                                         .type = PIN_HANDLE,
+                                         .target = variable },
         range
     );
 }

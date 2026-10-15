@@ -1052,6 +1052,121 @@ static execution_instance *program_query_tuple(ecs_entity owner, ecs_entity targ
     uint64_t variable = ecs_entity_to_u64(target);
     return execution_program_row(program, ecs_entity_to_u64(owner), &variable, 1);
 }
+TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets" },
+        { .id = 602, .name = "Leaves" },
+    };
+    const ecs_relationship_desc leaves = { .id = 602,
+                                           .key = "program.row-leaves",
+                                           .name = "Leaves" };
+    script_catalog active = catalog;
+    active.relationships = relationships;
+    active.relationship_count = 2;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int inspected = 0; inspected < 2; inspected++) {
+            prepare();
+            REQUIRE(ecs_world_register_relationship(world, &row_targets, NULL) == ECS_OK);
+            REQUIRE(ecs_world_register_relationship(world, &leaves, NULL) == ECS_OK);
+            ecs_entity owner = positioned(0, false);
+            ecs_entity middle[] = { positioned(10, false), positioned(20, false) };
+            ecs_entity leaf[] = { positioned(5, false),
+                                  positioned(15, false),
+                                  positioned(25, false) };
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(
+                    ecs_world_record_add_pair(world, owner, row_targets.id, middle[i], 0) == ECS_OK
+                );
+                REQUIRE(
+                    ecs_world_record_add_pair(world, middle[i], leaves.id, leaf[i], 0) == ECS_OK
+                );
+                REQUIRE(
+                    ecs_world_record_add_pair(world, middle[i], leaves.id, leaf[i + 1], 0) == ECS_OK
+                );
+            }
+            REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+            REQUIRE(compile_catalog(
+                "system Chained query p:Position "
+                "join middle in self.Targets join leaf in middle.Leaves "
+                "join mid:Position from middle join aim:Position from leaf "
+                "where aim.x > mid.x { "
+                "state ticks:double=0; state seen:double=0; "
+                "on Impulse(amount,enabled) { if enabled { seen=amount; "
+                "p.x+=amount+mid.x+aim.x; } } "
+                "ticks+=1; p.y+=mid.x+aim.x; aim.y+=mid.x; }",
+                backends[backend],
+                &active
+            ));
+            REQUIRE(!execution_module_effects(module).parallel_safe);
+            program = execution_program_new(module, world, NULL);
+            REQUIRE(program);
+            if (inspected) {
+                debugger = execution_program_inspector(program);
+                REQUIRE(debugger);
+                execution_inspector_recording(debugger, true, ecs_entity_to_u64(owner));
+            }
+            REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_memory_usage(program).query_rows == 4);
+            REQUIRE(execution_program_memory_usage(program).instance_count == 2);
+            execution_instance *accepted[2];
+            uint64_t tuples[2][2];
+            for (int i = 0; i < 2; i++) {
+                tuples[i][0] = ecs_entity_to_u64(middle[i]);
+                tuples[i][1] = ecs_entity_to_u64(leaf[i + 1]);
+                accepted[i] = execution_program_row(program, ecs_entity_to_u64(owner), tuples[i], 2);
+                REQUIRE(accepted[i] && number_state(accepted[i], "ticks", 1));
+                REQUIRE(number_state(accepted[i], "seen", 0));
+                const uint64_t rejected[] = { tuples[i][0],
+                                              ecs_entity_to_u64(leaf[i]) };
+                REQUIRE(!execution_program_row(program, ecs_entity_to_u64(owner), rejected, 2));
+            }
+            REQUIRE(accepted[0] != accepted[1]);
+            const program_position *position = ecs_component_data_const(world, owner, 501);
+            REQUIRE(position && position->x == 0 && position->y == 70);
+            for (int i = 0; i < 3; i++) {
+                position = ecs_component_data_const(world, leaf[i], 501);
+                REQUIRE(position && position->y == i * 10);
+            }
+            pin_value payload[] = { { .type = PIN_F64, .d = 3 },
+                                    { .type = PIN_BOOL, .b = true } };
+            REQUIRE(
+                execution_program_emit(program, 11, ecs_entity_to_u64(owner), payload, 2) == FLOW_OK
+            );
+            payload[0].d = 99;
+            payload[1].b = false;
+            REQUIRE(execution_program_pump(program, .5, 0, 1000) == FLOW_OK);
+            position = ecs_component_data_const(world, owner, 501);
+            REQUIRE(position && position->x == 76 && position->y == 70);
+            for (int i = 0; i < 2; i++) {
+                REQUIRE(number_state(accepted[i], "ticks", 1));
+                REQUIRE(number_state(accepted[i], "seen", 3));
+                REQUIRE(execution_instance_pending(accepted[i]) == 0);
+            }
+            if (inspected) {
+                bool seen[2] = { false, false };
+                REQUIRE(execution_inspector_watch_count(debugger) > 0);
+                for (int i = 0; i < execution_inspector_activity_count(debugger); i++) {
+                    execution_debug_activity activity = execution_inspector_activity_at(debugger, i);
+                    if (activity.owner != ecs_entity_to_u64(owner)) {
+                        continue;
+                    }
+                    bool first = activity.query_variables[0] == tuples[0][0] &&
+                                 activity.query_variables[1] == tuples[0][1];
+                    bool second = activity.query_variables[0] == tuples[1][0] &&
+                                  activity.query_variables[1] == tuples[1][1];
+                    REQUIRE(first || second);
+                    seen[0] |= first;
+                    seen[1] |= second;
+                }
+                REQUIRE(seen[0] && seen[1]);
+            }
+            REQUIRE(!execution_program_error(program));
+        }
+    }
+    return true;
+}
 TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple)
 {
     script_catalog active = catalog;
@@ -7394,6 +7509,7 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
@@ -7421,6 +7537,7 @@ void test_language_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_chained_variables_filter_values_and_keep_event_tuples);
     RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
     RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
     RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);

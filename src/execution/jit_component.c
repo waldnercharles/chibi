@@ -226,6 +226,29 @@ bool behavior_jit_component(
                 );
             }
             return true;
+        case BF_QUERY_VARIABLE: {
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                SLJIT_R3,
+                0,
+                SLJIT_MEM1(m->context),
+                offsetof(behavior_function_context, query_variables)
+            );
+            struct sljit_jump *bound = sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0);
+            behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_HOST_DATA);
+            bind(c, bound);
+            sljit_emit_op1(c, SLJIT_MOV, dest, offset, SLJIT_MEM1(SLJIT_R3), (i->target - 1) * sizeof(uint64_t));
+            sljit_emit_op1(
+                c,
+                SLJIT_MOV_P,
+                SLJIT_MEM1(m->context),
+                offsetof(behavior_function_context, error_message),
+                SLJIT_IMM,
+                0
+            );
+            return true;
+        }
         case BF_OWNER:
         case BF_WORLD:
             sljit_emit_op1(

@@ -787,6 +787,9 @@ The language follow-up admits these focused C checks under the same supervisor:
   cases; the native group retains the full-engine source-query cases.
   The new runtime fixtures use at most 33 entities and six supplied-time steps
   per backend, without files, children or GPU work.
+  The bound query-variable IR specimen adds finite differential, verification,
+  prepared, inspection and allocation cases. Its exact bounds, backend contract,
+  baseline and coverage limits are recorded in [Bound query-variable lowering](query-binding-lowering.md).
 - `tool language-incremental` prepares four tiny source overlays per case and
   checks unchanged-generation reuse, dependency and catalog invalidation, binding
   generations, backend changes and ownership after older collections retire.
@@ -855,6 +858,9 @@ The language follow-up admits these focused C checks under the same supervisor:
   and continuation. One extra verified array function executes eight normal and
   inspection calls, checking guarded borrowing, mixed-header fallback copies and
   an array whose items alias the public activation's saved-value bank.
+  Two bound-query-variable functions add 16 calls covering first/last index,
+  high-bit/zero handles, missing tuples and same-context recovery with exact
+  source/debug metadata, in normal and inspected modes.
   One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
   flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second

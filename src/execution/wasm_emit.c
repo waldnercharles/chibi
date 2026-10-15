@@ -393,6 +393,29 @@ static void helper(writer *w, int pc)
     byte(w, 0x0b);
 }
 
+static void query_variable(writer *w, const behavior_function_instruction *i, int pc)
+{
+    local(w, 0x20, CONTEXT);
+    memory(w, 0x28, offsetof(behavior_function_context, query_variables));
+    local(w, 0x22, STATUS);
+    byte(w, 0x04);
+    byte(w, 0x40);
+    local(w, 0x20, VALUES);
+    constant(w, PIN_HANDLE);
+    memory(w, 0x36, (size_t)i->output * sizeof(pin_value) + offsetof(pin_value, type));
+    local(w, 0x20, VALUES);
+    local(w, 0x20, STATUS);
+    memory(w, 0x29, (size_t)(i->target - 1) * sizeof(uint64_t));
+    memory(w, 0x37, slot_offset(i->output));
+    local(w, 0x20, CONTEXT);
+    constant(w, 0);
+    memory(w, 0x36, offsetof(behavior_function_context, error_message));
+    byte(w, 0x05);
+    /* The slow failure path publishes the same source and budget diagnostics. */
+    helper(w, pc);
+    byte(w, 0x0b);
+}
+
 bool execution_wasm_emit(
     const behavior_function *f,
     bool inspected,
@@ -543,7 +566,9 @@ bool execution_wasm_emit(
                 unsigned_leb(&code, (uint32_t)(block_count - block));
                 break;
             }
-            if (direct(f, i)) {
+            if (i->op == BF_QUERY_VARIABLE) {
+                query_variable(&code, i, pc);
+            } else if (direct(f, i)) {
                 emitted_value(&code, f, i);
             } else {
                 size_t callback = observer_callback(i->op);

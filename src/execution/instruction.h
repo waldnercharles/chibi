@@ -44,6 +44,7 @@
     OP(CONTEXT) \
     OP(STORAGE_NAME) \
     OP(ARRAY) \
+    OP(QUERY_VARIABLE) /* Checked current tuple handle; target is 1-based. */ \
     OP(QUERY) \
     OP(HOST_SLOT) \
     OP(HOST_SERVICE) \

@@ -1,3 +1,4 @@
+#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
@@ -21,8 +22,11 @@ enum
     ALIAS_FIXTURES = 12,
     BORROW_FIXTURE = ALIAS_FIXTURES + 1,
     BORROW_CALL_FIXTURE = BORROW_FIXTURE + 1,
-    FIXTURES = BORROW_CALL_FIXTURE + 1
+    QUERY_FIXTURE = BORROW_CALL_FIXTURE + 1,
+    QUERY_FIXTURES = 2,
+    FIXTURES = QUERY_FIXTURE + QUERY_FIXTURES
 };
+static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
 static char directory[128];
@@ -476,6 +480,117 @@ static bool exported_call_snapshots_keep_the_standalone_abi()
     return true;
 }
 
+static bool query_fixture(int index)
+{
+    builder = behavior_function_builder_new();
+    pin_value result = { .type = PIN_HANDLE };
+    behavior_function_builder_signature(builder, NULL, 0, &result, 1, NULL, 0);
+    int value = behavior_function_builder_slot(builder, PIN_HANDLE);
+    int origin = behavior_function_builder_origin(
+        builder,
+        (behavior_function_source){ .graph_id = 8310,
+                                    .call_id = 8311,
+                                    .parent = -1,
+                                    .asset_name = "QueryBinding.chibi",
+                                    .start = 12,
+                                    .end = 18,
+                                    .line = 2,
+                                    .column = 5 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_QUERY_VARIABLE,
+                                         .type = PIN_HANDLE,
+                                         .output = value,
+                                         .target = query_variables[index],
+                                         .source = origin,
+                                         .node_id = 8312,
+                                         .pin = 7 }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_HANDLE, .left = value }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_RETURN });
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    behavior_function *f = behavior_function_builder_finish(builder, error, sizeof error);
+    functions[QUERY_FIXTURE + index] = f;
+    if (!f) {
+        fprintf(stderr, "C query fixture: %s\n", error);
+    }
+    REQUIRE(f);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    REQUIRE(!acount(f->host_calls) && !acount(f->data_values));
+    char name[40];
+    snprintf(name, sizeof name, "export_query_%d", index);
+    behavior_function_write_c(f, source, name);
+    return true;
+}
+
+static bool exported_query_variables_preserve_tuple_and_failure_contract()
+{
+    const uint64_t samples[] = { UINT64_C(0x87654321abcdef01), 0, 37 };
+    for (int index = 0; index < QUERY_FIXTURES; index++) {
+        char name[40];
+        snprintf(name, sizeof name, "export_query_%d", index);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        behavior_function *f = functions[QUERY_FIXTURE + index];
+        uint64_t tuple[ECS_QUERY_VARS];
+        for (int i = 0; i < ECS_QUERY_VARS; i++) {
+            tuple[i] = (uint64_t)i + 101;
+        }
+        for (int sample = 0; sample < 3; sample++) {
+            tuple[query_variables[index] - 1] = samples[sample];
+            bool missing = sample == 2;
+            for (int inspection = 0; inspection < 2; inspection++) {
+                pin_value output = { .type = PIN_HANDLE, .u64 = UINT64_MAX };
+                behavior_function_context context = {
+                    .query_variables = missing ? NULL : tuple,
+                    .results = &output,
+                    .budget = 32,
+                    .inspect = inspection ? inspect : NULL
+                };
+                REQUIRE(generated(&context) == (missing ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                REQUIRE(output.type == PIN_HANDLE);
+                REQUIRE(output.u64 == (missing ? UINT64_MAX : samples[sample]));
+                if (!missing) {
+                    REQUIRE(!context.error_message);
+                    continue;
+                }
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, "Query variable is not bound")
+                );
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+                REQUIRE(context.node_id == 8312 && context.error_pin == 7);
+                REQUIRE(context.error_frame == 0 && context.error_source == 1);
+                REQUIRE(context.error_stack == -1);
+                REQUIRE(context.error_steps == 0 && context.steps == 0);
+                REQUIRE(acount(f->sources) == 2);
+                const behavior_function_source *origin = &f->sources[context.error_source];
+                REQUIRE(origin->graph_id == 8310 && origin->call_id == 8311);
+                REQUIRE(origin->start == 12 && origin->end == 18);
+                REQUIRE(origin->line == 2 && origin->column == 5);
+                REQUIRE(!strcmp(origin->asset_name, "QueryBinding.chibi"));
+                context.query_variables = tuple;
+                REQUIRE(generated(&context) == FLOW_OK);
+                REQUIRE(output.type == PIN_HANDLE && output.u64 == samples[sample]);
+                REQUIRE(!context.error_message);
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+                REQUIRE(context.node_id == 8312 && context.error_pin == 7);
+                REQUIRE(context.error_frame == 0 && context.error_source == 1);
+                REQUIRE(context.error_stack == -1);
+                REQUIRE(context.error_steps == 0 && context.steps == 0);
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
@@ -498,6 +613,9 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(pause_fixture());
     REQUIRE(borrow_fixture(false));
     REQUIRE(borrow_fixture(true));
+    for (int i = 0; i < QUERY_FIXTURES; i++) {
+        REQUIRE(query_fixture(i));
+    }
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
     int closed = fclose(source);
@@ -579,6 +697,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(resumes_exported_pause());
     REQUIRE(borrows_exported_plain_arrays());
     REQUIRE(exported_call_snapshots_keep_the_standalone_abi());
+    REQUIRE(exported_query_variables_preserve_tuple_and_failure_contract());
     return true;
 }
 void test_tool_c_export()

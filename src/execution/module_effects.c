@@ -1,5 +1,6 @@
 #include "execution/module_effects.h"
 
+#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
 #include "support/array.h"
@@ -77,7 +78,6 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE: expected = 3; break;
         case EXECUTION_INTRINSIC_QUERY_SOURCE: expected = 5; break;
         case EXECUTION_INTRINSIC_QUERY_TARGET: expected = 4; break;
-        case EXECUTION_INTRINSIC_QUERY_VARIABLE: expected = 2; break;
         case EXECUTION_INTRINSIC_COMPONENT_HAS: expected = 3; break;
         default: break;
     }
@@ -330,7 +330,6 @@ static bool context_bank(const behavior_function *f, int bank)
             (id != execution_intrinsic_id(&EXECUTION_reference_make_call) &&
              id != execution_intrinsic_id(&EXECUTION_query_source_call) &&
              id != execution_intrinsic_id(&EXECUTION_query_target_call) &&
-             id != execution_intrinsic_id(&EXECUTION_query_variable_call) &&
              id != execution_intrinsic_id(&EXECUTION_component_has_call) &&
              id != execution_intrinsic_id(&EXECUTION_local_release_call))) {
             return false;
@@ -382,7 +381,7 @@ static bool context_uses(const behavior_function *f, int slot, int *steps)
     }
     return true;
 }
-static bool predicate_host(const behavior_function *f, int pc, unsigned bound)
+static bool predicate_host(const behavior_function *f, int pc)
 {
     const behavior_function_host_call *host = &f->host_calls[f->instructions[pc].target];
     uint64_t id = intrinsic(host);
@@ -396,11 +395,6 @@ static bool predicate_host(const behavior_function *f, int pc, unsigned bound)
     }
     int steps = EFFECT_STEPS;
     switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
-        case EXECUTION_INTRINSIC_QUERY_VARIABLE: {
-            origin variable = bank_origin(f, pc, host->first + 1, 0, &steps);
-            return variable.constant && variable.bits > 0 &&
-                   variable.bits < 32 && (bound & (1u << variable.bits));
-        }
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: {
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
@@ -470,6 +464,10 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     valid = i->target == BF_ARGUMENT || i->target == BF_CONSTANT;
                     break;
                 case BF_PRESENT: valid = i->target == BF_ARGUMENT; break;
+                case BF_QUERY_VARIABLE:
+                    valid = i->target >= 1 && i->target <= ECS_QUERY_VARS &&
+                            (bound & (1u << i->target));
+                    break;
                 case BF_TYPE_NAME: valid = i->target != BF_VARIABLE; break;
                 case BF_CONTEXT:
                     if (i->target && !context_uses(f, i->output, &steps)) {
@@ -507,7 +505,7 @@ bool execution_query_predicate_valid(const behavior_function *root, unsigned bou
                     valid |= control_write(i, address);
                     break;
                 }
-                case BF_HOST_CALL: valid = predicate_host(f, pc, bound); break;
+                case BF_HOST_CALL: valid = predicate_host(f, pc); break;
                 case BF_INVOKE: {
                     const behavior_function_invocation *call = &f->calls[i->left];
                     if (call->task) {
@@ -928,9 +926,6 @@ static void function(effects *e, const behavior_function *f, int depth)
                         unknown(e);
                     }
                 }
-                if (id == execution_intrinsic_id(&EXECUTION_query_variable_call)) {
-                    break;
-                }
                 if (id == execution_intrinsic_id(&EXECUTION_query_source_call) ||
                     id == execution_intrinsic_id(&EXECUTION_query_target_call) ||
                     id == execution_intrinsic_id(&EXECUTION_component_has_call)) {
@@ -1088,6 +1083,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                 }
                 break;
             case BF_WORLD:
+            case BF_QUERY_VARIABLE:
             case BF_ENTITY: break;
             case BF_INVOKE:
                 if (i->left < 0 || i->left >= acount(f->calls)) {
@@ -1408,7 +1404,6 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
-        case EXECUTION_INTRINSIC_QUERY_VARIABLE:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
         case EXECUTION_INTRINSIC_BREAK_TAKE: return;

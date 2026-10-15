@@ -356,6 +356,7 @@ static uint64_t context_abi()
                               FIELD(world),
                               FIELD(binding_world),
                               FIELD(columns),
+                              FIELD(query_variables),
                               FIELD(variable_storage),
                               FIELD(value_owner),
                               FIELD(value_storage),

@@ -5,18 +5,23 @@
 #include "execution/intrinsics.h"
 #include "execution/module_internal.h"
 #include "execution/prepared.h"
+#include "execution/status.h"
 #include "execution/storage.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static execution_module_plan *plan;
 static execution_module *module, *loaded;
 static behavior_function_builder *builder;
+static behavior_function *binding_oracle;
 static unsigned char *bytes, *again;
 static ecs_world *world;
 static bool unsafe_link;
@@ -47,6 +52,8 @@ static void cleanup()
     if (builder) {
         behavior_function_builder_free(builder);
     }
+    behavior_function_free(binding_oracle);
+    binding_oracle = NULL;
     execution_module_plan_free(plan);
     execution_module_free(module);
     execution_module_free(loaded);
@@ -104,6 +111,219 @@ static void return_true()
         .right = context,
         .offset = offsetof(behavior_function_context, exit_requested) });
     emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_BOOL, .left = slot });
+}
+/* Keep the original intrinsic path as a differential oracle for direct loads. */
+static behavior_function *query_binding_host(int variable)
+{
+    builder = behavior_function_builder_new();
+    pin_value result = { .type = PIN_HANDLE };
+    behavior_function_builder_signature(builder, NULL, 0, &result, 1, NULL, 0);
+    pin_value arguments[] = { { .type = BF_POINTER_TYPE },
+                              { .type = PIN_I32, .i = variable } };
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_query_variable_call,
+        NULL,
+        arguments,
+        2,
+        &result,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_query_variable_call);
+    behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id));
+    int first = behavior_function_builder_host_first(builder, host);
+    behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS);
+    int context = behavior_function_builder_slot(builder, BF_POINTER_TYPE);
+    int address = behavior_function_builder_slot(builder, BF_POINTER_TYPE);
+    int value = behavior_function_builder_slot(builder, PIN_HANDLE);
+    behavior_function_builder_kind(builder, BEHAVIOR_BANK_SLOT, context, BEHAVIOR_ADDRESS);
+    behavior_function_builder_kind(builder, BEHAVIOR_BANK_SLOT, address, BEHAVIOR_ADDRESS);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_CONTEXT, .type = BF_POINTER_TYPE, .output = context, .target = 1 });
+    emit((behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                          .type = BF_POINTER_TYPE,
+                                          .output = address,
+                                          .left = first });
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = context,
+                                          .right = address,
+                                          .offset = offsetof(pin_value, d) });
+    int source = behavior_function_builder_origin(
+        builder,
+        (behavior_function_source){ .graph_id = 8310,
+                                    .call_id = 8311,
+                                    .parent = -1,
+                                    .asset_name = "QueryBinding.chibi",
+                                    .start = 12,
+                                    .end = 18,
+                                    .line = 2,
+                                    .column = 5 }
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA,
+                                          .source = source,
+                                          .node_id = 8312,
+                                          .pin = 7 });
+    int result_address = behavior_function_builder_slot(builder, BF_POINTER_TYPE);
+    behavior_function_builder_kind(builder, BEHAVIOR_BANK_SLOT, result_address, BEHAVIOR_ADDRESS);
+    emit((behavior_function_instruction){
+        .op = BF_HOST_SLOT,
+        .type = BF_POINTER_TYPE,
+        .output = result_address,
+        .left = behavior_function_builder_host_results(builder, host) });
+    emit((behavior_function_instruction){ .op = BF_LOAD,
+                                          .type = PIN_HANDLE,
+                                          .output = value,
+                                          .left = result_address,
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_HANDLE, .left = value });
+    return finish_function();
+}
+static int inspect_binding(void *user, const behavior_function_point *point)
+{
+    (void)user;
+    (void)point;
+    return 0;
+}
+static bool check_query_binding(const behavior_function *function, int variable)
+{
+    const uint64_t values[] = { UINT64_C(0x87654321abcdef01), 0, 37 };
+    uint64_t tuple[ECS_QUERY_VARS];
+    for (int i = 0; i < ECS_QUERY_VARS; i++) {
+        tuple[i] = (uint64_t)i + 101;
+    }
+    REQUIRE(behavior_function_compile((behavior_function *)function));
+    for (int backend = 0; backend < 2; backend++) {
+        for (int inspected = 0; inspected < 2; inspected++) {
+            /* Reuse one definition with distinct current tuples and contexts. */
+            for (int sample = 0; sample < 4; sample++) {
+                bool missing = sample == 2;
+                uint64_t expected = values[sample == 3 ? 2 : sample];
+                tuple[variable - 1] = expected;
+                pin_value output = { .type = PIN_HANDLE, .u64 = UINT64_MAX };
+                behavior_function_context context = {
+                    .query_variables = missing ? NULL : tuple,
+                    .results = &output,
+                    .budget = 100,
+                    .inspect = inspected ? inspect_binding : NULL,
+                };
+                int status = behavior_function_run(function, &context, backend == 1);
+                if (status != (missing ? FLOW_ERR_INVALID_GRAPH : FLOW_OK)) {
+                    fprintf(
+                        stderr,
+                        "query binding variable=%d backend=%d inspected=%d "
+                        "sample=%d status=%d failure=%d message=%s\n",
+                        variable,
+                        backend,
+                        inspected,
+                        sample,
+                        status,
+                        context.failure,
+                        context.error_message ? context.error_message : "none"
+                    );
+                }
+                REQUIRE(status == (missing ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                REQUIRE(output.type == PIN_HANDLE);
+                REQUIRE(output.u64 == (missing ? UINT64_MAX : expected));
+                if (!missing) {
+                    REQUIRE(!context.error_message);
+                    continue;
+                }
+                REQUIRE(
+                    context.error_message &&
+                    !strcmp(context.error_message, "Query variable is not bound")
+                );
+                REQUIRE(context.failure == BEHAVIOR_FUNCTION_HOST_DATA);
+                REQUIRE(context.node_id == 8312 && context.error_pin == 7);
+                REQUIRE(context.error_frame == 0 && context.error_source == 1);
+                REQUIRE(context.error_stack == -1 && context.error_steps == 0);
+                REQUIRE(acount(function->sources) == 2);
+                const behavior_function_source
+                    *source = &function->sources[context.error_source];
+                REQUIRE(source->graph_id == 8310 && source->call_id == 8311);
+                REQUIRE(source->start == 12 && source->end == 18);
+                REQUIRE(source->line == 2 && source->column == 5);
+                REQUIRE(!strcmp(source->asset_name, "QueryBinding.chibi"));
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(query_binding_host_preserves_tuple_and_failure_contract)
+{
+    const int variables[] = { 1, 2, ECS_QUERY_VARS };
+    for (int i = 0; i < 3; i++) {
+        cleanup();
+        binding_oracle = query_binding_host(variables[i]);
+        REQUIRE(binding_oracle);
+        REQUIRE(acount(binding_oracle->host_calls) == 1);
+        REQUIRE(acount(binding_oracle->data_values) == 3);
+        REQUIRE(check_query_binding(binding_oracle, variables[i]));
+    }
+    return true;
+}
+static double binding_seconds()
+{
+    struct timespec now;
+    int status = clock_gettime(CLOCK_MONOTONIC, &now);
+    assert(status == 0);
+    (void)status;
+    return now.tv_sec + now.tv_nsec * 1e-9;
+}
+TEST_CASE(query_binding_dispatch_has_bounded_measurements)
+{
+    enum
+    {
+        TRIALS = 5,
+        READS = 512
+    };
+    binding_oracle = query_binding_host(ECS_QUERY_VARS);
+    REQUIRE(binding_oracle && behavior_function_compile(binding_oracle));
+    uint64_t tuple[ECS_QUERY_VARS] = { 0 };
+    tuple[ECS_QUERY_VARS - 1] = UINT64_C(0x87654321abcdef01);
+    for (int backend = 0; backend < 2; backend++) {
+        pin_value output = { .type = PIN_HANDLE };
+        behavior_function_context warm = { .query_variables = tuple,
+                                           .results = &output,
+                                           .budget = 100 };
+        REQUIRE(behavior_function_run(binding_oracle, &warm, backend == 1) == FLOW_OK);
+        for (int trial = 0; trial < TRIALS; trial++) {
+            int status = FLOW_OK;
+            xalloc_stats before, after;
+            xalloc_stats_get(&before);
+            uint64_t blocks = arena_block_allocations();
+            double start = binding_seconds();
+            for (int i = 0; i < READS; i++) {
+                behavior_function_context context = { .query_variables = tuple,
+                                                      .results = &output,
+                                                      .budget = 100 };
+                status |= behavior_function_run(binding_oracle, &context, backend == 1);
+            }
+            double elapsed = binding_seconds() - start;
+            xalloc_stats_get(&after);
+            blocks = arena_block_allocations() - blocks;
+            REQUIRE(status == FLOW_OK && output.u64 == tuple[ECS_QUERY_VARS - 1]);
+            printf(
+                "QUERY_BINDING path=production_value_host backend=%s trial=%d "
+                "reads=%d us_per_read=%.6f host_calls=%d data_values=%d "
+                "allocation_calls=%llu requested_bytes=%llu "
+                "arena_blocks=%llu\n",
+                backend ? "compiled" : "vm",
+                trial,
+                READS,
+                elapsed * 1e6 / READS,
+                acount(binding_oracle->host_calls),
+                acount(binding_oracle->data_values),
+                (unsigned long long)(after.calls - before.calls),
+                (unsigned long long)(after.requested_bytes - before.requested_bytes),
+                (unsigned long long)blocks
+            );
+        }
+    }
+    return true;
 }
 /* These tiny definitions bypass source diagnostics to exercise the module boundary. */
 static behavior_function *function(int kind, int variables)
@@ -510,6 +730,8 @@ TEST_CASE(query_change_versions_saturate)
 void test_language_query_boundary()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(query_binding_host_preserves_tuple_and_failure_contract);
+    RUN_TEST_CASE(query_binding_dispatch_has_bounded_measurements);
     RUN_TEST_CASE(query_change_versions_saturate);
     RUN_TEST_CASE(query_predicates_roundtrip_with_services_effects_and_preflight);
     RUN_TEST_CASE(query_binding_order_is_checked_before_publication);

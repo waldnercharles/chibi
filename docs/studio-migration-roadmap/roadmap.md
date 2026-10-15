@@ -1,6 +1,6 @@
 # Dependency-ordered PR checklist
 
-Only coordinator-verified merged R399/RCAP/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.
+Only coordinator-verified merged R397/R398/R399/RCAP/RWRITE/RSCHEMA/RFMT foundations and the bounded read-only B06 audit are checked. F00/F01/F02 remain open. Other existing-owned work is reserved to its coordinator; current PR/head/evidence status must be rechecked. Dependencies include preparation and readiness gates, not just code imports. Refer to README.md for universal G0–G7 gates, decisions and policy.
 
 ## [x] RSCHEMA: Prepared opcode schema identity
 
@@ -8,38 +8,38 @@ Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: none (preparation can start)
 Decision gate: none beyond existing contracts and applicable admission
 
-PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; R397 and R398 retain explicit RSCHEMA dependencies and still require their own refreshed exact-head integration evidence.
+PR #401 merged as 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb after exact-head review/tests verified by the coordinator. Schema-safety foundation is complete; dependent query/read/write foundations subsequently landed with their own fresh exact-head integration evidence. Manual payload/semantic version obligations remain.
 
 Acceptance: Prepared producer/consumer mismatch rejection, unchanged existing ordinals, all backend/serialization checks on exact integrated head.
 
 Plan evidence: 6.6 publication safeguards
 PR #401 / merged integration head 23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb / exact-head independent review/tests verified by coordinator; consult PR evidence.
 
-## [ ] R397: Checked query-variable load
+## [x] R397: Checked query-variable load
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: RSCHEMA
 Decision gate: none beyond existing contracts and applicable admission
 
-Existing PR #397; reconcile publication and exact-head evidence with foundation coordinator. Do not reimplement.
+PR #397 merged as 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 after fresh exact-head review/tests on 6524d3fc090e27943e4bc3942e6b528ba311ae6c. Checked query-load foundation complete; no full Studio/browser readiness claim.
 
 Acceptance: Current review/tests/merge status independently verified; preserve fallbacks and bytecode/native/Wasm parity.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #397 / merged integration head 7885af0cd5a7e1c8600a6bd9e3db0fd8d88c1cf4 / exact tested head 6524d3fc090e27943e4bc3942e6b528ba311ae6c; consult PR evidence.
 
-## [ ] R398: Checked scalar component reads
+## [x] R398: Checked scalar component reads
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: R397,RSCHEMA
 Decision gate: none beyond existing contracts and applicable admission
 
-Existing PR #398; reconcile publication and exact-head evidence with foundation coordinator. Do not reimplement.
+PR #398 merged as b1ada743d978a25ff8b0d5d677b491291eb4ddf5 after fresh exact-head review/tests on cdf9adc540f1c1c0c9c8468820a1bf5b706629e4. Explicit checked scalar getter complete; ordinary member reads retain debug-snapshot fallback.
 
 Acceptance: Missing/stale entity, layout, effects, escapes and suspension preserve checked-path behavior; actual backend execution.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #398 / merged integration head b1ada743d978a25ff8b0d5d677b491291eb4ddf5 / exact tested head cdf9adc540f1c1c0c9c8468820a1bf5b706629e4; consult PR evidence.
 
 ## [x] R399: Comment-preserving minimizer safety
 
@@ -67,18 +67,18 @@ Acceptance: Repetitive managed overwrite, task-owner release, cancellation and s
 Plan evidence: 6.1D;6.4;11 Stage 1B
 PR #400 / merged integration head ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec / merge and fresh independent validation verified by coordinator; consult PR evidence.
 
-## [ ] RWRITE: Checked scalar component writes
+## [x] RWRITE: Checked scalar component writes
 
 Stage: 1A · Repository: chibi · Scope: existing_owned
 Dependencies: R398,RSCHEMA
 Decision gate: none beyond existing contracts and applicable admission
 
-Prior unpublished source is not currently recovered, only metadata. Coordinator owns reconstruction after schema identity; fresh exact-head reviews/tests required.
+PR #408 merged as 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 after independent exact-head review/tests on 982e736e4f2d5922c2308f0b6017dcfd30dbd869. Checked scalar publication and its ownership/order/reacquisition safeguards are complete; no raw-store substitution or broad managed-write claim.
 
 Acceptance: Same-value, range/type, dirty/version/ON_SET, stale/missing entity and compound evaluation/error ordering; all backends.
 
 Plan evidence: 6.6;11 Stage 1A
-PR / exact head / review / tests / remaining blocker: **unrecorded**
+PR #408 / merged integration head 3c65bb60b6f3443aef6ccf4ab15acbe09b04b191 / exact tested head 982e736e4f2d5922c2308f0b6017dcfd30dbd869; consult PR evidence.
 
 ## [x] RFMT: Configurable current-printer candidate
 

@@ -5,6 +5,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+enum
+{
+    EXECUTION_INSPECTION_UNCOMPILED = 0,
+    EXECUTION_INSPECTION_COMPILING = 1,
+    EXECUTION_INSPECTION_COMPILED = 2,
+    EXECUTION_INSPECTION_FAILED = 3,
+};
+
 /* Backend-owned code belongs to the immutable definition. Inspection code is
  * compiled on first inspection; its atomic state publishes code/maps together.
  * Activations retain their owning definition. */

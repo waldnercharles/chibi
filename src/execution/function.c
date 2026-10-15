@@ -416,20 +416,13 @@ static bool compile_artifact(behavior_function *f)
 }
 bool behavior_function_compile_inspection(const behavior_function *f)
 {
-    enum
-    {
-        UNCOMPILED,
-        COMPILING,
-        COMPILED,
-        FAILED
-    };
     execution_artifact *artifact = f->artifact;
     unsigned state = atomic_load_explicit(&artifact->inspection_state, memory_order_acquire);
-    if (state == COMPILED) {
+    if (state == EXECUTION_INSPECTION_COMPILED) {
         return true;
     }
-    if (state != UNCOMPILED ||
-        !atomic_compare_exchange_strong(&artifact->inspection_state, &state, COMPILING)) {
+    if (state != EXECUTION_INSPECTION_UNCOMPILED ||
+        !atomic_compare_exchange_strong(&artifact->inspection_state, &state, EXECUTION_INSPECTION_COMPILING)) {
         /* Another activation may be compiling. Its caller can use bytecode
          * immediately without waiting or reading partially published maps. */
         return false;
@@ -440,7 +433,11 @@ bool behavior_function_compile_inspection(const behavior_function *f)
     );
     artifact->inspection_code = behavior_function_jit(f, true);
     bool compiled = artifact->inspection_code != NULL;
-    atomic_store_explicit(&artifact->inspection_state, compiled ? COMPILED : FAILED, memory_order_release);
+    atomic_store_explicit(
+        &artifact->inspection_state,
+        compiled ? EXECUTION_INSPECTION_COMPILED : EXECUTION_INSPECTION_FAILED,
+        memory_order_release
+    );
     return compiled;
 }
 bool behavior_function_compile(behavior_function *f)

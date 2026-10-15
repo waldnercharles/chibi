@@ -12,9 +12,13 @@ static script_syntax *source, *formatted;
 static char *text, *again;
 static char *metadata, *remapped;
 static authoring_format_map edit_map;
+static script_analysis *state_before, *state_after;
 
 static void cleanup()
 {
+    script_analysis_free(state_before);
+    script_analysis_free(state_after);
+    state_before = state_after = NULL;
     script_syntax_free(source);
     script_syntax_free(formatted);
     free(text);
@@ -768,7 +772,7 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
         "library Demo { state total: /* declared */ float = 0.0\n"
         "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
         "*/total); } }",
-        "library Demo { state total: /* declared */ float = 0.0\n"
+        "library Demo { total: /* declared */ float = 0.0\n"
         "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
         "*/total) } }"
     ));
@@ -818,7 +822,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     REQUIRE(minimize_valid(
         &catalog,
         input,
-        "library Demo { state count: int = 0\n"
+        "library Demo { count: int = 0\n"
         "F :: fn() -> (r: int) { state local: int = 1\n"
         "r = (/* keep */ count + local) } }"
     ));
@@ -826,7 +830,7 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     char error[192];
     again = authoring_source_format(formatted, error, sizeof error);
     REQUIRE(again);
-    REQUIRE(strstr(again, "state count: int = 0"));
+    REQUIRE(strstr(again, "count: int = 0") && !strstr(again, "state count"));
     REQUIRE(strstr(again, "state local: int = 1"));
     REQUIRE(strstr(again, "r = (/* keep */ count + local)"));
     return true;
@@ -1116,6 +1120,102 @@ TEST_CASE(source_minimize_keeps_generic_component_calls)
     return true;
 }
 
+static bool root_storage_identity(const script_analysis *analysis, const char *input)
+{
+    const char *root_name = strstr(input, "/* root */ count"),
+               *callable_name = strstr(input, "/* callable */ count"),
+               *read_name = strstr(input, "return count");
+    REQUIRE(root_name && callable_name && read_name);
+    int root_offset = (int)(root_name - input) + (int)strlen("/* root */ "),
+        callable_offset = (int)(callable_name - input) + (int)strlen("/* callable */ "),
+        read_offset = (int)(read_name - input) + (int)strlen("return ");
+    const script_symbol *root = script_symbol_at(analysis, root_offset),
+                        *callable = script_symbol_at(analysis, callable_offset);
+    REQUIRE(root && callable && root != callable);
+    REQUIRE(root->kind == SCRIPT_STATE && callable->kind == SCRIPT_STATE);
+    REQUIRE(root->scope != callable->scope);
+    REQUIRE(analysis->scopes[callable->scope].parent == root->scope);
+    REQUIRE(root->declaration.start == root_offset && root->declaration.end == root_offset + 5);
+    REQUIRE(
+        callable->declaration.start == callable_offset &&
+        callable->declaration.end == callable_offset + 5
+    );
+    REQUIRE(root->type.storage == PIN_I32 && callable->type.storage == PIN_I32);
+    REQUIRE(root->writable && callable->writable);
+    const script_use *use = script_use_at(analysis, read_offset);
+    REQUIRE(use && use->kind == SCRIPT_READ);
+    REQUIRE(use->symbol == (int)(callable - analysis->symbols));
+    REQUIRE(use->range.start == read_offset && use->range.end == read_offset + 5);
+    REQUIRE(script_symbol_at(analysis, read_offset) == callable);
+    const char *shared_name = strstr(input, "shared other");
+    if (shared_name) {
+        const script_symbol *shared = script_symbol_at(
+            analysis,
+            (int)(shared_name - input) + (int)strlen("shared ")
+        );
+        REQUIRE(shared && shared->kind == SCRIPT_SHARED_STATE);
+        REQUIRE(shared->scope == root->scope);
+    }
+    return true;
+}
+
+TEST_CASE(source_minimize_elides_only_redundant_root_state_tokens)
+{
+    const char *inputs[] = {
+        "behavior Demo { state /* root */ count: int = 1\nF :: () -> int { "
+        "state /* callable */ count: int = 2\nreturn count } }",
+        "library Demo { state /* root */ count: int = 1\nF :: () -> int { "
+        "state /* callable */ count: int = 2\nreturn count } }",
+        "system Demo { state /* root */ count: int = 1\nshared other: int = "
+        "2\nF :: () -> int { state /* callable */ count: int = 2\nreturn count "
+        "} }",
+    };
+    for (int i = 0; i < 3; i++) {
+        cleanup();
+        source = script_parse(inputs[i]);
+        state_before = script_analyze_document(source, &catalog, "Demo");
+        REQUIRE(!source->diagnostic_count && state_before->valid);
+        REQUIRE(root_storage_identity(state_before, inputs[i]));
+        text = authoring_source_minimize(inputs[i], &catalog, "Demo");
+        REQUIRE(text && !strstr(text, "state /* root */"));
+        REQUIRE(strstr(text, "/* root */ count"));
+        REQUIRE(strstr(text, "state /* callable */ count"));
+        REQUIRE(i != 2 || strstr(text, "shared other"));
+        formatted = script_parse(text);
+        state_after = script_analyze_document(formatted, &catalog, "Demo");
+        REQUIRE(!formatted->diagnostic_count && state_after->valid);
+        REQUIRE(root_storage_identity(state_after, text));
+        REQUIRE(state_before->symbol_count == state_after->symbol_count);
+        for (int s = 0; s < state_before->symbol_count; s++) {
+            REQUIRE(state_before->symbols[s].id == state_after->symbols[s].id);
+            REQUIRE(state_before->symbols[s].kind == state_after->symbols[s].kind);
+            REQUIRE(state_before->symbols[s].scope == state_after->symbols[s].scope);
+        }
+        again = authoring_source_minimize(text, &catalog, "Demo");
+        REQUIRE(again && !strcmp(text, again));
+    }
+    return true;
+}
+
+TEST_CASE(source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source)
+{
+    const char *input = "behavior Demo{state /* hé */ count:int=1;}";
+    REQUIRE(format(input));
+    REQUIRE(strstr(text, "state /* hé */ count"));
+    cleanup();
+    input = "behavior Demo { state /* keep */ count: int = missing }";
+    REQUIRE(minimize(input, input));
+    return true;
+}
+
+void test_language_root_state()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_minimize_elides_only_redundant_root_state_tokens);
+    RUN_TEST_CASE(source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source);
+    pu_clear_setup();
+}
+
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
@@ -1156,5 +1256,7 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_preserves_accessor_and_operator_comments);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);
     RUN_TEST_CASE(source_minimize_keeps_generic_component_calls);
+    RUN_TEST_CASE(source_minimize_elides_only_redundant_root_state_tokens);
+    RUN_TEST_CASE(source_format_preserves_state_tokens_and_minimizer_keeps_invalid_source);
     pu_setup(NULL, NULL);
 }

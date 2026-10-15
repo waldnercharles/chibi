@@ -32,6 +32,7 @@ void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
 void test_language_format();
+void test_language_root_state();
 void test_language_navigation();
 void test_language_publication();
 void test_field_runtime();
@@ -50,6 +51,7 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
+    bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
     bool activation_benchmark = argc == 2 &&
@@ -83,10 +85,10 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !execution && !semantic && !benchmark &&
-         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !component_write &&
+        (!format && !prepared && !execution && !semantic && !root_state &&
+         !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !wasm && !program &&
+         !query_program && !incremental && !modules && !ranges && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
@@ -95,7 +97,8 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
-            "| --program | --query-program | --incremental | --modules | "
+            "| --root-state | --program | --query-program | --incremental | "
+            "--modules | "
             "--ranges | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
@@ -156,6 +159,8 @@ int main(int argc, char **argv)
         test_language_navigation();
     } else if (publication) {
         test_language_publication();
+    } else if (root_state) {
+        test_language_root_state();
     } else if (format) {
         test_language_format();
         if (corpus) {

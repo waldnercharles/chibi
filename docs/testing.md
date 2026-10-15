@@ -1540,3 +1540,23 @@ No full-L07, application-scale, benchmark, or scheduling claim follows;
 full/quarantined gates remain disabled, not passed.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
 status is asserted by this local validation.
+
+
+### Redundant root-state canonicalization
+
+`language-root-state` and `wasm-root-state` select two finite C cases with five
+fixed source strings, at most 137 UTF-8 bytes each. They check behavior/library/
+system root storage, distinct callable storage, system shared storage, exact
+declaration and read ranges, stable symbol identities, comments, idempotence,
+formatter token preservation and invalid-source refusal. The full successful
+path makes six explicit semantic analyses, seven minimizer calls and two
+formatter calls. The minimizer's existing internal oracle rounds are unchanged.
+
+The same two cases are included in the existing format dispatcher: 39 finite
+cases, plus the existing bounded corpus case on native. Wasm has no corpus file
+dependency. No catalog, generated source, runtime frame, world, subprocess,
+network or GPU workload is added. Use the unchanged production 60-second
+supervisor; independent exact-head source and artifact admission is required
+before a runtime slot. Configuration and compilation are separate from test
+execution. These SDK checks do not establish CLI/Studio integration or a caret
+map across semantic rewriting.

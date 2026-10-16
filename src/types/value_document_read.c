@@ -1,5 +1,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/trace.h"
 #include "types/type.h"
 #include "types/value_document.h"
 
@@ -15,6 +17,7 @@
 typedef struct
 {
     arena *storage;
+    const pin_record *record;
     char *error;
     size_t error_size, bytes;
     int values, depth;
@@ -129,13 +132,15 @@ static int read_array(
     if (!array) {
         return -1;
     }
-    *array = (pin_array){
-        .element_type = element_type,
-        .type_name = type_name ? own_text(reader, type_name, strlen(type_name)) : NULL,
-        .count = count,
-        .capacity = count,
-        .items = (pin_value *)(array + 1)
-    };
+    *array = (pin_array){ .element_type = element_type,
+                          .type_name = reader->record ? reader->record->type.name
+                                     : type_name
+                                         ? own_text(reader, type_name, strlen(type_name))
+                                         : NULL,
+                          .record = reader->record,
+                          .count = count,
+                          .capacity = count,
+                          .items = (pin_value *)(array + 1) };
     for (int i = 0; i < count; i++) {
         if (read_value(
                 element_type,
@@ -150,16 +155,21 @@ static int read_array(
             return -1;
         }
     }
+    if (array->record) {
+        pin_arena_trace_array(reader->storage, array);
+    }
     *out = (pin_value){ .type = element_type,
                         .container = PIN_CONTAINER_ARRAY,
                         .type_name = array->type_name,
+                        .record = array->record,
                         .ptr = array };
     return 0;
 }
 
 static int read_struct(const char *type_name, const av_value *document, pin_value *out, document_reader *reader)
 {
-    const type_desc *type = type_catalog_find(type_name);
+    const type_desc *type = reader->record ? &reader->record->type
+                                           : type_catalog_find(type_name);
     if (!type || !type->size || !av_is_obj(document)) {
         read_error(reader, "invalid struct default for %s", type_name ? type_name : "unknown type");
         return -1;
@@ -212,7 +222,13 @@ static int read_struct(const char *type_name, const av_value *document, pin_valu
         }
         pin_write_field(block, field, member);
     }
-    *out = (pin_value){ .type = PIN_STRUCT, .type_name = out->type_name, .ptr = block };
+    *out = (pin_value){ .type = PIN_STRUCT,
+                        .type_name = out->type_name,
+                        .record = reader->record,
+                        .ptr = block };
+    if (reader->record) {
+        pin_arena_trace_struct(reader->storage, block, type);
+    }
     return 0;
 }
 
@@ -238,9 +254,14 @@ static int read_single(
 {
     memset(out, 0, sizeof *out);
     out->type = t;
-    out->type_name = reader->storage && type_name
-                       ? own_text(reader, type_name, strlen(type_name))
-                       : type_name;
+    if (t == PIN_STRUCT && reader->record) {
+        out->record = reader->record;
+        out->type_name = reader->record->type.name;
+    } else {
+        out->type_name = reader->storage && type_name
+                           ? own_text(reader, type_name, strlen(type_name))
+                           : type_name;
+    }
     if (reader->failed) {
         return -1;
     }
@@ -373,6 +394,28 @@ int pin_value_read_document(
         error[0] = 0;
     }
     document_reader reader = { .storage = storage, .error = error, .error_size = error_size };
+    if (declaration.record) {
+        if (declaration.type != PIN_STRUCT ||
+            (declaration.container != PIN_CONTAINER_SINGLE &&
+             declaration.container != PIN_CONTAINER_ARRAY &&
+             declaration.container != PIN_CONTAINER_SET) ||
+            !pin_record_valid(declaration.record) || !pin_value_type(&declaration)) {
+            read_error(&reader, "invalid authored document layout");
+            return -1;
+        }
+        /* Charge the closure once even when storage already owns it. Rows use
+         * this validated immutable shape and its name without per-item copies. */
+        if (!storage || declaration.record->bytes > DOCUMENT_MAX_BYTES) {
+            read_error(&reader, "document layout requires owned storage within byte limit");
+            return -1;
+        }
+        reader.bytes = declaration.record->bytes;
+        reader.record = pin_record_snapshot(storage, declaration.record);
+        if (!reader.record) {
+            read_error(&reader, "invalid authored document layout ownership");
+            return -1;
+        }
+    }
     pin_value value = { 0 };
     if (declaration.type < PIN_FLOW || declaration.type > PIN_ENUM) {
         read_error(&reader, "invalid document value type");

@@ -37,6 +37,7 @@ void test_tool_tilemap_project();
 void test_tool_execution_policy();
 #ifdef CHIBI_TEST_C_EXPORT
 void test_tool_c_export();
+void test_tool_record_c_export();
 #endif
 void test_tool_package();
 void test_tool_collab();
@@ -68,6 +69,8 @@ void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
+void test_tool_record_prepared(const char *producer, const char *consumer);
+void test_tool_record_runtime(const char *directory);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 #ifdef CHIBI_TEST_SCENE_AUTHORING
@@ -485,11 +488,28 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (argc == 2 && !strcmp(argv[1], "--c-export-alias")) {
+    if ((argc == 4 && !strcmp(argv[1], "--record-prepared")) ||
+        (argc == 3 && !strcmp(argv[1], "--record-read"))) {
+        tool_init();
+        pu_display_time(true);
+        if (argc == 4) {
+            test_tool_record_prepared(argv[2], argv[3]);
+        } else {
+            test_tool_record_runtime(argv[2]);
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
+                      !strcmp(argv[1], "--record-c-export"))) {
 #ifdef CHIBI_TEST_C_EXPORT
         tool_init();
         pu_display_time(true);
-        test_tool_c_export();
+        if (!strcmp(argv[1], "--record-c-export")) {
+            test_tool_record_c_export();
+        } else {
+            test_tool_c_export();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else

@@ -484,6 +484,7 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_STORE_TYPE_NAME:
+            ctx->variables[i->target].record = NULL;
             ctx->variables[i->target].type_name = (const char *)(uintptr_t)
                 behavior_scalar_bits(a);
             break;
@@ -645,6 +646,7 @@ int execution_machine_step(execution_machine *m, int pc)
             break;
         }
         case BF_RESULT_TYPE_NAME:
+            ctx->results[i->target].record = NULL;
             ctx->results[i->target]
                 .type_name = (const char *)(uintptr_t)(BF_POINTER_TYPE == PIN_U64
                                                            ? slots[i->left].u64

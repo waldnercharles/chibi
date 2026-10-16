@@ -728,6 +728,7 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
 }
 void script_analyzer_declaration_pass(analyzer *a, TSNode body)
 {
+    script_analyzer_record_types(a, body);
     script_analyzer_union_declarations(a, body);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
@@ -821,6 +822,7 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             a->out->owner_type = owner.nominal;
         }
     }
+    script_analyzer_record_fields(a, body);
 }
 int script_analyzer_scope_at(const analyzer *a, TSNode body)
 {
@@ -1216,7 +1218,8 @@ void script_analyzer_binding(analyzer *a, TSNode node)
 }
 bool script_analyzer_declaration_kind(TSNode node)
 {
-    return script_analyzer_is(node, "union_declaration") ||
+    return script_analyzer_is(node, "record_declaration") ||
+           script_analyzer_is(node, "union_declaration") ||
            script_analyzer_is(node, "state_declaration") ||
            script_analyzer_is(node, "action_declaration") ||
            script_analyzer_is(node, "event_declaration") ||

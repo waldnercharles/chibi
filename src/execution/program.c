@@ -16,6 +16,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -174,6 +175,7 @@ static bool stream_function(const behavior_function *f, int depth, int *steps)
 bool program_same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
+           pin_record_same(a.record, b.record) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -450,7 +452,7 @@ static void sync_state(execution_instance *instance)
         state_value *state = instance_storage(instance, i);
         instance->values[i] = state->value;
         const type_desc *type = state->value.type == PIN_STRUCT
-                                  ? type_catalog_find(state->value.type_name)
+                                  ? pin_value_type(&state->value)
                                   : NULL;
         instance->layouts[i] = (behavior_variable_storage){
             .data = state->value.ptr,

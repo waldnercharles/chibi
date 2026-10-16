@@ -584,6 +584,14 @@ bool behavior_jit_memory(
         return true;
     }
     if (i->op == BF_STORE_TYPE_NAME) {
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(m->variables),
+            i->target * sizeof(pin_value) + offsetof(pin_value, record),
+            SLJIT_IMM,
+            0
+        );
         slot(
             m,
             i->left,
@@ -594,6 +602,14 @@ bool behavior_jit_memory(
     }
     if (i->op == BF_STORE_HEADER) {
         sljit_sw base = i->target * sizeof(pin_value);
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(m->variables),
+            base + offsetof(pin_value, record),
+            SLJIT_IMM,
+            0
+        );
         slot(m, i->left, SLJIT_MEM1(m->variables), base + offsetof(pin_value, type_name));
         sljit_emit_op1(
             c,
@@ -636,12 +652,28 @@ bool behavior_jit_memory(
     }
     if (i->op == BF_RESULT_TYPE_NAME) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(SLJIT_R3),
+            i->target * sizeof(pin_value) + offsetof(pin_value, record),
+            SLJIT_IMM,
+            0
+        );
         slot(m, i->left, SLJIT_MEM1(SLJIT_R3), i->target * sizeof(pin_value) + offsetof(pin_value, type_name));
         return true;
     }
     if (i->op == BF_RESULT_ARRAY) {
         sljit_sw at = i->target * sizeof(pin_value);
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(m->context), offsetof(behavior_function_context, results));
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV_P,
+            SLJIT_MEM1(SLJIT_R3),
+            i->target * sizeof(pin_value) + offsetof(pin_value, record),
+            SLJIT_IMM,
+            0
+        );
         sljit_emit_op1(c, SLJIT_MOV32, SLJIT_MEM1(SLJIT_R3), at + offsetof(pin_value, type), SLJIT_IMM, i->type);
         sljit_emit_op1(
             c,

@@ -38,6 +38,13 @@ void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
  * process pointer is encoded; HANDLE values must be zero. Collections preserve
  * ordered items, including maps' existing typed item representation. */
 void execution_wire_value(execution_wire *, pin_value *);
+/* Explicit execution-prepared variant. Each recursive value carries an authored
+ * discriminator; resolve validates original writer headers or supplies an owned
+ * reader layout. A missing authored layout is always an error, never fallback.
+ * Native callers keep the historical entry point/bytes above. */
+typedef const pin_record
+    *(*execution_wire_resolver)(execution_wire *, void *, const pin_value *, bool authored);
+void execution_wire_value_owned(execution_wire *, pin_value *, execution_wire_resolver, void *user);
 /* Float bits preserve IEEE F32 values; owning codecs validate semantic ranges.
  * Heap allocations use free(), strings are copied from temporary wire storage.
  * Reserve charges caller-owned array payload before growth. Errors are sticky. */

@@ -9,6 +9,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy_internal.h"
+#include "types/record.h"
 #include "types/trace.h"
 #include "types/union.h"
 
@@ -30,29 +31,69 @@ static const char *snapshot_value(arena *storage, const pin_value *args, int cou
 static const char *construct_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count >= 1);
-    *out = args[0];
-    if (out->container != PIN_CONTAINER_SINGLE) {
-        pin_array *array = pin_array_snapshot_allocate(storage, out->type, out->type_name, count - 1);
-        for (int i = 1; i < count; i++) {
-            if (pin_value_snapshot_to_arena(storage, &array->items[i - 1], &args[i])) {
-                return "Cannot retain array element";
-            }
+    pin_value result = args[0];
+    if (result.record &&
+        (!pin_record_valid(result.record) || !pin_value_type(&result))) {
+        return "Invalid authored constructor layout";
+    }
+    if (result.container != PIN_CONTAINER_SINGLE) {
+        pin_array source = { .element_type = result.type,
+                             .type_name = result.type_name,
+                             .record = result.record };
+        pin_array *array = pin_array_snapshot_like(storage, &source, count - 1);
+        if (!array ||
+            pin_array_snapshot_items(storage, array->record, array->items, args + 1, count - 1)) {
+            return "Cannot retain array element";
         }
-        out->ptr = array;
+        result.record = array->record;
+        result.type_name = array->type_name;
+        result.ptr = array;
+        *out = result;
         return NULL;
     }
-    const type_desc *type = type_catalog_find(out->type_name);
-    if (!type || out->type != PIN_STRUCT) {
+    const type_desc *type = pin_value_type(&result);
+    if (!type || result.type != PIN_STRUCT || !(count & 1)) {
         return "Unknown language constructor layout";
     }
-    if (args[0].ptr) {
-        if (pin_value_snapshot_to_arena(storage, out, &args[0])) {
+    if (result.record) {
+        if (!result.ptr && (count - 1) / 2 != type->field_count) {
+            return "Authored record requires every initialized field";
+        }
+        for (int i = 1; i < count; i += 2) {
+            bool found = false;
+            for (int j = 0; j < type->field_count; j++) {
+                const type_field *field = &type->fields[j];
+                found |= args[i].type == PIN_U64 &&
+                         args[i].container == PIN_CONTAINER_SINGLE &&
+                         args[i].u64 == field->offset &&
+                         args[i + 1].type == field->type &&
+                         args[i + 1].container == PIN_CONTAINER_SINGLE &&
+                         !args[i + 1].record;
+            }
+            for (int j = 1; j < i; j += 2) {
+                if (args[j].u64 == args[i].u64) {
+                    return "Duplicate authored record constructor field";
+                }
+            }
+            if (!found) {
+                return "Authored record constructor field differs from its "
+                       "layout";
+            }
+        }
+    }
+    if (result.ptr) {
+        if (pin_value_snapshot_to_arena(storage, &result, &args[0])) {
             return "Cannot retain struct base";
         }
     } else {
-        out->ptr = arena_alloc(storage, type->size);
-        memset(out->ptr, 0, type->size);
-        pin_arena_trace_struct(storage, out->ptr, type);
+        if (result.record) {
+            result.record = pin_record_snapshot(storage, result.record);
+            result.type_name = result.record->type.name;
+            type = &result.record->type;
+        }
+        result.ptr = arena_alloc(storage, type->size);
+        memset(result.ptr, 0, type->size);
+        pin_arena_trace_struct(storage, result.ptr, type);
     }
     for (int i = 1; i + 1 < count; i += 2) {
         size_t offset = (size_t)args[i].u64;
@@ -60,11 +101,11 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
         if (pin_value_snapshot_to_arena(storage, &value, &args[i + 1])) {
             return "Cannot retain struct field";
         }
+        const type_desc *field_type = pin_value_type(&value);
         size_t size = value.container != PIN_CONTAINER_SINGLE ? sizeof(void *)
-                    : value.type == PIN_STRUCT
-                        ? type_catalog_find(value.type_name)->size
-                        : behavior_scalar_size(value.type);
-        if (offset > type->size || size > type->size - offset) {
+                    : value.type == PIN_STRUCT ? (field_type ? field_type->size : 0)
+                                               : behavior_scalar_size(value.type);
+        if (!size || offset > type->size || size > type->size - offset) {
             return "Struct field exceeds declared layout";
         }
         if (value.type == PIN_STRUCT &&
@@ -74,11 +115,31 @@ static const char *construct_value(arena *storage, const pin_value *args, int co
         const void *data = value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE
                              ? value.ptr
                              : (const void *)&value.d;
-        memcpy((char *)out->ptr + offset, data, size);
+        memcpy((char *)result.ptr + offset, data, size);
     }
-    type_validate_ranges(type, out->ptr);
+    type_validate_ranges(type, result.ptr);
+    *out = result;
     return NULL;
 }
+static const char *value_equal(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    if (count != 2) {
+        return "Record equality requires two operands";
+    }
+    for (int i = 0; i < 2; i++) {
+        if (args[i].type != PIN_STRUCT || args[i].container != PIN_CONTAINER_SINGLE ||
+            !pin_record_valid(args[i].record) || !pin_value_type(&args[i])) {
+            return "Invalid authored record equality operand";
+        }
+    }
+    if (!pin_record_same(args[0].record, args[1].record)) {
+        return "Record equality operands have different nominal layouts";
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = pin_value_equal(&args[0], &args[1]) };
+    return NULL;
+}
+const node_host_call EXECUTION_value_equal_call = { .value = value_equal };
 const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK };
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
@@ -372,7 +433,7 @@ static void *reference_path_data(
     }
     const type_desc *layout = !path->parent && root_layout ? root_layout
                             : type->type == PIN_STRUCT && type->container == PIN_CONTAINER_SINGLE
-                                ? type_catalog_find(type->type_name)
+                                ? pin_value_type(type)
                                 : NULL;
     if (!layout || path->offset >= layout->size) {
         return NULL;
@@ -414,7 +475,7 @@ size_t execution_value_size(pin_value type)
         return sizeof(void *);
     }
     if (type.type == PIN_STRUCT) {
-        const type_desc *layout = type_catalog_find(type.type_name);
+        const type_desc *layout = pin_value_type(&type);
         return layout ? layout->size : 0;
     }
     return behavior_scalar_size(type.type);
@@ -426,7 +487,7 @@ static int snapshot_reference_root(
     const type_desc *layout
 )
 {
-    if (!layout) {
+    if (!layout || source->record) {
         return pin_value_snapshot_to_arena(storage, out, source);
     }
     assert(source->type == PIN_STRUCT && source->container == PIN_CONTAINER_SINGLE);
@@ -557,7 +618,7 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
     }
     if (ref->kind != LANGUAGE_REFERENCE_COMPONENT && retained.type == PIN_STRUCT &&
         retained.container == PIN_CONTAINER_SINGLE) {
-        const type_desc *type = type_catalog_find(retained.type_name);
+        const type_desc *type = pin_value_type(&retained);
         assert(type);
         type_validate_ranges(type, retained.ptr);
     }
@@ -876,6 +937,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_retrigger_action_call;
         case EXECUTION_INTRINSIC_SNAPSHOT: return &EXECUTION_snapshot_call;
         case EXECUTION_INTRINSIC_CONSTRUCT: return &EXECUTION_construct_call;
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
+            return &EXECUTION_value_equal_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
@@ -912,6 +975,9 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    if (call == &EXECUTION_value_equal_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_VALUE_EQUAL;
+    }
     if (call == &EXECUTION_query_target_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_TARGET;
     }
@@ -997,6 +1063,7 @@ const node_access *execution_intrinsic_access(uint64_t id)
     }
     switch ((execution_intrinsic)(id & 255)) {
         case EXECUTION_INTRINSIC_SNAPSHOT:
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:

@@ -584,6 +584,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 );
                 break;
             case BF_STORE_TYPE_NAME:
+                fprintf(out, "c->variables[%d].record=NULL;\n", i->target);
                 fprintf(
                     out,
                     "c->variables[%d].type_name=(const char*)(uintptr_t)v%d;\n",
@@ -788,6 +789,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 }
                 break;
             case BF_RESULT_TYPE_NAME:
+                fprintf(out, "c->results[%d].record=NULL;\n", i->target);
                 fprintf(out, "c->results[%d].type_name=(const char*)(uintptr_t)v%d;\n", i->target, i->left);
                 break;
             case BF_RESULT_ARRAY:

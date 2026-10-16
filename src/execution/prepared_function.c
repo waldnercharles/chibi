@@ -4,6 +4,7 @@
 #include "execution/task.h"
 #include "support/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <limits.h>
 #include <string.h>
@@ -395,11 +396,23 @@ void prepared_function(prepared_context *c, behavior_function *f)
         INT(v->index);
         const char *name = v->type ? v->type->name : NULL;
         STRING(name);
+        if (w->error) {
+            break;
+        }
+        if (v->index < 0 || v->index >= acount(f->result_defaults)) {
+            w->error = "prepared result index exceeds declared results";
+            break;
+        }
+        const pin_value *header = &f->result_defaults[v->index];
+        const type_desc *type = pin_value_type(header);
+        if (header->type != PIN_STRUCT ||
+            header->container != PIN_CONTAINER_SINGLE || !name || !type ||
+            strcmp(name, type->name) || (!w->reading && v->type != type)) {
+            w->error = "prepared result layout differs from declared header";
+            break;
+        }
         if (w->reading) {
-            v->type = name ? type_catalog_find(name) : NULL;
-            if (!v->type) {
-                w->error = "unknown result layout";
-            }
+            v->type = type;
         }
     });
     ARRAY(data_values, {

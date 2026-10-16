@@ -10,6 +10,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy_internal.h"
+#include "types/record.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -563,7 +564,7 @@ static void mark_value(void *user, const pin_value *value)
         }
         case PIN_STRUCT:
             if (value->ptr) {
-                const type_desc *type = type_catalog_find(value->type_name);
+                const type_desc *type = pin_value_type(value);
                 assert(type);
                 mark_fields(roots, type, value->ptr);
             }

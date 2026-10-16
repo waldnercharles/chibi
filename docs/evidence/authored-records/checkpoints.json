@@ -1,0 +1,210 @@
+{
+  "status": "INCOMPLETE_DRAFT; no readiness, full-feature or landing approval",
+  "product_checkpoint": "3438caf9deca6bb43f95862fa8a95939bceae547",
+  "product_tree": "57faae60e40969fcf6017aafbe39ef2fdf43eea9",
+  "publication_base": "22966e126be426dd89c587363d654b6344dc727a",
+  "evidence_policy": "Each result is scoped to its stated clean local Git head/tree. Source/build/dependency identities were independently checked before and after each admitted run. These staged results are not a claim that every historical route was rerun on the later cumulative head. The published single-tree commit has separate identity verification. Hashes identify preserved local raw evidence; raw manifests contain machine-specific build paths and are not copied here.",
+  "whole_route_seconds": 60,
+  "consumer_child_seconds": 10,
+  "native_sanitizers": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+    "leak_validation": "BLOCKED; unavailable tracing environment, no leak pass"
+  },
+  "wasm_node": "24.19.0",
+  "aggregate_membership": "new record routes remain standalone; groups unchanged",
+  "checkpoints": [
+    {
+      "stage": "foundation",
+      "local_reviewed_head": "d75a55118943f40bdad43a5b223a81bf53dda60d",
+      "tree": "080b1b500eb8c1a6364fefa67d1b2db6495fc56e",
+      "independent_review_manifest_sha256": "9d58c07573889554fd5b668c2c2fe49ad851b7bd39fb912f34cb0ab5f8eae6fe",
+      "scope": "Fixed C ownership/layout foundation; C compiled to Wasm, no authored dispatch",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool language-record-values",
+          "target": "native",
+          "cases": 6,
+          "assertions": 155,
+          "seconds": 0.077,
+          "exit": 0,
+          "raw_log_sha256": "c8934dcd693175ddf30cebb8078abe2a817bd69eb945f4cd4d9cdf8524dcc1aa"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool wasm-record-values",
+          "target": "wasm",
+          "cases": 6,
+          "assertions": 155,
+          "seconds": 0.133,
+          "exit": 0,
+          "raw_log_sha256": "49298998e71de47e69edfeeb98c5eff337f18ace4cc8d4e22b50f3862b315cbe"
+        }
+      ]
+    },
+    {
+      "stage": "semantics",
+      "local_reviewed_head": "f4af20a04e3f46cdff10a10cd34ccc070ba5b8b3",
+      "tree": "4b8f08d00fb99676303fb02c93c7420c050ee61a",
+      "independent_review_manifest_sha256": "cf2c51411271df0c81053437b7373ea67583392c8ca0429fbdc4a46be6367205",
+      "scope": "21 semantic analyses and four parse-only inputs; C compiled to Wasm, no authored dispatch",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool language-record-semantic",
+          "target": "native",
+          "cases": 7,
+          "assertions": 105,
+          "seconds": 0.108,
+          "exit": 0,
+          "raw_log_sha256": "c28f6f1f5f79f82ad7ed60467317a1e875549a3e61715943ea62f301a3759fa7"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool wasm-record-semantic",
+          "target": "wasm",
+          "cases": 7,
+          "assertions": 105,
+          "seconds": 0.174,
+          "exit": 0,
+          "raw_log_sha256": "d3478ad0afbb055f53a33b2ac697e4f916673ca26d654e45a556cdad1331ba05"
+        }
+      ]
+    },
+    {
+      "stage": "runtime",
+      "local_reviewed_head": "9e48f0df03690681115744d8ba429b437906384a",
+      "tree": "39e0ceaee0512dd3aeb0d35f4e14751b09e812a6",
+      "independent_review_manifest_sha256": "37e24381c6892c95afbd71bf7294b343efdc6c03f7835ad873131f0ba9158485",
+      "scope": "Four cases;14 authored calls, real BYTECODE/SLJIT on native and BYTECODE/generated-Wasm on Wasm; fixed formatter checks",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool language-record-runtime",
+          "target": "native",
+          "cases": 4,
+          "assertions": 1211,
+          "seconds": 0.133,
+          "exit": 0,
+          "raw_log_sha256": "1667361f25bf3724a980337805fcbc3dbff7d3b60caeb8db56b5be975ec9c687"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool wasm-record-runtime",
+          "target": "wasm",
+          "cases": 4,
+          "assertions": 1211,
+          "seconds": 0.204,
+          "exit": 0,
+          "raw_log_sha256": "18830da38cfb26fafdb149f731e84a0466bbc7c0835051f413ffccbf2c5571a9"
+        }
+      ]
+    },
+    {
+      "stage": "prepared",
+      "local_reviewed_head": "fff5bdb6aca3c2c9f05af4f3fb49d592ee490401",
+      "tree": "281295c8fb79faa0c684edeec5582d7e5121a5c4",
+      "independent_review_manifest_sha256": "829c300232976f8fb97057f64b3eaa9891d90af76126bcce4a1808b3829d1fbc",
+      "scope": "Five prepared cases; actual BYTECODE/SLJIT/generated-Wasm, fixed ownership/corruption/native-wire controls",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool language-record-prepared",
+          "target": "native",
+          "cases": 5,
+          "assertions": 1011,
+          "seconds": 0.117,
+          "exit": 0,
+          "raw_log_sha256": "33561616e5dfafd39235016fd98be7e0a47de8b22915cc47645baa4dd45c14ec"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool wasm-record-prepared",
+          "target": "wasm",
+          "cases": 5,
+          "assertions": 1011,
+          "seconds": 0.212,
+          "exit": 0,
+          "raw_log_sha256": "d5fa0613abe9334e87b5d0fbe43c73db41a3784d9420a3a961a30e81d2a2e745"
+        }
+      ]
+    },
+    {
+      "stage": "documents",
+      "local_reviewed_head": "3438caf9deca6bb43f95862fa8a95939bceae547",
+      "tree": "57faae60e40969fcf6017aafbe39ef2fdf43eea9",
+      "independent_review_manifest_sha256": "b71a9fe73adce2f18897a65736176c0b9aca856e03cb270d98bc422f34972ecc",
+      "scope": "Seven valid reads,eight rejects,fourteen projections,four collections; C compiled to Wasm, no authored dispatch",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool language-record-document",
+          "target": "native",
+          "cases": 3,
+          "assertions": 306,
+          "seconds": 0.072,
+          "exit": 0,
+          "raw_log_sha256": "6b6345e180753ce3f7154018cb11d114b43000495f3f12982730dda063f96707"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool wasm-record-document",
+          "target": "wasm",
+          "cases": 3,
+          "assertions": 306,
+          "seconds": 0.143,
+          "exit": 0,
+          "raw_log_sha256": "7ebe6f4a89d4c1482a20e5bc3d8703c7e16f16dc5cd4094a07abd40857f18110"
+        }
+      ]
+    },
+    {
+      "stage": "generated C and installed runtime-only consumer",
+      "local_reviewed_head": "175abf5941e8c427af0ddd23db33ea5879f7ccdf",
+      "tree": "012264d9cd872051175c34036dbe19c3d308290e",
+      "independent_review_manifest_sha256": "943eb40e00b10d528195d85c19495ed9a329064fbaafaf5c2ffcde43ed994616",
+      "scope": "Two source compilations/ten calls in each route; generated C source_function absent; installed public-only object and compiler-free link verified; four prepared decodes in installed route",
+      "tests": [
+        {
+          "command": "python3 tools/test_policy.py tool record-c-export",
+          "cases": 1,
+          "assertions": 398,
+          "seconds": 1.003,
+          "exit": 0,
+          "raw_log_sha256": "9e863417f89d5378cd403d9d881309be108a7b95c77c2d09527fd5925305ced1"
+        },
+        {
+          "command": "python3 tools/test_policy.py tool record-installed-prepared",
+          "producer_cases": 1,
+          "producer_assertions": 18,
+          "consumer_cases": 1,
+          "consumer_assertions": 537,
+          "launcher_cases": 1,
+          "launcher_assertions": 5,
+          "seconds": 0.128,
+          "exit": 0,
+          "raw_log_sha256": "ebf5903532240c9396f6f7b647061b9f322999c1f960091eab88a8ae0e4b76ad"
+        }
+      ]
+    }
+  ],
+  "preserved_failures": [
+    {
+      "local_head_prefix": "9a03b493",
+      "outcome": "Catalog lifecycle assertion; buffered output did not identify a completed case. Fixture scopes repaired before d75a5511."
+    },
+    {
+      "local_head_prefix": "683609f9",
+      "outcome": "UBSan found NULL builder cleanup before the first authored compile; zero completed cases or authored execution. Fixture-only guard repaired before9e48f0df.",
+      "preserved_review_manifest_sha256": "09f8ee119d6ffdfb69d66506c628230ce1a757e2dafbc6548635cdf404f7d895"
+    },
+    {
+      "local_head_prefix": "c3b400b5",
+      "outcome": "Generated-C final detached equality failed after all ten calls and ownership checks; measured sample index unknown. Static audit identified an invalid null-array equality oracle, corrected without production change in175abf59. Installed route was not run at the failing head.",
+      "preserved_review_manifest_sha256": "59f5bd3f8d3d57889e6f23885248a7fae61ead764688c714577cc628236fc8d5"
+    },
+    {
+      "local_head_prefix": "4b307c31",
+      "outcome": "Expected-red baseline: 0/3 cases,6 assertions,0.072s; three document reads reached missing-capability/diagnostic assertions. Zero projection/collection; Wasm baseline not run.",
+      "preserved_review_manifest_sha256": "4a6f02e65254ea567a22042a536d2cff99c056e698df12f4676f19627e528401"
+    }
+  ],
+  "remaining": [
+    "Generic globals and headless UI service closure",
+    "Persistent state/replacement and actual watch/inspection closure; frame API disposition",
+    "Affected existing-route/full formatter and current integration checks",
+    "Leak-validation disposition and exact published-head independent review",
+    "Studio operation/history/lifecycle/SDK/UI parity gates"
+  ]
+}

@@ -38,6 +38,8 @@ typedef enum
     PIN_CONTAINER_MAP,
 } pin_container;
 
+typedef struct pin_record pin_record;
+
 typedef struct
 {
     pin_type type;
@@ -60,6 +62,7 @@ typedef struct
     };
     pin_container container;
     const char *type_name;
+    const pin_record *record; /* Authored layout; native reflected values use NULL. */
 } pin_value;
 
 #endif

@@ -77,6 +77,10 @@ target_compile_options(chibi_sdk_contracts PRIVATE -Wall -Wextra -Werror -UNDEBU
 configure_file("${CHIBI_TOOL_ROOT}/test/prepared_fixture.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/prepared_fixture.h" COPYONLY)
 add_library(chibi_prepared_consumer OBJECT prepared_runtime.c)
+add_library(chibi_record_consumer OBJECT record_runtime.c)
+target_include_directories(chibi_record_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+target_link_libraries(chibi_record_consumer PRIVATE Chibi::behavior_runtime)
+target_compile_options(chibi_record_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_include_directories(chibi_prepared_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(chibi_prepared_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(chibi_prepared_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
@@ -86,7 +90,7 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
+add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
     validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
@@ -121,9 +125,9 @@ if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_I
     endforeach()
     configure_file(export_compiler.h.in
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/export_compiler.h" @ONLY)
-    set_source_files_properties(c_export.c PROPERTIES
+    set_source_files_properties(c_export.c record_c_export.c PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_sources(test_tools PRIVATE c_export.c)
+    target_sources(test_tools PRIVATE c_export.c record_c_export.c)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution ${CMAKE_DL_LIBS})
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
 endif()

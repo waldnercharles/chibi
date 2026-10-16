@@ -70,6 +70,13 @@ bool source_catalog_snapshot(arena *storage, const script_catalog *source, scrip
             fields[j].name = text(storage, fields[j].name);
             fields[j].unit = text(storage, fields[j].unit);
             fields[j].read_key = text(storage, fields[j].read_key);
+            if (fields[j].has_default && pin_value_snapshot_to_arena(
+                                             storage,
+                                             &fields[j].default_value,
+                                             &types[i].fields[j].default_value
+                                         )) {
+                return false;
+            }
         }
         types[i].fields = fields;
         script_catalog_variant *variants = arena_alloc(
@@ -173,8 +180,8 @@ static bool same_fields(const script_catalog_field *a, const script_catalog_fiel
             !same_type(x->type, y->type) || x->offset != y->offset ||
             x->read != y->read || x->write != y->write ||
             !same_text(x->read_key, y->read_key) || x->writable != y->writable ||
-            x->constant != y->constant || !same_text(x->unit, y->unit) ||
-            x->range_contract != y->range_contract ||
+            x->constant != y->constant || x->has_default != y->has_default ||
+            !same_text(x->unit, y->unit) || x->range_contract != y->range_contract ||
             memcmp(&x->min, &y->min, sizeof x->min) ||
             memcmp(&x->max, &y->max, sizeof x->max)) {
             return false;
@@ -215,12 +222,14 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
     for (int i = 0; i < a->type_count; i++) {
         const script_catalog_type *x = &a->types[i], *y = &b->types[i];
         if (x->id != y->id || !same_text(x->name, y->name) ||
-            !same_text(x->source_name, y->source_name) || !same_text(x->key, y->key) ||
-            !same_type(x->type, y->type) || x->field_count != y->field_count ||
-            x->size != y->size || x->layout != y->layout ||
-            x->underlying != y->underlying || x->component_id != y->component_id ||
-            x->component != y->component || x->derived != y->derived ||
-            x->internal != y->internal || x->variant_count != y->variant_count ||
+            !same_text(x->source_name, y->source_name) ||
+            !same_text(x->key, y->key) || !same_type(x->type, y->type) ||
+            x->field_count != y->field_count || x->size != y->size ||
+            x->layout != y->layout || x->underlying != y->underlying ||
+            x->component_id != y->component_id || x->component != y->component ||
+            x->derived != y->derived || x->internal != y->internal ||
+            x->authored_record != y->authored_record ||
+            x->variant_count != y->variant_count ||
             !same_fields(x->fields, y->fields, x->field_count)) {
             return false;
         }
@@ -462,6 +471,12 @@ bool source_catalog_default_key(const script_catalog *catalog, unsigned char **o
     assert(out && !*out);
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
+        for (int j = 0; j < type->field_count; j++) {
+            if (type->fields[j].has_default &&
+                !key_value(out, &type->fields[j].default_value, 0)) {
+                goto unavailable;
+            }
+        }
         for (int j = 0; j < type->variant_count; j++) {
             if (type->variants[j].is_literal &&
                 !key_value(out, &type->variants[j].literal, 0)) {

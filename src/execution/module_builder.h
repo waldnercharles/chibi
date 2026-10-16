@@ -102,7 +102,8 @@ typedef struct
 {
     uint64_t id, layout;
     pin_type storage;
-    const char *name; /* String belongs to plan.storage. */
+    const pin_record *record; /* Authored layout owned by plan.storage. */
+    const char *name;         /* String belongs to plan.storage. */
     size_t size;
 } execution_type_requirement;
 typedef struct

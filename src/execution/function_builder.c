@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -65,8 +66,7 @@ void behavior_function_builder_signature(
         apush(f->result_kinds, BEHAVIOR_VALUE);
         if (results[i].type == PIN_STRUCT &&
             results[i].container == PIN_CONTAINER_SINGLE) {
-            const type_desc *type = type_catalog_find(results[i].type_name);
-            assert(type);
+            const type_desc *type = pin_value_type(&results[i]);
             apush(f->results, ((behavior_function_result){ i, type }));
         }
     }
@@ -190,9 +190,8 @@ static void data_value(behavior_function *f, pin_value value)
 {
     size_t size = 0;
     if (value.type == PIN_STRUCT && value.container == PIN_CONTAINER_SINGLE) {
-        const type_desc *type = type_catalog_find(value.type_name);
-        assert(type);
-        size = type->size;
+        const type_desc *type = pin_value_type(&value);
+        size = type ? type->size : 0;
     }
     apush(f->data_values, ((behavior_function_data_value){ .initial = value, .size = size }));
 }
@@ -510,6 +509,7 @@ static bool scalar_type(pin_type type)
 static bool same_type(pin_value a, pin_value b)
 {
     return a.type == b.type && a.container == b.container &&
+           pin_record_same(a.record, b.record) &&
            ((!a.type_name && !b.type_name) ||
             (a.type_name && b.type_name && !strcmp(a.type_name, b.type_name)));
 }
@@ -554,7 +554,7 @@ static bool struct_field(pin_value value, const behavior_function_instruction *i
         !value.type_name) {
         return false;
     }
-    const type_desc *type = type_catalog_find(value.type_name);
+    const type_desc *type = pin_value_type(&value);
     return type && reflected_scalar_field(type, i->offset, i->type, 0);
 }
 
@@ -744,6 +744,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_STORE_HEADER:
         case BF_STORE_TYPE_NAME:
             CHECK(index_valid(i->target, f->variable_count), "invalid variable header destination");
+            CHECK(!f->variable_defaults[i->target].record, "native header opcode cannot replace an authored record");
             CHECK(SLOT(i->left, BF_POINTER_TYPE), "invalid header name type");
             CHECK(
                 i->op != BF_STORE_HEADER ||
@@ -757,6 +758,10 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         case BF_RESULT_TYPE_NAME:
         case BF_RESULT_ARRAY:
             CHECK(index_valid(i->target, f->result_count), "invalid result header destination");
+            CHECK(
+                i->op == BF_RESULT_PRESENT || !f->result_defaults[i->target].record,
+                "native result opcode cannot replace an authored record"
+            );
             CHECK(SLOT(i->left, i->op == BF_RESULT_PRESENT ? PIN_BOOL : BF_POINTER_TYPE), "invalid result header source");
             CHECK(
                 i->op != BF_RESULT_PRESENT ||
@@ -1050,8 +1055,10 @@ static bool value_type_valid(pin_value value)
         (!scalar_type(value.type) && value.type != PIN_STRUCT && value.type != PIN_UNION)) {
         return false;
     }
-    return value.type != PIN_STRUCT ||
-           (value.type_name && type_catalog_find(value.type_name));
+    if (value.record && (value.type != PIN_STRUCT || !pin_record_valid(value.record))) {
+        return false;
+    }
+    return value.type != PIN_STRUCT || pin_value_type(&value);
 }
 /* Intrinsic callbacks consume physical value banks, not authored signatures.
  * Validate their ABI before a producer or decoded definition can execute them. */
@@ -1067,6 +1074,12 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
     switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
+            return count == 2 && OUTPUT(PIN_BOOL) &&
+                   values[0].initial.type == PIN_STRUCT &&
+                   values[0].initial.container == PIN_CONTAINER_SINGLE &&
+                   values[0].initial.record &&
+                   same_type(values[0].initial, values[1].initial);
         case EXECUTION_INTRINSIC_SNAPSHOT:
             return count == 1 && same_type(values[0].initial, output);
         case EXECUTION_INTRINSIC_UNION_MAKE:
@@ -1296,7 +1309,7 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                                   f->data_values[bank].kind
                               )
                 );
-            } else if (bank >= 0 && i->offset == offsetof(pin_value, type_name)) {
+            } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
                 CHECK_KIND(output == BEHAVIOR_ADDRESS);
             } else {
                 CHECK_KIND(output != BEHAVIOR_REFERENCE);
@@ -1317,7 +1330,7 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                                          f->data_values[bank].kind
                                      )
                 );
-            } else if (bank >= 0 && i->offset == offsetof(pin_value, type_name)) {
+            } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
                 CHECK_KIND(KIND(i->left) == BEHAVIOR_ADDRESS);
             }
             break;
@@ -1680,6 +1693,20 @@ static const char *verify_metadata(const behavior_function *f)
             }
         }
     }
+    for (int i = 0; i < acount(f->results); i++) {
+        int index = f->results[i].index;
+        if (index < 0 || index >= f->result_count ||
+            f->result_defaults[index].type != PIN_STRUCT ||
+            f->result_defaults[index].container != PIN_CONTAINER_SINGLE ||
+            f->results[i].type != pin_value_type(&f->result_defaults[index])) {
+            return "result buffer layout differs from its declared header";
+        }
+        for (int j = 0; j < i; j++) {
+            if (f->results[j].index == index) {
+                return "result buffer index is duplicated";
+            }
+        }
+    }
     for (int i = 0; i < acount(f->sources); i++) {
         const behavior_function_source *source = &f->sources[i];
         if (source->parent < -1 || source->parent >= i || source->start < 0 ||
@@ -1694,7 +1721,7 @@ static const char *verify_metadata(const behavior_function *f)
         const behavior_function_data_value *v = &f->data_values[i];
         const type_desc *type = v->initial.type == PIN_STRUCT &&
                                         v->initial.container == PIN_CONTAINER_SINGLE
-                                  ? type_catalog_find(v->initial.type_name)
+                                  ? pin_value_type(&v->initial)
                                   : NULL;
         if (v->size && (!type || v->size != type->size)) {
             return "host buffer size differs from reflected layout";
@@ -2160,7 +2187,10 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
             return NULL;
         }
     } else {
-        behavior_function_own(f);
+        if (!behavior_function_own(f)) {
+            snprintf(error, size, "function value ownership is invalid");
+            return NULL;
+        }
     }
     b->function = NULL;
     if (size) {

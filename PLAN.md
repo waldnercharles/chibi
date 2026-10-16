@@ -1,10 +1,55 @@
 # Chibi language and typed-runtime redesign
 
 Approved to begin on 2026-10-16. Base: `origin/main` at `525f91b5a`.
-All five stages are implemented and validated locally in isolated engine and
-Studio worktrees on `codex/language-redesign-20261016`. The primary checkouts and
-their existing edits are untouched. This is a reviewable candidate, not a merged,
-pushed or deployed release.
+All five stages are implemented in isolated engine and Studio worktrees on
+`codex/language-redesign-20261016`. The reviewed implementation is published as
+engine PR #420 and Studio PR #71. The primary checkouts and their existing edits
+are untouched. Neither PR is merged or deployed.
+
+## Current-main integration, approved 2026-10-16
+
+The user approved public Studio publication, resolving engine conflicts with
+main, rerunning relevant checks and pushing the verified fixes. The engine
+candidate merges main `6e26b84be` into reviewed redesign commit `32a001739`
+without rewriting its published history. Studio remains at `0eb068bc` and
+consumes the paired SDK.
+
+The merge preserves main's counted-row construction and owned scene snapshots
+together with the redesign's packed/nullable arrays. SDK and test registrations
+retain both contracts. Incoming source fixtures use canonical name-first syntax
+and representation-neutral reads. A bounded packed-seed, counted-row, canonical
+nullable-add and collection regression covers their interaction. Independent
+review found no remaining issue in the merged execution paths, ownership and
+selected workloads. Native builds also required an explicit direct-entry
+function-pointer cast and the Darwin `mkdtemp` header in incoming tests.
+
+Validation uses the five admitted native/materials/projects/language/tooling
+groups, standalone scene-snapshot reads and generated C, Wasm and bounded Chrome
+drivers, and packaged SDK/Studio compilation. Full native/render/Studio suites
+remain quarantined. Build time remains separate from each 60-second test budget.
+
+| Current integration check | Result |
+| --- | --- |
+| Native group, ASan/UBSan driver | Pass, 21.076 s |
+| Materials group | Pass, 27.743 s |
+| Projects group, Release controller | Pass, 24.007 s |
+| Language group | Pass, 497 cases, 20.315 s |
+| Tooling/process group, Python 3.12 | Pass, 130 cases, 27.004 s |
+| Standalone scene-snapshot reads | Pass, 3 cases/610 assertions, 1.311 s |
+| Generated-C aliases and counted-row fallback | Pass, 1 case each, 1.369 s and 2.227 s |
+| Wasm group | Pass, 299 cases, 2.607 s |
+| Ten-selector Chrome C driver | Pass, including 8 counted-row and 2 Outliner cases, 2.079 s |
+| Native/Wasm builds, packaged SDK and installed Studio consumer | Pass |
+| clang-format 22 and whitespace | Pass |
+
+Evidence is in `.chibi/evidence/language-redesign-merge/`. The tested source tree
+was `246b5eb6ddc6c8ead63e59657d3bb7e8a1399aa9`; subsequent changes only update
+this evidence and point historical Studio language planning to current syntax.
+Desktop SDK build ID:
+`9f6df0dabe329f4046211c971ffcfc8443fe98451431181cd79f1dcdf720eb22`.
+This integration did not repeat rendered Studio acceptance or the Studio web
+build; those earlier results remain scoped to the previous reviewed pair.
+Leak detection is not claimed. Neither PR is merged or deployed.
 
 ## Final review and commit, approved 2026-10-16
 

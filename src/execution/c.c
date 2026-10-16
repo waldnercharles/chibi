@@ -1148,7 +1148,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "_callee_%d", index);
     }
     fputs("(behavior_function_context *c) {\n", out);
-    if (f->fast) {
+    if (f->fast && !f->rows) {
         fprintf(
             out,
             "if(c->steps<=c->budget && c->budget-c->steps>=%du && "
@@ -1165,7 +1165,9 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         body(f->fast, out, 'F', false);
         fprintf(out, "}\n");
     }
-    if (f->runtime_map) {
+    /* First counted-row slice deliberately exports canonical C, including
+     * every emitted callee. No process-pointer proof is part of this ABI. */
+    if (f->runtime_map && !f->rows) {
         fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture");
         /* Keep detached debug continuations canonical, as the runtime's
          * behavior_function_inspection_required selection does. */

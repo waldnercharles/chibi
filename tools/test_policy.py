@@ -338,9 +338,12 @@ TOOLS = {
     'texture-transform': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--texture-transform'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
-    # Nine independently reviewed bounded snapshot hierarchy/transform cases and an in-memory
-    # five-entity scene codec round trip; at most 257 nodes, no files, process or GPU.
+    # Fourteen independently reviewed bounded hierarchy/transform/snapshot lifetime cases,
+    # including a five-entity codec round trip; at most 257 nodes, no files, process or GPU.
     'scene-hierarchy': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-hierarchy'],
+    # Proposed diagnostic: three fixed scene-read cases on bytecode and SLJIT; six in-test
+    # source preparations, eighteen budgeted dispatches, at most three nodes, no world/process/GPU.
+    'scene-snapshot-read': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-snapshot-read'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
     'model-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--model-runtime'],
     # One independently reviewed finite constant-folding case through the public authoring interface.
@@ -474,9 +477,15 @@ TOOLS = {
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
     # Five fixed owned prepared-record cases; independent admission, standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
+    # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
+    'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
+    # Eight fixed counted-row proof/fallback/lifetime cases, including packed seed,
+    # canonical nullable add and one GC; also in language/Wasm groups.
+    'language-row-builder': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-builder'],
     # Fixed row-array construction/alias/collection cases plus packed scalar/record snapshots,
     # 10 numeric widths x 64 elements x 16 trials x 2 representations x 2 backends,
     # fixed integer edges/constexpr/F32 overload cases; no files/processes/frames/GPU.
+    # Also in language/Wasm groups.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
     # Four fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
@@ -494,8 +503,9 @@ TOOLS = {
     # Reviewed finite C syntax cases and a corpus capped at 256 files/8 MiB.
     'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
-    # Reviewed fixed C driver cases in headless Chrome: no GPU, eight selectors,
-    # including bounded packed numerics, MEMFS module overlays, Maps/generics/iteration;
+    # Reviewed fixed C driver cases in headless Chrome: no GPU, ten selectors,
+    # including bounded packed numerics, MEMFS module overlays, Maps/generics/iteration,
+    # counted-row proof/fallback/lifetime and owned-input Outliner projection;
     # 55s internal deadline, bounded HTTP/output, shared production 60s deadline.
     'wasm-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--wasm-browser'],
     'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--web-storage'],
@@ -509,6 +519,8 @@ TOOLS = {
                                   str(ROOT / os.environ.get('CHIBI_RECORD_RUNTIME_BUILD_DIR', 'build/test/record-runtime') / 'test_tools')],
     # One fixed record C-export case; ten calls and one compiler child; standalone.
     'record-c-export': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--record-c-export'],
+    # One fixed canonical generated-C row-builder case; also in compiler-enabled native-tools.
+    'row-builder-c': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--row-builder-c'],
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
@@ -527,13 +539,13 @@ for lab in EXAMPLE_LABS:
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-row-builder', 'wasm-outliner-projection'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -565,7 +577,7 @@ GROUPS = {
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime'],
+                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-row-builder', 'language-outliner-projection'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')

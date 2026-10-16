@@ -13,7 +13,8 @@
 static const char *selectors[] = { "--wasm",        "--script-benchmark",
                                    "--execution",   "--program",
                                    "--publication", "--row-array",
-                                   "--modules",     "--query-program" };
+                                   "--modules",     "--query-program",
+                                   "--row-builder", "--outliner-projection" };
 
 /* JS only boots independent instances of the C dispatcher and transports their
  * output. Test cases, benchmark loops and all pass/fail assertions stay in C. */
@@ -87,7 +88,7 @@ TEST_CASE(browser_runs_c_wasm_language_checks)
     bool benchmark_only = mode && !strcmp(mode, "1");
     const char *const *cases = benchmark_only ? selectors + 1 : selectors;
     int count = benchmark_only ? 1 : (int)(sizeof selectors / sizeof selectors[0]);
-    const char *arguments = benchmark_only ? "['--script-benchmark']" : "['--wasm','--script-benchmark','--execution','--program','--publication','--row-array','--modules','--query-program']";
+    const char *arguments = benchmark_only ? "['--script-benchmark']" : "['--wasm','--script-benchmark','--execution','--program','--publication','--row-array','--modules','--query-program','--row-builder','--outliner-projection']";
     char page[8192];
     int page_size = snprintf(page, sizeof page, page_template, arguments);
     REQUIRE(page_size > 0 && page_size < (int)sizeof page);

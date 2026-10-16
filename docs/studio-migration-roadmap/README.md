@@ -2,6 +2,15 @@
 
 Prepared 15 October 2026 from the owner-supplied **Chibi Studio in .chibi, Revision 2**. This is a dependency and coverage ledger, not evidence that its future features are implemented or tested.
 
+Language update, 16 October 2026: the [language redesign](../../PLAN.md) and
+[current language documentation](../code-language.md) supersede the syntax and
+storage choices recorded below. Current source uses name-first declarations and
+plain `retain` owned by the behavior attachment or system registration, with
+independent coroutine locals per query match. Historical `state`/`shared` and
+unresolved-record-syntax notes remain evidence of that earlier planning snapshot,
+not current authoring guidance. This does not complete Studio migration packages
+or their product-parity gates.
+
 ## Start here
 
 1. `packages.tsv` is the complete scoped PR/work-package register: 95 packages, with dependency IDs, decision gates, acceptance criteria and plan section references. It includes seven already-owned foundation packages so they are not implemented twice.
@@ -24,9 +33,22 @@ new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
 The [owned add/append CALL result reduction](../row-array-construction.md)
 records exact baseline/candidate evidence for removing one redundant deep copy.
-Prefix/local snapshots remain quadratic; amortized scaling and the other L04
-acceptance criteria remain open. This supplementary note does not change the
-frozen generated ledger or complete L04/P01 or the Outliner cutover.
+The subsequent [counted record construction](../counted-record-construction.md)
+removes both prefix-copy terms for one proven private counted-add loop under a
+64 KiB item-buffer bound, with canonical inspection/generated-C fallback and
+complete admitted regression groups. Other shapes, general collection scaling
+and the remaining L04/P01 criteria stay open. This supplementary note does not
+change the frozen generated ledger or complete the Outliner cutover.
+
+## Supplementary Outliner policy specimen, 16 October 2026
+
+The [selected-range projection specimen](../outliner-projection.md) exercises
+all twelve native row-field contracts as authored policy over owned synthetic
+inputs, with bytecode/native/Wasm and lifetime evidence. Its real helper and
+conditional shape uses canonical row construction; it does not inherit the
+counted-loop performance claim. Mechanical text bindings remain test-local.
+Live scene reads, current-SDK Studio integration, commands and panel cutover
+remain open; this note does not alter the frozen generated ledger.
 
 ## Regeneration and maintenance
 

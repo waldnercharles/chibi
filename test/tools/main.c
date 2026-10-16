@@ -38,6 +38,7 @@ void test_tool_execution_policy();
 #ifdef CHIBI_TEST_C_EXPORT
 void test_tool_c_export();
 void test_tool_record_c_export();
+void test_tool_row_builder_c();
 #endif
 void test_tool_package();
 void test_tool_collab();
@@ -76,6 +77,9 @@ void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 #ifdef CHIBI_TEST_SCENE_AUTHORING
 void test_scene_hierarchy();
+#endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+void test_scene_snapshot_read();
 #endif
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
@@ -509,11 +513,14 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
     if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
-                      !strcmp(argv[1], "--record-c-export"))) {
+                      !strcmp(argv[1], "--record-c-export") ||
+                      !strcmp(argv[1], "--row-builder-c"))) {
 #ifdef CHIBI_TEST_C_EXPORT
         tool_init();
         pu_display_time(true);
-        if (!strcmp(argv[1], "--record-c-export")) {
+        if (!strcmp(argv[1], "--row-builder-c")) {
+            test_tool_row_builder_c();
+        } else if (!strcmp(argv[1], "--record-c-export")) {
             test_tool_record_c_export();
         } else {
             test_tool_c_export();
@@ -556,9 +563,12 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool controller = argc == 3 && !strcmp(argv[1], "--controller");
-    bool scene_hierarchy = false;
+    bool scene_hierarchy = false, scene_snapshot_read = false;
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
+#endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+    scene_snapshot_read = argc == 2 && !strcmp(argv[1], "--scene-snapshot-read");
 #endif
     bool examples_projects = argc == 3 && !strcmp(argv[1], "--examples-projects");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
@@ -729,17 +739,18 @@ int main(int argc, char **argv)
         !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
-        !scene2d && !scene3d && !material_ramps && !texture_transform &&
-        !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !scene_snapshot_read && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
+        !radiance_depth && !material_sampling && !scene2d && !scene3d &&
+        !material_ramps && !texture_transform && !arena && !render_geometry &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_graphs &&
+        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
+        !material_cameras && !mesh_materials && !sdf_quality && !scene3d_post &&
+        !scene3d_shapes && !persistent_store && !whole_alias && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
+        !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
         !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
         !source_execution_benchmark && !source_systems && !source_query_rows &&
@@ -749,7 +760,8 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
-            "--reflect-ranges | --c-export-alias | --ecs-query | "
+            "--reflect-ranges | --c-export-alias | --row-builder-c | "
+            "--ecs-query | "
             "--unit-fixtures | "
             "--unit-validation <chibi_ctl> | "
             "--web-storage | "
@@ -762,7 +774,8 @@ int main(int argc, char **argv)
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
-            "--scene-prepared | --scene-hierarchy | --native | --native-values "
+            "--scene-prepared | --scene-hierarchy | --scene-snapshot-read | "
+            "--native | --native-values "
             "| --native-catalog "
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --render-geometry | --material-render | "
@@ -1102,6 +1115,13 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
+    if (scene_snapshot_read) {
+        test_scene_snapshot_read();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (webgpu_staging) {
         test_tool_webgpu_staging();
     } else if (wasm_browser) {
@@ -1149,6 +1169,7 @@ int main(int argc, char **argv)
         test_tool_publish();
 #ifdef CHIBI_TEST_C_EXPORT
         test_tool_c_export();
+        test_tool_row_builder_c();
 #endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();

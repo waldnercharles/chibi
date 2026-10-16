@@ -221,3 +221,86 @@ The loader regenerates backend code and retains imported immutable modules.
 Opaque host handles and unreflected struct payloads cannot be persisted; such
 values need an explicit portable capability contract. Runtime type descriptor
 packs remain part of the final application and must outlive their values.
+
+## Linux desktop dependency validation
+
+When changing Linux dependency discovery, the s2n FetchContent declaration,
+dependency-package exports, or desktop SDK ownership/relocation, build the tooling
+dispatcher and run this focused check on Linux before publishing:
+
+```sh
+make tools-build
+CHIBI_TOOLS_BUILD_DIR=build-tools \
+  python3 tools/test_policy.py tool desktop-dependencies
+```
+
+Set `CHIBI_TOOLS_BUILD_DIR` if the dispatcher was built outside `build-tools`.
+This is an explicit standalone gate; default cross-platform tooling does not run
+it automatically. Its seven pico cases share the unchanged 60-second supervisor
+limit. The sixteen-command success ceiling retains each 10-second child limit.
+External tooling configuration/build is separate; all in-test CMake configuration,
+compiler detection and tiny fixture compilation remain inside the supervisor and
+child deadlines.
+
+The fixture checks newly discovered crypto target visibility and relocated static
+archive/header ownership, unchanged caller-provided targets, rejection of
+mismatched OpenSSL metadata, exclusion of s2n's unused CBMC git submodule, exact
+FindOpenGL role remapping with rejection of an unowned same-basename path, and
+clean/reused import of the existing dependency-package export. The cached control
+models the pinned s2n Linux interface, including its direct Threads/dl/rt/m links.
+A separate LANGUAGES NONE configure child checks the production enkiTS acquisition
+block with and without the SDK-owned scheduler, preserving exact pins/options and
+avoiding duplicate acquisition. Its FetchContent stubs perform no retrieval or
+dependency build.
+
+Synthetic archives and deterministic discovery modules establish CMake metadata
+and relocation behavior. The cached producer runs ordinary compiler detection;
+none of the cases builds a dependency or executes a fixture program. Also build
+and package the actual intended SDK configuration and verify a relocated installed
+consumer when those contracts change. Record its real source revision, provider
+selection, and configured desktop backend set. These focused checks do not by
+themselves establish Fedora-host, cryptographic, application, or GPU acceptance.
+
+## Ninja package ownership validation
+
+When changing SDK package provenance, configured target outputs, or installed
+archive ownership, also run this explicit Linux standalone check:
+
+```sh
+CHIBI_TOOLS_BUILD_DIR=build-tools \
+  python3 tools/test_policy.py tool package-ownership
+```
+
+The one pico case has three sequential blocks and a 15-child success ceiling
+under the same 60-second supervisor and 10-second child limits. It builds
+six tiny C translation units and one precompiled header with CMake/Ninja, installs
+the fixture, and checks production packaging metadata. It never executes the
+produced programs. The positive check covers renamed/relocated archives, folded
+OBJECT and STATIC targets, an installed auxiliary archive, an auxiliary executable
+and the exact product executable. A host C compiler produces a `.res`-named output
+to check its real link ownership and declared manifest dependency hash. Eleven
+fixed rejection checks cover missing and stale objects, validation-only object or
+resource edges, order-only resource or PCH edges, a stale declared resource payload,
+an unrecorded linked resource output, duplicate configured target records, and
+missing or corrupt installed owners. This resource coverage is native-independent;
+native Windows resource compilation and SDK execution are untested by this check.
+
+Packaged SDK executables are linked with their selected `INSTALL_RPATH` so CMake
+installation preserves their bytes. Only the SDK product targets receive this
+setting; auxiliary and third-party targets retain their own build behavior. The
+packager continues to require exact installed-versus-built executable hashes. The
+ownership fixture selects distinct build and portable installation paths and
+checks that both the chosen install path and executable identity are preserved.
+
+For single-configuration Ninja builds, SDK packaging records configured target
+types and output paths separately from compiling targets. Actual explicit/implicit
+Ninja input edges prove object ownership; scheduling edges do not. PCH metadata
+must lead to a current linked object. Uninstalled folded archives retain their
+provenance and must have all their objects covered by verified installed owners.
+Auxiliary executables retain build evidence without becoming package products.
+Other generators retain their existing packaging behavior; this check does not
+establish new multi-configuration or non-Ninja support.
+
+Keep the real SDK package and relocated-consumer validation described above in
+addition to this small fixture. Record the exact compiler, configuration and
+source revision rather than transferring validation from another build.

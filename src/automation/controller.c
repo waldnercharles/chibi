@@ -1237,6 +1237,7 @@ static bool open_content(const char *root, char *error, size_t error_size)
 const char *chibi_automation_content(const char *root)
 {
     assert(PROJECT.root && !strcmp(PROJECT.root, root));
+    (void)root;
     return PROJECT.content;
 }
 

@@ -1,6 +1,7 @@
 #include "authoring/scene_hierarchy.h"
 
 #include "assets/scene_document.h"
+#include "authoring/scene_snapshot.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -335,6 +336,206 @@ TEST_CASE(moved_order_and_paths_round_trip_through_scene_document)
     return true;
 }
 
+static authoring_scene_owner *snapshot_owners[3];
+static authoring_scene_snapshot *snapshots[3];
+static authoring_scene_node *producer;
+static char *producer_names[4];
+
+static void free_producer()
+{
+    for (int i = 0; i < 4; i++) {
+        free(producer_names[i]);
+        producer_names[i] = NULL;
+    }
+    free(producer);
+    producer = NULL;
+}
+
+static void free_snapshots()
+{
+    for (int i = 0; i < 3; i++) {
+        if (snapshots[i]) {
+            authoring_scene_snapshot_free(snapshots[i]);
+            snapshots[i] = NULL;
+        }
+        if (snapshot_owners[i]) {
+            authoring_scene_owner_free(snapshot_owners[i]);
+            snapshot_owners[i] = NULL;
+        }
+    }
+    free_producer();
+}
+
+static void make_producer()
+{
+    producer = xcalloc(2, sizeof *producer);
+    producer_names[0] = xstrdup("Root");
+    producer_names[1] = xstrdup("Child");
+    producer[0] = object(1, producer_names[0], -1);
+    producer[1] = object(2, producer_names[1], 0);
+    producer[1].has_transform_2d = true;
+    producer[1].position = (CF_V2){ 3, 4 };
+}
+
+TEST_CASE(owned_snapshot_preserves_order_identity_and_local_data)
+{
+    authoring_scene_node nodes[] = { object(1, "Root", -1),
+                                     object(2, "Child", 0),
+                                     object(3, "Grandchild", 1),
+                                     object(4, "Other", -1) };
+    nodes[0].entity = (ecs_entity){ .slot = 0xfedcba98u, .generation = 0x81234567u };
+    nodes[1].entity = (ecs_entity){ .slot = 0xfedcba98u, .generation = 0x81234568u };
+    nodes[0].has_transform_2d = nodes[0].has_orientation = true;
+    nodes[0].position = (CF_V2){ 1, 2 };
+    nodes[0].orientation.radians = QUARTER_TURN;
+    nodes[2].has_transform_3d = true;
+    nodes[2].transform_3d = pose((CF_V3){ 3, 4, 5 }, (CF_V3){ -2, 2, 2 });
+    authoring_scene_owner *owner = snapshot_owners[0] = authoring_scene_owner_new();
+    char error[256];
+    snapshots[0] = authoring_scene_snapshot_new(owner, nodes, 4, error, sizeof error);
+    REQUIRE(snapshots[0]);
+    REQUIRE(authoring_scene_snapshot_current(snapshots[0], owner));
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], NULL));
+    int count = -1;
+    const authoring_scene_node *copy = authoring_scene_snapshot_nodes(snapshots[0], &count);
+    REQUIRE(count == 4 && copy != nodes);
+    for (int i = 0; i < count; i++) {
+        REQUIRE(ecs_entity_to_u64(copy[i].entity) == ecs_entity_to_u64(nodes[i].entity));
+        REQUIRE(copy[i].parent == nodes[i].parent);
+        REQUIRE(copy[i].name != nodes[i].name && !strcmp(copy[i].name, nodes[i].name));
+        REQUIRE(copy[i].has_transform_2d == nodes[i].has_transform_2d);
+        REQUIRE(copy[i].has_orientation == nodes[i].has_orientation);
+        REQUIRE(copy[i].has_transform_3d == nodes[i].has_transform_3d);
+        REQUIRE(!memcmp(&copy[i].position, &nodes[i].position, sizeof(Transform)));
+        REQUIRE(!memcmp(&copy[i].orientation, &nodes[i].orientation, sizeof(Orientation)));
+        REQUIRE(!memcmp(&copy[i].transform_3d, &nodes[i].transform_3d, sizeof(Transform3D)));
+    }
+    snapshots[1] = authoring_scene_snapshot_new(owner, NULL, 0, error, sizeof error);
+    REQUIRE(snapshots[1] && authoring_scene_snapshot_current(snapshots[1], owner));
+    REQUIRE(authoring_scene_snapshot_nodes(snapshots[1], &count) == NULL && count == 0);
+    return true;
+}
+
+TEST_CASE(owned_snapshot_survives_mutation_and_rejects_stale_generation)
+{
+    make_producer();
+    authoring_scene_owner *owner = snapshot_owners[0] = authoring_scene_owner_new();
+    char error[256];
+    snapshots[0] = authoring_scene_snapshot_new(owner, producer, 2, error, sizeof error);
+    REQUIRE(snapshots[0]);
+    int count;
+    const authoring_scene_node *old = authoring_scene_snapshot_nodes(snapshots[0], &count);
+    authoring_scene_node expected[2];
+    memcpy(expected, old, sizeof expected);
+    authoring_scene_owner_changed(owner);
+    strcpy(producer_names[0], "Next");
+    strcpy(producer_names[1], "Moved");
+    producer[1].entity = (ecs_entity){ .slot = 0xffffffffu, .generation = 0xfedcba98u };
+    producer[1].parent = -1;
+    producer[1].position = (CF_V2){ 7, 8 };
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], owner));
+    REQUIRE(!memcmp(old, expected, sizeof expected));
+    REQUIRE(!strcmp(old[0].name, "Root") && !strcmp(old[1].name, "Child"));
+    snapshots[1] = authoring_scene_snapshot_new(owner, producer, 2, error, sizeof error);
+    REQUIRE(snapshots[1] && authoring_scene_snapshot_current(snapshots[1], owner));
+    const authoring_scene_node *next = authoring_scene_snapshot_nodes(snapshots[1], &count);
+    REQUIRE(count == 2 && next != old && next != producer);
+    REQUIRE(!strcmp(next[0].name, "Next") && !strcmp(next[1].name, "Moved"));
+    REQUIRE(next[1].parent == -1);
+    REQUIRE(ecs_entity_to_u64(next[1].entity) == ecs_entity_to_u64(producer[1].entity));
+    REQUIRE(next[1].position.x == 7 && next[1].position.y == 8);
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], owner));
+    return true;
+}
+
+TEST_CASE(owned_snapshot_outlives_producer_and_releases_in_either_order)
+{
+    for (int first = 0; first < 2; first++) {
+        make_producer();
+        authoring_scene_owner *owner = snapshot_owners[0] = authoring_scene_owner_new();
+        char error[256];
+        for (int i = 0; i < 2; i++) {
+            snapshots[i] = authoring_scene_snapshot_new(owner, producer, 2, error, sizeof error);
+            REQUIRE(snapshots[i]);
+        }
+        authoring_scene_owner_free(owner);
+        snapshot_owners[0] = NULL;
+        free_producer();
+        int count;
+        const authoring_scene_node *a = authoring_scene_snapshot_nodes(snapshots[0], &count);
+        REQUIRE(count == 2 && !strcmp(a[1].name, "Child"));
+        const authoring_scene_node *b = authoring_scene_snapshot_nodes(snapshots[1], &count);
+        REQUIRE(count == 2 && a != b && a[1].name != b[1].name);
+        REQUIRE(!strcmp(b[0].name, "Root"));
+        REQUIRE(!authoring_scene_snapshot_current(snapshots[0], owner));
+        REQUIRE(!authoring_scene_snapshot_current(snapshots[1], owner));
+        authoring_scene_snapshot_free(snapshots[first]);
+        snapshots[first] = NULL;
+        const authoring_scene_node
+            *remaining = authoring_scene_snapshot_nodes(snapshots[1 - first], &count);
+        REQUIRE(count == 2 && remaining[1].parent == 0);
+        REQUIRE(ecs_entity_to_u64(remaining[1].entity) == ecs_entity_to_u64(entity(2)));
+        REQUIRE(!strcmp(remaining[1].name, "Child") && remaining[1].position.x == 3);
+        REQUIRE(!authoring_scene_snapshot_current(snapshots[1 - first], owner));
+        authoring_scene_snapshot_free(snapshots[1 - first]);
+        snapshots[1 - first] = NULL;
+        /* owner is no longer a valid identity after the last snapshot release. */
+    }
+    return true;
+}
+
+TEST_CASE(owned_snapshot_rejects_other_and_replacement_owners)
+{
+    authoring_scene_node node = object(1, "Root", -1);
+    char error[256];
+    for (int i = 0; i < 2; i++) {
+        snapshot_owners[i] = authoring_scene_owner_new();
+        snapshots[i] = authoring_scene_snapshot_new(snapshot_owners[i], &node, 1, error, sizeof error);
+        REQUIRE(snapshots[i]);
+        REQUIRE(authoring_scene_snapshot_current(snapshots[i], snapshot_owners[i]));
+    }
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], snapshot_owners[1]));
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[1], snapshot_owners[0]));
+    authoring_scene_owner *old = snapshot_owners[0];
+    authoring_scene_owner_free(old);
+    snapshot_owners[0] = NULL;
+    snapshot_owners[2] = authoring_scene_owner_new();
+    REQUIRE(old != snapshot_owners[2]);
+    snapshots[2] = authoring_scene_snapshot_new(snapshot_owners[2], &node, 1, error, sizeof error);
+    REQUIRE(snapshots[2]);
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], old));
+    REQUIRE(!authoring_scene_snapshot_current(snapshots[0], snapshot_owners[2]));
+    REQUIRE(authoring_scene_snapshot_current(snapshots[2], snapshot_owners[2]));
+    return true;
+}
+
+TEST_CASE(owned_snapshot_rejects_invalid_capture_without_invalidating_prior_data)
+{
+    authoring_scene_node nodes[] = { object(1, "Root", -1), object(2, "Child", 0) };
+    authoring_scene_owner *owner = snapshot_owners[0] = authoring_scene_owner_new();
+    char error[256];
+    snapshots[0] = authoring_scene_snapshot_new(owner, nodes, 2, error, sizeof error);
+    REQUIRE(snapshots[0]);
+    int count;
+    const authoring_scene_node *old = authoring_scene_snapshot_nodes(snapshots[0], &count);
+    authoring_scene_node expected[2];
+    memcpy(expected, old, sizeof expected);
+    for (int invalid = 0; invalid < 3; invalid++) {
+        nodes[1] = object(2, "Child", 0);
+        switch (invalid) {
+            case 0: nodes[1].parent = 1; break;
+            case 1: nodes[1].entity = nodes[0].entity; break;
+            case 2: nodes[1].name = "Not.A.Name"; break;
+        }
+        snapshots[1] = authoring_scene_snapshot_new(owner, nodes, 2, error, sizeof error);
+        REQUIRE(snapshots[1] == NULL && error[0]);
+        REQUIRE(authoring_scene_snapshot_current(snapshots[0], owner));
+        REQUIRE(!memcmp(old, expected, sizeof expected));
+        REQUIRE(!strcmp(old[0].name, "Root") && !strcmp(old[1].name, "Child"));
+    }
+    return true;
+}
+
 void test_scene_hierarchy()
 {
     RUN_TEST_CASE(move_groups_topmost_selection_in_scene_order);
@@ -346,4 +547,11 @@ void test_scene_hierarchy()
     RUN_TEST_CASE(keep_world_rejects_finite_compensation_that_loses_position);
     RUN_TEST_CASE(reorder_keeps_local_components_exactly_even_when_singular);
     RUN_TEST_CASE(moved_order_and_paths_round_trip_through_scene_document);
+    pu_setup(NULL, free_snapshots);
+    RUN_TEST_CASE(owned_snapshot_preserves_order_identity_and_local_data);
+    RUN_TEST_CASE(owned_snapshot_survives_mutation_and_rejects_stale_generation);
+    RUN_TEST_CASE(owned_snapshot_outlives_producer_and_releases_in_either_order);
+    RUN_TEST_CASE(owned_snapshot_rejects_other_and_replacement_owners);
+    RUN_TEST_CASE(owned_snapshot_rejects_invalid_capture_without_invalidating_prior_data);
+    pu_clear_setup();
 }

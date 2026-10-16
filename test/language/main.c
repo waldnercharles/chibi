@@ -6,6 +6,7 @@
 
 void test_language_syntax();
 void test_language_row_builder();
+void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_runtime_attribution();
 void test_language_record_values();
@@ -77,6 +78,7 @@ int main(int argc, char **argv)
     bool incremental_benchmark = argc == 2 &&
                                  !strcmp(argv[1], "--incremental-benchmark");
     bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
+    bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
     bool row_builder = argc == 2 && !strcmp(argv[1], "--row-builder");
     bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
@@ -118,13 +120,14 @@ int main(int argc, char **argv)
          !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
          !record_values && !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !component_write && !component_write_layout && !scalarize &&
-         !borrow && !reductions && !binding_schedule && !activation_cache &&
-         !headless && !navigation && !publication && !field_runtime && !prototype &&
-         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
-         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !outliner_projection && !row_builder && !row_array && !record_runtime &&
+         !runtime_attribution && !wasm && !program && !query_program &&
+         !incremental && !modules && !ranges && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
@@ -147,6 +150,7 @@ int main(int argc, char **argv)
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | --row-builder | "
+            "--outliner-projection | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
             argv[0]
@@ -154,7 +158,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (row_builder) {
+    if (outliner_projection) {
+        test_language_outliner_projection();
+    } else if (row_builder) {
         test_language_row_builder();
     } else if (row_array) {
         test_language_row_array();

@@ -31,6 +31,16 @@ complete admitted regression groups. Other shapes, general collection scaling
 and the remaining L04/P01 criteria stay open. This supplementary note does not
 change the frozen generated ledger or complete the Outliner cutover.
 
+## Supplementary Outliner policy specimen, 16 October 2026
+
+The [selected-range projection specimen](../outliner-projection.md) exercises
+all twelve native row-field contracts as authored policy over owned synthetic
+inputs, with bytecode/native/Wasm and lifetime evidence. Its real helper and
+conditional shape uses canonical row construction; it does not inherit the
+counted-loop performance claim. Mechanical text bindings remain test-local.
+Live scene reads, current-SDK Studio integration, commands and panel cutover
+remain open; this note does not alter the frozen generated ledger.
+
 ## Regeneration and maintenance
 
 This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.

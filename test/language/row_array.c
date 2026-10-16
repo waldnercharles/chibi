@@ -554,12 +554,12 @@ static bool run(behavior_backend backend, int count, const char *source_text, co
 }
 TEST_CASE(row_array_authored_construction)
 {
-    /* Exact prior whole-body measurements minus the removed CALL snapshot.
-     * Keep constructor, local retention and return work in these totals. */
-    static const uint64_t row_copies[][4] = { { 0, 6, 33, 321 }, { 0, 7, 37, 337 } };
-    static const uint64_t text_bytes[][4] = { { 0, 270, 1620, 15120 },
+    /* Exact selected-copy predictions for derived counted add versus canonical
+     * append. Constructor, argument and return work remains in these totals. */
+    static const uint64_t row_copies[][4] = { { 0, 5, 17, 65 }, { 0, 7, 37, 337 } };
+    static const uint64_t text_bytes[][4] = { { 0, 225, 900, 3600 },
                                               { 0, 315, 1800, 15840 } };
-    static const uint64_t headers[][4] = { { 4, 23, 89, 533 }, { 4, 24, 93, 549 } };
+    static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 24, 93, 549 } };
     static const char *sources[] = {
         "library Rows { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
@@ -574,6 +574,7 @@ TEST_CASE(row_array_authored_construction)
         for (int b = 0; b < 2; b++) {
             cleanup();
             REQUIRE(compile(sources[operation], backends[b]));
+            REQUIRE((bool)body()->rows == (operation == 0));
             for (int n = 0; n < 4; n++) {
                 char input[] = "producer";
                 REQUIRE(

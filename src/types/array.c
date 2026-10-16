@@ -2,6 +2,7 @@
 
 #include "support/arena.h"
 #include "support/xalloc.h"
+#include "types/array_internal.h"
 #include "types/catalog.h"
 #include "types/copy_internal.h"
 #include "types/record.h"
@@ -309,17 +310,15 @@ pin_array *pin_array_snapshot_like(arena *a, const pin_array *src, int count)
     }
     return dst;
 }
-int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
+/* Destination metadata is already validated/owned by the enclosing snapshot
+ * or private construction proof. Still validate every original foreign row. */
+static int snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
 {
-    if (count < 0 || (count && (!out || !items)) ||
-        (record && (!pin_record_valid(record) || !arena_contains(a, record)))) {
-        return -1;
-    }
     for (int i = 0; i < count; i++) {
         const pin_value *value = &items[i];
-        if (!pin_record_same(record, value->record) ||
-            (value->record != record && value->record &&
-             !pin_record_valid(value->record))) {
+        if ((value->record != record && value->record &&
+             !pin_record_valid(value->record)) ||
+            !pin_record_same(record, value->record)) {
             return -1;
         }
         if (!record) {
@@ -341,6 +340,104 @@ int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out,
         }
         out[i] = copy;
     }
+    return 0;
+}
+
+int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
+{
+    if (count < 0 || (count && (!out || !items)) ||
+        (record && (!pin_record_valid(record) || !arena_contains(a, record)))) {
+        return -1;
+    }
+    return snapshot_items(a, record, out, items, count);
+}
+
+pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
+{
+    (void)count;
+    const pin_array *source = inputs && inputs[0].container == PIN_CONTAINER_ARRAY
+                                ? inputs[0].ptr
+                                : NULL;
+    if (!source) {
+        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
+    }
+    pin_array *array = pin_array_snapshot_like(a, source, source->count + 1);
+    if (array &&
+        (pin_array_snapshot_items(
+             a,
+             array->record,
+             array->items,
+             source->items,
+             source->count
+         ) ||
+         pin_array_snapshot_items(a, array->record, &array->items[source->count], &inputs[1], 1))) {
+        array = NULL;
+    }
+    return (pin_value){ .type = source->element_type,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = array ? array->type_name : NULL,
+                        .record = array ? array->record : NULL,
+                        .ptr = array };
+}
+const char *pin_array_add_call(arena *a, const pin_value *inputs, int count, pin_value *out)
+{
+    pin_value value = pin_array_add(inputs, count, a);
+    if (value.type == PIN_FLOW) {
+        return "data function produced an invalid result";
+    }
+    if (!value.ptr) {
+        return "arena allocation failed";
+    }
+    *out = value;
+    return NULL;
+}
+int pin_array_build_row(arena *a, const pin_value *prefix, const pin_value *row, int capacity, pin_value *out)
+{
+    const pin_array *source = prefix->ptr;
+    if (capacity <= 0 || (size_t)capacity > 65536 / sizeof(pin_value) ||
+        prefix->type != PIN_STRUCT || prefix->container != PIN_CONTAINER_ARRAY ||
+        !source || source->element_type != PIN_STRUCT || !source->record ||
+        source->count < 0 || source->count >= capacity) {
+        return -1;
+    }
+    if (!source->count &&
+        (!pin_record_valid(prefix->record) || !pin_record_valid(source->record))) {
+        return -1;
+    }
+    if (!pin_record_same(prefix->record, source->record) || !prefix->type_name ||
+        !source->type_name || strcmp(prefix->type_name, source->record->type.name) ||
+        strcmp(source->type_name, source->record->type.name)) {
+        return -1;
+    }
+    const pin_record *record = source->record;
+    pin_value *items = source->items;
+    if (!source->count) {
+        record = pin_record_snapshot(a, record);
+        if (!record) {
+            return -1;
+        }
+        items = arena_alloc(a, (size_t)capacity * sizeof *items);
+    } else if (source->capacity != capacity || !items) {
+        return -1;
+    }
+    pin_value item;
+    if (snapshot_items(a, record, &item, row, 1)) {
+        return -1;
+    }
+    pin_array *array = arena_alloc(a, sizeof *array);
+    *array = (pin_array){ .element_type = PIN_STRUCT,
+                          .type_name = record->type.name,
+                          .record = record,
+                          .count = source->count + 1,
+                          .capacity = capacity,
+                          .items = items };
+    items[source->count] = item;
+    pin_arena_trace_array(a, array);
+    *out = (pin_value){ .type = PIN_STRUCT,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = array };
     return 0;
 }
 

@@ -464,7 +464,7 @@ TOOLS = {
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
     # Five fixed owned prepared-record cases; independent admission, standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
-    # Five fixed row-array construction/alias/collection cases, outside aggregate groups.
+    # Five fixed row-array construction/alias/collection cases; also in language/Wasm groups.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
     # Four fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
@@ -520,7 +520,7 @@ for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-sta
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -552,7 +552,7 @@ GROUPS = {
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime'],
+                 'graph-authoring', 'model-runtime', 'language-row-array'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')

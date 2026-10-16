@@ -87,7 +87,7 @@ help:
 		'make test-native    Other CPU test_tools selectors, one shared 60s deadline' \
 		'make test-materials Material simulation selectors, one shared 60s deadline' \
 		'make test-projects  Project, asset import and chibi_ctl selectors, one shared 60s deadline' \
-		'make test-language-all  Every native language selector, one shared 60s deadline' \
+		'make test-language-all  Admitted native language aggregate, one shared 60s deadline' \
 		'make test-wasm         C language checks on WebAssembly in Node' \
 		'make test-wasm-browser C language checks in Chrome (WEB_THREADS=1 for workers)' \
 		'make language-build Build the public language C consumer' \

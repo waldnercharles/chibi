@@ -28,7 +28,7 @@ make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan 
 make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
 make test-materials      # the material simulation selectors, one 60-second deadline
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
-make test-language-all   # every test_language selector, one 60-second deadline
+make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
@@ -1002,10 +1002,17 @@ make test-list
 | `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
-| `test-language-all` | Every `test_language` selector under one shared deadline. |
+| `test-language-all` | The admitted native language aggregate under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
 | `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
+
+The `language` and `wasm` groups list their admitted members explicitly in
+`tools/test_policy.py`; they do not include every standalone selector. Both
+include the five-case row-array construction, alias, rejection and collection
+regression. Other focused record routes remain standalone, as do the dedicated
+Wasm formatter and root-state routes. Use `make test-list` to inspect the groups
+and standalone routes; registering a route alone does not add it to a group.
 
 Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
 a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native

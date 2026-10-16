@@ -3848,6 +3848,19 @@ static char *drop_lab_settings(const char *asset)
 /* Replace only syntax tokens, preserving comments, strings and each name. */
 static void declaration_edits(const char *text, TSNode node, replacement **edits)
 {
+    if (is(node, "call_expression")) {
+        TSNode target = ts_node_child_by_field_name(node, "function", 8);
+        /* Version 23 had no unary `not`: this identifier named a callable.
+         * Keep that call using the current language's existing quoted name. */
+        if (is(target, "identifier") && names(text, target, "not")) {
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(target),
+                                .end = (int)ts_node_end_byte(target),
+                                .text = xstrdup("\"not\"") })
+            );
+        }
+    }
     if (is(node, "function_declaration")) {
         TSNode name = ts_node_child_by_field_name(node, "name", 4);
         bool pure = false;
@@ -3935,12 +3948,21 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
     script_syntax_free(syntax);
     script_syntax *check = script_parse(result ? result : source);
     bool valid = !check->diagnostic_count;
-    script_syntax_free(check);
     if (!valid) {
-        snprintf(error, size, "Declaration migration produced invalid source");
+        const script_diagnostic *diagnostic = &check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "Declaration migration produced invalid source at %d:%d: %s",
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->message
+        );
+        script_syntax_free(check);
         free(result);
         return -1;
     }
+    script_syntax_free(check);
     *migrated = result;
     return 0;
 }
@@ -3952,8 +3974,13 @@ static char **migrate_declarations(char **sources, char **paths, int count, char
         if (!has_suffix(paths[i], ".chibi")) {
             continue;
         }
-        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size) ||
-            !migrated[i]) {
+        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+            continue;
+        }
+        if (!migrated[i]) {
             continue;
         }
         script_syntax *syntax = parse23(sources[i]);

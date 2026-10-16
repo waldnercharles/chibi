@@ -528,6 +528,59 @@ with an empty start scene and is never written over, and the language and
 material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
+`--project-declarations` is one standalone pico compatibility case under the
+shared 60-second ceiling. Its four exact
+fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi`,
+`VirtualList.chibi` and their sidecars from Studio
+`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (36,450 bytes total). Each source must
+migrate, parse with the current grammar and migrate again unchanged. One
+successful content transaction must produce exactly the direct migrated source.
+Both original sidecars are already stale: the public source-binding check must
+fail before migration, and afterward their full bytes, historical source hashes
+and 104/41 anchors must remain unchanged and valid JSON. This does not claim
+valid-bound anchor remapping; the existing
+`program_version_23_declarations_and_switch_migrate` case covers that contract.
+A second transaction adds one 32-byte malformed source and must reject it with
+its actual path, leaving all five input files byte-identical and no `.migrating`
+files. The fixture prints each source name before its migration assertion so a
+rejected rewrite identifies the original source and current-parser diagnostic.
+
+The original diagnostic at `66448ee5` rejected the OutlinerRows rewrite at
+26:75, inside `not(Value: state.Collapsed)`: one failed case, three assertions,
+0.062 supervised seconds. Later controls were not reached. The migration now
+quotes only historical bare `not` call targets using existing quoted-name
+syntax; the current unary grammar is unchanged. Assertions preserve all four
+real call arguments. Two fixed in-memory snippets under 1 KiB additionally
+check exact rewrite exclusions for comments, strings, member and already-quoted
+call targets, plus unchanged current `not(value)` syntax with a unary CST node
+and no call node.
+
+The success-path ceiling is six direct migration calls, three explicit current
+parses, four metadata checks and two content transactions over four then five
+input files. Including the migration implementation, there are at most 33
+current/historical syntax parses (twelve direct, three explicit, eight successful
+content and ten rejected content) and six simultaneous content/staging files.
+There is no authored execution, backend, renderer, child process, network or
+additional corpus. The test object consumes only explicitly linked public
+`Chibi::project_document`, `Chibi::language_syntax`, `Chibi::authoring` and
+`Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
+all default aggregates. At `c4a9ed52`, this fixed route passed one case and
+60 assertions, exit 0 in 0.082 supervised seconds. The 33-parse bound is
+source-derived, not an instrumented count. Already-current `not(value)` keeps
+the existing unchanged early return; this is not general version-aware
+call/unary disambiguation.
+
+A fresh full compiler/native/desktop SDK from that same source passed independent
+package/relocation and current controller/Studio consumer-link verification.
+With Studio `d79bb24c`, its separate fail-fast case passed one case/50 assertions
+in 0.057 seconds. A separately supervised empty-scene startup requested two
+frames at fixed 1/60-second steps and produced a visually checked opaque
+1920x1080 capture, exit 0 in 4.529 seconds, using the retained offscreen/software
+Mesa configuration. No prohibited syntax/initialization/frame-failure markers
+appeared and all 21,668 immutable paths were unchanged. These results do not
+cover interaction, hardware-GPU behavior, sanitizers or leak detection. The SDK
+uses Clang 19 Release/NDEBUG; the focused pico assertions remain enabled.
+
 `--prototype-documents` runs eight cases on prototypes and scene documents in
 memory: a rebase keeps local values over evolving defaults, retained strings
 survive clones and renames, detached components spawn absent and reattach,

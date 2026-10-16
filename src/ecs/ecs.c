@@ -1726,6 +1726,42 @@ static int string_bucket(char *const *strings, int capacity, const char *text)
     return (int)bucket;
 }
 
+static void string_usage_add(uint64_t *total, uint64_t bytes, bool *overflow)
+{
+    if (UINT64_MAX - *total < bytes) {
+        *total = UINT64_MAX;
+        *overflow = true;
+        return;
+    }
+    *total += bytes;
+}
+
+ecs_string_usage ecs_world_string_usage(const ecs_world *world)
+{
+    assert(world);
+    ecs_string_usage result = { .entries = (uint64_t)world->field_string_count };
+    int capacity = acap(world->field_strings);
+    if (capacity) {
+        result.table_backing_bytes = sizeof(dyna_hdr);
+        string_usage_add(
+            &result.table_backing_bytes,
+            (uint64_t)capacity * sizeof(char *),
+            &result.overflow
+        );
+    }
+    for (int i = 0; i < acount(world->field_strings); i++) {
+        if (world->field_strings[i]) {
+            string_usage_add(
+                &result.payload_bytes,
+                strlen(world->field_strings[i]),
+                &result.overflow
+            );
+            string_usage_add(&result.payload_bytes, 1, &result.overflow);
+        }
+    }
+    return result;
+}
+
 const char *ecs_world_intern_string(ecs_world *world, const char *text)
 {
     assert(world);

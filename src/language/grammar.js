@@ -18,6 +18,7 @@ const K = Object.fromEntries(
     "pure",
     "fn",
     "union",
+    "struct",
     "switch",
     "is",
     "not",
@@ -69,7 +70,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["from", "split", "component", "not", "join", "unordered"];
+const CONTEXTUAL = ["struct", "from", "split", "component", "not", "join", "unordered"];
 
 const P = {
   or: 1,
@@ -131,7 +132,7 @@ module.exports = grammar({
         field("body", $.declaration_body),
       ),
     library: ($) =>
-      seq(K.library, field("name", $._name), field("body", $.declaration_body)),
+      seq(K.library, field("name", $._name), field("body", alias($.library_body, $.declaration_body))),
     system: ($) =>
       seq(
         K.system,
@@ -184,6 +185,13 @@ module.exports = grammar({
     _unit_term: ($) => seq($.identifier, optional(seq("^", $.number))),
     without_clause: ($) => seq(K.without, comma($.type)),
     declaration_body: ($) => seq("{", repeat($._declaration), "}"),
+    library_body: ($) => seq("{", repeat(choice($._declaration, $.record_declaration)), "}"),
+    record_declaration: ($) =>
+      seq(field("name", $._name), "::", K.struct, field("body", $.record_body), optional(";")),
+    record_body: ($) => seq("{", repeat($.record_field), "}"),
+    record_field: ($) =>
+      seq(field("name", $._name), ":", field("type", $.type),
+        optional(seq("=", field("value", $._expression))), $._end),
     system_body: ($) =>
       seq("{", repeat(choice($._declaration, $._statement)), "}"),
     _declaration: ($) =>

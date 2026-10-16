@@ -125,7 +125,7 @@
 #define NATIVE_ARRAY_SLICE_NAME "Slice"
 #define NATIVE_ARRAY_SLICE_SOURCE "slice"
 
-#define NATIVE_ARRAY_OPERATIONS(X)                                             \
+#define NATIVE_ARRAY_OPERATIONS_WITH_ADD(X, ADD)                               \
     X(make,                                                                    \
       NATIVE_ARRAY_MAKE_NAME,                                                  \
       NATIVE_ARRAY_MAKE_SOURCE,                                                \
@@ -186,12 +186,12 @@
       NATIVE_ARRAY_ARRAY_TWO_INPUTS,                                           \
       NATIVE_ARRAY_BOOL_OUTPUT,                                                \
       false)                                                                   \
-    X(add,                                                                     \
-      NATIVE_ARRAY_ADD_NAME,                                                   \
-      NATIVE_ARRAY_ADD_SOURCE,                                                 \
-      NATIVE_ARRAY_ARRAY_ARRAY_ITEM_INPUTS,                                    \
-      NATIVE_ARRAY_ARRAY_ONLY_OUTPUTS,                                         \
-      false)                                                                   \
+    ADD(add,                                                                   \
+        NATIVE_ARRAY_ADD_NAME,                                                 \
+        NATIVE_ARRAY_ADD_SOURCE,                                               \
+        NATIVE_ARRAY_ARRAY_ARRAY_ITEM_INPUTS,                                  \
+        NATIVE_ARRAY_ARRAY_ONLY_OUTPUTS,                                       \
+        false)                                                                 \
     X(add_unique,                                                              \
       NATIVE_ARRAY_ADD_UNIQUE_NAME,                                            \
       NATIVE_ARRAY_ADD_UNIQUE_SOURCE,                                          \
@@ -260,6 +260,8 @@
       false)
 
 extern const native_definition_pack NATIVE_ARRAY_DEFINITION_PACK;
+
+#define NATIVE_ARRAY_OPERATIONS(X) NATIVE_ARRAY_OPERATIONS_WITH_ADD(X, X)
 
 #define NATIVE_ARRAY_make_PRESENTATION                                         \
     .category = "Array", .keywords = "array make collection",                  \

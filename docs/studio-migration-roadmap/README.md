@@ -20,6 +20,27 @@ with existing admitted C fixture mappings and a separately labelled capture
 lifetime proposal. It is a documentation prerequisite only: no runtime result,
 new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
+## Supplementary L04 progress, 16 October 2026
+
+The [owned add/append CALL result reduction](../row-array-construction.md)
+records exact baseline/candidate evidence for removing one redundant deep copy.
+The subsequent [counted record construction](../counted-record-construction.md)
+removes both prefix-copy terms for one proven private counted-add loop under a
+64 KiB item-buffer bound, with canonical inspection/generated-C fallback and
+complete admitted regression groups. Other shapes, general collection scaling
+and the remaining L04/P01 criteria stay open. This supplementary note does not
+change the frozen generated ledger or complete the Outliner cutover.
+
+## Supplementary Outliner policy specimen, 16 October 2026
+
+The [selected-range projection specimen](../outliner-projection.md) exercises
+all twelve native row-field contracts as authored policy over owned synthetic
+inputs, with bytecode/native/Wasm and lifetime evidence. Its real helper and
+conditional shape uses canonical row construction; it does not inherit the
+counted-loop performance claim. Mechanical text bindings remain test-local.
+Live scene reads, current-SDK Studio integration, commands and panel cutover
+remain open; this note does not alter the frozen generated ledger.
+
 ## Regeneration and maintenance
 
 This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.
@@ -50,16 +71,14 @@ The committed endpoint is identical Studio product behavior and visuals with por
 
 The supplied plan pins engine `02f8453211dd4cc57965ba52c645f08a92e53c5e` and Studio `78cb4d4c47242db9f7af2b9573653d9756050e99`. These are provenance baselines, not an instruction to ignore newer reviewed changes. B00 refreshes and records the actual implementation pair, immutable SDK artifact and baseline environment before new acceptance claims.
 
-At handoff, the coordinator owns:
+Coordinator-verified checkpoint, 15 October 2026, after main `c02cff784e141ae33effa841a7c5b93047f35104`:
 
-- [Engine PR #397](https://github.com/waldnercharles/chibi/pull/397), query-variable load IR (R397)
-- [Engine PR #398](https://github.com/waldnercharles/chibi/pull/398), scalar component reads (R398)
-- [Engine PR #399](https://github.com/waldnercharles/chibi/pull/399), comment-preserving minimizer safety (R399)
-- [Engine PR #400](https://github.com/waldnercharles/chibi/pull/400), managed capture retention (RCAP), plus scalar writes (RWRITE), configurable existing-printer candidate (RFMT), and prepared opcode-schema safety (RSCHEMA)
+- All seven reserved foundations are merged: query loads [#397](https://github.com/waldnercharles/chibi/pull/397), checked scalar reads [#398](https://github.com/waldnercharles/chibi/pull/398), minimizer safety [#399](https://github.com/waldnercharles/chibi/pull/399), capture retention [#400](https://github.com/waldnercharles/chibi/pull/400), opcode schema identity [#401](https://github.com/waldnercharles/chibi/pull/401), formatter SDK [#402](https://github.com/waldnercharles/chibi/pull/402), and checked scalar writes [#408](https://github.com/waldnercharles/chibi/pull/408). Exact integration/test heads are recorded in the generated checklist and linked PR evidence.
+- Source/ownership inventory [#404](https://github.com/waldnercharles/chibi/pull/404), bounded module-composition work [#405](https://github.com/waldnercharles/chibi/pull/405), current-language contract documentation [#406](https://github.com/waldnercharles/chibi/pull/406), and shared-capture/lambda proposal [#409](https://github.com/waldnercharles/chibi/pull/409) are merged. These are partial prerequisites, not completion of all B00/B01/L00/L07/L10 acceptance requirements. Capturing lambda runtime remains unimplemented.
+- Core operation descriptors [#407](https://github.com/waldnercharles/chibi/pull/407) have an independently reviewed/tested repaired head, but remain unmerged under an explicit cancellation hold. Its repaired GitHub finding is still visibly unresolved. No other feature may integrate that held branch.
+- State/self and runtime-attribution implementation candidates remain under independent validation; neither is recorded as landed. The original installed Studio SDK baseline has compiled natively and for serial web, using its separate historical SDK pins; application acceptance and compatibility with the current engine SDK remain unfinished checks. Studio product-policy conversion has not begun in this work.
 
-These are ownership reservations. Coordinator verified PR #399 merged as `1de4810d49b3acf4ead7d910d0abd2b042293e18` and PR #400 as `ddc71942aecab39e7b4dd46ad4f8e1ed58f6d1ec` after fresh independent validation; R399 and RCAP are completed foundation work. Schema PR #401 merged as `23cad1c6c58c9e1b3c486ae6ddee1b6291e81deb` after exact-head independent review/tests. Shared formatter SDK foundation PR #402 merged as `64183a1c4ba5b367bf35604ddae45fa616fd3bd0` after independent checks of exact head `3d7a0fed73e0c5630bc0fb71ada4248f8d82d74b`. R397 and R398 explicitly depend on RSCHEMA before landing. This remains a source/dependency inventory. Other current merge/readiness still needs verification. Recheck exact remote heads, reviews, tests and holds before relying on them. The source workspace disappeared during the earlier work. A checksum-verified main checkout has since been recovered. Capture recovery and fresh validation are complete. Scalar-write reconstruction remains coordinator-owned and needs fresh review/tests. The merged formatter SDK emits LF only; configurable line endings remain future F01 scope. This foundation does not complete layout-engine comparison (F00), all caller/configuration integration (F01), or RML/RCSS integration (F02). Do not assume unpublished content or historical test evidence survived intact.
-
-The seven `existing_owned` entries are excluded from new work ownership. Apart from verified PR #399/#400/#401/#402 foundation merges and the completed bounded B06 source/build audit, entries remain uncompleted in this ledger; many may be safely prepared now, but dependent implementation and acceptance must respect the gates below.
+The seven `existing_owned` entries remain reserved so they are not reimplemented. The formatter foundation emits LF only; configurable line endings, shared caller/configuration integration and RML/RCSS behavior remain F01/F02 work. The complete Outliner command/history/UI parity gate, not all 95 packages or optional storage refinements, controls the start of broader panel conversion. Gate only the next slice on the data, lifetime, service and formatting contracts it actually exercises, as required by the source plan.
 
 ## Decisions requiring the owner's choice
 

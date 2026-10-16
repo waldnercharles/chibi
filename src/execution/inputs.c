@@ -2,6 +2,7 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <string.h>
@@ -41,7 +42,7 @@ const pin_value *behavior_function_frame_inputs(
         *v = parameter->initial;
         present[index++] = true;
         if (v->type == PIN_STRUCT && v->container == PIN_CONTAINER_SINGLE) {
-            const type_desc *type = type_catalog_find(v->type_name);
+            const type_desc *type = pin_value_type(v);
             assert(type);
             v->ptr = arena_alloc(storage, type->size);
             memset(v->ptr, 0, type->size);
@@ -70,6 +71,10 @@ const pin_value *behavior_function_frame_inputs(
     for (int i = 0; i < *count; i++) {
         if (!present[i]) {
             values[i].ptr = NULL;
+        }
+        if (pin_value_snapshot_to_arena(storage, &values[i], &values[i])) {
+            *count = 0;
+            return NULL;
         }
     }
     return values;

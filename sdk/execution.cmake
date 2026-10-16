@@ -2,9 +2,9 @@ set(CHIBI_EXECUTION_SOURCES
     artifact.c backend.c borrow.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
     jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
-    preparation_budget.c prepared.c prepared_function.c program.c program_inspection.c program_activation.c
+    preparation_budget.c prepared.c prepared_function.c prepared_record.c program.c program_inspection.c program_activation.c
     program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
-    program_tasks.c range_opt.c reads.c request.c runner.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
+    program_tasks.c range_opt.c reads.c request.c row_builder.c runner.c scalarize.c source_debug.c state.c storage.c suspend.c time.c vm.c
     update_jit.c wasm_emit.c wasm_jit.c)
 list(TRANSFORM CHIBI_EXECUTION_SOURCES PREPEND "${CHIBI_SDK_ROOT}/src/execution/")
 
@@ -31,7 +31,8 @@ chibi_sdk_headers(chibi_execution PUBLIC execution/function_builder.h execution/
     execution/module.h execution/module_builder.h execution/intrinsics.h
     execution/delay.h execution/task.h execution/inspection.h execution/prepared.h execution/ecs_reader.h
     execution/component_write.h)
-target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution")
+target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/execution"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/types")
 target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs chibi_tasks)
 
 option(CHIBI_ENABLE_SJLIT "Build the native execution backend" ON)

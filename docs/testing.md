@@ -28,7 +28,7 @@ make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan 
 make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
 make test-materials      # the material simulation selectors, one 60-second deadline
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
-make test-language-all   # every test_language selector, one 60-second deadline
+make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
@@ -1002,10 +1002,24 @@ make test-list
 | `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
-| `test-language-all` | Every `test_language` selector under one shared deadline. |
+| `test-language-all` | The admitted native language aggregate under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
 | `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
+
+The `language` and `wasm` groups list their admitted members explicitly in
+`tools/test_policy.py`; they do not include every standalone selector. Both
+include the five-case row-array construction, alias, rejection and collection
+regression and the seven-case counted-row builder proof, fallback and lifetime
+regression. Both also include the two-case Outliner selected-range projection
+specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
+full-width keys and detached ownership. Its two mechanical text bindings are
+test-local; it is not live Studio integration or a production text API.
+Compiler-enabled `native-tools` also includes the single generated-C
+builder fallback case with its bounded compiler child. Other focused record
+routes remain standalone, as do the dedicated
+Wasm formatter and root-state routes. Use `make test-list` to inspect the groups
+and standalone routes; registering a route alone does not add it to a group.
 
 Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
 a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native
@@ -1540,3 +1554,47 @@ No full-L07, application-scale, benchmark, or scheduling claim follows;
 full/quarantined gates remain disabled, not passed.
 The explicit platform merge hold remains; no GitHub approval or resolved-thread
 status is asserted by this local validation.
+
+
+## Selected runtime attribution: admitted fixed workload
+
+`tool language-runtime-attribution` and `tool wasm-runtime-attribution` run the
+same six C/pico_unit cases through the existing language dispatcher. Each occurs
+once in its ordinary native-language or serial-Wasm group. This does not add a
+second copy to the separate native `test_tools` selector group.
+
+The fixed envelope is 44 copy API operations, ten scoped copies/VM calls, three
+intern worlds with 32 unique edits and 32 repeats, four task owners with eight
+cycles and four boundaries each, six native/five Wasm backend attempts, and
+5,128 paired invocations. Tiny instruction/context budgets and the 512 KiB trial
+storage cap are unchanged. There are no new frames, GPU/browser/network workers
+or environment-controlled repetitions. Source review and exact artifact
+validation preceded measurement; all commands retain their original shared
+60-second production-supervisor deadline.
+
+The six cases passed with 69,013 native assertions and 69,000 Wasm assertions.
+The integrated complete language/Wasm groups, native-tools and installed
+compiler-free prepared consumer also passed. Exact source, build/SDK boundaries,
+raw timing samples, log hashes and limitations are in
+[the validation record](evidence/runtime-attribution/validation.md). Counters
+cover selected copy and backend operations; they are not a global allocation
+census or a whole-application performance/retention claim.
+
+### Redundant root-state canonicalization
+
+`language-root-state` and `wasm-root-state` select two finite C cases with five
+fixed source strings, at most 137 UTF-8 bytes each. They check behavior/library/
+system root storage, distinct callable storage, system shared storage, exact
+declaration and read ranges, stable symbol identities, comments, idempotence,
+formatter token preservation and invalid-source refusal. The full successful
+path makes six explicit semantic analyses, seven minimizer calls and two
+formatter calls. The minimizer's existing internal oracle rounds are unchanged.
+
+The same two cases are included in the existing format dispatcher: 39 finite
+cases, plus the existing bounded corpus case on native. Wasm has no corpus file
+dependency. No catalog, generated source, runtime frame, world, subprocess,
+network or GPU workload is added. Use the unchanged production 60-second
+supervisor; independent exact-head source and artifact admission is required
+before a runtime slot. Configuration and compilation are separate from test
+execution. These SDK checks do not establish CLI/Studio integration or a caret
+map across semantic rewriting.

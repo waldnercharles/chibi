@@ -425,6 +425,59 @@ static int join_task(analyzer *a, TSNode node, int value)
     asetlen(a->narrowed, 0);
     return script_analyzer_expr_add(a, result);
 }
+/* Add immutable defaults after explicit expressions, preserving their authored
+ * evaluation order. Required members can never be supplied by zero storage. */
+static void record_defaults(analyzer *a, TSNode node, script_expression *result)
+{
+    const script_catalog_type
+        *type = script_catalog_type_by_id(a->catalog, result->type.nominal);
+    if (!type || !type->authored_record ||
+        result->type.container != PIN_CONTAINER_SINGLE) {
+        return;
+    }
+    for (int i = 0; i < type->field_count; i++) {
+        bool provided = false;
+        for (int j = 0; j < acount(result->arguments); j++) {
+            provided |= result->arguments[j].parameter == i;
+        }
+        if (provided) {
+            continue;
+        }
+        const script_catalog_field *field = &type->fields[i];
+        if (!field->has_default) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "Missing required record field '%s'",
+                field->name
+            );
+            continue;
+        }
+        pin_value owned = { 0 };
+        if (pin_value_snapshot_to_arena(&a->out->constants, &owned, &field->default_value)) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "Cannot retain record field default '%s'",
+                field->name
+            );
+            continue;
+        }
+        int value = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = field->type,
+                                 .constant = owned,
+                                 .constant_snapshot = true,
+                                 .range = result->range,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .entry = -1 }
+        );
+        apush(result->arguments, ((script_argument){ value, i, field->id, result->range }));
+    }
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -524,6 +577,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                                          : SCRIPT_EXPR_CONSTANT;
             result.constant = (pin_value){ .type = expected.storage,
                                            .container = expected.container };
+            if (result.kind == SCRIPT_EXPR_STRUCT) {
+                record_defaults(a, node, &result);
+            }
         } else {
             result.type.flags |= SCRIPT_TYPE_OPTIONAL;
         }
@@ -835,7 +891,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);
         if (!type || expected.storage != PIN_STRUCT) {
-            script_analyzer_diagnostic(a, node, "Struct literal needs an explicit reflected type");
+            script_analyzer_diagnostic(a, node, "Struct literal needs an explicit record or reflected type");
             result.type = script_analyzer_bad_type();
         }
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
@@ -876,6 +932,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.effects |= script_analyzer_expr_effects(a, value);
             free(name);
         }
+        record_defaults(a, node, &result);
         return script_analyzer_expr_add(a, result);
     }
     script_analyzer_diagnostic(a, node, "Unsupported expression '%s'", ts_node_type(node));

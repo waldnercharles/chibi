@@ -11,6 +11,7 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -92,6 +93,16 @@ static pin_value initial(lower *l, script_type type)
     const script_catalog_type *nominal = script_catalog_type_by_id(l->catalog, type.nominal);
     if (nominal) {
         value.type_name = nominal->name;
+        if (nominal->authored_record) {
+            for (int i = 0; i < acount(l->module->types); i++) {
+                if (l->module->types[i].id == nominal->id) {
+                    value.record = l->module->types[i].record;
+                    value.type_name = value.record->type.name;
+                    break;
+                }
+            }
+            assert(value.record);
+        }
     } else if (
         type.storage == PIN_HANDLE && type.nominal && type.nominal == l->catalog->entity_type
     ) {
@@ -104,6 +115,7 @@ static pin_value signature_initial(lower *l, script_type type)
     if (type.flags & SCRIPT_TYPE_REFERENCE) {
         pin_value value = initial(l, type);
         value.type = BF_POINTER_TYPE;
+        value.record = NULL;
         value.container = PIN_CONTAINER_SINGLE;
         value.u64 = 0;
         return value;
@@ -395,12 +407,51 @@ static behavior_function_op binary_op(script_operator op)
         default: return BF_END;
     }
 }
+static int primitive(
+    lower *,
+    const node_host_call *,
+    const node_access *,
+    const pin_value *,
+    const int *,
+    int,
+    script_type,
+    script_range
+);
 static int binary(lower *l, script_operator op, int left, int right, script_type type, script_type operand, script_range range)
 {
     behavior_function_op code = binary_op(op);
     if (code == BF_END) {
         error(l, range, "Execution ABI lacks the requested bitwise operation");
         return -1;
+    }
+    const script_catalog_type
+        *nominal = script_catalog_type_by_id(l->catalog, operand.nominal);
+    if ((op == SCRIPT_OP_EQ || op == SCRIPT_OP_NE) &&
+        operand.container == PIN_CONTAINER_SINGLE && nominal &&
+        nominal->authored_record) {
+        pin_value headers[] = { initial(l, operand), initial(l, operand) };
+        int slots[] = { left, right };
+        int equal = primitive(
+            l,
+            &EXECUTION_value_equal_call,
+            &EXECUTION_value_access,
+            headers,
+            slots,
+            2,
+            (script_type){ .storage = PIN_BOOL },
+            range
+        );
+        return op == SCRIPT_OP_EQ
+                 ? equal
+                 : binary(
+                       l,
+                       SCRIPT_OP_EQ,
+                       equal,
+                       constant(l, (pin_value){ .type = PIN_BOOL }, range),
+                       (script_type){ .storage = PIN_BOOL },
+                       (script_type){ .storage = PIN_BOOL },
+                       range
+                   );
     }
     if ((op == SCRIPT_OP_EQ || op == SCRIPT_OP_NE) &&
         behavior_scalar_string(operand.storage)) {
@@ -998,7 +1049,7 @@ static void action_complete(
     suspend_if(l, pending, action, range);
     exit_if_requested(l, range);
 }
-static int retain_value(lower *l, int slot, script_type type, script_range range)
+static int retain_bank(lower *l, int slot, script_type type, script_range range)
 {
     pin_value value = initial(l, type);
     int host = linked_host(
@@ -1019,9 +1070,72 @@ static int retain_value(lower *l, int slot, script_type type, script_range range
                                          .target = host },
         range
     );
-    int result = take_result(l, behavior_function_builder_host_results(l->builder, host), type, range);
     clear_value(l, first, type, range);
-    return result;
+    return behavior_function_builder_host_results(l->builder, host);
+}
+static int retain_value(lower *l, int slot, script_type type, script_range range)
+{
+    return take_result(l, retain_bank(l, slot, type, range), type, range);
+}
+/* Publish the already retained header, including the owned nominal layout.
+ * Reading each field through shared IR works in VM, native, Wasm and C without
+ * embedding a producer address or depending on an inspection context. */
+static void return_record(lower *l, int slot, script_type type, int index, script_range range)
+{
+    _Static_assert(sizeof(pin_type) == sizeof(int32_t), "pin type header width");
+    _Static_assert(sizeof(pin_container) == sizeof(int32_t), "pin container header width");
+    int retained = retain_bank(l, slot, type, range);
+    int source = host_address(l, retained, false, range);
+    int results = value_op(
+        l,
+        (behavior_function_instruction){
+            .op = BF_CONTEXT,
+            .type = BF_POINTER_TYPE,
+            .offset = offsetof(behavior_function_context, results) },
+        range
+    );
+    int destination = value_op(
+        l,
+        (behavior_function_instruction){
+            .op = BF_INDEX,
+            .type = BF_POINTER_TYPE,
+            .left = results,
+            .right = constant(l, (pin_value){ .type = PIN_I32, .i = index }, range),
+            .offset = sizeof(pin_value) },
+        range
+    );
+    const struct
+    {
+        size_t offset;
+        pin_type type;
+    } fields[] = {
+        { offsetof(pin_value, type), PIN_I32 },
+        { offsetof(pin_value, container), PIN_I32 },
+        { offsetof(pin_value, type_name), BF_POINTER_TYPE },
+        { offsetof(pin_value, record), BF_POINTER_TYPE },
+        { offsetof(pin_value, ptr), BF_POINTER_TYPE },
+    };
+    for (int i = 0; i < 5; i++) {
+        int value = kind_op(
+            l,
+            (behavior_function_instruction){ .op = BF_LOAD,
+                                             .type = fields[i].type,
+                                             .left = source,
+                                             .offset = fields[i].offset },
+            range,
+            i < 2 ? BEHAVIOR_VALUE : BEHAVIOR_ADDRESS
+        );
+        emit(
+            l,
+            (behavior_function_instruction){ .op = BF_WRITE,
+                                             .type = fields[i].type,
+                                             .left = value,
+                                             .right = destination,
+                                             .offset = fields[i].offset },
+            range
+        );
+    }
+    clear_value(l, retained, type, range);
 }
 static int constructor_from(lower *l, const script_expression *e, int base)
 {
@@ -4509,8 +4623,9 @@ static void return_results(lower *l, script_range range)
                                   .type = s->type,
                                   .range = range }
         );
-        if (!(s->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
-            s->type.container != PIN_CONTAINER_SINGLE) {
+        if (initial(l, s->type).record) {
+            return_record(l, value, s->type, i, range);
+        } else if (!(s->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) && s->type.container != PIN_CONTAINER_SINGLE) {
             value = retain_value(l, value, s->type, range);
             pin_value header = initial(l, s->type);
             int name = value_op(
@@ -5850,6 +5965,20 @@ execution_module_plan *script_lower(
             (type->type.flags & (SCRIPT_TYPE_NAMESPACE | SCRIPT_TYPE_UNION))) {
             continue;
         }
+        const pin_record *record = NULL;
+        if (type->authored_record) {
+            type_field *fields = NULL;
+            for (int j = 0; j < type->field_count; j++) {
+                apush(
+                    fields,
+                    ((type_field){ .name = type->fields[j].name,
+                                   .type = type->fields[j].type.storage })
+                );
+            }
+            record = pin_record_create(&m->storage, type->name, type->id, fields, acount(fields));
+            afree(fields);
+            assert(record && record->layout == type->layout && record->type.size == type->size);
+        }
         const char *name = type->name;
         if (name) {
             size_t size = strlen(name) + 1;
@@ -5862,6 +5991,7 @@ execution_module_plan *script_lower(
             ((execution_type_requirement){ .id = type->id,
                                            .layout = type->layout,
                                            .storage = type->type.storage,
+                                           .record = record,
                                            .name = name,
                                            .size = type->size })
         );

@@ -1,5 +1,6 @@
 #include "support/arena.h"
 #include "types/array.h"
+#include "types/copy_internal.h"
 #include "types/trace.h"
 
 #include <assert.h>
@@ -140,6 +141,7 @@ static pin_array *empty_owned_set(arena *storage, const pin_value *item)
         size_t size = strlen(item->type_name) + 1;
         char *copy = arena_alloc(storage, size);
         memcpy(copy, item->type_name, size);
+        pin_copy_record(PIN_COPY_NOMINAL, size);
         type_name = copy;
     }
     *array = (pin_array){ .element_type = item->type,

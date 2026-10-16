@@ -1011,7 +1011,11 @@ The `language` and `wasm` groups list their admitted members explicitly in
 `tools/test_policy.py`; they do not include every standalone selector. Both
 include the five-case row-array construction, alias, rejection and collection
 regression and the seven-case counted-row builder proof, fallback and lifetime
-regression. Compiler-enabled `native-tools` also includes the single generated-C
+regression. Both also include the two-case Outliner selected-range projection
+specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
+full-width keys and detached ownership. Its two mechanical text bindings are
+test-local; it is not live Studio integration or a production text API.
+Compiler-enabled `native-tools` also includes the single generated-C
 builder fallback case with its bounded compiler child. Other focused record
 routes remain standalone, as do the dedicated
 Wasm formatter and root-state routes. Use `make test-list` to inspect the groups

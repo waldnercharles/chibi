@@ -464,6 +464,8 @@ TOOLS = {
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
     # Five fixed owned prepared-record cases; independent admission, standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
+    # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
+    'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
     # Seven fixed counted-row proof/fallback/lifetime cases; also in language/Wasm groups.
     'language-row-builder': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-builder'],
     # Five fixed row-array construction/alias/collection cases; also in language/Wasm groups.
@@ -518,13 +520,13 @@ for lab in EXAMPLE_LABS:
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-row-builder'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-row-builder', 'wasm-outliner-projection'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -556,7 +558,7 @@ GROUPS = {
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-row-builder'],
+                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-row-builder', 'language-outliner-projection'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')

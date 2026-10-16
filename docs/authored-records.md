@@ -2,8 +2,8 @@
 
 This Draft feature implements the first library-contained record slice needed by
 Studio's Outliner. It is not complete or eligible to land yet. In particular,
-leak-enabled validation, generic globals/headless UI, persistent state/watch
-closure and the affected existing-route/integration checks remain open. No
+leak-enabled validation and the affected existing-route/SDK/integration checks
+remain open. Focused globals, headless UI and state/watch closure now pass. No
 Studio panel has been converted by this change.
 
 ## Source contract
@@ -46,7 +46,9 @@ library Rows {
 - Nominal identity includes the qualified library/type. Storage compatibility
   also checks the actual immutable layout; a same-name changed layout cannot be
   reinterpreted as the previous one. Default-only changes do not alter storage
-  layout identity. Full live state replacement coverage is still pending.
+  layout identity. The focused live replacement case preserves values across a
+  default-only edit and resets them for a renamed-field incompatible layout,
+  checking both outcomes before any new event can overwrite the evidence.
 - Rows use value semantics and owned text at language/API snapshot boundaries.
   Ordinary outer arrays retain their value semantics. Growing a record array
   without constructed rows is rejected before changing the result; shrinking,
@@ -84,8 +86,22 @@ Complete document input requires every field, including source-defaulted fields;
 it is a value codec, not source construction. It owns the carried layout and
 strings, preserves metadata on null/empty headers and registers collection
 traces. Invalid output metadata fails the whole nested projection before an
-existing destination key is replaced. Generic global and actual UI service
-closure remain pending even though this shared document boundary is implemented.
+existing destination key is replaced. Generic globals now snapshot replacement
+values into fresh owned storage before committing a store change, and preflight
+host output headers before mutation. Callback results keep invocation-owned text
+and metadata while preserving the existing setter-result conversion contract.
+The focused native service cases cover scalar/array ownership after producer
+retirement, atomic mismatch rejection and the real headless UI data/revision
+callback. Existing native scalar/handle compatibility still needs final checks.
+
+Actual program and inspector cases cover scalar/array persistent state,
+compatible/incompatible replacement and retained scalar/allocated-empty/three-row
+watches after state overwrite and program destruction. Every admitted dispatch
+reached its requested bytecode, SLJIT or generated-Wasm backend, including the
+inspected call, with zero fallback. The synthetic frame-input case uses private
+fixture metadata to exercise the exported reconstruction API; it does not prove
+authored pause-frame lowering. Small watch snapshots do not establish exhaustion
+behavior for the inspector's 4 MiB/512-value limits.
 
 ## Validation and remaining gates
 
@@ -104,15 +120,16 @@ document runs are distinguished from actual authored generated-Wasm execution.
 
 Remaining acceptance includes:
 
-1. Generic global scalar/array ownership and atomic mismatch failure, plus
-   headless UI data-model ownership/revision behavior.
-2. Persistent state and compatible/incompatible replacement, actual inspector
-   watch ownership/budgets, and an honest disposition of the currently unused
-   frame-input reconstruction API.
-3. Independently admitted affected existing-language/format/native contracts,
-   current-main integration, coherent SDK closure and exact published-head
-   review. Full feature, leak and Studio acceptance are not inferred from these
-   focused checkpoints.
+1. Existing native scalar/handle global compatibility and independently admitted
+   affected existing-language/format/native contracts.
+2. Fresh coherent SDK/build closure, current-main integration and exact
+   published-head validation of the cumulative feature. Staged checkpoint
+   results remain scoped to their recorded heads.
+3. Leak-enabled validation. The Draft/leak/landing hold remains; full feature
+   and Studio acceptance are not inferred from the focused checkpoints.
+
+The existing inspector capacity rules remain in force; the record-specific
+focused route covers small retained snapshots rather than a capacity stress test.
 
 The first Outliner conversion also retains its separate typed scene-operation,
 history, lifecycle, exact SDK pair and actual UI parity gates. This feature does

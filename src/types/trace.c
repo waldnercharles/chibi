@@ -1,6 +1,7 @@
 #include "types/trace.h"
 
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <string.h>
@@ -25,25 +26,28 @@ static void struct_fields(const type_desc *type, const void *data, arena_marker 
 void pin_value_trace(const pin_value *value, arena_marker mark, void *user)
 {
     mark(user, value->type_name);
+    mark(user, value->record);
     if (value->container != PIN_CONTAINER_SINGLE || value->type == PIN_STRUCT ||
         value->type == PIN_STR || value->type == PIN_NAME || value->type == PIN_UNION) {
         mark(user, value->ptr);
     }
     if (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
         value->ptr) {
-        const type_desc *type = type_catalog_find(value->type_name);
+        const type_desc *type = pin_value_type(value);
         assert(type);
         struct_fields(type, value->ptr, mark, user, 0);
     }
 }
 static void trace_struct(const void *data, const void *shape, arena_marker mark, void *user)
 {
+    mark(user, shape);
     struct_fields(shape, data, mark, user, 0);
 }
 static void trace_array(const void *data, const void *, arena_marker mark, void *user)
 {
     const pin_array *array = data;
     mark(user, array->type_name);
+    mark(user, array->record);
     mark(user, array->items);
     mark(user, array->buckets);
     for (int i = 0; i < array->count; i++) {

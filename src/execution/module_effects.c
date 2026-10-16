@@ -74,6 +74,7 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_SNAPSHOT: expected = 1; break;
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_REFERENCE_WRITE: expected = 2; break;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE: expected = 3; break;
         case EXECUTION_INTRINSIC_QUERY_SOURCE: expected = 5; break;
@@ -407,6 +408,7 @@ static bool predicate_host(const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
         case EXECUTION_INTRINSIC_UNION_MAKE:
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
         case EXECUTION_INTRINSIC_LOCAL_RELEASE: return true;
@@ -1422,6 +1424,7 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:
+        case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_UNION_TEST:
         case EXECUTION_INTRINSIC_UNION_GET:
         case EXECUTION_INTRINSIC_BREAK_TAKE: return;

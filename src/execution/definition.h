@@ -229,7 +229,7 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
  * producer verifier and finalizer. Ownership remains with the caller on failure. */
 bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
 void behavior_function_finalize(behavior_function *function);
-void behavior_function_own(behavior_function *function);
+bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);

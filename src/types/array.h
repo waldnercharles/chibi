@@ -11,6 +11,7 @@ typedef struct pin_array
 {
     pin_type element_type;
     const char *type_name;
+    const pin_record *record; /* Shared immutable element layout, including empty arrays. */
     int count;
     int capacity;
     pin_value *items;
@@ -29,13 +30,19 @@ int pin_set_unique(arena *storage, pin_value *out, const pin_value *items, int c
  * retains replaced snapshots until its owner resets it. */
 int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item);
 
-/* TYPE-8/TYPE-9: arrays own their item storage. Struct elements remain
- * borrowed until a type-specific copy callback exists. */
+/* Arrays own their item storage. These heap/clone helpers borrow both struct
+ * payloads and authored layouts; use snapshots for detached owned values. */
 pin_array *pin_array_new(pin_type element_type, const char *type_name, int capacity);
 pin_array *pin_array_clone_to_arena(arena *a, const pin_array *src);
 /* Internal snapshot construction: header/name are owned, items uninitialized.
  * Fill every item before exposing the array; abandon it if any snapshot fails. */
 pin_array *pin_array_snapshot_allocate(arena *a, pin_type type, const char *name, int count);
+/* Uninitialized items with a copied/shared source element layout. */
+pin_array *pin_array_snapshot_like(arena *, const pin_array *, int count);
+/* Internal array construction. Validate the destination layout's ownership once
+ * per range, and each original source layout before copying. Items already
+ * copied on failure must be abandoned with the unpublished destination array. */
+int pin_array_snapshot_items(arena *, const pin_record *, pin_value *out, const pin_value *items, int count);
 /* Fixed-size typed zero values, owned by the arena. */
 pin_array *pin_array_allocate(arena *a, pin_type type, const char *name, int count);
 /* Deep snapshot, including registered struct fields and all nominal names. */
@@ -50,7 +57,7 @@ int pin_array_push(pin_array *array, const pin_value *value);
 int pin_array_equal(const pin_array *a, const pin_array *b);
 
 /* Copy and destruction dispatch. `dst` owns copied array and string storage;
- * struct and handle payloads remain borrowed. */
+ * struct payloads/layouts and handles remain borrowed. */
 int pin_value_copy(pin_value *dst, const pin_value *src);
 int pin_value_copy_to_arena(arena *a, pin_value *dst, const pin_value *src);
 void pin_value_destroy(pin_value *value);

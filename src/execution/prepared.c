@@ -40,67 +40,6 @@
         }                                                                      \
     } while (0)
 
-static bool value_identity(prepared_context *c, const pin_value *value, unsigned depth)
-{
-    if (depth > EXECUTION_WIRE_MAX_DEPTH) {
-        return false;
-    }
-    if (value->type_name && value->type >= PIN_HANDLE && value->type != PIN_TASK) {
-        bool found = false;
-        for (int i = 0; i < c->plan->type_count; i++) {
-            const execution_type_requirement *t = &c->plan->types[i];
-            if (t->id && t->storage == value->type &&
-                !strcmp(t->name, value->type_name)) {
-                found = true;
-            }
-        }
-        if (!found) {
-            return false;
-        }
-    }
-    if (!value->ptr) {
-        return true;
-    }
-    if (value->container != PIN_CONTAINER_SINGLE) {
-        const pin_array *array = value->ptr;
-        for (int i = 0; i < array->count; i++) {
-            if (!value_identity(c, &array->items[i], depth + 1)) {
-                return false;
-            }
-        }
-    } else if (value->type == PIN_UNION) {
-        const pin_union *tagged = value->ptr;
-        for (int i = 0; i < tagged->count; i++) {
-            if (!value_identity(c, &tagged->values[i], depth + 1)) {
-                return false;
-            }
-        }
-    } else if (value->type == PIN_STRUCT) {
-        const type_desc *type = type_catalog_find(value->type_name);
-        if (!type) {
-            return false;
-        }
-        for (int i = 0; i < type->field_count; i++) {
-            pin_value field;
-            pin_read_field(value->ptr, &type->fields[i], &field);
-            if (!value_identity(c, &field, depth + 1)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-void prepared_value(prepared_context *c, pin_value *value)
-{
-    if (!c->wire.reading && !c->wire.error && !value_identity(c, value, 0)) {
-        c->wire.error = "value lacks stable nominal type requirement";
-        return;
-    }
-    execution_wire_value(&c->wire, value);
-    if (c->wire.reading && !c->wire.error && !value_identity(c, value, 0)) {
-        c->wire.error = "value lacks stable nominal type requirement";
-    }
-}
 void prepared_table(execution_wire *w, int *count, size_t item_size)
 {
     execution_wire_count(w, count, 1);
@@ -145,7 +84,8 @@ static bool write_depth(
     prepared_dependency **,
     size_t *,
     uint64_t *,
-    execution_wire *
+    execution_wire *,
+    size_t *
 );
 static bool scratch_growth(execution_wire *budget, const void *values, size_t item, size_t *charged)
 {
@@ -196,7 +136,18 @@ static bool dependency_fingerprint(
     uint64_t hash = UINT64_C(14695981039346656037);
     size_t length = 0;
     const char *error = NULL;
-    if (!write_depth(module, NULL, &length, &error, depth, cache, c->dependency_bytes, &hash, c->fingerprint_budget)) {
+    if (!write_depth(
+            module,
+            NULL,
+            &length,
+            &error,
+            depth,
+            cache,
+            c->dependency_bytes,
+            &hash,
+            c->fingerprint_budget,
+            c->shared_record_work
+        )) {
         c->wire.error = error;
         return false;
     }
@@ -286,9 +237,11 @@ static uint64_t context_abi()
                               offsetof(pin_value, u64),
                               offsetof(pin_value, container),
                               offsetof(pin_value, type_name),
+                              offsetof(pin_value, record),
                               sizeof(pin_array),
                               offsetof(pin_array, element_type),
                               offsetof(pin_array, type_name),
+                              offsetof(pin_array, record),
                               offsetof(pin_array, count),
                               offsetof(pin_array, capacity),
                               offsetof(pin_array, items),
@@ -425,47 +378,11 @@ static void header(execution_wire *w)
     U64(pointer_size);
     U64(abi);
     if (magic != PREPARED_MAGIC || version != EXECUTION_PREPARED_VERSION) {
-        w->error = "unknown prepared format version";
+        w->error = "unknown prepared format version; rebuild prepared code";
     }
     if (pointer_size != sizeof(void *) || abi != expected_abi) {
         w->error = "prepared target ABI differs";
     }
-}
-static void types(prepared_context *c)
-{
-    execution_wire *w = &c->wire;
-    execution_module_plan *p = c->plan;
-    ARRAY(types, type_count, {
-        execution_type_requirement *v = &p->types[index];
-        U64(v->id);
-        U64(v->layout);
-        ENUM(v->storage);
-        STRING(v->name);
-        SIZE(v->size);
-        if (!v->id || !v->name || v->storage < PIN_BOOL || v->storage > PIN_UNION) {
-            w->error = "invalid prepared type requirement";
-            break;
-        }
-        if (w->reading) {
-            execution_prepared_type actual = { 0 };
-            if (!c->linker || !c->linker->type ||
-                !c->linker->type(c->linker->user, v->id, &actual) || !actual.name ||
-                strcmp(actual.name, v->name) || actual.storage != v->storage ||
-                actual.size != v->size || actual.layout != v->layout) {
-                w->error = "missing or incompatible type requirement";
-                break;
-            }
-            if (v->storage == PIN_STRUCT) {
-                const type_desc *t = actual.type ? actual.type
-                                                 : type_catalog_find(v->name);
-                if (!t || !t->name || strcmp(t->name, v->name) ||
-                    t->size != v->size || type_layout_hash(t) != v->layout) {
-                    w->error = "linked type catalog layout differs";
-                    break;
-                }
-            }
-        }
-    });
 }
 static void imports(prepared_context *c, unsigned depth)
 {
@@ -780,7 +697,8 @@ static bool write_depth(
     prepared_dependency **cache,
     size_t *dependency_bytes,
     uint64_t *hash,
-    execution_wire *budget
+    execution_wire *budget,
+    size_t *record_work
 )
 {
     if (depth > EXECUTION_WIRE_MAX_DEPTH) {
@@ -790,7 +708,8 @@ static bool write_depth(
     prepared_context c = { .plan = (execution_module_plan *)&m->plan,
                            .dependencies = cache,
                            .dependency_bytes = dependency_bytes,
-                           .fingerprint_budget = budget };
+                           .fingerprint_budget = budget,
+                           .shared_record_work = record_work };
     c.wire.storage = &c.plan->storage;
     c.wire.hash = hash;
     for (int i = 0; i < c.plan->function_count && !c.wire.error; i++) {
@@ -811,7 +730,7 @@ static bool write_depth(
     if (!w->error && !c.plan->id) {
         w->error = "module lacks stable identity";
     }
-    types(&c);
+    prepared_types(&c);
     events(&c);
     imports(&c, depth);
     int count = acount(c.functions);
@@ -829,12 +748,14 @@ static bool write_depth(
         }
     }
     *error = w->error;
+    free(c.records);
     afree(c.functions);
     afree(w->data);
     if (budget) {
-        *budget->storage_budget += c.function_bytes;
-        budget->storage_charged -= c.function_bytes;
-        budget->owned_bytes -= c.function_bytes;
+        size_t scratch = c.function_bytes + c.record_cache_bytes;
+        *budget->storage_budget += scratch;
+        budget->storage_charged -= scratch;
+        budget->owned_bytes -= scratch;
     }
     return success;
 }
@@ -851,7 +772,9 @@ bool execution_prepared_write(
     const char *reason = NULL;
     prepared_dependency *cache = NULL;
     size_t bytes = 0;
-    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, NULL);
+    size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
+    execution_wire budget = { .storage_budget = &remaining };
+    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work);
     afree(cache);
     if (size) {
         snprintf(error, size, "%s", reason ? reason : "");
@@ -941,6 +864,7 @@ execution_module *execution_prepared_read_budget(
                                .storage_budget = remaining };
     execution_wire *w = &c.wire;
     c.fingerprint_budget = w;
+    c.shared_record_work = &c.record_work;
     execution_wire_reserve(w, sizeof(execution_module_plan) + sizeof(execution_module));
     if (length > EXECUTION_WIRE_MAX_BYTES) {
         w->error = "prepared file exceeds byte budget";
@@ -951,7 +875,7 @@ execution_module *execution_prepared_read_budget(
     if (!w->error && !c.plan->id) {
         w->error = "module lacks stable identity";
     }
-    types(&c);
+    prepared_types(&c);
     events(&c);
     imports(&c, 0);
     int count = 0;
@@ -977,7 +901,7 @@ execution_module *execution_prepared_read_budget(
     if (!w->error) {
         owners(&c);
     }
-    if (!w->error) {
+    if (!w->error && prepared_records_finalize(&c)) {
         preparation_budget(&c);
     }
     if (!w->error) {
@@ -1021,6 +945,7 @@ execution_module *execution_prepared_read_budget(
             execution_module_plan_free(c.plan);
         }
     }
+    free(c.records);
     afree(c.functions);
     afree(cache);
     return m;

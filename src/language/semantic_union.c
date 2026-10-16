@@ -35,7 +35,7 @@ static script_catalog_variant own_variant(analyzer *a, script_catalog_variant va
     }
     return value;
 }
-static void publish(analyzer *a, script_catalog_type type)
+void script_analyzer_publish_type(analyzer *a, script_catalog_type type)
 {
     apush(a->out->types, type);
     apush(a->catalog_types, type);
@@ -43,7 +43,7 @@ static void publish(analyzer *a, script_catalog_type type)
     a->catalog_view.type_count = acount(a->catalog_types);
     a->out->type_count = acount(a->out->types);
 }
-static void replace(analyzer *a, script_catalog_type type)
+void script_analyzer_replace_type(analyzer *a, script_catalog_type type)
 {
     for (int i = 0; i < acount(a->out->types); i++) {
         if (a->out->types[i].id == type.id) {
@@ -119,7 +119,7 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
         );
         script_symbol *s = &a->out->symbols[symbol];
         s->type.nominal = s->id;
-        publish(
+        script_analyzer_publish_type(
             a,
             (script_catalog_type){ .id = s->id,
                                    .name = own(a, s->name),
@@ -211,7 +211,7 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
             definition.variants = copy;
         }
         afree(variants);
-        replace(a, definition);
+        script_analyzer_replace_type(a, definition);
     }
     unsigned char *states = xcalloc((size_t)a->catalog->type_count + 1, sizeof *states);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
@@ -287,7 +287,7 @@ script_type script_analyzer_union_type(analyzer *a, TSNode node, const script_ty
         for (int i = 0; i < acount(variants); i++) {
             copy[i] = own_variant(a, variants[i]);
         }
-        publish(
+        script_analyzer_publish_type(
             a,
             (script_catalog_type){ .id = id,
                                    .name = own(a, name),
@@ -344,7 +344,7 @@ script_type script_analyzer_task_type(analyzer *a, script_type result, uint64_t 
             owned_fields = arena_alloc(&a->out->constants, (size_t)acount(fields) * sizeof *owned_fields);
             memcpy(owned_fields, fields, (size_t)acount(fields) * sizeof *owned_fields);
         }
-        publish(
+        script_analyzer_publish_type(
             a,
             (script_catalog_type){ .id = id,
                                    .name = own(a, name),

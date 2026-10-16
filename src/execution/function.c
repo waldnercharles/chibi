@@ -4,6 +4,8 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -45,17 +47,48 @@ static const char *own_string(arena *a, const char *text)
     memcpy(copy, text, size);
     return copy;
 }
-static void own_value(arena *a, pin_value *value)
+typedef struct
 {
-    pin_value copy;
-    int result = pin_value_snapshot_to_arena(a, &copy, value);
-    assert(result == 0);
-    (void)result;
-    behavior_function_static_name(&copy.type_name);
+    arena *storage;
+    const pin_record **records;
+} value_owner;
+static bool own_value(value_owner *owner, pin_value *value)
+{
+    pin_value source = *value, copy;
+    if (source.record) {
+        if (!pin_record_valid(source.record) || !pin_value_type(&source)) {
+            return false;
+        }
+        const pin_record *record = NULL;
+        for (int i = 0; i < acount(owner->records); i++) {
+            if (pin_record_same(owner->records[i], source.record)) {
+                record = owner->records[i];
+                break;
+            }
+        }
+        if (!record) {
+            record = pin_record_snapshot(owner->storage, source.record);
+            if (!record) {
+                return false;
+            }
+            apush(owner->records, record);
+        }
+        source.record = record;
+        source.type_name = record->type.name;
+    }
+    int result = pin_value_snapshot_to_arena(owner->storage, &copy, &source);
+    if (result) {
+        return false;
+    }
+    if (!copy.record) {
+        behavior_function_static_name(&copy.type_name);
+    }
     *value = copy;
+    return true;
 }
-static void own_instructions(arena *a, behavior_function_instruction *instructions)
+static bool own_instructions(value_owner *owner, behavior_function_instruction *instructions)
 {
+    arena *a = owner->storage;
     for (int i = 0; i < acount(instructions); i++) {
         behavior_function_instruction *op = &instructions[i];
         op->message = own_string(a, op->message);
@@ -68,9 +101,12 @@ static void own_instructions(arena *a, behavior_function_instruction *instructio
                 op->value.str = own_string(a, op->value.str);
             }
         } else if (op->value.type != PIN_FLOW) {
-            own_value(a, &op->value);
+            if (!own_value(owner, &op->value)) {
+                return false;
+            }
         }
     }
+    return true;
 }
 static node_access *own_access(arena *a, const node_access *source)
 {
@@ -105,42 +141,75 @@ static node_access *own_access(arena *a, const node_access *source)
     }
     return copy;
 }
-void behavior_function_own(behavior_function *f)
+bool behavior_function_own(behavior_function *f)
 {
     if (f->frozen) {
-        return;
+        return true;
     }
     arena *a = &f->owned;
+    value_owner owner = { .storage = a };
     for (int i = 0; i < acount(f->argument_defaults); i++) {
-        own_value(a, &f->argument_defaults[i]);
+        if (!own_value(&owner, &f->argument_defaults[i])) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->result_defaults); i++) {
-        own_value(a, &f->result_defaults[i]);
+        if (!own_value(&owner, &f->result_defaults[i])) {
+            goto invalid;
+        }
+    }
+    for (int i = 0; i < acount(f->results); i++) {
+        int index = f->results[i].index;
+        if (index < 0 || index >= acount(f->result_defaults) ||
+            f->result_defaults[index].type != PIN_STRUCT ||
+            f->result_defaults[index].container != PIN_CONTAINER_SINGLE) {
+            goto invalid;
+        }
+        f->results[i].type = pin_value_type(&f->result_defaults[index]);
+        if (!f->results[i].type) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->variable_defaults); i++) {
-        own_value(a, &f->variable_defaults[i]);
+        if (!own_value(&owner, &f->variable_defaults[i])) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->value_roots); i++) {
-        own_value(a, &f->value_roots[i].shape);
+        if (!own_value(&owner, &f->value_roots[i].shape)) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->suspensions); i++) {
         for (int j = 0; j < acount(f->suspensions[i].roots); j++) {
-            own_value(a, &f->suspensions[i].roots[j].shape);
+            if (!own_value(&owner, &f->suspensions[i].roots[j].shape)) {
+                goto invalid;
+            }
         }
     }
-    own_instructions(a, f->instructions);
-    own_instructions(a, f->runtime_instructions);
-    own_instructions(a, f->runtime_body);
+    if (!own_instructions(&owner, f->instructions)) {
+        goto invalid;
+    }
+    if (!own_instructions(&owner, f->runtime_instructions)) {
+        goto invalid;
+    }
+    if (!own_instructions(&owner, f->runtime_body)) {
+        goto invalid;
+    }
     for (int i = 0; i < acount(f->locals); i++) {
         behavior_function_local *local = &f->locals[i];
         if (local->offset == SIZE_MAX - 1) {
             local->initial.str = own_string(a, local->initial.str);
         } else {
-            own_value(a, &local->initial);
+            if (!own_value(&owner, &local->initial)) {
+                goto invalid;
+            }
         }
     }
     for (int i = 0; i < acount(f->parameters); i++) {
-        own_value(a, &f->parameters[i].initial);
+        if (!own_value(&owner, &f->parameters[i].initial)) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->frames); i++) {
         f->frames[i].source.asset_name = own_string(a, f->frames[i].source.asset_name);
@@ -152,19 +221,29 @@ void behavior_function_own(behavior_function *f)
         f->stacks[i].asset_name = own_string(a, f->stacks[i].asset_name);
     }
     for (int i = 0; i < acount(f->watches); i++) {
-        own_value(a, &f->watches[i].initial);
+        if (!own_value(&owner, &f->watches[i].initial)) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->source_watches); i++) {
-        own_value(a, &f->source_watches[i].initial);
+        if (!own_value(&owner, &f->source_watches[i].initial)) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->data_values); i++) {
-        own_value(a, &f->data_values[i].initial);
+        if (!own_value(&owner, &f->data_values[i].initial)) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->command_arguments); i++) {
-        own_value(a, &f->command_arguments[i]);
+        if (!own_value(&owner, &f->command_arguments[i])) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->command_results); i++) {
-        own_value(a, &f->command_results[i]);
+        if (!own_value(&owner, &f->command_results[i])) {
+            goto invalid;
+        }
     }
     for (int i = 0; i < acount(f->queries); i++) {
         f->queries[i].service = own_string(a, f->queries[i].service);
@@ -201,12 +280,21 @@ void behavior_function_own(behavior_function *f)
         }
     }
     for (int i = 0; i < acount(f->definitions); i++) {
-        behavior_function_own(f->definitions[i]);
+        if (!behavior_function_own(f->definitions[i])) {
+            goto invalid;
+        }
     }
     if (f->fast) {
-        behavior_function_own(f->fast);
+        if (!behavior_function_own(f->fast)) {
+            goto invalid;
+        }
     }
+    afree(owner.records);
     f->frozen = true;
+    return true;
+invalid:
+    afree(owner.records);
+    return false;
 }
 
 static bool preserves_components_uncached(const behavior_function *f, const uint64_t *components, int count)
@@ -510,9 +598,18 @@ void behavior_function_prepare_results(const behavior_function *f, pin_value *re
         behavior_function_result r = f->results[i];
         void *data = arena_alloc(storage, r.type->size);
         memset(data, 0, r.type->size);
-        results[r.index] = (pin_value){ .type = PIN_STRUCT,
-                                        .type_name = r.type->name,
-                                        .ptr = data };
+        pin_value value = f->result_defaults[r.index];
+        value.ptr = NULL;
+        if (value.record) {
+            int status = pin_value_snapshot_to_arena(storage, &value, &value);
+            assert(!status);
+            (void)status;
+        } else {
+            value.type_name = r.type->name;
+        }
+        value.ptr = data;
+        pin_arena_trace_struct(storage, data, pin_value_type(&value));
+        results[r.index] = value;
     }
 }
 

@@ -3,6 +3,8 @@
 #include "types/value.h"
 
 #include <assert.h>
+#include <limits.h>
+#include <math.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -88,4 +90,91 @@ static inline pin_value behavior_scalar_from_bits(pin_type type, uint64_t bits)
     return value;
 }
 
+static inline int behavior_string_equal(const char *a, const char *b)
+{
+    return a == b || strcmp(a ? a : "", b ? b : "") == 0;
+}
+
+static inline bool behavior_scalar_string(pin_type type)
+{
+    return type == PIN_NAME || type == PIN_STR;
+}
+
+static inline bool behavior_scalar_integer(pin_type type)
+{
+    return (type >= PIN_I8 && type <= PIN_U64) || type == PIN_ENUM;
+}
+static inline bool behavior_scalar_signed(pin_type type)
+{
+    return type == PIN_I8 || type == PIN_I16 || type == PIN_I32 || type == PIN_I64;
+}
+
+/* The numeric casts every backend implements. Lowering builds any other
+ * conversion it needs from these and BF_CONVERT. */
+static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
+{
+    if (from == to && (to == PIN_F32 || to == PIN_F64)) {
+        return true;
+    }
+    if (to == PIN_F64) {
+        return from >= PIN_BOOL && from <= PIN_I64;
+    }
+    if (from == PIN_F32 || from == PIN_F64) {
+        return to == PIN_U8 || to == PIN_I32 || to == PIN_I64;
+    }
+    return from == PIN_I32 && (to == PIN_U32 || to == PIN_U64 || to == PIN_I64);
+}
+static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
+{
+    assert(behavior_scalar_cast_supported(a.type, type));
+    if (a.type == type) {
+        return a;
+    }
+    pin_value out = { .type = type };
+    if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
+        if (type == PIN_U32) {
+            out.u = (uint32_t)a.i;
+        } else {
+            out.u64 = (uint64_t)(int64_t)a.i;
+        }
+        return out;
+    }
+    if (type == PIN_F64) {
+        switch (a.type) {
+            case PIN_BOOL: out.d = a.b; break;
+            case PIN_I8: out.d = a.i8; break;
+            case PIN_U8: out.d = a.u8; break;
+            case PIN_I16: out.d = a.i16; break;
+            case PIN_U16: out.d = a.u16; break;
+            case PIN_I32: out.d = a.i; break;
+            case PIN_U32: out.d = a.u; break;
+            case PIN_I64: out.d = (double)a.i64; break;
+            default: assert(false); break;
+        }
+        return out;
+    }
+    if (a.type == PIN_I32 && type == PIN_I64) {
+        out.i64 = a.i;
+        return out;
+    }
+    double x = a.type == PIN_F32 ? a.f : a.d;
+    int64_t low = type == PIN_U8 ? 0 : type == PIN_I32 ? INT32_MIN : INT64_MIN;
+    int64_t high = type == PIN_U8  ? UINT8_MAX
+                 : type == PIN_I32 ? INT32_MAX
+                                   : INT64_MAX;
+    int64_t n = isnan(x)          ? 0
+              : x <= (double)low  ? low
+              : x >= (double)high ? high
+                                  : (int64_t)x;
+    if (type == PIN_U8) {
+        out.u8 = (uint8_t)n;
+    }
+    if (type == PIN_I32) {
+        out.i = (int32_t)n;
+    }
+    if (type == PIN_I64) {
+        out.i64 = n;
+    }
+    return out;
+}
 #endif

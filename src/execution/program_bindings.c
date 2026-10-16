@@ -4,6 +4,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/record.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -128,7 +129,7 @@ int program_binding_run(execution_instance *instance, int binding_index, double 
         return FLOW_ERR_ARGUMENT;
     }
     size_t width = value.container >= PIN_CONTAINER_ARRAY ? sizeof(pin_array *)
-                 : value.type == PIN_STRUCT ? type_catalog_find(value.type_name)->size
+                 : value.type == PIN_STRUCT ? pin_value_type(&value)->size
                                             : behavior_scalar_size(value.type);
     if (binding->offset > component->element_size ||
         width > component->element_size - binding->offset) {
@@ -310,7 +311,7 @@ static size_t binding_width(const execution_module_binding *b)
 {
     return b->target_type.container >= PIN_CONTAINER_ARRAY ? sizeof(pin_array *)
          : b->target_type.type == PIN_STRUCT
-             ? type_catalog_find(b->target_type.type_name)->size
+             ? pin_value_type(&b->target_type)->size
              : behavior_scalar_size(b->target_type.type);
 }
 static bool work_depends(binding_work reader, binding_work writer)

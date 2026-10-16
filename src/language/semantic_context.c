@@ -500,41 +500,82 @@ static bool starts_empty(script_type type)
 }
 /* A compile-time value cannot read invocation or mutable storage. Calls are
  * excluded: being pure does not by itself promise compile-time evaluation. */
-static bool compile_time_value(const analyzer *a, int index, int depth)
+static bool compile_time_value(const analyzer *a, int index, int depth, int *steps, bool scalar)
 {
     if (index < 0 || depth >= SCRIPT_MAX_DEPTH) {
+        return false;
+    }
+    /* A proof made with less remaining depth also holds at a shallower visit.
+     * This retains the depth rule without expanding shared constant DAGs. */
+    constant_proof *proof = &a->constant_proofs[index];
+    if (proof->generation == a->constant_generation && proof->depth >= depth) {
+        return true;
+    }
+    if (steps && --*steps < 0) {
         return false;
     }
     const script_expression *value = &a->out->expressions[index];
     if (value->effects) {
         return false;
     }
+    if (scalar &&
+        (value->type.container != PIN_CONTAINER_SINGLE ||
+         (value->type.flags & ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL)) ||
+         value->type.storage < PIN_BOOL || value->type.storage > PIN_STR ||
+         (value->kind != SCRIPT_EXPR_CONSTANT &&
+          value->kind != SCRIPT_EXPR_SYMBOL && value->kind != SCRIPT_EXPR_UNARY &&
+          value->kind != SCRIPT_EXPR_BINARY && value->kind != SCRIPT_EXPR_CAST))) {
+        return false;
+    }
+    bool valid = false;
     switch (value->kind) {
         case SCRIPT_EXPR_CONSTANT:
-        case SCRIPT_EXPR_NIL: return true;
+        case SCRIPT_EXPR_NIL: valid = true; break;
         case SCRIPT_EXPR_SYMBOL:
-            return value->symbol >= 0 &&
-                   a->out->symbols[value->symbol].kind == SCRIPT_CONSTANT &&
-                   compile_time_value(a, a->out->symbols[value->symbol].initializer, depth + 1);
+            valid = value->symbol >= 0 &&
+                    a->out->symbols[value->symbol].kind == SCRIPT_CONSTANT &&
+                    compile_time_value(a, a->out->symbols[value->symbol].initializer, depth + 1, steps, scalar);
+            break;
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_CAST:
         case SCRIPT_EXPR_MEMBER:
-            return compile_time_value(a, value->left, depth + 1);
+            valid = compile_time_value(a, value->left, depth + 1, steps, scalar);
+            break;
         case SCRIPT_EXPR_BINARY:
         case SCRIPT_EXPR_INDEX:
-            return compile_time_value(a, value->left, depth + 1) &&
-                   compile_time_value(a, value->right, depth + 1);
+            valid = compile_time_value(a, value->left, depth + 1, steps, scalar) &&
+                    compile_time_value(a, value->right, depth + 1, steps, scalar);
+            break;
         case SCRIPT_EXPR_ARRAY:
         case SCRIPT_EXPR_STRUCT:
         case SCRIPT_EXPR_UNION:
+            valid = true;
             for (int i = 0; i < acount(value->arguments); i++) {
-                if (!compile_time_value(a, value->arguments[i].value, depth + 1)) {
-                    return false;
+                if (!compile_time_value(a, value->arguments[i].value, depth + 1, steps, scalar)) {
+                    valid = false;
+                    break;
                 }
             }
-            return true;
-        default: return false;
+            break;
+        default: break;
     }
+    if (valid) {
+        *proof = (constant_proof){ a->constant_generation, depth };
+    }
+    return valid;
+}
+bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool scalar)
+{
+    while (acount(a->constant_proofs) < acount(a->out->expressions)) {
+        apush(a->constant_proofs, ((constant_proof){ 0 }));
+    }
+    if (!++a->constant_generation) {
+        for (int i = 0; i < acount(a->constant_proofs); i++) {
+            a->constant_proofs[i].generation = 0;
+        }
+        a->constant_generation = 1;
+    }
+    return compile_time_value(a, index, 0, steps, scalar);
 }
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {
@@ -614,7 +655,8 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
                                       .flags = SCRIPT_TYPE_RESULTS };
     }
     if (record->kind == SCRIPT_CONSTANT &&
-        (!compile_time_value(a, value, 0) || record->type.storage == PIN_FLOW ||
+        (!script_analyzer_compile_time_value(a, value, NULL, false) ||
+         record->type.storage == PIN_FLOW ||
          (record->type.flags &
           (SCRIPT_TYPE_TASK | SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)))) {
         script_analyzer_diagnostic(a, node, "Constant initializer requires compile-time values and operators");

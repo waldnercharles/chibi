@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
+    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures including two extra packed-scalar generated-C calls for direct borrow and inspected snapshot fallback, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers; eight additional seventeen-instruction integer-width functions each returning ADD/SUB/MUL/DIV/MOD/LT/GT results, six fixed input pairs per type (wraparound, high bits, zero divisor, signed-min/-1), 96 additional VM/generated-C calls; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -41,6 +41,8 @@ NATIVE = {
     ('--studio-graph-pointer',): 'First supervised measurement: independently reviewed Counter node pointer selection, wire keys, Find result keys/click/focus, nineteen hidden1920x1080frames, disposable3file fixture, shared60s',
     ('--studio-asset-pointer',): 'First supervised measurement: independently reviewed four tiny prototypes, SDL filtered list/grid selection and modifiers, twenty hidden1920x1080frames, disposable3file fixture, shared60s',
     ('--studio-debugger-source-history',): 'First supervised measurement: independently reviewed one in-memory Counter actor, SDL breakpoint/play/invalid text/undo/redo/step/stop, retained cursor and runtime value assertions, forty-seven hidden1920x1080frames, at most ten source-level steps, shared60s',
+    # Also covers fixed source prototype/relationship editing, four temporary
+    # prototype dependency files and one relationship/consumer pair; no added frames.
     ('--studio-source-edit',): 'Independently reviewed installed Studio source edit/undo/redo on one tiny Counter draft with leading authored comment: fused calls and editable folded Double(3) Value without Target, actual Value pin menu open-function/back and checked inline transaction, two state Get/Set palette creations with exact catalog freshness after inline/undo, Members declaration/Initial rendering and rename, actual Members Rml Variables+ click and queued activation twice with64dp overflowing list, eight finite first-frame panel compositions including post-layout reveal retries and selected-row containment, filtered Add auto-selection/clear, graph/frame and Members-list reveal queued for bool/entity plus Properties rename and Entity type picker callback with no synthetic Initial, selected Entity actual Add/filter clear/selection and undo, Properties Member retention after cached-node invalidation and explicit different-node switch, undo-all current presentation contains only original integer Count, two ed_connect flow gestures (reorder and move into branch); each edit undone to exact draft before baseline literal edit/undo/redo; one crossframe FrameProbe declaration append/reveal/deselect/undo in Both checks visible card then its removal and graph texture revision change within same four frames; disposable three-file fixture and isolated prefs, four hidden1920x1080frames, shared60s',
     ('--examples-projects',): 'Reviewed external CHIBI_EXAMPLES_ROOT/projects/{atrium,tetris} required: one Atrium validation, two CoW Tetris fixtures, one Tetris validation, two170-frame and one22-frame CPU runtime snapshots, at most three reported entities/one behavior; no GPU, shared60s; docs/testing.md',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
@@ -78,7 +80,7 @@ NATIVE = {
     ('--source-query-rows',): 'First supervised measurement; reviewed finite tuple/filter lifecycle cases on VM/SLJIT, at most 33 entities and six supplied-time steps per fixture, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
-    ('--source-edit',): 'Independently reviewed fifteen fixed source-edit cases, tiny literal inputs and checked transactions including extraction/inline/signature/binding/capture/layout, fused-call delete/move/expression/insert/extraction, named-action disable/enable edits and Value input replace/connect preserving its assignment destination, source Get/Set creation with qualified quoted state identity/defaults/typed producers and lexical shadow checks, declaration append after leading line/block comments and component compound Get/Set metadata remap with distinct positions/comments/watched pins, checked state retype preserving comments/compatible initializers and rejecting ill-typed uses, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
+    ('--source-edit',): 'Independently reviewed seventeen fixed source-edit cases, tiny literal inputs and checked transactions including extraction/inline/signature/binding/capture/layout, fused-call delete/move/expression/insert/extraction, named-action disable/enable edits and Value input replace/connect preserving its assignment destination, source Get/Set creation with qualified quoted state identity/defaults/typed producers and lexical shadow checks, declaration append after leading line/block comments and component compound Get/Set metadata remap with distinct positions/comments/watched pins, checked state retype preserving comments/compatible initializers and rejecting ill-typed uses, compact inferred retain retyping across three tiny root/callable/system sources, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--scheduler-benchmark',): 'Reviewed tiny C scheduler workloads: 12 systems x128 passes x5 trials, stable refresh and run-only, owned-descriptor/dependency/failure checks; no threads/files/frames/GPU; shared60s; docs/testing.md',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
@@ -123,6 +125,11 @@ for lab in EXAMPLE_LABS:
         'verified installed package pins, one compile<=20s, source removal/relocation, '
         'four hidden320x180frames/readback<=25s; sampled box also missing-input compile<=10s and two CLI rejections<=5s each; C PNG landmarks, shared60s')
 TOOLS = {
+    # Standalone only: fixed thirteen current-version fixture projects, CPU
+    # source formatting checks, thirteen sequential children <=10s each under
+    # one shared60s deadline; no migration, writes to assets, frames or GPU.
+    'fixture-format': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fixture-format',
+                       str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     'player-clock': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-clock'],
     'player-url': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-url'],
     'audio-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-browser'],
@@ -155,7 +162,8 @@ TOOLS = {
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-edit'],
     # Catalog coverage of the all-features fixture, and four frames of each of its scenes.
     'feature-coverage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
-                         '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage')],
+                         '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage'),
+                         str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     # Independently reviewed first measurement: one CPU Rendering3D snapshot,
     # four simulation frames, ten live entities,
     # one controller child limited to ten seconds inside the shared deadline.
@@ -433,12 +441,14 @@ TOOLS = {
     'script-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--script-benchmark'],
     'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
-    # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps.
+    # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps,
+    # plus fixed Map ownership, iteration and bounded generic specialization cases.
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     # Bounded in-process SDK generation reuse and invalidation, with four tiny source overlays.
     'language-incremental': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--incremental'],
-    # Fixed module-boundary specimen: seven C cases, at most 22 catalogs, 60 sources,
-    # 48 lowering requests/42 finalization attempts, 20 programs/56 dispatches; no GPU.
+    # Fixed module-boundary specimens, including imported generic ownership/invalidation:
+    # at most five overlays and two libraries per preparation, no child processes/GPU.
+    # The temporary directory and overlay paths also work in browser MEMFS.
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     # Bounded scalar proof tests: runtime IR reductions and VM/compiled/inspection parity.
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
@@ -464,7 +474,9 @@ TOOLS = {
     'language-record-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-semantic'],
     # Five fixed owned prepared-record cases; independent admission, standalone only.
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
-    # Five fixed row-array construction/alias/collection cases, outside aggregate groups.
+    # Fixed row-array construction/alias/collection cases plus packed scalar/record snapshots,
+    # 10 numeric widths x 64 elements x 16 trials x 2 representations x 2 backends,
+    # fixed integer edges/constexpr/F32 overload cases; no files/processes/frames/GPU.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
     # Four fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
@@ -482,7 +494,8 @@ TOOLS = {
     # Reviewed finite C syntax cases and a corpus capped at 256 files/8 MiB.
     'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
-    # Reviewed fixed C driver cases in headless Chrome: no GPU, five selectors,
+    # Reviewed fixed C driver cases in headless Chrome: no GPU, eight selectors,
+    # including bounded packed numerics, MEMFS module overlays, Maps/generics/iteration;
     # 55s internal deadline, bounded HTTP/output, shared production 60s deadline.
     'wasm-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--wasm-browser'],
     'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--web-storage'],

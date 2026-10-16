@@ -1,4 +1,4 @@
-behavior "ProjectileLifecycle" {
+ProjectileLifecycle :: behavior {
     on Tick {
         self.Projectile.Age += cast<double>(delta)
         if cast<double>(self.Projectile.Age) >= cast<double>(self.Projectile.Lifetime) {

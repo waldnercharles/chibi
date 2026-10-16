@@ -10,6 +10,8 @@
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/scalar.h"
 
 #include <assert.h>
 #include <dlfcn.h>
@@ -17,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 enum
 {
@@ -29,7 +32,9 @@ enum
     READ_FIXTURES = 3,
     WRITE_FIXTURE = READ_FIXTURE + READ_FIXTURES,
     WRITE_FIXTURES = 3,
-    FIXTURES = WRITE_FIXTURE + WRITE_FIXTURES
+    INTEGER_FIXTURE = WRITE_FIXTURE + WRITE_FIXTURES,
+    INTEGER_FIXTURES = 8,
+    FIXTURES = INTEGER_FIXTURE + INTEGER_FIXTURES
 };
 static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
 static behavior_function *functions[FIXTURES];
@@ -152,6 +157,133 @@ static bool fixture(int index)
     behavior_function_write_c(functions[index], source, name);
     return true;
 }
+static const pin_type integer_types[INTEGER_FIXTURES] = {
+    PIN_I8, PIN_U8, PIN_I16, PIN_U16, PIN_I32, PIN_U32, PIN_I64, PIN_U64
+};
+static bool integer_fixture(int index)
+{
+    pin_type type = integer_types[index];
+    pin_value inputs[] = { { .type = type }, { .type = type } };
+    pin_value outputs[7];
+    for (int i = 0; i < 7; i++) {
+        outputs[i] = (pin_value){ .type = i < 5 ? type : PIN_BOOL };
+    }
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, inputs, 2, outputs, 7, NULL, 0);
+    int arguments[2], results[7];
+    for (int i = 0; i < 2; i++) {
+        arguments[i] = behavior_function_builder_slot(builder, type);
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_ARGUMENT,
+                                             .type = type,
+                                             .output = arguments[i],
+                                             .left = i,
+                                             .value = inputs[i] }
+        );
+    }
+    const behavior_function_op operations[] = { BF_ADD, BF_SUB, BF_MUL, BF_DIV,
+                                                BF_MOD, BF_LT,  BF_GT };
+    for (int i = 0; i < 7; i++) {
+        results[i] = behavior_function_builder_slot(builder, outputs[i].type);
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = operations[i],
+                                             .type = type,
+                                             .output = results[i],
+                                             .left = arguments[0],
+                                             .right = arguments[1],
+                                             .target = -1 }
+        );
+    }
+    for (int i = 0; i < 7; i++) {
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_RESULT,
+                                             .type = outputs[i].type,
+                                             .left = results[i],
+                                             .target = i }
+        );
+    }
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256], name[40];
+    functions[INTEGER_FIXTURE + index] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[INTEGER_FIXTURE + index]) {
+        fprintf(stderr, "C integer fixture: %s\n", error);
+    }
+    REQUIRE(functions[INTEGER_FIXTURE + index]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    snprintf(name, sizeof name, "export_integer_%d", index);
+    behavior_function_write_c(functions[INTEGER_FIXTURE + index], source, name);
+    return true;
+}
+static bool exported_integer_width_edges()
+{
+    /* Eight functions, six input pairs, two engines: 96 bounded calls. */
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        pin_type type = integer_types[i];
+        unsigned bits = (unsigned)behavior_scalar_size(type) * 8;
+        uint64_t mask = UINT64_MAX >> (64 - bits), high = UINT64_C(1) << (bits - 1);
+        bool sign = behavior_scalar_signed(type);
+        const uint64_t samples[][2] = { { mask, 1 },     { 0, 1 },
+                                        { high + 1, 3 }, { mask, 2 },
+                                        { high, mask },  { high, 0 } };
+        char name[40];
+        snprintf(name, sizeof name, "export_integer_%d", i);
+        typedef int (*entry)(behavior_function_context *);
+        entry generated = (entry)dlsym(library, name);
+        REQUIRE(generated);
+        for (int sample = 0; sample < 6; sample++) {
+            pin_value arguments[] = {
+                behavior_scalar_from_bits(type, samples[sample][0]),
+                behavior_scalar_from_bits(type, samples[sample][1])
+            };
+            uint64_t x = behavior_scalar_bits(arguments[0]),
+                     y = behavior_scalar_bits(arguments[1]);
+            bool fails = !y || (sign && samples[sample][0] == high &&
+                                samples[sample][1] == mask);
+            uint64_t expected[7] = { x + y, x - y, x * y };
+            if (!fails) {
+                expected[3] = sign ? (uint64_t)((int64_t)x / (int64_t)y) : x / y;
+                expected[4] = sign ? (uint64_t)((int64_t)x % (int64_t)y) : x % y;
+                expected[5] = sign ? (int64_t)x < (int64_t)y : x < y;
+                expected[6] = sign ? (int64_t)x > (int64_t)y : x > y;
+            }
+            for (int backend = 0; backend < 2; backend++) {
+                pin_value results[7];
+                for (int r = 0; r < 7; r++) {
+                    results[r] = (pin_value){ .type = r < 5 ? type : PIN_BOOL };
+                }
+                behavior_function_context context = { .arguments = arguments,
+                                                      .argument_count = 2,
+                                                      .results = results,
+                                                      .budget = 64 };
+                REQUIRE(
+                    behavior_function_bind(functions[INTEGER_FIXTURE + i], &context, NULL, 0)
+                );
+                int status = backend
+                               ? generated(&context)
+                               : behavior_function_run(functions[INTEGER_FIXTURE + i], &context, false);
+                REQUIRE(status == (fails ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+                if (fails) {
+                    REQUIRE(context.failure == BEHAVIOR_FUNCTION_DATA);
+                }
+                for (int r = 0; r < 7; r++) {
+                    REQUIRE(
+                        r < 5 ? behavior_scalar_bits(results[r]) ==
+                                    behavior_scalar_bits(
+                                        behavior_scalar_from_bits(type, fails ? 0 : expected[r])
+                                    )
+                              : results[r].b == (!fails && expected[r])
+                    );
+                }
+                behavior_function_release_host(&context);
+            }
+        }
+    }
+    return true;
+}
 static int inspect(void *user, const behavior_function_point *point)
 {
     (void)user;
@@ -164,8 +296,8 @@ static bool pause_fixture()
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
     syntax = script_parse(
-        "library Scalar {\n"
-        "Eval :: pure (amount: number) -> number {\n"
+        "Scalar :: library {\n"
+        "Eval :: (amount: number) -> number {\n"
         "value: number | Cancelled = amount;\n"
         "if value is number found { return found; }\n"
         "return 0; } }"
@@ -387,7 +519,7 @@ static bool borrows_exported_plain_arrays()
         }
     }
     REQUIRE(guarded == 1 && result >= 0);
-    for (int sample = 0; sample < 5; sample++) {
+    for (int sample = 0; sample < 6; sample++) {
         for (int inspection = 0; inspection < 2; inspection++) {
             release_pause();
             pin_value items[] = { { .type = PIN_F64, .d = 1 },
@@ -397,6 +529,7 @@ static bool borrows_exported_plain_arrays()
                                  .count = 3,
                                  .capacity = 3,
                                  .items = items };
+            double packed[] = { 1, 2, 3 };
             if (sample == 1) {
                 values.element_type = PIN_STR;
                 for (int item = 0; item < 3; item++) {
@@ -415,6 +548,10 @@ static bool borrows_exported_plain_arrays()
                 values.items = (pin_value *)pause_activation.values;
                 values.items[0] = items[0];
                 values.count = values.capacity = 1;
+            } else if (sample == 5) {
+                values.items = NULL;
+                values.data = packed;
+                values.stride = sizeof *packed;
             }
             pin_value input = { .type = PIN_F64,
                                 .container = PIN_CONTAINER_ARRAY,
@@ -435,21 +572,24 @@ static bool borrows_exported_plain_arrays()
             REQUIRE(generated(&pause_context) == FLOW_OK);
             REQUIRE(output.d == values.count);
             const pin_array *snapshot = pause_context.data->values[result].ptr;
-            if (!sample && !inspection) {
+            if ((!sample || sample == 5) && !inspection) {
                 REQUIRE(snapshot == &values);
                 REQUIRE(!arena_storage_bytes(&pause_storage));
             } else {
                 REQUIRE(
                     snapshot && snapshot != &values && snapshot->count == values.count
                 );
-                REQUIRE(snapshot->items != values.items);
+                REQUIRE(
+                    values.stride ? snapshot->data != values.data
+                                  : snapshot->items != values.items
+                );
                 REQUIRE(arena_storage_bytes(&pause_storage) > 0);
                 if (sample == 1 || sample == 2) {
-                    REQUIRE(snapshot->items[1].str != items[1].str);
-                    REQUIRE(!strcmp(snapshot->items[1].str, "managed"));
+                    REQUIRE(pin_array_get(snapshot, 1).str != items[1].str);
+                    REQUIRE(!strcmp(pin_array_get(snapshot, 1).str, "managed"));
                 } else {
-                    REQUIRE(snapshot->items[0].type == PIN_F64);
-                    REQUIRE(snapshot->items[0].d == 1);
+                    REQUIRE(pin_array_get(snapshot, 0).type == PIN_F64);
+                    REQUIRE(pin_array_get(snapshot, 0).d == 1);
                 }
             }
         }
@@ -481,7 +621,7 @@ static bool exported_call_snapshots_keep_the_standalone_abi()
     const pin_array *held = pause_context.data->values[f->calls[0].first].ptr;
     REQUIRE(held && held != &array && held->items != &item);
     item.d = 99;
-    REQUIRE(held->items[0].d == 7);
+    REQUIRE(pin_array_get(held, 0).d == 7);
     return true;
 }
 
@@ -1216,6 +1356,9 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     for (int field = 0; field < WRITE_FIXTURES; field++) {
         REQUIRE(write_fixture(field));
     }
+    for (int i = 0; i < INTEGER_FIXTURES; i++) {
+        REQUIRE(integer_fixture(i));
+    }
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
     int closed = fclose(source);
@@ -1300,6 +1443,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     REQUIRE(exported_query_variables_preserve_tuple_and_failure_contract());
     REQUIRE(reads_exported_current_world_scalars());
     REQUIRE(writes_exported_current_world_scalars());
+    REQUIRE(exported_integer_width_edges());
     return true;
 }
 void test_tool_c_export()

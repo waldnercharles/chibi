@@ -73,7 +73,11 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: expected = 9; break;
         case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+        case EXECUTION_INTRINSIC_STRING_BYTES:
         case EXECUTION_INTRINSIC_SNAPSHOT: expected = 1; break;
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+        case EXECUTION_INTRINSIC_STRING_NEXT: expected = 2; break;
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
         case EXECUTION_INTRINSIC_REFERENCE_WRITE: expected = 2; break;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE: expected = 3; break;
@@ -239,6 +243,19 @@ static origin slot_origin(const behavior_function *f, int pc, int slot, int dept
             case BF_ARRAY:
                 return (origin){ .readable = i->target == BF_ARGUMENT ||
                                              i->target == BF_CONSTANT };
+            case BF_SELECT: {
+                origin yes = slot_origin(f, j, i->right, depth + 1, steps);
+                origin no = slot_origin(f, j, i->target, depth + 1, steps);
+                /* Packed and boxed arrays select between two payloads. Both
+                 * alternatives must independently prove read-only access. */
+                if (yes.readable && no.readable && !yes.context && !no.context &&
+                    !yes.private && !no.private && !yes.bank && !no.bank &&
+                    behavior_function_kind(f, BEHAVIOR_BANK_SLOT, i->output) ==
+                        BEHAVIOR_ADDRESS) {
+                    return (origin){ .readable = true };
+                }
+                return none;
+            }
             case BF_LOCAL:
                 for (int at = j - 1; at >= 0; at--) {
                     const behavior_function_instruction *save = &f->instructions[at];
@@ -401,6 +418,10 @@ static bool predicate_host(const behavior_function *f, int pc)
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
         }
         case EXECUTION_INTRINSIC_SNAPSHOT:
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+        case EXECUTION_INTRINSIC_STRING_BYTES:
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+        case EXECUTION_INTRINSIC_STRING_NEXT:
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
         case EXECUTION_INTRINSIC_REFERENCE_READ:
@@ -1358,6 +1379,12 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         return;
     }
     switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+            cost_add(c, f, pc, id, allocate_copy, 0, "String iteration snapshots its cursor or one Unicode scalar");
+            return;
+        case EXECUTION_INTRINSIC_STRING_BYTES:
+        case EXECUTION_INTRINSIC_STRING_NEXT: return;
         case EXECUTION_INTRINSIC_UNION_MAKE: {
             int count = call->result_first - call->first;
             if (count > 1) {

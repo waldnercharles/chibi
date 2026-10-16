@@ -49,8 +49,9 @@ static void trace_array(const void *data, const void *, arena_marker mark, void 
     mark(user, array->type_name);
     mark(user, array->record);
     mark(user, array->items);
+    mark(user, array->data);
     mark(user, array->buckets);
-    for (int i = 0; i < array->count; i++) {
+    for (int i = 0; !array->stride && i < array->count; i++) {
         pin_value_trace(&array->items[i], mark, user);
     }
 }

@@ -810,71 +810,13 @@ int execution_machine_step(execution_machine *m, int pc)
                 out->b = i->op == BF_EQ ? equal : !equal;
                 break;
             }
-            /* Address arithmetic uses an unsigned word on both native
-             * and wasm32. It must not pass through floating point. */
-            if (a.type == PIN_U32 || a.type == PIN_U64) {
-                uint64_t x = behavior_scalar_bits(a),
-                         y = behavior_scalar_bits(b), value = 0;
-                switch (i->op) {
-                    case BF_ADD: value = x + y; break;
-                    case BF_MUL: value = x * y; break;
-                    case BF_EQ: out->b = x == y; break;
-                    case BF_NE: out->b = x != y; break;
-                    default: assert(false);
-                }
-                if (out->type == PIN_U32) {
-                    out->u = (uint32_t)value;
-                }
-                if (out->type == PIN_U64) {
-                    out->u64 = value;
-                }
-                break;
-            }
-            if (a.type == PIN_I32 || a.type == PIN_I64) {
-                int64_t x = a.type == PIN_I32 ? a.i : a.i64;
-                int64_t y = a.type == PIN_I32 ? b.i : b.i64;
-                int64_t minimum = a.type == PIN_I32 ? INT32_MIN : INT64_MIN;
-                if ((i->op == BF_DIV || i->op == BF_MOD) &&
-                    (!y || (x == minimum && y == -1))) {
+            if (a.type >= PIN_I8 && a.type <= PIN_U64) {
+                pin_value *other = (i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0
+                                     ? &slots[i->target]
+                                     : NULL;
+                if (!behavior_scalar_integer_op(i->op, a, b, out, other)) {
                     result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
                     goto done;
-                }
-                if ((i->op == BF_DIV || i->op == BF_MOD) && i->target >= 0) {
-                    pin_value *other = &slots[i->target];
-                    other->type = a.type;
-                    int64_t value = i->op == BF_DIV ? x % y : x / y;
-                    if (a.type == PIN_I32) {
-                        other->i = (int32_t)value;
-                    } else {
-                        other->i64 = value;
-                    }
-                }
-                uint64_t value = 0;
-                switch (i->op) {
-                    case BF_ADD: value = (uint64_t)x + (uint64_t)y; break;
-                    case BF_SUB: value = (uint64_t)x - (uint64_t)y; break;
-                    case BF_MUL: value = (uint64_t)x * (uint64_t)y; break;
-                    case BF_DIV: value = (uint64_t)(x / y); break;
-                    case BF_MOD: value = (uint64_t)(x % y); break;
-                    case BF_NEG: value = UINT64_C(0) - (uint64_t)x; break;
-                    case BF_ABS:
-                        value = x < 0 ? UINT64_C(0) - (uint64_t)x : (uint64_t)x;
-                        break;
-                    case BF_MIN: value = (uint64_t)(x < y ? x : y); break;
-                    case BF_MAX: value = (uint64_t)(x > y ? x : y); break;
-                    case BF_LT: out->b = x < y; break;
-                    case BF_LE: out->b = x <= y; break;
-                    case BF_GT: out->b = x > y; break;
-                    case BF_GE: out->b = x >= y; break;
-                    case BF_EQ: out->b = x == y; break;
-                    case BF_NE: out->b = x != y; break;
-                    default: assert(false);
-                }
-                if (out->type == PIN_I32) {
-                    out->i = (int32_t)(uint32_t)value;
-                }
-                if (out->type == PIN_I64) {
-                    out->i64 = (int64_t)value;
                 }
                 break;
             }

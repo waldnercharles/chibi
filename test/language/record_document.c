@@ -123,8 +123,9 @@ TEST_CASE(record_document_roundtrip)
             items->type_name == items->record->type.name
         );
         for (int i = 0; i < items->count; i++) {
-            REQUIRE(items->items[i].record == items->record);
-            REQUIRE(check_row(&items->items[i], i));
+            REQUIRE(pin_array_get(items, i).record == items->record);
+            pin_value item = pin_array_get(items, i);
+            REQUIRE(check_row(&item, i));
         }
         av_value *output = pin_value_to_document(doc, &arrays[pass]);
         REQUIRE(output && av_is_arr(output) && av_arr_size(output) == (size_t)counts[pass]);
@@ -139,7 +140,8 @@ TEST_CASE(record_document_roundtrip)
         const pin_array *items = arrays[pass].ptr;
         REQUIRE(pin_record_valid(items->record));
         for (int i = 0; i < items->count; i++) {
-            REQUIRE(check_row(&items->items[i], i));
+            pin_value item = pin_array_get(items, i);
+            REQUIRE(check_row(&item, i));
         }
     }
     return true;

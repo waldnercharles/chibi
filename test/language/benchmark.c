@@ -131,8 +131,8 @@ TEST_CASE(scalar_authored_call_benchmark)
             int size = snprintf(
                 source,
                 sizeof source,
-                "behavior Bench { total: double = 0; "
-                "Step :: fn(x: double) -> (value: double) { return(x * 3 + "
+                "Bench :: behavior { total: double = 0; "
+                "Step :: (x: double) -> (value: double) { return(x * 3 + "
                 "1); } "
                 "on Run() { sum := 0.0; i := 0.0; "
                 "while i < %d { sum += %s; i += 1; } total = sum; } }",

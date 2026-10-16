@@ -4,7 +4,7 @@
 #include "runtime/native_definitions.h"
 
 #define CORE_BRANCH_NAME "Branch"
-#define CORE_BRANCH_SOURCE "branch"
+#define CORE_BRANCH_SOURCE "branch_if"
 #define CORE_SEQUENCE_NAME "Sequence"
 #define CORE_SEQUENCE_SOURCE "sequence"
 #define CORE_RANGE_NAME "ForLoop"

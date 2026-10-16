@@ -1,9 +1,12 @@
 #include "authoring/source_catalog_snapshot.h"
+#include "authoring/source_literal.h"
 #include "language/semantic.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Seven finite semantic-only cases. No lowering, finalized function, runtime,
@@ -55,7 +58,7 @@ static bool diagnostic(const char *part)
 TEST_CASE(record_semantic_row)
 {
     parse(
-        "library Rows { OutlinerRow :: struct { key: string; label: string; "
+        "Rows :: library { OutlinerRow :: struct { key: string; label: string; "
         "icon: string = \"\"; prototype: string = \"\"; drop: string = \"\"; "
         "depth: int = 1; behaviors: int = 0; active: bool = false; marked: "
         "bool = false; hidden: bool = false; locked: bool = false; renaming: "
@@ -95,8 +98,8 @@ TEST_CASE(record_semantic_row)
 TEST_CASE(record_semantic_operators)
 {
     parse(
-        "library Defaults { Row :: struct { depth: int = Later + 1; wrap: int "
-        "= 2147483647 + 1; shift: int = -1 >> 33; flag: bool = true or "
+        "Defaults :: library { Row :: struct { depth: int = Later + 1; wrap: "
+        "int = 2147483647 + 1; shift: int = -1 >> 33; flag: bool = true or "
         "(cast<int>(1) / cast<int>(0) > 0); same: bool = \"x\" == \"x\"; "
         "label: string = Text; } Later :: 3; Text :: \"saved\"; Make :: () -> "
         "Row { return {}; } }",
@@ -129,7 +132,8 @@ TEST_CASE(record_semantic_required)
         int length = snprintf(
             source,
             sizeof source,
-            "library Rows { Row :: struct { key: string; } Make :: () -> Row { "
+            "Rows :: library { Row :: struct { key: string; } Make :: () -> "
+            "Row { "
             "return %s; } }",
             values[i]
         );
@@ -138,20 +142,20 @@ TEST_CASE(record_semantic_required)
         REQUIRE(!syntax->diagnostic_count);
         REQUIRE(!analysis->valid && diagnostic(messages[i]));
     }
-    parse("library Rows { Row :: struct { key: string; } value: Row; }", &empty);
+    parse("Rows :: library { Row :: struct { key: string; } value: Row; }", &empty);
     REQUIRE(!syntax->diagnostic_count && !analysis->valid && diagnostic("requires a default"));
     return true;
 }
 TEST_CASE(record_semantic_default_rejections)
 {
     static const char *const bodies[] = {
-        "Row :: struct { value: int = Call(); } Call :: pure () -> int { "
+        "Row :: struct { value: int = Call(); } Call :: () -> int { "
         "return 1; }",
         "Row :: struct { value: int = mutable; } mutable: int = 1;",
         "Row :: struct { value: int = 1 / 0; }",
         "Row :: struct { value: int = -2147483648 / -1; }",
         "Row :: struct { value: int = -2147483648 % -1; }",
-        "Row :: struct { value: bool = true or Call(); } Call :: pure () -> "
+        "Row :: struct { value: bool = true or Call(); } Call :: () -> "
         "bool { return true; }",
         "Row :: struct { value: int = Later; } Later :: Earlier; Earlier :: "
         "Later;",
@@ -171,7 +175,7 @@ TEST_CASE(record_semantic_default_rejections)
     _Static_assert(sizeof messages / sizeof *messages == 9, "matching diagnostics");
     char source[256];
     for (int i = 0; i < 9; i++) {
-        int length = snprintf(source, sizeof source, "library Rows { %s }", bodies[i]);
+        int length = snprintf(source, sizeof source, "Rows :: library { %s }", bodies[i]);
         REQUIRE(length > 0 && (size_t)length < sizeof source);
         parse(source, &empty);
         REQUIRE(!syntax->diagnostic_count);
@@ -182,12 +186,12 @@ TEST_CASE(record_semantic_default_rejections)
 TEST_CASE(record_semantic_scope_and_compatibility)
 {
     static const char *const sources[] = {
-        "library Existing { Copy :: (row: struct<\"SceneObjectRow\">) -> "
-        "struct<\"SceneObjectRow\"> { return row; } }",
-        "library Existing { struct :: 1; Value :: () -> int { return struct; } "
-        "}",
-        "behavior Wrong { Row :: struct { key: string; } }",
-        "library Wrong { Make :: () { Row :: struct { key: string; } } }"
+        "Existing :: library { Copy :: (row: struct<SceneObjectRow>) -> "
+        "struct<SceneObjectRow> { return row; } }",
+        "Existing :: library { struct :: 1; Value :: () -> int { return "
+        "struct; } }",
+        "Wrong :: behavior { Row :: struct { key: string; } }",
+        "Wrong :: library { Make :: () { Row :: struct { key: string; } } }"
     };
     for (int i = 0; i < 4; i++) {
         clear_analysis();
@@ -198,7 +202,7 @@ TEST_CASE(record_semantic_scope_and_compatibility)
 }
 TEST_CASE(record_semantic_catalog_lifetime)
 {
-    parse("library Rows { Row :: struct { label: string = \"owned-first\"; } }", &empty);
+    parse("Rows :: library { Row :: struct { label: string = \"owned-first\"; } }", &empty);
     REQUIRE(analysis->valid);
     script_catalog source = { .types = analysis->types,
                               .type_count = analysis->type_count },
@@ -206,7 +210,7 @@ TEST_CASE(record_semantic_catalog_lifetime)
     REQUIRE(source_catalog_snapshot(&first, &source, &old));
     REQUIRE(source_catalog_default_key(&old, &first_key));
     uint64_t id = old.types[0].id, layout = old.types[0].layout;
-    parse("library Rows { Row :: struct { label: string = \"owned-second\"; } }", &empty);
+    parse("Rows :: library { Row :: struct { label: string = \"owned-second\"; } }", &empty);
     REQUIRE(analysis->valid);
     source = (script_catalog){ .types = analysis->types,
                                .type_count = analysis->type_count };
@@ -218,7 +222,7 @@ TEST_CASE(record_semantic_catalog_lifetime)
         acount(first_key) != acount(second_key) ||
         memcmp(first_key, second_key, (size_t)acount(first_key))
     );
-    parse("library Client { A :: () -> Rows.Row { return {}; } B :: () -> Rows.Row { return {}; } }", &old);
+    parse("Client :: library { A :: () -> Rows.Row { return {}; } B :: () -> Rows.Row { return {}; } }", &old);
     REQUIRE(!syntax->diagnostic_count && analysis->valid);
     arena_free(&first);
     arena_free(&second);
@@ -233,10 +237,203 @@ TEST_CASE(record_semantic_catalog_lifetime)
     REQUIRE(strings == 2);
     return true;
 }
+TEST_CASE(record_semantic_collection_catalog_identity)
+{
+    script_type array = { .storage = PIN_I32,
+                          .container = PIN_CONTAINER_ARRAY,
+                          .collection = 901 };
+    script_type map = { .storage = PIN_UNION,
+                        .container = PIN_CONTAINER_MAP,
+                        .collection = 902 };
+    script_catalog_type types[] = {
+        { .id = 901,
+          .name = "NestedArray",
+          .type = array,
+          .container = PIN_CONTAINER_ARRAY,
+          .element_type = { .storage = PIN_I32 } },
+        { .id = 902,
+          .name = "NestedMap",
+          .type = map,
+          .container = PIN_CONTAINER_MAP,
+          .key_type = { .storage = PIN_STR },
+          .element_type = array },
+    };
+    script_catalog_parameter argument = { .name = "value", .type = map };
+    script_catalog_capability capability = {
+        .id = 903,
+        .name = "Consume",
+        .parameters = &argument,
+        .parameter_count = 1,
+    };
+    script_catalog source = { .types = types,
+                              .type_count = 2,
+                              .capabilities = &capability,
+                              .capability_count = 1 },
+                   saved;
+    REQUIRE(source_catalog_snapshot(&first, &source, &saved));
+    REQUIRE(source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(script_catalog_key_type(&saved, map).storage == PIN_STR);
+    REQUIRE(script_type_equal(script_catalog_element_type(&saved, map), array));
+    uint64_t abi = script_catalog_capability_abi(&saved, &saved.capabilities[0]);
+    types[1].key_type.storage = PIN_I32;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(script_catalog_capability_abi(&source, &capability) != abi);
+    REQUIRE(script_catalog_key_type(&saved, map).storage == PIN_STR);
+    types[1].key_type.storage = PIN_STR;
+    types[0].element_type.storage = PIN_BOOL;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(script_catalog_capability_abi(&source, &capability) != abi);
+    REQUIRE(script_catalog_element_type(&saved, array).storage == PIN_I32);
+    types[0].element_type.storage = PIN_I32;
+    types[0].container = PIN_CONTAINER_SET;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(script_catalog_capability_abi(&source, &capability) != abi);
+    script_type other = map;
+    other.collection++;
+    REQUIRE(!script_type_equal(map, other));
+    return true;
+}
+
+TEST_CASE(record_semantic_reference_literals_keep_symbol_identity)
+{
+    script_catalog_capability prototype = {
+        .id = 1001,
+        .name = "Enemy Drone",
+        .kind = SCRIPT_CAPABILITY_PROTOTYPE,
+    };
+    script_catalog_type component = {
+        .id = 1002,
+        .name = "Health",
+        .source_name = "Health",
+        .key = "health_key",
+        .component = true,
+    };
+    script_catalog_relationship relationship = { .id = 1003, .name = "Target" };
+    script_catalog catalog = {
+        .types = &component,
+        .type_count = 1,
+        .capabilities = &prototype,
+        .capability_count = 1,
+        .relationships = &relationship,
+        .relationship_count = 1,
+    };
+    const script_reference_kind kinds[] = {
+        SCRIPT_REFERENCE_PROTOTYPE,
+        SCRIPT_REFERENCE_COMPONENT,
+        SCRIPT_REFERENCE_RELATIONSHIP,
+    };
+    const pin_value values[] = {
+        { .type = PIN_NAME, .str = "Enemy Drone" },
+        { .type = PIN_NAME, .str = "health_key" },
+        { .type = PIN_U64, .u64 = 1003 },
+    };
+    const char *spellings[] = { "Enemy_Drone", "Health", "Target" };
+    char error[192];
+    for (int i = 0; i < 3; i++) {
+        char *source = authoring_source_literal(
+            &catalog,
+            script_reference_type(kinds[i]),
+            &values[i],
+            error,
+            sizeof error
+        );
+        REQUIRE(source);
+        bool same = !strcmp(source, spellings[i]);
+        free(source);
+        REQUIRE(same);
+    }
+    REQUIRE(!authoring_source_literal(
+        &catalog,
+        script_reference_type(SCRIPT_REFERENCE_COMPONENT),
+        &values[0],
+        error,
+        sizeof error
+    ));
+    REQUIRE(strstr(error, "declared kind"));
+    return true;
+}
+
+TEST_CASE(record_semantic_generic_catalog_snapshot_owns_bindings_and_parameters)
+{
+    char name[] = "Box", owner[] = "Library", parameter_name[] = "value",
+         binder[] = "T";
+    char binding_name[] = "label", label[] = "retained";
+    script_template_parameter parameter = {
+        .name = parameter_name,
+        .binder = binder,
+        .type = { .storage = PIN_I32 },
+        .binds_type = true,
+    };
+    script_catalog_template definition = {
+        .id = 71,
+        .name = name,
+        .owner = owner,
+        .kind = SCRIPT_TEMPLATE_RECORD,
+        .parameters = &parameter,
+        .parameter_count = 1,
+        .start = 4,
+        .end = 20,
+        .generic = true,
+        .source_generation = 41,
+    };
+    pin_value item = { .type = PIN_I32, .i = 7 };
+    pin_array array = { .element_type = PIN_I32, .count = 1, .capacity = 1, .items = &item };
+    script_compile_binding bindings[] = {
+        { .name = binding_name, .value = { .value = { .type = PIN_STR, .str = label } } },
+        { .name = "numbers",
+          .value = { .value = { .type = PIN_I32,
+                                .container = PIN_CONTAINER_ARRAY,
+                                .ptr = &array } } },
+    };
+    script_catalog_specialization specialization = {
+        .id = 72,
+        .template_id = 71,
+        .bindings = bindings,
+        .binding_count = 2,
+        .result = { .is_type = true, .type = { .storage = PIN_STRUCT, .nominal = 73 } },
+    };
+    script_catalog source = { .templates = &definition,
+                              .template_count = 1,
+                              .specializations = &specialization,
+                              .specialization_count = 1 },
+                   saved;
+    REQUIRE(source_catalog_snapshot(&first, &source, &saved));
+    REQUIRE(source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(source_catalog_default_key(&source, &first_key));
+    definition.source_generation++;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    definition.source_generation--;
+    parameter.comptime = true;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    parameter.comptime = false;
+    item.i = 9;
+    REQUIRE(!source_catalog_metadata_equal(&source, &saved));
+    REQUIRE(source_catalog_default_key(&source, &second_key));
+    REQUIRE(
+        acount(first_key) == acount(second_key) &&
+        memcmp(first_key, second_key, (size_t)acount(first_key))
+    );
+    name[0] = owner[0] = parameter_name[0] = binder[0] = binding_name[0] = label[0] = 'X';
+    REQUIRE(!strcmp(saved.templates[0].name, "Box"));
+    REQUIRE(!strcmp(saved.templates[0].owner, "Library"));
+    REQUIRE(!strcmp(saved.templates[0].parameters[0].name, "value"));
+    REQUIRE(!strcmp(saved.templates[0].parameters[0].binder, "T"));
+    REQUIRE(!strcmp(saved.specializations[0].bindings[0].name, "label"));
+    REQUIRE(!strcmp(saved.specializations[0].bindings[0].value.value.str, "retained"));
+    REQUIRE(
+        pin_array_get(saved.specializations[0].bindings[1].value.value.ptr, 0).i == 7
+    );
+    REQUIRE(
+        saved.specializations[0].result.is_type &&
+        saved.specializations[0].result.type.nominal == 73
+    );
+    return true;
+}
+
 TEST_CASE(record_semantic_default_budget)
 {
     char source[2048];
-    int used = snprintf(source, sizeof source, "library Budget { Row :: struct { value: int = C17; } C0 :: 1; ");
+    int used = snprintf(source, sizeof source, "Budget :: library { Row :: struct { value: int = C17; } C0 :: 1; ");
     for (int i = 1; i <= 17; i++) {
         int count = snprintf(
             source + used,
@@ -265,6 +462,9 @@ void test_language_record_semantic()
     RUN_TEST_CASE(record_semantic_default_rejections);
     RUN_TEST_CASE(record_semantic_scope_and_compatibility);
     RUN_TEST_CASE(record_semantic_catalog_lifetime);
+    RUN_TEST_CASE(record_semantic_collection_catalog_identity);
+    RUN_TEST_CASE(record_semantic_reference_literals_keep_symbol_identity);
+    RUN_TEST_CASE(record_semantic_generic_catalog_snapshot_owns_bindings_and_parameters);
     RUN_TEST_CASE(record_semantic_default_budget);
     pu_clear_setup();
 }

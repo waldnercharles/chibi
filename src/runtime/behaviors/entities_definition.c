@@ -28,11 +28,53 @@ static const native_parameter_definition SPAWN_IN[] = { ENTITY_SPAWN_INPUTS(NATI
 static const native_parameter_definition SPAWN_OUT[] = { ENTITY_SPAWN_OUTPUTS(NATIVE_PORT) };
 static const native_parameter_definition TARGET[] = { ENTITY_TARGET_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition THEN[] = { ENTITY_THEN_PORTS(NATIVE_PORT) };
+static const native_parameter_definition PAIR_IN[] = {
+    { .name = "Source", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Relationship",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_U64,
+      .reference_kind = SCRIPT_REFERENCE_RELATIONSHIP },
+    { .name = "Target", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_HANDLE, .type_name = "ecs.entity" },
+};
+static const native_parameter_definition PAIR_COMMAND_IN[] = {
+    ENTITY_EXEC_PORTS(NATIVE_PORT){ .name = "Source",
+                                    .kind = NATIVE_PARAMETER_DATA,
+                                    .storage = PIN_HANDLE,
+                                    .type_name = "ecs.entity" },
+    { .name = "Relationship",
+      .kind = NATIVE_PARAMETER_DATA,
+      .storage = PIN_U64,
+      .reference_kind = SCRIPT_REFERENCE_RELATIONSHIP },
+    { .name = "Target", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_HANDLE, .type_name = "ecs.entity" },
+};
 
 #define SIGNATURE(IN, OUT)                                                     \
     .inputs = IN, .input_count = NATIVE_COUNT(IN), .outputs = OUT,             \
     .output_count = NATIVE_COUNT(OUT)
 static const native_capability_definition DEFINITIONS[] = {
+    { .canonical_name = "add_pair",
+      .source_name = "add_pair",
+      .category = "Relationships",
+      .description = "Queues a typed relationship link for the next ECS "
+                     "command boundary.",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .completion_output = 0,
+      SIGNATURE(PAIR_COMMAND_IN, THEN) },
+    { .canonical_name = "remove_pair",
+      .source_name = "remove_pair",
+      .category = "Relationships",
+      .description = "Queues removal of a typed relationship link.",
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .completion_output = 0,
+      SIGNATURE(PAIR_COMMAND_IN, THEN) },
+    { .canonical_name = "has_pair",
+      .source_name = "has_pair",
+      .category = "Relationships",
+      .description = "Tests the currently committed relationship links.",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .completion_output = -1,
+      SIGNATURE(PAIR_IN, FOUND) },
     { .canonical_name = ENTITY_GET_GLOBAL_NAME,
       ENTITY_GET_GLOBAL_PRESENTATION,
       .source_name = "get_global_variable",
@@ -98,6 +140,14 @@ static const native_capability_definition DEFINITIONS[] = {
 #undef SIGNATURE
 
 static const native_definition_binding BINDINGS[] = {
+    { .canonical_name = "add_pair",
+      .implementation = { .command = &ENTITY_ADD_PAIR_COMMAND,
+                          .access = &ENTITY_STRUCTURAL_ACCESS } },
+    { .canonical_name = "remove_pair",
+      .implementation = { .command = &ENTITY_REMOVE_PAIR_COMMAND,
+                          .access = &ENTITY_STRUCTURAL_ACCESS } },
+    { .canonical_name = "has_pair",
+      .implementation = { .call = &ENTITY_HAS_PAIR_CALL, .access = &ENTITY_QUERY_ACCESS } },
     { .canonical_name = ENTITY_GET_GLOBAL_NAME,
       .implementation = { .call = &ENTITY_GET_GLOBAL_CALL,
                           .access = &ENTITY_GLOBAL_READ_ACCESS } },

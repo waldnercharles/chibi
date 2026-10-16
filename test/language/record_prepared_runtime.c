@@ -10,6 +10,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
 #include "types/trace.h"
@@ -235,7 +236,7 @@ static bool decode(behavior_backend backend)
 }
 TEST_CASE(record_prepared_scalar_owners)
 {
-    static const char source[] = "library Rows { " ROW
+    static const char source[] = "Rows :: library { " ROW
                                  "Make :: (text: string) -> Row { return {key: "
                                  "text, label: text}; } }";
     REQUIRE(compile(source, BEHAVIOR_BYTECODE));
@@ -263,7 +264,7 @@ TEST_CASE(record_prepared_scalar_owners)
 TEST_CASE(record_prepared_array_owners)
 {
     static const char source
-        [] = "library Rows { " ROW
+        [] = "Rows :: library { " ROW
              "MakeRows :: (n: int, empty: Row[]) -> Row[] { "
              "if n < 0 { return empty; } "
              "if n == 0 { return []; } a: Row = {key: \"a\", label: \"A\"}; "
@@ -290,8 +291,9 @@ TEST_CASE(record_prepared_array_owners)
             }
             REQUIRE(a && a->count == counts[i] && a->record == result.record);
             for (int j = 0; j < a->count; j++) {
-                REQUIRE(a->items[j].record == a->record);
-                REQUIRE(!strcmp(member(&a->items[j], 1).str, "A"));
+                REQUIRE(pin_array_get(a, j).record == a->record);
+                pin_value item = pin_array_get(a, j);
+                REQUIRE(!strcmp(member(&item, 1).str, "A"));
             }
         }
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
@@ -419,7 +421,7 @@ TEST_CASE(record_prepared_recursive_codec)
     pin_array *rows = copy->values[3].ptr;
     REQUIRE(rows->count == 3 && rows->record == owned);
     for (int i = 0; i < 3; i++) {
-        REQUIRE(rows->items[i].record == owned);
+        REQUIRE(pin_array_get(rows, i).record == owned);
     }
     pin_value raw = copy->values[0];
     collect(&read_plan->storage, raw.ptr);
@@ -694,7 +696,7 @@ TEST_CASE(record_prepared_legacy_and_failure_atomicity)
     type_catalog_set_project(NULL);
     project_set = false;
     static const char
-        source[] = "library Rows { " ROW
+        source[] = "Rows :: library { " ROW
                    "Make :: () -> Row { return {key: \"k\", label: \"L\"}; } }";
     REQUIRE(compile(source, BEHAVIOR_BYTECODE));
     /* The checked writer must fail atomically on an invalid result-buffer index. */

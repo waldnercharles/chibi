@@ -1,5 +1,19 @@
 # Qualified module composition: bounded prerequisite
 
+Current source syntax is documented in [code-language.md](code-language.md).
+Library declarations use `Scroll :: library { ... }`, named callables use
+`Step :: (...) -> Type { ... }`, and qualified calls use `Scroll.Step(...)`.
+The catalog now infers and propagates exported callable effects before consumer
+analysis, including task starts and retained/invocation reads. These source changes
+do not update the historical measurements recorded below.
+
+The current module suite additionally covers imported generic specialization,
+compile-time helper calls, constructed record metadata, owning-library source
+provenance and generation invalidation. It also checks that invalid requests
+publish no concrete generation and that floating compile-time values preserve
+their exact representations during catalog comparison. These additions do not
+change the historical acceptance results below.
+
 This is a narrow proof of existing qualified library composition for the Studio
 migration's L07 prerequisite. It does not complete L07, establish broader language
 readiness (B02/L00/B04 or L24), or add import aliases, export/private declarations,
@@ -70,6 +84,10 @@ binding, runtime service registry, or forced source flattening.
 - Library state is absent from exported global values and cannot be read as
   `Store.secret` by the caller. The existing public function remains discoverable.
   This does not invent export/private metadata or a security boundary.
+- Library retained state belongs to the consuming behavior attachment or system
+  registration, including retention inside helpers. Module namespaces remain
+  distinct, but all query matches of one system use the same library retained
+  values. Coroutine locals and tasks stay with their individual invocation.
 - Two simultaneously retained catalogs with the same document/module identities
   keep their own library bodies (results 3 and 7). A third catalog containing only
   the caller cannot acquire a missing library from either live collection.

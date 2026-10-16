@@ -64,6 +64,7 @@ void test_tool_validate_units(const char *binary);
 void test_tool_ecs_query_benchmark();
 void test_arena();
 void test_tool_validate_project(const char *binary);
+void test_tool_fixture_format(const char *binary);
 void test_tool_examples_projects(const char *binary);
 void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
@@ -150,7 +151,7 @@ void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
-int run_feature_coverage(const char *project);
+int run_feature_coverage(const char *project, const char *binary);
 #endif
 #ifdef CHIBI_TEST_PREVIEW_COMPONENTS
 void test_preview_components();
@@ -450,6 +451,13 @@ bool test_model_import_active()
 int main(int argc, char **argv)
 {
     const char *example = NULL;
+    if (argc == 3 && !strcmp(argv[1], "--fixture-format")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_fixture_format(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     static const char *const examples[] = { "local_mesh_sampled",
                                             "hrc_lab",
@@ -603,7 +611,7 @@ int main(int argc, char **argv)
     vector_nodes = argc == 2 && !strcmp(argv[1], "--vector-nodes");
 #endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
-    coverage = argc == 3 && !strcmp(argv[1], "--feature-coverage");
+    coverage = argc == 4 && !strcmp(argv[1], "--feature-coverage");
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
@@ -748,6 +756,7 @@ int main(int argc, char **argv)
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
             "--examples-projects chibi_ctl | --validate-project chibi_ctl | "
+            "--fixture-format chibi_ctl | "
             "--controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
             "--prototype-expansion chibi_ctl | "
@@ -792,7 +801,8 @@ int main(int argc, char **argv)
             "--vector-nodes | "
             "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
-            "manifest | --feature-coverage project | --asset-values | "
+            "manifest | --feature-coverage project chibi_ctl | --asset-values "
+            "| "
             "--ui-document | --text-files | --fmt | --particles | "
             "--player-clock | --audio-analysis | --audio-browser | "
             "--shader-webgpu | "
@@ -836,7 +846,7 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         if (coverage) {
-            return run_feature_coverage(argv[2]);
+            return run_feature_coverage(argv[2], argv[3]);
         }
 #endif
 #ifdef CHIBI_TEST_GRAPH_AUTHORING

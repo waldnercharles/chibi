@@ -1,4 +1,4 @@
-behavior Expressions {
+Expressions :: behavior {
     total := 0
 
     on Tick(dt) {

@@ -1,5 +1,6 @@
 #include "runtime/arithmetic.h"
 
+#include "execution/scalar.h"
 #include "support/arena.h"
 #include "types/array.h"
 #include "types/catalog.h"
@@ -28,6 +29,14 @@ pin_value native_arithmetic_literal_identity(const pin_value *inputs, int input_
 
 static pin_value numeric_op(pin_value a, pin_value b, int operation)
 {
+    if (a.type >= PIN_I8 && a.type <= PIN_U64 && b.type >= PIN_I8 && b.type <= PIN_U64) {
+        const behavior_function_op ops[] = { BF_ADD, BF_SUB, BF_MUL, BF_DIV,
+                                             BF_MIN, BF_MAX, BF_MOD };
+        pin_value out = a;
+        return behavior_scalar_integer_op(ops[operation], a, b, &out, NULL)
+                 ? out
+                 : (pin_value){ .type = PIN_FLOW };
+    }
     if (a.type == PIN_F32 && b.type == PIN_F64) {
         bool subnormal = (a.f != 0.0f && fabsf(a.f) < FLT_MIN) ||
                          (b.d != 0.0 && fabs(b.d) < FLT_MIN);
@@ -217,6 +226,10 @@ pin_value native_arithmetic_negate(const pin_value *inputs, int input_count, are
     (void)input_count;
     (void)a;
     pin_value result = inputs[0];
+    if (result.type >= PIN_I8 && result.type <= PIN_U64) {
+        behavior_scalar_integer_op(BF_NEG, result, (pin_value){ 0 }, &result, NULL);
+        return result;
+    }
     switch (result.type) {
         case PIN_F32: result.f = -result.f; break;
         case PIN_F64: result.d = -result.d; break;
@@ -236,6 +249,10 @@ pin_value native_arithmetic_abs(const pin_value *inputs, int input_count, arena 
     (void)input_count;
     (void)a;
     pin_value result = inputs[0];
+    if (result.type >= PIN_I8 && result.type <= PIN_U64) {
+        behavior_scalar_integer_op(BF_ABS, result, (pin_value){ 0 }, &result, NULL);
+        return result;
+    }
     switch (result.type) {
         case PIN_F32: result.f = fabsf(result.f); break;
         case PIN_F64: result.d = fabs(result.d); break;

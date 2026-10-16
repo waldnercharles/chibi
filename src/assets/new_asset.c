@@ -30,6 +30,7 @@ enum
 static const char *const FOLDERS[NEW_ASSET_KIND_COUNT] = {
     [NEW_ASSET_SCENE] = "scenes",
     [NEW_ASSET_PROTOTYPE] = "prototypes",
+    [NEW_ASSET_RELATIONSHIP] = "relationships",
     [NEW_ASSET_BEHAVIOR] = "behaviors",
     [NEW_ASSET_EVENT] = "events",
     [NEW_ASSET_SYSTEM] = "systems",
@@ -52,6 +53,8 @@ const char *new_asset_extension(new_asset_kind kind)
     switch (kind) {
         case NEW_ASSET_BEHAVIOR:
         case NEW_ASSET_LIBRARY:
+        case NEW_ASSET_PROTOTYPE:
+        case NEW_ASSET_RELATIONSHIP:
         case NEW_ASSET_SYSTEM: return CODE_ASSET_EXTENSION;
         default: return DECLARATIVE_ASSET_EXTENSION;
     }
@@ -115,21 +118,14 @@ static char *graph_text(behavior_domain domain, const char *name)
 static char *source_text(const char *kind, const char *name)
 {
     char error[160];
-    script_catalog catalog = { 0 };
-    pin_value value = { .type = PIN_STR, .str = name };
-    char *label = authoring_source_literal(
-        &catalog,
-        (script_type){ .storage = PIN_STR },
-        &value,
-        error,
-        sizeof error
-    );
-    if (!label) {
+    char *label = authoring_source_identifier(name, error, sizeof error);
+    if (!label || strcmp(label, name) || strchr(label, '.')) {
+        free(label);
         return NULL;
     }
-    size_t bytes = strlen(kind) + strlen(label) + 8;
+    size_t bytes = strlen(kind) + strlen(label) + 16;
     char *raw = xmalloc(bytes);
-    snprintf(raw, bytes, "%s %s {\n}\n", kind, label);
+    snprintf(raw, bytes, "%s :: %s%s {\n}\n", label, kind, !strcmp(kind, "system") ? "()" : "");
     script_syntax *syntax = script_parse(raw);
     char *text = authoring_source_format(syntax, error, sizeof error);
     script_syntax_free(syntax);
@@ -150,12 +146,8 @@ char *new_asset_text(new_asset_kind kind, const char *name)
             scene_document_free(scene);
             return text;
         }
-        case NEW_ASSET_PROTOTYPE: {
-            prototype *prototype = prototype_new(name);
-            char *text = prototype_save(prototype);
-            prototype_free(prototype);
-            return text;
-        }
+        case NEW_ASSET_PROTOTYPE: return source_text("prototype", name);
+        case NEW_ASSET_RELATIONSHIP: return source_text("relationship", name);
         case NEW_ASSET_SYSTEM: return source_text("system", name);
         case NEW_ASSET_BEHAVIOR: return source_text("behavior", name);
         case NEW_ASSET_EVENT:
@@ -212,10 +204,12 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         return NULL;
     }
     errno = 0;
-    /* Models are drawn as shapes, so the two kinds share one namespace. */
-    int rival = kind == NEW_ASSET_MODEL ? NEW_ASSET_SHAPE
-              : kind == NEW_ASSET_SHAPE ? NEW_ASSET_MODEL
-                                        : -1;
+    /* Models share the shapes namespace. Prototypes also admit KDL, so a
+     * new source prototype must not duplicate its existing KDL asset. */
+    int rival = kind == NEW_ASSET_MODEL     ? NEW_ASSET_SHAPE
+              : kind == NEW_ASSET_SHAPE     ? NEW_ASSET_MODEL
+              : kind == NEW_ASSET_PROTOTYPE ? NEW_ASSET_PROTOTYPE
+                                            : -1;
     if (rival >= 0) {
         snprintf(path, bytes, "%s/%s/%s%s", content, FOLDERS[rival], name, DECLARATIVE_ASSET_EXTENSION);
         if (access(path, F_OK) == 0) {
@@ -233,7 +227,8 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
     snprintf(path, bytes, "%s/%s/%s%s", content, FOLDERS[kind], name, new_asset_extension(kind));
     char *text = new_asset_text(kind, name);
     if (!text) {
-        snprintf(error, size, "Cannot build an empty asset named %s", name);
+        snprintf(error, size, "Cannot create this asset with the source identifier '%s'", name);
+        errno = EINVAL;
         free(path);
         return NULL;
     }

@@ -171,9 +171,11 @@ static bool prepare(behavior_backend backend)
     }
     /* Reverse dependency order forces the cross-program schedule to order
      * Velocity.x -> Position.x -> Position.y for each owner. */
-    REQUIRE(compile(0, "behavior Finish { bind self.Position.y = self.Position.x + 1; }", backend));
     REQUIRE(
-        compile(1, "behavior Seed { seed: double = 1; bind self.Velocity.x = seed; bind self.Position.x = self.Velocity.x + 1; }", backend)
+        compile(0, "Finish :: behavior { bind self.Position.y = self.Position.x + 1; }", backend)
+    );
+    REQUIRE(
+        compile(1, "Seed :: behavior { seed: double = 1; bind self.Velocity.x = seed; bind self.Position.x = self.Velocity.x + 1; }", backend)
     );
     for (int i = 0; i < OWNER_COUNT; i++) {
         owners[i] = ecs_world_create_entity(world);
@@ -350,13 +352,13 @@ TEST_CASE(binding_schedule_tracks_program_and_owner_lifetimes)
         /* The same module name now has reversed binding declarations. A stale
          * order would read the old Velocity.x before its replacement writes. */
         REQUIRE(
-            replace(1, "behavior Seed { bind self.Position.x = self.Velocity.x + 1; bind self.Velocity.x = 4; }", backends[b])
+            replace(1, "Seed :: behavior { bind self.Position.x = self.Velocity.x + 1; bind self.Velocity.x = 4; }", backends[b])
         );
         REQUIRE(maintain(programs, 2, 2));
         REQUIRE(values(5, 6, 4));
         clear_slot(1);
         REQUIRE(
-            compile(1, "behavior Seed { bind self.Velocity.x = 7; bind self.Position.x = self.Velocity.x + 1; }", backends[b])
+            compile(1, "Seed :: behavior { bind self.Velocity.x = 7; bind self.Position.x = self.Velocity.x + 1; }", backends[b])
         );
         for (int i = 0; i < OWNER_COUNT; i++) {
             REQUIRE(execution_program_attach(programs[1], ecs_entity_to_u64(owners[i])));
@@ -393,7 +395,7 @@ TEST_CASE(binding_schedule_preserves_order_and_rejects_cycles_before_writes)
         REQUIRE(prepare(backends[b]));
         REQUIRE(maintain(programs, 2, 0));
         REQUIRE(
-            replace(1, "behavior Seed { bind self.Velocity.x = 99; bind self.Position.x = self.Position.y + 1; }", backends[b])
+            replace(1, "Seed :: behavior { bind self.Velocity.x = 99; bind self.Position.x = self.Position.y + 1; }", backends[b])
         );
         uint64_t before = ecs_component_version(world, owners[0], 502);
         char error[256];
@@ -404,14 +406,14 @@ TEST_CASE(binding_schedule_preserves_order_and_rejects_cycles_before_writes)
         REQUIRE(correct_values());
         REQUIRE(ecs_component_version(world, owners[0], 502) == before);
         REQUIRE(
-            replace(1, "behavior Seed { bind self.Position.x = self.Velocity.x + 1; bind self.Velocity.x = 4; }", backends[b])
+            replace(1, "Seed :: behavior { bind self.Position.x = self.Velocity.x + 1; bind self.Velocity.x = 4; }", backends[b])
         );
         REQUIRE(maintain(programs, 2, 2));
         REQUIRE(values(5, 6, 4));
         /* Independent conflicting writers preserve caller order, including
          * when a formerly cached first program becomes the second program. */
-        REQUIRE(replace(0, "behavior Finish { bind self.Velocity.x = 10; }", backends[b]));
-        REQUIRE(replace(1, "behavior Seed { bind self.Velocity.x = 20; }", backends[b]));
+        REQUIRE(replace(0, "Finish :: behavior { bind self.Velocity.x = 10; }", backends[b]));
+        REQUIRE(replace(1, "Seed :: behavior { bind self.Velocity.x = 20; }", backends[b]));
         REQUIRE(maintain(programs, 2, 3));
         REQUIRE(values(5, 6, 20));
         execution_program *reversed[] = { programs[1], programs[0] };
@@ -432,7 +434,7 @@ TEST_CASE(binding_schedule_rechecks_query_gates_and_uses_bounded_fallback)
         clear_slot(1);
         clear_slot(0);
         REQUIRE(
-            compile(0, "system Gate query p:Position where p.x > 0 { bind self.Velocity.x = p.x + 1; }", backends[b])
+            compile(0, "Gate :: system( p:Position) where p.x > 0 { bind self.Velocity.x = p.x + 1; }", backends[b])
         );
         for (int pass = 0; pass < 3; pass++) {
             double x = pass == 1 ? 0 : pass + 2;
@@ -453,7 +455,7 @@ TEST_CASE(binding_schedule_rechecks_query_gates_and_uses_bounded_fallback)
             REQUIRE(v && v->x == (pass == 2 ? 5 : 3));
         }
         clear_slot(0);
-        REQUIRE(compile(0, "behavior Constant { bind self.Velocity.x = 42; }", backends[b]));
+        REQUIRE(compile(0, "Constant :: behavior { bind self.Velocity.x = 42; }", backends[b]));
         for (int i = 0; i < 17; i++) {
             extra_programs[i] = execution_program_new(modules[0], world, NULL);
             REQUIRE(extra_programs[i]);
@@ -507,10 +509,10 @@ TEST_CASE(binding_schedule_keeps_dynamic_target_dependencies)
         clear_slot(0);
         clear_slot(1);
         REQUIRE(
-            compile(0, "behavior Reader { target: entity; offsets: double[] = [1]; choice: int = 0; bind self.Position.y = target.Velocity.x + offsets[choice]; }", backends[b])
+            compile(0, "Reader :: behavior { target: entity; offsets: double[] = [1]; choice: int = 0; bind self.Position.y = target.Velocity.x + offsets[choice]; }", backends[b])
         );
         REQUIRE(
-            compile(1, "behavior Writer { seed: double = 1; bind self.Velocity.x = seed; }", backends[b])
+            compile(1, "Writer :: behavior { seed: double = 1; bind self.Velocity.x = seed; }", backends[b])
         );
         execution_instance *reader = execution_program_attach(
             programs[0],

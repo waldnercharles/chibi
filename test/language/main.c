@@ -6,6 +6,7 @@
 
 void test_language_syntax();
 void test_language_row_array();
+void test_language_packed();
 void test_language_runtime_attribution();
 void test_language_record_values();
 void test_language_record_document();
@@ -22,7 +23,14 @@ void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_wasm();
 void test_language_semantic();
+void test_language_effects();
+void test_language_maps();
+void test_language_iteration();
+void test_language_generic();
+void test_language_source_assets();
+void test_language_symbol_references();
 void test_language_program();
+void test_language_retention();
 void test_language_capture();
 void test_language_query_program();
 void test_language_query_boundary();
@@ -154,6 +162,7 @@ int main(int argc, char **argv)
     pu_display_time(true);
     if (row_array) {
         test_language_row_array();
+        test_language_packed();
     } else if (record_compatibility) {
         test_language_record_compatibility();
 #ifdef CHIBI_TEST_RECORD_SERVICES
@@ -214,6 +223,9 @@ int main(int argc, char **argv)
         test_ui_authoring();
     } else if (prototype) {
         test_prototype_document();
+#ifdef CHIBI_TEST_SOURCE_ASSETS
+        test_language_source_assets();
+#endif
     } else if (field_runtime) {
         test_field_runtime();
     } else if (navigation) {
@@ -234,6 +246,9 @@ int main(int argc, char **argv)
     } else if (query_program) {
         test_language_query_program();
         test_language_query_boundary();
+        test_language_maps();
+        test_language_iteration();
+        test_language_generic();
     } else if (modules) {
         test_language_modules();
     } else if (incremental) {
@@ -250,10 +265,13 @@ int main(int argc, char **argv)
         test_language_scalarize();
     } else if (program) {
         test_language_program();
+        test_language_retention();
         test_language_capture();
         test_language_query_boundary();
     } else if (semantic) {
         test_language_semantic();
+        test_language_effects();
+        test_language_symbol_references();
     } else if (execution) {
         test_language_execution();
     } else {

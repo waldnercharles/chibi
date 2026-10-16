@@ -1,5 +1,5 @@
 // A project-declared component the Cool system drains.
-component Heat {
+Heat :: component {
     level: float
     // Units lost per second.
     rate: float

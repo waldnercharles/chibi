@@ -19,7 +19,9 @@ enum
     ROOT = 9842,
     ENTITY = 9843,
     OWNER = 9844,
-    RHS = 9845
+    RHS = 9845,
+    SELF = 9849,
+    READ = 9850
 };
 static type_field fields[2];
 static type_desc type;
@@ -101,7 +103,15 @@ static bool resolve(void *, uint64_t id, script_lower_host *out)
     *out = (script_lower_host){ .call = &calls[id == RHS], .access = &access };
     return true;
 }
-static bool compile(int bounded, bool explicit_owner, int fallback, behavior_backend backend)
+static bool resolve_global(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id != SELF) {
+        return false;
+    }
+    *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+    return true;
+}
+static bool compile_mode(int bounded, bool explicit_owner, int fallback, behavior_backend backend, bool private_result)
 {
     cleanup();
     fields[0] = (type_field){ .name = "value",
@@ -125,6 +135,8 @@ static bool compile(int bounded, bool explicit_owner, int fallback, behavior_bac
         { .id = 9846,
           .name = fallback == 1 ? "unproven" : "value",
           .type = { .storage = PIN_I32 },
+          .read = READ,
+          .write = 9847,
           .writable = true,
           .range_contract = bounded == 1,
           .min = 0,
@@ -155,6 +167,8 @@ static bool compile(int bounded, bool explicit_owner, int fallback, behavior_bac
                                               .type = fallback == 2
                                                         ? root.type
                                                         : selected[0].type };
+    const script_catalog_parameter field_result = { .name = "result",
+                                                    .type = selected[0].type };
     const script_catalog_capability capabilities[] = {
         { .id = 9847,
           .name = "set_value",
@@ -180,29 +194,102 @@ static bool compile(int bounded, bool explicit_owner, int fallback, behavior_bac
           .kind = SCRIPT_CAPABILITY_FUNCTION,
           .results = parameters + 1,
           .result_count = 1,
-          .effects = SCRIPT_EFFECT_WRITE }
+          .effects = SCRIPT_EFFECT_WRITE },
+        { .id = READ,
+          .name = "read_value",
+          .kind = SCRIPT_CAPABILITY_FUNCTION,
+          .results = &field_result,
+          .result_count = 1,
+          .component_access = SCRIPT_COMPONENT_ACCESS_READ,
+          .component = ROOT,
+          .component_field = selected[0].id,
+          .component_entity = -1,
+          .component_value = -1,
+          .effects = SCRIPT_EFFECT_READ }
     };
+    const script_catalog_global self = { .id = SELF,
+                                         .name = "self",
+                                         .type = { .storage = PIN_HANDLE,
+                                                   .nominal = ENTITY } };
     const script_catalog catalog = { .types = &root,
                                      .type_count = 1,
                                      .capabilities = capabilities,
-                                     .capability_count = 3,
+                                     .capability_count = 4,
+                                     .globals = &self,
+                                     .global_count = 1,
                                      .entity_type = ENTITY };
-    const char *source = explicit_owner
-                           ? "library Writes { Run :: () -> int { return "
-                             "set_value(get_owner(), get_rhs()); } }"
-                       : fallback == 2
-                           ? "library Writes { Run :: (value: int) -> int { "
-                             "return set_value(value).value; } }"
-                           : "library Writes { Run :: (value: int) -> int { "
-                             "return set_value(value); } }";
+    char source[512];
+    if (private_result) {
+        /* Imported calls still use this private ABI. Ordinary authored source
+         * must continue to reject generated setters. */
+        snprintf(
+            source,
+            sizeof source,
+            "Writes :: library { Run :: (value: int) -> int { return "
+            "set_value(value)%s; } }",
+            fallback == 2 ? ".value" : ""
+        );
+    } else if (explicit_owner && !bounded) {
+        snprintf(
+            source,
+            sizeof source,
+            "Writes :: library { Run :: () -> int { "
+            "get_owner().SourceWrite.value = get_rhs(); return 9; } }"
+        );
+    } else if (explicit_owner) {
+        snprintf(
+            source,
+            sizeof source,
+            "Writes :: library { Run :: () -> int { entity := get_owner(); "
+            "value := get_rhs(); entity.SourceWrite.value = value; return %s; "
+            "} }",
+            bounded ? "entity.SourceWrite.value" : "value"
+        );
+    } else if (fallback == 2) {
+        snprintf(
+            source,
+            sizeof source,
+            "Writes :: library { Run :: (value:int) -> int { "
+            "self.SourceWrite.value = value; root := self.SourceWrite; return "
+            "root.value; } }"
+        );
+    } else {
+        snprintf(
+            source,
+            sizeof source,
+            "Writes :: library { Run :: (value:int) -> int { "
+            "self.SourceWrite.%s = value; return %s; } }",
+            selected[0].name,
+            bounded ? "self.SourceWrite.value" : "value"
+        );
+    }
     syntax = script_parse(source);
     REQUIRE(syntax && !syntax->diagnostic_count);
-    analysis = script_analyze(syntax, &catalog);
+    if (private_result) {
+        script_analysis *authored = script_analyze(syntax, &catalog);
+        REQUIRE(authored && !authored->valid);
+        bool retired = false;
+        for (int j = 0; j < authored->diagnostic_count; j++) {
+            retired |= strstr(authored->diagnostics[j].message, "import-only") != NULL;
+        }
+        script_analysis_free(authored);
+        REQUIRE(retired);
+        analysis = script_analyze_migration_document(
+            syntax,
+            &catalog,
+            "test/private-component-write",
+            NULL,
+            0,
+            false
+        );
+    } else {
+        analysis = script_analyze(syntax, &catalog);
+    }
     for (int j = 0; analysis && j < analysis->diagnostic_count; j++) {
         fprintf(stderr, "write source semantic: %s\n", analysis->diagnostics[j].message);
     }
     REQUIRE(analysis && analysis->valid);
-    const script_lower_bindings bindings = { .host = resolve };
+    const script_lower_bindings bindings = { .host = resolve, .global = resolve_global };
     execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
     for (int j = 0; plan && j < plan->diagnostic_count; j++) {
         fprintf(stderr, "write source lowering: %s\n", plan->diagnostics[j].message);
@@ -225,6 +312,10 @@ static bool compile(int bounded, bool explicit_owner, int fallback, behavior_bac
     REQUIRE(body);
     ordered = explicit_owner;
     return true;
+}
+static bool compile(int bounded, bool explicit_owner, int fallback, behavior_backend backend)
+{
+    return compile_mode(bounded, explicit_owner, fallback, backend, false);
 }
 static int count(behavior_function_op op)
 {
@@ -319,7 +410,7 @@ static bool begin(pin_value *output, pin_value *input, bool inspected)
     sequence = owner_calls = rhs_calls = store_calls = 0;
     return true;
 }
-TEST_CASE(component_write_returns_rhs_unless_the_root_requires_a_reread)
+TEST_CASE(component_assignment_keeps_explicit_rhs_and_property_results)
 {
     for (int bounded = 0; bounded < 3; bounded++) {
         for (int backend = 0; backend < 2; backend++) {
@@ -412,11 +503,42 @@ TEST_CASE(component_write_keeps_unproven_and_root_returning_setters_generic)
     }
     return true;
 }
+TEST_CASE(component_private_write_call_preserves_used_scalar_and_root_results)
+{
+    for (int variant = 0; variant < 4; variant++) {
+        int bounded = variant < 3 ? variant : 0;
+        bool root_result = variant == 3;
+        for (int backend = 0; backend < 2; backend++) {
+            REQUIRE(
+                compile_mode(bounded, false, root_result ? 2 : 0, backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE, true)
+            );
+            REQUIRE(count(BF_COMPONENT_WRITE) == !root_result);
+            REQUIRE(count(BF_COMPONENT_READ) == (!root_result && bounded != 0));
+            for (int inspected = 0; inspected < 2; inspected++) {
+                pin_value input = { .type = PIN_I32, .i = 9 },
+                          output = { .type = PIN_I32, .i = -123 };
+                REQUIRE(begin(&output, &input, inspected));
+                REQUIRE(compiled_inspection(backend, inspected));
+                REQUIRE(behavior_function_run(body, &context, backend) == FLOW_OK);
+                REQUIRE(store_calls == 1);
+                REQUIRE(
+                    output.i == (bounded == 1             ? 10
+                                 : bounded || root_result ? 37
+                                                          : 9)
+                );
+                const int32_t *row = ecs_component_data_const(world, owner, COMPONENT);
+                REQUIRE(row && *row == (bounded == 1 ? 10 : 37));
+            }
+        }
+    }
+    return true;
+}
 void test_language_component_write_source()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(component_write_returns_rhs_unless_the_root_requires_a_reread);
+    RUN_TEST_CASE(component_assignment_keeps_explicit_rhs_and_property_results);
     RUN_TEST_CASE(component_write_evaluates_owner_then_rhs_then_revalidates_current_storage);
     RUN_TEST_CASE(component_write_keeps_unproven_and_root_returning_setters_generic);
+    RUN_TEST_CASE(component_private_write_call_preserves_used_scalar_and_root_results);
     pu_clear_setup();
 }

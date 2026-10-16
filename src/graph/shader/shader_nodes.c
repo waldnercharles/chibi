@@ -555,7 +555,8 @@ int shader_node_ramp_get(const node *n, shader_ramp_stop out[SHADER_RAMP_MAX])
         return 0;
     }
     for (int i = 0; i < array->count; i++) {
-        const pin_value *value = &array->items[i];
+        pin_value element = pin_array_get(array, i);
+        const pin_value *value = &element;
         if (value->type != PIN_STRUCT || !value->ptr || !value->type_name ||
             strcmp(value->type_name, "ShaderRampStop")) {
             return 0;

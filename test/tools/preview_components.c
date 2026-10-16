@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -56,9 +57,20 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     char manifest[128];
     snprintf(manifest, sizeof manifest, "version %d\nname \"Preview components\"\ncontent \"content\"\n", CHIBI_PROJECT_VERSION);
     write_asset("project.kdl", manifest);
-    write_asset("content/components/PreviewHeat.chibi", "component PreviewHeat {\n    level: float\n}\n");
-    write_asset("content/prototypes/Probe.kdl", "name \"Probe\"\ncomponents {\n    PreviewHeat level=7.0\n}\n");
+    write_asset(
+        "content/components/PreviewHeat.chibi",
+        "PreviewHeat :: component {\n"
+        "    level: float\n"
+        "}\n"
+    );
+    write_asset("content/prototypes/Probe.chibi", "Probe :: prototype { PreviewHeat { level: 7 } }\n");
     write_asset("content/scenes/Probe.kdl", "version 1\nname \"Probe\"\n(array)entities {\n    - name=\"Probe\" prototype=\"Probe\"\n}\n");
+    /* Explicit preview targets do not need a default launch target. Full
+     * project/player opening still requires one. */
+    chibi_project launch = { 0 };
+    REQUIRE(chibi_project_read(&launch, directory, error, sizeof error) != 0);
+    REQUIRE(strstr(error, "no start scene"));
+    chibi_project_free(&launch);
 
     const declared_field field = { .name = "value", .type = "float" };
     const declared_component component = { .name = "PreviousPreview",
@@ -111,7 +123,12 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
     REQUIRE(!run && !type_catalog_find("PreviewHeat"));
     REQUIRE(type_catalog_find("PreviousPreview") == previous_type);
 
-    write_asset("content/components/PreviewHeat.chibi", "component PreviewHeat {\n    level: MissingPreviewType\n}\n");
+    write_asset(
+        "content/components/PreviewHeat.chibi",
+        "PreviewHeat :: component {\n"
+        "    level: MissingPreviewType\n"
+        "}\n"
+    );
     REQUIRE(
         chibi_automation_preview(
             directory,

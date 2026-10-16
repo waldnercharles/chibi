@@ -5,7 +5,9 @@
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
 #include "types/union.h"
 
@@ -547,6 +549,31 @@ static bool value_size(size_t *total, const pin_value *v, int nesting, const pin
     } else if (shared || !text_size(total, v->type_name)) {
         return false;
     }
+    if (v->container == PIN_CONTAINER_MAP) {
+        const pin_map *map = v->ptr;
+        if (v->type != PIN_UNION || v->record) {
+            return false;
+        }
+        if (!map) {
+            return true;
+        }
+        if (map->count < 0 || map->count > 65536 || (map->count && !map->entries) ||
+            !pin_map_key_supported(map->key_type) ||
+            !add_size(total, sizeof *map + (size_t)map->count * sizeof *map->entries) ||
+            !value_size(total, &map->key_type, nesting + 1, NULL) ||
+            !value_size(total, &map->value_type, nesting + 1, NULL)) {
+            return false;
+        }
+        for (int n = 0; n < map->count; n++) {
+            const pin_map_entry *entry = &map->entries[n];
+            if (!pin_map_entry_valid(map, &entry->key, &entry->value) ||
+                !value_size(total, &entry->key, nesting + 1, NULL) ||
+                !value_size(total, &entry->value, nesting + 1, map->value_type.record)) {
+                return false;
+            }
+        }
+        return true;
+    }
     if (v->container >= PIN_CONTAINER_ARRAY) {
         const pin_array *a = v->ptr;
         if (!a) {
@@ -557,14 +584,15 @@ static bool value_size(size_t *total, const pin_value *v, int nesting, const pin
                            a->element_type != PIN_STRUCT || !a->type_name ||
                            strcmp(a->type_name, v->type_name))) ||
             (!v->record && (a->record || !text_size(total, a->type_name))) ||
-            a->count < 0 || a->count > 65536 || (a->count && !a->items) ||
+            !pin_array_valid(a) || a->count > 65536 ||
             !add_size(total, sizeof *a + (size_t)a->count * (sizeof(pin_value) + 2 * sizeof(int)))) {
             return false;
         }
         for (int n = 0; n < a->count; n++) {
-            if ((v->record && (a->items[n].type != PIN_STRUCT ||
-                               a->items[n].container != PIN_CONTAINER_SINGLE)) ||
-                !value_size(total, &a->items[n], nesting + 1, v->record)) {
+            pin_value item = pin_array_get(a, n);
+            if ((v->record && (item.type != PIN_STRUCT ||
+                               item.container != PIN_CONTAINER_SINGLE)) ||
+                !value_size(total, &item, nesting + 1, v->record)) {
                 return false;
             }
         }

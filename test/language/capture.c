@@ -154,13 +154,13 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
     execution_reference_capture(&references, &origin, &first, &box);
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
-    REQUIRE(write_value(first, ((pin_array *)box.kept.ptr)->items[1], true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "tail"));
-    REQUIRE(write_value(second, ((pin_array *)box.kept.ptr)->items[1], true));
+    REQUIRE(write_value(first, pin_array_get(box.kept.ptr, 1), true));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "tail"));
+    REQUIRE(write_value(second, pin_array_get(box.kept.ptr, 1), true));
     values.count = 1;
     REQUIRE(write_value(root_reference, root, true));
     REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "short" }, true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "short"));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "short"));
     REQUIRE(write_value(second, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
     values.count = 0;
     REQUIRE(write_value(root_reference, root, true));
@@ -179,9 +179,9 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[1].str, "tail"));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, large_text));
+    REQUIRE(!strcmp(pin_array_get(saved.ptr, 0).str, large_text));
+    REQUIRE(!strcmp(pin_array_get(saved.ptr, 1).str, "tail"));
     return true;
 }
 

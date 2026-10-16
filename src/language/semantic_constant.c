@@ -37,7 +37,13 @@ static bool convert(pin_value *value, pin_type type)
     *value = behavior_scalar_cast(*value, type);
     return true;
 }
-static const char *operation(script_operator op, pin_value left, pin_value right, pin_type type, pin_value *out)
+const char *script_analyzer_constant_operation(
+    script_operator op,
+    pin_value left,
+    pin_value right,
+    pin_type type,
+    pin_value *out
+)
 {
     *out = (pin_value){ .type = type };
     if (op == SCRIPT_OP_NONE) {
@@ -88,10 +94,12 @@ static const char *operation(script_operator op, pin_value left, pin_value right
         *out = behavior_scalar_from_bits(type, bits & mask);
         return NULL;
     }
-    if (left.type == PIN_I32 || left.type == PIN_I64) {
-        int64_t x = left.type == PIN_I32 ? left.i : left.i64;
-        int64_t y = right.type == PIN_I32 ? right.i : right.i64;
-        int64_t minimum = left.type == PIN_I32 ? INT32_MIN : INT64_MIN;
+    if (left.type >= PIN_I8 && left.type <= PIN_U64 &&
+        behavior_scalar_signed(left.type)) {
+        int64_t x = (int64_t)behavior_scalar_bits(left);
+        int64_t y = op == SCRIPT_OP_NEG ? 0 : (int64_t)behavior_scalar_bits(right);
+        unsigned width = (unsigned)behavior_scalar_size(left.type) * CHAR_BIT;
+        int64_t minimum = width == 64 ? INT64_MIN : -(INT64_C(1) << (width - 1));
         if ((op == SCRIPT_OP_DIV || op == SCRIPT_OP_MOD) &&
             (!y || (x == minimum && y == -1))) {
             return "invalid integer division or remainder";
@@ -113,12 +121,26 @@ static const char *operation(script_operator op, pin_value left, pin_value right
         *out = behavior_scalar_from_bits(type, bits);
         return NULL;
     }
-    if (left.type == PIN_U32 || left.type == PIN_U64) {
-        uint64_t x = behavior_scalar_bits(left), y = behavior_scalar_bits(right);
-        if (op != SCRIPT_OP_ADD && op != SCRIPT_OP_MUL) {
-            return "unsupported unsigned constant operator";
+    if (left.type >= PIN_I8 && left.type <= PIN_U64) {
+        uint64_t x = behavior_scalar_bits(left),
+                 y = op == SCRIPT_OP_NEG ? 0 : behavior_scalar_bits(right), bits;
+        if ((op == SCRIPT_OP_DIV || op == SCRIPT_OP_MOD) && !y) {
+            return "invalid integer division or remainder";
         }
-        *out = behavior_scalar_from_bits(type, op == SCRIPT_OP_ADD ? x + y : x * y);
+        switch (op) {
+            case SCRIPT_OP_ADD: bits = x + y; break;
+            case SCRIPT_OP_SUB: bits = x - y; break;
+            case SCRIPT_OP_MUL: bits = x * y; break;
+            case SCRIPT_OP_DIV: bits = x / y; break;
+            case SCRIPT_OP_MOD: bits = x % y; break;
+            case SCRIPT_OP_NEG: bits = UINT64_C(0) - x; break;
+            case SCRIPT_OP_LT: out->b = x < y; return NULL;
+            case SCRIPT_OP_LE: out->b = x <= y; return NULL;
+            case SCRIPT_OP_GT: out->b = x > y; return NULL;
+            case SCRIPT_OP_GE: out->b = x >= y; return NULL;
+            default: return "unsupported unsigned constant operator";
+        }
+        *out = behavior_scalar_from_bits(type, bits);
         return NULL;
     }
     if (left.type == PIN_F32 || left.type == PIN_F64) {
@@ -136,6 +158,9 @@ static const char *operation(script_operator op, pin_value left, pin_value right
                 break;
             case SCRIPT_OP_DIV:
                 result = left.type == PIN_F32 ? (float)(left.f / right.f) : x / y;
+                break;
+            case SCRIPT_OP_MOD:
+                result = left.type == PIN_F32 ? fmodf(left.f, right.f) : fmod(x, y);
                 break;
             case SCRIPT_OP_NEG: result = -x; break;
             case SCRIPT_OP_LT: out->b = x < y; return NULL;
@@ -212,7 +237,7 @@ static const char *evaluate(const analyzer *a, int index, pin_value *out, int de
             return "incompatible scalar constant operands";
         }
     }
-    return operation(e->op, left, right, e->type.storage, out);
+    return script_analyzer_constant_operation(e->op, left, right, e->type.storage, out);
 }
 const char *script_analyzer_scalar_constant(analyzer *a, int index, pin_type expected, pin_value *out)
 {

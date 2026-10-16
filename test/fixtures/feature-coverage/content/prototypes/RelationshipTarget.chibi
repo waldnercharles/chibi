@@ -1,0 +1,6 @@
+RelationshipTarget :: prototype {
+    Health {
+        current: 5,
+        maximum: 5
+    }
+}

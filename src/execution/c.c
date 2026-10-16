@@ -1031,6 +1031,10 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 break;
             case BF_ABS:
                 if (behavior_scalar_integer(i->type)) {
+                    if (!behavior_scalar_signed(i->type)) {
+                        fprintf(out, "v%d=v%d;\n", i->output, i->left);
+                        break;
+                    }
                     fprintf(
                         out,
                         "v%d=v%d<0?(%s)(0-(%s)v%d):v%d;\n",
@@ -1061,14 +1065,17 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             default: {
                 if ((i->op == BF_DIV || i->op == BF_MOD) &&
                     behavior_scalar_integer(i->type)) {
-                    fprintf(
-                        out,
-                        "if(v%d==0 || (v%d==%s && v%d==-1)){",
-                        i->right,
-                        i->left,
-                        i->type == PIN_I32 ? "INT32_MIN" : "INT64_MIN",
-                        i->right
-                    );
+                    fprintf(out, "if(v%d==0", i->right);
+                    if (behavior_scalar_signed(i->type)) {
+                        fprintf(
+                            out,
+                            " || (v%d==behavior_scalar_minimum(%d) && v%d==-1)",
+                            i->left,
+                            i->type,
+                            i->right
+                        );
+                    }
+                    fprintf(out, "){");
                     failure(out, i, BEHAVIOR_FUNCTION_DATA);
                     fprintf(out, "}\n");
                     if (i->target >= 0) {

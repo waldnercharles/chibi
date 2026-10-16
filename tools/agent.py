@@ -244,7 +244,7 @@ def studio_acceptance_preflight(selector):
     fixture = source / 'tests/acceptance/project'
     expected = {
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
-        'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
+        'content/behaviors/Counter.chibi': b'Counter :: behavior {\n    count: retain int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
     if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.kdl', *expected}:
@@ -255,7 +255,7 @@ def studio_acceptance_preflight(selector):
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
     studio_resource_preflight(build, evidence.get('resources'))
-    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=210, frames=frames, window=[1920,1080])
+    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=214, frames=frames, window=[1920,1080])
 
 
 def studio_acceptance_output(selector, output):

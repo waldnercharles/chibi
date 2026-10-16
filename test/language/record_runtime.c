@@ -9,6 +9,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/record.h"
 
 #include <stdio.h>
@@ -75,6 +76,19 @@ static void cleanup()
 static bool compile(const char *source, behavior_backend backend, bool reject_types)
 {
     syntax = script_parse(source);
+    for (int i = 0; i < syntax->diagnostic_count; i++) {
+        const script_diagnostic *d = &syntax->diagnostics[i];
+        fprintf(
+            stderr,
+            "record parse %d:%d [%d,%d): %s: %.64s\n",
+            d->range.line,
+            d->range.column,
+            d->range.start,
+            d->range.end,
+            d->message,
+            source + d->range.start
+        );
+    }
     REQUIRE(!syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     for (int i = 0; i < analysis->diagnostic_count; i++) {
@@ -208,7 +222,7 @@ static pin_value member(const pin_value *row, int index)
 }
 TEST_CASE(record_runtime_owned_return_and_value_copy)
 {
-    static const char source[] = "library Rows { " ROW
+    static const char source[] = "Rows :: library { " ROW
                                  "Make :: (text: string) -> Row { a: Row = "
                                  "{key: text, label: text}; "
                                  "b := a; b.label = \"changed\"; b.depth = 4; "
@@ -274,7 +288,7 @@ TEST_CASE(record_runtime_owned_return_and_value_copy)
 TEST_CASE(record_runtime_array_results)
 {
     static const char source
-        [] = "library Rows { " ROW
+        [] = "Rows :: library { " ROW
              "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return "
              "empty; } if n == 0 { return []; } "
              "a: Row = {key: \"a\", label: \"A\"}; if n == 1 { return [a]; } "
@@ -304,8 +318,9 @@ TEST_CASE(record_runtime_array_results)
             REQUIRE(result.record == array->record);
             REQUIRE(arena_contains(&storage, array->record));
             for (int j = 0; j < array->count; j++) {
-                REQUIRE(array->items[j].record == array->record);
-                REQUIRE(member(&array->items[j], 5).i == 1);
+                REQUIRE(pin_array_get(array, j).record == array->record);
+                pin_value item = pin_array_get(array, j);
+                REQUIRE(member(&item, 5).i == 1);
             }
         }
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
@@ -320,13 +335,14 @@ TEST_CASE(record_runtime_array_results)
         );
         REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
         REQUIRE(pin_record_valid(saved.record) && array->count == 3);
-        REQUIRE(!strcmp(member(&array->items[2], 1).str, "C"));
+        pin_value last = pin_array_get(array, 2);
+        REQUIRE(!strcmp(member(&last, 1).str, "C"));
     }
     return true;
 }
 TEST_CASE(record_runtime_fieldwise_equality)
 {
-    static const char source[] = "library Rows { " ROW
+    static const char source[] = "Rows :: library { " ROW
                                  "Same :: (change: bool) -> bool { a: Row = "
                                  "{key: \"a\", label: \"A\"}; "
                                  "b: Row = {key: \"a\", label: \"A\"}; if "
@@ -345,11 +361,16 @@ TEST_CASE(record_runtime_fieldwise_equality)
 }
 TEST_CASE(record_runtime_formatter_layout)
 {
-    static const char input
-        [] = "library Rows{Row::struct{key:string;label:string;depth:int=1;}}";
-    static const char expected[] = "library Rows {\n    Row :: struct {\n      "
-                                   "  key: string;\n        label: string;\n   "
-                                   "     depth: int = 1;\n    }\n}\n";
+    static const char
+        input[] = "Rows :: "
+                  "library{Row::struct{key:string;label:string;depth:int=1;}}";
+    static const char expected[] = "Rows :: library {\n"
+                                   "    Row :: struct {\n"
+                                   "        key: string;\n"
+                                   "        label: string;\n"
+                                   "        depth: int = 1;\n"
+                                   "    }\n"
+                                   "}\n";
     syntax = script_parse(input);
     REQUIRE(!syntax->diagnostic_count);
     char error[192];

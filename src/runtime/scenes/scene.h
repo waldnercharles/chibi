@@ -28,6 +28,10 @@ typedef struct
 } scene_link;
 typedef struct
 {
+    int object, relationship, target;
+} scene_pair;
+typedef struct
+{
     const char *name, *ui;
     bool perspective;
     physics_settings physics;
@@ -38,6 +42,10 @@ typedef struct
     const int *parents;
     const scene_link *links;
     int link_count;
+    const ecs_relationship_desc *relationships;
+    int relationship_count;
+    const scene_pair *pairs;
+    int pair_count;
 } scene_spec;
 
 /* Snapshots all values/names. Reflected type descriptors remain host-owned and
@@ -58,6 +66,10 @@ int scene_object_parent(const scene *, int);
 bool scene_is_tree(const scene *);
 int scene_link_count(const scene *);
 scene_link scene_link_at(const scene *, int);
+int scene_relationship_count(const scene *);
+const ecs_relationship_desc *scene_relationship_at(const scene *, int);
+int scene_pair_count(const scene *);
+scene_pair scene_pair_at(const scene *, int);
 int scene_object_behavior_count(const scene *, int);
 const char *scene_object_behavior(const scene *, int object, int behavior);
 /* Retained arena capacity plus the owning generation, for package budgets. */
@@ -83,6 +95,8 @@ scene_instance *scene_instantiate_components(scene *, ecs_world *, char *error, 
  * the array. Their managed components remain owned by the ECS world. */
 ecs_entity *scene_instance_take_entities(scene_instance *);
 void scene_instance_free(scene_instance *);
+/* On refusal, the instance and all its entities/relationships remain intact. */
+bool scene_instance_release(scene_instance *, char *error, size_t error_size);
 ecs_entity scene_instance_entity(const scene_instance *, int);
 /* Borrowed immutable scene retained by the instance. */
 const scene *scene_instance_scene(const scene_instance *);

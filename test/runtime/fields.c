@@ -984,9 +984,9 @@ TEST_CASE(field_links_source_library)
 TEST_CASE(field_source_library_keeps_parameter_defaults)
 {
     const char
-        *text = "library \"Discs\" {\n"
-                "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = 0.0, "
-                "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
+        *text = "Discs :: library {\n"
+                "    Disc :: (X: float = 0.0, Y: float = 0.0, Radius: float = "
+                "40.0) -> (Value: float = 0.0) {\n"
                 "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
                 "    }\n"
                 "}\n";
@@ -1019,18 +1019,15 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
 TEST_CASE(field_source_library_calls_follow_names)
 {
     static const char *sources[] = {
-        "library \"Values\" {"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(X: float = 10.0, Y: float = 3.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(Y: float = 30.0, X: float = 100.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 } }",
+        "Values :: library {Other :: () -> (Value: float) { return 111.0 "
+        "}Difference :: (X: float = 10.0, Y: float = 3.0) -> (Value: float) { "
+        "return field_subtract(entry.X, entry.Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 }Difference :: (Y: "
+        "float = 30.0, X: float = 100.0) -> (Value: float) { return "
+        "field_subtract(entry.X, entry.Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 } }",
     };
     test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
     behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
@@ -1208,9 +1205,9 @@ TEST_CASE(field_source_library_hot_apply)
     REQUIRE(definition->dirty && definition->unsaved);
     REQUIRE(behavior_asset_equal(definition->working, saved_draft));
 
-    char *renamed = strstr(text, "\"Islands\"");
+    char *renamed = strstr(text, "Islands ::");
     REQUIRE(renamed);
-    memcpy(renamed, "\"Isles\"  ", 9);
+    memcpy(renamed, "Isles  ", 7);
     REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
     REQUIRE(preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(strstr(error, "missing library function"));

@@ -182,7 +182,7 @@ TEST_CASE(authored_ramps_own_their_stops)
     edit[1].position = edit[0].position;
     REQUIRE(!shader_node_ramp_set(copy->graph, loaded, edit, 3));
     pin_array *array = loaded->input_pins[1].default_value.ptr;
-    ((shader_ramp_stop *)array->items[1].ptr)->position = .1f;
+    ((shader_ramp_stop *)pin_array_get(array, 1).ptr)->position = .1f;
     REQUIRE(!shader_graph_from_graph(copy->graph, &ir, &error));
     REQUIRE(
         error.node == loaded->id && strstr(error.message, "stops") &&

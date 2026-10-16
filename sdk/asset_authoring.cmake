@@ -59,7 +59,7 @@ if(CHIBI_SDK_BUILD_DESKTOP)
     target_link_libraries(chibi_model_import PUBLIC chibi_graph_model chibi_shader_runtime
         PRIVATE chibi_platform chibi_asset_authoring chibi_prototype_document chibi_image_preparation
         chibi_mesh_runtime chibi_native_types chibi_graph_authoring chibi_graph_compilation
-        chibi_asset_text chibi_json chibi_support)
+        chibi_asset_text chibi_json chibi_support chibi_source_catalog)
     list(APPEND CHIBI_SDK_TARGETS chibi_model_import)
 endif()
 

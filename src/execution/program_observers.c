@@ -2,6 +2,7 @@
 #include "execution/scalar.h"
 #include "execution/status.h"
 #include "support/array.h"
+#include "types/array.h"
 #include "types/catalog.h"
 
 #include <stdlib.h>
@@ -150,7 +151,7 @@ int program_observe(
                     status = observe_target(
                         instance,
                         i,
-                        array->items[j].u64,
+                        pin_array_get(array, j).u64,
                         now,
                         delta,
                         budget,

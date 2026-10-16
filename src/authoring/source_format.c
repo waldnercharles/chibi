@@ -32,6 +32,10 @@ static bool block(TSNode node)
     return kind(node, "block") || kind(node, "declaration_body") ||
            kind(node, "system_body") || kind(node, "callable_body") ||
            kind(node, "component_body") || kind(node, "record_body") ||
+           kind(node, "prototype_body") ||
+           (kind(node, "struct_expression") &&
+            (kind(ts_node_parent(node), "prototype_component") ||
+             kind(ts_node_parent(node), "relationship_declaration"))) ||
            kind(node, "switch_statement") || kind(node, "union_declaration") ||
            kind(node, "sequence_statement");
 }
@@ -39,9 +43,11 @@ static bool block(TSNode node)
 /* Brackets whose contents may continue on later lines. */
 static bool nest(TSNode node)
 {
-    return kind(node, "argument_list") || kind(node, "parameter_list") ||
-           kind(node, "array_expression") || kind(node, "struct_expression") ||
-           kind(node, "parenthesized_expression");
+    return !block(node) &&
+           (kind(node, "argument_list") || kind(node, "parameter_list") ||
+            kind(node, "array_expression") || kind(node, "struct_expression") ||
+            kind(node, "prototype_bases") || kind(node, "struct_field") ||
+            kind(node, "parenthesized_expression"));
 }
 
 static bool end_line(TSNode node)
@@ -62,6 +68,7 @@ static token leaf(TSNode node)
     TSNode parent = ts_node_parent(node);
     t.open = kind(node, "{") && block(parent);
     t.close = kind(node, "}") && block(parent);
+    t.end_line = kind(node, ",") && block(parent);
     if (kind(node, ":") && kind(parent, "switch_arm")) {
         TSNode body = ts_node_child_by_field_name(parent, "body", 4);
         t.case_open = !kind(ts_node_child(body, 0), "{");
@@ -137,9 +144,9 @@ static bool tight_before(token t)
            (kind(n, "(") &&
             (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
              kind(p, "cast_expression") || kind(p, "reduce_statement") ||
+             kind(p, "prototype_bases") ||
              (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
-           (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression") ||
-                             kind(p, "engine_reference"))) ||
+           (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression"))) ||
            ((kind(n, "<") || kind(n, ">")) &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
              kind(p, "cast_expression"))) ||
@@ -150,6 +157,7 @@ static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
+           (kind(n, "$") && (kind(p, "type_binder") || kind(p, "parameter"))) ||
            unit_operator(n) ||
            (kind(p, "unary_expression") && !kind(n, "not") &&
             ts_node_start_byte(p) == (uint32_t)t.start) ||

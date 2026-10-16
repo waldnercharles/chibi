@@ -221,6 +221,29 @@ static void object_link(execution_wire *wire, scene_link *value)
     execution_wire_int(wire, &value->field);
     execution_wire_int(wire, &value->target);
 }
+static void relationship(execution_wire *wire, ecs_relationship_desc *value)
+{
+    execution_wire_u64(wire, &value->id);
+    execution_wire_string(wire, &value->key);
+    execution_wire_string(wire, &value->name);
+    uint64_t traits = value->traits;
+    int cleanup = value->on_delete_target;
+    execution_wire_u64(wire, &traits);
+    execution_wire_int(wire, &cleanup);
+    if (traits > (ECS_REL_EXCLUSIVE | ECS_REL_ACYCLIC | ECS_REL_TRAVERSABLE) ||
+        cleanup < ECS_CLEANUP_REMOVE || cleanup > ECS_CLEANUP_PANIC) {
+        wire->error = "Prepared relationship traits or cleanup policy are "
+                      "invalid";
+    }
+    value->traits = (unsigned)traits;
+    value->on_delete_target = (ecs_cleanup)cleanup;
+}
+static void pair(execution_wire *wire, scene_pair *value)
+{
+    execution_wire_int(wire, &value->object);
+    execution_wire_int(wire, &value->relationship);
+    execution_wire_int(wire, &value->target);
+}
 static void write_scene(execution_wire *wire, const scene *scene, char *diagnostic, size_t diagnostic_size)
 {
     const char *name = scene_name(scene), *ui = scene_ui(scene);
@@ -255,6 +278,18 @@ static void write_scene(execution_wire *wire, const scene *scene, char *diagnost
     for (int i = 0; !wire->error && i < links; i++) {
         scene_link one = scene_link_at(scene, i);
         object_link(wire, &one);
+    }
+    int relationships = scene_relationship_count(scene);
+    count(wire, &relationships);
+    for (int i = 0; !wire->error && i < relationships; i++) {
+        ecs_relationship_desc one = *scene_relationship_at(scene, i);
+        relationship(wire, &one);
+    }
+    int pairs = scene_pair_count(scene);
+    count(wire, &pairs);
+    for (int i = 0; !wire->error && i < pairs; i++) {
+        scene_pair one = scene_pair_at(scene, i);
+        pair(wire, &one);
     }
 }
 bool scene_prepared_write(const scene *scene, unsigned char **data, size_t *length, char *error, size_t size)
@@ -338,6 +373,18 @@ scene *scene_prepared_read_budget(
     spec.links = links;
     for (int i = 0; !wire.error && i < spec.link_count; i++) {
         object_link(&wire, &links[i]);
+    }
+    count(&wire, &spec.relationship_count);
+    ecs_relationship_desc *relationships = allocate(&wire, spec.relationship_count, sizeof *relationships);
+    spec.relationships = relationships;
+    for (int i = 0; !wire.error && i < spec.relationship_count; i++) {
+        relationship(&wire, &relationships[i]);
+    }
+    count(&wire, &spec.pair_count);
+    scene_pair *pairs = allocate(&wire, spec.pair_count, sizeof *pairs);
+    spec.pairs = pairs;
+    for (int i = 0; !wire.error && i < spec.pair_count; i++) {
+        pair(&wire, &pairs[i]);
     }
     if (!wire.error && wire.offset != wire.size) {
         wire.error = "Prepared scene has trailing input";

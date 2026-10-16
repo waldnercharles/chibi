@@ -25,10 +25,10 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-native         # admitted native group, one 60-second deadline
 make test-materials      # the material simulation selectors, one 60-second deadline
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
-make test-language-all   # every test_language selector, one 60-second deadline
+make test-language-all   # admitted language group, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
@@ -45,6 +45,14 @@ coverage, mesh files, project validation and model import alone took 33 s.
 the drivers `make test-build` produced and that Release `chibi_ctl`; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
 build.
+
+`python3 tools/test_policy.py tool fixture-format` checks the fixed thirteen
+checked-in fixture projects with Release `chibi_ctl --format --check`, under
+one shared 60-second deadline. It refuses outdated manifests before launching
+any child, because opening an old project can migrate it. This standalone
+admission does not enable the quarantined full gate. Other standalone admissions,
+including `language-query-program` and `language-row-array`, are also outside the
+aggregate groups; use `make test-list` for the current inventory.
 
 `make language-build` builds a standalone, faster `test_language` in
 `build-language/` for the `test-language*` targets. Add a case to the selector
@@ -69,11 +77,12 @@ advisory until they first pass.
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
 area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
-materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
+materials, input and entities). `test_tools --feature-coverage <project> <chibi_ctl>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
-failure. Every prototype, behavior, library and system must be reachable from a
+failure. The production policy passes the selected `CHIBI_CTL` controller,
+defaulting to `build-release/bin/chibi_ctl`. Every prototype, behavior, library and system must be reachable from a
 scene: placed or attached there, spawned or called from source that runs, and
 only that source counts. A spawn reaches the prototype it names directly or
 through a value, such as a local, state or library parameter that holds the
@@ -83,7 +92,7 @@ prototype run the prototype's list. A prototype's children spawn with each of
 its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
-`add_component("Heat")`; a system query alone matches nothing without
+`add_component(Heat)`; a system query alone matches nothing without
 them, so it does not count.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and
@@ -241,6 +250,13 @@ except headless through `test_tools --wasm-browser`, with GPU use disabled and
 a 55-second internal process deadline. The fixture owns and removes its browser
 profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
 baseline comparison.
+
+Chrome also runs `--row-array`, `--modules` and `--query-program` for packed
+numeric arrays, imported generic ownership, maps and iteration. These are fixed
+C workloads; module paths use a temporary MEMFS directory and source overlays.
+The packed loop has 64 elements and 16 trials per numeric width, representation
+and backend. The combined route retains its 55-second internal deadline and
+60-second supervisor limit. Its expanded duration needs a supervised measurement.
 
 Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
 helper continuations, budgets, prepared generation ownership and canonical
@@ -722,6 +738,13 @@ and atomic package loading with reversed records and three rejection cases.
 Both execution backends are checked. Input files are capped at 512 KiB and the
 metadata file at 96 bytes. Each child has a 10-second cap within the shared
 60-second production deadline; generated inputs and logs are removed by the parent.
+The redesign adds two fixed one-function specimens on this same route: a declared
+scalar BOOL getter with its actual field capability metadata, and a separate
+payload-free native-header artifact written after catalog retirement. Each file
+is capped at 16 KiB. The consumer keeps the existing scalar offset-corruption
+checks and adds one native-header layout-bit corruption checked against its linked
+native descriptor. These add no processes, frames, loops over runtime data or
+deadline changes. Validation of this addition is pending.
 The consumer translation unit sees only exported SDK headers and its fixture;
 the executable links no parser, compiler, graph or renderer library. The frozen
 candidate passed in 0.701 seconds on 2026-10-07: producer one case/31 assertions,
@@ -1002,7 +1025,7 @@ make test-list
 | `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
-| `test-language-all` | Every `test_language` selector under one shared deadline. |
+| `test-language-all` | The admitted language group under one shared deadline; standalone selectors are listed separately by `make test-list`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
 | `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
@@ -1565,6 +1588,43 @@ raw timing samples, log hashes and limitations are in
 [the validation record](evidence/runtime-attribution/validation.md). Counters
 cover selected copy and backend operations; they are not a global allocation
 census or a whole-application performance/retention claim.
+
+### Private owner retention
+
+The retained-ownership simplification reuses the admitted language, source-edit,
+query-program, publication and prepared selectors. Finite VM/compiled cases cover
+behavior-attachment isolation, registration isolation, retained helper/import
+values, row removal/reentry, zero matches and reload/restart. Query regressions
+keep ordinary locals independent across waits and cancel only the removed
+structural match. They do not introduce engine frames, GPU work or sleeps.
+Syntax and authoring cases reject `retain(system)` and keep plain `retain` in
+system roots and helpers. Historical migration cases preserve behavior/system
+owner retention but reject per-match system state before replacing files.
+All commands retain the existing production supervisor's 60-second ceiling.
+
+### Name-first retained bindings (historical project version 25)
+
+The retention increment extends existing admitted selectors, without adding a
+new executable or increasing the 60-second supervisor ceiling. Independent
+review covered the grammar, semantic kinds, authoring equivalence and migration.
+
+- `language-program`: three finite runtime cases on VM and the compiled backend
+  check per-owner helper retention, system versus query-row ownership, copied
+  values, membership reentry and publication/restart identity. Each dispatch has
+  a 1000-instruction budget. Two migration cases use small literal sources and
+  one temporary directory to check execution, idempotence, metadata remapping
+  and refusal before staged replacement.
+- `language`, `language-semantic`, `language-format` and `language-navigation`:
+  accepted/rejected binding forms, ordinary value types, storage restrictions,
+  formatter/minimizer ownership preservation and source intelligence. Numeric
+  inference tests keep `int`/`float` annotations when removing them changes type.
+- `source-edit`: one additional case uses exactly three small sources to check
+  compact inferred retained retyping at behavior, callable and system scope.
+  It has no runtime execution, subprocess, network or GPU work.
+
+Existing implicit root lifetimes are unchanged. These checks do not establish
+the later unified system syntax, queryable embedded components, packed storage,
+or Studio/browser acceptance.
 
 ### Redundant root-state canonicalization
 

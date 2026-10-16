@@ -1,4 +1,4 @@
-behavior Branching {
+Branching :: behavior {
     elapsed := 0
     paused := false
     active := true

@@ -2,8 +2,13 @@
 #define CHIBI_LANGUAGE_SEMANTIC_H
 
 #include "capabilities/catalog.h"
+/* Includes nested collection/union payload schemas, even when values are empty. */
+bool script_type_contains_tasks(const script_catalog *, script_type);
 #include "language/syntax.h"
 #include "support/arena.h"
+
+/* One language-wide recursion budget; authored source cannot override it. */
+#define SCRIPT_CALL_DEPTH_LIMIT 64
 
 typedef enum
 {
@@ -74,6 +79,9 @@ typedef enum
     SCRIPT_EXPR_COMPONENT,
     SCRIPT_EXPR_INDEX,
     SCRIPT_EXPR_ARRAY,
+    SCRIPT_EXPR_MAP,
+    SCRIPT_EXPR_MAP_HAS,
+    SCRIPT_EXPR_MAP_REMOVE,
     SCRIPT_EXPR_STRUCT,
     SCRIPT_EXPR_NIL,
     SCRIPT_EXPR_FALLBACK,
@@ -173,6 +181,7 @@ typedef struct
     script_statement_kind kind;
     script_range range;
     int scope, symbol, expression, second, third, body, alternative;
+    int key_symbol; /* Map iterator key binding; -1 for a value-only iterator. */
     int *children;
     int child_count;
     script_operator op;
@@ -192,9 +201,7 @@ typedef struct
     script_function_kind kind;
     int symbol, scope, body, receiver, parent;
     int *parameters, *results;
-    int *type_parameters;
     int parameter_count, result_count;
-    int type_parameter_count;
     int depth_limit;
     uint64_t event, action;
     char *entry;
@@ -239,6 +246,15 @@ typedef enum
     SCRIPT_PROGRAM_LIBRARY,
     SCRIPT_PROGRAM_SYSTEM
 } script_program_kind;
+typedef struct
+{
+    uint64_t id, template_id;
+    const char *owner;
+    const script_compile_binding *bindings;
+    int binding_count;
+    script_range origin;
+    bool evaluate;
+} script_specialization_request;
 /* The resolved program owns text, names, constants, origins and typed records.
  * Indices refer only to this immutable program, never to syntax/graph objects.
  * A failed analysis retains facts and diagnostics but is not executable. */
@@ -257,6 +273,12 @@ typedef struct
     script_binding *bindings;
     script_catalog_type *types; /* Authored and structural union definitions. */
     int type_count;
+    script_catalog_template *templates;
+    int template_count;
+    script_specialization_request *requests;
+    int request_count;
+    script_catalog_specialization *specializations;
+    int specialization_count;
     script_diagnostic *diagnostics;
     script_diagnostic *warnings; /* Advisory diagnostics; never invalidate. */
     int symbol_count, use_count, scope_count, expression_count, statement_count,
@@ -273,8 +295,27 @@ script_analysis *script_analyze(const script_syntax *, const script_catalog *);
 /* A stable document key is independent of its display path and declared name.
  * Project callers use a project-relative asset key for reproducible identities. */
 script_analysis *script_analyze_document(const script_syntax *, const script_catalog *, const char *key);
+/* Materializes requested specializations against this document's original
+ * syntax/text. The analysis owns all published descriptors and requests. */
+script_analysis *script_analyze_document_requested(
+    const script_syntax *,
+    const script_catalog *,
+    const char *key,
+    const script_specialization_request *,
+    int request_count
+);
 /* Signature discovery does not resolve bodies; useful for project catalogs. */
 script_analysis *script_declarations(const script_syntax *, const script_catalog *);
+/* Import normalization only: obsolete native accessors may be analyzed but
+ * must be rewritten and pass ordinary analysis before publication. */
+script_analysis *script_analyze_migration_document(
+    const script_syntax *,
+    const script_catalog *,
+    const char *identity,
+    const script_specialization_request *,
+    int count,
+    bool declarations
+);
 script_analysis *script_declarations_document(
     const script_syntax *,
     const script_catalog *,

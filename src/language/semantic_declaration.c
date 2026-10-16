@@ -2,8 +2,6 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
-#include <errno.h>
-#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,6 +16,9 @@ bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *w
 }
 void script_analyzer_declare_constant(analyzer *a, TSNode node)
 {
+    if (script_analyzer_generic_alias(a, node)) {
+        return;
+    }
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
@@ -32,17 +33,10 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
     script_symbol_kind kind = script_analyzer_is(node, "action_declaration")
                                 ? SCRIPT_ACTION
                             : script_analyzer_is(node, "event_declaration") ? SCRIPT_EVENT
-                            : script_analyzer_text_is(a, script_analyzer_field(node, "storage"), "shared")
+                            : a->out->kind == SCRIPT_PROGRAM_SYSTEM
                                 ? SCRIPT_SHARED_STATE
                                 : SCRIPT_STATE;
-    if (kind == SCRIPT_SHARED_STATE && a->out->kind != SCRIPT_PROGRAM_SYSTEM) {
-        script_analyzer_diagnostic(a, node, "Shared state is restricted to systems");
-    }
     script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
-    if (kind == SCRIPT_SHARED_STATE && (type.flags & SCRIPT_TYPE_TASK)) {
-        /* A task belongs to the entity that started it. */
-        script_analyzer_diagnostic(a, node, "Shared state cannot hold a task");
-    }
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
@@ -55,17 +49,14 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
 }
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol)
 {
-    script_function function = {
-        .kind = kind,
-        .symbol = symbol,
-        .scope = -1,
-        .body = -1,
-        .receiver = -1,
-        .parent = a->function,
-        .range = script_analyzer_range(node),
-        .pure = script_analyzer_token_present(a, node, "pure"),
-        .depth_limit = a->function >= 0 ? a->out->functions[a->function].depth_limit : 64
-    };
+    script_function function = { .kind = kind,
+                                 .symbol = symbol,
+                                 .scope = -1,
+                                 .body = -1,
+                                 .receiver = -1,
+                                 .parent = a->function,
+                                 .range = script_analyzer_range(node),
+                                 .depth_limit = SCRIPT_CALL_DEPTH_LIMIT };
     apush(a->out->functions, function);
     return acount(a->out->functions) - 1;
 }
@@ -84,6 +75,10 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         TSNode parameter = ts_node_named_child(node, i);
         if (ts_node_is_extra(parameter)) {
+            continue;
+        }
+        if (a->instantiating &&
+            !ts_node_is_null(script_analyzer_field(parameter, "comptime"))) {
             continue;
         }
         char *unit;
@@ -145,6 +140,9 @@ void script_analyzer_function_type(analyzer *a, int function)
 }
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
+    if (!a->instantiating && script_analyzer_generic_declare(a, node)) {
+        return;
+    }
     bool macro = script_analyzer_is(node, "macro_declaration");
     int symbol = script_analyzer_symbol_new(
         a,
@@ -156,28 +154,13 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
     int function = script_analyzer_function_new(a, node, SCRIPT_FUNCTION_AUTHORED, symbol);
     a->out->symbols[symbol].function = function;
     a->out->symbols[symbol].capability = a->out->symbols[symbol].id;
+    if (!a->instantiating) {
+        script_analyzer_generic_export(a, node, symbol);
+    }
     int old_scope = a->scope, old_function = a->function;
     a->function = function;
     a->scope = script_analyzer_scope_new(a, script_analyzer_field(node, "body"));
     a->out->functions[function].scope = a->scope;
-    TSNode generics = script_analyzer_field(node, "type_parameters");
-    for (uint32_t i = 0; i < script_analyzer_named_count(generics); i++) {
-        TSNode parameter = ts_node_named_child(generics, i);
-        if (ts_node_is_extra(parameter)) {
-            continue;
-        }
-        script_type bound = script_analyzer_type_node(a, script_analyzer_field(parameter, "type"));
-        int generic = script_analyzer_symbol_new(
-            a,
-            script_analyzer_field(parameter, "name"),
-            SCRIPT_TYPE_PARAMETER,
-            bound,
-            false
-        );
-        a->out->symbols[generic].type.parameter = a->out->symbols[generic].id;
-        a->out->symbols[generic].type.flags |= SCRIPT_TYPE_GENERIC;
-        apush(a->out->functions[function].type_parameters, generic);
-    }
     script_analyzer_parameters(a, script_analyzer_field(node, "parameters"), function, false);
     script_analyzer_parameters(a, script_analyzer_field(node, "results"), function, true);
     apush(
@@ -796,30 +779,6 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             a->scope = script_analyzer_scope_new(a, script_analyzer_field(node, "body"));
             script_analyzer_declaration_pass(a, script_analyzer_field(node, "body"));
             a->scope = old;
-        } else if (
-            script_analyzer_is(node, "metadata_declaration") &&
-            script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "depth_limit")
-        ) {
-            TSNode value = script_analyzer_field(node, "value");
-            char *text = script_analyzer_text_copy(a, value), *end;
-            errno = 0;
-            long limit = strtol(text, &end, 10);
-            if (*end || errno == ERANGE || limit < 0 || limit > INT_MAX ||
-                a->function < 0) {
-                script_analyzer_diagnostic(a, node, "Callable depth limit must be a nonnegative integer");
-            } else {
-                a->out->functions[a->function].depth_limit = (int)limit;
-            }
-            free(text);
-        } else if (
-            script_analyzer_is(node, "metadata_declaration") &&
-            script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "owner")
-        ) {
-            script_type owner = script_analyzer_type_node(a, script_analyzer_field(node, "value"));
-            if (owner.storage != PIN_HANDLE) {
-                script_analyzer_diagnostic(a, node, "Owner must be a nominal handle type");
-            }
-            a->out->owner_type = owner.nominal;
         }
     }
     script_analyzer_record_fields(a, body);
@@ -1228,7 +1187,6 @@ bool script_analyzer_declaration_kind(TSNode node)
            script_analyzer_is(node, "macro_declaration") ||
            script_analyzer_is(node, "handler") ||
            script_analyzer_is(node, "events_declaration") ||
-           script_analyzer_is(node, "metadata_declaration") ||
            script_analyzer_is(node, "query_declaration") ||
            script_analyzer_is(node, "bind_declaration") ||
            script_analyzer_is(node, "entry_declaration") ||

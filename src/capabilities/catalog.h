@@ -11,6 +11,7 @@ typedef struct
     pin_type storage;
     pin_container container;
     uint64_t nominal, parameter;
+    uint64_t collection; /* Immutable catalog descriptor for nested element/key types. */
     unsigned flags;
 } script_type;
 enum
@@ -38,6 +39,9 @@ enum
     SCRIPT_EFFECT_HOST = 1u << 3,
     SCRIPT_EFFECT_SUSPEND = 1u << 4,
     SCRIPT_EFFECT_RANDOM = 1u << 5,
+    /* Retained storage or invocation values unavailable to query filters.
+     * Ordinary calls and bindings may still read these values. */
+    SCRIPT_EFFECT_INVOCATION_READ = 1u << 6,
 };
 typedef struct
 {
@@ -88,12 +92,15 @@ typedef struct
     int variant_count;
     bool internal; /* Structural metadata without a source-visible type name. */
     bool authored_record; /* Owned flat layout, never a native catalog alias. */
+    pin_container container;
+    script_type key_type, element_type;
 } script_catalog_type;
 typedef enum
 {
     SCRIPT_REFERENCE_NONE,
     SCRIPT_REFERENCE_PROTOTYPE,
     SCRIPT_REFERENCE_COMPONENT,
+    SCRIPT_REFERENCE_RELATIONSHIP,
 } script_reference_kind;
 typedef struct
 {
@@ -189,6 +196,48 @@ typedef struct
     const char *name;
     bool exclusive, traversable;
 } script_catalog_relationship;
+typedef struct
+{
+    bool is_type;
+    script_type type;
+    pin_value value;
+} script_compile_value;
+typedef struct
+{
+    char *name;
+    script_compile_value value;
+} script_compile_binding;
+typedef enum
+{
+    SCRIPT_TEMPLATE_FUNCTION,
+    SCRIPT_TEMPLATE_RECORD,
+    SCRIPT_TEMPLATE_TYPE_FUNCTION,
+} script_template_kind;
+typedef struct
+{
+    const char *name, *binder;
+    script_type type;
+    bool comptime, type_value, binds_type;
+} script_template_parameter;
+typedef struct
+{
+    uint64_t id;
+    const char *name, *owner;
+    uint64_t source_generation;
+    script_template_kind kind;
+    const script_template_parameter *parameters;
+    int parameter_count;
+    int start, end; /* Declaration range in its owning source, never the caller. */
+    bool generic;
+} script_catalog_template;
+typedef struct
+{
+    uint64_t id, template_id;
+    const script_compile_binding *bindings;
+    int binding_count;
+    script_compile_value result;
+    bool executable;
+} script_catalog_specialization;
 /* Stable built-in storage identity, shared with the ECS ChildOf contract. */
 #define SCRIPT_CHILD_OF UINT64_C(0x84771d550890f1a1)
 typedef enum
@@ -211,6 +260,10 @@ typedef struct
     uint64_t tick_event;
     const script_catalog_relationship *relationships;
     int relationship_count;
+    const script_catalog_template *templates;
+    int template_count;
+    const script_catalog_specialization *specializations;
+    int specialization_count;
 } script_catalog;
 
 uint64_t script_catalog_id(const char *domain, const char *name);
@@ -225,12 +278,20 @@ int script_catalog_find_capability(const script_catalog *, const char *name, scr
 int script_catalog_find_field(const script_catalog_type *, const char *name);
 /* Declared executable ABI; excludes callbacks, defaults and source aliases. */
 uint64_t script_catalog_capability_abi(const script_catalog *, const script_catalog_capability *);
+/* Bounded exact evidence for declared defaults and specialization constants.
+ * Caller releases the returned dynamic byte array with afree. */
+bool script_catalog_values_key(const script_catalog *, unsigned char **);
 const script_catalog_type *script_catalog_type_by_id(const script_catalog *, uint64_t id);
 const script_catalog_capability *script_catalog_capability_by_id(const script_catalog *, uint64_t id);
 script_type script_builtin_type(const char *name);
+script_type script_reference_type(script_reference_kind);
+script_reference_kind script_reference_kind_for_type(script_type);
+const char *script_reference_type_name(script_reference_kind);
 script_type script_catalog_canonical_type(const script_catalog *, script_type);
 bool script_catalog_type_assignable(const script_catalog *, script_type expected, script_type actual);
 bool script_type_equal(script_type a, script_type b);
+script_type script_catalog_element_type(const script_catalog *, script_type);
+script_type script_catalog_key_type(const script_catalog *, script_type);
 bool script_type_numeric(script_type type);
 bool script_type_assignable(script_type expected, script_type actual);
 uint64_t script_type_tag(script_type);

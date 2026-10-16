@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/record.h"
 
@@ -14,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Two functions, five samples per backend, one compiler child. No frames. */
 #define ROW                                                                    \
@@ -22,9 +24,9 @@
     "behaviors: int = 0; active: bool = true; marked: bool = false; "          \
     "hidden: bool = false; locked: bool = false; renaming: bool = false; } "
 static const char *const sources[] = {
-    "library Rows { " ROW
+    "Rows :: library { " ROW
     "Make :: (text: string) -> Row { return {key: text, label: text}; } }",
-    "library Rows { " ROW
+    "Rows :: library { " ROW
     "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return empty; } "
     "if n == 0 { return []; } a: Row = {key: \"a\", label: \"A\"}; "
     "if n == 1 { return [a]; } return [a, a, a]; } }"
@@ -211,9 +213,10 @@ static bool sample(int backend, int index)
             REQUIRE(array->record == result.record);
             REQUIRE(arena_contains(&storage, array->record));
             for (int i = 0; i < array->count; i++) {
-                REQUIRE(array->items[i].record == array->record);
-                REQUIRE(row(&array->items[i], "a", "A"));
-                REQUIRE(owned_row(&array->items[i]));
+                pin_value item = pin_array_get(array, i);
+                REQUIRE(pin_array_get(array, i).record == array->record);
+                REQUIRE(row(&item, "a", "A"));
+                REQUIRE(owned_row(&item));
             }
         }
     }

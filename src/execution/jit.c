@@ -1376,6 +1376,44 @@ void *behavior_function_guard(const behavior_function *f)
     sljit_free_compiler(c);
     return code;
 }
+void *behavior_function_row_guard(const behavior_function *f)
+{
+    struct sljit_compiler *c = sljit_create_compiler(NULL);
+    if (!c) {
+        return NULL;
+    }
+    sljit_emit_enter(c, 0, SLJIT_ARGS1(32, P_R), 2, 1, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_S0, 0, SLJIT_R0, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R1, 0, SLJIT_R0, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)f);
+    sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(32, P, P), SLJIT_IMM, (sljit_sw)behavior_function_rows_allowed);
+    /* A C bool return defines only its byte, not the upper return-register bits. */
+    sljit_emit_op1(c, SLJIT_MOV_U8, SLJIT_R0, 0, SLJIT_R0, 0);
+    struct sljit_jump *canonical = sljit_emit_cmp(c, SLJIT_EQUAL | SLJIT_32, SLJIT_R0, 0, SLJIT_IMM, 0);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
+    sljit_emit_icall(
+        c,
+        SLJIT_CALL | SLJIT_CALL_RETURN,
+        SLJIT_ARGS1(32, P),
+        SLJIT_IMM,
+        (sljit_sw)f->artifact->code
+    );
+    bind_here(c, canonical);
+    sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
+    sljit_emit_icall(
+        c,
+        SLJIT_CALL | SLJIT_CALL_RETURN,
+        SLJIT_ARGS1(32, P),
+        SLJIT_IMM,
+        (sljit_sw)f->artifact->inspection_code
+    );
+    void *code = sljit_get_compiler_error(c) == SLJIT_SUCCESS
+                   ? sljit_generate_code(c, 0, NULL)
+                   : NULL;
+    sljit_free_compiler(c);
+    return code;
+}
+
 #else
 void *behavior_function_compile_sequence(const behavior_function *const *, int)
 {
@@ -1390,6 +1428,10 @@ void *behavior_function_jit(const behavior_function *, bool)
     return NULL;
 }
 void *behavior_function_guard(const behavior_function *)
+{
+    return NULL;
+}
+void *behavior_function_row_guard(const behavior_function *)
 {
     return NULL;
 }

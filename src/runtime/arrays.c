@@ -1,6 +1,7 @@
 #include "runtime/arrays.h"
 
 #include "types/array.h"
+#include "types/array_internal.h"
 #include "types/catalog.h"
 #include "types/record.h"
 
@@ -192,24 +193,7 @@ pin_value native_array_identical(const pin_value *inputs, int count, arena *a)
 
 pin_value native_array_add(const pin_value *inputs, int count, arena *a)
 {
-    (void)count;
-    const pin_array *source = array_arg(inputs, 0);
-    if (!source) {
-        return (pin_value){ .type = PIN_FLOW, .container = PIN_CONTAINER_ARRAY };
-    }
-    pin_array *array = pin_array_snapshot_like(a, source, source->count + 1);
-    if (!array ||
-        pin_array_snapshot_items(
-            a,
-            array->record,
-            array->items,
-            source->items,
-            source->count
-        ) ||
-        pin_array_snapshot_items(a, array->record, &array->items[source->count], &inputs[1], 1)) {
-        return owned_array(source, NULL);
-    }
-    return owned_array(source, array);
+    return pin_array_add(inputs, count, a);
 }
 
 pin_value native_array_add_unique(const pin_value *inputs, int count, arena *a)
@@ -482,8 +466,7 @@ static const char *resize_error(const pin_value *inputs)
         const char *error = KERNEL##_owned(storage, inputs, count, &value);                                     \
         if (error) return error;                                                                                \
         /* These kernels already snapshot every item into storage. */                                           \
-        if (native_array_##KERNEL == native_array_add ||                                                        \
-            native_array_##KERNEL == native_array_append) {                                                     \
+        if (native_array_##KERNEL == native_array_append) {                                                     \
             *result = value;                                                                                    \
             return NULL;                                                                                        \
         }                                                                                                       \
@@ -495,6 +478,10 @@ static const char *resize_error(const pin_value *inputs)
                                                           .variadic = VARIADIC };                               \
     const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = { .value = KERNEL##_snapshot,                           \
                                                           .variadic = VARIADIC };
-NATIVE_ARRAY_OPERATIONS(CALL)
+#define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                      \
+    const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call }; \
+    const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call };
+NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
+#undef ADD
 #undef CALL
 const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_PURE };

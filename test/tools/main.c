@@ -41,6 +41,8 @@ void test_tool_record_c_export();
 void test_tool_row_builder_c();
 #endif
 void test_tool_package();
+void test_tool_desktop_dependencies();
+void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
@@ -546,6 +548,9 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
+    bool package_ownership = argc == 2 && !strcmp(argv[1], "--package-ownership");
+    bool desktop_dependencies = argc == 2 &&
+                                !strcmp(argv[1], "--desktop-dependencies");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
@@ -728,21 +733,21 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !example && !corpus && !unit_fixtures && !coverage &&
         !preview_components && !shader_parameters && !source_edit && !new_asset &&
-        !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !scene_snapshot_read && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !scene3d &&
-        !material_ramps && !texture_transform && !arena && !render_geometry &&
-        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
-        !sky_files && !mesh_files && !model_import && !model_graphs &&
-        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
-        !material_cameras && !mesh_materials && !sdf_quality && !scene3d_post &&
-        !scene3d_shapes && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric &&
+        !asset_refactor && !tilemap && !tilemap_project && !package &&
+        !desktop_dependencies && !package_ownership && !unit && !web_storage &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared && !read &&
+        !scene && !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !scene3d && !material_ramps && !texture_transform &&
+        !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
+        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
+        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
+        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
+        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
         !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
         !source_execution_benchmark && !source_systems && !source_query_rows &&
@@ -751,7 +756,8 @@ int main(int argc, char **argv)
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
-            "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
+            "Usage: %s [--tilemap | --tilemap-project | --package | "
+            "--desktop-dependencies | --package-ownership | --unit | "
             "--reflect-ranges | --c-export-alias | --row-builder-c | "
             "--ecs-query | "
             "--unit-fixtures | "
@@ -1116,6 +1122,10 @@ int main(int argc, char **argv)
         test_tool_webgpu_staging();
     } else if (wasm_browser) {
         test_tool_wasm_browser();
+    } else if (package_ownership) {
+        test_tool_package_ownership();
+    } else if (desktop_dependencies) {
+        test_tool_desktop_dependencies();
     } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {

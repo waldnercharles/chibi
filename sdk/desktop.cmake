@@ -149,7 +149,7 @@ if(CHIBI_WEB_PLAYER)
         "${web}/index.html" DESTINATION . COMPONENT web_player EXCLUDE_FROM_ALL)
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     chibi_windows_manifest(chibi-player)
-    install(TARGETS chibi-player RUNTIME DESTINATION bin)
+    chibi_install_product(chibi-player)
 endif()
 
 

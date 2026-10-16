@@ -8,6 +8,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 endif()
 
+include(products.cmake)
+
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # Emscripten's SDL3 port label is independent of project source warnings.
     add_link_options(-Wno-experimental)
@@ -555,7 +557,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
     chibi_windows_manifest(chibi)
-    install(TARGETS chibi RUNTIME DESTINATION bin)
+    chibi_install_product(chibi)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
     if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
@@ -581,3 +583,6 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/ChibiConfigVersion
     VERSION ${CHIBI_SDK_VERSION} COMPATIBILITY ExactVersion)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/ChibiConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/ChibiConfigVersion.cmake" DESTINATION lib/cmake/Chibi)
+
+include(package_targets.cmake)
+chibi_package_targets()

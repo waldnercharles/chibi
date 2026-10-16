@@ -210,6 +210,11 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
+    # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
+    'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
+    # One configured-ownership case: eleven children, six tiny C units and one PCH.
+    # Produced fixture programs never execute; existing 10s child/60s route caps.
+    'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],
     # Reviewed nominal alias ownership and nested error-source case, both backends, bounded 16 preparations.
     'whole-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-alias'],
     # Four reviewed public integer edge/flags/live-register/budget cases; 28k fixed calls, 46 tiny functions.

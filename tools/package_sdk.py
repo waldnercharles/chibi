@@ -181,6 +181,189 @@ def executable_identity(build, cache, target, target_directory, output=None, *, 
             'link_inputs': inputs}
 
 
+def ninja_input_edges(build, names):
+    """Actual explicit/implicit inputs, never scheduling-only ownership."""
+    output = subprocess.check_output(['ninja', '-C', str(build), '-t', 'query', *names], text=True)
+    edges = {}
+    current = None
+    reading = False
+    for line in output.splitlines():
+        if line and not line.startswith(' '):
+            current = line.removesuffix(':')
+            if current in edges:
+                raise ValueError(f'Duplicate Ninja input record: {current}')
+            edges[current] = []
+            reading = False
+        elif line.startswith('  input:'):
+            reading = True
+        elif line.startswith('  ') and not line.startswith('    '):
+            reading = False
+        elif current is not None and reading and line.startswith('    '):
+            name = line[4:]
+            if not name.startswith(('|| ', '|@ ')):
+                edges[current].append(name.removeprefix('| '))
+    if set(edges) != set(names):
+        raise ValueError('Ninja input records differ from requested outputs')
+    return edges
+
+
+def configured_package_targets(build, cache):
+    path = build / ('chibi_package_targets-' + cache.get('CMAKE_BUILD_TYPE', '') + '.txt')
+    lines = path.read_text().splitlines()
+    if not lines or lines[0] != '1':
+        raise ValueError('Invalid configured package target manifest; reconfigure first')
+    targets = {}
+    outputs = set()
+    for line in lines[1:]:
+        fields = line.split('\t')
+        if len(fields) != 3 or not fields[1] or fields[0] not in ('STATIC_LIBRARY', 'EXECUTABLE', 'OBJECT_LIBRARY'):
+            raise ValueError('Invalid configured package target record')
+        kind, target, name = fields
+        if kind == 'OBJECT_LIBRARY':
+            if name:
+                raise ValueError(f'Object target has an artifact path: {target}')
+            relative = None
+        else:
+            output = Path(name)
+            if not output.is_absolute() or not output.resolve().is_relative_to(build):
+                raise ValueError(f'Package target output is outside its build: {target}')
+            relative = output.resolve().relative_to(build).as_posix()
+        if target in targets or (relative is not None and relative in outputs):
+            raise ValueError(f'Duplicate package target or output: {target}')
+        targets[target] = {'type': kind, 'path': relative}
+        if relative is not None:
+            outputs.add(relative)
+    return targets
+
+
+def ninja_artifact_identity(build, target, output, dependencies, source_root):
+    path = build / output
+    if not path.is_file():
+        raise ValueError(f'Build is incomplete: {output}')
+    inputs = {}
+    for name in sorted(set(dependencies)):
+        dependency = (build / name).resolve()
+        if not dependency.is_file():
+            raise ValueError(f'Artifact link dependency is missing: {name}')
+        if dependency.stat().st_mtime_ns > path.stat().st_mtime_ns:
+            raise ValueError(f'Artifact {target} predates a link dependency; relink first')
+        checksum = digest(dependency)
+        key = dependency.relative_to(build).as_posix() if dependency.is_relative_to(build) else 'external/' + dependency.name + '-' + checksum[:16]
+        inputs[key] = checksum
+    command = subprocess.check_output(['ninja', '-C', str(build), '-t', 'commands', '-s', output], text=True)
+    lines = command.splitlines()
+    if len(lines) != 1:
+        raise ValueError(f'Expected one configured artifact command: {target}')
+    arguments = [argument.replace(str(build), '@build').replace(str(source_root), '@source')
+                 for argument in shlex.split(lines[0])]
+    return {'path': output, 'sha256': digest(path), 'arguments': arguments,
+            'link_command_sha256': canonical_digest(arguments), 'link_inputs': inputs}
+
+
+def ninja_package_artifacts(build, cache, objects, allowed_products):
+    targets = configured_package_targets(build, cache)
+    for record in objects.values():
+        if record['target'] not in targets:
+            raise ValueError(f'Compiled target has no configured type: {record["target"]}')
+    outputs = {record['path']: target for target, record in targets.items() if record['path'] is not None}
+    edges = ninja_input_edges(build, sorted(outputs) + sorted(objects))
+    artifacts = {}
+    archives = {}
+    archive_targets = {}
+    archive_objects = {}
+    executables = {}
+    auxiliary = {}
+    memberships = {name: [] for name in objects}
+    ordinary = {name for name in objects if Path(name).suffix in ('.o', '.obj')}
+    for output, target in sorted(outputs.items()):
+        inputs = [(build / name).resolve() for name in edges[output]]
+        for path in inputs:
+            if path.suffix in ('.o', '.obj') and (not path.is_relative_to(build) or path.relative_to(build).as_posix() not in ordinary):
+                raise ValueError(f'Artifact has an unaccounted object input: {path.name}')
+        members = sorted(path.relative_to(build).as_posix() for path in inputs
+                         if path.is_relative_to(build) and path.relative_to(build).as_posix() in ordinary)
+        if target in ('chibi', 'chibi-player', 'chibi-compile') and target not in allowed_products:
+            raise ValueError(f'Executable {target} is outside the configured product contract')
+        if not members:
+            if (build / output).exists() or any(record['target'] == target for record in objects.values()):
+                raise ValueError(f'Artifact has no compiled object input: {target}')
+            # Only an absent auxiliary target with no compiled inputs is unbuilt.
+            # Required product targets are checked exactly below.
+            continue
+        evidence = ninja_artifact_identity(build, target, output, edges[output], ROOT)
+        artifacts[output] = evidence
+        for name in members:
+            memberships[name].append(output)
+        if targets[target]['type'] == 'STATIC_LIBRARY':
+            archives[output] = evidence['sha256']
+            archive_targets[output] = target
+            archive_objects[output] = members
+        elif target in allowed_products:
+            executables[target] = evidence
+        else:
+            auxiliary[target] = evidence
+    for name, record in objects.items():
+        if name in ordinary:
+            if not memberships[name]:
+                raise ValueError(f'Compiled output has no linked artifact: {name}')
+            record['artifacts'] = sorted(memberships[name])
+            continue
+        if Path(name).suffix not in ('.pch', '.gch'):
+            raise ValueError(f'Unsupported compiler output: {name}')
+        consumers = sorted(output for output in ordinary if any(
+            (build / dependency).resolve() == build / name for dependency in edges[output]))
+        if not consumers:
+            raise ValueError(f'Precompiled header has no owned consumer: {name}')
+        for consumer in consumers:
+            if (build / name).stat().st_mtime_ns > (build / consumer).stat().st_mtime_ns:
+                raise ValueError(f'Object predates its precompiled header: {consumer}')
+        record['consumers'] = consumers
+    if set(executables) != allowed_products:
+        raise ValueError(f'Built executables differ from product contract: {sorted(executables)}')
+    return {'archives': archives, 'archive_targets': archive_targets, 'archive_objects': archive_objects,
+            'artifacts': artifacts, 'executables': executables, 'auxiliary_executables': auxiliary,
+            'configured_targets': targets, 'configured_targets_sha256': canonical_digest(targets)}
+
+
+def installed_archive_owners(compiled, files, vendor_text, desktop):
+    installed = {}
+    pending = []
+    for name, checksum in compiled['archives'].items():
+        destination = 'lib/' + Path(name).name
+        if destination not in files:
+            target = compiled['archive_targets'][name]
+            owner = 'Chibi::desktop_' + re.sub(r'[^A-Za-z0-9_]', '_', target)
+            declarations = re.findall(r'set_target_properties\(' + re.escape(owner) +
+                                      r' PROPERTIES IMPORTED_LOCATION "\$\{_chibi_desktop_prefix\}/([^"\n]+)"\)', vendor_text)
+            if desktop and declarations:
+                if len(declarations) != 1:
+                    raise ValueError(f'Ambiguous desktop archive owner: {name}')
+                destination = declarations[0]
+                if not destination.startswith('lib/chibi-vendor/') or '..' in Path(destination).parts:
+                    raise ValueError(f'Invalid desktop archive install path: {destination}')
+            else:
+                pending.append(name)
+                continue
+        if destination not in files or files[destination]['sha256'] != checksum:
+            raise ValueError(f'Installed archive differs from compiled evidence: {destination}')
+        installed[name] = {'path': destination}
+    # A STATIC library may be used solely through TARGET_OBJECTS. Retain its
+    # archive evidence and require every object to have a real installed owner.
+    members = compiled.get('archive_objects', {})
+    direct = set(installed)
+    for name in pending:
+        covered = set()
+        if not members.get(name):
+            raise ValueError(f'Built archive has no installed owner: {name}')
+        for object_name in members[name]:
+            owners = {owner for owner in direct if object_name in members.get(owner, [])}
+            if not owners:
+                raise ValueError(f'Built archive has no installed owner: {name}')
+            covered.update(owners)
+        installed[name] = {'folded_into': sorted(covered)}
+    return installed
+
+
 def build_identity(build, cache):
     metadata_path = build / 'chibi_engine_metadata.json'
     if not metadata_path.is_file():
@@ -235,27 +418,28 @@ def build_identity(build, cache):
         if target_directory is None:
             raise ValueError(f'Cannot identify archive owner for {object_path.name}')
         target = target_directory.name.removesuffix('.dir')
-        if target in ('chibi', 'chibi-player', 'chibi-compile'):
-            if target not in allowed_products:
-                raise ValueError(f'Executable {target} is outside the configured product contract')
-            if target not in executables:
-                executables[target] = executable_identity(build, cache, target, target_directory, source_root=ROOT)
-            executable = build / executables[target]['path']
-            if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
-                raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
-        else:
-            candidates = [target_directory.parent.parent / name
-                          for name in (f'lib{target}.a', f'{target}.lib', f'lib{target}.lib')]
-            archive_paths = [path for path in candidates if path.is_file()]
-            if len(archive_paths) != 1:
-                raise ValueError(f'Missing or ambiguous built archive for {target}')
-            archive = archive_paths[0]
-            if archive.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
-                raise ValueError(f'Archive {archive.name} predates a rebuilt object; relink first')
-            archive_key = archive.relative_to(build).as_posix()
-            archive_targets[archive_key] = target
-            if archive_key not in archives:
-                archives[archive_key] = digest(archive)
+        if cache.get('CMAKE_GENERATOR') != 'Ninja':
+            if target in ('chibi', 'chibi-player', 'chibi-compile'):
+                if target not in allowed_products:
+                    raise ValueError(f'Executable {target} is outside the configured product contract')
+                if target not in executables:
+                    executables[target] = executable_identity(build, cache, target, target_directory, source_root=ROOT)
+                executable = build / executables[target]['path']
+                if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
+                    raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
+            else:
+                candidates = [target_directory.parent.parent / name
+                              for name in (f'lib{target}.a', f'{target}.lib', f'lib{target}.lib')]
+                archive_paths = [path for path in candidates if path.is_file()]
+                if len(archive_paths) != 1:
+                    raise ValueError(f'Missing or ambiguous built archive for {target}')
+                archive = archive_paths[0]
+                if archive.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
+                    raise ValueError(f'Archive {archive.name} predates a rebuilt object; relink first')
+                archive_key = archive.relative_to(build).as_posix()
+                archive_targets[archive_key] = target
+                if archive_key not in archives:
+                    archives[archive_key] = digest(archive)
         normalized = [argument.replace(str(build), '@build').replace(str(ROOT), '@source')
                       for argument in arguments]
         objects[object_path.relative_to(build).as_posix()] = {
@@ -308,12 +492,18 @@ def build_identity(build, cache):
             raise ValueError(f'Configured artifact format is invalid: {name}')
         if 'codec' in record:
             owned(name, record['codec'])
+    artifact_records = {}
+    if cache.get('CMAKE_GENERATOR') == 'Ninja':
+        artifact_records = ninja_package_artifacts(build, cache, objects, allowed_products)
+        archives = artifact_records['archives']
+        archive_targets = artifact_records['archive_targets']
+        executables = artifact_records['executables']
     if set(executables) != allowed_products:
         raise ValueError(f'Built executables differ from product contract: {sorted(executables)}')
     return {'configured_engine': configured,
             'object_count': len(objects), 'objects': objects, 'archives': archives,
             'executables': executables, 'archive_targets': archive_targets,
-            'inputs_sha256': canonical_digest(inputs), 'inputs': inputs}
+            'inputs_sha256': canonical_digest(inputs), 'inputs': inputs, **artifact_records}
 
 
 def engine_manifest(stage, compiled):
@@ -465,21 +655,8 @@ def assemble(build, output, kind):
         files = package_files(stage)
         vendor = stage / 'lib/cmake/Chibi/ChibiDesktopDependencies.cmake'
         vendor_text = vendor.read_text() if vendor.is_file() else ''
-        for name, checksum in compiled['archives'].items():
-            installed = 'lib/' + Path(name).name
-            if installed not in files:
-                target = compiled['archive_targets'][name]
-                key = re.sub(r'[^A-Za-z0-9_]', '_', target)
-                owner = 'Chibi::desktop_' + key
-                declarations = re.findall(r'set_target_properties\(' + re.escape(owner) +
-                                          r' PROPERTIES IMPORTED_LOCATION "\$\{_chibi_desktop_prefix\}/([^"\n]+)"\)', vendor_text)
-                if cache.get('CHIBI_SDK_BUILD_DESKTOP') != 'ON' or len(declarations) != 1:
-                    raise ValueError(f'Built archive has no installed owner: {name}')
-                installed = declarations[0]
-                if not installed.startswith('lib/chibi-vendor/') or '..' in Path(installed).parts:
-                    raise ValueError(f'Invalid desktop archive install path: {installed}')
-            if installed not in files or files[installed]['sha256'] != checksum:
-                raise ValueError(f'Installed archive differs from compiled evidence: {installed}')
+        archive_installation = installed_archive_owners(
+            compiled, files, vendor_text, cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON')
         for name, evidence in compiled['executables'].items():
             installed = 'bin/' + Path(evidence['path']).name
             binary = stage / installed
@@ -517,6 +694,7 @@ def assemble(build, output, kind):
             },
             'build': {
                 'inputs': compiled,
+                'archive_installation': archive_installation,
                 'configuration': cache.get('CMAKE_BUILD_TYPE'),
                 'compiler_id': compiler.get('CMAKE_C_COMPILER_ID'),
                 'compiler_version': compiler.get('CMAKE_C_COMPILER_VERSION'),

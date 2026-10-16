@@ -38,7 +38,7 @@ def cache_root_from_env() -> Path:
     return Path(base).resolve() / "chibi-dependency-packages"
 
 
-PACKAGE_CMAKE = ("dependencies.cmake", "Findcrypto.cmake", "apply_patch.cmake", "rmlui_dependencies.cmake",
+PACKAGE_CMAKE = ("dependencies.cmake", "enkits.cmake", "Findcrypto.cmake", "apply_patch.cmake", "rmlui_dependencies.cmake",
                  "zep_dependencies.cmake", "tree_sitter.cmake", "ckdl.cmake", "thirdparty.cmake",
                  "dependency_package/CMakeLists.txt")
 APP_OPTIONS = {"CHIBI_REFLECT_EXECUTABLE", "CHIBI_COLLAB_URL", "CHIBI_DISTRIBUTION",

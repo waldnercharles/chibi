@@ -98,6 +98,7 @@ NATIVE = {
     ('--particles',): 'Particle bursts without a renderer: curves, determinism, limits and expiry; 3 cases, CPU only; docs/testing.md',
     ('--png-encoding',): 'Cute PNG encoder window and pixel round trip; one case, no window or GPU; docs/testing.md',
     ('--project-document',): 'Project manifest versions, new projects and fixture content roots; 3 cases on temporary projects, CPU only; docs/testing.md',
+    ('--project-declarations',): 'Bounded compatibility check: one pico case, exact two Studio sources/two stale sidecars totaling 36450 bytes plus two fixed call/unary control snippets under 1 KiB, six direct migrations/three explicit current parses/four metadata checks/two transactions, at most 33 current/historical parses including migration internals, four then five file inputs including one 32-byte malformed source, at most six content/staging files; no authored execution/backend/children/render/network/extra corpus; shared 60s; docs/testing.md',
     ('--prototype-documents',): 'Prototype and scene documents with retained components; 8 in-memory cases, CPU only; docs/testing.md',
     ('--reference-index',): 'Reference index over prototypes, scenes and UI pages; 5 cases, CPU only; docs/testing.md',
     ('--asset-source',): 'Asset source edits, completion and hover over reflected components; 6 cases, CPU only; docs/testing.md',
@@ -409,6 +410,8 @@ TOOLS = {
     'png-encoding': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--png-encoding'],
     # Project manifests: version gates, creation and the two contract fixture projects.
     'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
+    # One exact-real-input migration diagnostic; deliberately outside all aggregates.
+    'project-declarations': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-declarations'],
     # Prototype rebases, detached components, includes and scene documents in memory.
     'prototype-documents': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-documents'],
     # Reference index over assets, graphs, documents and calls; scene UI page renames.

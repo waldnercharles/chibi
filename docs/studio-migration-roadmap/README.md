@@ -20,6 +20,14 @@ with existing admitted C fixture mappings and a separately labelled capture
 lifetime proposal. It is a documentation prerequisite only: no runtime result,
 new syntax choice, completed L00 status or Stage 0–2 gate is implied.
 
+## Supplementary L04 progress, 16 October 2026
+
+The [owned add/append CALL result reduction](../row-array-construction.md)
+records exact baseline/candidate evidence for removing one redundant deep copy.
+Prefix/local snapshots remain quadratic; amortized scaling and the other L04
+acceptance criteria remain open. This supplementary note does not change the
+frozen generated ledger or complete L04/P01 or the Outliner cutover.
+
 ## Regeneration and maintenance
 
 This is a frozen baseline snapshot, not a live status tracker. The generator does not query GitHub, rerun product tests, or infer current approval. Original source provenance under `source/` stays fixed. `packages.tsv` supplies package definitions; the explicit foundation/status and dependency overrides near the top of `build_ledger.py` are authoritative for this snapshot and are reapplied during regeneration. Update that input block deliberately when recording a coordinator-verified foundation change, rather than editing generated checkboxes or scope text alone. Review both the input edit and generated diff.

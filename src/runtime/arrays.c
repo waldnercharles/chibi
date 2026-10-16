@@ -481,6 +481,12 @@ static const char *resize_error(const pin_value *inputs)
         pin_value value;                                                                                        \
         const char *error = KERNEL##_owned(storage, inputs, count, &value);                                     \
         if (error) return error;                                                                                \
+        /* These kernels already snapshot every item into storage. */                                           \
+        if (native_array_##KERNEL == native_array_add ||                                                        \
+            native_array_##KERNEL == native_array_append) {                                                     \
+            *result = value;                                                                                    \
+            return NULL;                                                                                        \
+        }                                                                                                       \
         return pin_value_snapshot_to_arena(storage, result, &value)                                             \
                  ? "Cannot retain native value result"                                                          \
                  : NULL;                                                                                        \

@@ -94,6 +94,8 @@ scene_instance *scene_instantiate_components(scene *, ecs_world *, char *error, 
  * destroys the rest. Returns the entities in object order; the caller afrees
  * the array. Their managed components remain owned by the ECS world. */
 ecs_entity *scene_instance_take_entities(scene_instance *);
+/* Convenience for an instance known to be releasable. Use the fallible API
+ * when entities outside the instance can hold Panic links to its entities. */
 void scene_instance_free(scene_instance *);
 /* On refusal, the instance and all its entities/relationships remain intact. */
 bool scene_instance_release(scene_instance *, char *error, size_t error_size);

@@ -573,6 +573,21 @@ and leaves both worlds on the generation they had; a preview scene launch that
 fails destroys its entities before releasing their component override strings.
 11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
 
+`python3 tools/test_policy.py tool native-runtime` includes two fixed player
+Panic-relationship cases: a refused scene change preserves its current instance,
+entities, links, globals, scene-flow name and unsaved values, while shutdown
+releases its entire owned world, including a disabled external Panic source.
+These additions create three in-memory player worlds with at most two live
+entities each, without frames, processes, GPU work or files.
+
+Studio's admitted `studio-source-edit` check also covers the production Undo/Redo
+dispatch for prototype and relationship source tabs, including typed reopening
+of their saved tab snapshots. One temporary file below 65 MiB verifies that the
+general asset reader accepts text larger than the prototype collection budget,
+while collection rejects it before a second read or parsing. The buffer and file
+are released before the two tiny history fixtures. These cases add no rendered
+frames to the existing four-frame check and keep its shared 60-second deadline.
+
 `--engine-clock` runs six cases on the engine's 60 Hz fixed clock over a
 preview engine and one kinematic body: 30, 60, 120 and 144 Hz displays all run
 sixty steps a second with systems at each step's time, hitches and overload are

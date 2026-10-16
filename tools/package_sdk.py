@@ -274,11 +274,13 @@ def ninja_package_artifacts(build, cache, objects, allowed_products):
     executables = {}
     auxiliary = {}
     memberships = {name: [] for name in objects}
-    ordinary = {name for name in objects if Path(name).suffix in ('.o', '.obj')}
+    # CMake's Windows resource compiler emits .res files. They require the
+    # same recorded compile provenance and real artifact edge as object files.
+    ordinary = {name for name in objects if Path(name).suffix in ('.o', '.obj', '.res')}
     for output, target in sorted(outputs.items()):
         inputs = [(build / name).resolve() for name in edges[output]]
         for path in inputs:
-            if path.suffix in ('.o', '.obj') and (not path.is_relative_to(build) or path.relative_to(build).as_posix() not in ordinary):
+            if path.suffix in ('.o', '.obj', '.res') and (not path.is_relative_to(build) or path.relative_to(build).as_posix() not in ordinary):
                 raise ValueError(f'Artifact has an unaccounted object input: {path.name}')
         members = sorted(path.relative_to(build).as_posix() for path in inputs
                          if path.is_relative_to(build) and path.relative_to(build).as_posix() in ordinary)
@@ -458,6 +460,11 @@ def build_identity(build, cache):
             text = depfile.read_text().replace('\\\n', ' ')
             dependencies = shlex.split(text.split(':', 1)[1])
         dependencies = set(dependencies) | {entry['file']}
+        if cache.get('CMAKE_GENERATOR') == 'Ninja' and object_path.suffix == '.res':
+            # Resource payloads can be declared with OBJECT_DEPENDS without
+            # appearing in the compiler's preprocessor dependency log.
+            dependencies.update(str((build / name).resolve())
+                                for name in ninja_input_edges(build, [relative])[relative])
         for name in dependencies:
             path = (directory / name).resolve()
             if not path.is_file():

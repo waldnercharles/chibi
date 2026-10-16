@@ -3,6 +3,7 @@
 #include "execution/artifact.h"
 #include "execution/function.h"
 #include "execution/instruction.h"
+#include "execution/row_builder.h"
 #include "execution/scalar.h"
 #include "execution/value_kind.h"
 #include "support/arena.h"
@@ -131,6 +132,7 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
+    behavior_row_plan *rows;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -229,12 +231,13 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
  * producer verifier and finalizer. Ownership remains with the caller on failure. */
 bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
 void behavior_function_finalize(behavior_function *function);
-void behavior_function_own(behavior_function *function);
+bool behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
 bool behavior_function_compile_inspection(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
+void *behavior_function_row_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
 void behavior_function_constant_locals(behavior_function *function);

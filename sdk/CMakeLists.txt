@@ -124,6 +124,8 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/type.c"
     "${CHIBI_SDK_ROOT}/src/types/catalog.c"
     "${CHIBI_SDK_ROOT}/src/types/array.c"
+    "${CHIBI_SDK_ROOT}/src/types/record.c"
+    "${CHIBI_SDK_ROOT}/src/types/copy.c"
     "${CHIBI_SDK_ROOT}/src/types/trace.c"
     "${CHIBI_SDK_ROOT}/src/types/union.c"
     "${CHIBI_SDK_ROOT}/src/types/index.c"
@@ -131,7 +133,12 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/catalog.h types/array.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+configure_file("${CHIBI_SDK_ROOT}/src/types/array_internal.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/array_internal.h" COPYONLY)
+configure_file("${CHIBI_SDK_ROOT}/src/types/copy_internal.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/copy_internal.h" COPYONLY)
+target_include_directories(chibi_types PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/types")
 target_link_libraries(chibi_types PUBLIC chibi_support)
 if(UNIX)
     target_link_libraries(chibi_types PRIVATE m)
@@ -225,6 +232,7 @@ add_library(Chibi::array_capabilities ALIAS chibi_array_capabilities)
 set_target_properties(chibi_array_capabilities PROPERTIES EXPORT_NAME array_capabilities)
 chibi_sdk_headers(chibi_array_capabilities PUBLIC runtime/arrays.h runtime/arrays_definition.h)
 target_link_libraries(chibi_array_capabilities PUBLIC chibi_native_capabilities)
+target_include_directories(chibi_array_capabilities PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/types")
 add_library(chibi_field_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/fields/native.c"
     "${CHIBI_SDK_ROOT}/src/runtime/fields/definition.c")
 add_library(Chibi::field_capabilities ALIAS chibi_field_capabilities)

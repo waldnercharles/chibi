@@ -9,6 +9,8 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/copy_internal.h"
+#include "types/record.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -306,6 +308,7 @@ static void deliver(const execution_task *t, task_waiter waiter)
         *borrowed = (pin_union){ .tag = waiter.tag, .count = t->result_count };
         if (bytes) {
             memcpy(borrowed->values, t->results, bytes);
+            pin_copy_record(PIN_COPY_VALUE_BUFFER, bytes);
         }
         result = (pin_value){ .type = PIN_UNION, .ptr = borrowed };
     }
@@ -561,7 +564,7 @@ static void mark_value(void *user, const pin_value *value)
         }
         case PIN_STRUCT:
             if (value->ptr) {
-                const type_desc *type = type_catalog_find(value->type_name);
+                const type_desc *type = pin_value_type(value);
                 assert(type);
                 mark_fields(roots, type, value->ptr);
             }

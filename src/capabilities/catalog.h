@@ -58,6 +58,8 @@ typedef struct
      * produced by a validating boundary, never an unchecked native pointer. */
     bool range_contract;
     double min, max;
+    bool has_default; /* Authored record construction; otherwise required. */
+    pin_value default_value;
 } script_catalog_field;
 typedef struct
 {
@@ -85,6 +87,7 @@ typedef struct
     const script_catalog_variant *variants;
     int variant_count;
     bool internal; /* Structural metadata without a source-visible type name. */
+    bool authored_record; /* Owned flat layout, never a native catalog alias. */
 } script_catalog_type;
 typedef enum
 {

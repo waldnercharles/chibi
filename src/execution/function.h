@@ -12,6 +12,35 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+/* Actual entries through the interpreter/runner/Wasm path, including outlined
+ * calls and resumes. Inspected and fallback fields are subsets, not additional
+ * entries. Direct generated-C and batch/system calls are outside this measure. */
+typedef struct
+{
+    uint64_t bytecode_entries, sljit_entries, wasm_entries;
+    uint64_t inspected_sljit_entries, inspected_wasm_entries;
+    uint64_t inspection_bytecode_fallbacks;
+    bool overflow; /* Sticky saturation makes the sample inexact. */
+} behavior_run_counts;
+typedef struct behavior_run_scope
+{
+    behavior_run_counts counts;
+    struct behavior_run_scope *previous;
+    bool active;
+} behavior_run_scope;
+/* Caller-owned, initially zeroed scopes retain no runtime objects. Begin/end
+ * preserve counts across windows; reset requires an inactive scope. Nesting is
+ * exclusive: only the current thread's top scope receives events, including
+ * synchronous reentry. End that exact scope before releasing its storage.
+ * A hidden parent remains active and cannot be reset or begun again. Scopes do
+ * not propagate to workers. Concurrent access, cross-thread ending and cleanup
+ * bypassed by longjmp are invalid; inactive transfer needs synchronization.
+ * Counters saturate at UINT64_MAX. Totals/merges need checked arithmetic;
+ * saturated endpoint deltas are inexact. Recording does not allocate or enable
+ * inspection, profiling or clocks. */
+void behavior_run_scope_begin(behavior_run_scope *scope);
+void behavior_run_scope_end(behavior_run_scope *scope);
+void behavior_run_scope_reset(behavior_run_scope *scope);
 typedef enum
 {
     EXECUTION_REDUCTION_ADD,

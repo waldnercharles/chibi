@@ -62,7 +62,7 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
             execution_wire_int(&wire, &fields[i]);
         }
         size_t stride = 0, name_size = 0;
-        bool indirect = false;
+        bool indirect = false, authored = false;
         int component = 0, tag = 0, container = 0;
         uint64_t node = 0, identity = 0, layout = 0;
         execution_wire_size(&wire, &stride);
@@ -72,13 +72,14 @@ static bool prepared_scalar_getter_target(unsigned char *bytes, size_t length, s
         execution_wire_int(&wire, &tag);
         execution_wire_int(&wire, &container);
         execution_wire_size(&wire, &name_size);
+        execution_wire_bool(&wire, &authored);
         execution_wire_u64(&wire, &identity);
         execution_wire_u64(&wire, &layout);
         if (wire.error || fields[1] != PIN_BOOL ||
             fields[5] != (int)offsetof(prepared_counter, enabled) ||
             stride != sizeof(prepared_counter) || indirect || component < 0 ||
             tag != PIN_U64 || container != PIN_CONTAINER_SINGLE || name_size ||
-            identity != prepared_counter_component.id ||
+            authored || identity != prepared_counter_component.id ||
             layout != type_layout_hash(&prepared_counter_type)) {
             continue;
         }

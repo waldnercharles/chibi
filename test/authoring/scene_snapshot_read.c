@@ -52,6 +52,7 @@ static authoring_language_catalog *catalog;
 static authoring_source *prepared;
 static execution_program *program;
 static execution_instance *instance;
+static bool backend_observed;
 
 static bool owned_name(const arena *storage, const char *name)
 {
@@ -101,13 +102,15 @@ static const char *read_snapshot(
     bool owned = true;
     for (int i = 0; i < 3; i++) {
         const pin_array *a = arrays[i];
-        owned &= arena_contains(context->value_storage, a) &&
+        owned &= !out[i].record && !a->record &&
+                 arena_contains(context->value_storage, a) &&
                  owned_name(context->value_storage, a->type_name);
         if (count) {
             owned &= arena_contains(context->value_storage, a->items);
         }
         for (int j = 0; j < count; j++) {
-            owned &= owned_name(context->value_storage, a->items[j].type_name);
+            owned &= !a->items[j].record &&
+                     owned_name(context->value_storage, a->items[j].type_name);
         }
     }
     for (int i = 0; i < count; i++) {
@@ -300,7 +303,28 @@ static int dispatch(const char *event)
 {
     uint64_t id = execution_module_event(prepared->module, event);
     assert(id);
-    return execution_instance_dispatch(instance, id, NULL, 0, 0, 0, DISPATCH_BUDGET);
+    behavior_run_scope runs = { 0 };
+    behavior_run_scope_begin(&runs);
+    int status = execution_instance_dispatch(instance, id, NULL, 0, 0, 0, DISPATCH_BUDGET);
+    behavior_run_scope_end(&runs);
+    behavior_backend backend = execution_module_backend(prepared->module);
+    backend_observed = !runs.counts.overflow && !runs.counts.wasm_entries &&
+                       !runs.counts.inspected_sljit_entries &&
+                       !runs.counts.inspected_wasm_entries &&
+                       !runs.counts.inspection_bytecode_fallbacks &&
+                       (backend == BEHAVIOR_BYTECODE
+                            ? runs.counts.bytecode_entries > 0 && !runs.counts.sljit_entries
+                            : runs.counts.sljit_entries > 0 &&
+                                  !runs.counts.bytecode_entries);
+    fprintf(
+        stderr,
+        "scene read entries: event=%s bytecode=%llu sljit=%llu fallback=%llu\n",
+        event,
+        (unsigned long long)runs.counts.bytecode_entries,
+        (unsigned long long)runs.counts.sljit_entries,
+        (unsigned long long)runs.counts.inspection_bytecode_fallbacks
+    );
+    return status;
 }
 static bool result(int count, const char *child)
 {
@@ -309,13 +333,23 @@ static bool result(int count, const char *child)
     const pin_array *arrays[3];
     for (int i = 0; i < 3; i++) {
         const pin_value *value = state(fields[i]);
-        REQUIRE(value && value->type == types[i] && value->container == PIN_CONTAINER_ARRAY);
+        REQUIRE(
+            value && value->type == types[i] &&
+            value->container == PIN_CONTAINER_ARRAY && !value->record
+        );
         arrays[i] = value->ptr;
-        REQUIRE(arrays[i] && arrays[i]->element_type == types[i] && arrays[i]->count == count);
+        REQUIRE(
+            arrays[i] && arrays[i]->element_type == types[i] &&
+            arrays[i]->count == count && !arrays[i]->record
+        );
     }
     REQUIRE(state("ids")->type_name && !strcmp(state("ids")->type_name, "ecs.entity"));
     REQUIRE(arrays[0]->type_name && !strcmp(arrays[0]->type_name, "ecs.entity"));
     for (int i = 0; i < count; i++) {
+        REQUIRE(
+            !arrays[0]->items[i].record && !arrays[1]->items[i].record &&
+            !arrays[2]->items[i].record
+        );
         REQUIRE(
             arrays[0]->items[i].type == PIN_HANDLE &&
             arrays[0]->items[i].u64 == IDENTITIES[i]
@@ -346,6 +380,7 @@ static bool rejected(const char *child)
     execution_program_clear_error(program);
     REQUIRE(!execution_program_error(program));
     int status = dispatch("Read");
+    REQUIRE(backend_observed);
     const execution_program_failure *error = execution_program_error(program);
     if (status != FLOW_ERR_INVALID_GRAPH || !error ||
         error->status != FLOW_ERR_INVALID_GRAPH ||
@@ -377,6 +412,7 @@ TEST_CASE(scene_read_copies_identity_order_and_names_into_authored_state)
         cleanup();
         REQUIRE(prepare(BACKENDS[b], 3));
         REQUIRE(dispatch("Read") == FLOW_OK);
+        REQUIRE(backend_observed);
         REQUIRE(result(3, "Child"));
         REQUIRE(state("completed") && state("completed")->b);
         REQUIRE(fixture.owned && fixture.ownership_checks == 1 && fixture.publications == 1);
@@ -393,17 +429,18 @@ TEST_CASE(scene_read_copies_identity_order_and_names_into_authored_state)
         fixture.current = NULL;
         fixture.snapshot = NULL;
         REQUIRE(dispatch("Inspect") == FLOW_OK);
+        REQUIRE(backend_observed);
         REQUIRE(
             state("observed") && state("observed")->type == PIN_HANDLE &&
-            state("observed")->u64 == IDENTITIES[1]
+            !state("observed")->record && state("observed")->u64 == IDENTITIES[1]
         );
         REQUIRE(
             state("parent") && state("parent")->type == PIN_I32 &&
-            state("parent")->i == 0
+            !state("parent")->record && state("parent")->i == 0
         );
         REQUIRE(
             state("text") && state("text")->type == PIN_STR &&
-            !strcmp(state("text")->str, "Child")
+            !state("text")->record && !strcmp(state("text")->str, "Child")
         );
         REQUIRE(result(3, "Child") && fixture.calls == 1);
     }
@@ -415,6 +452,7 @@ TEST_CASE(scene_read_rejects_wrong_stale_closed_and_absent_current_owners)
         cleanup();
         REQUIRE(prepare(BACKENDS[b], 2));
         REQUIRE(dispatch("Read") == FLOW_OK && result(2, "Child"));
+        REQUIRE(backend_observed);
         other = authoring_scene_owner_new();
         fixture.current = other;
         REQUIRE(rejected("Child"));
@@ -430,6 +468,7 @@ TEST_CASE(scene_read_rejects_wrong_stale_closed_and_absent_current_owners)
         snapshots[0] = NULL;
         execution_program_clear_error(program);
         REQUIRE(dispatch("Read") == FLOW_OK && !execution_program_error(program));
+        REQUIRE(backend_observed);
         REQUIRE(result(2, "Fresh") && state("completed")->b);
         REQUIRE(fixture.owned && fixture.ownership_checks == 2 && fixture.publications == 2);
         authoring_scene_owner_free(owner);
@@ -448,6 +487,7 @@ TEST_CASE(scene_read_preserves_typed_empty_arrays_after_snapshot_destruction)
         cleanup();
         REQUIRE(prepare(BACKENDS[b], 0));
         REQUIRE(dispatch("Read") == FLOW_OK && result(0, NULL));
+        REQUIRE(backend_observed);
         REQUIRE(state("completed") && state("completed")->b);
         REQUIRE(fixture.owned && fixture.ownership_checks == 1 && fixture.publications == 1);
         authoring_scene_owner_free(owner);

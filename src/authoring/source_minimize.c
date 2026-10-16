@@ -667,6 +667,22 @@ static void handler(collector *c, TSNode node)
         }
     }
 }
+/* Direct program-body declarations already have persistent storage. Keep
+ * comments after the redundant keyword and every callable storage marker. */
+static void root_storage(collector *c, TSNode node)
+{
+    TSNode storage = field(node, "storage"),
+           program = ts_node_parent(ts_node_parent(node));
+    if (!is(storage, "state") || (!is(program, "behavior") && !is(program, "library") &&
+                                  !is(program, "system"))) {
+        return;
+    }
+    int to = end(storage);
+    while (c->text[to] == ' ' || c->text[to] == '\t') {
+        to++;
+    }
+    add(c, start(storage), to, "");
+}
 /* `name: type = value` and `type name = value` become `name := value`. */
 static void inferred_declaration(collector *c, TSNode node)
 {
@@ -1086,6 +1102,7 @@ static void collect(collector *c, TSNode node, pass phase)
             add(c, end(name), end(declared), "");
         }
     } else if (!strcmp(type, "state_declaration") || !strcmp(type, "local_declaration")) {
+        root_storage(c, node);
         inferred_declaration(c, node);
     } else if (!strcmp(type, "typed_argument")) {
         TSNode value = field(node, "value");

@@ -75,6 +75,13 @@ static const char driver_routes[] =
     "    print(' '.join(sorted({n for n in names if names.count(n) > 1} |\n"
     "        {n for n in ctl & set(names) if n not in "
     "policy.GROUPS['projects']})))\n"
+    "    print(policy.GROUPS['language'].count('language-row-array'),\n"
+    "          policy.GROUPS['wasm'].count('wasm-row-array'),\n"
+    "          policy.GROUPS['language'].count('language-row-builder'),\n"
+    "          policy.GROUPS['wasm'].count('wasm-row-builder'),\n"
+    "          "
+    "policy.GROUPS['language'].count('language-outliner-projection'),\n"
+    "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
     "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
@@ -304,9 +311,11 @@ TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
 {
     REQUIRE(run("misplaced-selectors", "-") == 0);
     char *output = tool_read(logpath);
-    bool exact = output && !strcmp(output, "\n");
+    bool exact = output && output[0] == '\n';
+    bool row_groups = exact && !strcmp(output + 1, "1 1 1 1 1 1\n");
     free(output);
     REQUIRE(exact);
+    REQUIRE(row_groups);
     return true;
 }
 

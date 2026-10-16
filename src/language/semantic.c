@@ -212,6 +212,7 @@ static script_analysis *analyze(
     afree(a.bodies);
     afree(a.narrowed);
     afree(a.catalog_types);
+    afree(a.constant_proofs);
     return out;
 }
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)

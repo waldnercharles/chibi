@@ -48,6 +48,11 @@ typedef struct
 } narrowing;
 typedef struct
 {
+    unsigned generation;
+    int depth;
+} constant_proof;
+typedef struct
+{
     const script_syntax *syntax;
     const script_catalog *catalog;
     script_catalog catalog_view;
@@ -56,6 +61,8 @@ typedef struct
     initializer *initializers;
     function_body *bodies;
     narrowing *narrowed;
+    constant_proof *constant_proofs;
+    unsigned constant_generation;
     TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
     bool declarations_only;
@@ -153,6 +160,12 @@ void script_analyzer_host_declarations(analyzer *a, TSNode root);
 bool script_analyzer_resolve_operator(analyzer *, TSNode, TSNode, script_expression *);
 bool script_analyzer_numeric_aggregate(const script_catalog *, script_type, int);
 void script_analyzer_units(analyzer *a);
+void script_analyzer_publish_type(analyzer *, script_catalog_type);
+void script_analyzer_replace_type(analyzer *, script_catalog_type);
+void script_analyzer_record_types(analyzer *, TSNode);
+void script_analyzer_record_fields(analyzer *, TSNode);
+bool script_analyzer_compile_time_value(analyzer *, int, int *steps, bool scalar);
+const char *script_analyzer_scalar_constant(analyzer *, int, pin_type, pin_value *);
 void script_analyzer_union_declarations(analyzer *, TSNode);
 script_type script_analyzer_union_type(analyzer *, TSNode, const script_type *, int);
 script_type script_analyzer_await_type(analyzer *, TSNode, script_type);

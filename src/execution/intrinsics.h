@@ -35,11 +35,13 @@ typedef enum
     EXECUTION_INTRINSIC_UNION_MAKE = 20,
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
+    EXECUTION_INTRINSIC_VALUE_EQUAL = 26,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
 extern const node_host_call EXECUTION_construct_call;
+extern const node_host_call EXECUTION_value_equal_call;
 extern const node_host_call EXECUTION_union_make_call,
     EXECUTION_union_test_call, EXECUTION_union_get_call;
 extern const node_host_call EXECUTION_reference_make_call;

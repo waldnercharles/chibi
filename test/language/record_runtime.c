@@ -1,0 +1,373 @@
+#include "authoring/source_format.h"
+#include "backend.h"
+#include "execution/definition.h"
+#include "execution/function_builder.h"
+#include "execution/intrinsics.h"
+#include "execution/module.h"
+#include "execution/status.h"
+#include "execution/wasm_jit.h"
+#include "language/lower.h"
+#include "support/array.h"
+#include "third_party/pico_headers/pico_unit.h"
+#include "types/record.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Four fixed cases; three authored sources, two backends, 14 total calls,
+ * four rejected module requirements, one rejected builder and four equality
+ * rejection calls. At most 12 fields and three rows; no files/workers/frames. */
+static script_syntax *syntax;
+static script_analysis *analysis;
+static execution_module_plan *plan;
+static execution_module *module;
+static behavior_function_builder *builder;
+static uint64_t function_id;
+static behavior_function_context context;
+static behavior_function_activation activation;
+static behavior_run_scope runs;
+static arena storage, escaped;
+static pin_value result, saved;
+static char *formatted, *again;
+static const script_catalog catalog;
+static const script_lower_bindings bindings;
+static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+#define ROW_FIELDS                                                             \
+    "key: string; label: string; icon: string = \"node\"; "                    \
+    "prototype: string = \"\"; drop: string = \"\"; depth: int = 1; "          \
+    "behaviors: int = 0; active: bool = true; marked: bool = false; "          \
+    "hidden: bool = false; locked: bool = false; renaming: bool = false;"
+#define ROW "Row :: struct { " ROW_FIELDS " } "
+static void finish_call()
+{
+    if (runs.active) {
+        behavior_run_scope_end(&runs);
+    }
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    context = (behavior_function_context){ 0 };
+    activation = (behavior_function_activation){ 0 };
+    arena_free(&storage);
+    result = (pin_value){ 0 };
+}
+static void cleanup()
+{
+    finish_call();
+    execution_module_free(module);
+    if (builder) {
+        behavior_function_builder_free(builder);
+        builder = NULL;
+    }
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    arena_free(&escaped);
+    free(formatted);
+    free(again);
+    module = NULL;
+    plan = NULL;
+    analysis = NULL;
+    syntax = NULL;
+    formatted = again = NULL;
+    saved = (pin_value){ 0 };
+}
+static bool compile(const char *source, behavior_backend backend, bool reject_types)
+{
+    syntax = script_parse(source);
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &catalog);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "record semantic: %s\n", analysis->diagnostics[i].message);
+    }
+    REQUIRE(analysis->valid);
+    REQUIRE(analysis->function_count == 1 && analysis->functions[0].symbol >= 0);
+    function_id = analysis->symbols[analysis->functions[0].symbol].id;
+    plan = script_lower(analysis, &catalog, &bindings);
+    for (int i = 0; plan && i < plan->diagnostic_count; i++) {
+        fprintf(stderr, "record lower: %s\n", plan->diagnostics[i].message);
+    }
+    REQUIRE(plan && plan->valid);
+    char error[256];
+    if (reject_types) {
+        REQUIRE(plan->type_count == 1 && plan->types[0].record);
+        execution_type_requirement original = plan->types[0];
+        for (int i = 0; i < 4; i++) {
+            plan->types[0] = original;
+            if (i == 0) {
+                plan->types[0].id++;
+            }
+            if (i == 1) {
+                plan->types[0].layout++;
+            }
+            if (i == 2) {
+                plan->types[0].size++;
+            }
+            if (i == 3) {
+                plan->types[0].name = "Rows.Other";
+            }
+            REQUIRE(!execution_module_finish(&plan, backend, error, sizeof error));
+            REQUIRE(plan && strstr(error, "authored type requirement"));
+        }
+        plan->types[0] = original;
+    }
+    module = execution_module_finish(&plan, backend, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "record publish: %s\n", error);
+    }
+    REQUIRE(module && execution_module_backend(module) == backend);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    analysis = NULL;
+    syntax = NULL;
+    return true;
+}
+static const behavior_function *body()
+{
+    const behavior_function *function = NULL;
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        execution_module_function_info f = execution_module_function_at(module, i);
+        if (f.id == function_id) {
+            function = f.body;
+        }
+    }
+    return function;
+}
+static bool run(behavior_backend backend, const pin_value *args, int count)
+{
+    finish_call();
+    const behavior_function *function = body();
+    REQUIRE(function && function->result_count == 1);
+    const pin_record *record = NULL;
+    for (int i = 0; i < function->argument_count; i++) {
+        if (function->argument_defaults[i].record) {
+            record = function->argument_defaults[i].record;
+        }
+    }
+    if (function->result_defaults[0].record) {
+        if (record) {
+            REQUIRE(record == function->result_defaults[0].record);
+        }
+        record = function->result_defaults[0].record;
+    }
+    for (int i = 0; i < acount(function->data_values); i++) {
+        const pin_record *shape = function->data_values[i].initial.record;
+        if (shape) {
+            REQUIRE(pin_record_valid(shape) && arena_contains(&function->owned, shape));
+            REQUIRE(!record || shape == record);
+            record = shape;
+        }
+    }
+    result = function->result_defaults[0];
+    behavior_function_prepare_results(function, &result, &storage);
+    context = (behavior_function_context){ .activation = &activation,
+                                           .arguments = args,
+                                           .argument_count = count,
+                                           .results = &result,
+                                           .budget = 10000 };
+    behavior_function_bind_storage(&context, &storage);
+    REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+    behavior_run_scope_reset(&runs);
+    execution_wasm_jit_stats before, after;
+    execution_wasm_jit_get_stats(&before);
+    behavior_run_scope_begin(&runs);
+    int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
+    behavior_run_scope_end(&runs);
+    if (status != FLOW_OK) {
+        fprintf(
+            stderr,
+            "record run: %d %s\n",
+            status,
+            context.error_message ? context.error_message : ""
+        );
+    }
+    REQUIRE(status == FLOW_OK && context.returned);
+    REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+    REQUIRE(
+        backend == BEHAVIOR_BYTECODE
+            ? runs.counts.bytecode_entries > 0 && !runs.counts.sljit_entries &&
+                  !runs.counts.wasm_entries
+        : backend == BEHAVIOR_SLJIT
+            ? runs.counts.sljit_entries > 0 && !runs.counts.bytecode_entries &&
+                  !runs.counts.wasm_entries
+            : runs.counts.wasm_entries > 0 && !runs.counts.bytecode_entries &&
+                  !runs.counts.sljit_entries
+    );
+    execution_wasm_jit_get_stats(&after);
+    REQUIRE(
+        backend != BEHAVIOR_WASM || (after.executions > before.executions &&
+                                     after.compile_failures == before.compile_failures)
+    );
+    return true;
+}
+static pin_value member(const pin_value *row, int index)
+{
+    pin_value field;
+    pin_read_field(row->ptr, &row->record->type.fields[index], &field);
+    return field;
+}
+TEST_CASE(record_runtime_owned_return_and_value_copy)
+{
+    static const char source[] = "library Rows { " ROW
+                                 "Make :: (text: string) -> Row { a: Row = "
+                                 "{key: text, label: text}; "
+                                 "b := a; b.label = \"changed\"; b.depth = 4; "
+                                 "if a.label != text or a.depth != 1 { b.depth "
+                                 "= -100; } return b; } }";
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(source, backends[b], b == 0));
+        char producer[] = "producer";
+        pin_value arg = { .type = PIN_STR, .str = producer };
+        REQUIRE(run(backends[b], &arg, 1));
+        REQUIRE(result.record && pin_record_valid(result.record) && result.ptr);
+        REQUIRE(arena_contains(&storage, result.record));
+        REQUIRE(!strcmp(member(&result, 0).str, "producer"));
+        REQUIRE(!strcmp(member(&result, 1).str, "changed"));
+        REQUIRE(!strcmp(member(&result, 2).str, "node"));
+        REQUIRE(member(&result, 5).i == 4 && member(&result, 7).b);
+        memset(producer, 'x', sizeof producer - 1);
+        REQUIRE(!strcmp(member(&result, 0).str, "producer"));
+        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        finish_call();
+        execution_module_free(module);
+        module = NULL;
+        REQUIRE(pin_record_valid(saved.record));
+        REQUIRE(!strcmp(member(&saved, 0).str, "producer"));
+        REQUIRE(!strcmp(member(&saved, 1).str, "changed"));
+        REQUIRE(member(&saved, 5).i == 4);
+        pin_value operands[2] = { saved, saved };
+        pin_value output = { .type = PIN_I32, .i = 73 }, before = output;
+        REQUIRE(EXECUTION_value_equal_call.value(&escaped, operands, 1, &output));
+        REQUIRE(!memcmp(&output, &before, sizeof output));
+        const pin_record *other = pin_record_create(
+            &escaped,
+            saved.type_name,
+            saved.record->id + 1,
+            saved.record->type.fields,
+            saved.record->type.field_count
+        );
+        REQUIRE(other);
+        if (b == 0) {
+            pin_record malformed = *saved.record;
+            malformed.type.size++;
+            pin_value bad = saved;
+            bad.ptr = NULL;
+            bad.record = &malformed;
+            builder = behavior_function_builder_new();
+            behavior_function_builder_signature(builder, NULL, 0, &bad, 1, NULL, 0);
+            behavior_function_builder_values(builder, &bad, 1);
+            behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+            char error[192];
+            REQUIRE(!behavior_function_builder_finish(builder, error, sizeof error));
+            REQUIRE(strstr(error, "invalid signature") || strstr(error, "invalid host"));
+            behavior_function_builder_free(builder);
+            builder = NULL;
+        }
+        operands[1].record = other;
+        operands[1].type_name = other->type.name;
+        REQUIRE(EXECUTION_value_equal_call.value(&escaped, operands, 2, &output));
+        REQUIRE(!memcmp(&output, &before, sizeof output));
+    }
+    return true;
+}
+TEST_CASE(record_runtime_array_results)
+{
+    static const char source
+        [] = "library Rows { " ROW
+             "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return "
+             "empty; } if n == 0 { return []; } "
+             "a: Row = {key: \"a\", label: \"A\"}; if n == 1 { return [a]; } "
+             "return [a, {key: \"b\", label: \"B\"}, {key: \"c\", label: "
+             "\"C\"}]; } }";
+    const int counts[] = { -1, 0, 1, 3 };
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        pin_value null_saved = { 0 };
+        REQUIRE(body());
+        pin_value args[2] = { { .type = PIN_I32 }, body()->result_defaults[0] };
+        args[1].ptr = NULL;
+        for (int i = 0; i < 4; i++) {
+            args[0].i = counts[i];
+            REQUIRE(run(backends[b], args, 2));
+            REQUIRE(result.record && pin_record_valid(result.record));
+            REQUIRE(arena_contains(&storage, result.record));
+            REQUIRE(result.type == PIN_STRUCT && result.container == PIN_CONTAINER_ARRAY);
+            pin_array *array = result.ptr;
+            if (counts[i] < 0) {
+                REQUIRE(!array);
+                REQUIRE(!pin_value_snapshot_to_arena(&escaped, &null_saved, &result));
+                continue;
+            }
+            REQUIRE(array && array->count == counts[i]);
+            REQUIRE(result.record == array->record);
+            REQUIRE(arena_contains(&storage, array->record));
+            for (int j = 0; j < array->count; j++) {
+                REQUIRE(array->items[j].record == array->record);
+                REQUIRE(member(&array->items[j], 5).i == 1);
+            }
+        }
+        REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
+        finish_call();
+        execution_module_free(module);
+        module = NULL;
+        pin_array *array = saved.ptr;
+        REQUIRE(null_saved.record && pin_record_valid(null_saved.record));
+        REQUIRE(
+            !null_saved.ptr && null_saved.type == PIN_STRUCT &&
+            null_saved.container == PIN_CONTAINER_ARRAY
+        );
+        REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
+        REQUIRE(pin_record_valid(saved.record) && array->count == 3);
+        REQUIRE(!strcmp(member(&array->items[2], 1).str, "C"));
+    }
+    return true;
+}
+TEST_CASE(record_runtime_fieldwise_equality)
+{
+    static const char source[] = "library Rows { " ROW
+                                 "Same :: (change: bool) -> bool { a: Row = "
+                                 "{key: \"a\", label: \"A\"}; "
+                                 "b: Row = {key: \"a\", label: \"A\"}; if "
+                                 "change { b.label = \"B\"; } "
+                                 "return (a == b) and not (a != b); } }";
+    for (int b = 0; b < 2; b++) {
+        cleanup();
+        REQUIRE(compile(source, backends[b], false));
+        for (int i = 0; i < 2; i++) {
+            pin_value arg = { .type = PIN_BOOL, .b = i != 0 };
+            REQUIRE(run(backends[b], &arg, 1));
+            REQUIRE(result.type == PIN_BOOL && result.b == (i == 0));
+        }
+    }
+    return true;
+}
+TEST_CASE(record_runtime_formatter_layout)
+{
+    static const char input
+        [] = "library Rows{Row::struct{key:string;label:string;depth:int=1;}}";
+    static const char expected[] = "library Rows {\n    Row :: struct {\n      "
+                                   "  key: string;\n        label: string;\n   "
+                                   "     depth: int = 1;\n    }\n}\n";
+    syntax = script_parse(input);
+    REQUIRE(!syntax->diagnostic_count);
+    char error[192];
+    formatted = authoring_source_format(syntax, error, sizeof error);
+    REQUIRE(formatted && !strcmp(formatted, expected));
+    script_syntax_free(syntax);
+    syntax = script_parse(formatted);
+    REQUIRE(!syntax->diagnostic_count);
+    again = authoring_source_format(syntax, error, sizeof error);
+    REQUIRE(again && !strcmp(formatted, again));
+    return true;
+}
+void test_language_record_runtime()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(record_runtime_owned_return_and_value_copy);
+    RUN_TEST_CASE(record_runtime_array_results);
+    RUN_TEST_CASE(record_runtime_fieldwise_equality);
+    RUN_TEST_CASE(record_runtime_formatter_layout);
+    pu_clear_setup();
+}

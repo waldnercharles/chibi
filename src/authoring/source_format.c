@@ -31,8 +31,9 @@ static bool block(TSNode node)
 {
     return kind(node, "block") || kind(node, "declaration_body") ||
            kind(node, "system_body") || kind(node, "callable_body") ||
-           kind(node, "component_body") || kind(node, "switch_statement") ||
-           kind(node, "union_declaration") || kind(node, "sequence_statement");
+           kind(node, "component_body") || kind(node, "record_body") ||
+           kind(node, "switch_statement") || kind(node, "union_declaration") ||
+           kind(node, "sequence_statement");
 }
 
 /* Brackets whose contents may continue on later lines. */
@@ -50,7 +51,7 @@ static bool end_line(TSNode node)
     return (n >= 12 && !strcmp(name + n - 12, "_declaration")) ||
            (n >= 10 && !strcmp(name + n - 10, "_statement")) ||
            kind(node, "assignment") || kind(node, "handler") ||
-           kind(node, "component_field");
+           kind(node, "component_field") || kind(node, "record_field");
 }
 
 static token leaf(TSNode node)

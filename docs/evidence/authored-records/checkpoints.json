@@ -1,9 +1,9 @@
 {
   "status": "INCOMPLETE_DRAFT; no readiness, full-feature or landing approval",
-  "product_checkpoint": "7fb41566cd6e0f8b96db5d766ed7c21ca5b447d8",
-  "product_tree": "1eca326a4968d0addbb7b5c3fb658e37c6dd0d50",
+  "product_checkpoint": "6a4909ed807f3598f564a66a1d35edeb1200e796",
+  "product_tree": "7b97cab3b22bcacf870d8b27537242decfd71fa3",
   "publication_base": "22966e126be426dd89c587363d654b6344dc727a",
-  "evidence_policy": "Each result is scoped to its stated clean local Git head/tree. Source/build/dependency identities were independently checked before and after each admitted run. These staged results are not a claim that every historical route was rerun on the later cumulative head. The published single-tree commit has separate identity verification. Hashes identify preserved local raw evidence; raw manifests contain machine-specific build paths and are not copied here.",
+  "evidence_policy": "Historical results remain scoped to their stated heads. The final_validation section records all 17 focused routes and four complete affected command families freshly run on the same clean cumulative head, with independent source/build/dependency admission and postflight. Published-tree correspondence is separate. Hashes identify preserved local raw evidence; machine-specific paths are not copied here.",
   "whole_route_seconds": 60,
   "consumer_child_seconds": 10,
   "native_sanitizers": {
@@ -248,12 +248,219 @@
       "local_head_prefix": "1a3e44c7",
       "outcome": "Expected-red native services baseline: one passed/two failed, 97 assertions, 0.077 s. First scalar set and same-name/different-ID replacement assertions failed after three global entries; the headless UI case passed. Later global checks were not reached.",
       "preserved_review_manifest_sha256": "fa1cec41b43e12b2da0a067b3c59dd4d48bee7d8215767ed2a44a95104ef2e86"
+    },
+    {
+      "local_head_prefix": "e91b4255",
+      "outcome": "The complete native language command stopped in member 9 at the old manual component-write span locator: 258 passed/1 failed across reached members, 27,153 assertions. Later members and other whole commands were unrun. A fixture-only version-14 authored-flag decode corrected the locator.",
+      "preserved_review_manifest_sha256": "2e7c25a9e96bc037cbac60a53a86b8810fde065c62899d5c7d9f253f66b38c46"
+    },
+    {
+      "local_head_prefix": "c640490a",
+      "outcome": "Three complete command families passed. Installed prepared then failed in its producer at the shared scalar-getter locator: producer 5 passed/1 failed, 196 assertions; launcher 0 passed/1 failed, 3 assertions. Runtime consumer never started. The same fixture-only flag decode corrected the shared header while retaining corruption controls.",
+      "preserved_review_manifest_sha256": "1bec3ede855f8a57a343cdd666fb4ad2c447463e41089ad2c9827312224e871b"
+    },
+    {
+      "local_head_prefix": "8203bfdb",
+      "outcome": "The first focused foundation route passed 5 cases and failed 1, with 153 assertions, at an obsolete expectation that valid authored document input was unsupported. Other focused routes were unrun. The same read now verifies successful value equality and destination-owned fields after producer retirement; production and malformed-input controls were unchanged.",
+      "preserved_review_manifest_sha256": "0700ff46a87d81ef54289cf82d9bf12435e248163acc24ba159df2c44f7fa95d"
     }
   ],
   "remaining": [
-    "Existing native global scalar/handle compatibility and affected whole language/Wasm/tooling/prepared commands",
-    "Fresh coherent installed SDK and final cumulative published-head validation",
     "Leak-enabled validation; explicit Draft/landing hold",
-    "Studio operation/history/lifecycle/SDK/UI parity gates"
-  ]
+    "Exact published-head correspondence and fresh current-main/server checks before readiness or landing",
+    "Separate Studio operation/history/lifecycle/SDK/UI parity gates"
+  ],
+  "final_validation": {
+    "local_reviewed_head": "6a4909ed807f3598f564a66a1d35edeb1200e796",
+    "tree": "7b97cab3b22bcacf870d8b27537242decfd71fa3",
+    "source_build_identity_count": 6773,
+    "tracked_blobs": 2932,
+    "build_configurations": 6,
+    "installed_sdk_files": 151,
+    "pinned_dependencies": 8,
+    "main_ancestor": "22966e126be426dd89c587363d654b6344dc727a",
+    "scope": "Approved library-contained flat string/int/bool records; native leak validation remains blocked",
+    "runs": [
+      {
+        "kind": "focused",
+        "independent_review_manifest_sha256": "d0897b194229985f9bb926ce5555250bb33fd6ea76a386556a5c7e1977fd2414",
+        "commands": [
+          {
+            "command": "python3 tools/test_policy.py tool language-record-values",
+            "cases": 6,
+            "assertions": 176,
+            "seconds": 0.067,
+            "exit": 0,
+            "raw_log_sha256": "6b45733a7289cd9d409bbd459ca74b9596c89eb11268ea6fd8827edb4b509f7a"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-semantic",
+            "cases": 7,
+            "assertions": 105,
+            "seconds": 0.102,
+            "exit": 0,
+            "raw_log_sha256": "292c20157c90ed9059d6ddbed3f73f902ce476f07754058194ff3764bb0c971c"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-runtime",
+            "cases": 4,
+            "assertions": 1211,
+            "seconds": 0.123,
+            "exit": 0,
+            "raw_log_sha256": "66d52cca158c8e660c2281f3c1e2ee951a8cc66db01c6152d52b9c690c2d10c1"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-prepared",
+            "cases": 5,
+            "assertions": 1011,
+            "seconds": 0.113,
+            "exit": 0,
+            "raw_log_sha256": "6e9b511a6bfbeebbc41e09d28a02024e06d8d031b8fd87d62e3a2ba3381961c3"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-document",
+            "cases": 3,
+            "assertions": 306,
+            "seconds": 0.068,
+            "exit": 0,
+            "raw_log_sha256": "931d4c53c5932b42dd5234a12b20be393d37d76fb4fc0e6055d81fb2d96d8b9e"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-services",
+            "cases": 3,
+            "assertions": 1299,
+            "seconds": 0.067,
+            "exit": 0,
+            "raw_log_sha256": "4932c3c3133fb9a812e829d61ebbefe22888db7c99add9fd2b7691f53ff6de94"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-state",
+            "cases": 3,
+            "assertions": 2085,
+            "seconds": 0.138,
+            "exit": 0,
+            "raw_log_sha256": "e9a1235fe331868a33762830adb26f1170965f42a3fc0f04a7a5dbb5c9eb4980"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-values",
+            "cases": 6,
+            "assertions": 176,
+            "seconds": 0.129,
+            "exit": 0,
+            "raw_log_sha256": "3d64507d8b82d829be976190b8bd0a3e8abccb871873908d31414ba7ea9a68bb"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-semantic",
+            "cases": 7,
+            "assertions": 105,
+            "seconds": 0.169,
+            "exit": 0,
+            "raw_log_sha256": "b10c42c88de900350bab06fb2c3800ebf0c0310cf238af1ab05dd6d5906eae6b"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-runtime",
+            "cases": 4,
+            "assertions": 1211,
+            "seconds": 0.18,
+            "exit": 0,
+            "raw_log_sha256": "348801a0539560dda046323fe2c902242b0d561cc05ef5f2f05a3ffc99726af8"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-prepared",
+            "cases": 5,
+            "assertions": 1011,
+            "seconds": 0.187,
+            "exit": 0,
+            "raw_log_sha256": "1ba7e0c6cd371c09e491939c73bfb85961bfe66e0053f43502de7920a5a03f27"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-document",
+            "cases": 3,
+            "assertions": 306,
+            "seconds": 0.128,
+            "exit": 0,
+            "raw_log_sha256": "1935eac03f0fc04986d990873a7383b3462ed8a3073278b1a7f6b071402b6595"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-state",
+            "cases": 3,
+            "assertions": 2077,
+            "seconds": 0.202,
+            "exit": 0,
+            "raw_log_sha256": "10f8da55467338ed21737a8915f8168b81a10f23727242b105c8d77520c18174"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool record-c-export",
+            "cases": 1,
+            "assertions": 398,
+            "seconds": 1.076,
+            "exit": 0,
+            "raw_log_sha256": "75e4c5864c6f7322c9f6b68d57a2d51b1fa5c6c3cf0dd05b7a9004b5e111a15d"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool record-installed-prepared",
+            "cases": 3,
+            "assertions": 560,
+            "seconds": 0.117,
+            "exit": 0,
+            "raw_log_sha256": "09ae447e3851e5970352b025292184f95359506ad7f9b5128b4f479edcfd93c1"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool language-record-compatibility",
+            "cases": 2,
+            "assertions": 1427,
+            "seconds": 0.067,
+            "exit": 0,
+            "raw_log_sha256": "9fdb9c1dfa31a5eced9013926bcb6dcbb07840e78bdf117e604a7cb5b8e88c2a"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool wasm-record-compatibility",
+            "cases": 1,
+            "assertions": 1380,
+            "seconds": 0.123,
+            "exit": 0,
+            "raw_log_sha256": "87b2c5f31905da2a6cb8ec3ab1d6b0cea1f2f34e87d577d1521890d9bdd2661a"
+          }
+        ]
+      },
+      {
+        "kind": "whole affected commands",
+        "independent_review_manifest_sha256": "c15a25a6183922965d1bcb64a0b5158fcbae76f1f17285e1ca7b14d352eaa599",
+        "commands": [
+          {
+            "command": "python3 tools/test_policy.py tool language-prepared",
+            "cases": 19,
+            "assertions": 833,
+            "seconds": 0.241,
+            "exit": 0,
+            "raw_log_sha256": "f540b2e8d99bb8480bb12927486f2fe4b1af2295674097a651b554979e824a13"
+          },
+          {
+            "command": "python3 tools/test_policy.py group language",
+            "cases": 411,
+            "assertions": 108540,
+            "seconds": 19.648,
+            "exit": 0,
+            "raw_log_sha256": "f475a303fcd85493479364fdd805070a3da3775035af87bb31ab8315fe4f6d79"
+          },
+          {
+            "command": "python3 tools/test_policy.py group wasm",
+            "cases": 253,
+            "assertions": 104425,
+            "seconds": 3.442,
+            "exit": 0,
+            "raw_log_sha256": "cb40d3fd6e2490fd60c0cfe2748f5317b17341f825c471877c886711f809c37c"
+          },
+          {
+            "command": "python3 tools/test_policy.py tool native-tools",
+            "cases": 116,
+            "assertions": 33227,
+            "seconds": 21.555,
+            "exit": 0,
+            "raw_log_sha256": "5fe09c617960131f9a4991296386a6592421284c1cc85eb169aadf42080c40d0"
+          }
+        ]
+      }
+    ]
+  }
 }

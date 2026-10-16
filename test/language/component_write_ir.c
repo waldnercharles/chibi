@@ -701,7 +701,7 @@ static bool write_spans(size_t length, wire_span spans[WIRE_FIELDS])
             }
         }
         size_t stride = 0, name_size = 0;
-        bool indirect = false;
+        bool indirect = false, authored = false;
         int component = 0, tag = 0, container = 0;
         uint64_t node = 0, identity = 0, layout = 0;
         found[WIRE_STRIDE].begin = wire.offset;
@@ -715,6 +715,8 @@ static bool write_spans(size_t length, wire_span spans[WIRE_FIELDS])
         execution_wire_int(&wire, &tag);
         execution_wire_int(&wire, &container);
         execution_wire_size(&wire, &name_size);
+        /* Prepared v14 distinguishes authored and native value headers. */
+        execution_wire_bool(&wire, &authored);
         execution_wire_u64(&wire, &identity);
         found[WIRE_LAYOUT].begin = wire.offset;
         execution_wire_u64(&wire, &layout);
@@ -724,7 +726,7 @@ static bool write_spans(size_t length, wire_span spans[WIRE_FIELDS])
             fields[9] != WRITE_PIN || stride != sizeof(write_ir_row) ||
             indirect || component != 0 || node != WRITE_NODE ||
             tag != PIN_U64 || container != PIN_CONTAINER_SINGLE || name_size ||
-            identity != WRITE_COMPONENT || layout != WRITE_LAYOUT) {
+            authored || identity != WRITE_COMPONENT || layout != WRITE_LAYOUT) {
             continue;
         }
         memcpy(spans, found, sizeof found);

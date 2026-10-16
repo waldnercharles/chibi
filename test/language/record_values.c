@@ -383,10 +383,29 @@ TEST_CASE(record_projection_and_codec_guard)
     REQUIRE(!strcmp(wire.error, "Authored record requires a prepared layout table"));
     pin_value output = { .type = PIN_I32, .i = 19 };
     char error[128];
-    REQUIRE(pin_value_read_document(&other, copy, projected, &output, error, sizeof error));
-    REQUIRE(output.type == PIN_I32 && output.i == 19);
+    REQUIRE(!pin_value_read_document(&other, copy, projected, &output, error, sizeof error));
+    REQUIRE(pin_value_equal(&output, &copy));
+    REQUIRE(output.type == PIN_STRUCT && output.container == PIN_CONTAINER_SINGLE);
+    REQUIRE(pin_record_same(output.record, copy.record));
+    REQUIRE(output.type_name == output.record->type.name);
+    REQUIRE(
+        arena_contains(&other, output.record) && arena_contains(&other, output.ptr)
+    );
     arena_free(&source);
     arena_free(&owned);
+    for (int i = 0; i < 12; i++) {
+        pin_value field = member(&output, i);
+        if (i < 5) {
+            char expected[32];
+            snprintf(expected, sizeof expected, "row-4-field-%d", i);
+            REQUIRE(field.str && !strcmp(field.str, expected));
+            REQUIRE(arena_contains(&other, field.str));
+        } else if (i < 7) {
+            REQUIRE(field.i == 4 + i);
+        } else {
+            REQUIRE(field.b == (bool)((4 + i) % 2));
+        }
+    }
     REQUIRE(!strcmp(av_get_str(av_obj_get(projected, "key")), "row-4-field-0"));
     return true;
 }

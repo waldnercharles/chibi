@@ -2,9 +2,10 @@
 
 This Draft feature implements the first library-contained record slice needed by
 Studio's Outliner. It is not complete or eligible to land yet. In particular,
-leak-enabled validation and the affected existing-route/SDK/integration checks
-remain open. Focused globals, headless UI and state/watch closure now pass. No
-Studio panel has been converted by this change.
+leak-enabled validation remains blocked. The cumulative source has passed the
+17 focused record routes and four complete affected command families, with
+coherent SDK/build evidence. Exact published-tree review remains a separate
+step. No Studio panel has been converted by this change.
 
 ## Source contract
 
@@ -92,7 +93,9 @@ host output headers before mutation. Callback results keep invocation-owned text
 and metadata while preserving the existing setter-result conversion contract.
 The focused native service cases cover scalar/array ownership after producer
 retirement, atomic mismatch rejection and the real headless UI data/revision
-callback. Existing native scalar/handle compatibility still needs final checks.
+callback. The fixed native scalar/handle compatibility case also verifies
+float-width conversion, original setter-result semantics and dead-handle
+filtering on reads.
 
 Actual program and inspector cases cover scalar/array persistent state,
 compatible/incompatible replacement and retained scalar/allocated-empty/three-row
@@ -118,15 +121,35 @@ escalation failed before shell launch. These results do not establish leak
 freedom, and the Draft/leak/landing hold remains. C-Wasm foundation/semantic/
 document runs are distinguished from actual authored generated-Wasm execution.
 
+The final focused compatibility cases additionally cover 48 fixed legacy
+array callbacks across int/string/reflected-struct values and both ownership
+wrappers, plus 19 native global value/host entries. Existing zero-filled native
+array growth and float/handle result semantics are preserved.
+
+The cumulative validation checkpoint is `6a4909ed807f3598f564a66a1d35edeb1200e796`.
+Its 17 focused routes pass 66 cases and 14,844 assertions. The complete native
+language, serial Wasm, compiler-enabled tooling and installed runtime-only
+prepared routes are recorded separately in the companion evidence. All six
+build configurations, 151 installed SDK files and eight pinned dependencies
+were checked against that exact source. Earlier staged results in the companion
+evidence remain scoped to their original heads, rather than being relabeled as
+final results.
+
+The final integration exposed two manual prepared-fixture locators that still
+parsed the earlier value format, and one foundation assertion that still
+expected document input to be unsupported. The preserved failing runs led to
+fixture-only corrections: both locators now require the native flag, and the
+same document read now verifies value equality and detached ownership. Original
+malformed-input checks and all runtime bounds remain intact.
+
 Remaining acceptance includes:
 
-1. Existing native scalar/handle global compatibility and independently admitted
-   affected existing-language/format/native contracts.
-2. Fresh coherent SDK/build closure, current-main integration and exact
-   published-head validation of the cumulative feature. Staged checkpoint
-   results remain scoped to their recorded heads.
-3. Leak-enabled validation. The Draft/leak/landing hold remains; full feature
-   and Studio acceptance are not inferred from the focused checkpoints.
+1. Leak-enabled validation. The Draft/leak/landing hold remains.
+2. Exact published-head correspondence/review and a fresh current-main/server
+   check before any readiness or landing decision.
+
+Studio acceptance remains separate from this language feature and its bounded
+consumer validation.
 
 The existing inspector capacity rules remain in force; the record-specific
 focused route covers small retained snapshots rather than a capacity stress test.

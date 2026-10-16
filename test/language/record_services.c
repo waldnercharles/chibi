@@ -324,3 +324,89 @@ void test_language_record_services()
     RUN_TEST_CASE(record_headless_ui_owned_data);
     pu_setup(NULL, NULL);
 }
+
+/* Separate compatibility selector: nineteen value/host entries, one entity
+ * created then destroyed synchronously, no update/renderer/worker. */
+TEST_CASE(record_globals_native_compatibility)
+{
+    setup_globals();
+    const double precise = 16777217.0;
+    REQUIRE((double)(float)precise != precise);
+    pin_value initial = { .type = PIN_F32, .f = 0.5f };
+    REQUIRE(!entities_set_global_value(globals, "narrow", &initial));
+    pin_value args[] = { { .type = PIN_STR, .str = "narrow" },
+                         { .type = PIN_F64, .d = precise } };
+    pin_value out = { .type = PIN_F64 }, saved;
+    REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
+    REQUIRE(out.type == PIN_F64 && out.d == precise && !out.record);
+    REQUIRE(!entities_get_global_value(globals, "narrow", &reads, &saved));
+    REQUIRE(saved.type == PIN_F32 && saved.f == (float)precise);
+    REQUIRE((double)saved.f != out.d);
+
+    initial = (pin_value){ .type = PIN_F64, .d = 0.25 };
+    REQUIRE(!entities_set_global_value(globals, "wide", &initial));
+    args[0].str = "wide";
+    args[1] = (pin_value){ .type = PIN_F32, .f = 1.25f };
+    out = (pin_value){ .type = PIN_F64 };
+    REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
+    REQUIRE(out.type == PIN_F64 && out.d == 1.25 && !out.record);
+    REQUIRE(!entities_get_global_value(globals, "wide", &reads, &saved));
+    REQUIRE(saved.type == PIN_F64 && saved.d == 1.25 && !saved.record);
+    out = (pin_value){ .type = PIN_F32 };
+    REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
+    REQUIRE(out.type == PIN_F32 && out.f == 1.25f && !out.record);
+
+    char *text = arena_alloc(&producer, 16);
+    strcpy(text, "native-text");
+    pin_value values[] = { { .type = PIN_BOOL, .b = true },
+                           { .type = PIN_I32, .i = -37 },
+                           { .type = PIN_STR, .str = text } };
+    const char *names[] = { "boolean", "integer", "text" };
+    for (int i = 0; i < 3; i++) {
+        args[0].str = names[i];
+        args[1] = values[i];
+        out = (pin_value){ .type = values[i].type };
+        REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
+        REQUIRE(out.type == values[i].type && !out.record);
+        if (i == 2) {
+            REQUIRE(arena_contains(&invocation, out.str));
+            text[0] = 'X';
+            arena_free(&producer);
+            values[i].str = "native-text";
+            args[1] = values[i];
+        }
+        REQUIRE(pin_value_equal(&out, &values[i]));
+        REQUIRE(!entities_get_global_value(globals, names[i], &reads, &saved));
+        REQUIRE(pin_value_equal(&saved, &values[i]) && !saved.record);
+        out = (pin_value){ .type = values[i].type };
+        REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
+        REQUIRE(pin_value_equal(&out, &values[i]) && !out.record);
+        if (i == 2) {
+            REQUIRE(arena_contains(&reads, saved.str));
+            REQUIRE(arena_contains(&invocation, out.str));
+        }
+    }
+
+    ecs_entity entity = ecs_world_create_entity(world);
+    REQUIRE(entity.slot && ecs_entity_is_alive(world, entity));
+    REQUIRE(!ecs_world_destroy_entity(world, entity));
+    REQUIRE(!ecs_entity_is_alive(world, entity));
+    args[0].str = "dead";
+    args[1] = (pin_value){ .type = PIN_HANDLE,
+                           .type_name = "ecs.entity",
+                           .u64 = ecs_entity_to_u64(entity) };
+    out = (pin_value){ .type = PIN_HANDLE, .type_name = "ecs.entity" };
+    REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
+    REQUIRE(out.u64 == args[1].u64 && out.u64 && !out.record);
+    REQUIRE(!entities_get_global_value(globals, "dead", &reads, &saved));
+    REQUIRE(saved.type == PIN_HANDLE && saved.u64 == 0 && !saved.record);
+    REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
+    REQUIRE(out.type == PIN_HANDLE && out.u64 == 0 && !out.record);
+    return true;
+}
+void test_language_record_global_compatibility()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(record_globals_native_compatibility);
+    pu_setup(NULL, NULL);
+}

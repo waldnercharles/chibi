@@ -9,8 +9,10 @@ void test_language_runtime_attribution();
 void test_language_record_values();
 void test_language_record_document();
 void test_language_record_state();
+void test_language_record_compatibility();
 #ifdef CHIBI_TEST_RECORD_SERVICES
 void test_language_record_services();
+void test_language_record_global_compatibility();
 #endif
 void test_language_record_semantic();
 void test_language_record_runtime();
@@ -75,6 +77,8 @@ int main(int argc, char **argv)
     bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
     bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
+    bool record_compatibility = argc == 2 &&
+                                !strcmp(argv[1], "--record-compatibility");
     bool record_state = argc == 2 && !strcmp(argv[1], "--record-state");
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
@@ -106,16 +110,17 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_values &&
-         !record_document && !record_state && !record_services && !record_semantic &&
-         !record_prepared_runtime && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !component_write && !component_write_layout && !scalarize &&
-         !borrow && !reductions && !binding_schedule && !activation_cache &&
-         !headless && !navigation && !publication && !field_runtime && !prototype &&
-         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
-         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+         !root_state && !benchmark && !activation_benchmark &&
+         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
+         !record_values && !record_document && !record_state && !record_services &&
+         !record_compatibility && !record_semantic && !record_prepared_runtime &&
+         !record_runtime && !runtime_attribution && !wasm && !program &&
+         !query_program && !incremental && !modules && !ranges && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
@@ -137,6 +142,7 @@ int main(int argc, char **argv)
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
+            "--record-compatibility | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
             argv[0]
@@ -144,7 +150,12 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (record_services) {
+    if (record_compatibility) {
+        test_language_record_compatibility();
+#ifdef CHIBI_TEST_RECORD_SERVICES
+        test_language_record_global_compatibility();
+#endif
+    } else if (record_services) {
 #ifdef CHIBI_TEST_RECORD_SERVICES
         test_language_record_services();
 #else

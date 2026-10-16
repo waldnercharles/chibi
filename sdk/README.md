@@ -271,15 +271,19 @@ CHIBI_TOOLS_BUILD_DIR=build-tools \
   python3 tools/test_policy.py tool package-ownership
 ```
 
-The one pico case has three sequential blocks and an eleven-command success
-ceiling under the same 60-second supervisor and 10-second child limits. It builds
+The one pico case has three sequential blocks and a 15-child success ceiling
+under the same 60-second supervisor and 10-second child limits. It builds
 six tiny C translation units and one precompiled header with CMake/Ninja, installs
 the fixture, and checks production packaging metadata. It never executes the
 produced programs. The positive check covers renamed/relocated archives, folded
 OBJECT and STATIC targets, an installed auxiliary archive, an auxiliary executable
-and the exact product executable. Seven fixed rejection checks cover missing and
-stale objects, validation-only object edges, order-only PCH edges, duplicate
-configured target records, and missing or corrupt installed owners.
+and the exact product executable. A host C compiler produces a `.res`-named output
+to check its real link ownership and declared manifest dependency hash. Eleven
+fixed rejection checks cover missing and stale objects, validation-only object or
+resource edges, order-only resource or PCH edges, a stale declared resource payload,
+an unrecorded linked resource output, duplicate configured target records, and
+missing or corrupt installed owners. This resource coverage is native-independent;
+native Windows resource compilation and SDK execution are untested by this check.
 
 Packaged SDK executables are linked with their selected `INSTALL_RPATH` so CMake
 installation preserves their bytes. Only the SDK product targets receive this

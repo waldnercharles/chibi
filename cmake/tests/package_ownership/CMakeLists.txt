@@ -13,7 +13,12 @@ target_precompile_headers(owner PRIVATE src/owned.h)
 set_target_properties(owner PROPERTIES OUTPUT_NAME renamed ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/relocated")
 add_library(debug_archive STATIC src/debug.c)
 add_executable(auxiliary src/auxiliary.c)
-add_executable(chibi-compile src/main.c)
+# Keep a .res-shaped compiler output with real host compilation and Ninja
+# dependencies. This checks ownership, not native Windows resource compilation.
+configure_file(src/resource.manifest resource.manifest COPYONLY)
+set_source_files_properties(src/main.res PROPERTIES LANGUAGE C KEEP_EXTENSION ON
+    OBJECT_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/resource.manifest")
+add_executable(chibi-compile src/main.res)
 target_link_libraries(chibi-compile PRIVATE owner)
 install(TARGETS owner debug_archive ARCHIVE DESTINATION lib)
 set_target_properties(chibi-compile PROPERTIES

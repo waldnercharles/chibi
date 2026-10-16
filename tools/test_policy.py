@@ -213,7 +213,8 @@ TOOLS = {
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
     # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # One configured-ownership case: eleven children, six tiny C units and one PCH.
+    # One configured-ownership case: 15 children, 11 rejects, six tiny C units and one PCH.
+    # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],
     # Reviewed nominal alias ownership and nested error-source case, both backends, bounded 16 preparations.

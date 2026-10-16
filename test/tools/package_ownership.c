@@ -99,6 +99,31 @@ static bool schedule_input(const char *filename, const char *output, const char 
     return true;
 }
 
+static bool remove_compile_command(const char *filename, const char *input)
+{
+    yyjson_doc *doc = yyjson_read_file(filename, 0, NULL, NULL);
+    REQUIRE(doc);
+    yyjson_val *commands = yyjson_doc_get_root(doc);
+    size_t i, count, found = yyjson_arr_size(commands);
+    yyjson_val *command;
+    yyjson_arr_foreach(commands, i, count, command)
+    {
+        const char *file = yyjson_get_str(yyjson_obj_get(command, "file"));
+        if (file && !strcmp(file, input)) {
+            REQUIRE(found == yyjson_arr_size(commands));
+            found = i;
+        }
+    }
+    REQUIRE(found < yyjson_arr_size(commands));
+    yyjson_mut_doc *changed = yyjson_doc_mut_copy(doc, NULL);
+    REQUIRE(changed);
+    REQUIRE(yyjson_mut_arr_remove(yyjson_mut_doc_get_root(changed), found));
+    REQUIRE(yyjson_mut_write_file(filename, changed, 0, NULL, NULL));
+    yyjson_mut_doc_free(changed);
+    yyjson_doc_free(doc);
+    return true;
+}
+
 TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
 {
     char root[1200], prefix[1200];
@@ -143,6 +168,19 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     yyjson_val *auxiliary = yyjson_obj_get(compiled, "auxiliary_executables");
     REQUIRE(yyjson_obj_size(products) == 1);
     REQUIRE(text_is(yyjson_obj_get(products, "chibi-compile"), "path", "chibi-compile"));
+    const char *resource = "CMakeFiles/chibi-compile.dir/src/main.res";
+    object = yyjson_obj_get(objects, resource);
+    REQUIRE(text_is(object, "target", "chibi-compile"));
+    REQUIRE(yyjson_arr_size(yyjson_obj_get(object, "artifacts")) == 1);
+    REQUIRE(contains(yyjson_obj_get(object, "artifacts"), "chibi-compile"));
+    const char *resource_hash = yyjson_get_str(yyjson_obj_get(object, "sha256"));
+    REQUIRE(
+        resource_hash &&
+        text_is(yyjson_obj_get(yyjson_obj_get(products, "chibi-compile"), "link_inputs"), resource, resource_hash)
+    );
+    REQUIRE(
+        text_is(yyjson_obj_get(compiled, "inputs"), "generated/resource.manifest", "e0fb600d5b2b5562d501eaebc89a4d24d5b079bc94b88fa0321e5a822e531f67")
+    );
     const char *product_hash = yyjson_get_str(
         yyjson_obj_get(yyjson_obj_get(products, "chibi-compile"), "sha256")
     );
@@ -162,7 +200,7 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     );
     yyjson_doc_free(doc);
 
-    /* Five fixed compiled-evidence rejects, restoring each fixture mutation. */
+    /* Nine fixed compiled-evidence rejects, restoring each fixture mutation. */
     char filename[1024], saved[1024];
     path(filename, build, "CMakeFiles/folded_object.dir/src/object.c.o");
     path(saved, directory, "saved-object");
@@ -190,6 +228,43 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     status = inspect();
     tool_write(graph_path, graph);
     REQUIRE(diagnostic(status, "Compiled output has no linked artifact:"));
+
+    /* Resource outputs require a real link edge, just like ordinary objects. */
+    REQUIRE(schedule_input(graph_path, "chibi-compile", resource, true));
+    status = inspect();
+    tool_write(graph_path, graph);
+    REQUIRE(diagnostic(status, "Artifact has no compiled object input:"));
+    REQUIRE(schedule_input(graph_path, "chibi-compile", resource, false));
+    status = inspect();
+    tool_write(graph_path, graph);
+    REQUIRE(diagnostic(status, "Artifact has no compiled object input:"));
+
+    /* The resource payload is a graph dependency, not a preprocessor include. */
+    path(filename, build, "resource.manifest");
+    REQUIRE(stat(filename, &info) == 0);
+    times[0] = newer[0] = info.st_atim;
+    times[1] = info.st_mtim;
+    struct stat resource_info;
+    path(saved, build, resource);
+    REQUIRE(stat(saved, &resource_info) == 0);
+    newer[1] = resource_info.st_mtim;
+    newer[1].tv_sec += 60;
+    REQUIRE(utimensat(AT_FDCWD, filename, newer, 0) == 0);
+    status = inspect();
+    REQUIRE(utimensat(AT_FDCWD, filename, times, 0) == 0);
+    REQUIRE(
+        diagnostic(status, "Compiled dependency changed after its object was built: resource.manifest")
+    );
+
+    path(filename, build, "compile_commands.json");
+    char *commands = tool_read(filename);
+    REQUIRE(commands);
+    path(saved, source, "src/main.res");
+    REQUIRE(remove_compile_command(filename, saved));
+    status = inspect();
+    tool_write(filename, commands);
+    free(commands);
+    REQUIRE(diagnostic(status, "Artifact has an unaccounted object input:"));
 
     REQUIRE(schedule_input(graph_path, "CMakeFiles/owner.dir/src/owned.c.o", pch, false));
     status = inspect();

@@ -7,6 +7,5 @@ clamp, and Tick. Its implementation and build targets have been retired.
 
 The production syntax corpus retains these inputs to cover state, branches,
 operators, multiline expressions, and calls. Passing their syntax check does
-not establish production catalog or execution compatibility. SDK source examples
-are in the separate `chibi-examples/examples/language` directory. Equivalent
+not establish production catalog or execution compatibility. Equivalent
 programs have runtime coverage in `test/language/program.c`.

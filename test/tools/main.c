@@ -34,9 +34,6 @@ void test_tool_shader_bake();
 #ifdef CHIBI_TEST_TILEMAP
 void test_tool_tilemap();
 #endif
-#ifdef CHIBI_TEST_TILEMAP_PROJECT
-void test_tool_tilemap_project();
-#endif
 void test_tool_execution_policy();
 #ifdef CHIBI_TEST_C_EXPORT
 void test_tool_c_export();
@@ -70,7 +67,6 @@ void test_tool_validate_units(const char *binary);
 void test_tool_ecs_query_benchmark();
 void test_arena();
 void test_tool_validate_project(const char *binary);
-void test_tool_examples_projects(const char *binary);
 void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
@@ -92,7 +88,6 @@ void test_particle_fields();
 void test_tool_audio_output();
 void test_tool_audio_browser();
 void test_tool_player_clock();
-void test_installed_examples(const char *name);
 void test_terrain_playable_render(
     const char *player,
     const char *artifact,
@@ -585,21 +580,6 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    const char *example = NULL;
-#ifdef CHIBI_TEST_RENDER_RUNTIME
-    static const char *const examples[] = { "local_mesh_sampled",
-                                            "hrc_lab",
-                                            "modeling_lab",
-                                            "sdf_lab",
-                                            "suzanne_sampled" };
-    for (int i = 0; i < 5; i++) {
-        char selector[128];
-        snprintf(selector, sizeof selector, "--installed-example-%s", examples[i]);
-        if (argc == 2 && !strcmp(argv[1], selector)) {
-            example = examples[i];
-        }
-    }
-#endif
     if (argc == 7 && !strcmp(argv[1], "--terrain-playable-render")) {
 #ifdef CHIBI_TEST_RENDER_RUNTIME
         tool_init();
@@ -774,12 +754,9 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    bool tilemap = false, tilemap_project = false;
+    bool tilemap = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
-#endif
-#ifdef CHIBI_TEST_TILEMAP_PROJECT
-    tilemap_project = argc == 2 && !strcmp(argv[1], "--tilemap-project");
 #endif
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
@@ -803,7 +780,6 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SCENE_SNAPSHOT_READ
     scene_snapshot_read = argc == 2 && !strcmp(argv[1], "--scene-snapshot-read");
 #endif
-    bool examples_projects = argc == 3 && !strcmp(argv[1], "--examples-projects");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool render_fixture = argc == 3 && !strcmp(argv[1], "--render-fixture");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
@@ -969,10 +945,9 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !example && !corpus && !unit_fixtures && !coverage &&
-        !preview_components && !shader_parameters && !source_edit &&
-        !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !desktop_dependencies && !package_ownership && !unit &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
+        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !tilemap && !package && !desktop_dependencies && !package_ownership && !unit &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !scene_snapshot_read && !native && !native_values && !native_catalog &&
@@ -983,19 +958,19 @@ int main(int argc, char **argv)
         !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
-        !source_execution_benchmark && !source_systems && !source_query_rows &&
-        !examples_projects && !validate_project && !expansion && !controller &&
-        !render_fixture && !graph_document && !graph_presentation &&
+        !shader_programs && !material_cameras && !mesh_materials &&
+        !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !scheduler_benchmark && !source_reductions &&
+        !source_reduction_benchmark && !source_execution_benchmark &&
+        !source_systems && !source_query_rows && !validate_project && !expansion &&
+        !controller && !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
-            "Usage: %s [--tilemap | --tilemap-project | --package | "
+            "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --package-ownership | --unit | "
             "--reflect-ranges | --c-export-alias | --row-builder-c | "
             "--ecs-query | "
@@ -1012,7 +987,7 @@ int main(int argc, char **argv)
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
-            "--examples-projects chibi_ctl | --validate-project chibi_ctl | "
+            "--validate-project chibi_ctl | "
             "--controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
             "--prototype-expansion chibi_ctl | "
@@ -1073,13 +1048,6 @@ int main(int argc, char **argv)
     }
     tool_init();
     pu_display_time(true);
-#ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (example) {
-        test_installed_examples(example);
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || unit_fixtures || coverage ||
                             preview_components || shader_parameters ||
@@ -1348,13 +1316,6 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
-#ifdef CHIBI_TEST_TILEMAP_PROJECT
-    if (tilemap_project) {
-        test_tool_tilemap_project();
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
-#endif
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     if (scene_hierarchy) {
         test_scene_hierarchy();
@@ -1389,8 +1350,6 @@ int main(int argc, char **argv)
         test_tool_prepared_runtime(argv[2]);
     } else if (controller) {
         test_tool_controller(argv[2]);
-    } else if (examples_projects) {
-        test_tool_examples_projects(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
     } else if (render_fixture) {

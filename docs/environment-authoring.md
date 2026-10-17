@@ -145,8 +145,10 @@ measurements before larger-world claims.
 
 ### SDK test example and shared save/load completion
 
-`chibi-examples/projects/terrain-lab` is a standalone native example on
-`codex/terrain-playground-20261015`, based on `c1fdf47`. Its `.chibi` sources own
+[`test/fixtures/terrain-lab`](../test/fixtures/terrain-lab/README.md) is a
+standalone native example, first written on the retired chibi-examples branch
+`codex/terrain-playground-20261015` and moved into the engine on 2026-10-17. Its
+`.chibi` sources own
 movement, jumping, facing-based excavation, camera following, HUD messages,
 terrain identity, explicit S/L controls and respawn policy. Its field library
 owns the ground and cave shape. It uses Chibi's Y-down gameplay coordinates.

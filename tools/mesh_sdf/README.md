@@ -2,8 +2,9 @@
 
 CUT-53 adds a CPU-only converter for **triangulated Wavefront OBJ**. It reuses the
 Suzanne recipe's RG16 PNG encoder and the existing `Model Sampled SDF` node. The
-Suzanne subdivision, capping, orientation and parity sampling remain specific to
-`chibi-examples/projects/suzanne_sampled/convert.py`; they are not applied to imported meshes.
+Suzanne subdivision, capping, orientation and parity sampling were specific to the
+retired Suzanne example ([examples](../../docs/examples.md)); they are not applied
+to imported meshes.
 
 ## Small example
 
@@ -16,11 +17,8 @@ python3 tools/mesh_sdf/convert.py test/fixtures/mesh_sdf/box.obj /tmp/local-box 
   --axes blender --scale 2 --padding 1 --resolution 17
 ```
 
-The independent `chibi-examples` repository owns
-`projects/local_mesh_sampled`, which contains the 17³ result and
-saved `LocalBox` model and minimal camera/model scene. The scene satisfies
-the repository project contract; GPU rendering acceptance remains separate.
-The CC0 example is a closed asymmetric box, deliberately sized to reveal axis
+The retired `local_mesh_sampled` example project held the 17³ result, a saved
+`LocalBox` model and a minimal camera/model scene. The CC0 example is a closed asymmetric box, deliberately sized to reveal axis
 swaps: source extents `(2,4,6)` become engine extents `(4,12,8)`. The output has
 `content/sdf/<pixel-fnv1a64>.sdf.png` and `provenance.json`. The source and PNG also
 have SHA-256 digests. Identical inputs, flags, converter and Blender build produce

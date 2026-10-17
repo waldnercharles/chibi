@@ -37,7 +37,7 @@ before solving; completion does not mean an earlier authored raycast in the same
 step already saw the restored shapes. Direct C hosts must synchronize physics
 before inspecting shapes and propagate transforms before rendering.
 
-`projects/terrain-lab/content/behaviors/Explorer.chibi` in `chibi-examples` shows
+`test/fixtures/terrain-lab/content/behaviors/Explorer.chibi` shows
 request retention, polling, HUD errors and game-owned respawn after load. Its
 Quarry scene uses identity `terrain-lab-quarry-v1`, explicit S/L controls and no
 startup save/load. The example's restart procedure is described in its README;
@@ -78,7 +78,7 @@ a fresh scene runtime, optionally advances it, performs the operation and report
 completion. It does not retain the previous request's live world.
 
 ```sh
-build/bin/chibi_ctl --project-root /absolute/path/to/terrain-lab <<'JSON'
+build/bin/chibi_ctl --project-root test/fixtures/terrain-lab <<'JSON'
 {"contract":1,"operation":"save_terrain","name":"Quarry","entity":"Quarry terrain","identity":"terrain-lab-quarry-v1","save_path":"/tmp/quarry-save.json","frames":0}
 {"contract":1,"operation":"load_terrain","name":"Quarry","entity":"Quarry terrain","identity":"terrain-lab-quarry-v1","save_path":"/tmp/quarry-save.json","frames":0}
 JSON

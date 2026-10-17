@@ -9,9 +9,9 @@
 #define CHIBI_APPLICATION_TEXT_MAX 1024
 
 /* The manifest version this build opens. Bump it only when an existing
-   project (in this repository, chibi-studio or chibi-celeste) would load wrong
-   or fail to load and a step in project_migrate.c would rewrite it; see the
-   first rule in AGENTS.md for what needs no bump. */
+   project (in this repository or chibi-studio) would load wrong or fail to
+   load and a step in project_migrate.c would rewrite it; see the first rule
+   in AGENTS.md for what needs no bump. */
 #define CHIBI_PROJECT_VERSION 24
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10

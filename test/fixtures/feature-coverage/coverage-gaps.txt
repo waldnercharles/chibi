@@ -13,10 +13,10 @@ component MaterialBreakProfile
 component MaterialThermal
 component MaterialConstitutive
 component MaterialTerrain
+component TerrainVolume
 component Combustion
 component Fuel
 component Igniter
-component Substance
 component MaterialCavity
 component FragmentGlow
 component MaterialFrame
@@ -51,3 +51,10 @@ component Drive
 # Source-native-features tests the authored requests without launching websites.
 function Open URL
 function Cancel Open URL
+
+# Terrain checkpoints need a terrain recipe and host-bound binary storage.
+# --terrain-playable exercises all three from .chibi in VM and SLJIT;
+# --terrain-storage and --terrain-storage-commands cover storage failures.
+function Save Terrain
+function Load Terrain
+function Terrain Storage Result

@@ -281,7 +281,9 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     const char
         *expected = "--mesh-files\n--model-import\n--validate-project\n"
                     "--prototype-expansion\n--controller\n--feature-coverage\n"
-                    "--render-fixture\n";
+                    "--render-fixture\n--material-bake\n--environment-"
+                    "authoring\n"
+                    "--terrain-checkpoint\n--terrain-storage-commands\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -289,11 +291,17 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
     REQUIRE(run_group("native") == 0);
     output = tool_read(commands);
     bool separate = output && *output;
-    const char *selectors[] = {
-        "--mesh-files\n",          "--model-import\n", "--validate-project\n",
-        "--prototype-expansion\n", "--controller\n",   "--feature-coverage\n",
-        "--render-fixture\n"
-    };
+    const char *selectors[] = { "--mesh-files\n",
+                                "--model-import\n",
+                                "--validate-project\n",
+                                "--prototype-expansion\n",
+                                "--controller\n",
+                                "--feature-coverage\n",
+                                "--render-fixture\n",
+                                "--material-bake\n",
+                                "--environment-authoring\n",
+                                "--terrain-checkpoint\n",
+                                "--terrain-storage-commands\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }

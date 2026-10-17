@@ -331,8 +331,10 @@ Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
 59 assertions in 0.656 seconds. `field-runtime` originally ran three public cases for owned
 scalar artifacts, a 3-by-3 whole/sliced bake, geometry/parameter results, invalid
 IR and every prefix of a prepared record smaller than 512 bytes. It passed 254
-assertions in 0.828 seconds with ASan/UBSan. Neither selector loads a renderer or
-runs engine frames.
+assertions in 0.828 seconds with ASan/UBSan. Two of its cases check every field
+node's library host call against the field evaluator, sampled and baked, over
+2,000 operand sets each, and that a call's Seed Offset is its whole seed.
+Neither selector loads a renderer or runs engine frames.
 `prototype-document` selects one independently reviewed case with two small
 reflected types and fixed creation-default, detached-component, value snapshot,
 partial KDL and malformed-size operations. It has no files, worlds, processes or
@@ -624,7 +626,7 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs eighteen cases on field graphs compiled to field programs:
+`--fields` runs twenty cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
@@ -633,8 +635,13 @@ tiles that restore and retry failed slices, plus linked-library publication
 and rollback, source-library linking and constant parameter defaults, and library
 updates that preserve valid and invalid field drafts, and source calls that retain
 the named function and authored inputs after functions and parameters reorder.
+Two more lower a library calling every field node, each baked bit-identical to
+that node alone with the field's seed, sample and parameters, and functions
+calling functions before and after them, in another library, and recursively.
 The original thirteen cases passed 3,308 assertions in 0.36 seconds with
-ASan/UBSan; these historical measurements do not cover the five added cases.
+ASan/UBSan; these historical measurements do not cover the seven added cases.
+All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
+2026-10-16.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against

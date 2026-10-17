@@ -1,0 +1,4 @@
+version 24
+name "Environment authoring"
+content "content"
+start_scene "scenes/MaterialStudy.kdl"

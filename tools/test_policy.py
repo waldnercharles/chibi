@@ -105,12 +105,31 @@ NATIVE = {
     ('--behavior-loader',): 'All-or-nothing behavior loading, failed preview launches and scene override preparation; 3 cases, CPU only; docs/testing.md',
     ('--engine-clock',): 'Engine clock, pause, step and headless engine frames; 6 cases, CPU only; docs/testing.md',
     ('--preview-layout',): 'Preview world layout; 2 cases, CPU only; docs/testing.md',
-    ('--fields',): 'Field graphs, sampling, cave fixtures, source-library linking/defaults and publication rollback with retained drafts and name-stable source calls; 18 cases, CPU only; docs/testing.md',
+    ('--fields',): 'Field graphs, sampling, cave fixtures, source-library linking/defaults, every field node and function-to-function calls, and publication rollback with retained drafts and name-stable source calls; 20 cases, CPU only; docs/testing.md',
     ('--model-graphs',): 'Model graphs compiled to distance programs, bounds, hit resolvers and sampled SDFs; 39 cases, in-memory, CPU only; docs/testing.md',
     ('--model-catalog',): 'Model parameters, material scope, validation, materials and surfaces in the shader catalog; 29 cases including live model registration, diagnostics and rename, CPU only; docs/testing.md',
     ('--render-geometry',): 'Appearance and mesh surface geometry, including finite scaled relief; 8 cases, CPU only; docs/testing.md',
     ('--arena',): 'The support arena allocator; 2 cases, CPU only; docs/testing.md',
-    ('--shader-graphs',): 'Shader graphs evaluated on the CPU and compiled to GLSL; 15 cases, CPU only; docs/testing.md',
+    ('--shader-graphs',): 'Shader graphs evaluated on the CPU and compiled to GLSL; 16 cases, CPU only; docs/testing.md',
+    ('--shader-bake',): 'Bounded material channel baking; eight CPU cases, no files or GPU.',
+    ('--material-bake',): 'Independently reviewed bounded CPU controller baking: tiny grids, three children under shared60s, no GPU.',
+    ('--environment-authoring',): 'Three terrain cases: one authored Tick, two bounded physics probe steps across a seam, and one controller validation child under shared60s, no GPU.',
+    ('--terrain-seams',): 'Bounded CPU terrain contour and exact collision coverage over fixed small grids, no window or files.',
+    ('--material-surface-mesh',): 'Fixed CPU geometry specimens checking relief, recess, cuts, seams, normals, stable source frames and terrain volumes, no window or files; shared60s.',
+    ('--scene3d-camera',): 'Three bounded CPU projection, parallel-ray, ground-picking and perspective regression cases; no window or files; shared60s.',
+    ('--scene3d-volume',): 'Three CPU default-disabled no-op, physical interval and bounded quality cases; no window or files; shared60s.',
+    ('--scene3d-terrain',): 'Six bounded CPU mesh-shadow range, occupancy/proxy, revision, empty/reset/retirement, capacity, terrain-volume incremental rebuild and box-budget cases; shared60s.',
+    ('--scene3d-terrain-gpu',): 'One hidden32x32 context, tiny live-mesh upload/reuse/cut/retirement case; shared60s.',
+    ('--scene3d-volume-gpu',): 'One hidden64x64 context, five-frame real 3D blocker, shadow-toggle and analytic extinction readback case; shared60s.',
+    ('--material-mesh-cache',): 'One hidden64x64 context, bounded mesh upload/cut/retire lifecycle and absorption readback; shared60s.',
+    ('--hrc-spot',): 'One hidden64x64 context, eighteen aimed-light, thin-blocker, slab, offscreen-source and single-scattering readbacks; shared60s.',
+    ('--terrain-storage',): 'Bounded CPU storage queue, reset, failure and atomic binary attachment cases; no GPU.',
+    ('--terrain-storage-commands',): 'Bounded controller save/load commands in fresh children on a tiny terrain fixture under one shared60s deadline; no GPU.',
+    ('--terrain-playable',): 'Authored terrain-lab controls and restart restore in VM and SLJIT fresh children under one shared60s deadline; no GPU.',
+    ('--terrain-checkpoint',): 'Bounded finite and streamed terrain snapshots, malformed input refusal and one fresh-process restore child under shared60s; no GPU.',
+    ('--terrain-playable-render',): 'One installed player child, four hidden 640x360 frames with bounded PNG readback under shared60s; compilation occurs before the test.',
+    ('--surface-transport',): 'One hidden 64x64 draw of twelve mesh/SDF actors, two bounded texture readbacks checking absorption/filter and opacity; shared60s.',
+    ('--material-terrain-seams',): 'Reviewed hidden 64x64 app: six terrain readbacks covering shared edge contours, borders, LOD and checkpoint restore, under one shared60s deadline.',
     ('--graph-document',): 'Graph documents over the composed node palette: comments, frames, edge indexes across edits and paste, concurrent readers, ID stability and literals; 14 cases, in-memory, CPU only; docs/testing.md',
     ('--graph-presentation',): 'Inline folding, arrangement, expression text, find and hover sentences over the palette; 14 cases, in-memory, CPU only; docs/testing.md',
     ('--graph-functions',): 'Function and macro signatures, collapse/expand and linked shader library problems; 18 cases, in-memory, CPU only; docs/testing.md',
@@ -287,6 +306,7 @@ TOOLS = {
     # Hidden-app 64x64 2D renders: a scene without lighting settings draws unlit, and default
     # lighting keeps it visible.
     'scene2d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene2d'],
+    'material-terrain-seams': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-terrain-seams'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
@@ -379,6 +399,31 @@ TOOLS = {
     # Fifteen reviewed shader graph evaluation cases: mappings, bump and normal frames, triplanar and
     # decal detail, effects, ramps, images and authored roundtrips; no files, window or GPU.
     'shader-graphs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-graphs'],
+    # Tiny fixed grids exercise float channels, slices, ownership, derivatives and failures.
+    'shader-bake': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-bake'],
+    'terrain-seams': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-seams'],
+    'material-surface-mesh': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-surface-mesh'],
+    'scene3d-camera': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-camera'],
+    'scene3d-volume': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-volume'],
+    'scene3d-terrain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene3d-terrain'],
+    'scene3d-terrain-gpu': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-terrain-gpu'],
+    'scene3d-volume-gpu': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-volume-gpu'],
+    'material-mesh-cache': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-mesh-cache'],
+    'hrc-spot': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--hrc-spot'],
+    'terrain-checkpoint': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-checkpoint'],
+    'terrain-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-storage'],
+    'terrain-storage-commands': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-storage-commands', str(ROOT / os.environ.get('CHIBI_CTL', 'build/bin/chibi_ctl'))],
+    'terrain-playable': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable', os.environ.get('CHIBI_TERRAIN_EXAMPLE', '')],
+    'surface-transport': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--surface-transport'],
+    'terrain-playable-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable-render',
+        str(ROOT / os.environ.get('CHIBI_TERRAIN_PLAYER', 'dist/sdk/bin/chibi-player')),
+        os.environ.get('CHIBI_TERRAIN_ARTIFACT', ''), os.environ.get('CHIBI_TERRAIN_RESOURCES', ''),
+        str(ROOT / os.environ.get('CHIBI_TERRAIN_SHADERS', 'dist/sdk/share/chibi/shaders')),
+        str(ROOT / os.environ.get('CHIBI_TERRAIN_RENDER_OUTPUT', '.chibi/environment-authoring/terrain-playable-render'))],
+    'material-bake': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-bake',
+                      str(ROOT / os.environ.get('CHIBI_CTL', 'build/bin/chibi_ctl'))],
+    'environment-authoring': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--environment-authoring',
+                              str(ROOT / os.environ.get('CHIBI_CTL', 'build/bin/chibi_ctl'))],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
@@ -599,12 +644,13 @@ GROUPS = {
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
                'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
-               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs'],
+               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs', 'shader-bake', 'terrain-seams', 'terrain-storage',
+               'material-surface-mesh', 'scene3d-camera', 'scene3d-volume', 'scene3d-terrain'],
     # Whole projects, imported assets and the Release chibi_ctl: feature coverage,
     # project validation and prototype expansion, mesh and model import, and the
     # controller and render fixture command-response cases.
     'projects': ['mesh-files', 'model-import', 'validate-project', 'prototype-expansion',
-                 'controller', 'feature-coverage', 'render-fixture'],
+                 'controller', 'feature-coverage', 'render-fixture', 'material-bake', 'environment-authoring', 'terrain-checkpoint', 'terrain-storage-commands'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     # First measurement of the combined candidate remains under one shared60s.
@@ -891,7 +937,7 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'studio-scene-gizmo3d', 'studio-scene-collider3d', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
+                            'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'material-terrain-seams', 'surface-transport', 'material-mesh-cache', 'scene3d-terrain-gpu', 'scene3d-volume-gpu', 'hrc-spot', 'scene3d',
                             'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
                             'radiance-horizons8', 'material-pixels', 'shader-parity',

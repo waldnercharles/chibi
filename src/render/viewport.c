@@ -337,7 +337,8 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
         width = height * aspect;
     }
     engine_viewport_lens lens = viewport->lens;
-    if (height > viewport->view_height && cf_dot_v3(lens.forward, lens.forward) > 0) {
+    if (!lens.orthographic && height > viewport->view_height &&
+        cf_dot_v3(lens.forward, lens.forward) > 0) {
         float fov = lens.fov > 0 ? lens.fov : ENGINE_VIEWPORT_FOV_DEFAULT;
         float tangent = tanf(fov * 0.5f) * height / viewport->view_height;
         lens.fov = fminf(2 * atanf(tangent), nextafterf(CF_PI, 0));

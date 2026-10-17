@@ -10,6 +10,9 @@ enum
 
 /* Unit extents centered at the origin, with independent flat face normals. */
 CF_Mesh render_scene3d_prism_mesh();
+/* A unit-diameter sphere with smooth normals, fine enough that a sphere
+ * filling much of the screen keeps a round outline. */
+CF_Mesh render_scene3d_sphere_mesh();
 CF_Mesh render_scene3d_octahedron_mesh();
 CF_Mesh render_scene3d_tetrahedron_mesh();
 /* Canonical polygon geometry shared by drawing and exact picking. */

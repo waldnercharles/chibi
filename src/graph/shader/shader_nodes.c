@@ -128,6 +128,9 @@ static pin_spec mapping3[] = { VECTOR_PIN("Position", 3),
                                VECTOR_PIN("Offset", 3),
                                VECTOR_PIN("Rotation", 3),
                                VECTOR_PIN("Scale", 3) };
+static pin_spec star_in[] = { VECTOR_PIN("Direction", 3),
+                              FLOAT_DEFAULT("Density", 10),
+                              FLOAT_DEFAULT("Brightness", 1) };
 static pin_spec fresnel_in[] = {
     { .name = "Normal",
       .type = PIN_STRUCT,
@@ -327,6 +330,7 @@ NODE(mapping3d_node, "Mapping3D", 4, mapping3, vector3_out, "Scales, rotates by 
 NODE(fresnel_node, "Fresnel", 4, fresnel_in, scalar_out, "Returns Base facing the view, rising to 1 edge-on with sharpness Power; Normal and View Direction default to the surface's.");
 NODE(remap_node, "Remap", 4, remap_in, any_out, "Maps Value from From Range to To Range per component, clamping to To Range when Clamp is on.");
 NODE(gradient_node, "Gradient", 4, gradient_in, scalar_out, "Returns an X, Y, Radial or Angular ramp of Position per Type, times Scale plus Offset; Position defaults to UV.");
+NODE(star_node, "Star Field", 3, star_in, vector3_out, "Returns point stars along Direction, each about a pixel wide at any field of view: Density per square degree (0-100); Brightness is the brightest star's peak where a pixel spans 0.03 degrees, and stars keep their energy at other sizes. Direction defaults to World Position, the direction looked along in a sky material.");
 NODE(fractal_node, "Fractal Noise", 4, fractal_in, scalar_out, "Returns 0 to 1 fractal value noise at Position times Scale; Detail sets 1 to 8 octaves and Roughness their falloff.");
 static node_desc voronoi_node = {
     .name = "Shader Voronoi",
@@ -515,7 +519,8 @@ static node_desc *const nodes[] = { &constant,
                                     &normal_map_node,
                                     &bump_node,
                                     &triplanar_node,
-                                    &decal_node };
+                                    &decal_node,
+                                    &star_node };
 const registry_pack SHADER_PACK = { .name = "shader",
                                     .nodes = nodes,
                                     .node_count = sizeof nodes / sizeof *nodes,

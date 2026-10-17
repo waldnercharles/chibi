@@ -13,11 +13,19 @@ typedef struct
     uint64_t identity;
     CF_Mesh mesh;
 } uploaded;
+typedef struct
+{
+    uint64_t identity, revision;
+    CF_Mesh mesh;
+    bool used;
+} dynamic_mesh;
 
 struct render_scene3d_mesh_cache
 {
     uploaded *meshes; /* Ordered by identity, so draws find theirs by bisection. */
     uint64_t pruned; /* The catalog generation the copies were last pruned at. */
+    dynamic_mesh *dynamic;
+    int dynamic_uploads;
 };
 
 render_scene3d_mesh_cache *render_scene3d_mesh_cache_new()
@@ -27,11 +35,51 @@ render_scene3d_mesh_cache *render_scene3d_mesh_cache_new()
 
 void render_scene3d_mesh_cache_free(render_scene3d_mesh_cache *cache)
 {
+    render_scene3d_mesh_cache_dynamic_clear(cache);
+    afree(cache->dynamic);
     for (int i = 0; i < acount(cache->meshes); i++) {
         cf_destroy_mesh(cache->meshes[i].mesh);
     }
     afree(cache->meshes);
     free(cache);
+}
+
+void render_scene3d_mesh_cache_dynamic_clear(render_scene3d_mesh_cache *cache)
+{
+    for (int i = 0; i < acount(cache->dynamic); i++) {
+        cf_destroy_mesh(cache->dynamic[i].mesh);
+    }
+    aclear(cache->dynamic);
+    cache->dynamic_uploads = 0;
+}
+
+void render_scene3d_mesh_cache_dynamic_begin(render_scene3d_mesh_cache *cache)
+{
+    cache->dynamic_uploads = 0;
+    for (int i = 0; i < acount(cache->dynamic); i++) {
+        cache->dynamic[i].used = false;
+    }
+}
+
+void render_scene3d_mesh_cache_dynamic_end(render_scene3d_mesh_cache *cache)
+{
+    for (int i = acount(cache->dynamic) - 1; i >= 0; i--) {
+        if (cache->dynamic[i].used) {
+            continue;
+        }
+        cf_destroy_mesh(cache->dynamic[i].mesh);
+        adel(cache->dynamic, i);
+    }
+}
+
+int render_scene3d_mesh_cache_dynamic_count(const render_scene3d_mesh_cache *cache)
+{
+    return acount(cache->dynamic);
+}
+
+int render_scene3d_mesh_cache_dynamic_uploads(const render_scene3d_mesh_cache *cache)
+{
+    return cache->dynamic_uploads;
 }
 
 /* The attributes scene3d_mesh.vert reads. */
@@ -111,6 +159,61 @@ static CF_Mesh upload(const render_mesh_asset *mesh)
     cf_mesh_set_index_buffer(result, indices * (int)sizeof *mesh->indices, 32);
     cf_mesh_update_index_data(result, (void *)mesh->indices, indices);
     return result;
+}
+
+bool render_scene3d_mesh_cache_dynamic_upload(
+    render_scene3d_mesh_cache *cache,
+    uint64_t identity,
+    uint64_t revision,
+    const render_mesh_asset *mesh
+)
+{
+    int index = 0;
+    for (; index < acount(cache->dynamic); index++) {
+        dynamic_mesh *held = &cache->dynamic[index];
+        if (held->identity != identity) {
+            continue;
+        }
+        held->used = true;
+        if (held->revision == revision) {
+            return true;
+        }
+        break;
+    }
+    CF_Mesh gpu = upload(mesh);
+    if (!gpu.id) {
+        return false;
+    }
+    dynamic_mesh fresh = { identity, revision, gpu, true };
+    if (index < acount(cache->dynamic)) {
+        cf_destroy_mesh(cache->dynamic[index].mesh);
+        cache->dynamic[index] = fresh;
+    } else {
+        apush(cache->dynamic, fresh);
+    }
+    cache->dynamic_uploads++;
+    return true;
+}
+
+void render_scene3d_mesh_cache_dynamic_draw(
+    const render_scene3d_mesh_cache *cache,
+    uint64_t identity,
+    const render_mesh_asset *mesh,
+    int first,
+    int count
+)
+{
+    for (int i = 0; i < acount(cache->dynamic); i++) {
+        if (cache->dynamic[i].identity != identity) {
+            continue;
+        }
+        cf_draw3d_push();
+        cf_draw3d_translate(render_mesh_asset_center(mesh));
+        cf_draw3d_mesh_range(cache->dynamic[i].mesh, first, count);
+        cf_draw3d_pop();
+        return;
+    }
+    assert(false && "Dynamic terrain mesh was not uploaded");
 }
 
 bool render_scene3d_mesh_cache_upload(render_scene3d_mesh_cache *cache, const render_mesh_asset *mesh)

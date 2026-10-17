@@ -49,6 +49,10 @@ const float PI = 3.141592653589793;
 const int SEARCH_TAPS = 16;
 const int FILTER_TAPS = 32;
 const float SOFT_TEXELS = 128.0;
+// Local lights soften over at most this many texels of their 512-texel faces;
+// each face keeps a guard band, and taps clamp inside it.
+const int LIGHT_FILTER_TAPS = 24;
+const float SOFT_LIGHT_TEXELS = 24.0;
 // The surface's world-space derivatives across the screen.
 vec3 world_dx;
 vec3 world_dy;
@@ -299,13 +303,26 @@ float light_shadow(int i)
     float near = scene_light_shadow.z;
     float depth = (1.0 - near * light.w / ahead) / (1.0 - near);
     vec2 coord = (vec2(face, i) + uv) * face_texels / size;
+    // A source with size softens its edge over about that many world units
+    // at the receiver: rotated Vogel taps, kept inside the face. Without size,
+    // or under two texels of softening, a 3x3 grid keeps the edge hard.
+    float radius = min(scene_light_shadow_sizes[i] / texel, SOFT_LIGHT_TEXELS);
     float lit = 0.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            lit += textureLod(scene_light_shadow_map, vec3(coord + vec2(x, y) / size, depth), 0.0);
+    if (radius < 2.0) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                lit += textureLod(scene_light_shadow_map, vec3(coord + vec2(x, y) / size, depth), 0.0);
+            }
         }
+        return lit / 9.0;
     }
-    return lit / 9.0;
+    float angle = 2.0 * PI * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    for (int tap = 0; tap < LIGHT_FILTER_TAPS; tap++) {
+        vec2 offset = clamp(uv + vogel_tap(tap, LIGHT_FILTER_TAPS, angle) * radius / face_texels,
+                            1.5 / face_texels, 1.0 - 1.5 / face_texels);
+        lit += textureLod(scene_light_shadow_map, vec3((vec2(face, i) + offset) * face_texels / size, depth), 0.0);
+    }
+    return lit / float(LIGHT_FILTER_TAPS);
 }
 
 // A world direction in the sky's own frame, turned back by its rotation.
@@ -368,19 +385,23 @@ vec3 ambient_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return base * (1.0 - metallic) * diffuse_light(normal, view);
 }
 
-// The screen's ambient occlusion at this pixel.
-float screen_occlusion()
+// The screen's light over pi in rgb and ambient occlusion in alpha at this
+// pixel.
+vec4 screen_occlusion_and_light()
 {
     vec2 uv = gl_FragCoord.xy / vec2(textureSize(scene_occlusion, 0));
-    return textureLod(scene_occlusion, uv, 0.0).r;
+    return textureLod(scene_occlusion, uv, 0.0);
 }
 
 vec3 direct_light(vec3 base, float roughness, float metallic, float occlusion, vec3 normal, vec3 view)
 {
     // Occlusion dims only the ambient and sky light, which arrive from every
     // side; the surface's own and the screen's overlap, so the stronger holds.
-    float open = min(occlusion, screen_occlusion());
+    vec4 screen = screen_occlusion_and_light();
+    float open = min(occlusion, screen.a);
     vec3 result = ambient_light(base, roughness, metallic, normal, view) * open;
+    // Screen light traced its own occlusion.
+    result += base * (1.0 - metallic) * screen.rgb;
     if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
         result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
                   scene_sun_color.rgb * sun_shadow();

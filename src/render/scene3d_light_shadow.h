@@ -36,6 +36,13 @@ int render_scene3d_light_shadow_faces(const render_scene3d_light_shadow *shadow,
  * into any face of a light. A box around the light itself casts nothing, so
  * a lamp's own bulb leaves it lit. */
 bool render_scene3d_light_shadow_near(const render_scene3d_light_shadow *shadow, int light, CF_M4x4 box);
+/* A mesh's box is only a range bound, not solid occupancy. Keep a hollow
+ * mesh containing the light: its actual triangles decide the shadow. */
+bool render_scene3d_light_shadow_mesh_near(
+    const render_scene3d_light_shadow *shadow,
+    int light,
+    CF_M4x4 box
+);
 /* Whether a box near a light can cast into one of its faces. */
 bool render_scene3d_light_shadow_reaches(
     const render_scene3d_light_shadow *shadow,
@@ -57,5 +64,13 @@ void render_scene3d_light_shadow_end(render_scene3d_light_shadow *shadow, int li
  * surface in their light. */
 void render_scene3d_light_shadow_bind(render_scene3d_light_shadow *shadow);
 void render_scene3d_light_shadow_unbind();
+
+typedef struct
+{
+    CF_Texture map;
+    /* Count, guarded face spread, near plane/radius, face texels. */
+    CF_V4 settings;
+} render_scene3d_light_shadow_snapshot;
+render_scene3d_light_shadow_snapshot render_scene3d_light_shadow_read(render_scene3d_light_shadow *);
 
 #endif

@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Two functions, five samples per backend, one compiler child. No frames. */
 #define ROW                                                                    \

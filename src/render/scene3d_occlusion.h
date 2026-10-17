@@ -1,6 +1,7 @@
 #ifndef CHIBI_RENDER_SCENE3D_OCCLUSION_H
 #define CHIBI_RENDER_SCENE3D_OCCLUSION_H
 
+#include "platform/cute.h"
 #include "render/scene3d.h"
 
 #include <stddef.h>
@@ -32,9 +33,13 @@ bool render_scene3d_occlusion_begin(
     size_t size
 );
 void render_scene3d_occlusion_end(render_scene3d_occlusion *occlusion);
-/* Binds the occlusion for the lit pass's next draws, or, for surfaces it
- * doesn't describe and while it is off, none, which leaves them open. */
+/* Binds the occlusion for the lit pass's next draws, in alpha with no
+ * screen light, or, for surfaces it doesn't describe and while it is off,
+ * none, which leaves them open. */
 void render_scene3d_occlusion_bind(render_scene3d_occlusion *occlusion, bool computed);
+/* The camera's depth and the occlusion, in alpha, that end computed. */
+CF_Texture render_scene3d_occlusion_depth(const render_scene3d_occlusion *occlusion);
+CF_Texture render_scene3d_occlusion_map(const render_scene3d_occlusion *occlusion);
 void render_scene3d_occlusion_unbind();
 
 #endif

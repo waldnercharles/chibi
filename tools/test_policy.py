@@ -454,6 +454,14 @@ TOOLS = {
     'language-modules': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--modules'],
     # Bounded scalar proof tests: runtime IR reductions and VM/compiled/inspection parity.
     'language-ranges': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ranges'],
+    # First supervised measurement: 22 direct exact-core pico cases; 30 owner
+    # attempts (one intentional refusal), at most 29 owners and one live owner.
+    # Per owner <=128 visits, 8388608 charged work, 32768 retained bytes;
+    # totals <=3712 visits/243269632 work; <=4096-bit magnitudes, 1026-byte token.
+    # No parser/backend/runtime programs, files, children, network or GPU.
+    # Separate exact-candidate build and finite-workload admission required; shared60s.
+    'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--numeric-exact-core'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

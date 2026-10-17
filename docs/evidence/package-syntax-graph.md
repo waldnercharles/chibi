@@ -3,9 +3,26 @@
 Status: the original fresh build and four finite production results remain
 retained. The post-review blank-package correction has passed its minimal
 incremental build and owning 11-case/292-assertion route at qualified tree
-`0851e0094f2ec24f620c0f25a21a609542cacf4a`. Publication adds only this updated
-evidence document to that tested tree. A fresh published-head review and the
-separate dependent integration gates remain required.
+`0851e0094f2ec24f620c0f25a21a609542cacf4a`. Publication adds only updated policy
+workload comments and this evidence document to that tested tree. Executable
+statements and product sources are unchanged. A fresh published-head review and
+the separate dependent integration gates remain required.
+
+## Post-review policy workload correction
+
+The exact-9872 review correctly found stale workload counts in the production
+policy comment after the blank-package regression. The comment now describes
+11 cases, 31 canonical parses plus one edit, 32 extractions (18 accepted and
+14 refused), and total submitted snapshot text below 8192 bytes. Nine graph
+attempts, all other bounds, the selector and the 60-second deadline are unchanged.
+
+The prior independent source/workload admission and observed 11-case/292-assertion
+result already covered that actual workload. This correction changes only Python
+comments and evidence prose; the production supervisor's executable statements,
+test cases, C sources, generated parser and qualified ELF remain unchanged.
+No formatter, generator, build or product test was rerun for this comment-only
+successor. The earlier P1 finding and all prior outcomes remain retained; fresh
+exact-head review and separate dependent integration remain required.
 
 ## Post-review blank-package correction
 

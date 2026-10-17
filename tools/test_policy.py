@@ -471,10 +471,10 @@ TOOLS = {
     'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-graph'],
     # First measurement requires independent exact-source and workload admission.
-    # Ten fixed pico cases, 30 canonical parses plus one edit; 31 extractions
-    # (18 accepted, 13 refused), nine graph attempts (four accepted, five refused).
+    # Eleven fixed pico cases, 31 canonical parses plus one edit; 32 extractions
+    # (18 accepted, 14 refused), nine graph attempts (four accepted, five refused).
     # At most four snapshots/files, three packages, five imports; each text<256B,
-    # total submitted snapshot text<7936B, owned descriptor/name envelope16KiB.
+    # total submitted snapshot text<8192B, owned descriptor/name envelope16KiB.
     # No authored execution, files, subprocesses, backend, world, frames or GPU.
     # Existing owning dispatcher, separate build timing, shared60s; no aggregate.
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

@@ -1679,3 +1679,55 @@ analyses, two lower calls, two module finalizations, one stage and no authored
 calls. Red and green runs each use one production 60-second deadline with
 build/configuration kept separate. This focused evidence does not establish
 full Studio startup, rendering or native-catalog-only helper coverage.
+
+## CUT-79 inferred string arrays: fixed standalone regression
+
+`tool language-inferred-string-arrays` selects two C/pico_unit cases in the
+existing language driver. This new source-only workload requires independent
+exact-source and resource admission before its first supervised invocation.
+Registration is not admission. It is not included in a native or Wasm aggregate.
+
+The first case parses/analyzes 22 inline documents once each. It covers direct
+and parenthesized literals, a named-constant alias chain, local/state/return
+inference, name storage, contextual/empty arrays, unchanged numeric defaults,
+explicit literal-union acceptance/rejection and indexed ordinary strings.
+Literal expressions and named scalar constants retain their per-value facts;
+explicit array/union constraints remain strict. Negative controls check the
+diagnostic category and a range overlapping the offending source token.
+
+The second case prepares two fixed twelve-glyph sources, inferred and explicitly
+contextual, once each for BYTECODE and SLJIT. Each preparation has one named
+constant initializer evaluated by the existing lower.c BYTECODE path with its
+unchanged 100,000 budget. A separate run-counter scope requires exactly one
+BYTECODE entry for that initializer. There are four such initialization entries,
+distinct from the 48 direct Lookup calls (12 indices per module). Each direct
+call has budget 2,000 and must record exactly one selected backend entry, no
+other backend entry, no inspection entry/fallback and no counter overflow.
+Module backend identity is checked separately; SLJIT is never replaced silently.
+A Wasm build rejects this native runtime case before preparation.
+
+On full success the source-counted totals are 26 parses/analyses, four lowers,
+four finalizations, four initializer BYTECODE entries, 24 direct BYTECODE entries,
+24 direct SLJIT entries and 445 assertions (156 semantic plus 289 runtime).
+The fixture reports attempted work on failure too. Only one module, activation
+and result is live at a time. Teardown is registered with pico_unit and releases
+all fixture-owned objects after REQUIRE returns, before the next case/module.
+
+Every inline source is at most 1 KiB and semantic source text totals less than
+16 KiB. There are no files, workload children, engine frames, GPU operations,
+network requests, sleeps, benchmarks or environment-sized loops. Run once under
+the unchanged production supervisor's shared 60-second deadline including
+setup, all preparation, calls and cleanup. Configuration/build timing is separate.
+A timeout does not authorize splitting the workload or repeating until fast.
+
+`tool language-inferred-string-array-repro` is an optional semantic-only route
+for the first specimen, using the same expected-success assertions. A successful
+patched run has one parse/analysis and eight assertions, with no lower,
+finalization or direct call. An unpatched baseline should fail analysis with
+eleven compatibility diagnostics. A separate baseline run is not mandatory;
+any invocation needs its own admission and cannot mutate a preserved donor.
+
+This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
+It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
+numeric-foundation or full-suite coverage. Wider affected-contract checks remain
+an integration-review decision. Source-only registration records no measured pass.

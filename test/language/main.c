@@ -5,6 +5,7 @@
 #include <string.h>
 
 void test_language_syntax();
+void test_language_inferred_string_arrays(bool repro);
 void test_language_row_builder();
 void test_language_outliner_projection();
 void test_language_row_array();
@@ -69,6 +70,9 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
+    bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
+    bool inferred_array_repro = argc == 2 &&
+                                !strcmp(argv[1], "--inferred-string-array-repro");
     bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
@@ -91,7 +95,8 @@ int main(int argc, char **argv)
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
-    bool record_publication_repro = argc == 2 && !strcmp(argv[1], "--record-publication-repro");
+    bool record_publication_repro = argc == 2 &&
+                                    !strcmp(argv[1], "--record-publication-repro");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
@@ -119,9 +124,9 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
-         !record_publication && !record_publication_repro &&
+         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
          !record_values && !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
          !outliner_projection && !row_builder && !row_array && !record_runtime &&
@@ -135,6 +140,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+            "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
             "--ranges | "
@@ -163,7 +169,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (record_publication || record_publication_repro) {
+    if (inferred_arrays || inferred_array_repro) {
+        test_language_inferred_string_arrays(inferred_array_repro);
+    } else if (record_publication || record_publication_repro) {
         test_language_record_publication(record_publication_repro);
     } else if (outliner_projection) {
         test_language_outliner_projection();

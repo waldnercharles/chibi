@@ -882,18 +882,17 @@ int terrain_volume_boxes(
     terrain_volume_box **boxes
 )
 {
-    int r = v->refine;
     assert(
         0 <= range.x0 && range.x0 <= range.x1 &&
-        range.x1 <= coarse_count(v->plane.width, r) - 1
+        range.x1 <= coarse_count(v->plane.width, v->refine) - 1
     );
     assert(
         0 <= range.y0 && range.y0 <= range.y1 &&
-        range.y1 <= coarse_count(v->plane.height, r) - 1
+        range.y1 <= coarse_count(v->plane.height, v->refine) - 1
     );
     assert(
         0 <= range.z0 && range.z0 <= range.z1 &&
-        range.z1 <= coarse_count(v->layers, r) - 1
+        range.z1 <= coarse_count(v->layers, v->refine) - 1
     );
     assert(limit >= 0);
     int bw = range.x1 - range.x0, bh = range.y1 - range.y0,

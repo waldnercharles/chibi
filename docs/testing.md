@@ -1651,3 +1651,31 @@ supervisor; independent exact-head source and artifact admission is required
 before a runtime slot. Configuration and compilation are separate from test
 execution. These SDK checks do not establish CLI/Studio integration or a caret
 map across semantic rewriting.
+
+### Authored record project publication
+
+`python3 tools/test_policy.py tool language-record-publication` is a standalone
+five-case CPU route. It prepares a two-source project catalog with a declaring
+record library and an importing behavior, then stages and commits both sources.
+The BYTECODE and SLJIT variants cover preparation/code generation and canonical
+publication, not authored-function execution. The fixture has zero authored
+calls, attachments, event dispatches, frames, child processes or network work.
+It also checks independent ownership, 29 fixed catalog/analysis conflicts,
+qualified foreign-name separation, and three duplicate prepared tables through
+both writer and reader. Prepared ID/name uniqueness stays strict.
+
+The fixed green path has seven parses, eight declaration analyses, seven full
+analyses, 35 lower calls, four module finalizations, two source stages/commits,
+and eight direct prepared-table codec entries. The two stages serialize two
+unique modules and one import edge each. Source review counts 166 assertions;
+that is a planned bound, not a measured pass. The route is not added to an
+aggregate by this change and requires independent first-run admission.
+
+`language-record-publication-repro` runs only the first case's BYTECODE half
+with the same success expectation. On the fixture-only baseline it must fail
+at source staging with `duplicate prepared type requirement`, before commit.
+That red invocation has two parses, four declaration analyses, two full
+analyses, two lower calls, two module finalizations, one stage and no authored
+calls. Red and green runs each use one production 60-second deadline with
+build/configuration kept separate. This focused evidence does not establish
+full Studio startup, rendering or native-catalog-only helper coverage.

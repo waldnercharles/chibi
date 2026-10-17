@@ -6,9 +6,11 @@
 
 /* Graph assets such as fields call library functions as graphs. These are the
  * collection's source libraries lowered to function graphs: a pure function
- * whose body returns values built from its parameters, constants and pure
- * native calls that name graph nodes becomes a graph of those nodes, and its
- * parameters keep their constant defaults; other functions are left out.
+ * whose body returns values built from its parameters, constants, pure native
+ * calls that name graph nodes and calls to other such functions of one result
+ * becomes a graph of those nodes and calls, and its parameters keep their
+ * constant defaults; other functions are left out. Calls into another library
+ * name it, so linking a caller links that library too.
  * Calls name these functions, since source functions have no stable graph
  * ids. The returned assets mark their function IDs as transient, retained by
  * in-memory cloning; authored external calls use names.

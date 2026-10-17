@@ -2,6 +2,7 @@
 #define CHIBI_MATERIALS_H
 
 #include "ecs/ecs.h"
+#include "runtime/geometry/terrain_volume.h"
 #include "runtime/material_debris.h"
 #include "runtime/material_destruction.h"
 #include "runtime/material_field.h"
@@ -45,6 +46,33 @@ void materials_reset_except_terrain(materials *materials);
 /* Outside ECS queries: synchronize authored sources and apply queued damage.
  * Errors describe invalid authored data. Fluid simulation is optional. */
 const char *materials_prepare(materials *materials);
+/* Host-owned durable storage: call outside queries after prepare. Identity is a
+ * nonempty stable caller key, unique per terrain within its save namespace.
+ * Write returns malloc bytes. Read validates the full source snapshot before
+ * replacing masks; failure preserves the source. After successful read call
+ * materials_prepare again before physics/render, to load streamed views and
+ * synchronize derived geometry. Only terrain occupancy, signed
+ * distances and partial damage persist, not fragments, fluids or actors.
+ * Imported terrain requires explicit materials_reset before changing generation
+ * or placement/configuration. Limits: 256 tiles, 64 MiB per source snapshot. */
+bool materials_terrain_checkpoint_write(
+    materials *,
+    ecs_entity source,
+    const char *identity,
+    unsigned char **bytes,
+    size_t *length,
+    char *error,
+    size_t size
+);
+bool materials_terrain_checkpoint_read(
+    materials *,
+    ecs_entity source,
+    const char *identity,
+    const void *bytes,
+    size_t length,
+    char *error,
+    size_t size
+);
 /* Views streamed terrain prepares beside its cameras', such as an editor's:
  * game coordinates, prepared under each terrain's stream budget. Copied;
  * they stay until replaced or reset. */
@@ -58,6 +86,16 @@ bool materials_streaming(const materials *materials);
 void materials_set_stream_deferred(materials *materials, bool deferred);
 /* Borrowed mask; NULL for ordinary colliders and uninitialized materials. */
 const material_mask *materials_mask(const materials *materials, ecs_entity entity);
+/* Derived rock behind a TerrainVolume terrain source and its live carve,
+ * borrowed until the next step. Identity changes with each bake; revision
+ * advances whenever the carve follows the mask. */
+typedef struct
+{
+    const terrain_volume *volume;
+    const float *removed;
+    uint64_t identity, revision;
+} materials_depth_volume;
+bool materials_terrain_volume(const materials *materials, ecs_entity source, materials_depth_volume *out);
 /* Mask incarnation survives revision reuse after reset/reinitialization. */
 uint64_t materials_mask_generation(const materials *materials, ecs_entity entity);
 bool materials_is_fragment(const materials *materials, ecs_entity entity);

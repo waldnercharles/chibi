@@ -410,8 +410,8 @@ static int execute(behavior_backend backend, bool direct)
     pin_copy_scope_begin(&copies);
     int status;
     if (direct) {
-        int (*entry)(behavior_function_context *) = behavior_function_entry(body());
-        status = entry(&context);
+        void *entry = behavior_function_entry(body());
+        status = ((int (*)(behavior_function_context *))entry)(&context);
     } else {
         status = behavior_function_run(body(), &context, backend != BEHAVIOR_BYTECODE);
     }

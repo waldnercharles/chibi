@@ -36,6 +36,10 @@ components {
     Material tab="Material"
     MaterialCavity tab="Physics"
     MaterialFrame tab="Physics"
+    // material_height consumes the bound static material Height in geometry.
+    MaterialSurface3D tab="Material"
+    TerrainVolume tab="Material"
+    IndirectOccluder tab="Material"
     MeshAsset tab="Material"
     MeshParts tab="Material"
     MeshSurface2D tab="Material"

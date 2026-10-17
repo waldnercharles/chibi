@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Three source preparations, seven samples per path, one compiler child.
  * Generated C deliberately remains canonical. The one outlined wrapper uses

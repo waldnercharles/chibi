@@ -26,6 +26,8 @@ typedef struct
 
 void render_sky_free(render_sky *);
 bool render_sky_sides_valid(int width, int height);
+/* One RGBE texel for linear radiance rgb, nonnegative. */
+void render_sky_encode(const float rgb[3], unsigned char texel[4]);
 /* The edge of each cube face built from the sky: the largest power of two up
  * to a quarter of its width. */
 int render_sky_face_size(const render_sky *);

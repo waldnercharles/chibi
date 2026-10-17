@@ -24,6 +24,7 @@ layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_shadow_ranges;
     vec4 scene_shadow_soft;
     vec4 scene_light_shadow;
+    vec4 scene_light_shadow_sizes;
 };
 
 float sg_scene_beat_phase() { return scene_rhythm.x; }

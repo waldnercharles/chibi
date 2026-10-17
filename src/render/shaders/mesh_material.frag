@@ -9,7 +9,7 @@ layout(location=7) in vec3 v_part_frame1;
 layout(location=8) in vec3 v_part_frame2;
 void main()
 {
-    if(u_surface.w<=1.5) {
+    if(mod(u_surface.w,4.0)<=1.5) {
         shade_surface(v_world,v_normal,v_local,v_object_normal,v_uv);
         return;
     }

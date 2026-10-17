@@ -10,6 +10,15 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* A file's access and modification times; macOS names them apart. */
+#ifdef __APPLE__
+#define ACCESSED(s) ((s).st_atimespec)
+#define MODIFIED(s) ((s).st_mtimespec)
+#else
+#define ACCESSED(s) ((s).st_atim)
+#define MODIFIED(s) ((s).st_mtim)
+#endif
+
 static char directory[1024], build[1024], stage[1024], source[1024], log_path[1024];
 
 static void path(char *out, const char *base, const char *name)
@@ -210,8 +219,8 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     REQUIRE(diagnostic(status, "Build is incomplete:"));
     struct stat info;
     REQUIRE(stat(filename, &info) == 0);
-    struct timespec times[] = { info.st_atim, info.st_mtim };
-    struct timespec newer[] = { info.st_atim, info.st_mtim };
+    struct timespec times[] = { ACCESSED(info), MODIFIED(info) };
+    struct timespec newer[] = { ACCESSED(info), MODIFIED(info) };
     newer[1].tv_sec += 60;
     REQUIRE(utimensat(AT_FDCWD, filename, newer, 0) == 0);
     status = inspect();
@@ -242,12 +251,12 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     /* The resource payload is a graph dependency, not a preprocessor include. */
     path(filename, build, "resource.manifest");
     REQUIRE(stat(filename, &info) == 0);
-    times[0] = newer[0] = info.st_atim;
-    times[1] = info.st_mtim;
+    times[0] = newer[0] = ACCESSED(info);
+    times[1] = MODIFIED(info);
     struct stat resource_info;
     path(saved, build, resource);
     REQUIRE(stat(saved, &resource_info) == 0);
-    newer[1] = resource_info.st_mtim;
+    newer[1] = MODIFIED(resource_info);
     newer[1].tv_sec += 60;
     REQUIRE(utimensat(AT_FDCWD, filename, newer, 0) == 0);
     status = inspect();

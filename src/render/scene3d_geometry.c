@@ -2,10 +2,12 @@
 
 #include "runtime/components.h"
 #include "runtime/visual_parts.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 enum
 {
@@ -173,6 +175,48 @@ CF_Mesh render_scene3d_prism_mesh()
         { 1, 4, 5 }, { 1, 5, 2 }, { 2, 5, 3 }, { 2, 3, 0 },
     };
     return flat_mesh(points, triangles, TRIANGLES);
+}
+
+CF_Mesh render_scene3d_sphere_mesh()
+{
+    enum
+    {
+        STACKS = 48,
+        SLICES = 96,
+        COUNT = STACKS * SLICES * 6
+    };
+    vertex *vertices = xmalloc(COUNT * sizeof *vertices);
+    int n = 0;
+    for (int i = 0; i < STACKS; i++) {
+        for (int j = 0; j < SLICES; j++) {
+            CF_V3 corner[4];
+            for (int k = 0; k < 4; k++) {
+                float latitude = CF_PI * ((float)(i + (k >> 1)) / STACKS - .5f);
+                float longitude = 2 * CF_PI * (float)(j + ((k + (k >> 1)) & 1)) / SLICES;
+                corner[k] = (CF_V3){ cosf(latitude) * cosf(longitude),
+                                     sinf(latitude),
+                                     cosf(latitude) * sinf(longitude) };
+            }
+            /* Corners run around the cell; both triangles face outward. */
+            static const int order[6] = { 0, 2, 1, 0, 3, 2 };
+            for (int k = 0; k < 6; k++) {
+                CF_V3 p = corner[order[k]];
+                vertices[n++] = (vertex){ cf_mul_v3_f(p, .5f), p };
+            }
+        }
+    }
+    CF_VertexAttribute attributes[] = {
+        { .name = "in_pos",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(vertex, position) },
+        { .name = "in_normal",
+          .format = CF_VERTEX_FORMAT_FLOAT3,
+          .offset = offsetof(vertex, normal) },
+    };
+    CF_Mesh mesh = cf_make_mesh(COUNT * (int)sizeof(vertex), attributes, 2, (int)sizeof(vertex));
+    cf_mesh_update_vertex_data(mesh, vertices, COUNT);
+    free(vertices);
+    return mesh;
 }
 
 CF_Mesh render_scene3d_octahedron_mesh()

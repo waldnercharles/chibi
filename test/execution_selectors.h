@@ -52,6 +52,18 @@ CHIBI_CPU_SELECTOR("--render-geometry")
 CHIBI_CPU_SELECTOR("--arena")
 /* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
 CHIBI_CPU_SELECTOR("--shader-graphs")
+CHIBI_CPU_SELECTOR("--shader-bake")
+CHIBI_CPU_SELECTOR("--material-bake")
+CHIBI_CPU_SELECTOR("--environment-authoring")
+CHIBI_CPU_SELECTOR("--terrain-seams")
+CHIBI_CPU_SELECTOR("--material-surface-mesh")
+CHIBI_CPU_SELECTOR("--scene3d-camera")
+CHIBI_CPU_SELECTOR("--scene3d-volume")
+CHIBI_CPU_SELECTOR("--scene3d-terrain")
+CHIBI_CPU_SELECTOR("--terrain-checkpoint")
+CHIBI_CPU_SELECTOR("--terrain-storage")
+CHIBI_CPU_SELECTOR("--terrain-storage-commands")
+CHIBI_CPU_SELECTOR("--terrain-playable")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */
@@ -90,6 +102,16 @@ CHIBI_GPU_SELECTOR("--material-sampling")
 /* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--scene2d")
+/* Six 64x64 readbacks of adjacent terrain chunks: borders, LOD and restored edits. */
+CHIBI_GPU_SELECTOR("--material-terrain-seams")
+CHIBI_GPU_SELECTOR("--terrain-playable-render")
+/* One hidden 64x64 draw of twelve mesh/SDF surfaces and two texture readbacks:
+ * independent visible color, absorption/filter coefficients and graph cutouts. */
+CHIBI_GPU_SELECTOR("--surface-transport")
+CHIBI_GPU_SELECTOR("--material-mesh-cache")
+CHIBI_GPU_SELECTOR("--scene3d-terrain-gpu")
+CHIBI_GPU_SELECTOR("--scene3d-volume-gpu")
+CHIBI_GPU_SELECTOR("--hrc-spot")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
 /* The same cases on GLES, under xvfb-run on Linux. */

@@ -103,9 +103,15 @@
     FIELD_PORT(X, "Positive", PIN_F32)                                         \
     FIELD_PORT(X, "Negative", PIN_F32)
 #define FIELD_IN_OUTPUT_PORTS(X) FIELD_PORT(X, "Value", PIN_F32)
+#define FIELD_IN_CELL_PORTS(X)                                                 \
+    FIELD_PORT(X, "X", PIN_F32)                                                \
+    FIELD_PORT(X, "Y", PIN_F32)                                                \
+    FIELD_PORT(X, "Jitter", PIN_F32)                                           \
+    FIELD_PORT(X, "Seed Offset", PIN_F32)
 #define FIELD_NODE_CONSTANT_NAME "Field Constant"
 #define FIELD_NODE_X_NAME "Field X"
 #define FIELD_NODE_Y_NAME "Field Y"
+#define FIELD_NODE_Z_NAME "Field Z"
 #define FIELD_NODE_PARAMETER_NAME "Field Parameter"
 #define FIELD_NODE_ADD_NAME "Field Add"
 #define FIELD_NODE_SUBTRACT_NAME "Field Subtract"
@@ -132,6 +138,9 @@
 #define FIELD_NODE_SMOOTH_SUBTRACT_NAME "Field Smooth Subtract"
 #define FIELD_NODE_SELECT_NAME "Field Select"
 #define FIELD_NODE_OUTPUT_NAME "Field Output"
+#define FIELD_NODE_CELL_X_NAME "Field Cell X"
+#define FIELD_NODE_CELL_Y_NAME "Field Cell Y"
+#define FIELD_NODE_CELL_EDGE_NAME "Field Cell Edge"
 
 extern const native_definition_pack FIELD_DEFINITION_PACK;
 #endif

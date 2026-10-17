@@ -1,3 +1,64 @@
+# 3D terrain and screen light, 2026-10-17
+
+The Voidweaver basalt study's reusable engine work is on main: live 3D
+material surfaces ([docs/terrain-surface-geometry.md](docs/terrain-surface-geometry.md)),
+TerrainVolume rock with real-time cuts ([docs/terrain-volume.md](docs/terrain-volume.md)),
+radiance-cascade screen light that lets emissive particles light the scene
+([docs/rendering-3d.md](docs/rendering-3d.md)), sky materials, and every field
+node callable from library source ([docs/material-engine.md](docs/material-engine.md)).
+It builds on the environment-authoring snapshot below. Frame budget (60 fps at
+1080p) and visual acceptance stay with the game; the next scene starts from a
+fresh plan.
+
+# Environment authoring, 2026-10-15
+
+The approved terrain-first program is tracked in
+[docs/environment-authoring.md](docs/environment-authoring.md). Start with shared
+float material-channel baking, a bounded controller operation, and a minimal
+migrated terrain fixture. Studio authoring waits for its applicable migration
+gates. The first game use is 2D sidescrolling destructive MaterialTerrain;
+3D heightfield editing remains deferred. Layout and material generation then
+expand in parallel. Game `.chibi`
+owns biome, cave, stamp and spawning policy; shared services own generation,
+chunks, edits, collision and persistence. Compose generated base, authored
+overrides and runtime edits in that order, preserving recipe/seed identity and
+durable edits. Professional material authoring and complete 2D editing have
+separate acceptance gates. Material simulation and the 3D workflow decision
+remain deferred. E1 native mechanism checks pass on the local candidate. The
+ship-based playable and visual acceptance remains open; Terrain Lab is an SDK
+test fixture. The broader material and Studio gates also remain open.
+
+The first CPU implementation is now available in this branch: the public
+`shader_bake` API, `bake_material` controller operation, and a recovered
+MaterialStudy fixture that verifies authored destructive terrain behavior.
+Focused bake, shader-graph, terrain and installed-SDK controller checks pass.
+E1 now adds shared chunk contours/borders and coherent LOD, real seam collision
+coverage, and explicit durable terrain checkpoints, including cold streamed
+edits. Focused CPU and six-frame Metal checks pass. The roadmap records the
+verified scope. Terrain Lab now proves authored movement, jumping, excavation
+and save/load across fresh processes on both VM and SLJIT. Shared host/controller
+commands and an installed-player Metal capture pass. Studio integration and
+authored override layers remain later milestones. Terrain remains reusable
+engine functionality inside the current
+material runtime SDK target; games own generation/edit policy and hosts own save
+storage. Keep language/compiler package boundaries, and defer repository splitting.
+This candidate is uncommitted and has not been merged or deployed.
+
+Confirmed ownership, 2026-10-16: Voidweaver owns the Cradle ship, free flight,
+basalt composition and visual tuning; Terrain Lab remains the SDK fixture.
+Reusable renderer gaps belong in this engine candidate. The next shared
+checkpoint preserves entity `Material` absorption RGB/coverage on shader-driven
+surfaces and multiplies them by graph opacity, including per-model-part shaders.
+Existing zero-default absorption and scalar HRC optical-depth semantics remain;
+Depth-mode height occlusion is independent. The correction passes one bounded
+Metal frame checking twelve mesh/SDF surfaces and the execution-policy checks;
+numeric evidence and package scope are recorded with the candidate. Directional
+HRC2D emission and live-terrain shallow geometry remain
+separate checkpoints with prerequisites and acceptance in the roadmap. E1's
+Voidweaver playable/reference visual gate remains open.
+
+---
+
 # Shared execution interface and web rollout, 2026-10-11
 
 Continue the approved Wasm rollout from engine main `c159b6cd6`. Keep one Chibi

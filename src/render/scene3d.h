@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_SCENE3D_H
 
 #include "ecs/ecs.h"
+#include "platform/cute.h"
 #include "render/skip.h"
 #include "render/view.h"
 #include "runtime/components.h"
@@ -16,7 +17,11 @@ typedef struct render_scene3d_camera
      * recovered from the rounded view matrix, which drifts far from the
      * origin. */
     CF_V3 eye;
+    bool orthographic;
 } render_scene3d_camera;
+
+/* Point viewer (w=1) or parallel direction toward the viewer (w=0). */
+CF_V4 render_scene3d_viewer(const render_scene3d_camera *camera);
 
 /* Framing uses the existing canvas coordinates: center_y points up. A frame
  * whose lens has a forward direction looks from its eye instead. */
@@ -61,6 +66,7 @@ typedef struct
     int cascades;      /* Sun shadow cascades drawn. */
     int light_shadows; /* Point and spot lights whose shadows were drawn. */
     int meshes;        /* Imported meshes held on the GPU. */
+    int terrain_meshes, terrain_rebuilds, terrain_uploads, terrain_gi_proxies;
     int particle_fields, mesh_particles; /* GPU field draws and their instances. */
 } render_scene3d_work;
 render_scene3d *render_scene3d_new();
@@ -72,6 +78,9 @@ void render_scene3d_reset(render_scene3d *scene3d);
  * ambient occlusion works at. A draw with occlusion on needs one. */
 void render_scene3d_set_size(render_scene3d *scene3d, int width, int height);
 const char *render_scene3d_error(const render_scene3d *scene3d);
+/* The last frame's linear color, which a scene's screen light reads; none
+ * for none. */
+void render_scene3d_set_history(render_scene3d *scene3d, CF_Texture history);
 /* Retained simulation particles plus renderer emitter tails and attached heads. */
 int render_scene3d_particle_count(const render_scene3d *scene3d);
 /* Submits scene-linear opaque solids followed by sorted transparent surfaces

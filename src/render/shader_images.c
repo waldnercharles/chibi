@@ -36,9 +36,22 @@ static CF_Texture upload(const shader_image_source *variant, const shader_image_
     params.wrap_u = params.wrap_v = variant->wrap == SHADER_IMAGE_REPEAT
                                       ? CF_WRAP_MODE_REPEAT
                                       : CF_WRAP_MODE_CLAMP_TO_EDGE;
+    /* Filtered images get a full mip chain and anisotropic sampling, so
+     * receding and grazing surfaces do not shimmer or alias into noise. GPU
+     * blits fill the chain, which needs color-target usage. Nearest images
+     * stay single-level, keeping their texels crisp. */
+    bool filtered = variant->filter == SHADER_IMAGE_BILINEAR;
+    if (filtered) {
+        params.allocate_mipmaps = true;
+        params.max_anisotropy = 8;
+        params.usage |= CF_TEXTURE_USAGE_COLOR_TARGET_BIT;
+    }
     CF_Texture texture = cf_make_texture(params);
     if (texture.id) {
         cf_texture_update(texture, (void *)image->pixels, image->width * image->height * 4);
+        if (filtered) {
+            cf_generate_mipmaps(texture);
+        }
     }
     return texture;
 }

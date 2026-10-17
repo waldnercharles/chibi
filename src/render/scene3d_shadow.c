@@ -627,3 +627,20 @@ void render_scene3d_shadow_unbind()
     cf_draw3d_set_texture("scene_shadow_map", (CF_Texture){ 0 });
     cf_draw3d_set_texture("scene_shadow_blockers", (CF_Texture){ 0 });
 }
+
+render_scene3d_shadow_snapshot render_scene3d_shadow_read(render_scene3d_shadow *shadow, int count)
+{
+    assert(count >= 0 && count <= shadow->count && CASCADE_LIMIT == 4);
+    render_scene3d_depth_map_prepare(&shadow->atlas, 1, 1);
+    render_scene3d_shadow_snapshot result = {
+        .map = shadow->atlas.map,
+        .settings = { (float)count,
+                      1.0f / TILE,
+                      (float)TILE / shadow->atlas.width,
+                      (float)TILE / shadow->atlas.height },
+    };
+    for (int i = 0; i < count; i++) {
+        result.matrices[i] = cf_mul_m4(shadow->cascades[i].projection, shadow->view);
+    }
+    return result;
+}

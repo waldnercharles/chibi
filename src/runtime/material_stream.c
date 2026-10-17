@@ -1,6 +1,7 @@
 #include "runtime/material_stream.h"
 
 #include "diagnostics/tracy.h"
+#include "runtime/material_checkpoint.h"
 #include "runtime/material_terrain.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -121,31 +122,50 @@ void material_stream_free(material_stream *s)
     free(s);
 }
 
-static field_grid tile_grid(const material_stream *s, uint64_t key)
+bool material_stream_tile_grid(field_grid grid, uint64_t key, field_grid *tile)
 {
-    if (!s->columns) {
+    int columns = (grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                  MATERIAL_TERRAIN_CHUNK_CELLS;
+    if (!columns) {
         int x = (int32_t)(uint32_t)key;
         int y = (int32_t)(uint32_t)(key >> 32);
-        float span = s->desc.grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
-        return (field_grid){ MATERIAL_TERRAIN_CHUNK_CELLS,
-                             MATERIAL_TERRAIN_CHUNK_CELLS,
-                             s->desc.grid.cell_size,
-                             s->desc.grid.center_x + (x + .5f) * span,
-                             s->desc.grid.center_y + (y + .5f) * span };
+        float span = grid.cell_size * MATERIAL_TERRAIN_CHUNK_CELLS;
+        *tile = (field_grid){ MATERIAL_TERRAIN_CHUNK_CELLS,
+                              MATERIAL_TERRAIN_CHUNK_CELLS,
+                              grid.cell_size,
+                              grid.center_x + (x + .5f) * span,
+                              grid.center_y + (y + .5f) * span,
+                              0 };
+        return isfinite(tile->center_x) && isfinite(tile->center_y);
     }
-    int x = (int)(key % s->columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
-    int y = (int)(key / s->columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
-    field_grid g = s->desc.grid;
-    int w = g.width - x < MATERIAL_TERRAIN_CHUNK_CELLS ? g.width - x
-                                                       : MATERIAL_TERRAIN_CHUNK_CELLS;
-    int h = g.height - y < MATERIAL_TERRAIN_CHUNK_CELLS
-              ? g.height - y
+    int rows = (grid.height + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+               MATERIAL_TERRAIN_CHUNK_CELLS;
+    if (key >= (uint64_t)columns * rows) {
+        return false;
+    }
+    int x = (int)(key % columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
+    int y = (int)(key / columns) * MATERIAL_TERRAIN_CHUNK_CELLS;
+    int w = grid.width - x < MATERIAL_TERRAIN_CHUNK_CELLS
+              ? grid.width - x
               : MATERIAL_TERRAIN_CHUNK_CELLS;
-    return (field_grid){ w,
-                         h,
-                         g.cell_size,
-                         g.center_x + (x + w * .5f - g.width * .5f) * g.cell_size,
-                         g.center_y + (y + h * .5f - g.height * .5f) * g.cell_size };
+    int h = grid.height - y < MATERIAL_TERRAIN_CHUNK_CELLS
+              ? grid.height - y
+              : MATERIAL_TERRAIN_CHUNK_CELLS;
+    *tile = (field_grid){ w,
+                          h,
+                          grid.cell_size,
+                          grid.center_x + (x + w * .5f - grid.width * .5f) * grid.cell_size,
+                          grid.center_y + (y + h * .5f - grid.height * .5f) * grid.cell_size,
+                          0 };
+    return true;
+}
+static field_grid tile_grid(const material_stream *s, uint64_t key)
+{
+    field_grid grid;
+    bool ok = material_stream_tile_grid(s->desc.grid, key, &grid);
+    assert(ok);
+    (void)ok;
+    return grid;
 }
 
 static float view_distance(field_grid grid, material_stream_view view)
@@ -198,6 +218,9 @@ static bool store_tile(material_stream *s, material_stream_tile tile)
      * Preserve partial damage even when no occupancy cell has changed yet. */
     float *data = xcalloc((size_t)cells * 2, sizeof(float));
     unsigned char *occupancy = xcalloc((size_t)cells, 1);
+    for (int i = 0; i < cells; i++) {
+        data[i] = tile.grid.cell_size * .5f;
+    }
     if (m->width) {
         memcpy(occupancy, m->cells, (size_t)cells);
         memcpy(data, m->distance, (size_t)cells * sizeof(float));
@@ -513,4 +536,67 @@ material_stream_state material_stream_inspect(const material_stream *s)
                                 (size_t)acount(m->surface) * sizeof(material_polygon);
     }
     return state;
+}
+
+bool material_stream_checkpoint(material_stream *s, material_checkpoint *out, char *error, size_t size)
+{
+    material_checkpoint result = { 0 };
+    int total = acount(s->tiles);
+    for (int i = 0; i < acount(s->stored); i++) {
+        total += !resident(s, s->stored[i].key);
+    }
+    if (total > MATERIAL_CHECKPOINT_MAX_TILES) {
+        goto fail;
+    }
+    for (int i = 0; i < acount(s->stored); i++) {
+        uint64_t key = s->stored[i].key;
+        if (resident(s, key)) {
+            continue;
+        }
+        field_grid grid = tile_grid(s, key);
+        size_t cells = (size_t)grid.width * grid.height;
+        material_mask *mask = material_checkpoint_copy_mask(NULL, grid);
+        apush(result.tiles, ((material_stream_tile){ key, grid, mask }));
+        if (fseek(s->file, s->stored[i].offset, SEEK_SET) ||
+            fread(mask->cells, 1, cells, s->file) != cells ||
+            fread(mask->distance, sizeof(float), cells, s->file) != cells ||
+            fread(mask->damage, sizeof(float), cells, s->file) != cells) {
+            goto fail;
+        }
+        for (size_t j = 0; j < cells; j++) {
+            mask->count += mask->cells[j] != 0;
+        }
+    }
+    for (int i = 0; i < acount(s->tiles); i++) {
+        material_stream_tile tile = s->tiles[i];
+        tile.mask = material_checkpoint_copy_mask(tile.mask, tile.grid);
+        apush(result.tiles, tile);
+    }
+    *out = result;
+    return true;
+fail:
+    material_checkpoint_free(&result);
+    snprintf(error, size, "Cannot snapshot streamed terrain or tile limit exceeded");
+    return false;
+}
+bool material_stream_restore_checkpoint(
+    material_stream *s,
+    const material_checkpoint *checkpoint,
+    char *error,
+    size_t size
+)
+{
+    assert(!acount(s->tiles) && !acount(s->stored));
+    for (int i = 0; i < acount(checkpoint->tiles); i++) {
+        material_stream_tile tile = checkpoint->tiles[i];
+        field_grid grid;
+        if (!material_stream_tile_grid(s->desc.grid, tile.key, &grid) ||
+            grid.width != tile.grid.width || grid.height != tile.grid.height ||
+            grid.cell_size != tile.grid.cell_size || grid.center_x != tile.grid.center_x ||
+            grid.center_y != tile.grid.center_y || !store_tile(s, tile)) {
+            snprintf(error, size, "Cannot stage terrain checkpoint tiles");
+            return false;
+        }
+    }
+    return true;
 }

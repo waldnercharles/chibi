@@ -316,6 +316,35 @@ bool save_open_project(save *save, const char *project_name, const char *directo
 #endif
 }
 
+#ifndef __EMSCRIPTEN__
+static bool write_file(const char *path, const void *bytes, size_t length)
+{
+    size_t size = strlen(path) + 16;
+    char *temporary = xmalloc(size);
+    snprintf(temporary, size, "%s.XXXXXX", path);
+    int fd = mkstemp(temporary);
+    FILE *file = fd < 0 ? NULL : fdopen(fd, "wb");
+    if (!file && fd >= 0) {
+        close(fd);
+    }
+    bool ok = file && fwrite(bytes, 1, length, file) == length;
+    if (ok && (fflush(file) || fsync(fd))) {
+        ok = false;
+    }
+    if (file && fclose(file)) {
+        ok = false;
+    }
+    if (ok) {
+        ok = rename(temporary, path) == 0;
+    }
+    if (!ok && fd >= 0) {
+        remove(temporary);
+    }
+    free(temporary);
+    return ok;
+}
+#endif
+
 static bool write_storage(save *save, const char *json)
 {
     if (!save->path) {
@@ -324,29 +353,105 @@ static bool write_storage(save *save, const char *json)
 #ifdef __EMSCRIPTEN__
     return save_write_browser(save->path, json);
 #else
-    size_t size = strlen(save->path) + 16;
-    char *temporary = xmalloc(size);
-    snprintf(temporary, size, "%s.XXXXXX", save->path);
-    int fd = mkstemp(temporary);
-    FILE *file = fd < 0 ? NULL : fdopen(fd, "wb");
-    if (!file && fd >= 0) {
-        close(fd);
+    return write_file(save->path, json, strlen(json));
+#endif
+}
+
+static bool blob_available(save *save, const char *key)
+{
+    if (!key || !key[0] || strlen(key) > SAVE_BLOB_KEY_MAX) {
+        return fail(save, "Binary save keys must contain 1-64 bytes");
     }
-    bool ok = file && fputs(json, file) >= 0;
-    if (ok && (fflush(file) || fsync(fd))) {
+    if (!save->path) {
+        return fail(save, "Binary saves require host-bound durable storage");
+    }
+#ifdef __EMSCRIPTEN__
+    return fail(save, "Binary save storage is unavailable in this browser host");
+#else
+    return true;
+#endif
+}
+
+#ifndef __EMSCRIPTEN__
+static char *blob_path(const save *save, const char *key)
+{
+    static const char hex[] = "0123456789abcdef";
+    char encoded[SAVE_BLOB_KEY_MAX * 2 + 1];
+    size_t length = strlen(key);
+    for (size_t i = 0; i < length; i++) {
+        unsigned char byte = (unsigned char)key[i];
+        encoded[2 * i] = hex[byte >> 4];
+        encoded[2 * i + 1] = hex[byte & 15];
+    }
+    encoded[length * 2] = 0;
+    size_t size = strlen(save->path) + strlen(encoded) + 16;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s.blob-%s.bin", save->path, encoded);
+    return path;
+}
+#endif
+
+bool save_blob_write(save *save, const char *key, const void *bytes, size_t length)
+{
+    if (!blob_available(save, key)) {
+        return false;
+    }
+    if (!bytes || !length || length > SAVE_BLOB_BYTES_MAX) {
+        return fail(save, "Binary save must contain 1 byte to 64 MiB");
+    }
+#ifdef __EMSCRIPTEN__
+    return false;
+#else
+    char *path = blob_path(save, key);
+    bool ok = write_file(path, bytes, length);
+    free(path);
+    if (!ok) {
+        return fail(save, "Could not write binary save; the previous save is intact");
+    }
+    save->error[0] = 0;
+    return true;
+#endif
+}
+
+bool save_blob_read(save *save, const char *key, unsigned char **bytes, size_t *length)
+{
+    assert(bytes && length);
+    *bytes = NULL;
+    *length = 0;
+    if (!blob_available(save, key)) {
+        return false;
+    }
+#ifdef __EMSCRIPTEN__
+    return false;
+#else
+    char *path = blob_path(save, key);
+    FILE *file = fopen(path, "rb");
+    int open_error = errno;
+    free(path);
+    if (!file) {
+        return fail(save, open_error == ENOENT ? "Binary save was not found" : "Could not open binary save");
+    }
+    bool ok = fseek(file, 0, SEEK_END) == 0;
+    long count = ok ? ftell(file) : -1;
+    if (count <= 0 || (unsigned long)count > SAVE_BLOB_BYTES_MAX ||
+        fseek(file, 0, SEEK_SET)) {
+        fclose(file);
+        return fail(save, "Binary save has an invalid size or cannot be read");
+    }
+    unsigned char *data = xmalloc((size_t)count);
+    ok = fread(data, 1, (size_t)count, file) == (size_t)count &&
+         fgetc(file) == EOF && !ferror(file);
+    if (fclose(file)) {
         ok = false;
     }
-    if (file && fclose(file)) {
-        ok = false;
+    if (!ok) {
+        free(data);
+        return fail(save, "Could not read complete binary save");
     }
-    if (ok) {
-        ok = rename(temporary, save->path) == 0;
-    }
-    if (!ok && fd >= 0) {
-        remove(temporary);
-    }
-    free(temporary);
-    return ok;
+    *bytes = data;
+    *length = (size_t)count;
+    save->error[0] = 0;
+    return true;
 #endif
 }
 

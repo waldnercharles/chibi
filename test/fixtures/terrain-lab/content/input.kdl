@@ -1,0 +1,15 @@
+Jump {
+    (array)sources "Space"
+}
+Dig {
+    (array)sources "F"
+}
+Save {
+    (array)sources "S"
+}
+Load {
+    (array)sources "L"
+}
+Respawn {
+    (array)sources "R"
+}

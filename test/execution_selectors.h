@@ -18,9 +18,6 @@ CHIBI_CPU_SELECTOR("--behavior-loader")
 CHIBI_CPU_SELECTOR("--engine-clock")
 CHIBI_CPU_SELECTOR("--preview-layout")
 CHIBI_CPU_SELECTOR("--fields")
-CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
-/* Required external Examples checkout: project validation and fixed CPU snapshots. */
-CHIBI_CPU_SELECTOR("--examples-projects")
 /* C-owned URL gesture lifecycle cases through Node; no browser/network/GPU. */
 CHIBI_CPU_SELECTOR("--player-url")
 /* Both platform clock initializers with a recorded limiter setter; no clocks. */
@@ -67,8 +64,6 @@ CHIBI_CPU_SELECTOR("--terrain-playable")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */
-CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
-CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
 CHIBI_GPU_SELECTOR("--studio-source-edit")
 CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 CHIBI_GPU_SELECTOR("--studio-scene-move")
@@ -135,13 +130,6 @@ CHIBI_GPU_SELECTOR("--radiance-horizons8")
 CHIBI_GPU_SELECTOR("--material-pixels")
 /* One hidden 64x64 app, seven glTF transform/control comparisons, 21 frames. */
 CHIBI_GPU_SELECTOR("--texture-transform")
-
-/* Pinned installed examples: one start scene, four 320x180 frames each. */
-CHIBI_GPU_SELECTOR("--installed-example-local_mesh_sampled")
-CHIBI_GPU_SELECTOR("--installed-example-hrc_lab")
-CHIBI_GPU_SELECTOR("--installed-example-modeling_lab")
-CHIBI_GPU_SELECTOR("--installed-example-sdf_lab")
-CHIBI_GPU_SELECTOR("--installed-example-suzanne_sampled")
 
 /* Compute shaders of shader graph GLSL against the CPU evaluator in a hidden
  * 32x32 app, with readback. */

@@ -1,0 +1,185 @@
+# Copy this workflow to .github/workflows/web.yml in a Chibi game repository.
+# It consumes published engine/editor packages; game repositories never
+# compile the engine or Studio.
+# Enable GitHub Actions Pages and set CHIBI_ENGINE_TOKEN with read-only Contents
+# access to waldnercharles/chibi. project.kdl and content/ are the source snapshot.
+name: Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'content/**'
+      - 'project.kdl'
+      - '.github/workflows/web.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'content/**'
+      - 'project.kdl'
+      - '.github/workflows/web.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '37 7 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  STUDIO_URL: https://waldnercharles.github.io/chibi-studio/
+  ENGINE_REPOSITORY: waldnercharles/chibi
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      changed: ${{ steps.packages.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: game
+      - name: Resolve published packages
+        id: packages
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil, urllib.error, urllib.parse, urllib.request
+          packages = pathlib.Path('packages')
+          packages.mkdir()
+          def fetch(url):
+              return urllib.request.urlopen(url, timeout=30)
+          for attempt in range(3):
+              with fetch(os.environ['STUDIO_URL'] + 'studio.json') as response:
+                  manifest = json.load(response)
+              if (manifest.get('format') != 1 or
+                  any(not re.fullmatch('[0-9a-f]{40}', manifest.get(key, '')) for key in ('engine', 'studio')) or
+                  not re.fullmatch('[0-9a-f]{64}', manifest.get('sha256', '')) or
+                  not re.fullmatch('[A-Za-z0-9_.-]+\.tar\.gz', manifest.get('archive', ''))):
+                  raise SystemExit('Invalid Studio package manifest')
+              identity = dict(format=1, game=os.environ['REVISION'], engine=manifest['engine'], studio=manifest['studio'])
+              changed = True
+              if os.environ['EVENT'] == 'schedule':
+                  owner, repository = os.environ['REPOSITORY'].split('/')
+                  try:
+                      with fetch(f'https://{owner}.github.io/{repository}/build.json') as response:
+                          changed = json.load(response) != identity
+                  except urllib.error.HTTPError as error:
+                      if error.code != 404:
+                          raise
+              if changed:
+                  try:
+                      with fetch(urllib.parse.urljoin(os.environ['STUDIO_URL'], manifest['archive'])) as response, (packages / 'editor.tar.gz').open('wb') as output:
+                          shutil.copyfileobj(response, output)
+                  except urllib.error.HTTPError as error:
+                      # A Pages deployment may replace its archive between requests.
+                      if error.code == 404 and attempt < 2:
+                          continue
+                      raise
+                  with (packages / 'editor.tar.gz').open('rb') as archive:
+                      checksum = hashlib.file_digest(archive, 'sha256').hexdigest()
+                  if checksum != manifest['sha256']:
+                      if attempt < 2:
+                          continue
+                      raise SystemExit('Studio package checksum mismatch')
+              (packages / 'build.json').write_text(json.dumps(identity) + '\n')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+                  print(f"engine={manifest['engine']}", file=output)
+                  print(f'changed={str(changed).lower()}', file=output)
+              break
+          PY
+      - name: Download matching export tools
+        if: steps.packages.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CHIBI_ENGINE_TOKEN }}
+          ENGINE: ${{ steps.packages.outputs.engine }}
+        run: |
+          gh release download "engine-${ENGINE}" --repo "$ENGINE_REPOSITORY" --dir packages \
+            --pattern chibi-export-linux-x64.tar.gz --pattern SHA256SUMS
+          python3 - <<'PY'
+          import hashlib, pathlib
+          packages = pathlib.Path('packages')
+          name = 'chibi-export-linux-x64.tar.gz'
+          matches = [line.split() for line in (packages / 'SHA256SUMS').read_text().splitlines()
+                     if len(line.split()) == 2 and line.split()[1] == name]
+          if len(matches) != 1:
+              raise SystemExit('Expected exactly one export package checksum')
+          with (packages / name).open('rb') as archive:
+              actual = hashlib.file_digest(archive, 'sha256').hexdigest()
+          if actual != matches[0][0]:
+              raise SystemExit('Export package checksum mismatch')
+          PY
+          mkdir chibi
+          tar -xzf packages/chibi-export-linux-x64.tar.gz -C chibi
+      - uses: actions/setup-node@v4
+        if: steps.packages.outputs.changed == 'true'
+        with:
+          node-version: '22'
+      - name: Export player and assemble editor
+        if: steps.packages.outputs.changed == 'true'
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          chibi/sdk/bin/chibi export game --web chibi/web-player --output site
+          mkdir site/dev
+          tar -xzf packages/editor.tar.gz -C site/dev
+          git -C game archive --format=zip HEAD project.kdl content > site/dev/project.zip
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re
+          site = pathlib.Path('site')
+          archive = site / 'dev/project.zip'
+          with archive.open('rb') as source:
+              checksum = hashlib.file_digest(source, 'sha256').hexdigest()
+          manifest = dict(format=1, id=os.environ['REPOSITORY'].split('/')[-1], revision=os.environ['REVISION'], archive='project.zip', sha256=checksum)
+          (site / 'dev/project.json').write_text(json.dumps(manifest) + '\n')
+          editor = (site / 'dev/chibi-studio.html').read_text()
+          # Emscripten may minify HTML attribute quotes and declaration spacing.
+          scripts = list(re.finditer(r'<script\b[^>]*\bsrc\s*=\s*[\"\']?chibi-default\.js[\"\']?(?=[\s>])[^>]*>\s*</script\s*>', editor))
+          if len(scripts) != 1 or not re.search(r'\bvar\s+Module\s*=', editor[:scripts[0].start()]):
+              raise SystemExit('Studio HTML has no supported serial startup script')
+          insertion = scripts[0].start()
+          editor = editor[:insertion] + "<script>Module['chibiPublishedProject'] = 'project.json';</script>\n" + editor[insertion:]
+          (site / 'dev/index.html').write_text(editor)
+          player = site / 'index.html'
+          page = player.read_text()
+          if '<head>' not in page:
+              raise SystemExit('Player HTML has no head')
+          redirect = """<script>
+          if (new URLSearchParams(location.search).has('dev')) {
+            const url = new URL('dev/', location.href);
+            url.search = location.search;
+            url.searchParams.delete('dev');
+            url.hash = location.hash;
+            location.replace(url);
+          }
+          </script>"""
+          player.write_text(page.replace('<head>', '<head>\n' + redirect, 1))
+          (site / 'build.json').write_bytes(pathlib.Path('packages/build.json').read_bytes())
+          PY
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.packages.outputs.changed == 'true'
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.build.outputs.changed == 'true'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

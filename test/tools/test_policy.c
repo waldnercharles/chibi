@@ -283,7 +283,8 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                     "--prototype-expansion\n--controller\n--feature-coverage\n"
                     "--render-fixture\n--material-bake\n--environment-"
                     "authoring\n"
-                    "--terrain-checkpoint\n--terrain-storage-commands\n";
+                    "--terrain-checkpoint\n--terrain-storage-commands\n"
+                    "--terrain-playable\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);

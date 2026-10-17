@@ -228,8 +228,8 @@ migrated directly to Surface Output; the old lighting-buffer output is removed.
 
 ## Arena development
 
-Voidweaver and Arena3D are separate extracted repositories with separate
-Surface materials. Their graphs live in each repository's `content/materials`.
+Voidweaver and Arena3D, retired on 2026-10-17, kept their Surface materials in
+their own archived repositories' `content/materials`.
 The engine keeps focused regression fixtures rather than duplicate game assets. Shared pulse/ring functions and the designer effect nodes
 keep each project's example roots focused on their visible effects.
 

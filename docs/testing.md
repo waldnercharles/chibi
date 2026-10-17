@@ -716,23 +716,6 @@ prototype also checks, without gameplay, that its atlas and its normal and heigh
 maps are prepared and that it owns its prepared data, and a map of another size
 must fail preparation.
 
-`python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
-cases when the tooling build includes asset authoring. It reads only the sibling
-`chibi-celeste` checkout. A bounded local `git show` supplies the former Level
-scene from commit `56ca9d486b93c15a504bf293dc722c6202cd2bf5`; the production KDL
-parser compares all 1,472 cells and 230 former tile centres/frame indices, then
-checks the four retained actors and one Room layer. Inputs are capped at 64 KiB
-for the baseline, 16 KiB for Room and 4 KiB for Level. Three owned controller
-children validate, prepare and run exactly two headless simulation frames with
-five authored and fifteen live entities and no behavior failures. Each child
-has the existing ten-second deadline inside the shared sixty-second supervisor.
-No GPU or network is used. Logs and the baseline revision are retained under
-`/tmp/chibi-publish-validation/evidence`; generated baseline, requests and prepared
-artifacts are removed. This fixed workload is independently admitted for its
-first supervised measurement; it does not admit arbitrary projects or frames.
-The first supervised run passed both cases and 3,818 assertions in 8.270 seconds,
-including controller startup, source preparation and the two simulation frames.
-
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
 `build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
@@ -1519,30 +1502,17 @@ called function is refused while the field keeps its revision, value and draft. 
 `validate_project` and `preview_field` link a field against a `.chibi` library.
 
 
-## External authored examples acceptance
+## Terrain Lab save and restart
 
-The Examples repository owns `projects/atrium` and `projects/tetris`. Engine
-unit and default CPU groups do not depend on that checkout. Run their explicit
-CPU acceptance with an absolute Examples root and a matching Release controller:
-
-```sh
-CHIBI_EXAMPLES_ROOT=/absolute/path/to/chibi-examples \
-CHIBI_CTL=build-release/bin/chibi_ctl \
-python3 tools/test_policy.py tool examples-projects
-```
-
-`--examples-projects chibi_ctl` is the C tooling dispatcher route; `make
-agent-test AGENT_SELECTOR=--examples-projects` uses the same supervisor. Missing
-external roots or either project fail the cases; they never skip. Three cases
-validate Atrium without warnings, validate and exercise Tetris rotation/drop and
-restart, and verify blocked Hold ends its tick without changing the score. The
-Tetris cases clone their project with copy-on-write and remove the copies after
-each case. They run two 170-frame snapshots and one 22-frame snapshot, reporting
-at most three entities and one behavior per snapshot, without rendering. One
-shared production 60-second deadline covers both validations, all snapshots and
-fixture setup; each child also has the existing 10-second tooling limit.
-The inline language event, system cancellation and binding cases retain both
-VM and compiled-backend coverage without reading the Examples checkout.
+`python3 tools/test_policy.py tool terrain-playable`, also part of `make
+test-projects`, drives the authored controls of `test/fixtures/terrain-lab` on
+the VM and SLJIT. For each backend a writer process digs across a 128-cell chunk
+seam and saves; a fresh reader process checks pristine terrain, then loads and
+checks the restored cells, their collision holes and an unchanged reference
+patch. No GPU is used. `--terrain-playable-render` runs an installed player on an
+artifact the installed compiler prepared from the same fixture
+(`CHIBI_TERRAIN_ARTIFACT` and `CHIBI_TERRAIN_RESOURCES`) for four hidden 640x360
+frames and checks the saved PNG.
 
 ### Configurable source layout and whitespace maps
 

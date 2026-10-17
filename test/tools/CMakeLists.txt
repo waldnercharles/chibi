@@ -91,7 +91,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c package_ownership.c desktop_dependencies.c collab.c
-    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
+    validate_project.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -192,11 +192,6 @@ if(TARGET Chibi::tilemap_runtime)
     target_sources(test_tools PRIVATE tilemap.c)
     target_link_libraries(test_tools PRIVATE Chibi::tilemap_runtime)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_TILEMAP=1)
-endif()
-if(TARGET Chibi::tilemap_runtime AND TARGET Chibi::asset_text AND TARGET Chibi::project_compilation)
-    target_sources(test_tools PRIVATE tilemap_project.c)
-    target_link_libraries(test_tools PRIVATE Chibi::asset_text)
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_TILEMAP_PROJECT=1)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
@@ -309,7 +304,7 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    target_sources(test_tools PRIVATE installed_examples.c terrain_playable_render.c)
+    target_sources(test_tools PRIVATE terrain_playable_render.c)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
         ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c

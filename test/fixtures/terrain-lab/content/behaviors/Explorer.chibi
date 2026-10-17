@@ -1,0 +1,140 @@
+// Game policy lives here: controls, terrain identity and explicit persistence.
+// Body and raycast read the live terrain colliders, including loaded edits.
+behavior Explorer {
+    terrain: entity
+    terrainIdentity := "terrain-lab-quarry-v1"
+    facing := 1
+    jumpHeld := false
+    digHeld := false
+    saveHeld := false
+    loadHeld := false
+    respawnHeld := false
+    storageRequest := 0
+    storageAction := 0
+    digCount := 0
+
+    on Begin {
+        terrain = globals.Terrain
+        Present()
+    }
+
+    Grounded :: fn() -> (Result: bool = false) {
+        hit := raycast(self.Transform, self.Transform + vec2(0, 12), 8, self, false)
+        return hit.Found && hit.Normal.y < -0.5 && self.Velocity.y >= -2
+    }
+
+    DigPoint :: fn() -> (Point: CF_V2) {
+        return self.Transform + vec2(facing * 22, 12)
+    }
+
+    Dig :: fn() {
+        damage_material(terrain, DigPoint(), 24, 2, 0, self)
+        digCount += 1
+        set_ui_text(Element: "#status", Text: "Excavation changed. Press S to save these cells.")
+        set_ui_text(Element: "#detail", Text: "F cuts the outlined circle ahead of you. The amber flag marks the reference patch.")
+    }
+
+    Save :: fn() {
+        if storageRequest > 0 {
+            return
+        }
+        request := save_terrain(terrain, terrainIdentity)
+        storageRequest = request.Request
+        storageAction = 1
+        if storageRequest == 0 {
+            StorageFailure(request.Error)
+        } else {
+            set_ui_text(Element: "#status", Text: "Saving terrain...")
+        }
+    }
+
+    Load :: fn() {
+        if storageRequest > 0 {
+            return
+        }
+        request := load_terrain(terrain, terrainIdentity)
+        storageRequest = request.Request
+        storageAction = 2
+        if storageRequest == 0 {
+            StorageFailure(request.Error)
+        } else {
+            set_ui_text(Element: "#status", Text: "Loading saved terrain...")
+        }
+    }
+
+    StorageFailure :: fn(message: string) {
+        set_ui_text(Element: "#status", Text: format_text("Terrain storage failed: {}", message))
+        set_ui_text(Element: "#detail", Text: "Use the native player with --save and a writable save path. Your current terrain is still playable.")
+    }
+
+    PollStorage :: fn() {
+        if storageRequest == 0 {
+            return
+        }
+        result := terrain_storage_result(storageRequest)
+        if result.Pending {
+            return
+        }
+        storageRequest = 0
+        if !result.Succeeded {
+            StorageFailure(result.Error)
+            return
+        }
+        if storageAction == 1 {
+            set_ui_text(Element: "#status", Text: "Terrain saved. Restart this player, then press L.")
+            set_ui_text(Element: "#detail", Text: "The saved excavation keeps its cell edits across the 128-cell seam.")
+        } else {
+            Respawn()
+            set_ui_text(Element: "#status", Text: "Saved excavation loaded. Walk into the cut.")
+            set_ui_text(Element: "#detail", Text: "Amber ground stays intact. F digs again; S replaces the save.")
+        }
+    }
+
+    Respawn :: fn() {
+        self.Transform = vec2(-42, -16)
+        self.Velocity = vec2(0, 0)
+    }
+
+    Present :: fn() {
+        globals.Visor.Transform = self.Transform + vec2(facing * 3, -4)
+        globals.DigTarget.Transform = DigPoint()
+    }
+
+    on Tick {
+        PollStorage()
+        horizontal := self.Input.Move.x
+        if abs(horizontal) > 0.1 {
+            facing = sign(horizontal)
+        }
+        self.Velocity = vec2(horizontal * 105, self.Velocity.y)
+        jump := input.Jump.held
+        if jump && !jumpHeld && Grounded() {
+            self.Velocity = vec2(self.Velocity.x, -175)
+        }
+        jumpHeld = jump
+        dig := input.Dig.held
+        if dig && !digHeld {
+            Dig()
+        }
+        digHeld = dig
+        save := input.Save.held
+        if save && !saveHeld {
+            Save()
+        }
+        saveHeld = save
+        load := input.Load.held
+        if load && !loadHeld {
+            Load()
+        }
+        loadHeld = load
+        respawn := input.Respawn.held
+        if respawn && !respawnHeld {
+            Respawn()
+        }
+        respawnHeld = respawn
+        if self.Transform.y > 190 || abs(self.Transform.x) > 380 {
+            Respawn()
+        }
+        Present()
+    }
+}

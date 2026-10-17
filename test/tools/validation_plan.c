@@ -166,7 +166,7 @@ TEST_CASE(validation_requires_review_and_checks_for_mixed_scope)
 TEST_CASE(validation_refuses_gpu_and_unadmitted_selectors)
 {
     const char *selectors[] = {
-        "--selector=--player-installed-space-cadet-vm",
+        "--selector=--scene3d",
         "--selector=--studio-source-edit",
         "--selector=--not-a-test",
     };

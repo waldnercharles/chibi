@@ -1,5 +1,9 @@
 # Working on the arena game
 
+> Arena3D and Voidweaver were retired on 2026-10-17 and their repositories are
+> archived. This page records their development; its commands name those
+> archived repositories. See [examples](examples.md) for maintained projects.
+
 Arena3D and Voidweaver now live in separate game repositories. A project is a
 directory containing `project.kdl` and its own `content` tree. Engine regression
 fixtures stay under `test/fixtures`.

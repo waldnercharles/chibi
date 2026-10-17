@@ -2986,6 +2986,32 @@
     }
   },
   {
+    "type": "import_declaration",
+    "named": true,
+    "fields": {
+      "alias": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "index_expression",
     "named": true,
     "fields": {
@@ -3817,6 +3843,22 @@
     "type": "nil",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "package_header",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "parameter",
@@ -4883,10 +4925,21 @@
     "type": "source_file",
     "named": true,
     "root": true,
-    "fields": {},
+    "fields": {
+      "package": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "package_header",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
-      "multiple": false,
-      "required": true,
+      "multiple": true,
+      "required": false,
       "types": [
         {
           "type": "behavior",
@@ -4897,11 +4950,39 @@
           "named": true
         },
         {
+          "type": "constant_declaration",
+          "named": true
+        },
+        {
+          "type": "function_declaration",
+          "named": true
+        },
+        {
+          "type": "import_declaration",
+          "named": true
+        },
+        {
           "type": "library",
           "named": true
         },
         {
+          "type": "macro_declaration",
+          "named": true
+        },
+        {
+          "type": "record_declaration",
+          "named": true
+        },
+        {
+          "type": "state_declaration",
+          "named": true
+        },
+        {
           "type": "system",
+          "named": true
+        },
+        {
+          "type": "union_declaration",
           "named": true
         }
       ]
@@ -6618,6 +6699,10 @@
     "named": false
   },
   {
+    "type": "import",
+    "named": false
+  },
+  {
     "type": "in",
     "named": false
   },
@@ -6671,6 +6756,10 @@
   },
   {
     "type": "owner",
+    "named": false
+  },
+  {
+    "type": "package",
     "named": false
   },
   {

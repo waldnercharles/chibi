@@ -1,6 +1,8 @@
 // Syntax has no registry, graph, compiler, or editor dependencies.
 const K = Object.fromEntries(
   [
+    "package",
+    "import",
     "behavior",
     "library",
     "system",
@@ -70,7 +72,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["struct", "from", "split", "component", "not", "join", "unordered"];
+const CONTEXTUAL = ["package", "import", "struct", "from", "split", "component", "not", "join", "unordered"];
 
 const P = {
   or: 1,
@@ -124,7 +126,23 @@ module.exports = grammar({
   ],
   rules: {
     source_file: ($) =>
-      choice($.behavior, $.library, $.system, $.component),
+      choice(
+        $.behavior, $.library, $.system, $.component,
+        seq(field("package", $.package_header), repeat(choice(
+          $.import_declaration,
+          $.behavior, $.system, $.component,
+          $.function_declaration, $.constant_declaration,
+          $.state_declaration, $.record_declaration, $.union_declaration,
+          $.macro_declaration,
+        ))),
+      ),
+    package_header: ($) => seq(K.package, field("name", $.identifier), $._end),
+    import_declaration: ($) => seq(
+      K.import,
+      optional(field("alias", $.identifier)),
+      field("path", $.string),
+      $._end,
+    ),
     behavior: ($) =>
       seq(
         K.behavior,

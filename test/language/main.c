@@ -35,6 +35,7 @@ void test_language_modules();
 void test_numeric_ranges();
 void test_numeric_exact_core();
 void test_language_package_graph();
+void test_language_package_syntax();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -108,6 +109,7 @@ int main(int argc, char **argv)
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
+    bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
@@ -136,10 +138,10 @@ int main(int argc, char **argv)
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
          !row_builder && !row_array && !record_runtime && !runtime_attribution &&
          !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !numeric_exact_core && !package_graph && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !ranges && !numeric_exact_core && !package_graph && !package_syntax &&
+         !component_write && !component_write_layout && !scalarize && !borrow &&
+         !reductions && !binding_schedule && !activation_cache && !headless &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -149,6 +151,7 @@ int main(int argc, char **argv)
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
+            "--package-syntax | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -270,6 +273,8 @@ int main(int argc, char **argv)
         test_language_incremental();
     } else if (numeric_exact_core) {
         test_numeric_exact_core();
+    } else if (package_syntax) {
+        test_language_package_syntax();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

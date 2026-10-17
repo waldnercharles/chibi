@@ -470,6 +470,15 @@ TOOLS = {
     # Existing owning dispatcher and shared60s; build timing is separate.
     'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-graph'],
+    # First measurement requires independent exact-source and workload admission.
+    # Ten fixed pico cases, 30 canonical parses plus one edit; 31 extractions
+    # (18 accepted, 13 refused), nine graph attempts (four accepted, five refused).
+    # At most four snapshots/files, three packages, five imports; each text<256B,
+    # total submitted snapshot text<7936B, owned descriptor/name envelope16KiB.
+    # No authored execution, files, subprocesses, backend, world, frames or GPU.
+    # Existing owning dispatcher, separate build timing, shared60s; no aggregate.
+    'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--package-syntax'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

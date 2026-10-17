@@ -360,6 +360,27 @@ TEST_CASE(source_format_preserves_package_separators)
     ));
     REQUIRE(!strcmp(text, "package app\nValues :: [1, 2]\n"));
     REQUIRE(map_reproduces_source());
+    cleanup();
+    const struct
+    {
+        const char *input, *expected;
+    } width_cases[] = {
+        { "package app\rValues::/*\r*/[1,2]\r", "package app\nValues :: /*\r*/ [1, 2]\n" },
+        { "package app\nValues::/*\n*/[1,2]\n", "package app\nValues :: /*\n*/ [1, 2]\n" },
+        { "package app\r\nValues::/*\r\n*/[1,2]\r\n",
+          "package app\nValues :: /*\r\n*/ [1, 2]\n" },
+        { "behavior A{x:=/*\r*/[1,2];}",
+          "behavior A {\n x := /*\r*/ [\n  1,\n  2\n ];\n}\n" },
+    };
+    for (int i = 0; i < (int)(sizeof width_cases / sizeof *width_cases); i++) {
+        REQUIRE(configured(
+            width_cases[i].input,
+            (authoring_format_options){ .indent_width = 1, .preferred_width = 12 }
+        ));
+        REQUIRE(!strcmp(text, width_cases[i].expected));
+        REQUIRE(map_reproduces_source());
+        cleanup();
+    }
     return true;
 }
 

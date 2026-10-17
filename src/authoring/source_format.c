@@ -441,7 +441,9 @@ char *authoring_source_format_with_options(
             goto limit;
         }
         for (int p = current.start; p < current.end; p++) {
-            column = source->text[p] == '\n' ? 0 : column + 1;
+            column = source->text[p] == '\n' || (package && source->text[p] == '\r')
+                       ? 0
+                       : column + 1;
         }
         if (current.open || current.case_open) {
             indent++;

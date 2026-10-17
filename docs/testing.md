@@ -1567,22 +1567,24 @@ rejection and tests insertion affinity on a valid empty behavior instead.
 ### Package-source separator compatibility
 
 The existing C `--format` dispatcher adds one case with sixteen fixed
-input/output pairs plus one preferred-width variant. It covers CR, LF, CRLF,
+input/output pairs plus five preferred-width variants. It covers CR, LF, CRLF,
 mixed and blank lines, explicit semicolons, alias/blank imports, header-only
 input, inline/standalone/multiline block comments, line comments, contextual
-legacy names with internal CR blank lines, and default/reflow indentation of a nested array. CR remains
+legacy names with internal CR blank lines, default/reflow indentation of a nested
+array, and package CR/LF/CRLF comment-column tracking with a legacy width
+control. CR remains
 part of a `//` comment until LF, matching the existing grammar. Comment and
 other token bytes remain exact; package whitespace gaps canonicalize to LF.
 
-The successful fixed path adds 1,294 assertions and makes 34 formatter calls
-and 68 canonical parses across seventeen configured formatting pairs. Each
+The successful fixed path adds 1,726 assertions and makes 42 formatter calls
+and 84 canonical parses across twenty-one configured formatting pairs. Each
 input and expected output is at most 58 bytes. Existing helpers check exact
 output, immutable input, idempotence and whitespace edit-map reconstruction.
 No source generation, files, processes, authored/backend execution, worlds,
 frames, network or GPU are added. The shared native/Wasm finite suite has
-40 cases and 4,058 assertions. The native corpus is unchanged; with the
+40 cases and 4,490 assertions. The native corpus is unchanged; with the
 historical 89 files, its 361 assertions bring the expected native total to
-41 cases and 4,419 assertions. These counts are source-derived, not a new
+41 cases and 4,851 assertions. These counts are source-derived, not a new
 execution result. Use the existing production 60-second supervisor after
 independent exact-source/workload admission; configuration and build timing
 remain separate.

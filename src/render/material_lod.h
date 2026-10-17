@@ -36,9 +36,10 @@ void render_material_lod_begin(render_material_lod *lod);
  * last level chosen for that cell size so they all change together. */
 int render_material_lod_level(render_material_lod *lod, float cell_size, float pixels_per_unit);
 /* The mask at level, or at the coarsest level below it that its dimensions
- * still halve into evenly. A changed revision, such as terrain cut at
- * runtime, rebuilds its levels. Level 0 is mask itself; the others are
- * borrowed until the next frame begins. */
+ * still halve into evenly and a terrain source's shared halo lod_limit.
+ * Halo-aware reduction preserves neighbor samples. A changed revision, such as
+ * terrain cut at runtime, rebuilds its levels. Level 0 is mask itself; the
+ * others are borrowed until the next frame begins. */
 const material_mask *render_material_lod_get(
     render_material_lod *lod,
     const material_mask *mask,

@@ -34,5 +34,6 @@ void main()
             weights += weight;
         }
     }
-    result = vec4(sum / weights, 0.0, 0.0, 1.0);
+    // The lit pass reads occlusion in alpha; screen light fills rgb.
+    result = vec4(0.0, 0.0, 0.0, sum / weights);
 }

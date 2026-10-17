@@ -321,6 +321,83 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFrame)
 }
 MaterialFrame;
 
+/* Optional actual 3D surface derived from a live destructible material mask.
+ * The mask remains authoritative in the gameplay plane. Geometry uses its
+ * contour; elevation and depth are along world Y. Spacing selects in-plane
+ * tessellation and must be at least the mask cell size. Relief is sampled in
+ * the retained MaterialFrame. */
+typedef NODE_COMPONENT_TYPE_DENSE(MaterialSurface3D)
+{
+    bool enabled;
+    /* Consume the bound material's static Surface Height as mesh displacement,
+     * sampled at PartPosition=(source X, 0, source Z). Unsupported dynamic
+     * coordinates fail explicitly. Shared channels should use source X/Z. */
+    bool material_height;
+    float elevation NODE_UNIT("u");
+    float depth NODE_UNIT("u");
+    float bevel_width NODE_UNIT("u");
+    float relief NODE_UNIT("u");
+    float relief_scale NODE_UNIT("u");
+    float spacing NODE_UNIT("u");
+    unsigned seed;
+    /* Cutaway cave interior. Empty cells within recess_width of the contour
+     * gain rock falling up to recess_depth further from the camera, so a
+     * side-on view sees cave walls receding behind the gameplay plane. It is
+     * measured from published occupancy; terrain halos widen to cover it and
+     * detached fragments drop it. Zero width keeps the vertical contour wall. */
+    float recess_width NODE_UNIT("u");
+    float recess_depth NODE_UNIT("u");
+    /* Solid thinner than twice this width, such as lavacicles, still renders
+     * but hangs in front of the recess instead of shaping it. */
+    float recess_smoothing NODE_UNIT("u");
+}
+MaterialSurface3D;
+
+/* Optional rock behind a MaterialTerrain's play plane, derived from the same
+ * field sampled in 3D: Field Z is depth behind the plane, so the terrain mask
+ * is the field's Z = 0 slice. The volume opens a cone wherever the live mask
+ * lost rock, so cuts, fragments and restored saves agree with it; the mask
+ * stays the only gameplay and saved state. Voxel is the sample spacing, depth
+ * how far rock extends behind the plane, and elevation the plane's world Y.
+ * scene3d draws it with the terrain's Shader material. Editing any setting
+ * but elevation and front_material regenerates the terrain, dropping its
+ * cuts. Unstreamed only. */
+typedef NODE_COMPONENT_TYPE_DENSE(TerrainVolume)
+{
+    bool enabled;
+    float voxel NODE_UNIT("u");
+    float depth NODE_UNIT("u");
+    float elevation NODE_UNIT("u");
+    /* The field is searched for surfaces every voxel * refine and sampled
+     * every voxel only near them, so fine detail costs memory by surface area
+     * rather than volume. One samples everything every voxel. */
+    int refine NODE_RANGE(1, 8);
+    /* Leaves air the field has at the deepest layer open, so the sky shows
+     * through; closed otherwise. */
+    bool open_back;
+    /* Rock ahead of the plane: it casts shadows and blocks indirect light, so
+     * cutaway openings do not leak. It is drawn only with front_material. */
+    float front NODE_UNIT("u");
+    /* Surface material that draws the rock ahead of the plane, with its own
+     * default parameters. A masked material that opens around a Surface
+     * Influence cuts the foreground away near the player. */
+    const char *front_material;
+    /* How far cuts carve on each side of the plane. Rock beyond it never
+     * changes, so a cut re-meshes only nearby slab chunks. Must be positive. */
+    float slab NODE_UNIT("u");
+}
+TerrainVolume;
+
+/* Optional indirect-ray proxy policy. Absent keeps built-in solids and imported
+ * mesh bounds. Disable for hollow imported scenery whose bounds enclose air;
+ * actual mesh surface rendering and direct shadows remain enabled. Enabled
+ * live mask surfaces derive opening-preserving proxies from published occupancy. */
+typedef NODE_COMPONENT_TYPE_DENSE(IndirectOccluder)
+{
+    bool enabled;
+}
+IndirectOccluder;
+
 /* Authored, axis-aligned procedural terrain. Appearance and Material on the
  * source style its chunks; collision and destruction use the generated cells. */
 typedef NODE_COMPONENT_TYPE_DENSE(MaterialTerrain)
@@ -625,6 +702,19 @@ typedef enum
     OCCLUSION_HIGH NODE_NAME("High"),
 } Occlusion;
 
+/* Screen light gathers the light that visible surfaces and emitters send each
+ * other by radiance cascades over probes on the visible surfaces, so glowing
+ * particles light the rock around them. Screen traces rays through the
+ * camera's depth and the last frame's color; World traces them through
+ * terrain volumes and the frame's emitting particles, so light from off the
+ * screen and rock the camera cannot see count. It needs occlusion on. */
+typedef enum
+{
+    SCREEN_LIGHT_OFF NODE_NAME("Off"),
+    SCREEN_LIGHT_SCREEN NODE_NAME("Screen"),
+    SCREEN_LIGHT_WORLD NODE_NAME("World"),
+} ScreenLight;
+
 /* How many probes and rays global illumination spends on the 3D scene's
  * bounced light. Off lights it with the ambient colors or sky alone. */
 typedef enum
@@ -646,13 +736,18 @@ typedef enum
  * behind the 3D scene; it lights the scene in place of the ambient colors. Sky
  * rotation turns it and its light about the up axis in degrees,
  * counterclockwise seen from above; sky exposure brightens both in stops, from
- * -20 to 20. Occlusion darkens the ambient and sky light where nearby 3D
- * surfaces hide the sky from each other, such as creases and the ground
- * beneath objects, searching up to occlusion radius world units, which must
- * be positive while it is on; direct light is left alone. Global
- * illumination replaces the ambient and sky light on 3D surfaces with the
- * light that reaches them from the scene's opaque solids, lights, emissive
- * surfaces and sky, bounced between surfaces. */
+ * -20 to 20. A sky material instead draws a surface material as the sky: its
+ * Emission, plus Base Color when Unlit, seen along each direction, with
+ * World Position, Object Position and Part Position the unit direction looked
+ * along, Normal and View Direction pointing back, UV its equirectangular
+ * coordinates and Time the scene's. It lights the scene as a sky image does,
+ * from its look at time zero, and cannot read images. Occlusion darkens the
+ * ambient and sky light where nearby 3D surfaces hide the sky from each other,
+ * such as creases and the ground beneath objects, searching up to occlusion
+ * radius world units, which must be positive while it is on; direct light is
+ * left alone. Global illumination replaces the ambient and sky light on 3D
+ * surfaces with the light that reaches them from the scene's opaque solids,
+ * lights, emissive surfaces and sky, bounced between surfaces. */
 typedef NODE_COMPONENT_TYPE_DENSE(Environment)
 {
     float exposure NODE_UNIT("EV");
@@ -666,11 +761,24 @@ typedef NODE_COMPONENT_TYPE_DENSE(Environment)
     bool auto_exposure;
     float adaptation_speed;
     const char *sky;
+    const char *sky_material;
     float sky_rotation;
     float sky_exposure NODE_UNIT("EV");
     Occlusion occlusion;
     float occlusion_radius NODE_UNIT("u");
     GlobalIllumination global_illumination;
+    ScreenLight screen_light;
+    /* Homogeneous scene3d medium. Zero density disables all fog work. Start
+     * and distance are measured along the camera ray from its near plane.
+     * Color is scattering albedo, not an ambient source. Steps and resolution
+     * independently bound integration and pixel cost. */
+    float fog_density NODE_UNIT("1/u") NODE_RANGE(0, 1);
+    float fog_start NODE_UNIT("u") NODE_RANGE_HINT(0, 1000);
+    float fog_distance NODE_UNIT("u") NODE_RANGE_HINT(1, 2000);
+    unsigned fog_color NODE_COLOR;
+    float fog_anisotropy NODE_RANGE(-0.9, 0.9);
+    int fog_steps NODE_RANGE(4, 64);
+    float fog_resolution NODE_RANGE(0.25, 1);
 }
 Environment;
 
@@ -684,7 +792,11 @@ static inline Environment environment_defaults()
                           .ambient_intensity = 1,
                           .adaptation_speed = 2,
                           .occlusion = OCCLUSION_MEDIUM,
-                          .occlusion_radius = 1 };
+                          .occlusion_radius = 1,
+                          .fog_distance = 1000,
+                          .fog_color = 0xc0c8d0ffu,
+                          .fog_steps = 32,
+                          .fog_resolution = .5f };
 }
 
 /* Light from an infinitely distant source, such as the sun. Direction is the
@@ -723,6 +835,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(PointLight)
     float radius NODE_UNIT("u");
     float elevation;
     bool shadows;
+    /* Radius of the emitting surface. Larger sources cast softer shadow
+     * edges; zero keeps them hard. */
+    float size NODE_UNIT("u");
 }
 PointLight;
 
@@ -742,6 +857,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(SpotLight)
     float inner_angle;
     float outer_angle;
     bool shadows;
+    /* Radius of the emitting surface; see Point Light. */
+    float size NODE_UNIT("u");
 }
 SpotLight;
 
@@ -999,6 +1116,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(Camera)
      * far at most a million times near; zero clips scale with the span's
      * height. */
     float fov NODE_UNIT("rad");
+    /* Full-3D orthographic projection using width/height rather than fov.
+     * False preserves the perspective lens. Transform3D still places the eye. */
+    bool orthographic;
     float near_clip NODE_UNIT("u");
     float far_clip NODE_UNIT("u");
 }
@@ -1236,6 +1356,11 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
     float intensity;
     /* Brightness of light seen in open air: the glow around lights. */
     float fog;
+    /* Extinction/scattering coefficient for direct Spot Light beams, in
+     * inverse world units. Zero disables volume lighting. Eight view-depth
+     * samples integrate a homogeneous medium against visible depth slabs;
+     * this does not add hidden geometry or feed the HRC bounce solver. */
+    float volume_density NODE_RANGE_HINT(0, 1) NODE_UNIT("u^-1");
     /* Fraction of a solid's albedo that stays visible where no light reaches
      * it. Depth thickness hides part of it like ambient. */
     float shadow_floor;

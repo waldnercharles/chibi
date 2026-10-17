@@ -60,6 +60,18 @@ CPU_SELECTORS = {
     '--reference-index': 'reference-index',
     '--render-geometry': 'render-geometry',
     '--shader-graphs': 'shader-graphs',
+    '--shader-bake': 'shader-bake',
+    '--material-bake': 'material-bake',
+    '--environment-authoring': 'environment-authoring',
+    '--terrain-seams': 'terrain-seams',
+    '--material-surface-mesh': 'material-surface-mesh',
+    '--scene3d-camera': 'scene3d-camera',
+    '--scene3d-volume': 'scene3d-volume',
+    '--scene3d-terrain': 'scene3d-terrain',
+    '--terrain-checkpoint': 'terrain-checkpoint',
+    '--terrain-storage': 'terrain-storage',
+    '--terrain-storage-commands': 'terrain-storage-commands',
+    '--terrain-playable': 'terrain-playable',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
@@ -96,10 +108,16 @@ STUDIO_ACCEPTANCE = {
     '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
+                    '--surface-transport': 'surface-transport',
+                    '--material-mesh-cache': 'material-mesh-cache',
+                    '--scene3d-terrain-gpu': 'scene3d-terrain-gpu',
+                    '--scene3d-volume-gpu': 'scene3d-volume-gpu',
+                    '--hrc-spot': 'hrc-spot',
                     '--sdf-visibility': 'sdf-visibility',
                     '--radiance': 'radiance', '--radiance-depth': 'radiance-depth',
                     '--material-sampling': 'material-sampling',
-                    '--scene2d': 'scene2d', '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--scene2d': 'scene2d', '--material-terrain-seams': 'material-terrain-seams',
+                    '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
                     '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
                     '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
                     '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
@@ -110,7 +128,9 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--texture-transform': 'texture-transform'}
 RENDER_SELECTORS |= {f'--installed-example-{lab}': f'installed-example-{lab}' for lab in
                      ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')}
-GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
+GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS | {
+    '--terrain-playable-render': 'terrain-playable-render',
+}
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
 }

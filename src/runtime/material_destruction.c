@@ -257,7 +257,7 @@ static void apply_damage(material_destruction *d, const material_host *host, int
         float energy = next->energy * (next->cause == MATERIAL_DAMAGE_BLAST
                                            ? source.blast_multiplier
                                            : 1);
-        removed += material_mask_apply_damage(
+        int cut_cells = material_mask_apply_damage(
             mask,
             c * x + s * y,
             -s * x + c * y,
@@ -265,7 +265,12 @@ static void apply_damage(material_destruction *d, const material_host *host, int
             energy,
             source.hardness
         );
+        material_damage cut = *next;
         next->energy = 0;
+        removed += cut_cells;
+        if (cut_cells && host->cut_surface) {
+            host->cut_surface(host->user, &cut);
+        }
     }
     if (!removed) {
         return;

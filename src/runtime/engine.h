@@ -14,6 +14,7 @@
 #include "runtime/scenes/physics.h"
 #include "runtime/scenes/physics3d.h"
 #include "runtime/systems/scheduler.h"
+#include "runtime/terrain_storage.h"
 #include "runtime/ui.h"
 #include "runtime/visibility.h"
 
@@ -70,6 +71,7 @@ typedef struct
     visibility *visibility;
     audio *audio;
     save *save;
+    terrain_storage *terrain_storage;
     ui *ui;
     bool input, rendering;
     void *context;

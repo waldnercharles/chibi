@@ -240,7 +240,7 @@ add_library(chibi_field_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/field
 add_library(Chibi::field_capabilities ALIAS chibi_field_capabilities)
 set_target_properties(chibi_field_capabilities PROPERTIES EXPORT_NAME field_capabilities)
 chibi_sdk_headers(chibi_field_capabilities PUBLIC runtime/fields/native.h runtime/fields/definition.h)
-target_link_libraries(chibi_field_capabilities PUBLIC chibi_native_capabilities)
+target_link_libraries(chibi_field_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_fields)
 add_library(chibi_state_capabilities STATIC "${CHIBI_SDK_ROOT}/src/runtime/state_definition.c")
 add_library(Chibi::state_capabilities ALIAS chibi_state_capabilities)
 set_target_properties(chibi_state_capabilities PROPERTIES EXPORT_NAME state_capabilities)

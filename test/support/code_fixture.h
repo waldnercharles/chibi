@@ -27,11 +27,13 @@ static inline void test_source_free(test_source_fixture *fixture)
     authoring_language_catalog_free(fixture->native);
     *fixture = (test_source_fixture){ 0 };
 }
-/* One owned canonical declaration/source generation; text is an exact overlay.
- * Execution consumes source.module. Presentation graphs never authorize execution. */
-static inline test_source_fixture test_source_prepare(const char *path, const char *text)
+/* One owned canonical declaration/source generation; texts are exact overlays
+ * under the first path's content root, and source is the first. Execution
+ * consumes source.module. Presentation graphs never authorize execution. */
+static inline test_source_fixture test_sources_prepare(const source_catalog_edit *edits, int count)
 {
     test_source_fixture fixture = { 0 };
+    const char *path = edits[0].path;
     const char *content = strstr(path, "/content/");
     size_t length = content ? (size_t)(content - path) + strlen("/content")
                             : strlen("content");
@@ -46,12 +48,11 @@ static inline test_source_fixture test_source_prepare(const char *path, const ch
     fixture.native = authoring_language_catalog_new(&input, error, sizeof error);
     native_capabilities_free(table);
     assert(fixture.native);
-    const source_catalog_edit edit = { .path = path, .text = text };
     source_catalog *declarations = source_catalog_edited(
         root,
         authoring_language_catalog_view(fixture.native),
-        &edit,
-        1
+        edits,
+        count
     );
     free(root);
     script_lower_bindings bindings = authoring_language_bindings(fixture.native);
@@ -74,6 +75,10 @@ static inline test_source_fixture test_source_prepare(const char *path, const ch
         authoring_sources_valid(fixture.sources)
     );
     return fixture;
+}
+static inline test_source_fixture test_source_prepare(const char *path, const char *text)
+{
+    return test_sources_prepare(&(source_catalog_edit){ .path = path, .text = text }, 1);
 }
 static inline void test_source_register(preview_runtime *world, const test_source_fixture *fixture)
 {

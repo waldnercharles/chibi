@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_VIEW_H
 
 #include <cute_math3d.h>
+#include <stdbool.h>
 
 /* The farthest far clip, as a multiple of the near clip. Float depth rounds
  * far planes much past 1e7 near clips toward infinity, so rays unprojected
@@ -17,6 +18,8 @@ typedef struct engine_viewport_lens
 {
     CF_V3 eye, forward, up;
     float fov, near_clip, far_clip;
+    /* Explicit full-3D orthographic projection; spans define its extents. */
+    bool orthographic;
 } engine_viewport_lens;
 
 typedef struct engine_viewport_camera

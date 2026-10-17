@@ -17,6 +17,7 @@ static bool camera_lens(const Camera *camera, const GlobalTransform3D *pose, eng
 {
     float closest = camera->near_clip, farthest = camera->far_clip;
     *lens = (engine_viewport_lens){ .fov = camera->fov,
+                                    .orthographic = camera->orthographic,
                                     .near_clip = closest,
                                     .far_clip = farthest };
     bool clips = (closest == 0 && farthest == 0) ||

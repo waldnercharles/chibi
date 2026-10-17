@@ -3,6 +3,7 @@
 #include "platform/cute.h"
 #include "render/gpu_timing.h"
 #include "render/material.h"
+#include "render/scene3d_cascades.h"
 #include "render/scene3d_geometry.h"
 #include "render/scene3d_gi.h"
 #include "render/scene3d_influence.h"
@@ -12,8 +13,11 @@
 #include "render/scene3d_particles.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_sky.h"
+#include "render/scene3d_terrain.h"
+#include "render/scene3d_terrain_volume.h"
 #include "render/scene3d_trail.h"
 #include "render/scene3d_visual.h"
+#include "render/scene3d_volume.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
 #include "runtime/component_catalog.h"
@@ -49,6 +53,7 @@ typedef struct
      * light's has no axis and an offset of one. */
     CF_V4 cone;
     float score; /* Estimated influence on the camera. */
+    float size;  /* Emitter radius, softening its shadow edges. */
     bool shadows;
 } scene3d_light;
 
@@ -60,6 +65,7 @@ typedef struct
     Geometry3D shape;
     const render_mesh_asset *mesh;
     int first, count; /* The mesh's indices. */
+    uint64_t dynamic_identity, dynamic_revision;
 } scene3d_solid;
 
 typedef struct
@@ -97,12 +103,15 @@ struct render_scene3d
     render_programs *gi_programs, *mesh_gi_programs;
     render_programs *shadow_programs, *mesh_shadow_programs;
     render_scene3d_mesh_cache *meshes;
+    render_scene3d_terrain *terrain;
+    render_scene3d_terrain_volume *depth_volumes;
+    render_scene3d_volume *volume;
     render_influences *influences;
     scene3d_trails *trails;
     scene3d_particles *particle_fields;
     render_scene3d_sky *sky;
     particle_emitters *emitters;
-    CF_Mesh prism, octahedron, tetrahedron;
+    CF_Mesh prism, sphere, octahedron, tetrahedron;
     CF_Mesh particle_quad;
     CF_Mesh polygons[4];
     CF_V4 rhythm;
@@ -113,9 +122,18 @@ struct render_scene3d
     render_scene3d_shadow *shadow;
     render_scene3d_light_shadow *light_shadow;
     render_scene3d_occlusion *occlusion;
+    render_scene3d_cascades *cascades;
+    /* The last frame's linear color, which screen light reads, and the
+     * opaque objects' boxes, ahead of terrain proxies, that block its rays. */
+    CF_Texture history;
+    int object_solids;
+    CF_M4x4 *solid_boxes;
     render_scene3d_gi *gi;
     int width, height; /* The canvas later draws fill, in pixels. */
     CF_M4x4 *shadow_boxes;
+    CF_M4x4 *sun_boxes;
+    int sun_receiver_extra;
+    float fog_distance;
     int *near_boxes; /* Boxes that can cast into the current light. */
     CF_Texture parameters;
     int texture_height;
@@ -128,6 +146,8 @@ struct render_scene3d
     /* The kept lights as the lit pass reads them. */
     CF_V4 light_positions[LIGHT_LIMIT], light_colors[LIGHT_LIMIT],
         light_cones[LIGHT_LIMIT];
+    /* Emitter radii of the shadowed lights, which come first. */
+    CF_V4 light_shadow_sizes;
     int light_count, lights_dropped;
     int shadowed_lights; /* The first lights, which cast shadows. */
     int simulation_particles;
@@ -169,16 +189,21 @@ render_scene3d *render_scene3d_new()
     scene3d->shadow_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_SHADOW);
     scene3d->mesh_shadow_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_MESH_SHADOW);
     scene3d->meshes = render_scene3d_mesh_cache_new();
+    scene3d->terrain = render_scene3d_terrain_new();
+    scene3d->depth_volumes = render_scene3d_terrain_volume_new();
+    scene3d->volume = render_scene3d_volume_new();
     scene3d->influences = render_influences_new();
     scene3d->shadow = render_scene3d_shadow_new();
     scene3d->light_shadow = render_scene3d_light_shadow_new();
     scene3d->occlusion = render_scene3d_occlusion_new();
+    scene3d->cascades = render_scene3d_cascades_new();
     scene3d->gi = render_scene3d_gi_new();
     scene3d->trails = render_scene3d_trails_new();
     scene3d->particle_fields = render_scene3d_particles_new();
     scene3d->sky = render_scene3d_sky_new();
     scene3d->emitters = particle_emitters_new(NULL);
     scene3d->prism = render_scene3d_prism_mesh();
+    scene3d->sphere = render_scene3d_sphere_mesh();
     scene3d->octahedron = render_scene3d_octahedron_mesh();
     scene3d->tetrahedron = render_scene3d_tetrahedron_mesh();
     scene3d->particle_quad = particle_quad();
@@ -211,12 +236,16 @@ void render_scene3d_set_size(render_scene3d *scene3d, int width, int height)
 
 void render_scene3d_reset(render_scene3d *scene3d)
 {
+    render_scene3d_terrain_reset(scene3d->terrain);
+    render_scene3d_terrain_volume_reset(scene3d->depth_volumes);
+    render_scene3d_mesh_cache_dynamic_clear(scene3d->meshes);
     scene3d->simulation_particles = 0;
     render_influences_reset(scene3d->influences);
     render_scene3d_trails_reset(scene3d->trails);
     render_scene3d_particles_reset(scene3d->particle_fields);
     particle_emitters_reset(scene3d->emitters);
     render_scene3d_gi_reset(scene3d->gi);
+    render_scene3d_cascades_reset(scene3d->cascades);
 }
 
 void render_scene3d_free(render_scene3d *scene3d)
@@ -231,18 +260,25 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_programs_free(scene3d->shadow_programs);
     render_programs_free(scene3d->mesh_shadow_programs);
     render_scene3d_mesh_cache_free(scene3d->meshes);
+    render_scene3d_terrain_free(scene3d->terrain);
+    render_scene3d_terrain_volume_free(scene3d->depth_volumes);
+    render_scene3d_volume_free(scene3d->volume);
     render_influences_free(scene3d->influences);
     render_scene3d_shadow_free(scene3d->shadow);
     render_scene3d_light_shadow_free(scene3d->light_shadow);
     render_scene3d_occlusion_free(scene3d->occlusion);
+    render_scene3d_cascades_free(scene3d->cascades);
+    afree(scene3d->solid_boxes);
     render_scene3d_gi_free(scene3d->gi);
     afree(scene3d->shadow_boxes);
+    afree(scene3d->sun_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
     render_scene3d_particles_free(scene3d->particle_fields);
     render_scene3d_sky_free(scene3d->sky);
     particle_emitters_free(scene3d->emitters);
     cf_destroy_mesh(scene3d->prism);
+    cf_destroy_mesh(scene3d->sphere);
     cf_destroy_mesh(scene3d->octahedron);
     cf_destroy_mesh(scene3d->tetrahedron);
     cf_destroy_mesh(scene3d->particle_quad);
@@ -277,7 +313,7 @@ static void draw_shape(const render_scene3d *scene3d, const Geometry3D *shape)
         case PRIMITIVE_BOX:
             cf_draw3d_cube((CF_V3){ 0 }, (CF_V3){ 0.5f, 0.5f, 0.5f });
             break;
-        case PRIMITIVE_SPHERE: cf_draw3d_sphere((CF_V3){ 0 }, 0.5f); break;
+        case PRIMITIVE_SPHERE: cf_draw3d_mesh(scene3d->sphere); break;
         case PRIMITIVE_CAPSULE:
             cf_draw3d_scale((CF_V3){ 2, 1, 2 });
             cf_draw3d_capsule((CF_V3){ 0, -0.25f, 0 }, (CF_V3){ 0, 0.25f, 0 }, 0.25f);
@@ -467,18 +503,21 @@ static bool surface_material(draw_buffer *buffer, const char *name, int *id)
 }
 
 /* An imported mesh's material groups, each with its own material or else the
- * entity's, or the whole mesh with the entity's. */
+ * entity's, or the whole mesh with the entity's. A named material replaces
+ * the entity's Shader binding, parameters included. */
 static void collect_mesh(
     draw_buffer *buffer,
     ecs_world *world,
     ecs_entity entity,
     const scene3d_solid *whole,
     const material_coefficients *color,
-    const render_scene3d_camera *camera
+    const render_scene3d_camera *camera,
+    bool indirect_proxy,
+    const char *material
 )
 {
     const render_mesh_asset *mesh = whole->mesh;
-    const Shader *binding = Shader_get_const(world, entity);
+    const Shader *binding = material ? NULL : Shader_get_const(world, entity);
     CF_M4x4 view_projection = cf_mul_m4(camera->projection, camera->view);
     bool visible = render_scene3d_box_visible(
         render_scene3d_mesh_box(mesh, whole->frame),
@@ -489,7 +528,9 @@ static void collect_mesh(
     for (int i = 0; i < (groups ? groups : 1); i++) {
         const render_mesh_group *group = groups ? &mesh->groups[i] : NULL;
         scene3d_solid solid = *whole;
-        const char *name = binding ? binding->material : NULL;
+        const char *name = material ? material
+                         : binding  ? binding->material
+                                    : NULL;
         if (group) {
             solid.first = group->first;
             solid.count = group->count;
@@ -499,7 +540,10 @@ static void collect_mesh(
         if (!surface_material(buffer, name, &id)) {
             return;
         }
-        traced = traced || trace_solid(buffer, whole, id, color);
+        const IndirectOccluder *indirect = IndirectOccluder_get_const(world, entity);
+        if (indirect_proxy && (!indirect || indirect->enabled)) {
+            traced = traced || trace_solid(buffer, whole, id, color);
+        }
         scene3d_draw draw = { .solid = solid, .material = id };
         if (!visible && !casts(buffer, id, color)) {
             continue;
@@ -549,6 +593,11 @@ static void collect_entity(
     if (ParticleField3D_has(world, entity)) {
         return;
     }
+    const MaterialSurface3D *surface = MaterialSurface3D_get_const(world, entity);
+    if (surface && surface->enabled &&
+        materials_mask(engine_materials(runtime), entity)) {
+        return; /* Collected serially through the revision-owned terrain cache. */
+    }
     bool spatial = Transform3D_has(world, entity);
     Transform position = { 0 };
     GlobalTransform3D transform = { 0 };
@@ -594,7 +643,7 @@ static void collect_entity(
         scene3d_solid whole = { .frame = render_scene3d_visual_model(&visuals[0]),
                                 .mesh = mesh,
                                 .count = acount(mesh->indices) };
-        collect_mesh(buffer, world, entity, &whole, &color, camera);
+        collect_mesh(buffer, world, entity, &whole, &color, camera, true, NULL);
         return;
     }
     const Shader *binding = Shader_get_const(world, entity);
@@ -613,7 +662,10 @@ static void collect_entity(
                                            .width = visual->part.dimensions.x,
                                            .height = visual->part.dimensions.y,
                                            .depth = visual->part.dimensions.z } };
-        trace_solid(buffer, &solid, id, &color);
+        const IndirectOccluder *indirect = IndirectOccluder_get_const(world, entity);
+        if (!indirect || indirect->enabled) {
+            trace_solid(buffer, &solid, id, &color);
+        }
         scene3d_draw draw = { .solid = solid, .material = id };
         bool visible = render_scene3d_visual_visible(visual, view_projection);
         if (!visible && !casts(buffer, id, &color)) {
@@ -714,6 +766,17 @@ static void collect_particles(
             .particle_shape = particle->shape + 1,
             .particle_age = age,
         };
+        float glow[3] = { color.emission[0] * tint[3],
+                          color.emission[1] * tint[3],
+                          color.emission[2] * tint[3] };
+        render_scene3d_cascades_add_emitter(
+            scene3d->cascades,
+            (CF_V3){ particle->position.x,
+                     particle->elevation,
+                     particle->position.y },
+            radius,
+            glow
+        );
         append_draw(&scene3d->buffer, draw, &color, NULL, camera);
     }
 }
@@ -736,6 +799,11 @@ static void order_lights(render_scene3d *scene3d)
         lights[shadowed++] = light;
     }
     scene3d->shadowed_lights = shadowed;
+    float sizes[4] = { 0 };
+    for (int i = 0; i < shadowed && i < 4; i++) {
+        sizes[i] = lights[i].size;
+    }
+    scene3d->light_shadow_sizes = (CF_V4){ sizes[0], sizes[1], sizes[2], sizes[3] };
     for (int i = 0; i < scene3d->light_count; i++) {
         scene3d->light_positions[i] = lights[i].position;
         scene3d->light_colors[i] = lights[i].color;
@@ -778,6 +846,7 @@ static bool rank_light(render_scene3d *scene3d, CF_V3 eye, Transform position, c
         .cone = cone,
         .score = (float)(light->intensity * peak * radius2 /
                          (dx * dx + dy * dy + dz * dz + radius2)),
+        .size = isfinite(light->size) ? fmaxf(light->size, 0) : 0,
         .shadows = light->shadows,
     };
     int slot = scene3d->light_count;
@@ -890,7 +959,8 @@ static bool collect_spot_lights(
                              .intensity = spot->intensity,
                              .radius = spot->radius,
                              .elevation = spot->elevation,
-                             .shadows = spot->shadows };
+                             .shadows = spot->shadows,
+                             .size = spot->size };
         *candidates += rank_light(scene3d, eye, position, &light, cone);
     }
     ecs_query_end(&query);
@@ -1025,8 +1095,10 @@ static int compare_geometry(const scene3d_solid *a, const scene3d_solid *b)
 }
 
 /* Opaque draws group by pass, shapes before imported meshes, whose programs
- * are numbered apart, then by program and geometry. Translucent ones go back
- * to front. */
+ * are numbered apart, then by program. Draws of geometry that can repeat go
+ * by geometry, so that they coalesce into instanced draws, then near to far;
+ * generated meshes are each drawn once, so they go near to far. Translucent
+ * ones go back to front. */
 static int compare_draws(const void *left, const void *right)
 {
     const scene3d_draw *a = left, *b = right;
@@ -1042,7 +1114,23 @@ static int compare_draws(const void *left, const void *right)
     if (!a->transparent && a->program != b->program) {
         return a->program < b->program ? -1 : 1;
     }
-    int geometry = a->transparent ? 0 : compare_geometry(&a->solid, &b->solid);
+    if (a->transparent) {
+        return (a->row > b->row) - (a->row < b->row);
+    }
+    bool generated = a->solid.dynamic_identity, other = b->solid.dynamic_identity;
+    if (generated != other) {
+        return generated ? 1 : -1;
+    }
+    int geometry = generated ? 0 : compare_geometry(&a->solid, &b->solid);
+    if (geometry) {
+        return geometry;
+    }
+    /* Nearer opaque solids first, so the depth test skips shading what they
+     * hide. */
+    if (a->depth != b->depth) {
+        return a->depth < b->depth ? -1 : 1;
+    }
+    geometry = compare_geometry(&a->solid, &b->solid);
     return geometry ? geometry : (a->row > b->row) - (a->row < b->row);
 }
 
@@ -1073,21 +1161,50 @@ static int collect_shadow_boxes(render_scene3d *scene3d)
 /* Fits the sun's shadow cascades to the boxes. Returns the cascade count. */
 static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera, int receivers)
 {
+    scene3d->sun_receiver_extra = 0;
     if (!scene3d->sun_shadows) {
         return 0;
     }
     CF_V3 toward = { scene3d->sun_direction.x,
                      scene3d->sun_direction.y,
                      scene3d->sun_direction.z };
-    return render_scene3d_shadow_fit(
-        scene3d->shadow,
-        toward,
-        scene3d->sun_spread,
-        scene3d->shadow_boxes,
-        acount(scene3d->shadow_boxes),
-        receivers,
-        camera
-    );
+    const CF_M4x4 *boxes = scene3d->shadow_boxes;
+    int count = acount(scene3d->shadow_boxes);
+    if (render_scene3d_volume_active(scene3d->volume)) {
+        /* Fog is a sun receiver even when no surface is visible. This box
+         * participates only in cascade fitting, never geometry or GI. */
+        CF_M4x4 inverse = cf_m4_invert(cf_mul_m4(camera->projection, camera->view));
+        CF_V3 low = { INFINITY, INFINITY, INFINITY },
+              high = { -INFINITY, -INFINITY, -INFINITY };
+        for (int i = 0; i < 4; i++) {
+            float x = i & 1 ? 1.0f : -1.0f, y = i & 2 ? 1.0f : -1.0f;
+            CF_V3 a = cf_m4_transform_point(inverse, (CF_V3){ x, y, 0 });
+            CF_V3 b = cf_m4_transform_point(inverse, (CF_V3){ x, y, 1 });
+            float da = -cf_m4_transform_point(camera->view, a).z;
+            float db = -cf_m4_transform_point(camera->view, b).z;
+            float end = fmaxf(da, fminf(da + scene3d->fog_distance, db));
+            CF_V3 far = cf_add_v3(a, cf_mul_v3_f(cf_sub_v3(b, a), (end - da) / (db - da)));
+            low = cf_min_v3(low, cf_min_v3(a, far));
+            high = cf_max_v3(high, cf_max_v3(a, far));
+        }
+        CF_M4x4 fog = cf_mul_m4(
+            cf_m4_translate(cf_mul_v3_f(cf_add_v3(low, high), .5f)),
+            cf_m4_scale(cf_sub_v3(high, low))
+        );
+        aclear(scene3d->sun_boxes);
+        for (int i = 0; i < receivers; i++) {
+            apush(scene3d->sun_boxes, boxes[i]);
+        }
+        apush(scene3d->sun_boxes, fog);
+        for (int i = receivers; i < count; i++) {
+            apush(scene3d->sun_boxes, boxes[i]);
+        }
+        boxes = scene3d->sun_boxes;
+        count++;
+        receivers++;
+        scene3d->sun_receiver_extra = 1;
+    }
+    return render_scene3d_shadow_fit(scene3d->shadow, toward, scene3d->sun_spread, boxes, count, receivers, camera);
 }
 
 /* Submits a solid's triangles under the current shader. Its mesh is
@@ -1097,12 +1214,22 @@ static void draw_solid(const render_scene3d *scene3d, const scene3d_solid *solid
     cf_draw3d_push();
     cf_draw3d_transform(solid->frame);
     if (solid->mesh) {
-        render_scene3d_mesh_cache_draw(
-            scene3d->meshes,
-            solid->mesh,
-            solid->first,
-            solid->count
-        );
+        if (solid->dynamic_identity) {
+            render_scene3d_mesh_cache_dynamic_draw(
+                scene3d->meshes,
+                solid->dynamic_identity,
+                solid->mesh,
+                solid->first,
+                solid->count
+            );
+        } else {
+            render_scene3d_mesh_cache_draw(
+                scene3d->meshes,
+                solid->mesh,
+                solid->first,
+                solid->count
+            );
+        }
     } else {
         draw_shape(scene3d, &solid->shape);
     }
@@ -1186,7 +1313,11 @@ static bool draw_shadow(render_scene3d *scene3d, int cascades, int receivers)
             }
         }
         for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
-            if (render_scene3d_shadow_reaches(shadow, cascade, receivers + i)) {
+            if (render_scene3d_shadow_reaches(
+                    shadow,
+                    cascade,
+                    receivers + scene3d->sun_receiver_extra + i
+                )) {
                 cast(scene3d, &scene3d->buffer.casters[i]);
             }
         }
@@ -1223,8 +1354,18 @@ static bool draw_light_shadows(render_scene3d *scene3d, int receivers)
         aclear(scene3d->near_boxes);
         for (int i = 0; i < acount(scene3d->shadow_boxes); i++) {
             bool solid = i < opaque || i >= receivers;
-            if (solid &&
-                render_scene3d_light_shadow_near(shadow, light, scene3d->shadow_boxes[i])) {
+            const scene3d_draw *draw = boxed_draw(scene3d, i, receivers);
+            bool near = draw->solid.mesh ? render_scene3d_light_shadow_mesh_near(
+                                               shadow,
+                                               light,
+                                               scene3d->shadow_boxes[i]
+                                           )
+                                         : render_scene3d_light_shadow_near(
+                                               shadow,
+                                               light,
+                                               scene3d->shadow_boxes[i]
+                                           );
+            if (solid && near) {
                 apush(scene3d->near_boxes, i);
             }
         }
@@ -1344,11 +1485,65 @@ static bool update_gi(render_scene3d *scene3d)
 
 /* The sky and trails go between opaque and translucent surfaces: the sky
  * fills what opaque ones left open, and translucent ones blend over both. */
-static void draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
+static bool draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
 {
     render_scene3d_sky_draw(scene3d->sky, camera);
+    render_scene3d_volume_lights lights = {
+        .sun_direction = scene3d->sun_direction,
+        .sun_color = scene3d->sun_color,
+        .positions = scene3d->light_positions,
+        .colors = scene3d->light_colors,
+        .cones = scene3d->light_cones,
+        .count = scene3d->light_count,
+        .sun_shadow = render_scene3d_shadow_read(scene3d->shadow, scene3d->work.cascades),
+        .local_shadow = render_scene3d_light_shadow_read(scene3d->light_shadow)
+    };
+    lights.local_shadow.settings.x = (float)scene3d->work.light_shadows;
+    if (!render_scene3d_volume_draw(
+            scene3d->volume,
+            camera,
+            &lights,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
     render_scene3d_particles_draw(scene3d->particle_fields, camera);
     render_scene3d_trails_draw(scene3d->trails, camera);
+    return true;
+}
+
+static bool draw_volume_depth(render_scene3d *scene3d, const render_scene3d_camera *camera)
+{
+    if (!render_scene3d_volume_active(scene3d->volume)) {
+        return true;
+    }
+    if (!render_scene3d_volume_begin_depth(
+            scene3d->volume,
+            camera,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
+    bool mirrored = false;
+    cf_draw3d_push_render_state(lit_state(false, mirrored));
+    for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
+        const scene3d_draw *draw = &scene3d->buffer.draws[i];
+        if (draw->transparent) {
+            break;
+        }
+        bool mirrors = render_scene3d_frame_mirrors(draw->solid.frame);
+        if (mirrors != mirrored) {
+            mirrored = mirrors;
+            cf_draw3d_pop_render_state();
+            cf_draw3d_push_render_state(lit_state(false, mirrored));
+        }
+        cast(scene3d, draw);
+    }
+    cf_draw3d_pop_render_state();
+    render_scene3d_volume_end_depth(scene3d->volume);
+    return true;
 }
 
 /* The programs that draw a solid: the mesh pass's for an imported mesh, and
@@ -1365,6 +1560,18 @@ static render_programs *solid_programs(const render_scene3d *scene3d, const scen
 /* Uploads a solid's mesh, or returns false with a binding error. */
 static bool upload(render_scene3d *scene3d, const scene3d_solid *solid)
 {
+    if (solid->dynamic_identity) {
+        if (render_scene3d_mesh_cache_dynamic_upload(
+                scene3d->meshes,
+                solid->dynamic_identity,
+                solid->dynamic_revision,
+                solid->mesh
+            )) {
+            return true;
+        }
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Cannot upload revision-owned terrain mesh");
+        return false;
+    }
     if (!solid->mesh || render_scene3d_mesh_cache_upload(scene3d->meshes, solid->mesh)) {
         return true;
     }
@@ -1401,7 +1608,8 @@ static int prepare_program(render_scene3d *scene3d, render_programs *programs, i
 static bool prepare_solid(render_scene3d *scene3d, scene3d_draw *draw)
 {
     if (draw->masked && (casts_shadows(scene3d) ||
-                         render_scene3d_occlusion_active(scene3d->occlusion))) {
+                         render_scene3d_occlusion_active(scene3d->occlusion) ||
+                         render_scene3d_volume_active(scene3d->volume))) {
         draw->shadow_program = prepare_program(
             scene3d,
             shadow_programs(scene3d, &draw->solid),
@@ -1461,13 +1669,16 @@ static bool prepare_draws(render_scene3d *scene3d)
 
 static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
 {
-    if (!acount(scene3d->buffer.draws)) {
-        draw_behind_translucents(scene3d, camera);
-        return true;
+    if (!acount(scene3d->buffer.draws) &&
+        !render_scene3d_volume_active(scene3d->volume)) {
+        render_scene3d_mesh_cache_dynamic_end(scene3d->meshes);
+        return draw_volume_depth(scene3d, camera) &&
+               draw_behind_translucents(scene3d, camera);
     }
     if (!prepare_draws(scene3d)) {
         return false;
     }
+    render_scene3d_mesh_cache_dynamic_end(scene3d->meshes);
     int cells = acount(scene3d->buffer.pixels);
     int height = 1;
     while (height * PARAMETER_TEXTURE_WIDTH < cells) {
@@ -1516,6 +1727,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
     cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
     cf_draw3d_set_uniform("scene_light_cones", scene3d->light_cones, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_shadow_sizes", &scene3d->light_shadow_sizes, CF_UNIFORM_TYPE_FLOAT4, 1);
     render_influences_bind(scene3d->influences);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     render_gpu_timing_mark("3D setup");
@@ -1529,15 +1741,45 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         return false;
     }
     render_gpu_timing_mark("3D shadow maps");
-    see_from((CF_V4){ camera->eye.x, camera->eye.y, camera->eye.z, 1 });
+    see_from(render_scene3d_viewer(camera));
     bool occluded = draw_occlusion(scene3d, camera);
     render_gpu_timing_mark("3D ambient occlusion");
-    if (!occluded || !update_gi(scene3d)) {
+    bool lit = render_scene3d_cascades_active(scene3d->cascades);
+    if (occluded && lit) {
+        aclear(scene3d->solid_boxes);
+        /* Each traced solid's own frame: a Box Frame's beams share one box. */
+        for (int i = 0; i < scene3d->object_solids; i++) {
+            apush(scene3d->solid_boxes, scene3d->buffer.solids[i].frame);
+        }
+        render_scene3d_cascades_set_solids(
+            scene3d->cascades,
+            scene3d->solid_boxes,
+            acount(scene3d->solid_boxes)
+        );
+        occluded = render_scene3d_cascades_draw(
+            scene3d->cascades,
+            camera,
+            render_scene3d_occlusion_depth(scene3d->occlusion),
+            render_scene3d_occlusion_map(scene3d->occlusion),
+            scene3d->history,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        );
+        render_gpu_timing_mark("3D screen light");
+    }
+    if (!occluded || !draw_volume_depth(scene3d, camera) || !update_gi(scene3d)) {
         cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
         return false;
     }
     render_gpu_timing_mark("3D global illumination");
-    render_scene3d_occlusion_bind(scene3d->occlusion, true);
+    if (lit) {
+        cf_draw3d_set_texture(
+            "scene_occlusion",
+            render_scene3d_cascades_result(scene3d->cascades)
+        );
+    } else {
+        render_scene3d_occlusion_bind(scene3d->occlusion, true);
+    }
     render_scene3d_gi_bind(scene3d->gi);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
     render_scene3d_light_shadow_bind(scene3d->light_shadow);
@@ -1562,7 +1804,14 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         bool mirrors = render_scene3d_frame_mirrors(draw->solid.frame);
         if (draw->transparent != transparent || mirrors != mirrored) {
             if (draw->transparent && !transparent) {
-                draw_behind_translucents(scene3d, camera);
+                /* The sky may draw a material program of its own, which
+                 * shares the bound program's image names. */
+                render_programs_unbind3d(bound, program);
+                bool drawn = draw_behind_translucents(scene3d, camera);
+                render_programs_bind3d(bound, program);
+                if (!drawn) {
+                    break;
+                }
                 /* The occlusion describes the opaque surfaces behind them. */
                 render_scene3d_occlusion_bind(scene3d->occlusion, false);
             }
@@ -1574,7 +1823,9 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         draw_with_material(scene3d, draw);
     }
     cf_draw3d_pop_render_state();
-    render_programs_unbind3d(bound, program);
+    if (bound) {
+        render_programs_unbind3d(bound, program);
+    }
     /* Later meshes would otherwise keep the parameters bound past their resize or free. */
     cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     render_scene3d_shadow_unbind();
@@ -1584,10 +1835,20 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     render_scene3d_gi_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
-    if (!transparent) {
-        draw_behind_translucents(scene3d, camera);
+    if (!transparent && !scene3d->binding_error[0]) {
+        if (!draw_behind_translucents(scene3d, camera)) {
+            return false;
+        }
     }
-    return true;
+    return !scene3d->binding_error[0];
+}
+
+/* Whether opaque solids are kept as boxes: for global illumination's rays,
+ * and for screen light's when it traces the world. */
+static bool traces_solids(const render_scene3d *scene3d)
+{
+    return render_scene3d_gi_active(scene3d->gi) ||
+           render_scene3d_cascades_traces_world(scene3d->cascades);
 }
 
 enum
@@ -1614,7 +1875,7 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
         buffer->binding_error[0] = 0;
         buffer->worker = worker;
         buffer->shadows = casts_shadows(scene3d);
-        buffer->traced = render_scene3d_gi_active(scene3d->gi);
+        buffer->traced = traces_solids(scene3d);
         int limit = (c + 1) * DRAW_CHUNK;
         if (limit > acount(scene3d->entities)) {
             limit = acount(scene3d->entities);
@@ -1624,6 +1885,7 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
         }
     }
 }
+
 static void collect_geometry(
     render_scene3d *scene3d,
     ecs_world *world,
@@ -1640,7 +1902,7 @@ static void collect_geometry(
     if (scene3d->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
         scene3d->buffer.binding_error[0] = 0;
         scene3d->buffer.shadows = casts_shadows(scene3d);
-        scene3d->buffer.traced = render_scene3d_gi_active(scene3d->gi);
+        scene3d->buffer.traced = traces_solids(scene3d);
         for (int i = 0; i < count; i++) {
             collect_entity(&scene3d->buffer, world, scene3d->entities[i], camera, runtime);
         }
@@ -1700,10 +1962,296 @@ static void collect_geometry(
     scene3d->work.tasks = chunks;
     scene3d->work.workers = __builtin_popcount(workers);
 }
+/* Rock behind TerrainVolume play planes: changed chunks re-mesh from the
+ * live carve, cast direct shadows, and add fully solid bricks as indirect
+ * proxies, so 3D openings stay open for GI. */
+static bool collect_depth_volumes(
+    render_scene3d *scene3d,
+    ecs_world *world,
+    const render_scene3d_camera *camera,
+    const engine *runtime,
+    render_skip skip
+)
+{
+    if (!ecs_world_component(world, COMPONENT_TerrainVolume.id)) {
+        return true;
+    }
+    draw_buffer *buffer = &scene3d->buffer;
+    ecs_component_id required[] = { COMPONENT_Transform.id,
+                                    COMPONENT_TerrainVolume.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Cannot query terrain volumes");
+        return false;
+    }
+    ecs_entity entity;
+    bool valid = true;
+    while (valid && ecs_query_next(&query, &entity)) {
+        const TerrainVolume *style = TerrainVolume_get_const(world, entity);
+        materials_depth_volume view;
+        if (!style->enabled || render_skip_has(skip, entity) ||
+            !engine_entity_visible(runtime, world, entity) ||
+            !materials_terrain_volume(engine_materials(runtime), entity, &view)) {
+            continue;
+        }
+        const Appearance *appearance = Appearance_get_const(world, entity);
+        const Material *material = Material_get_const(world, entity);
+        Material fallback = { .scene = appearance ? appearance->color : 0xffffffffu };
+        material_coefficients color;
+        if (!material_extract(material ? material : &fallback, &color)) {
+            continue;
+        }
+        CF_V2 origin = engine_render_transform(runtime, world, entity).position;
+        render_scene3d_cascades_set_rock(scene3d->cascades, view, style->elevation, origin);
+        render_scene3d_volume_surface surface = render_scene3d_terrain_volume_get(
+            scene3d->depth_volumes,
+            view,
+            style->elevation,
+            origin,
+            scene3d->parallel_disabled ? NULL : scene3d->pool
+        );
+        CF_M4x4 frame = cf_m4_translate((CF_V3){ origin.x, 0, origin.y });
+        for (int i = 0; i < surface.chunk_count && valid; i++) {
+            render_scene3d_volume_chunk chunk = surface.chunks[i];
+            scene3d_solid whole = { .frame = frame,
+                                    .mesh = chunk.mesh,
+                                    .count = acount(chunk.mesh->indices),
+                                    .dynamic_identity = chunk.identity,
+                                    .dynamic_revision = chunk.revision };
+            collect_mesh(buffer, world, entity, &whole, &color, camera, false, NULL);
+            if (buffer->binding_error[0]) {
+                snprintf(
+                    scene3d->binding_error,
+                    sizeof scene3d->binding_error,
+                    "%s",
+                    buffer->binding_error
+                );
+                valid = false;
+            }
+        }
+        bool front_drawn = style->front_material && style->front_material[0];
+        for (int i = 0; front_drawn && i < surface.caster_count && valid; i++) {
+            render_scene3d_volume_chunk chunk = surface.casters[i];
+            scene3d_solid whole = { .frame = frame,
+                                    .mesh = chunk.mesh,
+                                    .count = acount(chunk.mesh->indices),
+                                    .dynamic_identity = chunk.identity,
+                                    .dynamic_revision = chunk.revision };
+            collect_mesh(
+                buffer,
+                world,
+                entity,
+                &whole,
+                &color,
+                camera,
+                false,
+                style->front_material
+            );
+            if (buffer->binding_error[0]) {
+                snprintf(
+                    scene3d->binding_error,
+                    sizeof scene3d->binding_error,
+                    "%s",
+                    buffer->binding_error
+                );
+                valid = false;
+            }
+        }
+        const Shader *binding = Shader_get_const(world, entity);
+        int caster_material;
+        if (valid && !front_drawn && surface.caster_count && buffer->shadows &&
+            surface_material(buffer, binding ? binding->material : NULL, &caster_material) &&
+            !masked_material(caster_material)) {
+            for (int i = 0; i < surface.caster_count; i++) {
+                render_scene3d_volume_chunk chunk = surface.casters[i];
+                scene3d_draw caster = { .solid = { .frame = frame,
+                                                   .mesh = chunk.mesh,
+                                                   .count = acount(chunk.mesh->indices),
+                                                   .dynamic_identity = chunk.identity,
+                                                   .dynamic_revision = chunk.revision },
+                                        .material = caster_material };
+                apush(buffer->casters, caster);
+            }
+        }
+        if (!valid || !buffer->traced) {
+            continue;
+        }
+        if (acount(buffer->solids) + surface.box_count > RENDER_TERRAIN_GI_PROXY_LIMIT) {
+            snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Scene indirect visibility exceeds %d solid proxies with terrain volumes", RENDER_TERRAIN_GI_PROXY_LIMIT);
+            valid = false;
+            break;
+        }
+        for (int i = 0; i < surface.box_count; i++) {
+            terrain_volume_box b = surface.boxes[i];
+            CF_M4x4 box = cf_mul_m4(
+                frame,
+                cf_mul_m4(
+                    cf_m4_translate(cf_mul_v3_f(cf_add_v3(b.min, b.max), .5f)),
+                    cf_m4_scale(cf_sub_v3(b.max, b.min))
+                )
+            );
+            apush(
+                buffer->solids,
+                ((render_scene3d_gi_solid){
+                    .frame = box,
+                    .box = box,
+                    .primitive = PRIMITIVE_BOX,
+                    .albedo = { color.scene[0], color.scene[1], color.scene[2] },
+                    .emission = { color.emission[0], color.emission[1], color.emission[2] } })
+            );
+        }
+        scene3d->work.terrain_gi_proxies += surface.box_count;
+    }
+    ecs_query_end(&query);
+    return valid;
+}
+
+/* Live occupancy is the only terrain truth. Keep its derived CPU geometry
+ * outside parallel imported-mesh collection, and never trace its outer box. */
+static bool collect_terrains(
+    render_scene3d *scene3d,
+    ecs_world *world,
+    const render_scene3d_camera *camera,
+    const engine *runtime,
+    render_skip skip
+)
+{
+    render_scene3d_terrain_begin(scene3d->terrain);
+    render_scene3d_terrain_volume_begin(scene3d->depth_volumes);
+    draw_buffer *buffer = &scene3d->buffer;
+    buffer->binding_error[0] = 0;
+    /* Terrain proxies serve GI only: world tracing marches the rock itself. */
+    buffer->traced = render_scene3d_gi_active(scene3d->gi);
+    buffer->shadows = casts_shadows(scene3d);
+    /* The solids so far are objects; terrain proxies follow. */
+    scene3d->object_solids = acount(buffer->solids);
+    ecs_component_id required[] = { COMPONENT_Transform.id,
+                                    COMPONENT_MaterialSurface3D.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Cannot query live terrain surfaces");
+        return false;
+    }
+    ecs_entity entity;
+    bool valid = true;
+    while (valid && ecs_query_next(&query, &entity)) {
+        const MaterialSurface3D *options = MaterialSurface3D_get_const(world, entity);
+        const material_mask *mask = materials_mask(engine_materials(runtime), entity);
+        if (!options->enabled || !mask || render_skip_has(skip, entity) ||
+            !engine_entity_visible(runtime, world, entity)) {
+            continue;
+        }
+        if (Transform3D_has(world, entity)) {
+            snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Live terrain requires its authoritative 2D transform");
+            valid = false;
+            break;
+        }
+        const Appearance *appearance = Appearance_get_const(world, entity);
+        const Material *material = Material_get_const(world, entity);
+        Material fallback = { .scene = appearance ? appearance->color : 0xffffffffu };
+        material_coefficients color;
+        if (!material_extract(material ? material : &fallback, &color)) {
+            continue;
+        }
+        const Shader *binding = Shader_get_const(world, entity);
+        int material_id;
+        if (!surface_material(buffer, binding ? binding->material : NULL, &material_id)) {
+            snprintf(
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
+                "%s",
+                buffer->binding_error
+            );
+            valid = false;
+            break;
+        }
+        bool opaque = !transparent_surface(material_id, &color) &&
+                      !masked_material(material_id);
+        const MaterialFrame *source = MaterialFrame_get_const(world, entity);
+        const IndirectOccluder *indirect = IndirectOccluder_get_const(world, entity);
+        const render_scene3d_terrain_surface *surface = render_scene3d_terrain_get(
+            scene3d->terrain,
+            mask,
+            *options,
+            source ? *source : (MaterialFrame){ 0 },
+            engine_render_transform(runtime, world, entity),
+            world,
+            entity,
+            buffer->traced && opaque && (!indirect || indirect->enabled),
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        );
+        if (!surface) {
+            valid = false;
+            break;
+        }
+        if (!acount(surface->mesh->indices)) {
+            continue;
+        }
+        scene3d_solid whole = { .frame = surface->frame,
+                                .mesh = surface->mesh,
+                                .count = acount(surface->mesh->indices),
+                                .dynamic_identity = surface->identity,
+                                .dynamic_revision = surface->revision };
+        collect_mesh(buffer, world, entity, &whole, &color, camera, false, NULL);
+        if (buffer->binding_error[0]) {
+            snprintf(
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
+                "%s",
+                buffer->binding_error
+            );
+            valid = false;
+            break;
+        }
+        if (acount(buffer->solids) + surface->proxy_count > RENDER_TERRAIN_GI_PROXY_LIMIT) {
+            snprintf(
+                scene3d->binding_error,
+                sizeof scene3d->binding_error,
+                "Scene indirect visibility exceeds %d solid proxies; terrain "
+                "openings cannot be simplified closed",
+                RENDER_TERRAIN_GI_PROXY_LIMIT
+            );
+            valid = false;
+            break;
+        }
+        for (int i = 0; i < surface->proxy_count; i++) {
+            CF_M4x4 box = cf_mul_m4(surface->frame, surface->proxies[i]);
+            render_scene3d_gi_solid proxy = {
+                .frame = box,
+                .box = box,
+                .primitive = PRIMITIVE_BOX,
+                .albedo = { color.scene[0], color.scene[1], color.scene[2] },
+                .emission = { color.emission[0], color.emission[1], color.emission[2] }
+            };
+            apush(buffer->solids, proxy);
+        }
+        scene3d->work.terrain_gi_proxies += surface->proxy_count;
+    }
+    ecs_query_end(&query);
+    if (!valid || !collect_depth_volumes(scene3d, world, camera, runtime, skip)) {
+        return false;
+    }
+    render_scene3d_terrain_end(scene3d->terrain);
+    render_scene3d_terrain_volume_end(scene3d->depth_volumes);
+    /* Indirect light keeps its history through cuts: restarting it on every
+     * re-mesh would leave rapid fire lit by a single noisy frame. */
+    scene3d->work.terrain_rebuilds = render_scene3d_terrain_rebuilds(scene3d->terrain) +
+                                     render_scene3d_terrain_volume_rebuilds(
+                                         scene3d->depth_volumes
+                                     );
+    return true;
+}
+
 void render_scene3d_set_parallel(render_scene3d *scene3d, bool enabled)
 {
     scene3d->parallel_disabled = !enabled;
 }
+void render_scene3d_set_history(render_scene3d *scene3d, CF_Texture history)
+{
+    scene3d->history = history;
+}
+
 render_scene3d_work render_scene3d_last_work(const render_scene3d *scene3d)
 {
     return scene3d->work;
@@ -1734,6 +2282,7 @@ bool render_scene3d_draw(
     aclear(scene3d->buffer.casters);
     aclear(scene3d->buffer.solids);
     render_scene3d_mesh_cache_prune(scene3d->meshes);
+    render_scene3d_mesh_cache_dynamic_begin(scene3d->meshes);
     /* Rhythm is an optional material input; without a valid clock it rests at zero. */
     beat beat = { 0 };
     rhythm_sample(world, time, &beat);
@@ -1742,7 +2291,16 @@ bool render_scene3d_draw(
                                (float)beat.period,
                                (float)beat.duration };
     set_ambient(scene3d, environment);
-    if (!render_scene3d_sky_prepare(
+    scene3d->fog_distance = environment->fog_distance;
+    if (!render_scene3d_volume_prepare(
+            scene3d->volume,
+            environment,
+            scene3d->width,
+            scene3d->height,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_sky_prepare(
             scene3d->sky,
             environment,
             scene3d->binding_error,
@@ -1750,6 +2308,14 @@ bool render_scene3d_draw(
         ) ||
         !render_scene3d_occlusion_prepare(
             scene3d->occlusion,
+            environment,
+            scene3d->width,
+            scene3d->height,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_cascades_prepare(
+            scene3d->cascades,
             environment,
             scene3d->width,
             scene3d->height,
@@ -1764,6 +2330,7 @@ bool render_scene3d_draw(
         )) {
         return false;
     }
+    render_scene3d_cascades_clear_world(scene3d->cascades);
     if (!collect_sun(scene3d, world, runtime)) {
         return false;
     }
@@ -1783,6 +2350,10 @@ bool render_scene3d_draw(
         return false;
     }
     collect_geometry(scene3d, world, camera, runtime, skip);
+    if (scene3d->binding_error[0] ||
+        !collect_terrains(scene3d, world, camera, runtime, skip)) {
+        return false;
+    }
     if (!render_scene3d_particles_prepare(
             scene3d->particle_fields,
             world,
@@ -1817,6 +2388,12 @@ bool render_scene3d_draw(
     }
     bool submitted = submit(scene3d, camera, time);
     scene3d->work.meshes = render_scene3d_mesh_cache_count(scene3d->meshes);
+    scene3d->work.terrain_meshes = render_scene3d_mesh_cache_dynamic_count(
+        scene3d->meshes
+    );
+    scene3d->work.terrain_uploads = render_scene3d_mesh_cache_dynamic_uploads(
+        scene3d->meshes
+    );
     return submitted;
 }
 
@@ -1850,7 +2427,15 @@ bool render_scene3d_preview_material(
     environment.occlusion = OCCLUSION_OFF;
     set_sun(scene3d, &sun);
     set_ambient(scene3d, &environment);
-    if (!render_scene3d_sky_prepare(
+    if (!render_scene3d_volume_prepare(
+            scene3d->volume,
+            &environment,
+            0,
+            0,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_sky_prepare(
             scene3d->sky,
             &environment,
             scene3d->binding_error,
@@ -1858,6 +2443,14 @@ bool render_scene3d_preview_material(
         ) ||
         !render_scene3d_occlusion_prepare(
             scene3d->occlusion,
+            &environment,
+            0,
+            0,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_cascades_prepare(
+            scene3d->cascades,
             &environment,
             0,
             0,

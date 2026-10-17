@@ -1589,9 +1589,9 @@ input and expected output is at most 58 bytes. Existing helpers check exact
 output, immutable input, idempotence and whitespace edit-map reconstruction.
 No source generation, files, processes, authored/backend execution, worlds,
 frames, network or GPU are added. The shared native/Wasm finite suite has
-40 cases and 4,490 assertions. The native corpus is unchanged; with the
-historical 89 files, its 361 assertions bring the expected native total to
-41 cases and 4,851 assertions. These counts are source-derived, not a new
+40 cases and 4,490 assertions. The native corpus has 92 files and 64,145 bytes;
+its 373 assertions bring the expected native total to 41 cases and 4,863
+assertions. These counts are source-derived, not a new
 execution result. Use the existing production 60-second supervisor after
 independent exact-source/workload admission; configuration and build timing
 remain separate.

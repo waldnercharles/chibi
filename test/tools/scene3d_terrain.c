@@ -365,6 +365,49 @@ static bool same_chunks(
     return true;
 }
 
+static bool empty_volume_keeps_no_meshes_or_boxes(void)
+{
+    char error[192];
+    field_ir code[] = { { .op = FIELD_CONSTANT, .value = 100 } };
+    field_program *program = field_program_new(code, 1, 0, NULL, 0, error, sizeof error);
+    terrain_volume volume = { 0 };
+    REQUIRE(
+        program && terrain_volume_bake(
+                       program,
+                       (field_context){ 0 },
+                       (terrain_volume_shape){ { 3, 3, 1, 0, 0 }, 1, 3, 1, true, 1 },
+                       NULL,
+                       &volume,
+                       error,
+                       sizeof error
+                   )
+    );
+    field_program_free(program);
+    unsigned char *open;
+    float *removed = carve_nothing(&volume, &open);
+    render_scene3d_terrain_volume *volumes = render_scene3d_terrain_volume_new();
+    materials_depth_volume view = { &volume, removed, 1, 1 };
+    render_scene3d_volume_surface
+        first = render_scene3d_terrain_volume_get(volumes, view, 0, (CF_V2){ 0 }, NULL);
+    REQUIRE(!first.chunk_count && !first.caster_count && !first.box_count);
+    REQUIRE(render_scene3d_terrain_volume_rebuilds(volumes) > 0);
+    render_scene3d_terrain_volume_begin(volumes);
+    render_scene3d_volume_surface
+        cached = render_scene3d_terrain_volume_get(volumes, view, 0, (CF_V2){ 0 }, NULL);
+    REQUIRE(!cached.chunk_count && !cached.caster_count && !cached.box_count);
+    REQUIRE(render_scene3d_terrain_volume_rebuilds(volumes) == 0);
+    render_scene3d_volume_surface
+        moved = render_scene3d_terrain_volume_get(volumes, view, 0, (CF_V2){ 1, 0 }, NULL);
+    REQUIRE(!moved.chunk_count && !moved.caster_count && !moved.box_count);
+    REQUIRE(render_scene3d_terrain_volume_rebuilds(volumes) > 0);
+    render_scene3d_terrain_volume_end(volumes);
+    render_scene3d_terrain_volume_free(volumes);
+    free(removed);
+    free(open);
+    terrain_volume_free(&volume);
+    return true;
+}
+
 /* A cut re-meshes and refits only what it can reshape, and the result equals
  * a fresh build from the same carve: drawn and caster meshes and boxes. */
 static bool volume_rebuild_after_a_cut_matches_a_fresh_build(void)
@@ -497,6 +540,7 @@ void test_tool_scene3d_terrain(void)
     RUN_TEST_CASE(opening_revision_and_retirement);
     RUN_TEST_CASE(recess_options_rebuild_and_keep_proxy_openings);
     RUN_TEST_CASE(complex_occupancy_is_rejected_without_closing_openings);
+    RUN_TEST_CASE(empty_volume_keeps_no_meshes_or_boxes);
     RUN_TEST_CASE(volume_rebuild_after_a_cut_matches_a_fresh_build);
     RUN_TEST_CASE(volume_boxes_fit_the_budget_with_many_columns);
 }

@@ -113,7 +113,7 @@ NATIVE = {
     ('--material-surface-mesh',): 'Fixed CPU geometry specimens checking relief, recess, cuts, seams, normals, stable source frames and terrain volumes, no window or files; shared60s.',
     ('--scene3d-camera',): 'Three bounded CPU projection, parallel-ray, ground-picking and perspective regression cases; no window or files; shared60s.',
     ('--scene3d-volume',): 'Three CPU default-disabled no-op, physical interval and bounded quality cases; no window or files; shared60s.',
-    ('--scene3d-terrain',): 'Six bounded CPU mesh-shadow range, occupancy/proxy, revision, empty/reset/retirement, capacity, terrain-volume incremental rebuild and box-budget cases; shared60s.',
+    ('--scene3d-terrain',): 'Seven bounded CPU mesh-shadow range, occupancy/proxy, revision, empty/reset/retirement, capacity, terrain-volume incremental rebuild and box-budget cases; empty-volume regression bakes one constant 3x3x3 lattice and checks initial, cached and moved origins; no frames/GPU; shared60s.',
     ('--scene3d-terrain-gpu',): 'One hidden32x32 context, tiny live-mesh upload/reuse/cut/retirement case; shared60s.',
     ('--scene3d-volume-gpu',): 'One hidden64x64 context, five-frame real 3D blocker, shadow-toggle and analytic extinction readback case; shared60s.',
     ('--material-mesh-cache',): 'One hidden64x64 context, bounded mesh upload/cut/retire lifecycle and absorption readback; shared60s.',
@@ -454,6 +454,10 @@ TOOLS = {
     # Field programs, terrain chunks, streaming tiles and deterministic trigonometry.
     'fields': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fields'],
     # Reviewed whitespace-only CST formatter, finite cases and bounded production source manifest.
+    # Package separator case: 21 fixed formatting pairs, 42 formatter calls and
+    # 84 canonical parses; input/output strings <=58B, maps and idempotence.
+    # Adds 1726 assertions: 40 fixed cases/4490 assertions before the corpus.
+    # The addition requires independent exact-source/workload admission; shared60s.
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',
                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
@@ -593,6 +597,8 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
+# wasm-format shares the 40 fixed C cases/4490 assertions without a corpus,
+# including the 1726-assertion package separator case; remains standalone.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
 for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]

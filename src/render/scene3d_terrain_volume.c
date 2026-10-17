@@ -309,11 +309,13 @@ static void join(volume_entry *entry, int c, bool behind)
             indices = chunk->dirty ? acount(chunk->mesh.indices) : chunk->indices;
         int base = acount(joined.vertices), first = acount(joined.indices);
         asetlen(joined.vertices, base + vertices);
-        memcpy(
-            joined.vertices + base,
-            from->vertices + vertex,
-            (size_t)vertices * sizeof *joined.vertices
-        );
+        if (vertices) {
+            memcpy(
+                joined.vertices + base,
+                from->vertices + vertex,
+                (size_t)vertices * sizeof *joined.vertices
+            );
+        }
         asetlen(joined.indices, first + indices);
         for (int n = 0; n < indices; n++) {
             joined.indices[first + n] = from->indices[index + n] - vertex + base;

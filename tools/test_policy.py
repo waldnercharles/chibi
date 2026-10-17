@@ -437,6 +437,12 @@ TOOLS = {
     'language-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                           '--prepared',
                           str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language')],
+    # First supervised measurement: eight fixed recording-host cases, sixteen preparations,
+    # at most fourteen runs and twenty callback entries across bytecode and SLJIT.
+    # Two calls/run, six arguments/call, 127 bytes/argument, 1000 steps/run; no host
+    # process/files/network/GPU/clock use. Existing test-driver timing remains; shared60s.
+    'language-build-workflow': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--build-workflow'],
     # Reviewed public module consumer; finite ECS/behavior lifecycle on VM and SLJIT.
     'language-headless': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--headless'],

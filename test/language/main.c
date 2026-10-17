@@ -47,6 +47,7 @@ void test_language_reductions();
 void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
+void test_language_build_workflow();
 void test_language_format();
 void test_language_root_state();
 void test_language_navigation();
@@ -91,7 +92,8 @@ int main(int argc, char **argv)
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
     bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
-    bool record_publication_repro = argc == 2 && !strcmp(argv[1], "--record-publication-repro");
+    bool record_publication_repro = argc == 2 &&
+                                    !strcmp(argv[1], "--record-publication-repro");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
@@ -107,6 +109,7 @@ int main(int argc, char **argv)
     bool borrow = argc == 2 && !strcmp(argv[1], "--borrow");
     bool binding_schedule = argc == 2 && !strcmp(argv[1], "--binding-schedule");
     bool activation_cache = argc == 2 && !strcmp(argv[1], "--activation-cache");
+    bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
@@ -119,18 +122,18 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
-         !record_publication && !record_publication_repro &&
-         !record_values && !record_document && !record_state && !record_services &&
-         !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_builder && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
+         !wasm && !program && !query_program && !incremental && !modules &&
+         !ranges && !component_write && !component_write_layout && !scalarize &&
+         !borrow && !reductions && !binding_schedule && !activation_cache &&
+         !headless && !build_workflow && !navigation && !publication &&
+         !field_runtime && !prototype && !ui_authoring && !text_format &&
+         !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
@@ -146,7 +149,7 @@ int main(int argc, char **argv)
             "--script-benchmark | --activation-benchmark | --binding-benchmark "
             "| "
             "--borrow-benchmark | --incremental-benchmark | --wasm | "
-            "--headless | "
+            "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
@@ -246,6 +249,8 @@ int main(int argc, char **argv)
         }
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
+    } else if (build_workflow) {
+        test_language_build_workflow();
     } else if (headless) {
         test_language_headless();
     } else if (query_program) {

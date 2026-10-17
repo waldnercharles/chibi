@@ -35,9 +35,11 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
 set_source_files_properties(inferred_string_arrays.c record_publication.c outliner_projection.c row_builder.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_builder.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 # Private package discovery is exercised only by the owning test dispatcher.
-target_sources(test_language PRIVATE packages.c
+target_sources(test_language PRIVATE packages.c package_syntax.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/authoring/source_package_syntax.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/authoring/source_packages.c")
-set_source_files_properties(packages.c
+set_source_files_properties(packages.c package_syntax.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/authoring/source_package_syntax.c"
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/authoring/source_packages.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
@@ -79,6 +81,11 @@ foreach(root IN LISTS corpus_roots)
     file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CHIBI_LANGUAGE_TEST_ROOT}/${root}/*.chibi")
     list(APPEND corpus ${sources})
 endforeach()
+# These originals intentionally retain historical declarations for the dedicated
+# project_declarations.c migration checks; they are not canonical corpus inputs.
+list(REMOVE_ITEM corpus
+    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/OutlinerRows.chibi"
+    "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/studio-declarations/VirtualList.chibi")
 foreach(root IN LISTS CHIBI_LANGUAGE_CORPUS_PROJECTS)
     if(NOT IS_ABSOLUTE "${root}" OR NOT IS_DIRECTORY "${root}")
         message(FATAL_ERROR "Language corpus project must be an existing absolute directory: ${root}")

@@ -480,6 +480,11 @@ TOOLS = {
     'language-record-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication'],
     # Single VM publication specimen, used unchanged for fixture-only expected-red.
     'language-record-publication-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication-repro'],
+    # CUT-79 fixed 22 semantic documents, four preparations/initializers and 48 calls.
+    # Standalone only; exact source/resource review required before first execution.
+    'language-inferred-string-arrays': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-arrays'],
+    # Optional first semantic specimen only, with the same expected-success assertion.
+    'language-inferred-string-array-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--inferred-string-array-repro'],
     # Fixed six-case authored-layout foundation; independent admission required.
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
     # Seven fixed semantic record cases; independent workload admission required.

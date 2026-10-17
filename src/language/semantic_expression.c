@@ -870,8 +870,21 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             if (inferred && !acount(result.arguments)) {
                 element = script_analyzer_expr_type(a, value);
                 element.flags &= ~SCRIPT_TYPE_UNTYPED;
+                /* A constant's value is not an inferred array constraint. */
+                if (element.container == PIN_CONTAINER_SINGLE &&
+                    (element.storage == PIN_STR || element.storage == PIN_NAME) &&
+                    (element.flags & SCRIPT_TYPE_LITERAL)) {
+                    element.flags &= ~SCRIPT_TYPE_LITERAL;
+                    element.parameter = 0;
+                }
             }
-            script_analyzer_require(a, child, element, script_analyzer_expr_type(a, value));
+            script_type actual = script_analyzer_expr_type(a, value);
+            if (inferred && element.container == PIN_CONTAINER_SINGLE &&
+                (element.storage == PIN_STR || element.storage == PIN_NAME)) {
+                /* Untyped numbers cannot inhabit string/name element storage. */
+                actual.flags &= ~SCRIPT_TYPE_UNTYPED;
+            }
+            script_analyzer_require(a, child, element, actual);
             apush(result.arguments, ((script_argument){ value, -1, 0, script_analyzer_range(child) }));
             result.effects |= script_analyzer_expr_effects(a, value);
         }

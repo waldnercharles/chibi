@@ -1571,6 +1571,31 @@ The initial expanded run exposed a test-oracle mistake: empty documents are
 syntax errors in the current grammar. The corrected case preserves that
 rejection and tests insertion affinity on a valid empty behavior instead.
 
+### Package-source separator compatibility
+
+The existing C `--format` dispatcher adds one case with sixteen fixed
+input/output pairs plus five preferred-width variants. It covers CR, LF, CRLF,
+mixed and blank lines, explicit semicolons, alias/blank imports, header-only
+input, inline/standalone/multiline block comments, line comments, contextual
+legacy names with internal CR blank lines, default/reflow indentation of a nested
+array, and package CR/LF/CRLF comment-column tracking with a legacy width
+control. CR remains
+part of a `//` comment until LF, matching the existing grammar. Comment and
+other token bytes remain exact; package whitespace gaps canonicalize to LF.
+
+The successful fixed path adds 1,726 assertions and makes 42 formatter calls
+and 84 canonical parses across twenty-one configured formatting pairs. Each
+input and expected output is at most 58 bytes. Existing helpers check exact
+output, immutable input, idempotence and whitespace edit-map reconstruction.
+No source generation, files, processes, authored/backend execution, worlds,
+frames, network or GPU are added. The shared native/Wasm finite suite has
+40 cases and 4,490 assertions. The native corpus has 92 files and 64,145 bytes;
+its 373 assertions bring the expected native total to 41 cases and 4,863
+assertions. These counts are source-derived, not a new
+execution result. Use the existing production 60-second supervisor after
+independent exact-source/workload admission; configuration and build timing
+remain separate.
+
 ## Qualified module prerequisite: admitted fixed workload
 
 `tool language-modules` and `tool wasm-modules` route the same seven pico_unit
@@ -1650,14 +1675,14 @@ formatter token preservation and invalid-source refusal. The full successful
 path makes six explicit semantic analyses, seven minimizer calls and two
 formatter calls. The minimizer's existing internal oracle rounds are unchanged.
 
-The same two cases are included in the existing format dispatcher: 39 finite
-cases, plus the existing bounded corpus case on native. Wasm has no corpus file
-dependency. No catalog, generated source, runtime frame, world, subprocess,
-network or GPU workload is added. Use the unchanged production 60-second
-supervisor; independent exact-head source and artifact admission is required
-before a runtime slot. Configuration and compilation are separate from test
-execution. These SDK checks do not establish CLI/Studio integration or a caret
-map across semantic rewriting.
+The format dispatcher includes these two cases and the package separator case:
+40 finite cases, plus the existing bounded corpus case on native. Wasm has no
+corpus file dependency. No catalog, generated source, runtime frame, world,
+subprocess, network or GPU workload is added. Use the unchanged production
+60-second supervisor; independent exact-head source and artifact admission is
+required before a runtime slot. Configuration and compilation are separate from
+test execution. These SDK checks do not establish CLI/Studio integration or a
+caret map across semantic rewriting.
 
 ### Authored record project publication
 

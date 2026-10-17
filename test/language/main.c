@@ -33,6 +33,7 @@ void test_language_query_boundary();
 void test_language_incremental();
 void test_language_modules();
 void test_numeric_ranges();
+void test_numeric_exact_core();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -105,6 +106,7 @@ int main(int argc, char **argv)
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
+    bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
@@ -133,10 +135,10 @@ int main(int argc, char **argv)
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
          !outliner_projection && !row_builder && !row_array && !record_runtime &&
          !runtime_attribution && !wasm && !program && !query_program && !incremental &&
-         !modules && !ranges && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !modules && !ranges && !numeric_exact_core && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -145,7 +147,7 @@ int main(int argc, char **argv)
             "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
-            "--ranges | "
+            "--ranges | --numeric-exact-core | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -267,6 +269,8 @@ int main(int argc, char **argv)
         test_language_modules();
     } else if (incremental) {
         test_language_incremental();
+    } else if (numeric_exact_core) {
+        test_numeric_exact_core();
     } else if (ranges) {
         test_numeric_ranges();
     } else if (component_write_layout) {

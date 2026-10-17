@@ -427,6 +427,10 @@ TOOLS = {
     # Field programs, terrain chunks, streaming tiles and deterministic trigonometry.
     'fields': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fields'],
     # Reviewed whitespace-only CST formatter, finite cases and bounded production source manifest.
+    # Package separator case: 17 fixed formatting pairs, 34 formatter calls and
+    # 68 canonical parses; input/output strings <=58B, maps and idempotence.
+    # Adds 1294 assertions: 40 fixed cases/4058 assertions before the corpus.
+    # The addition requires independent exact-source/workload admission; shared60s.
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',
                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
@@ -571,6 +575,8 @@ for lab in EXAMPLE_LABS:
                                         f'--installed-example-{lab}']
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
+# wasm-format shares the 40 fixed C cases/4058 assertions without a corpus,
+# including the 1294-assertion package separator case; remains standalone.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
 for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]

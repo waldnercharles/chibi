@@ -319,6 +319,50 @@ TEST_CASE(source_format_rejects_options_and_drafts_atomically)
     return true;
 }
 
+TEST_CASE(source_format_preserves_package_separators)
+{
+    const struct
+    {
+        const char *input, *expected;
+    } cases[] = {
+        { "package app\rimport \"x\"\r", "package app\nimport \"x\"\n" },
+        { "package app\nimport \"x\"\n", "package app\nimport \"x\"\n" },
+        { "package app\r\nimport \"x\"\r\n", "package app\nimport \"x\"\n" },
+        { "package app\r\rimport \"x\"\r", "package app\n\nimport \"x\"\n" },
+        { "package app\r\n\rimport \"x\"\r", "package app\n\nimport \"x\"\n" },
+        { "package app;import \"x\";", "package app; import \"x\";\n" },
+        { "package app /* header */\rimport \"x\"\r",
+          "package app /* header */\nimport \"x\"\n" },
+        { "package app\r/* header */\rimport \"x\"\r",
+          "package app\n/* header */\nimport \"x\"\n" },
+        { "package app/*\r*/import \"x\"\r", "package app /*\r*/ import \"x\"\n" },
+        { "package app // header\r\nimport \"x\"\r\n",
+          "package app // header\r\nimport \"x\"\n" },
+        { "package app // header\nimport \"x\"\n", "package app // header\nimport \"x\"\n" },
+        { "package app // header\rimport \"x\"\r",
+          "package app // header\rimport \"x\"\r\n" },
+        { "package app; /* header */\rimport chosen \"x\";\rimport _ \"y\"\r",
+          "package app; /* header */\nimport chosen \"x\";\nimport _ \"y\"\n" },
+        { "package app\r", "package app\n" },
+        { "behavior package{\r\rimport:=1;}\r", "behavior package {\n    import := 1;\n}\n" },
+        { "package app\rValues::[\r1,\r2\r]\r",
+          "package app\nValues :: [\n    1,\n    2\n]\n" },
+    };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        REQUIRE(configured(cases[i].input, authoring_format_defaults()));
+        REQUIRE(!strcmp(text, cases[i].expected));
+        REQUIRE(map_reproduces_source());
+        cleanup();
+    }
+    REQUIRE(configured(
+        "package app\rValues::[\r1,\r2\r]\r",
+        (authoring_format_options){ .indent_width = 4, .preferred_width = 80 }
+    ));
+    REQUIRE(!strcmp(text, "package app\nValues :: [1, 2]\n"));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+
 TEST_CASE(source_format_block_layout)
 {
     REQUIRE(format("behavior Demo{count:=1;on Tick{count+=2;}}"));
@@ -1227,6 +1271,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_reflow_preserves_comments);
     RUN_TEST_CASE(source_format_maps_insertions_deletions_and_empty_draft);
     RUN_TEST_CASE(source_format_rejects_options_and_drafts_atomically);
+    RUN_TEST_CASE(source_format_preserves_package_separators);
     RUN_TEST_CASE(source_format_block_layout);
     RUN_TEST_CASE(source_format_reductions);
     RUN_TEST_CASE(source_format_component_measures);

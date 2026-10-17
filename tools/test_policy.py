@@ -462,6 +462,14 @@ TOOLS = {
     # Separate exact-candidate build and finite-workload admission required; shared60s.
     'language-numeric-exact-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--numeric-exact-core'],
+    # First supervised measurement requires independent exact-source/workload admission.
+    # 23 private package graph pico cases; 28 constructor attempts, 12 refusals,
+    # at most two tiny owners or one 256-file/package, 255-import chain owner.
+    # Own heap envelope320KiB, borrowed descriptors/scratch64KiB; finite scans,
+    # no recursion, parser, files, children, backend, world, frames, network or GPU.
+    # Existing owning dispatcher and shared60s; build timing is separate.
+    'language-package-graph': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-graph'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

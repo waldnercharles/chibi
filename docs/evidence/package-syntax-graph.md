@@ -1,10 +1,49 @@
 # Package syntax to private graph: verified feature
 
-Status: the fresh build, four finite production routes, and their independent
-source/execution reviews passed. The qualified code/configuration tree is
-`45e3f0f2020faa2be96e3214430c06e8d20f381d`; publication adds only this updated
-evidence document to that tree. Build/test qualification does not clear the
-dependency review or branch-retention merge holds described below.
+Status: the original fresh build and four finite production results remain
+retained. The post-review blank-package correction has passed its minimal
+incremental build and owning 11-case/292-assertion route at qualified tree
+`0851e0094f2ec24f620c0f25a21a609542cacf4a`. Publication adds only this updated
+evidence document to that tested tree. A fresh published-head review and the
+separate dependent integration gates remain required.
+
+## Post-review blank-package correction
+
+The exact-f368 review found that `package _` parsed and extracted successfully,
+then violated the graph constructor's non-blank-name assertion. The earlier
+10-case/287-assertion result was genuine but did not cover this input. The narrow
+correction returns one located extraction diagnostic, `A package needs a non-blank
+name`, before allocating any extraction owner or copying a name. The graph
+invariant, grammar and generated parser remain unchanged. Longer underscore
+names and explicit blank import aliases remain valid.
+
+The new fixed pico_unit case uses a 46-byte UTF-8/CRLF specimen. It verifies an
+error-free canonical parse, a NULL extraction owner, exact name range [18,19),
+line 2/byte column 9, the `_` token and diagnostic text. No graph call is attempted.
+The new NULL-owner assertion is source-proven to fail on the predecessor; a
+separate old-code product run was not performed. Existing blank-import success
+cases remain unchanged.
+
+The three authored files passed formatting and dry run in 0.100 seconds. The
+reviewed incremental build took 11.785 seconds, compiling only the two affected
+translation units and relinking once, plus the unchanged VerifyGlobs check. Its
+complete 2,461-byte log is retained (SHA256
+31e184ed0d47bd407b8df676a778e72382b5ab19ecf81dc08189673854b134ac).
+All 369 actual dependency files, all archives and every other build file remain
+byte-identical; only the two objects, executable and Ninja deps/log changed.
+The final ELF SHA256 is
+63cf0633679b977987abf31fec43a4fc5b2dcdfa36f484e7871c5c6de24d6d13.
+Independent inspection again found only frame_dummy initialization, standard
+C-runtime finalization and the same libc/libm/system-loader closure.
+
+The owning language-package-syntax route passed 11 cases, 292 assertions and one
+suite under the unchanged 60-second policy: 0.072 seconds production time,
+15.648 seconds recorded checked operation, terminal sample at 15.718 seconds.
+Complete before/after input checks matched and no live descendants remained.
+The runtime result SHA256 is
+cac9213d8da0b9e080c024397597e710ddf9fd43a9adb1c3b740385763b56b90.
+The other three routes were not rerun for this private extractor-only repair;
+their original results below retain their original tree attribution.
 
 ## Boundary and ancestry
 
@@ -43,8 +82,8 @@ borrowed inputs. Import directories initially remain NULL. The caller must
 supply every canonical resolved directory before graph construction, and retain
 the final descriptor arrays plus all referenced strings until the graph dies.
 The syntax is read only during extraction; retain it separately to interpret its
-source ranges. An invalid canonical parse or a legacy root returns one source
-diagnostic and no extraction object. No partial graph is published.
+source ranges. An invalid canonical parse, a legacy root or the single blank package name `_`
+returns one source diagnostic and no extraction object. No partial graph is published.
 
 The fixture map matches each declaring file and its exact quoted import token to
 an explicitly supplied canonical directory. It does not decode/normalize paths,
@@ -64,7 +103,7 @@ proposed.
 
 ## Finite owning-dispatcher workload
 
-Owning selector: test_language --package-syntax. Ten pico_unit cases contain:
+Owning selector: test_language --package-syntax. Eleven pico_unit cases contain:
 
 - Four legacy root/name compatibility specimens and nine malformed/mixed header
   specimens, including a missing separator, late/duplicate header, quoted name,
@@ -73,6 +112,7 @@ Owning selector: test_language --package-syntax. Ten pico_unit cases contain:
   nested directory, file-local alias reuse, canonical target identity from two
   path spellings, a default alias differing from the header, and repeated blank
   imports with an edge but no binding.
+- A blank package-name refusal before owner allocation, with an exact located diagnostic.
 - Header mismatch and duplicate alias failures preserving both source ranges.
 - Named/blank self-import identity and dependency-first ordering, plus an unused
   genuine two-package cycle whose witness excludes the diagonal self edges.
@@ -81,12 +121,12 @@ Owning selector: test_language --package-syntax. Ten pico_unit cases contain:
 - A missing resolved target and an incremental header edit whose failed graph
   leaves the original snapshot and graph usable.
 
-Static maximum for this fixed selector: 30 script_parse calls and one script_edit,
-31 extraction attempts (18 accepted, 13 refused), nine graph constructor attempts
+Static maximum for this fixed selector: 31 script_parse calls and one script_edit,
+32 extraction attempts (18 accepted, 14 refused), nine graph constructor attempts
 (four accepted, five refused). Four source snapshots or three during the edit
 case coexist; at most four files, three packages and five imports feed a graph.
 Every input is less than 256 bytes, so total submitted parse/edit snapshot text
-is below 7936 bytes. Arrays cap at four files/twelve imports; map search is bounded
+is below 8192 bytes. Arrays cap at four files/twelve imports; map search is bounded
 by four entries, with no recursion, clock loops or subprocesses. Package-local
 owned descriptor/name storage has a proposed source-derived 16 KiB envelope,
 not an allocation measurement. Whole supervised operation timing is reported below; this does not
@@ -121,7 +161,7 @@ It includes 340 InsertBraces pairs; other tokens match. It is not whitespace-onl
 The formatted parser is 1185542 bytes (SHA256
 6cbceef2e0ee20c074c8b50401692f18ced3a60f7831fed195dd6dc2b6099a3b).
 
-Canonical formatting walks all CST leaves, but these ten cases do not provide
+Canonical formatting walks all CST leaves, but these eleven cases do not provide
 dedicated package-format round-trip coverage. A source-derived CR-only package
 header separator edge is tracked separately as
 [CUT-81](https://linear.app/cute-engine/issue/CUT-81/preserve-cr-only-package-header-separators-in-canonical-formatting)
@@ -130,7 +170,7 @@ contextual rather than becoming global reserved words; the four legacy specimens
 cover both names at old root/inner positions. No legacy keyword regression has
 been demonstrated.
 
-## Qualified build and finite production routes
+## Original qualified build and finite production routes
 
 A distinct source was materialized and a fresh one-job native test_language build
 completed in 83.637 seconds: 369 compilations, 55 archives, one link and the exact
@@ -147,7 +187,9 @@ initializers contain only frame_dummy and standard C-runtime finalization;
 dependencies are the system loader, libc and libm. No package/runtime constructor
 or authored/backend execution is introduced.
 
-Each route below ran separately through the unchanged production 60-second
+These original results qualified tree `45e3f0f2020faa2be96e3214430c06e8d20f381d`
+before the post-review correction above. Each route below ran separately through
+the unchanged production 60-second
 supervisor, including in-test fixture setup. The outer operation also checked
 the complete source, executable, dependencies and protected inputs before/after.
 No live descendant remained. Configuration/build time is not counted as test time.
@@ -214,11 +256,14 @@ reviewed one-file atomic restoration recovered the exact original index, followe
 by complete frozen-inventory verification before later operations. This incident
 does not relabel any stopped result as passed.
 
-PR #431's automatic review is usage-blocked and must not be retriggered. The
-repository's branch-retention setting also blocks merges. Local qualification
-and publication/readiness do not clear either hold. Full native/render/Studio,
-runtime package activation and other quarantined coverage are disabled or unrun,
-not passed. Published-head correspondence is a separate required review.
+The initial PR #431 automatic-review usage failure is historical: a necessary
+re-review completed clean on unchanged ef303fe3 at 15:00 UTC on 2026-10-17 and
+received Codex's thumbs-up. The branch-retention setting was separately corrected
+to retain branches at 14:42 UTC. Neither is a current blocker. This successor
+still requires fresh exact-head review and separate dependent integration gates.
+Full native/render/Studio, runtime package activation and other quarantined
+coverage are disabled or unrun, not passed. Published-head correspondence remains
+a separate required review.
 
 ## Explicitly outside this slice
 

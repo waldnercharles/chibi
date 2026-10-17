@@ -60,11 +60,14 @@ source_package_syntax *source_package_syntax_new(
     }
     TSNode name = field(header, "name");
     assert(!ts_node_is_null(name));
+    script_range name_range = script_node_range(name);
+    if (name_range.end - name_range.start == 1 && syntax->text[name_range.start] == '_') {
+        error->range = name_range;
+        snprintf(error->message, sizeof error->message, "A package needs a non-blank name");
+        return NULL;
+    }
     source_package_syntax *source = xcalloc(1, sizeof *source);
-    source->file = (source_package_file){ path,
-                                          directory,
-                                          copy_name(syntax, name),
-                                          script_node_range(name) };
+    source->file = (source_package_file){ path, directory, copy_name(syntax, name), name_range };
     uint32_t count = ts_node_named_child_count(root);
     for (uint32_t i = 0; i < count; i++) {
         source->import_count += import_node(ts_node_named_child(root, i));

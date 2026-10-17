@@ -28,8 +28,9 @@ typedef struct
 /* Uses the canonical, error-free source_file tree, never a second parser.
  * file is the caller's snapshot-local file index. Header range is the name
  * token; import range runs from import through the quoted path, excluding
- * terminators and trailing comments. Syntax errors and non-package roots
- * return NULL and one source diagnostic; no partial descriptors escape. */
+ * terminators and trailing comments. Syntax errors, non-package roots and
+ * the blank package name _ return NULL and one source diagnostic; no partial
+ * descriptors escape. Explicit blank import aliases remain valid. */
 source_package_syntax *source_package_syntax_new(
     const script_syntax *,
     const char *path,

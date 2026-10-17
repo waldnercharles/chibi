@@ -145,6 +145,17 @@ TEST_CASE(package_syntax_rejects_malformed_or_mixed_headers)
     }
     return true;
 }
+TEST_CASE(package_syntax_rejects_blank_package_name)
+{
+    syntax[0] = script_parse("/* π */\r\npackage _; // header\r\nimport _ \".\"\r\n");
+    REQUIRE(syntax[0]->diagnostic_count == 0);
+    source[0] = source_package_syntax_new(syntax[0], "/p/a.chibi", "/p", 0, &syntax_error);
+    REQUIRE(!source[0]);
+    REQUIRE(range_is(syntax_error.range, 18, 19, 2, 9));
+    REQUIRE(text_is(0, syntax_error.range, "_"));
+    REQUIRE(!strcmp(syntax_error.message, "A package needs a non-blank name"));
+    return true;
+}
 TEST_CASE(package_syntax_siblings_alias_scope_and_blank_edges)
 {
     REQUIRE(add_file("/p/app/z.chibi", "/p/app", "package app\nimport lib \"./nested\"\n"));
@@ -319,6 +330,7 @@ TEST_SUITE(package_syntax_suite)
 {
     RUN_TEST_CASE(package_syntax_legacy_roots_keep_shape_and_names);
     RUN_TEST_CASE(package_syntax_rejects_malformed_or_mixed_headers);
+    RUN_TEST_CASE(package_syntax_rejects_blank_package_name);
     RUN_TEST_CASE(package_syntax_siblings_alias_scope_and_blank_edges);
     RUN_TEST_CASE(package_syntax_header_mismatch_retains_both_ranges);
     RUN_TEST_CASE(package_syntax_duplicate_alias_retains_both_ranges);

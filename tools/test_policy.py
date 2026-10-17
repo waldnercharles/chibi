@@ -470,6 +470,10 @@ TOOLS = {
     'language-record-state': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-state'],
     # Three fixed native globals/headless UI record cases; no frames or renderer.
     'language-record-services': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-services'],
+    # Five fixed record catalog/publication cases; standalone, no authored calls.
+    'language-record-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication'],
+    # Single VM publication specimen, used unchanged for fixture-only expected-red.
+    'language-record-publication-repro': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-publication-repro'],
     # Fixed six-case authored-layout foundation; independent admission required.
     'language-record-values': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-values'],
     # Seven fixed semantic record cases; independent workload admission required.

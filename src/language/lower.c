@@ -5924,6 +5924,103 @@ static void event_declaration(lower *l, uint64_t id)
     apush(l->module->events, declaration);
     l->module->event_count = acount(l->module->events);
 }
+/* A project catalog already exports the declaring library's records. Only
+ * identical authored declarations may share that nominal requirement. */
+static bool same_record_text(const char *a, const char *b)
+{
+    return a == b || (a && b && !strcmp(a, b));
+}
+static bool same_record_type(script_type a, script_type b)
+{
+    return a.storage == b.storage && a.container == b.container &&
+           a.nominal == b.nominal && a.parameter == b.parameter && a.flags == b.flags;
+}
+static bool same_record_default(const script_catalog_field *a, const script_catalog_field *b)
+{
+    const pin_value *x = &a->default_value, *y = &b->default_value;
+    if (x->type != a->type.storage || y->type != b->type.storage ||
+        x->container != PIN_CONTAINER_SINGLE || y->container != PIN_CONTAINER_SINGLE ||
+        x->type_name || y->type_name || x->record || y->record) {
+        return false;
+    }
+    switch (x->type) {
+        case PIN_BOOL: return x->b == y->b;
+        case PIN_I32: return x->i == y->i;
+        case PIN_STR: return same_record_text(x->str, y->str);
+        default: return false;
+    }
+}
+static bool same_record(const script_catalog_type *a, const script_catalog_type *b)
+{
+    if (!a->authored_record || !b->authored_record || !a->id || a->id != b->id ||
+        !a->name || !*a->name || !same_record_text(a->name, b->name) ||
+        !same_record_text(a->source_name, b->source_name) ||
+        !same_record_text(a->key, b->key) || !same_record_type(a->type, b->type) ||
+        !a->layout || a->layout != b->layout || !a->size || a->size != b->size ||
+        a->underlying != b->underlying || a->component_id != b->component_id ||
+        a->component != b->component || a->derived != b->derived ||
+        a->internal != b->internal || a->variant_count || b->variant_count ||
+        a->field_count <= 0 || a->field_count != b->field_count ||
+        !a->fields || !b->fields) {
+        return false;
+    }
+    for (int i = 0; i < a->field_count; i++) {
+        const script_catalog_field *x = &a->fields[i], *y = &b->fields[i];
+        if (x->id != y->id || !same_record_text(x->name, y->name) ||
+            !same_record_type(x->type, y->type) || x->offset != y->offset ||
+            x->read != y->read || x->write != y->write ||
+            !same_record_text(x->read_key, y->read_key) || x->writable != y->writable ||
+            x->constant != y->constant || !same_record_text(x->unit, y->unit) ||
+            x->range_contract != y->range_contract ||
+            memcmp(&x->min, &y->min, sizeof x->min) ||
+            memcmp(&x->max, &y->max, sizeof x->max) ||
+            x->has_default != y->has_default ||
+            (x->has_default && !same_record_default(x, y))) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool record_overlaps(const script_catalog_type *a, const script_catalog_type *b)
+{
+    return a->id == b->id || (a->name && b->name && !strcmp(a->name, b->name));
+}
+static bool merge_record(lower *l, script_catalog_type **types, int index)
+{
+    const script_catalog_type *record = &l->a->types[index];
+    int match = -1;
+    for (int i = 0; i < index; i++) {
+        if (record_overlaps(&l->a->types[i], record)) {
+            goto conflict;
+        }
+    }
+    for (int i = 0; i < acount(*types); i++) {
+        if (!record_overlaps(&(*types)[i], record)) {
+            continue;
+        }
+        if (match >= 0 || !same_record(&(*types)[i], record)) {
+            goto conflict;
+        }
+        match = i;
+    }
+    if (match < 0) {
+        apush(*types, *record);
+    }
+    return true;
+conflict:
+    char message[192];
+    snprintf(message, sizeof message, "Conflicting authored record declaration '%s'", record->name);
+    script_range range = { 0 };
+    for (int i = 0; i < l->a->symbol_count; i++) {
+        const script_symbol *symbol = &l->a->symbols[i];
+        if (symbol->kind == SCRIPT_TYPE && symbol->id == record->id) {
+            range = symbol->declaration;
+            break;
+        }
+    }
+    error(l, range, message);
+    return false;
+}
 execution_module_plan *script_lower(
     const script_analysis *a,
     const script_catalog *catalog,
@@ -5947,12 +6044,21 @@ execution_module_plan *script_lower(
         return m;
     }
     assert(a->identity);
+    lower l = { .a = a, .catalog = catalog, .bindings = bindings, .module = m };
     script_catalog merged = *catalog;
     script_catalog_type *types = NULL;
     for (int i = 0; i < catalog->type_count; i++) {
         apush(types, catalog->types[i]);
     }
     for (int i = 0; i < a->type_count; i++) {
+        if (a->types[i].authored_record) {
+            if (!merge_record(&l, &types, i)) {
+                m->diagnostic_count = acount(m->diagnostics);
+                afree(types);
+                return m;
+            }
+            continue;
+        }
         apush(types, a->types[i]);
     }
     merged.types = types;
@@ -6013,7 +6119,7 @@ execution_module_plan *script_lower(
         );
     }
     m->type_count = acount(m->types);
-    lower l = { .a = a, .catalog = catalog, .bindings = bindings, .module = m };
+    l.catalog = catalog;
     m->query = a->query;
     m->query_filter = a->query_filter + 1;
     m->query_variable_count = a->query_variable_count;

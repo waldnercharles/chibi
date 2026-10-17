@@ -10,6 +10,7 @@ void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_runtime_attribution();
 void test_language_record_values();
+void test_language_record_publication(bool repro);
 void test_language_record_document();
 void test_language_record_state();
 void test_language_record_compatibility();
@@ -89,6 +90,8 @@ int main(int argc, char **argv)
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
+    bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
+    bool record_publication_repro = argc == 2 && !strcmp(argv[1], "--record-publication-repro");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
@@ -118,6 +121,7 @@ int main(int argc, char **argv)
         (!format && !prepared && !record_producer && !execution && !semantic &&
          !root_state && !benchmark && !activation_benchmark &&
          !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
+         !record_publication && !record_publication_repro &&
          !record_values && !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
          !outliner_projection && !row_builder && !row_array && !record_runtime &&
@@ -150,7 +154,8 @@ int main(int argc, char **argv)
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | --row-builder | "
-            "--outliner-projection | "
+            "--outliner-projection | --record-publication | "
+            "--record-publication-repro | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
             argv[0]
@@ -158,7 +163,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (outliner_projection) {
+    if (record_publication || record_publication_repro) {
+        test_language_record_publication(record_publication_repro);
+    } else if (outliner_projection) {
         test_language_outliner_projection();
     } else if (row_builder) {
         test_language_row_builder();

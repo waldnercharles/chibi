@@ -36,6 +36,7 @@ void test_numeric_ranges();
 void test_numeric_exact_core();
 void test_language_package_graph();
 void test_language_package_graph_chibi();
+void test_language_syntax_chibi();
 void test_language_package_syntax();
 void test_language_package_execution();
 void test_language_package_resolution();
@@ -116,6 +117,7 @@ int main(int argc, char **argv)
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
     bool package_graph_chibi = argc == 2 && !strcmp(argv[1], "--package-graph-chibi");
+    bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
@@ -144,15 +146,15 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !inferred_arrays && !inferred_array_repro && !root_state &&
-         !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_publication &&
-         !record_publication_repro && !record_values && !record_document &&
-         !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
+         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
+         !record_values && !record_document && !record_state && !record_services &&
+         !record_compatibility && !record_semantic && !record_prepared_runtime &&
+         !outliner_projection && !row_builder && !row_array && !record_runtime &&
+         !runtime_attribution && !wasm && !program && !query_program &&
+         !incremental && !modules && !ranges && !numeric_exact_core &&
+         !package_graph && !package_graph_chibi && !syntax_chibi &&
          !package_syntax && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
@@ -167,7 +169,7 @@ int main(int argc, char **argv)
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
-            "--package-graph-chibi | "
+            "--package-graph-chibi | --syntax-chibi | "
             "--package-syntax | --package-execution | --package-resolution | "
             "--package-imports | --package-files | --package-core | "
             "--component-write | --component-write-layout | --scalarize | "
@@ -307,6 +309,8 @@ int main(int argc, char **argv)
         test_language_package_files();
     } else if (package_graph_chibi) {
         test_language_package_graph_chibi();
+    } else if (syntax_chibi) {
+        test_language_syntax_chibi();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

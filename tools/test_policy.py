@@ -548,6 +548,13 @@ TOOLS = {
     # one shared60s ceiling; standalone route outside the language aggregate.
     'language-package-graph-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--package-graph-chibi'],
+    # Fourteen shared sources plus two before/edited/fresh triples:20 raw trees,
+    # 20 C oracle snapshots and40 authored calls capped at1m instructions each.
+    # Two retained owners (four source parses), source<=2KiB, nodes<=1024,
+    # depth<=128. No files, processes, services or GPU; separate build/shared60s.
+    # Independently review the exact workload before first run; no aggregate.
+    'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                              '--syntax-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

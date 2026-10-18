@@ -189,7 +189,7 @@ Current integration constraints:
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
-| M5 | **Ready** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
+| M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
@@ -383,6 +383,17 @@ change instead of adding component-specific host behavior.
 
 ### M5. Bootstrap the complete compiler
 
+Status: in progress. The authored syntax-diagnostic traversal has differential
+parity on the bounded corpus described in the current checkpoint. Package graph
+construction was completed in M4. The normal compiler remains stage zero; this
+is not a stage-one or stage-two bootstrap.
+
+Next component: package-header and import extraction from complete raw
+Tree-sitter facts and field names. Use flat records with named source-location
+fields, matching the current language's record contract. Nested authored record
+fields remain unsupported; tagged union payloads may carry flat records and
+record arrays. Keep the C extractor as the shared-fixture oracle.
+
 Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
 the platform linker, and other external systems behind C ABIs where useful. The
 `.chibi` sources own package loading, semantic analysis, diagnostics, lowering,
@@ -485,73 +496,57 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `26e0821419e753f42041383bbe4f25db77b62121`, M3 complete
+- Starting checkpoint: `2c586a3ef214bc0ba3def347a620fa8bda78dde4`, M4 complete and pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
-- Completed milestones: M0 through M4; M5 and M7 are ready
-- Recorded language changes: `f5a1a28e9` declaration precedence and `2007c00c5`
-  owned-value correction
-- Next action: port syntax diagnostic traversal from raw Tree-sitter facts as
-  the first M5 component, with shared differential fixtures on both backends
+- Completed milestones: M0 through M4; M5 is in progress and M7 is ready
+- Next action: port package-header/import extraction using the existing 32-input
+  C corpus and the authored syntax diagnostics component
 
-The owner approved declaration precedence on 2026-10-17: `name: Type = value`
-is a declaration when its type begins on the colon's line. A label before a
-plain assignment ends on its own line. Inferred locals and system-root
-persistent state retain their meanings. The language reference and
-`docs/language-contracts/typed-local-label-proposal.md` record the approved rule.
-The parser is regenerated with the existing Tree-sitter 0.25.10 generator,
-ABI 15. The old parser fails the new syntax regression.
+`tools/compiler/syntax_diagnostics/Diagnostics.chibi` owns preorder traversal,
+missing/error selection, hidden-error detection, ERROR subtree pruning,
+byte-based source locations and bounded diagnostic messages. The test adapter
+transports all raw public Tree-sitter nodes, including anonymous children and
+ERROR descendants. It does not preselect diagnostics or prune the input tree.
+The generated parser and Tree-sitter runtime remain external inputs to this
+component; Chibi's owned automatic-terminator scanner remains stage-zero policy
+that still needs a port.
 
-The reviewed M4 candidate consists of separate parser, owned-value and
-compiler-component commits. The following evidence covers the complete combined
-milestone; intermediate commits were not separately tested in isolation.
+Fourteen shared source texts and two independent edits produce twenty tree
+comparisons and forty authored calls on bytecode and SLJIT. The edited and fresh
+parses are compared independently, while the original snapshot stays usable.
+Returned diagnostics are copied into owned storage, then compared after producer
+activation and input arenas retire. Actual backend counters reject fallback.
+The observed corpus contains 488 raw nodes, at most 109 in one tree, eight
+missing nodes, five ERROR nodes with descendants and one diagnostic whose UTF-8
+byte column differs from a character count. Exact caps are in `docs/testing.md`.
 
-The owned-value correction classifies member/index writes by their storage
-root. Owned local, result and by-value parameter writes remain pure; references,
-state, components and reflected setters remain external writes. Mutated or
-reference-exposed by-value parameters receive callee-owned headers. Read-only
-parameters keep their existing lowering shape, including row-builder proofs.
-Plain standalone entries receive their owner's argument signature. Tests cover
-caller isolation, explicit references, reference exposure, inline and standalone
-entries, and values surviving module teardown. Both the semantic and ownership
-regressions failed before their corresponding fixes.
+No input in this corpus produced a hidden-recovery diagnostic. The authored
+rule matches the C implementation by inspection, but branch execution is not
+established. Historical tests for the retained rule required some diagnostic,
+not that specific branch. C remains authoritative; no syntax implementation or
+recovery path is deleted.
 
-The authored `tools/compiler/package_graph/Graph.chibi` uses ordinary package
-imports, flat records, arrays and a union result. It owns membership, file-local
-aliases, sparse dependency edges, deterministic order and diagnostic selection.
-The shared 23-case C corpus supplies all inputs. Both backends compare every
-package/member, dependency cell, alias binding, order entry and diagnostic field,
-plus bounded public queries. There are two prepared owners, 56 Builds and 348
-queries; exact execution limits remain in `docs/testing.md`.
-
-| Check on the combined macOS candidate | Result |
+| Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed, 2.5s final build; configuration/build separate from execution. |
-| Authored graph differential | 23 cases / 166,502 assertions, 3.706s; bytecode and SLJIT. |
-| Record runtime | 5 cases / 2,123 assertions, 0.987s; bytecode and SLJIT. |
-| Syntax within language aggregate | 13 cases / 503 assertions. |
-| Semantic within language aggregate | 42 cases / 533 assertions. |
-| Program within language aggregate | 125 cases / 10,920 assertions. |
-| `make test-language-all` | Passed, 17.670s execution. |
-| `make test-native` | Passed, 25.005s execution. |
-| `make test-materials` | Passed, 28.768s execution. |
-| `make test-projects` | Passed, 32.310s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 26.080s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.7s, final language rebuild 1.1s. Build timing is separate. |
+| Authored syntax differential | 3 cases / 16,904 assertions, 0.721s; bytecode and SLJIT. |
+| `make test-native` | Passed, 25.841s execution. |
+| `make test-materials` | Passed, 29.022s execution. |
+| `make test-projects` | Passed, 30.995s execution. |
+| `make test-language-all` | Passed, 18.504s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 29.756s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Each execution route uses one production 60-second ceiling. Python 3.12.14 is
-selected through the Homebrew PATH. Independent review found no unresolved
-correctness, lifetime or workload issue. Logs and retained diagnostic source
-copies are under ignored `.chibi/evidence/toolchain-m4`; no new scratch executable
-or project copy remains. M3's installed Linux/macOS evidence is in its committed
-checkpoint; this increment does not claim a new installed-SDK or Linux run.
+selected through the Homebrew PATH. Independent review admitted the fixed
+workload and found no unresolved correctness or lifetime issue. Logs are under
+ignored `.chibi/evidence/toolchain-m5`; no new scratch executable or project copy
+was created. Existing source-corpus bounds and assertions are preserved.
 
-The corpus reaches 256 files and 255 imports. It does not prove performance or
-memory bounds at the resolver's full 4,096-import envelope. General authored
-generics and managed/nested record fields remain separate language gaps; this
-component needs neither. Labels at an authored callable's outermost body still
-lack predeclaration; the regression uses supported nested block scope. Numeric
-seeds for generic native arrays use explicit integer types. Full native/render/
-Studio/browser/device and other quarantined suites remain disabled, not passed.
-The normal compiler still uses stage zero and the C graph remains authoritative.
-No compiler implementation or recovery path has been deleted.
+PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
+remains open, conflicted and explicitly held at
+`c541133b689c620a377982ee339c017b6d12b263`. Neither branch was imported.
+M3's installed Linux/macOS evidence remains in its committed checkpoint; this
+increment adds no installed-SDK or Linux claim. Full native/render/Studio,
+browser/device and other quarantined suites remain disabled, not passed.

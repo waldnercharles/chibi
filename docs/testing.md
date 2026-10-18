@@ -1175,6 +1175,27 @@ filesystem, process, service or GPU work. Build separately and independently
 review the exact workload before its first run under one shared 60-second
 ceiling. This focused route is outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-syntax-chibi` compares authored
+diagnostic traversal with the C parser using fourteen shared source texts and
+two independent edits. Each edit compares the original, incremental and fresh
+tree: twenty raw Tree-sitter trees and twenty C oracle snapshots produce
+40 authored calls across bytecode and SLJIT. Two retained owners prepare the
+actual diagnostics and core sources once per backend (four source parses).
+Each call allows one million instructions; source inputs are at most 2 KiB,
+trees at most 1,024 nodes and depth 128. The adapter transports all public
+nodes, including anonymous children and ERROR descendants; Chibi selects
+diagnostics and controls subtree pruning. Every diagnostic field and message
+is compared after producer storage retires. This route uses no filesystem,
+process, service or GPU work. Build separately and independently review the
+exact workload before first execution under one shared 60-second ceiling.
+It remains outside the language aggregate.
+
+The fixed syntax corpus exercises visible missing tokens, ERROR subtrees and
+UTF-8 byte columns after CRLF. It reports hidden-recovery diagnostic counts but
+does not require a witness: the current parser selects visible missing tokens
+for these inputs. The authored hidden-error rule matches the retained C code;
+this corpus does not establish execution coverage for that branch.
+
 The compiler port adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

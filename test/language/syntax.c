@@ -1,6 +1,7 @@
 #include "language/syntax.h"
 
 #include "authoring/source_format.h"
+#include "syntax_corpus.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -289,20 +290,7 @@ TEST_CASE(language_obsolete_declaration_tokens_rejected)
 
 TEST_CASE(language_expressions_precedence_and_continuation)
 {
-    parse(
-        "behavior Expressions {\n"
-        "product := 1 + 2 * 3\n"
-        "difference := 9 - 3 - 1\n"
-        "vector := {x: 1, y: 2}\n"
-        "items := [1,\n2, 3,]\n"
-        "selected := items[1]\n"
-        "fallback_value := fallback(default: 0)\n"
-        "on Begin {\n"
-        "computed := 1 // newline continuation\n+ 2\n"
-        "other := 3 + /* operator continuation */\n4\n"
-        "consume(\nvector.x,\nselected\n)\n"
-        "}\n}"
-    );
+    parse(syntax_corpus_cases[SYNTAX_CORPUS_PRECEDENCE].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
     TSNode product = field(ts_node_named_child(body, 0), "value");
@@ -311,13 +299,7 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode difference = field(ts_node_named_child(body, 1), "value");
     REQUIRE(node_text(field(difference, "right"), "1"));
     REQUIRE(node_text(field(field(difference, "left"), "operator"), "-"));
-    parse(
-        "behavior Calls { on Begin {\n"
-        "await set_variable<\"flash\">(Value: bool = true);\n"
-        "consume(Owner: other, Position: target.Position, Label: \"text\");\n"
-        "consume(Value: convert<\"to_vec\">(component(\"Transform\")));\n"
-        "} }"
-    );
+    parse(syntax_corpus_cases[SYNTAX_CORPUS_CALLS].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode statements = field(ts_node_named_child(declaration_body(), 0), "body");
     TSNode waiting = ts_node_named_child(ts_node_named_child(statements, 0), 0);
@@ -346,29 +328,25 @@ TEST_CASE(language_expressions_precedence_and_continuation)
 
 TEST_CASE(language_invalid_source_has_positioned_diagnostics)
 {
-    const char *cases[] = {
-        "behavior Broken { first := 1 second := 2 }",
-        "behavior Broken { true := 1 }",
-        "behavior Broken { on Begin { value := ; } }",
-        "behavior Broken { on Begin { if true { }",
-        "library Broken { MissingBody :: fn() -> () }",
-        "behavior Broken { on Begin { nudge(&speed) } }",
-    };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < SYNTAX_CORPUS_INVALID_COUNT; i++) {
         cleanup();
-        original = script_parse(cases[i]);
+        original = script_parse(syntax_corpus_cases[i].text);
         if (!original->diagnostic_count) {
-            fprintf(stderr, "Unexpected valid syntax: %s\n", cases[i]);
+            fprintf(
+                stderr,
+                "Unexpected valid syntax: %s\n",
+                syntax_corpus_cases[i].text
+            );
         }
         REQUIRE(original->diagnostic_count > 0);
         REQUIRE(ts_node_has_error(ts_tree_root_node(original->tree)));
         script_range range = original->diagnostics[0].range;
         REQUIRE(range.start >= 0 && range.end >= range.start);
-        REQUIRE(range.end <= (int)strlen(cases[i]));
+        REQUIRE(range.end <= (int)strlen(syntax_corpus_cases[i].text));
         REQUIRE(range.line >= 1 && range.column >= 1);
     }
     cleanup();
-    original = script_parse("behavior Broken { broken := ; later := 7 }");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_RECOVERY].text);
     REQUIRE(original->diagnostic_count > 0);
     TSNode body = declaration_body();
     bool found = false;
@@ -386,19 +364,19 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
 
 TEST_CASE(language_incremental_snapshot_matches_fresh)
 {
-    original = script_parse("behavior Edit {\n// café\ncount := 1\n}\n");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_UTF8].text);
     REQUIRE(original->diagnostic_count == 0);
     original_tree = ts_node_string(ts_tree_root_node(original->tree));
-    int offset = (int)(strstr(original->text, "é") - original->text);
-    edited = script_edit(original, offset, offset + (int)strlen("é"), "π\n// extra");
+    const syntax_corpus_edit *edit = &syntax_corpus_edits[0];
+    edited = script_edit(original, edit->start, edit->end, edit->replacement);
     REQUIRE(edited->diagnostic_count == 0);
-    REQUIRE(!strcmp(edited->text, "behavior Edit {\n// cafπ\n// extra\ncount := 1\n}\n"));
+    REQUIRE(!strcmp(edited->text, edit->after));
     fresh = script_parse(edited->text);
     edited_tree = ts_node_string(ts_tree_root_node(edited->tree));
     fresh_tree = ts_node_string(ts_tree_root_node(fresh->tree));
     REQUIRE(!strcmp(edited_tree, fresh_tree));
     REQUIRE(fresh->diagnostic_count == edited->diagnostic_count);
-    REQUIRE(!strcmp(original->text, "behavior Edit {\n// café\ncount := 1\n}\n"));
+    REQUIRE(!strcmp(original->text, syntax_corpus_cases[SYNTAX_CORPUS_UTF8].text));
     free(fresh_tree);
     fresh_tree = ts_node_string(ts_tree_root_node(original->tree));
     REQUIRE(!strcmp(original_tree, fresh_tree));
@@ -413,10 +391,10 @@ TEST_CASE(language_incremental_snapshot_matches_fresh)
 
 TEST_CASE(language_incremental_errors_match_fresh)
 {
-    original = script_parse("behavior Edit { first := 1; later := 2 }");
+    original = script_parse(syntax_corpus_cases[SYNTAX_CORPUS_DELETE].text);
     REQUIRE(original->diagnostic_count == 0);
-    int start = (int)(strstr(original->text, "1") - original->text);
-    edited = script_edit(original, start, start + 1, "");
+    const syntax_corpus_edit *edit = &syntax_corpus_edits[1];
+    edited = script_edit(original, edit->start, edit->end, edit->replacement);
     fresh = script_parse(edited->text);
     REQUIRE(edited->diagnostic_count > 0);
     REQUIRE(edited->diagnostic_count == fresh->diagnostic_count);

@@ -803,7 +803,10 @@ TEST_CASE(effect_analysis_raw_seeds_dependencies_and_restrictions_match)
             }
             case 2:
             case 3: {
-                expr(&r, SCRIPT_EXPR_CONSTANT, -1, -1, SCRIPT_EFFECT_READ);
+                /* This forward edge stays at its seed when the second and
+                 * final pass first propagates the callee into expression 1.
+                 * Running to a fixed point would change expression 0. */
+                expr(&r, SCRIPT_EXPR_UNARY, 1, -1, SCRIPT_EFFECT_READ);
                 expr(&r, c == 2 ? SCRIPT_EXPR_CALL : SCRIPT_EXPR_JOIN, -1, 0, 0);
                 expr(&r, SCRIPT_EXPR_CONSTANT, -1, -1, c == 2 ? SCRIPT_EFFECT_WRITE : SCRIPT_EFFECT_SUSPEND);
                 int body = statement(&r, SCRIPT_STMT_EXPRESSION, 2);
@@ -1121,11 +1124,12 @@ TEST_CASE(effect_analysis_raw_seeds_dependencies_and_restrictions_match)
         if (c == 1) {
             REQUIRE(expected.function_effects[0] == 63);
         }
-        if (c == 2) {
-            REQUIRE(expected.expression_effects[1] == SCRIPT_EFFECT_WRITE);
-        }
-        if (c == 3) {
-            REQUIRE(expected.expression_effects[1] == SCRIPT_EFFECT_SUSPEND);
+        if (c == 2 || c == 3) {
+            REQUIRE(expected.expression_effects[0] == SCRIPT_EFFECT_READ);
+            REQUIRE(
+                expected.expression_effects[1] ==
+                (c == 2 ? SCRIPT_EFFECT_WRITE : SCRIPT_EFFECT_SUSPEND)
+            );
         }
         if (c == 4) {
             REQUIRE(
@@ -1382,12 +1386,14 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
             }
         }
         REQUIRE(count > 0);
+        int next = 0;
         for (int i = 0; i < count; i++) {
-            bool found = false;
-            for (int j = 0; j < analysis->diagnostic_count; j++) {
-                found |= equal_diagnostic(&diagnostics[i], &analysis->diagnostics[j]);
+            while (next < analysis->diagnostic_count &&
+                   !equal_diagnostic(&diagnostics[i], &analysis->diagnostics[next])) {
+                next++;
             }
-            REQUIRE(found);
+            REQUIRE(next < analysis->diagnostic_count);
+            next++;
         }
     }
     REQUIRE(calls == 68);

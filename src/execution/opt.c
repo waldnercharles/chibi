@@ -346,7 +346,7 @@ void behavior_function_runtime_code(behavior_function *f)
             f->instructions[s->pc].op == BF_SOURCE_POINT) {
             continue;
         }
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             if (s->values[k] < slots) {
                 live[s->values[k]] = true;
             }

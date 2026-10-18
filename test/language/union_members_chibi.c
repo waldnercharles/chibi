@@ -821,7 +821,7 @@ static bool source_case(int index)
     script_symbol symbols[2] = { 0 };
     script_catalog_type definitions[2] = { 0 };
     for (int i = 0; i < node_count; i++) {
-        if (!strcmp(ts_node_type(nodes[i].node), "library_body")) {
+        if (!strcmp(ts_node_type(nodes[i].node), "declaration_body")) {
             body = i;
         }
         if (strcmp(ts_node_type(nodes[i].node), "union_declaration")) {

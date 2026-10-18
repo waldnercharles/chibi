@@ -932,12 +932,16 @@ TEST_CASE(package_snapshot_all_parse_before_import)
 }
 TEST_CASE(package_snapshot_missing_syntax_token)
 {
-    static const char
-        text[] = "package app\nValue :: pure fn() -> int { return 1;\n";
+    /* Tree-sitter inserts MISSING ")" for the first body and recovers the
+     * unterminated second declaration as ERROR; both reach the snapshot. */
+    static const char text[] = "package app\n"
+                               "Value :: pure fn() -> int { return (1; }\n"
+                               "Other :: pure fn() -> int { return 1;\n";
     const source_package_input file = { "app/a.chibi", text, sizeof text - 1 };
     int before = missing_nodes;
+    error_seen = false;
     REQUIRE(precedence_case(&file, 1, NULL, 0));
-    REQUIRE(missing_nodes > before);
+    REQUIRE(missing_nodes > before && error_seen);
     return true;
 }
 static bool retained_results()

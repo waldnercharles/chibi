@@ -68,6 +68,7 @@ static script_scope scopes[2];
 static script_symbol symbols[2];
 static script_function functions[1];
 static script_source_document documents[2];
+static char document_keys[2][64]; /* Mutable copies of borrowed input paths. */
 static script_catalog_type base_types[3];
 static script_catalog_variant variants[2];
 static script_catalog base_catalog;
@@ -1373,8 +1374,12 @@ static bool snapshot_read(
     script_signature_facts context = facts(false);
     context.named.import_count = 0;
     context.named.document_count = document + 1;
+    REQUIRE(document >= 0 && document < 2);
     for (int i = 0; i <= document; i++) {
-        documents[i].key = i == document ? source->path : "app/sibling.chibi";
+        const char *key = i == document ? source->path : "app/sibling.chibi";
+        REQUIRE(strlen(key) < sizeof document_keys[i]);
+        strcpy(document_keys[i], key);
+        documents[i].key = document_keys[i];
     }
     REQUIRE(target_index >= 0);
     reading = script_signature_read(&oracle, &context, target, source->text, 1, document, true);

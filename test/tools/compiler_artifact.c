@@ -704,8 +704,8 @@ TEST_CASE(binary_invalid_artifact_preserves_destination)
     size_t length;
     REQUIRE(read_bytes("binary.artifact", BINARY_CAP, &binary_artifact, &length));
     /* Outer CHIBICLO row: 32-byte header, 24-byte row, then name and payload.
-     * Prepared header's third u64 is pointer width. Preserve the container and
-     * prepared version/ABI, changing only that verified compatibility field. */
+     * The prepared header is LEB128 magic, version and pointer width. Preserve
+     * the container, magic and version, changing only that compatibility field. */
     REQUIRE(length > 80 && little_endian(binary_artifact + 24) == 1);
     uint64_t name_length = little_endian(binary_artifact + 40);
     uint64_t blob_length = little_endian(binary_artifact + 48);
@@ -713,8 +713,14 @@ TEST_CASE(binary_invalid_artifact_preserves_destination)
         name_length <= length - 56 && blob_length >= 32 &&
         blob_length == length - 56 - name_length
     );
-    size_t width = 56 + (size_t)name_length + 16;
-    REQUIRE(little_endian(binary_artifact + width) == sizeof(void *));
+    size_t width = 56 + (size_t)name_length;
+    for (int field = 0; field < 2; field++) {
+        while (width < length && binary_artifact[width] & 0x80) {
+            width++;
+        }
+        width++;
+    }
+    REQUIRE(width < length && binary_artifact[width] == sizeof(void *));
     binary_artifact[width] ^= 1;
     REQUIRE(write_byte_input("wrong-target.json", binary_artifact, length));
     const char *inputs[] = { "octets.json", "empty.json", "wrong-target.json" };

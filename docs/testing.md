@@ -1494,6 +1494,101 @@ input, syntax and module retirement. No runtime files, children, services or GPU
 work occur. Independently review before the first run, build separately and use
 one shared 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-union-members-chibi` selects three
+C/pico_unit cases: sixteen source requests and eight raw cycle-validation
+requests, each on bytecode and SLJIT, for 48 authored calls and 32 parses.
+Source calls supply 2,000,000 instructions; raw validation supplies 16,000,000.
+Both budgets are inherited/reset per activation, including outlined and inline
+children; neither is a whole-call or corpus instruction ceiling. Eight compiler
+sources per backend are below 32 KiB. Sixteen fact sources are at most 512 bytes,
+256 syntax nodes and depth 32; initial source tables hold at most two symbols
+and definitions, one scope and no functions, imports or capabilities.
+
+The fixed raw maximum is 257 definitions/fields, two variants, four roots,
+520 types and 1,024 IDs, with at most 66,049 nominal comparisons, 258 traversal
+calls and 514 persistent state writes. Cases preserve the 256-definition success
+boundary, 257-definition failure and cycle-before-depth ordering. Comparisons
+cover ordered diagnostics, uses, constructor publication/reuse, full-width tags,
+embedded NUL and results retained after input/module retirement. Positive native
+task capability-result metadata is uncovered, and this corpus does not establish
+all import/native/multi-document combinations or arbitrary state continuation.
+The validator remains recursive; source review is not evidence that the runtime
+executes its depth-boundary workload. The normal union analyzer is unchanged.
+
+`python3 tools/test_policy.py tool language-effect-analysis-chibi` selects four
+C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and four analyzed
+source replays, for 34 requests and 68 authored calls across bytecode and SLJIT.
+The supplied 500,000 instruction budget is inherited/reset per activation,
+not a whole-call or corpus instruction ceiling. Three compiler sources per
+backend below 32 KiB plus four fact sources below 512 bytes total ten parses.
+Raw maxima are 24 expressions except one fixed 85-expression graph, 16 statements,
+six functions, eight symbols/scopes, two queries, four bindings, eight arguments,
+16 children, six capabilities, three catalog types and sixteen read/write IDs.
+Actual facts cap expressions/statements at 64, functions at eight, symbols at 32,
+scopes at sixteen, queries at four and bindings at eight; shared bounds are
+128 IDs, 256 ranges, 32 diagnostics and 240 text bytes.
+
+The corpus retains the function-count-plus-one propagation stop, dependency
+cycles, task masks, diagnostic phases, stable binding order and owned outputs.
+Raw seeds establish initial propagation; analyzed replays already contain final
+effects and only establish schema, diagnostics and ownership. The two existing
+forward-edge graphs assert the finite propagation stop, and actual diagnostic
+matching is an ordered subsequence without reusing matches. The reviewed
+explicit-int generic inference correction is included in `Effects.chibi`.
+The normal effect analyzer and binding finalizer are unchanged.
+
+These union/effects routes add private C reference helpers and exact authored
+source embeddings to the existing language driver; there is no active production
+adapter, new executable, public package or language syntax. No runtime files,
+workload children, network, sleeps, services, engine frames or GPU work occur.
+Both full routes stay outside all aggregates. Independently review the exact
+combined source and finite workloads before execution on a new tree, each under
+one unchanged production 60-second deadline including preparation and cleanup;
+configuration/build timing is separate. Registration alone is not a measured
+pass, active authored compiler dispatch or complete compiler bootstrap; the
+landed-tree evidence and new integrated-tree requirements are recorded below.
+
+`python3 tools/test_policy.py tool language-record-members-chibi` is a standalone
+source-only differential route for record declaration selection and one-member
+name/type discovery. Five fixed C/pico_unit cases make 26 requests and 52 authored
+calls across bytecode and SLJIT, with 32 parses and four runtime JSON decodes.
+Each call supplies budget 500,000, which outlined and inline child activations
+inherit/reset. This is not a shared invocation or corpus instruction ceiling.
+
+Eight compiler sources per backend are below 32 KiB each. Sixteen fact-source
+parses use inputs below 256 bytes, at most 128 nodes and depth 32. Raw facts have
+one scope, at most one symbol, three definitions, two variants and three prior
+names; pools hold 64 type rows and 128 exact IDs. Per-member outputs have at most
+four combined diagnostics, one use and one constructor publication. Fixed
+annotation shapes are primitive/named types, a single modifier or a two-member
+structural union; bounded table scans and these finite shapes bound the work.
+
+Coverage includes original selection guards, ordered diagnostics, full reader
+results, a caller-supplied refreshed-fact boundary, publication continuation and
+owned results after producer retirement. Defaults are neither analyzed nor run;
+layout, final publication and the production record analyzer remain unchanged.
+There are no runtime files, workload children, services, network, sleeps, engine
+frames or GPU work. This route is outside all aggregates. Independent review of
+the exact combined source and workload is required before execution on a new tree under
+one unchanged production 60-second deadline, including preparation and cleanup.
+Build/configuration timing is separate. Registration is not runtime evidence or
+a compiler-bootstrap claim. The landed-tree measurement is recorded below.
+
+The corrected semantic source `b57ac78c53c170139d8f807158c076f971a2202b` passed
+all five complete union/effects/records/unit/type selectors in hosted
+[run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564).
+Their case counts were 3/4/5/3/4, and each verified its execution identity, exact
+summary and separate unchanged 60-second production supervisor. PR444 merge
+`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` has the same tested tree
+`09d520fe2a5723226126b0879faaee390e87b7b9`. The transport integration combines
+that landed dependency with PR445 and remains unmeasured: after independent exact
+review, rebuild the ordinary compiler-only language/tools/host products, pass the
+normal private link/ownership/symbol audit, then run both full transport selectors
+and all five full semantic selectors once each, under seven separate unchanged
+production 60-second deadlines. Configuration/build/audit timing is separate.
+Do not aggregate, split, retry, import the native-unit candidate or substitute the
+prior semantic pass for new integrated-tree evidence.
+
 `python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
 C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
 requests and four actual analyzed sources make 58 authored call attempts across
@@ -1520,13 +1615,14 @@ witness requires 81 known `u` values and no diagnostics. Failure-only fixture
 logging distinguishes runtime depth exhaustion from budget, preparation and
 other failures. A nonzero command exit alone is not the intended red proof.
 
-The baseline wires the extracted C oracle and unchanged authored draft into the
-language driver. The production analyzer remains unchanged. The known zero-ID
-lookup guard and recursive evaluator are intentionally preserved until both red
-witnesses execute. Independently review the exact source and workload before
-first execution; configuration/build timing is separate. All three routes are
-standalone and outside the aggregate. Registration and source review do not
-claim a measured pass or a complete compiler bootstrap.
+The original baseline wired the extracted C oracle and authored draft into the
+language driver, retaining the zero-ID guard and recursive evaluator until both
+red witnesses executed. The merged repair and later full semantic regression pass
+are recorded in PLAN.md. The production analyzer remains unchanged. Independently
+review every new combined source/workload before execution; configuration/build
+timing is separate. All three routes stay standalone and outside the aggregate.
+Prior measurements and source review do not validate a new integrated binary or
+establish a complete compiler bootstrap.
 
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
@@ -1682,14 +1778,16 @@ bytes does not prove a complete authored compiler, authored serializer,
 stage-one/stage-two bootstrap, cross-architecture portability or source-free SDK
 installation.
 
-The Linux GNU/Clang production `chibi_execution` target enables private function
-and data sections, so the host's existing section-GC link can discard the unused
-public `execution_prepared_write` entry point. This is an executable-link
-contract, not removal of every native encoder: the prepared reader legitimately
-uses shared canonical encoding for dependency fingerprints. The static archive
-still exports the writer, and direct producer/tooling fixture calls must retain
-it. Darwin's existing dead-strip link is unchanged and requires separate actual
-linked-binary evidence; unsupported platforms gain no exclusion claim.
+Module-set validation measures generations with `execution_prepared_measure`
+instead of serializing them, so the runtime read path never references the
+public `execution_prepared_write` entry point. The Linux GNU/Clang production
+`chibi_execution` target's private function and data sections and Darwin's
+dead-strip link discard it from the host. This is an executable-link contract,
+not removal of every native encoder: the prepared reader legitimately uses
+shared canonical encoding for dependency fingerprints. The static archive still
+exports the writer, and direct producer/tooling fixture calls must retain it.
+Each platform needs actual linked-binary evidence; unsupported platforms gain
+no exclusion claim.
 
 Inspect the exact unstripped product's actual link inputs and defined symbols.
 Require the loader, JSON/bytes/batch invokers, artifact reader and prepared reader;

@@ -175,7 +175,7 @@ static void activation_values(
 )
 {
     int slots = acount(f->slots), base = slots + acount(f->locals);
-    for (int k = 0; k < acount(s->values); k++) {
+    for (int k = 0; k < s->value_count; k++) {
         int v = s->values[k], index = v < slots ? v : v - slots;
         char name = v < slots ? 'v' : 'l';
         if (restore) {

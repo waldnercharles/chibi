@@ -1,9 +1,10 @@
 #include "language/nominal_binding.h"
 #include "language/semantic_internal.h"
+#include "language/type_constructors.h"
 #include "support/array.h"
 #include "support/xalloc.h"
-#include "types/union.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,27 +15,6 @@ static const char *own(analyzer *a, const char *text)
     char *copy = arena_alloc(&a->out->constants, size);
     memcpy(copy, text, size);
     return copy;
-}
-static script_catalog_variant own_variant(analyzer *a, script_catalog_variant value)
-{
-    if (value.name) {
-        value.name = own(a, value.name);
-    }
-    if (value.is_literal) {
-        value.literal.str = own(a, value.literal.str);
-    }
-    if (value.field_count) {
-        script_catalog_field *fields = arena_alloc(
-            &a->out->constants,
-            (size_t)value.field_count * sizeof *fields
-        );
-        memcpy(fields, value.fields, (size_t)value.field_count * sizeof *fields);
-        for (int i = 0; i < value.field_count; i++) {
-            fields[i].name = own(a, fields[i].name);
-        }
-        value.fields = fields;
-    }
-    return value;
 }
 void script_analyzer_publish_type(analyzer *a, script_catalog_type type)
 {
@@ -297,148 +277,65 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
     script_analyzer_union_types(a, body);
     script_analyzer_union_fields(a, body);
 }
+static script_constructor_facts constructor_facts(const analyzer *a)
+{
+    return (script_constructor_facts){ .catalog = a->catalog,
+                                       .symbols = a->out->symbols,
+                                       .functions = a->out->functions,
+                                       .function_count = acount(a->out->functions) };
+}
+static script_type apply_constructor(
+    analyzer *a,
+    const script_constructor_facts *facts,
+    const script_constructor_plan *plan
+)
+{
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        apush(a->out->diagnostics, plan->diagnostics[i]);
+    }
+    if (plan->publish) {
+        script_catalog_type definition = { 0 };
+        bool copied = script_constructor_materialize(&a->out->constants, facts, plan, &definition);
+        /* Active catalogs have valid, snapshot-compatible declaration values.
+         * This is an ownership invariant, not a new source diagnostic. */
+        assert(copied);
+        if (!copied) {
+            return script_analyzer_bad_type();
+        }
+        script_analyzer_publish_type(a, definition);
+    }
+    return plan->type;
+}
 script_type script_analyzer_union_type(analyzer *a, TSNode node, const script_type *members, int count)
 {
-    script_catalog_variant *variants = NULL;
-    for (int i = 0; i < count; i++) {
-        const script_catalog_type
-            *nested = (members[i].flags & SCRIPT_TYPE_UNION) &&
-                              !(members[i].flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
-                              members[i].container == PIN_CONTAINER_SINGLE
-                        ? script_catalog_type_by_id(a->catalog, members[i].nominal)
-                        : NULL;
-        int n = nested ? nested->variant_count : 1;
-        for (int j = 0; j < n; j++) {
-            if (nested && members[i].parameter &&
-                nested->variants[j].tag != members[i].parameter) {
-                continue;
-            }
-            script_catalog_variant v = nested
-                                         ? nested->variants[j]
-                                         : (
-                                               script_catalog_variant
-                                           ){ .tag = script_type_tag(members[i]),
-                                              .type = members[i] };
-            bool exists = false;
-            for (int k = 0; k < acount(variants); k++) {
-                exists |= variants[k].tag == v.tag;
-            }
-            if (!exists) {
-                apush(variants, v);
-            }
-        }
-    }
-    /* Stable structural identity, independent of spelling order. */
-    for (int i = 1; i < acount(variants); i++) {
-        for (int j = i; j > 0 && variants[j - 1].tag > variants[j].tag; j--) {
-            script_catalog_variant tmp = variants[j];
-            variants[j] = variants[j - 1];
-            variants[j - 1] = tmp;
-        }
-    }
-    uint64_t id = UINT64_C(14695981039346656037);
-    for (int i = 0; i < acount(variants); i++) {
-        id = (id ^ variants[i].tag) * UINT64_C(1099511628211);
-    }
-    script_type type = { .storage = PIN_UNION, .nominal = id, .flags = SCRIPT_TYPE_UNION };
-    if (!script_catalog_type_by_id(a->catalog, id)) {
-        char name[64];
-        snprintf(name, sizeof name, "union:%llu", (unsigned long long)id);
-        script_catalog_variant *copy = arena_alloc(
-            &a->out->constants,
-            (size_t)acount(variants) * sizeof *copy
-        );
-        for (int i = 0; i < acount(variants); i++) {
-            copy[i] = own_variant(a, variants[i]);
-        }
-        script_analyzer_publish_type(
-            a,
-            (script_catalog_type){ .id = id,
-                                   .name = own(a, name),
-                                   .type = type,
-                                   .size = sizeof(void *),
-                                   .variants = copy,
-                                   .variant_count = acount(variants),
-                                   .internal = true }
-        );
-    }
-    afree(variants);
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_union(
+        &a->out->constants,
+        &facts,
+        members,
+        count,
+        sizeof(void *)
+    );
     (void)node;
-    return type;
+    return apply_constructor(a, &facts, &plan);
 }
 script_type script_analyzer_task_type(analyzer *a, script_type result, uint64_t function)
 {
-    uint64_t id = script_type_tag(result);
-    if (!script_catalog_type_by_id(a->catalog, id)) {
-        char name[64];
-        snprintf(name, sizeof name, "task-result:%llu", (unsigned long long)id);
-        script_catalog_field *fields = NULL;
-        if (result.flags & SCRIPT_TYPE_RESULTS) {
-            const script_catalog_capability
-                *capability = script_catalog_capability_by_id(a->catalog, function);
-            if (capability) {
-                for (int i = 0; i < capability->result_count; i++) {
-                    const script_catalog_parameter *field = &capability->results[i];
-                    apush(
-                        fields,
-                        ((script_catalog_field){ .name = own(a, field->name),
-                                                 .type = field->type })
-                    );
-                }
-            } else {
-                for (int i = 0; i < acount(a->out->functions); i++) {
-                    const script_function *f = &a->out->functions[i];
-                    if (f->symbol < 0 || a->out->symbols[f->symbol].id != function) {
-                        continue;
-                    }
-                    for (int j = 0; j < acount(f->results); j++) {
-                        const script_symbol *field = &a->out->symbols[f->results[j]];
-                        apush(
-                            fields,
-                            ((script_catalog_field){ .name = own(a, field->name),
-                                                     .type = field->type })
-                        );
-                    }
-                    break;
-                }
-            }
-        }
-        script_catalog_field *owned_fields = NULL;
-        if (acount(fields)) {
-            owned_fields = arena_alloc(&a->out->constants, (size_t)acount(fields) * sizeof *owned_fields);
-            memcpy(owned_fields, fields, (size_t)acount(fields) * sizeof *owned_fields);
-        }
-        script_analyzer_publish_type(
-            a,
-            (script_catalog_type){ .id = id,
-                                   .name = own(a, name),
-                                   .type = result,
-                                   .fields = owned_fields,
-                                   .field_count = acount(fields),
-                                   .internal = true }
-        );
-        afree(fields);
-    }
-    return (script_type){ .storage = PIN_TASK,
-                          .nominal = function,
-                          .parameter = id,
-                          .flags = SCRIPT_TYPE_TASK };
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_task(&a->out->constants, &facts, result, function);
+    return apply_constructor(a, &facts, &plan);
 }
 script_type script_analyzer_await_type(analyzer *a, TSNode node, script_type success)
 {
-    const script_catalog_type
-        *definition = success.flags & SCRIPT_TYPE_UNION
-                        ? script_catalog_type_by_id(a->catalog, success.nominal)
-                        : NULL;
-    bool cancelled = success.flags & SCRIPT_TYPE_SINGLETON;
-    for (int i = 0; definition && i < definition->variant_count; i++) {
-        cancelled |= definition->variants[i].tag == PIN_UNION_CANCELLED_TAG;
-    }
-    if (cancelled) {
-        script_analyzer_diagnostic(a, node, "Cancelled is reserved for task cancellation, not a successful task result");
-    }
-    script_type types[] = { success, script_cancelled_type() };
-    return script_analyzer_union_type(a, node, types, 2);
+    script_constructor_facts facts = constructor_facts(a);
+    script_constructor_plan plan = script_constructor_await(
+        &a->out->constants,
+        &facts,
+        success,
+        script_analyzer_range(a, node),
+        sizeof(void *)
+    );
+    return apply_constructor(a, &facts, &plan);
 }
 static bool binding_condition(analyzer *a, TSNode node)
 {

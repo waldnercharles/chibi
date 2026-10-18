@@ -627,6 +627,15 @@ TOOLS = {
     # review/shared60s, outside the language aggregate.
     'language-named-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--named-binding-chibi'],
+    # Three cases: 16 raw + 4 analyzed requests, 40 authored calls at 200k each.
+    # Five sources per backend (<32 KiB) + 4 fact sources (<256 bytes): 14 parses.
+    # Caps: 64 types/128 IDs, 8 definitions/variants, 2 capabilities/4 functions,
+    # 32 symbols/8 results/4 members. At most 4 variants/2 fields/1 diagnostic
+    # per output; 20 C plans, 21 materialization attempts, 19 snapshots.
+    # No runtime IO/JSON calls/children/services/GPU. Independent first-run
+    # review, separate build, shared 60s; outside the language aggregate.
+    'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--type-constructors-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

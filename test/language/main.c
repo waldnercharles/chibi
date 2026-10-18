@@ -47,6 +47,7 @@ void test_language_constant_scalar_chibi();
 void test_language_lexical_binding_chibi();
 void test_language_nominal_binding_chibi();
 void test_language_named_binding_chibi();
+void test_language_type_constructors_chibi();
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
@@ -144,6 +145,8 @@ int main(int argc, char **argv)
     bool nominal_binding_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--nominal-binding-chibi");
     bool named_binding_chibi = argc == 2 && !strcmp(argv[1], "--named-binding-chibi");
+    bool type_constructors_chibi = argc == 2 &&
+                                   !strcmp(argv[1], "--type-constructors-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -185,13 +188,13 @@ int main(int argc, char **argv)
          !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !lexical_binding_chibi &&
-         !nominal_binding_chibi && !named_binding_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files &&
-         !package_core && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !constant_proof_chibi && !constant_scalar_chibi &&
+         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
+         !type_constructors_chibi && !package_execution && !package_resolution &&
+         !package_imports && !package_files && !package_core && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -206,6 +209,7 @@ int main(int argc, char **argv)
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
+            "--type-constructors-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
@@ -355,6 +359,8 @@ int main(int argc, char **argv)
         test_language_nominal_binding_chibi();
     } else if (named_binding_chibi) {
         test_language_named_binding_chibi();
+    } else if (type_constructors_chibi) {
+        test_language_type_constructors_chibi();
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

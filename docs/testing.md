@@ -1378,6 +1378,26 @@ runtime files, children, services or GPU operations. Independently review before
 the first run, build separately and use one shared 60-second ceiling outside the
 language aggregate.
 
+`python3 tools/test_policy.py tool language-type-constructors-chibi` compares
+structural union, task and await construction. Three pico cases run sixteen raw
+requests and four requests from actual analyzer facts, with forty authored calls
+across bytecode and SLJIT capped at 200,000 instructions each. Five compiler
+sources per backend, each below 32 KiB, plus four fact sources below 256 bytes
+total fourteen parses. The imported named-binding package requires the private
+JSON binding during preparation, but these entries make no JSON calls.
+
+Inputs contain at most 64 types, 128 IDs, eight definitions/variants, two
+capabilities, four functions, 32 symbols, eight result indices and four members.
+Outputs contain at most four variants, two fields and one diagnostic. Twenty C
+plans and twenty-one materialization attempts produce nineteen snapshots,
+including an extra metadata ownership witness. Fixed checks cover unsigned tag
+ordering across high and low bits, first-match deduplication, cache hits, native
+empty-result precedence, diagnostics and copied fields/defaults. Retained outputs survive source and
+module retirement. Sorting uses at most six comparisons of 64 scalar bit steps
+each. There are no runtime files, children, services or GPU work.
+Independently review before the first run, build separately and use one shared
+60-second ceiling outside the language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

@@ -120,6 +120,13 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_NAMED_BINDING_BYTES "${CHIBI_NAMED_BI
 configure_file(named_binding_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/named_binding_chibi_source.h" @ONLY)
 
+set(type_constructors_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/type_constructors/Constructors.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${type_constructors_source}")
+file(READ "${type_constructors_source}" CHIBI_TYPE_CONSTRUCTORS_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_TYPE_CONSTRUCTORS_BYTES "${CHIBI_TYPE_CONSTRUCTORS_HEX}")
+configure_file(type_constructors_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/type_constructors_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -155,8 +162,8 @@ set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json)
-target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c)
-set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c
+target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c)
+set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c

@@ -392,13 +392,14 @@ Nominal record/union headers preserve declaration placement, origin checks and
 catalog metadata publication through the same authored lexical binding.
 Named annotations resolve builtin, lexical, catalog and imported types, modifiers
 and type-use records from raw analyzer/catalog facts.
+Structural union, task and await constructors select types and publication
+metadata from raw catalog, function and symbol tables.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: port structural union/task/await constructors, then shared unit
-algebra and signature binding.
+Next component: port shared unit algebra, then signature binding.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -416,7 +417,14 @@ Once the complete stage-one compiler works, run this sequence in a clean tree:
 2. Use stage one to build stage two from the same sources.
 3. Run the semantic, diagnostic, artifact, VM, and SLJIT fixture set with both.
 4. Rebuild one checked game and compare observable behavior and declared formats.
-5. Record all external inputs and produce a checksummed bootstrap artifact.
+5. Record the exact bootstrap compiler revision, minimum supported bootstrap
+   version and external inputs, then produce a checksummed bootstrap artifact.
+
+Introduce compiler language dependencies in two steps: first implement a feature
+using the existing bootstrap language and validate the resulting compiler; only
+then use that feature in later compiler sources. Keep the compatible bootstrap
+artifact available and reject unsupported bootstrap versions explicitly. These
+version checks and the recovery artifact are still pending.
 
 Make stage one the normal compiler only after this sequence passes on every
 supported host configuration. Keep an explicit stage-zero recovery invocation
@@ -506,61 +514,64 @@ Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `08bd92d628430b646cdebe71091e4b4996f8d1ca`, nominal headers pushed
+- Starting checkpoint: `2dde9529a373026ac15c0b6586713313c4e880cd`, named binding pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port structural union/task/await type constructors
+- Next action: port shared unit algebra
 
-`named_binding.c` extracts ordinary parsed-name and fallback-text annotation
-binding, plus catalog/import type lookup. The analyzer supplies borrowed facts
-with construction-time symbol, own-type and use counts. Adapters retain source
-name/token extraction, append returned diagnostics and uses, and preserve the
-constructor/task/union paths and shared value-import helpers.
+`type_constructors.c` extracts structural union, task and await construction.
+The analyzer supplies borrowed catalog, symbol and function facts, including
+construction-time function counts. Wrappers append returned diagnostics once,
+materialize selected metadata into the analysis arena, then publish each new
+definition. Cached definitions do not publish again.
 
-`tools/compiler/named_binding/Binding.chibi` owns builtin resolution, lexical
-precedence, document-local import aliases, self imports, own/native catalog
-ordering, fuzzy ambiguity and exact matches. It preserves the existing difference
-between parsed-name and fallback-text precedence. Modifiers, entity identity,
-optional component boxing and type-use deduplication also remain exact. Inputs
-contain raw catalog spellings, export spans, type fields and full uint64 IDs;
-there is no native type-selection callback. The private JSON bridge decodes
-quoted fallback names without owning compiler policy.
+`tools/compiler/type_constructors/Constructors.chibi` owns union flattening,
+narrowing, first-occurrence deduplication, unsigned tag ordering, stable identity,
+task result selection and cancellation diagnostics. It composes the authored
+named and lexical components. Inputs contain raw tables and exact uint64 IDs;
+outputs identify original variant and field rows. The native materializer only
+copies those selections, including owned names, defaults and literal payloads.
+Task fields retain the existing name/type-only contract.
 
-Three pico cases compare 28 raw requests and eight requests from four actual
-annotations on bytecode and SLJIT. They check type fields, full IDs, alias and
-ambiguity results, ordered diagnostics, truncation and type-use facts. Fixed
-lookup indices supplement C comparisons. Inputs retire before comparison;
-retained generic and diagnostic results survive both module owner teardowns.
-The initial build caught signed-enum comparisons in the fixture; explicit casts
-fixed those comparisons without changing the workload.
+Three pico cases compare sixteen raw requests and four requests from actual
+analyzer facts on bytecode and SLJIT. Fixed witnesses cover ordering, duplicate
+selection, cache hits and native empty-result precedence. Copied metadata and
+retained results survive source and module retirement. Static review caught and
+renamed reserved local identifiers before the first build. Preparation then
+exposed immutable switch bindings and unsupported unsigned ordering/conversion.
+Writable local copies and an exact bitwise comparator keep the authored code
+within the current compiler's supported operations.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed after fixture casts, 1.3s. Build timing is separate. |
-| Named annotation differential | 3 cases / 37,062 assertions, 1.610s. |
-| `make test-native` | Passed, 30.512s execution. |
-| `make test-materials` | Passed, 31.801s execution. |
-| `make test-projects` | Passed, 33.273s execution. |
-| `make test-language-all` | Passed, 18.639s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 28.470s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed, 1.2s after source/fixture fixes. Build timing is separate. |
+| Type constructor differential | 3 cases / 12,333 assertions, 1.274s. |
+| `make test-native` | Passed, 25.116s execution. |
+| `make test-materials` | Passed, 28.868s execution. |
+| `make test-projects` | Passed, 30.726s execution. |
+| `make test-language-all` | Passed, 18.301s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.646s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Every execution route uses one production 60-second ceiling. The independently
-reviewed named route has 36 requests and 72 authored calls, each with a
-two-million-instruction budget. Eight preparation parses and four analyzer
-inputs total twelve parses; three quoted requests add six private JSON calls.
-Each compiler source is below 32 KiB. Pools are bounded to 32 symbols, eight
-scopes, four functions, two documents, eight entries, three imports/exports,
-four uses, eight tokens, 64 types and 128 IDs. Names are at most 220 bytes,
-fallback text 256 bytes; fact trees have at most 128 nodes at depth sixteen.
-No runtime files, child processes or GPU work occur.
+reviewed constructor route has twenty requests and forty authored calls, each
+with a 200,000-instruction budget. Ten preparation parses and four analyzer
+inputs total fourteen parses. Each compiler source is below 32 KiB; fact sources
+are below 256 bytes. Pools are bounded to 64 types, 128 IDs, eight definitions
+and variants, two capabilities, four functions, 32 symbols, eight result indices
+and four members. Outputs contain at most four variants, two fields and one
+diagnostic. Twenty C plans and twenty-one materialization attempts produce
+nineteen snapshots. Each unsigned comparison takes at most 64 scalar bit steps;
+four variants require at most six sort comparisons. No runtime files, JSON
+calls, child processes or GPU work occur.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
-are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `named-`
-and `build-named` logs. No scratch executable or project copy remains.
+are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses
+`constructors-` and `build-constructors` logs. No scratch executable or project
+copy remains.
 
-This verifies named annotations, not a complete compiler bootstrap. Prior
-checkpoints prove lexical binding and the snapshot component's executable
+This verifies type constructors, not a complete compiler bootstrap. Prior
+checkpoints prove named/lexical binding and the snapshot component's executable
 closure in the private runtime host. Remaining semantic analysis, lowering,
 authored artifact construction, scanner ownership and stage-one/stage-two
 equivalence still need implementation and validation. Full-size scalar evaluation

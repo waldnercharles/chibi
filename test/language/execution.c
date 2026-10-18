@@ -1628,15 +1628,16 @@ TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
         }
         REQUIRE(prepared_module);
         REQUIRE(budget - remaining == execution_module_storage_bytes(prepared_module));
-        /* Borrowed for run(); the module keeps ownership. */
-        function = (behavior_function *)execution_module_function_at(prepared_module, 0)
-                       .body;
-        REQUIRE(acount(function->suspensions) == WIDE_PAUSES);
+        const behavior_function
+            *decoded = execution_module_function_at(prepared_module, 0).body;
+        REQUIRE(acount(decoded->suspensions) == WIDE_PAUSES);
         for (int i = 0; i < WIDE_PAUSES; i++) {
-            const behavior_function_suspension *s = &function->suspensions[i];
+            const behavior_function_suspension *s = &decoded->suspensions[i];
             REQUIRE(s->value_count == 1 && s->values[0] == sum && !s->root_count);
-            REQUIRE(arena_contains(&function->owned, s->values));
+            REQUIRE(arena_contains(&decoded->owned, s->values));
         }
+        /* run() borrows the module's definition; cleanup must never free it. */
+        function = (behavior_function *)decoded;
         pin_value argument = { .type = PIN_I32, .i = 3 }, result = number;
         int pauses = 0,
             flow = run(&argument, 1, NULL, &result, backend == 1, 1u << 20);
@@ -1644,9 +1645,9 @@ TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
             pauses++;
             flow = behavior_function_run(function, &context, backend == 1);
         }
-        REQUIRE(flow == FLOW_OK && pauses == WIDE_PAUSES && result.i == 3 * WIDE_SLOTS);
         release_invocation();
-        function = NULL; /* The module owns the decoded definition. */
+        function = NULL;
+        REQUIRE(flow == FLOW_OK && pauses == WIDE_PAUSES && result.i == 3 * WIDE_SLOTS);
         execution_module_free(prepared_module);
         prepared_module = NULL;
     }

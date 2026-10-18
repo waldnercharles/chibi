@@ -314,8 +314,10 @@ void script_analyzer_infer_task(analyzer *a, int symbol, script_type value)
 static uint64_t task_function(analyzer *a, TSNode call)
 {
     char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    int symbol = script_analyzer_callable_symbol(a, name);
-    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    int symbol = script_analyzer_import_namespace(a, call, name)
+                   ? script_analyzer_package_function(a, call, name)
+                   : script_analyzer_callable_symbol(a, name);
+    int index = script_analyzer_find_capability(a, call, name, SCRIPT_CAPABILITY_FUNCTION);
     free(name);
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_FUNCTION) {
         return a->out->symbols[symbol].id;
@@ -404,7 +406,7 @@ static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
 static int state_write(analyzer *a, TSNode call, TSNode *value)
 {
     char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
-    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    int index = script_analyzer_find_capability(a, call, name, SCRIPT_CAPABILITY_FUNCTION);
     free(name);
     TSNode types = script_analyzer_field(call, "type_arguments");
     TSNode arguments = script_analyzer_field(call, "arguments");

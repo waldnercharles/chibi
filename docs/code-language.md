@@ -11,8 +11,9 @@ Its source audit is not fresh runtime or cross-backend validation.
 
 ## Package analysis
 
-The SDK's `script_analyze_package` and `script_declarations_package` accept an
-explicit group of sibling source snapshots with one matching `package` header.
+The SDK's `script_analyze_package` and `script_declarations_package` accept a
+`script_package_options` describing sibling snapshots, native declarations and
+resolved imports. Siblings have one matching `package` header.
 Functions, constants, records and unions share a package scope. Declarations are
 collected before function bodies, so siblings can refer to one another and
 functions with declared results can recurse across files.
@@ -52,11 +53,33 @@ required. Relative imports cannot leave the declaring file's longest matching
 collection root. Inputs are bounded to 256 files, 512 KiB each and 8 MiB total;
 the public header records path, nesting and import limits.
 
-These are M3 increments in [the toolchain plan](../PLAN.md). Resolved imports are
-not yet connected to semantic analysis or dependency execution. Package analysis
-still rejects imports, package globals and embedded game roots. Project loading,
-formatting and editor navigation use their existing single-source entry points.
-Neither API discovers files or changes the public build command.
+`authoring_packages_prepare` consumes an owned snapshot and prepares dependencies
+before their importers. A file's named aliases expose only the imported package's
+functions, types and constants; sibling files do not inherit those aliases.
+Blank imports retain dependencies without adding names. A self import refers to
+the current package. Exported signatures, layouts and constant values are owned,
+and lowered calls link to dependency modules by stable ID. Parameter defaults
+must be bounded compile-time values; preparation does not execute host calls to
+evaluate defaults. Existing generic execution limits still apply.
+
+Preparation returns a separate valid or invalid candidate, with source-local
+diagnostics. Passing a previous candidate permits exact reuse when source
+membership/text, native declarations/defaults, backend, nonzero binding
+generation and direct dependency generations match. Any changed dependency
+invalidates its transitive importers, including blank import edges. Reused
+generations and executable modules retain their dependencies independently of
+previous owners; a failed candidate never changes the previous one.
+
+Direct semantic callers supply one immutable exports view per imported identity,
+reusing that view across aliases. Metadata is available by ID for type checking,
+while only explicit export members are visible through an alias. The shared
+`script_catalog_snapshot` helper in `Chibi::capabilities` owns metadata names and
+defaults, including union payload defaults.
+
+These are M3 increments in [the toolchain plan](../PLAN.md). Package globals and
+embedded game roots remain unsupported. Project loading, formatting and editor
+navigation use their existing single-source entry points. The package APIs do
+not discover files or change the public build command.
 
 ## Declarative documents
 

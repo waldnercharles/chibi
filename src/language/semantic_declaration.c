@@ -349,7 +349,7 @@ static script_query query_membership(analyzer *a, TSNode node, bool relationship
         relationship_allowed &= !result.source_relationship;
     }
     char *text = script_analyzer_name_copy(a, name);
-    int index = script_catalog_find_type(a->catalog, text);
+    int index = script_analyzer_find_type(a, node, text);
     uint64_t relationship = relationship_allowed ? query_relationship_id(a, text) : 0;
     if (index >= 0 && a->catalog->types[index].component) {
         result.component = a->catalog->types[index].component_id;
@@ -382,7 +382,7 @@ static bool query_membership_node(analyzer *a, TSNode node)
         return false;
     }
     char *text = script_analyzer_name_copy(a, name);
-    int index = script_catalog_find_type(a->catalog, text);
+    int index = script_analyzer_find_type(a, node, text);
     free(text);
     return index >= 0 && a->catalog->types[index].component;
 }
@@ -590,10 +590,10 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
         int traversal = SCRIPT_SOURCE_SELF;
         int variable = 0;
         script_type type;
-        if (dot && script_catalog_find_type(a->catalog, type_name) < 0) {
+        if (dot && script_analyzer_find_type(a, name_node, type_name) < 0) {
             *dot = 0;
             relationship = query_relationship(a, name_node, type_name, false);
-            int index = script_catalog_find_type(a->catalog, dot + 1);
+            int index = script_analyzer_find_type(a, name_node, dot + 1);
             type = index >= 0 ? a->catalog->types[index].type
                               : script_analyzer_bad_type();
             if (index >= 0) {
@@ -760,7 +760,7 @@ void script_analyzer_value_declarations(analyzer *a, TSNode body)
                 continue;
             }
             char *name = script_analyzer_qualified_name(a, script_analyzer_field(node, "name"));
-            int event = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_EVENT);
+            int event = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_EVENT);
             free(name);
             if (event < 0) {
                 continue;
@@ -869,7 +869,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     char *name = script_analyzer_qualified_name(a, name_node);
     bool after = script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "after");
     const script_catalog_capability *signature = NULL;
-    int event_index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_EVENT);
+    int event_index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_EVENT);
     int event_alias = script_analyzer_lookup(a, name_node);
     bool declared_event = event_alias >= 0 &&
                           a->out->symbols[event_alias].kind == SCRIPT_EVENT &&
@@ -992,7 +992,8 @@ void script_analyzer_handler(analyzer *a, TSNode node)
         uint64_t type = script_analyzer_expr_type(a, receiver).nominal;
         for (int i = 0; i < a->catalog->capability_count; i++) {
             const script_catalog_capability *candidate = &a->catalog->capabilities[i];
-            if (candidate->kind == SCRIPT_CAPABILITY_EVENT &&
+            if (script_analyzer_native_capability(a, candidate->id) &&
+                candidate->kind == SCRIPT_CAPABILITY_EVENT &&
                 candidate->receiver == type &&
                 script_name_matches(candidate->name, event)) {
                 if (signature) {

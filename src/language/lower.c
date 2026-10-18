@@ -6042,10 +6042,11 @@ conflict:
     error(l, range, message);
     return false;
 }
-execution_module_plan *script_lower(
+static execution_module_plan *lower_analysis(
     const script_analysis *a,
     const script_catalog *catalog,
-    const script_lower_bindings *bindings
+    const script_lower_bindings *bindings,
+    script_lower_package_result *package
 )
 {
     assert(a && catalog);
@@ -6153,6 +6154,30 @@ execution_module_plan *script_lower(
         const script_symbol *symbol = &a->symbols[i];
         if (symbol->kind == SCRIPT_CONSTANT) {
             l.constant_values[i] = evaluate_default(&l, symbol);
+        }
+    }
+    for (int i = 0; package && i < a->function_count && !l.failed; i++) {
+        const script_function *function = &a->functions[i];
+        if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->parent >= 0 ||
+            function->symbol < 0 || a->symbols[function->symbol].disabled ||
+            a->symbols[function->symbol].scope != a->package_scope) {
+            continue;
+        }
+        for (int j = 0;
+             j < function->parameter_count + function->result_count && !l.failed;
+             j++) {
+            int index = j < function->parameter_count
+                          ? function->parameters[j]
+                          : function->results[j - function->parameter_count];
+            const script_symbol *symbol = &a->symbols[index];
+            if (symbol->initializer < 0) {
+                continue;
+            }
+            if (!script_analysis_constant(a, symbol->initializer)) {
+                error(&l, symbol->declaration, "Exported parameter default requires a bounded compile-time value");
+                break;
+            }
+            l.constant_values[index] = evaluate_default(&l, symbol);
         }
     }
     for (int i = 0; i < a->symbol_count; i++) {
@@ -6614,6 +6639,22 @@ execution_module_plan *script_lower(
     free(l.function_addresses);
     free(l.builders);
     free(l.variables);
+    if (package && !l.failed) {
+        script_lower_constant *constants = arena_alloc(
+            &m->storage,
+            (size_t)a->symbol_count * sizeof *constants
+        );
+        for (int i = 0; i < a->symbol_count; i++) {
+            const script_symbol *symbol = &a->symbols[i];
+            if (!symbol->disabled && l.constant_values[i].type != PIN_FLOW) {
+                constants[package->constant_count++] = (script_lower_constant){
+                    symbol->id,
+                    l.constant_values[i]
+                };
+            }
+        }
+        package->constants = constants;
+    }
     free(l.constant_values);
     afree(l.loops);
     m->diagnostic_count = acount(m->diagnostics);
@@ -6623,4 +6664,23 @@ execution_module_plan *script_lower(
     }
     afree(types);
     return m;
+}
+
+execution_module_plan *script_lower(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    return lower_analysis(analysis, catalog, bindings, NULL);
+}
+script_lower_package_result script_lower_package(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    script_lower_package_result result = { 0 };
+    result.plan = lower_analysis(analysis, catalog, bindings, &result);
+    return result;
 }

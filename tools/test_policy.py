@@ -545,6 +545,14 @@ TOOLS = {
     # First measurement requires independent review; separate build, shared60s.
     'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--package-resolution'],
+    # Eleven fixed import/preparation cases: 45 owners, 145 offered files,
+    # 80 imports, <=129 package visits before reuse, 34 calls with budget2000,
+    # one pure catalog snapshot and one extra parse/nine semantic-only analyses.
+    # At most five files<1KiB and four live owners.
+    # No filesystem/process/GPU; independent first-run review, separate build,
+    # and one shared60s production execution deadline.
+    'language-package-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                 '--package-imports'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

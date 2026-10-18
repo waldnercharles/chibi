@@ -1,6 +1,6 @@
 #include "authoring/native_bindings.h"
-#include "authoring/source_catalog_snapshot.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "execution/definition.h"
 #include "execution/inspection.h"
 #include "execution/module.h"
@@ -893,7 +893,7 @@ static bool compile_observed(behavior_backend backend)
     input.type_count = 1;
     input.capabilities = capabilities;
     input.capability_count = acount(capabilities);
-    bool snap = source_catalog_snapshot(&catalog_storage, &input, &owned);
+    bool snap = script_catalog_snapshot(&catalog_storage, &input, &owned);
     afree(capabilities);
     REQUIRE(snap);
     script_analysis_free(analysis);

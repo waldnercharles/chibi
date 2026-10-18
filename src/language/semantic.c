@@ -67,6 +67,8 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     afree(a->bodies);
     afree(a->narrowed);
     afree(a->catalog_types);
+    afree(a->catalog_capabilities);
+    free(a->import_used);
     afree(a->constant_proofs);
     return out;
 }
@@ -88,6 +90,7 @@ static script_analysis *analyze(
     }
     script_analysis *out = xcalloc(1, sizeof *out);
     out->text = xstrdup(syntax->text);
+    out->package_scope = -1;
     out->query = -1;
     out->query_filter = -1;
     out->owner_symbol = -1;
@@ -261,20 +264,20 @@ static bool package_declaration(TSNode node)
            script_analyzer_is(node, "record_declaration") ||
            script_analyzer_is(node, "union_declaration");
 }
-static script_analysis *analyze_package(
-    const script_package_document *documents,
-    int count,
-    const script_catalog *catalog,
-    const char *identity,
-    bool declarations
-)
+static script_analysis *analyze_package(const script_package_options *options, bool declarations)
 {
+    assert(options);
+    const script_package_document *documents = options->documents;
+    int count = options->document_count;
+    const script_catalog *catalog = options->native;
+    const char *identity = options->identity;
     assert(catalog && identity && identity[0]);
     script_analysis *out = xcalloc(1, sizeof *out);
     out->identity = xstrdup(identity);
     out->name = xstrdup("");
     out->text = xstrdup("");
     out->kind = SCRIPT_PROGRAM_LIBRARY;
+    out->package_scope = -1;
     out->query = -1;
     out->query_filter = -1;
     out->owner_symbol = -1;
@@ -282,6 +285,9 @@ static script_analysis *analyze_package(
                         ? catalog->entity_type
                         : script_catalog_id("type", "ecs.entity");
     analyzer a = { .catalog = catalog,
+                   .native = catalog,
+                   .imports = options->imports,
+                   .import_count = options->import_count,
                    .out = out,
                    .scope = -1,
                    .function = -1,
@@ -319,6 +325,9 @@ static script_analysis *analyze_package(
     }
     a.catalog_view.types = a.catalog_types;
     a.catalog = &a.catalog_view;
+    if (!script_analyzer_package_metadata(&a)) {
+        return finish_analysis(&a, true, false);
+    }
     TSNode first_header = { 0 };
     for (int i = 0; i < count; i++) {
         const script_syntax *syntax = documents[i].syntax;
@@ -362,12 +371,13 @@ static script_analysis *analyze_package(
                 continue;
             }
             if (script_analyzer_is(node, "import_declaration")) {
-                script_analyzer_diagnostic(&a, node, "Package imports require package resolution");
+                script_analyzer_package_import(&a, node);
             } else if (!package_declaration(node)) {
                 script_analyzer_diagnostic(&a, node, "Package execution currently supports functions, constants, records and unions");
             }
         }
     }
+    script_analyzer_package_imports_check(&a, false);
     if (acount(out->diagnostics)) {
         return finish_analysis(&a, true, false);
     }
@@ -376,6 +386,7 @@ static script_analysis *analyze_package(
     script_analyzer_host_declarations(&a, root);
     a.scope = script_analyzer_scope_new(&a, root);
     a.package_scope = a.scope;
+    out->package_scope = a.package_scope;
     /* Register all nominal identities before fields or callable signatures. */
     for (int i = 0; i < count; i++) {
         script_analyzer_record_types(&a, ts_tree_root_node(documents[i].syntax->tree));
@@ -392,6 +403,7 @@ static script_analysis *analyze_package(
             ts_tree_root_node(documents[i].syntax->tree)
         );
     }
+    script_analyzer_package_imports_check(&a, true);
     /* Record defaults can name any sibling constant. Register every value
      * first, matching the single-document declaration pass. */
     for (int i = 0; i < count; i++) {
@@ -415,25 +427,14 @@ static script_analysis *analyze_package(
     }
     return finish_analysis(&a, declarations, true);
 }
-script_analysis *script_analyze_package(
-    const script_package_document *documents,
-    int count,
-    const script_catalog *catalog,
-    const char *identity
-)
+script_analysis *script_analyze_package(const script_package_options *options)
 {
-    return analyze_package(documents, count, catalog, identity, false);
+    return analyze_package(options, false);
 }
-script_analysis *script_declarations_package(
-    const script_package_document *documents,
-    int count,
-    const script_catalog *catalog,
-    const char *identity
-)
+script_analysis *script_declarations_package(const script_package_options *options)
 {
-    return analyze_package(documents, count, catalog, identity, true);
+    return analyze_package(options, true);
 }
-
 void script_analysis_free(script_analysis *out)
 {
     if (!out) {

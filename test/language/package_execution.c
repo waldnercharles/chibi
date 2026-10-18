@@ -90,9 +90,12 @@ static bool analyze(int slot, const input *inputs, int count, bool declarations)
                                                   inputs[i].key,
                                                   syntaxes[i] };
     }
-    analyses[slot] = declarations
-                       ? script_declarations_package(documents, count, &catalog, "project:sample")
-                       : script_analyze_package(documents, count, &catalog, "project:sample");
+    const script_package_options options = { .documents = documents,
+                                             .document_count = count,
+                                             .identity = "project:sample",
+                                             .native = &catalog };
+    analyses[slot] = declarations ? script_declarations_package(&options)
+                                  : script_analyze_package(&options);
     for (int i = 0; i < count; i++) {
         script_syntax_free(syntaxes[i]);
         syntaxes[i] = NULL;

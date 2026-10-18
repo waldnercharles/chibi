@@ -462,7 +462,7 @@ static const script_catalog_variant *qualified_variant(analyzer *a, TSNode node,
     }
     char *owner = script_analyzer_qualified_name(a, script_analyzer_field(node, "object"));
     int symbol = script_analyzer_lookup_name(a, owner);
-    int named = script_catalog_find_type(a->catalog, owner);
+    int named = script_analyzer_find_type(a, node, owner);
     free(owner);
     const script_catalog_type *definition = NULL;
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE) {
@@ -618,7 +618,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
         char *dot = strrchr(name, '.');
         if (dot) {
             *dot = 0;
-            int index = script_catalog_find_type(a->catalog, name);
+            int index = script_analyzer_find_type(a, node, name);
             if (index >= 0) {
                 variant = variant_name(&a->catalog->types[index], dot + 1);
             }

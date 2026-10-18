@@ -176,7 +176,7 @@ static char *signature_unit(analyzer *a, TSNode node)
         char *part = script_analyzer_text_copy(a, child);
         if (script_analyzer_is(child, "identifier") &&
             (!(script_builtin_type(part).flags & SCRIPT_TYPE_ERROR) ||
-             script_catalog_find_type(a->catalog, part) >= 0)) {
+             script_analyzer_find_type(a, node, part) >= 0)) {
             script_analyzer_diagnostic(a, child, "'%s' is a type, not a unit", part);
         }
         for (const char *c = part; *c; c++) {
@@ -216,7 +216,7 @@ script_type script_analyzer_signature_type(analyzer *a, TSNode node, char **unit
                           (a->out->symbols[symbol].kind == SCRIPT_TYPE ||
                            a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER);
         if (script_unit_shorthand(name) && !named_type &&
-            script_catalog_find_type(a->catalog, name) == -1 &&
+            script_analyzer_find_type(a, node, name) == -1 &&
             ts_node_child_count(node) == 1) {
             *unit_text = name;
             return script_builtin_type("number");

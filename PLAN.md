@@ -111,10 +111,10 @@ game:       first-party rendering, input, audio, physics, assets, and UI
 vendor:     optional low-level bindings to external native libraries
 ```
 
-The SDK can analyze and execute explicitly supplied sibling package snapshots.
-An owned resolver snapshot resolves imports against explicit collection roots.
-Project package discovery and executable imports remain unimplemented; resolving
-the graph does not establish authored import execution.
+The SDK can analyze and execute explicitly supplied multi-file packages and their
+imports. An owned resolver snapshot resolves imports against explicit collection
+roots; prepared generations own exported declarations and linked dependencies.
+Filesystem package discovery and portable core modules remain unimplemented.
 
 ### Bootstrap terms
 
@@ -338,13 +338,13 @@ its authored-game meaning.
 
 ### M3. Make packages executable
 
-Status: in progress. Owned multi-document analysis executes sibling functions,
-constants, records and unions on bytecode and SLJIT. The resolver snapshot now
-connects explicit collection roots and file-local imports to the package graph,
-with owned source buffers and located errors. Sources retain individual paths,
-text and local diagnostic ranges; exported identities exclude sibling input
-order and physical installation paths. Next: connect resolved imports to semantic
-exports, dependency lowering and incremental generations.
+Status: in progress. Owned multi-document packages and file-local imports execute
+functions, constants, records and unions on bytecode and SLJIT. Prepared package
+generations own exported metadata and values, lower dependencies first, and reuse
+unchanged generations while invalidating transitive importers. Sources retain
+individual paths, text and local diagnostic ranges; exported identities exclude
+sibling input order and physical installation paths. Next: canonical filesystem
+package loading, the portable core needed by M4, and installed SDK/Linux proof.
 
 Extend the current package syntax and private graph into the smallest public,
 multi-file package system needed by the compiler. This milestone owns import
@@ -474,61 +474,64 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `393ec7b135940d38987bc8e6cc7fec5bc9910293`, sibling package execution
+- Starting checkpoint: `65cb392a0933d8f86f40929ca313324a418c43a8`, owned package resolution
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch and merge check: upstream unchanged; already an ancestor
 - Completed milestones: M0, M1 and M2; M3 is in progress
-- Next action: connect resolved imports to dependency exports and lowering,
-  then retain incremental package generations
+- Next action: load canonical disk package roots, add the portable core needed
+  by M4, and prove package imports with the relocated SDK and Linux backend
 
-The second M3 increment exposes `source_package_snapshot` and its resolved graph
-through `Chibi::source_catalog`. The snapshot copies supplied source buffers and
-explicit roots, normalizes lexical paths, decodes import strings, and resolves
-relative or collection-qualified imports. The longest containing root determines
-each file's ownership and stable collection-relative key. File-local aliases and
-blank imports use the existing graph checker for missing packages, duplicate
-bindings and dependency cycles. Diagnostics retain the offending document and
-token range, related locations and cycle import indices. Callers can release
-their input buffers immediately.
+The third M3 increment connects resolved imports to semantic analysis and
+execution. `authoring_packages_prepare` consumes an owned resolver snapshot,
+prepares dependencies first, and publishes independently owned exports and linked
+modules. Named imports are local to their declaring file; blank imports retain
+only the dependency edge; self imports refer to the current package. Exported
+functions, records, unions and constants retain stable IDs and metadata closure.
+Qualified constant values and parameter defaults remain owned after source
+owners retire. Exported defaults must be bounded compile-time values; preparing
+a package does not execute native calls to evaluate them.
 
-The graph and private syntax extractor now compile once in the owning SDK
-library. SDK contracts declare its JSON string-decoder dependency. Lexical
-resolution performs no filesystem reads or symlink canonicalization; a future
-disk adapter must supply physically canonical paths. Graph order is deterministic
-for the supplied canonical paths. Sibling execution remains supported by the
-previous increment, but semantic analysis still rejects imports. This is not M3
-completion or a self-hosted compiler.
+Each candidate owns immutable, reference-counted package generations. Exact
+source membership/text, native metadata/defaults, backend, binding generation
+and direct dependency generations determine reuse. Changed dependencies
+invalidate transitive importers, including blank edges. Failed candidates leave
+previous valid modules usable. The shared `script_catalog_snapshot` helper now
+owns union payload defaults as well as record/callable defaults, and the reuse
+key includes those payload defaults.
 
 Final macOS candidate evidence:
 
 | Check | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed, 4.6s; build separate from execution. |
-| `python3 tools/test_policy.py tool language-package-resolution` | 8 cases, 140 assertions, 0.662s. |
-| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.152s; bytecode and SLJIT verified by backend counters. |
-| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.131s. |
-| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.131s. |
-| `make test-native` | Passed, 24.952s execution. |
-| `make test-materials` | Passed, 28.681s execution. |
-| `make test-projects` | Passed, 30.822s execution. |
-| `make test-language-all` | Passed, 18.314s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 26.182s execution. |
-| Changed C files, clang-format 22; `git diff --check` | Passed. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 1.7s final incremental build; build separate from execution. |
+| `python3 tools/test_policy.py tool language-package-imports` | 11 cases, 808 assertions, 0.759s; bytecode and SLJIT verified by backend counters. |
+| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.150s. |
+| `python3 tools/test_policy.py tool language-package-resolution` | 8 cases, 140 assertions, 0.139s. |
+| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.139s. |
+| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.139s. |
+| `make test-native` | Passed, 24.569s execution. |
+| `make test-materials` | Passed, 29.216s execution. |
+| `make test-projects` | Passed, 30.313s execution. |
+| `make test-language-all` | Passed, 17.986s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.548s execution. |
+| 31 changed C files, clang-format 22; `git diff --check` | Passed. |
 
 Each admitted execution command used one production 60-second deadline. Native
 macOS drivers use Debug assertions and ASan/UBSan; the standalone tooling group
 uses its separate Debug configuration. Python 3.12.14 was selected through
 `PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. Focused package routes
-remain separate from the required language aggregate. The resolver route has
-24 snapshot constructions, at most 56 parses and 34 imports, five files/four
-imports per snapshot and three simultaneous owners. Each source is below 1 KiB;
-it performs no filesystem, subprocess, authored execution or GPU work.
+remain separate from the required language aggregate. The imports route has
+45 preparations, 145 offered files, 80 import declarations and at most 129
+package visits before reuse. It makes 34 direct calls with instruction budgets
+of 2,000, one additional catalog snapshot, and one additional parse/nine direct
+semantic-only analyses. At most five files per snapshot and four owners are
+live; each source is below 1 KiB. It performs no filesystem, process or GPU work.
 
-Independent review admitted the bounded resolver workload before its first run
-and found no unresolved correctness or ownership issue. Configuration caught an
-undeclared `chibi_json` dependency; the matching SDK contract was corrected before
-the successful build. Evidence is retained under ignored
-`.chibi/evidence/toolchain-m3/resolution-*.log`; earlier M3 and M2 evidence remains
+Independent review admitted the workload and found no unresolved correctness or
+ownership issue after fixes for malformed exports and union-default reuse.
+Regression runs failed with the old union payload ownership and default-key
+behavior before the final candidate passed. Evidence is retained under ignored
+`.chibi/evidence/toolchain-m3/imports-*.log`; earlier M3 and M2 evidence remains
 in their respective directories.
 
 M2 scratch cleanup is pending: `relocated-sdk`, `clean-source`, `clean-build` and
@@ -536,10 +539,10 @@ M2 scratch cleanup is pending: `relocated-sdk`, `clean-source`, `clean-build` an
 did not complete; no approval-review reason was returned. Their manifests and
 reconstruction patch are preserved separately. Shared dependency caches remain.
 
-This M3 increment has macOS execution evidence only. Linux, relocated installed
-SDK package imports, portable `core:` modules, executable import bindings,
-incremental package invalidation and dependency lowering are still pending.
-The M2 Linux and installed-build results belong to their recorded earlier trees.
+This M3 increment has macOS execution evidence only. Canonical filesystem
+loading, portable `core:` modules, Linux and relocated installed SDK package
+imports remain pending. The M2 Linux and installed-build results belong to their
+recorded earlier trees. This is not M3 completion or a self-hosted compiler.
 Full native/render/Studio/browser/device and other quarantined suites were not
 run and are not passed. Only changed C files were format-checked. The branch has
 not been pushed or merged.

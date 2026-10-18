@@ -163,10 +163,12 @@ chibi_sdk_headers(chibi_value_document PUBLIC types/value_document.h)
 target_link_libraries(chibi_value_document PUBLIC chibi_types chibi_asset_values)
 
 add_library(chibi_capabilities STATIC "${CHIBI_SDK_ROOT}/src/capabilities/catalog.c"
+    "${CHIBI_SDK_ROOT}/src/capabilities/catalog_snapshot.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/definition.c")
 add_library(Chibi::capabilities ALIAS chibi_capabilities)
 set_target_properties(chibi_capabilities PROPERTIES EXPORT_NAME capabilities)
-chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h)
+chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h
+    capabilities/catalog_snapshot.h)
 target_link_libraries(chibi_capabilities PUBLIC chibi_types)
 
 add_library(chibi_execution_contract INTERFACE)

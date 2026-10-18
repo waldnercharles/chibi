@@ -1,8 +1,8 @@
 #include "authoring/language_catalog.h"
 
 #include "authoring/native_bindings.h"
-#include "authoring/source_catalog_snapshot.h"
 #include "capabilities/catalog_index.h"
+#include "capabilities/catalog_snapshot.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -56,7 +56,7 @@ static bool append(authoring_language_catalog *c, const script_catalog *source, 
         return false;
     }
     script_catalog copy;
-    if (!source_catalog_snapshot(&c->storage, source, &copy)) {
+    if (!script_catalog_snapshot(&c->storage, source, &copy)) {
         return false;
     }
     for (int i = 0; i < copy.type_count; i++) {

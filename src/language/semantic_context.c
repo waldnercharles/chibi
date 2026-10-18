@@ -414,7 +414,7 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
                             a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
             type = a->out->symbols[symbol].type;
         } else {
-            int index = script_catalog_find_type(a->catalog, name);
+            int index = script_analyzer_find_type(a, node, name);
             if (index < 0) {
                 script_analyzer_diagnostic(a, node, "%s type '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
             } else {
@@ -490,7 +490,7 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                                 a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
                 type = a->out->symbols[symbol].type;
             } else if (type.flags & SCRIPT_TYPE_ERROR) {
-                int index = script_catalog_find_type(a->catalog, name);
+                int index = script_analyzer_find_type(a, node, name);
                 if (index >= 0) {
                     type = a->catalog->types[index].type;
                     type.nominal = a->catalog->types[index].id;
@@ -653,6 +653,19 @@ bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool
         a->constant_generation = 1;
     }
     return compile_time_value(a, index, 0, steps, scalar);
+}
+bool script_analysis_constant(const script_analysis *analysis, int expression)
+{
+    if (!analysis || expression < 0 || expression >= analysis->expression_count) {
+        return false;
+    }
+    /* The shared proof reads the analysis; only this temporary analyzer owns
+     * and changes its proof cache. */
+    analyzer a = { .out = (script_analysis *)analysis };
+    int steps = 65536;
+    bool constant = script_analyzer_compile_time_value(&a, expression, &steps, false);
+    afree(a.constant_proofs);
+    return constant;
 }
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {

@@ -1,6 +1,6 @@
-#include "authoring/source_catalog_snapshot.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "execution/prepared_internal.h"
 #include "runtime/behaviors/source.h"
 #include "support/array.h"
@@ -15,15 +15,21 @@
 
 /* Five fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */
-#define FIELDS "label: string = \"saved\"; count: int = 7; enabled: bool = true;"
-static const char record_source[] = "library CatalogRows { Flags :: struct { " FIELDS " } }";
-static const char library_source[] = "library CatalogRows { Flags :: struct { " FIELDS
-    " } Choice :: union { Off | On }; Make :: () -> Flags { return {}; } }";
+#define FIELDS                                                                 \
+    "label: string = \"saved\"; count: int = 7; enabled: bool = true;"
+static const char
+    record_source[] = "library CatalogRows { Flags :: struct { " FIELDS " } }";
+static const char
+    library_source[] = "library CatalogRows { Flags :: struct { " FIELDS
+                       " } Choice :: union { Off | On }; Make :: () -> Flags { "
+                       "return {}; } }";
 static const char consumer_source[] = "behavior CatalogConsumer { "
-    "on Pulse { flags := CatalogRows.Make(); flags.count = 8; } }";
-static const script_catalog_capability pulse = {
-    .id = 10, .name = "Pulse", .kind = SCRIPT_CAPABILITY_EVENT, .completion_outcome = -1
-};
+                                      "on Pulse { flags := CatalogRows.Make(); "
+                                      "flags.count = 8; } }";
+static const script_catalog_capability pulse = { .id = 10,
+                                                 .name = "Pulse",
+                                                 .kind = SCRIPT_CAPABILITY_EVENT,
+                                                 .completion_outcome = -1 };
 static const script_catalog native = { .capabilities = &pulse, .capability_count = 1 };
 static const script_catalog empty;
 static const script_lower_bindings bindings;
@@ -95,7 +101,7 @@ static bool parse_record()
     analysis = script_analyze_document(syntax, &empty, "libraries/CatalogRows.chibi");
     REQUIRE(analysis->valid && analysis->type_count == 1);
     const script_catalog input = { .types = analysis->types, .type_count = 1 };
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &input, &copied));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
     return true;
 }
 static const authoring_source *find_source(const char *name)
@@ -111,7 +117,11 @@ static const authoring_source *find_source(const char *name)
 static bool valid_sources()
 {
     for (int i = 0; i < authoring_sources_catalog_diagnostic_count(sources); i++) {
-        fprintf(stderr, "record catalog: %s\n", authoring_sources_catalog_diagnostic_at(sources, i)->message);
+        fprintf(
+            stderr,
+            "record catalog: %s\n",
+            authoring_sources_catalog_diagnostic_at(sources, i)->message
+        );
     }
     for (int i = 0; i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
@@ -201,7 +211,10 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
     REQUIRE(parse_record());
     REQUIRE(copied.types[0].name != analysis->types[0].name);
     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
-    REQUIRE(copied.types[0].fields[0].default_value.str != analysis->types[0].fields[0].default_value.str);
+    REQUIRE(
+        copied.types[0].fields[0].default_value.str !=
+        analysis->types[0].fields[0].default_value.str
+    );
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);
     uint64_t id = plan->types[0].id, layout = plan->types[0].layout;
@@ -267,7 +280,9 @@ TEST_CASE(record_catalog_conflicts_reject_before_function_creation)
             case 24: types[0].underlying = 1; break;
             case 25: fields[0].type.flags |= SCRIPT_TYPE_REFERENCE; break;
             case 26: fields[0].type.nominal = 1; break;
-            case 27: fields[0].default_value.container = PIN_CONTAINER_ARRAY; break;
+            case 27:
+                fields[0].default_value.container = PIN_CONTAINER_ARRAY;
+                break;
             case 28:
                 checked.types = own;
                 checked.type_count = 2;
@@ -289,19 +304,21 @@ TEST_CASE(record_qualified_foreign_identity_stays_distinct)
     foreign.id ^= UINT64_C(1);
     foreign.type.nominal = foreign.id;
     foreign.name = "Foreign.Flags";
-    const type_field shape[] = {
-        { .name = "label", .type = PIN_STR },
-        { .name = "count", .type = PIN_I32 },
-        { .name = "enabled", .type = PIN_BOOL }
-    };
-    const pin_record *record = pin_record_create(&catalog_storage, foreign.name, foreign.id, shape, 3);
+    const type_field shape[] = { { .name = "label", .type = PIN_STR },
+                                 { .name = "count", .type = PIN_I32 },
+                                 { .name = "enabled", .type = PIN_BOOL } };
+    const pin_record
+        *record = pin_record_create(&catalog_storage, foreign.name, foreign.id, shape, 3);
     REQUIRE(record);
     foreign.layout = record->layout;
     foreign.size = record->type.size;
     const script_catalog input = { .types = &foreign, .type_count = 1 };
     plan = script_lower(analysis, &input, &bindings);
     REQUIRE(plan->valid && plan->type_count == 2);
-    REQUIRE(plan->types[0].id == foreign.id && plan->types[1].id == analysis->types[0].id);
+    REQUIRE(
+        plan->types[0].id == foreign.id &&
+        plan->types[1].id == analysis->types[0].id
+    );
     REQUIRE(!strcmp(plan->types[0].name, "Foreign.Flags"));
     REQUIRE(!strcmp(plan->types[1].name, "CatalogRows.Flags"));
     return true;
@@ -314,11 +331,11 @@ TEST_CASE(record_prepared_duplicate_identity_and_name_remain_rejected)
         const pin_record *record = pin_record_create(&plan->storage, "Wire.Flags", 91, &field, 1);
         REQUIRE(record);
         execution_type_requirement type = { .id = record->id,
-                                             .layout = record->layout,
-                                             .storage = PIN_STRUCT,
-                                             .record = record,
-                                             .name = record->type.name,
-                                             .size = record->type.size };
+                                            .layout = record->layout,
+                                            .storage = PIN_STRUCT,
+                                            .record = record,
+                                            .name = record->type.name,
+                                            .size = record->type.size };
         apush(plan->types, type);
         if (mode == 1) {
             type.name = "Wire.Other";
@@ -329,11 +346,17 @@ TEST_CASE(record_prepared_duplicate_identity_and_name_remain_rejected)
         apush(plan->types, type);
         plan->type_count = 2;
         write_types();
-        REQUIRE(writer.wire.error && !strcmp(writer.wire.error, "duplicate prepared type requirement"));
+        REQUIRE(
+            writer.wire.error &&
+            !strcmp(writer.wire.error, "duplicate prepared type requirement")
+        );
         /* The rejected writer emitted the complete first row and second
          * identity header. The reader must reject before any second payload. */
         read_types();
-        REQUIRE(reader.wire.error && !strcmp(reader.wire.error, "duplicate prepared type requirement"));
+        REQUIRE(
+            reader.wire.error &&
+            !strcmp(reader.wire.error, "duplicate prepared type requirement")
+        );
         clear_codec();
         execution_module_plan_free(plan);
         plan = NULL;

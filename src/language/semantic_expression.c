@@ -90,7 +90,8 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
     int arity = expression->right >= 0 ? 2 : 1;
     for (int i = 0; i < a->catalog->capability_count; i++) {
         const script_catalog_capability *candidate = &a->catalog->capabilities[i];
-        if (!candidate->operator_name || strcmp(candidate->operator_name, name) ||
+        if (!script_analyzer_native_capability(a, candidate->id) ||
+            !candidate->operator_name || strcmp(candidate->operator_name, name) ||
             candidate->parameter_count != arity || candidate->result_count != 1) {
             continue;
         }

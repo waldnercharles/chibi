@@ -38,6 +38,7 @@ void test_language_package_graph();
 void test_language_package_syntax();
 void test_language_package_execution();
 void test_language_package_resolution();
+void test_language_package_imports();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -115,6 +116,7 @@ int main(int argc, char **argv)
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
+    bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
@@ -136,19 +138,19 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !inferred_arrays && !inferred_array_repro && !root_state &&
-         !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_publication &&
-         !record_publication_repro && !record_values && !record_document &&
-         !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !numeric_exact_core && !package_graph && !package_syntax &&
-         !package_execution && !package_resolution && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
+         !record_values && !record_document && !record_state && !record_services &&
+         !record_compatibility && !record_semantic && !record_prepared_runtime &&
+         !outliner_projection && !row_builder && !row_array && !record_runtime &&
+         !runtime_attribution && !wasm && !program && !query_program && !incremental &&
+         !modules && !ranges && !numeric_exact_core && !package_graph &&
+         !package_syntax && !package_execution && !package_resolution &&
+         !package_imports && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -159,6 +161,7 @@ int main(int argc, char **argv)
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
             "--package-syntax | --package-execution | --package-resolution | "
+            "--package-imports | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -288,6 +291,8 @@ int main(int argc, char **argv)
         test_language_package_execution();
     } else if (package_resolution) {
         test_language_package_resolution();
+    } else if (package_imports) {
+        test_language_package_imports();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

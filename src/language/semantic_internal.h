@@ -50,9 +50,13 @@ typedef struct
     const script_syntax *syntax;
     const script_package_document *documents;
     int document_count, package_scope;
-    const script_catalog *catalog;
+    const script_catalog *catalog, *native;
+    const script_package_import *imports;
+    int import_count;
+    bool *import_used;
     script_catalog catalog_view;
     script_catalog_type *catalog_types;
+    script_catalog_capability *catalog_capabilities;
     script_analysis *out;
     initializer *initializers;
     function_body *bodies;
@@ -67,6 +71,15 @@ typedef struct
 script_range script_analyzer_range(const analyzer *, TSNode);
 const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);
 const script_syntax *script_analyzer_document_syntax(const analyzer *, int document);
+bool script_analyzer_package_metadata(analyzer *);
+bool script_analyzer_package_import(analyzer *, TSNode);
+void script_analyzer_package_imports_check(analyzer *, bool declarations);
+int script_analyzer_find_type(analyzer *, TSNode, const char *);
+int script_analyzer_find_capability(analyzer *, TSNode, const char *, script_capability_kind);
+bool script_analyzer_native_capability(const analyzer *, uint64_t);
+int script_analyzer_package_function(analyzer *, TSNode, const char *);
+int script_analyzer_package_constant(analyzer *, TSNode);
+bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
 script_syntax *script_analyzer_recovery_syntax(const script_syntax *);
 void script_analyzer_recovery_restore(script_analysis *, const script_syntax *);
 

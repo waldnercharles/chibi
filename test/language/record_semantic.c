@@ -203,14 +203,14 @@ TEST_CASE(record_semantic_catalog_lifetime)
     script_catalog source = { .types = analysis->types,
                               .type_count = analysis->type_count },
                    old, edited;
-    REQUIRE(source_catalog_snapshot(&first, &source, &old));
+    REQUIRE(script_catalog_snapshot(&first, &source, &old));
     REQUIRE(source_catalog_default_key(&old, &first_key));
     uint64_t id = old.types[0].id, layout = old.types[0].layout;
     parse("library Rows { Row :: struct { label: string = \"owned-second\"; } }", &empty);
     REQUIRE(analysis->valid);
     source = (script_catalog){ .types = analysis->types,
                                .type_count = analysis->type_count };
-    REQUIRE(source_catalog_snapshot(&second, &source, &edited));
+    REQUIRE(script_catalog_snapshot(&second, &source, &edited));
     REQUIRE(source_catalog_default_key(&edited, &second_key));
     REQUIRE(edited.types[0].id == id && edited.types[0].layout == layout);
     REQUIRE(source_catalog_metadata_equal(&old, &edited));

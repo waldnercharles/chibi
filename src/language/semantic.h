@@ -250,6 +250,49 @@ typedef struct
     const char *path, *key;
     const script_syntax *syntax;
 } script_package_document;
+typedef enum
+{
+    SCRIPT_PACKAGE_FUNCTION,
+    SCRIPT_PACKAGE_TYPE,
+    SCRIPT_PACKAGE_CONSTANT,
+} script_package_export_kind;
+typedef struct
+{
+    const char *name;
+    uint64_t id;
+    script_package_export_kind kind;
+    script_type type; /* Constant's exact semantic type, including literal facts. */
+    pin_value value; /* Constant payload; other kinds use metadata by ID. */
+    const char *unit;
+} script_package_export;
+typedef struct
+{
+    const char *identity;
+    const script_catalog *metadata; /* Complete by-ID signature/layout closure. */
+    const script_package_export *members;
+    int member_count; /* At most 4096 unique identifier names. */
+} script_package_exports;
+typedef struct
+{
+    int document;
+    script_range range; /* Import start through path token end; terminator excluded. */
+    const char *alias, *identity;
+    /* One immutable exports view per dependency identity in this analysis.
+     * Repeated imports use the same pointer; prepared owner generations have
+     * their own independent lifetime and invalidation contract.
+     * NULL only for self or blank imports. */
+    const script_package_exports *exports;
+} script_package_import;
+typedef struct
+{
+    const script_package_document *documents;
+    int document_count;
+    const char *identity;
+    const script_catalog *native; /* The only ambient source-visible names. */
+    const script_package_import *imports;
+    int import_count;
+} script_package_options;
+
 typedef struct
 {
     char *path, *key, *text;
@@ -266,6 +309,7 @@ typedef struct
      * package text retains only the first document for legacy field ownership. */
     script_source_document *documents;
     int document_count;
+    int package_scope; /* Shared package declaration scope; -1 for legacy roots. */
     arena constants;
     script_program_kind kind;
     script_symbol *symbols;
@@ -303,24 +347,17 @@ script_analysis *script_declarations_document(
 );
 /* Genuine sibling-package analysis; all declarations are collected before
  * bodies. identity is a stable package key. Inputs and trees may retire after
- * return; output documents own exact paths/keys/text. This initial seam accepts
- * functions, constants, records and unions. Imports diagnose pending resolution.
+ * return; output documents own exact paths/keys/text. The seam accepts
+ * functions, constants, records and unions. Imports require explicit checked
+ * document-scoped bindings; no dependency names become ambient.
  * count is bounded by SCRIPT_PACKAGE_MAX_DOCUMENTS; empty packages are invalid.
  * Export identities are independent of input order and unrelated siblings;
  * debug record ordinals and document-local byte ranges are not durable IDs. */
-script_analysis *script_analyze_package(
-    const script_package_document *,
-    int count,
-    const script_catalog *,
-    const char *identity
-);
-script_analysis *script_declarations_package(
-    const script_package_document *,
-    int count,
-    const script_catalog *,
-    const char *identity
-);
+script_analysis *script_analyze_package(const script_package_options *);
+script_analysis *script_declarations_package(const script_package_options *);
 const script_source_document *script_analysis_document(const script_analysis *, int document);
+/* Bounded admissibility proof only: no evaluation, host calls or mutation. */
+bool script_analysis_constant(const script_analysis *, int expression);
 void script_analysis_free(script_analysis *);
 /* Legacy offset-only navigation selects document zero. */
 const script_symbol *script_symbol_at(const script_analysis *, int offset);

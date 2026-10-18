@@ -32,13 +32,16 @@ TOOLS_BUILD="$WORK/build-tools-dispatcher"
 HOST="$TOOLS_BUILD/sdk/chibi-compiler-host"
 DEPS="$WORK/dependencies"
 export CC=clang-18 CMAKE_BUILD_PARALLEL_LEVEL=2
-SELECTORS=(language-package-snapshot-chibi compiler-artifact)
+SELECTORS=(language-package-snapshot-chibi compiler-artifact
+           language-union-members-chibi language-effect-analysis-chibi language-record-members-chibi
+           language-unit-analysis-chibi language-type-relations-chibi)
 ulimit -c 0
 
 admission_valid() {
     environment_valid || return 1
     [[ "${GITHUB_RUN_ATTEMPT:-}" == 1 ]] || return 1
-    [[ "${TRANSPORT_REVIEWED:-false}" == true ]] || return 1
+    [[ "${TRANSPORT_REVIEWED:-false}" == true &&
+       "${SEMANTIC_COMPONENTS_REVIEWED:-false}" == true ]] || return 1
     [[ "${CONTROL_SHA:-}" =~ ^[0-9a-f]{40}$ && "${CANDIDATE_SHA:-}" =~ ^[0-9a-f]{40}$ &&
        "${CANDIDATE_TREE:-}" =~ ^[0-9a-f]{40}$ ]] || return 1
     [[ "${GITHUB_REPOSITORY:-}" == waldnercharles/chibi-studio &&
@@ -74,6 +77,9 @@ expected_cases() {
     case "$1" in
       language-package-snapshot-chibi) printf '16\n' ;;
       compiler-artifact) printf '15\n' ;;
+      language-union-members-chibi|language-unit-analysis-chibi) printf '3\n' ;;
+      language-effect-analysis-chibi|language-type-relations-chibi) printf '4\n' ;;
+      language-record-members-chibi) printf '5\n' ;;
       *) return 2 ;;
     esac
 }
@@ -235,11 +241,17 @@ verdict() {
       .identity.control_tree == $control_tree and
       ((.phases | map(.phase) | sort) == ([
         "prepare", "dependencies", "configure", "build", "audit",
-        "execute-language-package-snapshot-chibi", "execute-compiler-artifact"
+        "execute-language-package-snapshot-chibi", "execute-compiler-artifact",
+        "execute-language-union-members-chibi", "execute-language-effect-analysis-chibi",
+        "execute-language-record-members-chibi", "execute-language-unit-analysis-chibi",
+        "execute-language-type-relations-chibi"
       ] | sort)) and
       all(.phases[]; .exit == 0 and (.elapsed_seconds | type == "number" and . >= 0)) and
       ((.results | map(.selector) | sort) == ([
-        "language-package-snapshot-chibi", "compiler-artifact"
+        "language-package-snapshot-chibi", "compiler-artifact",
+        "language-union-members-chibi", "language-effect-analysis-chibi",
+        "language-record-members-chibi", "language-unit-analysis-chibi",
+        "language-type-relations-chibi"
       ] | sort)) and
       all(.results[]; .outcome == "passed" and .execution_identity_verified == true and
         .expected_pico_summary_verified == true and .production_supervisor_60s_report_verified == true)

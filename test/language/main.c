@@ -1,6 +1,9 @@
 #define PICO_UNIT_IMPLEMENTATION
+#include "effect_analysis_chibi.h"
+#include "record_members_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
+#include "union_members_chibi.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -163,6 +166,11 @@ int main(int argc, char **argv)
     bool unit_analysis_zero_id = argc == 2 &&
                                  !strcmp(argv[1], "--unit-analysis-zero-id");
     bool unit_analysis_deep = argc == 2 && !strcmp(argv[1], "--unit-analysis-deep");
+    bool union_members_chibi = argc == 2 && !strcmp(argv[1], "--union-members-chibi");
+    bool effect_analysis_chibi = argc == 2 &&
+                                 !strcmp(argv[1], "--effect-analysis-chibi");
+    bool record_members_chibi = argc == 2 &&
+                                !strcmp(argv[1], "--record-members-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -208,7 +216,8 @@ int main(int argc, char **argv)
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
          !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
-         !unit_analysis_deep && !package_execution && !package_resolution &&
+         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
+         !record_members_chibi && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !build_workflow &&
@@ -232,6 +241,8 @@ int main(int argc, char **argv)
             "--signature-reader-chibi | "
             "--callable-headers-chibi | --unit-analysis-chibi | "
             "--unit-analysis-zero-id | --unit-analysis-deep | "
+            "--union-members-chibi | --effect-analysis-chibi | "
+            "--record-members-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
@@ -397,6 +408,12 @@ int main(int argc, char **argv)
             : unit_analysis_deep  ? 2
                                   : 0
         );
+    } else if (union_members_chibi) {
+        test_language_union_members_chibi();
+    } else if (effect_analysis_chibi) {
+        test_language_effect_analysis_chibi();
+    } else if (record_members_chibi) {
+        test_language_record_members_chibi();
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

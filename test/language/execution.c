@@ -884,7 +884,7 @@ TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes)
         REQUIRE(finish());
         REQUIRE(acount(function->data_values) == 0);
         REQUIRE(acount(function->suspensions) == 1);
-        REQUIRE(acount(function->suspensions[0].roots) == 2);
+        REQUIRE(function->suspensions[0].root_count == 2);
         REQUIRE(behavior_function_compile(function));
         for (int i = 0; i < 2; i++) {
             arguments[i].ptr = pin_array_allocate(&managed, shape.type, NULL, 1);
@@ -1558,6 +1558,102 @@ TEST_CASE(execution_prepared_identity_includes_instruction_schema)
     return true;
 }
 
+TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
+{
+    /* A wide chain followed by many pauses keeps one value live. Reserving a
+     * full live-value vector per pause needed about 4.2 MiB here. */
+    enum
+    {
+        WIDE_SLOTS = 1024,
+        WIDE_PAUSES = 512
+    };
+    const size_t budget = 2 * 1024 * 1024;
+    pin_value number = { .type = PIN_I32 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &number, 1, &number, 1, NULL, 0);
+    int input = slot(PIN_I32), sum = input;
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_ARGUMENT, .type = PIN_I32, .output = input, .value = number });
+    for (int i = 1; i < WIDE_SLOTS; i++) {
+        int next = slot(PIN_I32);
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_ADD, .type = PIN_I32, .output = next, .left = sum, .right = input });
+        sum = next;
+    }
+    for (int i = 0; i < WIDE_PAUSES; i++) {
+        emit((behavior_function_instruction){ .op = BF_SUSPEND });
+    }
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = sum });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(acount(function->slots) == WIDE_SLOTS && acount(function->suspensions) == WIDE_PAUSES);
+    prepared_plan = execution_module_plan_new();
+    prepared_plan->id = 1;
+    prepared_plan->valid = true;
+    apush(
+        prepared_plan->functions,
+        ((execution_module_function){ .id = 1,
+                                      .kind = EXECUTION_FUNCTION_AUTHORED,
+                                      .body = function })
+    );
+    function = NULL;
+    prepared_plan->function_count = 1;
+    char error[192] = { 0 };
+    prepared_module = execution_module_finish(&prepared_plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(prepared_module);
+    size_t length = 0;
+    REQUIRE(
+        execution_prepared_write(prepared_module, &prepared_bytes, &length, error, sizeof error)
+    );
+    execution_module_free(prepared_module);
+    prepared_module = NULL;
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    for (int backend = 0; backend < 2; backend++) {
+        size_t remaining = budget;
+        prepared_module = execution_prepared_read_budget(
+            prepared_bytes,
+            length,
+            NULL,
+            backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        if (!prepared_module) {
+            fprintf(stderr, "decoded wide suspensions: %s\n", error);
+        }
+        REQUIRE(prepared_module);
+        REQUIRE(budget - remaining == execution_module_storage_bytes(prepared_module));
+        const behavior_function
+            *decoded = execution_module_function_at(prepared_module, 0).body;
+        REQUIRE(acount(decoded->suspensions) == WIDE_PAUSES);
+        for (int i = 0; i < WIDE_PAUSES; i++) {
+            const behavior_function_suspension *s = &decoded->suspensions[i];
+            REQUIRE(s->value_count == 1 && s->values[0] == sum && !s->root_count);
+            REQUIRE(arena_contains(&decoded->owned, s->values));
+        }
+        /* run() borrows the module's definition; cleanup must never free it. */
+        function = (behavior_function *)decoded;
+        pin_value argument = { .type = PIN_I32, .i = 3 }, result = number;
+        int pauses = 0,
+            flow = run(&argument, 1, NULL, &result, backend == 1, 1u << 20);
+        while (flow == FLOW_SUSPENDED_RESULT) {
+            pauses++;
+            flow = behavior_function_run(function, &context, backend == 1);
+        }
+        release_invocation();
+        function = NULL;
+        REQUIRE(flow == FLOW_OK && pauses == WIDE_PAUSES && result.i == 3 * WIDE_SLOTS);
+        execution_module_free(prepared_module);
+        prepared_module = NULL;
+    }
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
@@ -1583,5 +1679,6 @@ void test_language_execution()
     RUN_TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage);
     RUN_TEST_CASE(execution_unary_numeric_operands_ignore_unrelated_address_slot);
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);
+    RUN_TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets);
     pu_clear_setup();
 }

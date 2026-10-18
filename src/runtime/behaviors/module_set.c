@@ -116,38 +116,36 @@ typedef struct
     bool active;
 } package_dependency;
 
+static bool measure(module_set_reader *r, const execution_module *module, uint64_t *fingerprint)
+{
+    size_t length = 0;
+    char error[256] = { 0 };
+    if (!execution_prepared_measure(module, &length, fingerprint, error, sizeof error)) {
+        return fail(r, error);
+    }
+    if (length > MODULE_SET_MAX_BYTES - r->bytes) {
+        return fail(r, "module set dependency bytes exceed limit");
+    }
+    r->bytes += length;
+    return true;
+}
+/* Generations compare by serialized length and fingerprint, as import checks
+ * do; validation never materializes or publishes prepared bytes. */
 static bool same_generation(module_set_reader *r, const execution_module *a, const execution_module *b)
 {
-    unsigned char *left = NULL, *right = NULL;
-    size_t left_size = 0, right_size = 0;
-    char error[256] = { 0 };
-    bool equal = false;
-    if (!execution_prepared_write(a, &left, &left_size, error, sizeof error)) {
-        fail(r, error);
-        goto done;
+    size_t start = r->bytes;
+    uint64_t left, right;
+    if (!measure(r, a, &left)) {
+        return false;
     }
-    if (left_size > MODULE_SET_MAX_BYTES - r->bytes) {
-        fail(r, "module set dependency bytes exceed limit");
-        goto done;
+    size_t middle = r->bytes;
+    if (!measure(r, b, &right)) {
+        return false;
     }
-    r->bytes += left_size;
-    if (!execution_prepared_write(b, &right, &right_size, error, sizeof error)) {
-        fail(r, error);
-        goto done;
+    if (middle - start != r->bytes - middle || left != right) {
+        return fail(r, "module set dependency identity has conflicting generations");
     }
-    if (right_size > MODULE_SET_MAX_BYTES - r->bytes) {
-        fail(r, "module set dependency bytes exceed limit");
-        goto done;
-    }
-    r->bytes += right_size;
-    equal = left_size == right_size && !memcmp(left, right, left_size);
-    if (!equal) {
-        fail(r, "module set dependency identity has conflicting generations");
-    }
-done:
-    free(left);
-    free(right);
-    return equal;
+    return true;
 }
 static bool account_dependency(module_set_reader *r, const execution_module *module)
 {
@@ -156,18 +154,8 @@ static bool account_dependency(module_set_reader *r, const execution_module *mod
             return true;
         }
     }
-    unsigned char *bytes = NULL;
-    size_t length = 0;
-    char error[256] = { 0 };
-    if (!execution_prepared_write(module, &bytes, &length, error, sizeof error)) {
-        return fail(r, error);
-    }
-    free(bytes);
-    if (length > MODULE_SET_MAX_BYTES - r->bytes) {
-        return fail(r, "module set dependency bytes exceed limit");
-    }
-    r->bytes += length;
-    return true;
+    uint64_t fingerprint;
+    return measure(r, module, &fingerprint);
 }
 static bool collect_dependencies(
     module_set_reader *r,

@@ -35,6 +35,12 @@ target_include_directories(chibi_execution PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/
     "${CMAKE_CURRENT_BINARY_DIR}/private/types")
 target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contract chibi_ecs chibi_tasks)
 
+# The prepared reader and writer share a translation unit. Let the compiler
+# host's section-GC link discard the unused public writer entry point.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
+    target_compile_options(chibi_execution PRIVATE -ffunction-sections -fdata-sections)
+endif()
+
 option(CHIBI_ENABLE_SJLIT "Build the native execution backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CHIBI_ENABLE_SJLIT OFF)

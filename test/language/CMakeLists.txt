@@ -149,9 +149,13 @@ configure_file(unit_algebra_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/unit_algebra_chibi_source.h" @ONLY)
 
 set(signature_reader_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/signature_reader/Reader.chibi")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${signature_reader_source}")
+set(analysis_state_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/analysis_state/State.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${signature_reader_source}" "${analysis_state_source}")
 file(READ "${signature_reader_source}" CHIBI_SIGNATURE_READER_HEX HEX)
 string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SIGNATURE_READER_BYTES "${CHIBI_SIGNATURE_READER_HEX}")
+file(READ "${analysis_state_source}" CHIBI_ANALYSIS_STATE_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_ANALYSIS_STATE_BYTES "${CHIBI_ANALYSIS_STATE_HEX}")
 configure_file(signature_reader_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/signature_reader_chibi_source.h" @ONLY)
 
@@ -168,6 +172,27 @@ file(READ "${unit_analysis_source}" CHIBI_UNIT_ANALYSIS_HEX HEX)
 string(REGEX REPLACE "(..)" "0x\\1," CHIBI_UNIT_ANALYSIS_BYTES "${CHIBI_UNIT_ANALYSIS_HEX}")
 configure_file(unit_analysis_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/unit_analysis_chibi_source.h" @ONLY)
+
+set(union_members_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/union_members/Members.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${union_members_source}")
+file(READ "${union_members_source}" CHIBI_UNION_MEMBERS_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_UNION_MEMBERS_BYTES "${CHIBI_UNION_MEMBERS_HEX}")
+configure_file(union_members_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/union_members_chibi_source.h" @ONLY)
+
+set(effect_analysis_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/effect_analysis/Effects.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${effect_analysis_source}")
+file(READ "${effect_analysis_source}" CHIBI_EFFECT_ANALYSIS_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_EFFECT_ANALYSIS_BYTES "${CHIBI_EFFECT_ANALYSIS_HEX}")
+configure_file(effect_analysis_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/effect_analysis_chibi_source.h" @ONLY)
+
+set(record_members_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/record_members/Members.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${record_members_source}")
+file(READ "${record_members_source}" CHIBI_RECORD_MEMBERS_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_RECORD_MEMBERS_BYTES "${CHIBI_RECORD_MEMBERS_HEX}")
+configure_file(record_members_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/record_members_chibi_source.h" @ONLY)
 
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -203,12 +228,12 @@ target_sources(test_language PRIVATE compiler_artifact_chibi.c
 set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-target_link_libraries(test_language PRIVATE Chibi::asset_json)
+target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prepared)
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c)
-set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c
+target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
+set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c

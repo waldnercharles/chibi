@@ -614,7 +614,7 @@ TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
     REQUIRE(document);
     authored = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
     REQUIRE(authored);
-    apush(authored->graphs, strdup("Fail"));
+    REQUIRE(!prototype_add_graph(authored, "Fail"));
     world = ecs_world_new();
     bool saw_pair = false;
     const prototype_spawn_hooks hooks = { .attach = refuse_panic_graph,

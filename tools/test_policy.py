@@ -366,7 +366,7 @@ TOOLS = {
     'graph-model': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--graph-model'],
     # One independently reviewed bounded native comparison/conversion ABI and ownership case.
     'native-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native-values'],
-    # Two independently reviewed finite formatting and owned-value cases, no world/process/GPU.
+    # Three independently reviewed finite formatting and owned-value cases, no world/process/GPU.
     'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--text-format'],
     # One reviewed in-tree Box3D package case: a falling box comes to rest and three raycasts, CPU only.
     'box3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--box3d'],

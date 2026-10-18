@@ -1,5 +1,28 @@
 # Chibi language and typed-runtime redesign
 
+## Exact-head review follow-up, 2026-10-18
+
+Codex review of checkpoint `1bad2ce0d` found that generic text formatting treated
+Map payloads as arrays. The formatter now handles Maps before the array branch
+and reports their actual entry count. A fixed native callback regression covers
+one populated Map, one allocated empty Map and one null Map; existing array and
+scalar controls are unchanged. It failed before the fix and now passes all three
+formatting cases (45 assertions, 0.098 s). Independent source/workload review
+cleared the minimal fix and unchanged 60-second invocation limits.
+
+The five complete native groups passed again on the corrected implementation:
+language 506 cases / 29.880 s; native 627 / 36.540 s; materials 110 / 39.994 s;
+projects 84 / 35.836 s; tooling 134 / 23.920 s. The only workload addition is the
+single fixed formatting case with four assertions. Production build profiles,
+assertions, sanitizers, deadlines and quarantines are unchanged. Evidence is in
+`/workspace/language420-build-current/map-fix-validation.json`.
+
+The clean `1bad2ce0d` native SDK and paired Studio build, CPU checks and four-frame
+source-edit check passed before this finding; those remain prior-candidate
+results. Refreshing the SDK and paired pin, installed consumers, Studio acceptance,
+Wasm/browser, serial web and final exact-head review remains required before
+landing. The following reconciliation record describes the earlier checkpoint.
+
 ## Current-main reconciliation, 2026-10-18
 
 This checkpoint merges PR420 `a699f2804` (including PR437) with main

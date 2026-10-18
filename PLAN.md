@@ -427,17 +427,24 @@ were reproduced on bytecode and SLJIT. The full authored unit differential is
 green in [run 39112565011](https://github.com/waldnercharles/chibi-studio/actions/runs/39112565011);
 its sanitized status JSON SHA-256 is
 `3f290081324f0a89d1aae1fdd013ba7649ea4a5eac4e2046ffddf1a765218cfb`.
-The fixture observer remains off by default. The production C extraction
-adapter remains deferred; this does not move the normal compiler off stage zero.
+The fixture observer remains off by default. The next increment connects the
+production analyzer to the already extracted C reference helper; it does not
+move the normal compiler off stage zero or dispatch authored analysis in production.
 
-The next type-relations component now has ordinary authored source and a
-dedicated differential route, `language-type-relations-chibi`, outside aggregates.
+The authored type-relations component and its dedicated differential route,
+`language-type-relations-chibi`, are merged in
+[PR #442](https://github.com/waldnercharles/chibi/pull/442) at
+`ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`, outside aggregates.
 Its finite corpus is 105 requests and 210 calls across bytecode and SLJIT, with
 ten preparation parses and a supplied budget argument of 50,000. Outlined and
 inline child activations inherit/reset that argument; it is not an invocation or
-global instruction ceiling. The exact integrated candidate still needs its first
-supervised runtime measurement under the shared 60-second deadline. No native
-type-relation adapter or language syntax change is introduced. Union members and
+global instruction ceiling. Its four-case differential passed on both backends
+in [run 39113816903](https://github.com/waldnercharles/chibi-studio/actions/runs/39113816903)
+under the unchanged 60-second deadline. The tested source was
+`6787ff61d3516ad4d9064ec34b16b5514233d64e`; the merge tree matches the tested tree
+`95ddc9104ad6015f54c10fb59987ef31a65eaa34`. The sanitized status JSON SHA-256 is
+`06053425ed3d257bb9d201194895f4e643c80bf0efa43edcf797bc150c617752`.
+No native type-relation adapter or language syntax change is introduced. Union members and
 effects remain reviewed, unlinked and unexecuted drafts. Complete authored
 semantic analysis, lowering, artifact production, stage one and stage two remain
 incomplete; these focused components do not establish self-hosting.
@@ -552,7 +559,7 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 ## Current checkpoint
 
 Last verified toolchain checkpoint: 2026-10-18 at
-`a5edefd3b79db958e444adc624df7ca8fa493e02` (PR #440).
+`ace559c9c294a450c95a3a730dcd6d9f1b5ce13c` (PR #442).
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
@@ -584,14 +591,39 @@ above; the merged tree exactly matches that tested source tree. Budget arguments
 and the single 60-second deadline remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
 
-The current additive type-relations candidate is independently source-reviewed
-and wired for its dedicated full differential. Its first runtime validation
-remains pending; the unit-analysis result is not evidence for that new component.
+The independently reviewed additive type-relations component passed its first
+complete differential in hosted run `39113816903`. Its four cases cover 105 fixed
+requests, 210 authored calls across bytecode/SLJIT, ten preparation parses and
+retained-result lifetime checks. Configuration took 1s and build 14s; execution
+completed below the one-second timing resolution. This standalone Debug build
+was not sanitizer-instrumented. Exact source, merge tree and sanitized evidence
+are recorded in the milestone above.
 
-The active C extraction adapter remains deferred until its real native
-unit-fixtures and affected semantic/incremental contracts can run. The authored
-repair alone does not move normal compiler dispatch, complete a milestone, or
-establish stage-one/stage-two or installed tool-free build/link acceptance.
+The current candidate wires `semantic_units.c` to the extracted C reference
+helper. It supplies raw analyzer facts, copies returned diagnostics into the
+analyzer's ownership before freeing temporary storage, and retains the existing
+position sort. The authored source and evaluator are unchanged. This is the
+production C extraction boundary, not production dispatch of Chibi analysis.
+
+The candidate also carries a private temporary hosted-validation helper and
+pinned dependency input. Its separate public control only checks exact source
+identity and invokes fixed phases; exports contain fixed status/timing and
+commit/tree identities, never source, history, build metadata or raw logs.
+The first real native validation remains pending. It must build the actual
+reflection/catalog closure and run existing `language-semantic` (42 cases),
+`language-incremental` (13), `unit-fixtures` (2), and the full authored unit
+differential (3), each under its unchanged production 60-second deadline.
+This larger route requests explicit ASan/UBSan compile/link flags and verifies
+instrumentation on-runner; no sanitizer pass or build-duration fit is claimed
+before it executes. Earlier authored-only evidence cannot substitute for this
+adapter's exact-head evidence. Configuration/build timing is separate.
+
+Next action: independently review this complete adapter/validation candidate,
+then run those four admitted selectors on its exact head. Do not land it unless
+the actual native fixtures and all affected contracts pass. M5 remains in
+progress; neither this extraction nor the component proofs establish complete
+semantic analysis, stage-one/stage-two self-compilation or installed build/link
+with CMake, Clang and GCC unavailable.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

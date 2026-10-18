@@ -49,6 +49,7 @@ void test_language_nominal_binding_chibi();
 void test_language_named_binding_chibi();
 void test_language_type_constructors_chibi();
 void test_language_unit_algebra_chibi();
+void test_language_signature_reader_chibi();
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
@@ -149,6 +150,8 @@ int main(int argc, char **argv)
     bool type_constructors_chibi = argc == 2 &&
                                    !strcmp(argv[1], "--type-constructors-chibi");
     bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
+    bool signature_reader_chibi = argc == 2 &&
+                                  !strcmp(argv[1], "--signature-reader-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -192,11 +195,12 @@ int main(int argc, char **argv)
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
-         !unit_algebra_chibi && !package_execution && !package_resolution &&
-         !package_imports && !package_files && !package_core && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !unit_algebra_chibi && !signature_reader_chibi && !package_execution &&
+         !package_resolution && !package_imports && !package_files &&
+         !package_core && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -213,6 +217,7 @@ int main(int argc, char **argv)
             "--named-binding-chibi | "
             "--type-constructors-chibi | "
             "--unit-algebra-chibi | "
+            "--signature-reader-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
@@ -366,6 +371,8 @@ int main(int argc, char **argv)
         test_language_type_constructors_chibi();
     } else if (unit_algebra_chibi) {
         test_language_unit_algebra_chibi();
+    } else if (signature_reader_chibi) {
+        test_language_signature_reader_chibi();
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

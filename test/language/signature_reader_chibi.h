@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_SIGNATURE_READER_CHIBI_H
+#define CHIBI_TEST_SIGNATURE_READER_CHIBI_H
+void test_language_signature_reader_chibi();
+#endif

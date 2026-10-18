@@ -644,6 +644,16 @@ TOOLS = {
     # Independent first-run review, separate build, shared 60s; outside aggregate.
     'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                   '--unit-algebra-chibi'],
+    # Three cases: 24 raw annotation reads/48 authored calls at 500k each.
+    # Seven sources per backend (<32 KiB each) + 24 raw TS trees: 38 parses,
+    # 4 private JSON callbacks. Raw sources <256 bytes, 256 nodes/depth 32.
+    # Inputs 2 scopes/2 symbols/1 function/2 documents/3 definitions/2 variants,
+    # 1 import/export; a chained return adds 1 definition. Pools 64 types/128 IDs.
+    # At most 4 new types/publications/uses/diagnostics; 8 retained-result
+    # projections <128 KiB each. No runtime IO/children/services/GPU. Independent
+    # first-run review, separate build, shared 60s; outside language aggregate.
+    'language-signature-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--signature-reader-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

@@ -1,4 +1,3 @@
-#include "language/component.h"
 #include "language/semantic_internal.h"
 #include "language/unit_algebra.h"
 #include "support/array.h"
@@ -29,67 +28,9 @@ typedef struct
 static const script_unit UNKNOWN = { .kind = SCRIPT_UNIT_UNKNOWN };
 static const script_unit LITERAL = { .kind = SCRIPT_UNIT_LITERAL };
 
-/* Unit nodes contain flat terms and separators; omit trivia without changing
- * dimension spelling. The same metadata parser also checks native signatures. */
-static char *signature_unit(analyzer *a, TSNode node)
-{
-    char *text = NULL;
-    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
-        TSNode child = ts_node_child(node, i);
-        if (ts_node_is_extra(child)) {
-            continue;
-        }
-        char *part = script_analyzer_text_copy(a, child);
-        if (script_analyzer_is(child, "identifier") &&
-            (!(script_builtin_type(part).flags & SCRIPT_TYPE_ERROR) ||
-             script_analyzer_find_type(a, node, part) >= 0)) {
-            script_analyzer_diagnostic(a, child, "'%s' is a type, not a unit", part);
-        }
-        for (const char *c = part; *c; c++) {
-            apush(text, *c);
-        }
-        free(part);
-    }
-    apush(text, 0);
-    char *owned = xstrdup(text);
-    afree(text);
-    if (script_unit_parse(owned).kind == SCRIPT_UNIT_INVALID) {
-        script_analyzer_diagnostic(a, node, "Invalid unit '%s'", owned);
-    }
-    return owned;
-}
 script_type script_analyzer_signature_type(analyzer *a, TSNode node, char **unit_text)
 {
-    *unit_text = NULL;
-    TSNode measured = script_analyzer_field(node, "unit");
-    if (script_analyzer_is(node, "unit")) {
-        *unit_text = signature_unit(a, node);
-        return script_builtin_type("number");
-    }
-    if (script_analyzer_is(node, "measured_type")) {
-        script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "base"));
-        *unit_text = signature_unit(a, measured);
-        if (!script_type_numeric(type)) {
-            script_analyzer_diagnostic(a, node, "A measured signature requires a numeric storage type");
-        }
-        return type;
-    }
-    if (script_analyzer_is(node, "type")) {
-        TSNode name_node = script_analyzer_field(node, "name");
-        char *name = script_analyzer_name_copy(a, name_node);
-        int symbol = script_analyzer_lookup_name(a, name);
-        bool named_type = symbol >= 0 &&
-                          (a->out->symbols[symbol].kind == SCRIPT_TYPE ||
-                           a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER);
-        if (script_unit_shorthand(name) && !named_type &&
-            script_analyzer_find_type(a, node, name) == -1 &&
-            ts_node_child_count(node) == 1) {
-            *unit_text = name;
-            return script_builtin_type("number");
-        }
-        free(name);
-    }
-    return script_analyzer_type_node(a, node);
+    return script_analyzer_read_type(a, node, true, unit_text);
 }
 void script_analyzer_signature_unit(analyzer *a, TSNode node, const char *expected, const char *actual)
 {

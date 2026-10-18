@@ -1415,6 +1415,25 @@ There are no runtime files, children, services or GPU work. Independently review
 before the first run, build separately and use one shared 60-second ceiling
 outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
+annotation and signature reading. Three pico cases run sixteen Type and eight
+Signature requests, totaling 48 authored calls across bytecode and SLJIT at
+500,000 instructions each. Seven compiler sources per backend, each below
+32 KiB, and 24 raw Tree-sitter inputs total 38 parses. Quoted names make four
+private JSON callbacks. Input sources are below 256 bytes with at most 256 nodes
+at depth 32; raw fields, named/extra flags and source text are preserved.
+
+Input tables contain two scopes, two symbols, one function, two documents, three
+catalog definitions, two variants and one import/export; a chained returned
+environment adds one definition. Pools hold at most 64 types and 128 IDs, with
+at most four new definitions/publications/uses/diagnostics. Comparisons include
+constructor selections and both returned catalog views. One task result feeds a
+later array annotation directly from the authored returned environment. Four
+retained readings produce eight before/after serialization projections, each
+below 128 KiB, checking ownership after producer retirement. No runtime files,
+children, services or GPU work occur. Independently review before the first run,
+build separately and use one shared 60-second ceiling outside the aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

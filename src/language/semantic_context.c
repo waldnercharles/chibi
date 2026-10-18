@@ -1,5 +1,6 @@
 #include "language/lexical_binding.h"
 #include "language/semantic_internal.h"
+#include "language/signature_reader.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -272,14 +273,6 @@ static script_type named_resolution(analyzer *a, script_named_resolution result)
     }
     return result.type;
 }
-static script_type optional_storage(const analyzer *a, script_type type)
-{
-    const script_catalog_type *definition = script_catalog_type_by_id(a->catalog, type.nominal);
-    if ((type.flags & SCRIPT_TYPE_OPTIONAL) && (!definition || !definition->component)) {
-        type.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
-    }
-    return type;
-}
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source)
 {
     script_named_facts facts = script_analyzer_named_facts(a);
@@ -287,102 +280,38 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
     return named_resolution(a, script_named_text(&facts, request, source));
 }
 
+script_type script_analyzer_read_type(analyzer *a, TSNode node, bool signature, char **unit)
+{
+    script_signature_facts facts = { .named = script_analyzer_named_facts(a),
+                                     .functions = a->out->functions,
+                                     .function_count = acount(a->out->functions),
+                                     .pointer_size = sizeof(void *) };
+    script_signature_reading reading = script_signature_read(
+        &a->out->constants,
+        &facts,
+        node,
+        script_analyzer_syntax(a, node)->text,
+        a->scope,
+        script_analyzer_range(a, node).document,
+        signature
+    );
+    for (int i = 0; i < reading.diagnostic_count; i++) {
+        apush(a->out->diagnostics, reading.diagnostics[i]);
+    }
+    for (int i = 0; i < reading.use_count; i++) {
+        apush(a->out->uses, reading.uses[i]);
+    }
+    for (int i = 0; i < reading.type_count; i++) {
+        script_analyzer_publish_type(a, reading.types[i]);
+    }
+    if (unit) {
+        *unit = reading.unit ? xstrdup(reading.unit) : NULL;
+    }
+    return reading.type;
+}
 script_type script_analyzer_type_node(analyzer *a, TSNode node)
 {
-    if (ts_node_is_null(node)) {
-        return (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
-    }
-    if (script_analyzer_is(node, "type")) {
-        for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-            TSNode child = ts_node_named_child(node, i);
-            if (script_analyzer_is(child, "union_type")) {
-                return script_analyzer_type_node(a, child);
-            }
-        }
-        TSNode name_node = script_analyzer_field(node, "name"),
-               arguments = script_analyzer_field(node, "arguments");
-        char *name = script_analyzer_name_copy(a, name_node);
-        bool collection = !strcmp(name, "array") || !strcmp(name, "set") ||
-                          !strcmp(name, "map");
-        bool nominal = !strcmp(name, "struct") || !strcmp(name, "enum") ||
-                       !strcmp(name, "handle");
-        script_type type;
-        if (!strcmp(name, "task") && !ts_node_is_null(arguments)) {
-            if (script_analyzer_named_count(arguments) != 1) {
-                script_analyzer_diagnostic(a, node, "task requires one result type");
-                type = script_analyzer_bad_type();
-            } else {
-                script_type result = script_analyzer_type_node(a, ts_node_named_child(arguments, 0));
-                type = script_analyzer_task_type(a, result, 0);
-            }
-        } else if (collection || nominal) {
-            TSNode argument = ts_node_named_child(arguments, 0);
-            if (ts_node_is_null(argument)) {
-                script_analyzer_diagnostic(a, node, "Type '%s' requires a type argument", name);
-                type = script_analyzer_bad_type();
-            } else {
-                type = script_analyzer_type_node(a, argument);
-            }
-            if (collection) {
-                type.container = !strcmp(name, "set") ? PIN_CONTAINER_SET
-                               : !strcmp(name, "map") ? PIN_CONTAINER_MAP
-                                                      : PIN_CONTAINER_ARRAY;
-            } else if (!strcmp(name, "enum")) {
-                type.storage = PIN_ENUM;
-            } else if (!strcmp(name, "handle")) {
-                type.storage = PIN_HANDLE;
-            }
-        } else {
-            char **tokens = NULL;
-            for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
-                apush(tokens, script_analyzer_text_copy(a, ts_node_child(node, i)));
-            }
-            script_named_facts facts = script_analyzer_named_facts(a);
-            script_named_request request = { a->scope,
-                                             script_analyzer_range(a, name_node) };
-            script_named_resolution result = script_named_parsed(
-                &facts,
-                request,
-                name,
-                (const char *const *)tokens,
-                acount(tokens)
-            );
-            for (int i = 0; i < acount(tokens); i++) {
-                free(tokens[i]);
-            }
-            afree(tokens);
-            free(name);
-            return named_resolution(a, result);
-        }
-        for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
-            TSNode child = ts_node_child(node, i);
-            if (script_analyzer_text_is(a, child, "ref")) {
-                type.flags |= SCRIPT_TYPE_REFERENCE;
-            } else if (script_analyzer_text_is(a, child, "?")) {
-                type.flags |= SCRIPT_TYPE_OPTIONAL;
-            } else if (script_analyzer_text_is(a, child, "[") || script_analyzer_text_is(a, child, "[]")) {
-                type.container = PIN_CONTAINER_ARRAY;
-            }
-        }
-        free(name);
-        return optional_storage(a, type);
-    }
-    if (script_analyzer_is(node, "union_type")) {
-        script_type *members = NULL;
-        for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-            TSNode child = ts_node_named_child(node, i);
-            if (!ts_node_is_extra(child)) {
-                apush(members, script_analyzer_type_node(a, child));
-            }
-        }
-        script_type type = script_analyzer_union_type(a, node, members, acount(members));
-        afree(members);
-        return type;
-    }
-    char *text = script_analyzer_text_copy(a, node);
-    script_type type = script_analyzer_type_text(a, node, text);
-    free(text);
-    return type;
+    return script_analyzer_read_type(a, node, false, NULL);
 }
 int script_analyzer_expression(analyzer *, TSNode, script_type);
 int script_analyzer_statement(analyzer *, TSNode);

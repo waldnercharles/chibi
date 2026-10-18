@@ -396,12 +396,14 @@ Structural union, task and await constructors select types and publication
 metadata from raw catalog, function and symbol tables.
 Shared unit algebra preserves parsing, dimension equality, products, formatting
 and overflow results using authored strings and term arrays.
+Raw annotation and signature reading composes those modules from complete
+syntax trees, preserving immediate constructor publication and type-use records.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: port raw annotation/signature reading, then callable headers.
+Next component: integrate callable headers, then unit analysis.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -516,59 +518,62 @@ Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `5d568845fc01f043c8868d08cb5644994ba813d5`, type constructors pushed
+- Starting checkpoint: `f32849e14d524e1a0108b8bfccd33f9c6e4f8ca3`, unit algebra pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port raw annotation/signature reading
+- Next action: integrate callable headers
 
-`unit_algebra.c` extracts unit parsing, dimension equality, multiplication and
-formatting from the analyzer. Active consumers call those private APIs directly.
-The remaining product adapter publishes the existing complexity diagnostic when
-the algebra reports overflow. Formatter and analyzer diagnostics share one UTF-8
-tail-trimming implementation; signature dispatch stays unchanged.
+`signature_reader.c` extracts raw type and signature traversal. Active analyzer
+wrappers supply syntax and current catalog/symbol tables, then append diagnostics,
+uses and materialized definitions. Constructor publications immediately update
+the reader's local catalog, so later siblings see them. Temporary names and text
+live in scratch storage; returned types, plans and nullable units are owned.
 
-`tools/compiler/unit_algebra/Units.chibi` owns the same policy using ordinary
-strings and flat term arrays. Missing annotations remain unknown, empty text
-invalid and a known empty term list dimensionless. Parsing preserves signed
-integer powers, superscripts, sticky denominators and the eight-term limit.
-Equality ignores term order; formatting preserves surviving insertion order.
+`tools/compiler/signature_reader/Reader.chibi` composes named binding, type
+constructors and unit algebra from raw syntax with named/extra flags and field
+edges. It preserves union precedence, wrapper modifiers, quoted-name decoding,
+shorthand units and measured-type diagnostics. Both catalog views grow after
+each publication. A returned task environment feeds a later array annotation
+directly; no C-computed annotation decisions are supplied to authored code.
 
-Four pico cases compare 48 requests on bytecode and SLJIT. Every C result also
-has an independent fixed witness. Product, equality and format inputs are raw
-algebra values rather than C-parser outputs. Cases cover overflow before
-cancellation, term removal/reappearance, signed power limits, UTF-8 truncation
-and tiny output buffers. Retained units and strings survive input and owner
-retirement. A switch payload is copied to a writable local before modification.
-Preparation exposed constructor shorthand interpreted as macro exits; explicit
-union constructor names preserve the intended values on the current parser.
+Three pico cases compare sixteen type and eight signature requests on bytecode
+and SLJIT, including constructor selections and full returned catalog/use views.
+Four retained readings survive input, syntax and module retirement. Preparation
+exposed a reserved `after` parameter and an empty switch arm parsed as a struct
+literal; ordinary parameter names and an explicit return preserve behavior with
+the current bootstrap. The shared raw-table packer also serves callable headers.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed after constructor qualification, 5.0s. Build timing is separate. |
-| Unit algebra differential | 4 cases / 5,175 assertions, 0.831s. |
-| `make test-native` | Passed, 25.281s execution. |
-| `make test-materials` | Passed, 29.278s execution. |
-| `make test-projects` | Passed, 31.035s execution. |
-| `make test-language-all` | Passed, 18.540s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 29.231s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed after bootstrap syntax corrections, 6.0s. Build timing is separate. |
+| Annotation/signature reader differential | 3 cases / 111,766 assertions, 3.025s. |
+| `make test-native` | Passed, 27.142s execution. |
+| `make test-materials` | Passed, 30.203s execution. |
+| `make test-projects` | Passed, 33.186s execution. |
+| `make test-language-all` | Passed, 18.897s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.464s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Every execution route uses one production 60-second ceiling. The independently
-reviewed unit route has 24 Parse, five Same, ten Product and nine Format requests,
-giving 96 authored calls with two-million-instruction budgets. Units and
-CoreStrings are prepared once per backend, totaling four preparation parses.
-Inputs have at most eight terms and 240 bytes per input or name; format capacities
-range from one to 192 bytes including the C terminator. No runtime files, JSON
-calls, child processes or GPU work occur.
+reviewed reader route has 48 calls with 500,000-instruction budgets. Seven sources
+per backend and 24 raw trees total 38 parses, with four private JSON calls.
+Sources are below 256 bytes, bounded at 256 nodes/depth 32; observed maximum was
+41 nodes/depth 14. Inputs have at most two scopes, two symbols, one function,
+two documents, three catalog definitions, two variants and one import/export.
+A chained result adds one definition. Pools hold 64 types/128 IDs; at most four
+new definitions, publications, uses or diagnostics are allowed. Eight retained
+result projections stay below 128 KiB each. No runtime files, children, services
+or GPU work occur.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
 are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses
-`units-` and `build-units` logs. No scratch executable or project
+`reader-` and `build-reader` logs. No scratch executable or project
 copy remains.
 
-This verifies unit algebra, not a complete compiler bootstrap. Prior
-checkpoints prove type construction, named/lexical binding and the snapshot
-component's executable closure in the private runtime host. Remaining semantic analysis, lowering,
+This verifies annotation reading, not a complete compiler bootstrap. Prior
+checkpoints prove unit algebra, type construction, named/lexical binding and the
+snapshot component's executable closure in the private runtime host. Remaining
+semantic analysis, lowering,
 authored artifact construction, scanner ownership and stage-one/stage-two
 equivalence still need implementation and validation. Full-size scalar evaluation
 exhaustion remains unadmitted. No compiler implementation or stage-zero recovery

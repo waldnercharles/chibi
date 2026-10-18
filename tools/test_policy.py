@@ -555,6 +555,13 @@ TOOLS = {
     # Independently review the exact workload before first run; no aggregate.
     'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--syntax-chibi'],
+    # Existing11 extraction cases/32 attempts,32 independent raw parses and
+    # 64 Extract invocations across2backends (including nested Diagnose work),
+    # each capped at1m instructions. Two reused owners prepare3actualsources
+    # each; fixture text<256bytes, rawtree<=1024nodes/depth128. No runtimefiles,
+    # children/services/GPU; independent review, separate build, shared60s.
+    'language-package-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--package-syntax-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

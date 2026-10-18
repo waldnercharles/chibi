@@ -1196,7 +1196,20 @@ does not require a witness: the current parser selects visible missing tokens
 for these inputs. The authored hidden-error rule matches the retained C code;
 this corpus does not establish execution coverage for that branch.
 
-The compiler port adds separately reviewed language regressions to existing
+`python3 tools/test_policy.py tool language-package-syntax-chibi` uses
+the existing eleven extraction cases and all 32 extraction attempts. It adds
+32 independent raw parses and 64 authored `Extract` invocations across both
+backends, each capped at one million instructions including its diagnostic
+traversal. Two retained owners prepare three actual authored sources each.
+Fixture texts remain below 256 bytes; raw trees are capped at 1,024 nodes and
+depth 128. Complete field names accompany raw nodes, with no native selection
+of package headers or imports. Results compare header, import, path and alias
+ranges, alias presence, names, source order and diagnostics after producer and
+input storage retire. This standalone route has no runtime files, children,
+services or GPU work; independently review it before first execution, build
+separately and use one shared 60-second ceiling.
+
+The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction
 budgets, checking both backends. Semantic adds nine short sources covering

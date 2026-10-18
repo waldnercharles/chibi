@@ -38,6 +38,7 @@ void test_language_package_graph();
 void test_language_package_graph_chibi();
 void test_language_syntax_chibi();
 void test_language_package_syntax();
+void test_language_package_syntax_chibi();
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
@@ -120,6 +121,8 @@ int main(int argc, char **argv)
     bool syntax_chibi = argc == 2 && !strcmp(argv[1], "--syntax-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
+    bool package_syntax_chibi = argc == 2 &&
+                                !strcmp(argv[1], "--package-syntax-chibi");
     bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
@@ -154,8 +157,8 @@ int main(int argc, char **argv)
          !outliner_projection && !row_builder && !row_array && !record_runtime &&
          !runtime_attribution && !wasm && !program && !query_program &&
          !incremental && !modules && !ranges && !numeric_exact_core &&
-         !package_graph && !package_graph_chibi && !syntax_chibi &&
-         !package_syntax && !package_execution && !package_resolution &&
+         !package_graph && !package_graph_chibi && !syntax_chibi && !package_syntax &&
+         !package_syntax_chibi && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !build_workflow &&
@@ -170,7 +173,8 @@ int main(int argc, char **argv)
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
             "--package-graph-chibi | --syntax-chibi | "
-            "--package-syntax | --package-execution | --package-resolution | "
+            "--package-syntax | --package-syntax-chibi | --package-execution | "
+            "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
@@ -297,6 +301,8 @@ int main(int argc, char **argv)
         test_numeric_exact_core();
     } else if (package_syntax) {
         test_language_package_syntax();
+    } else if (package_syntax_chibi) {
+        test_language_package_syntax_chibi();
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

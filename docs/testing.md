@@ -2594,6 +2594,29 @@ It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
 
+
+## Tooling parent C++ language activation
+
+The existing `desktop-dependencies` C/pico_unit selector adds one finite case
+with four configure-only fixtures: a pure C runtime consumer with an invalid
+C++ compiler path, a child-enabled scheduler with a parent C consumer, a
+child-enabled renderer with a parent C++ consumer, and an imported renderer.
+The C++ consumers reuse the existing `test/draw_backend.cpp` pass-through shim;
+no new C++ logic or standalone executable is added. The fixtures generate real
+Ninja rules through the production tooling language include. They do not build
+the fixture targets, fetch dependencies, execute fixture code or use a GPU.
+CMake's compiler identification/try-compile subprocesses remain part of each
+bounded configuration child.
+
+The whole existing selector now has eight C cases and twenty direct children
+(previously seven/sixteen). Its existing ten-second child limits and one shared
+production 60-second route deadline remain unchanged. The added case performs
+four `REQUIRE` checks, one per successful complete configuration/generation.
+Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
+consumers alone. The OpenGL case relocates discovered roles on Linux and asserts
+that other hosts reject the same absolute paths as unowned. The complete selector
+passes 8 cases in 6.8s on macOS. The 60-second ceiling covers the entire desktop
+selector, not each case separately.
 ### Snapshot-to-reader composition
 
 The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`

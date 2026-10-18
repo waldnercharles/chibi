@@ -443,8 +443,10 @@ were reproduced on bytecode and SLJIT. The full authored unit differential is
 green in [run 39112565011](https://github.com/waldnercharles/chibi-studio/actions/runs/39112565011);
 its sanitized status JSON SHA-256 is
 `3f290081324f0a89d1aae1fdd013ba7649ea4a5eac4e2046ffddf1a765218cfb`.
-The fixture observer remains off by default. The production C extraction
-adapter remains deferred; this does not move the normal compiler off stage zero.
+The fixture observer remains off by default. PR #443 connects the production
+analyzer to the extracted C reference helper and passes its native selectors. It
+does not move the normal compiler off stage zero or dispatch authored analysis
+in production.
 
 The authored type-relations component and its dedicated differential route,
 `language-type-relations-chibi`, are merged in
@@ -496,7 +498,7 @@ shared frontend and language-driver archives and still needs its own strict
 product-link audit, both full transport selectors and all five complete semantic
 selectors, independently admitted with separate unchanged 60-second deadlines.
 No raw hosted diagnostics or source contents are exported.
-No result is claimed for the separately owned native-unit adapter candidate.
+Those compiler-only results do not replace the native adapter build or tests.
 Complete authored semantic analysis, lowering, artifact production, stage one
 and stage two remain incomplete; these components do not establish self-hosting.
 
@@ -673,12 +675,13 @@ above; the merged tree exactly matches that tested source tree. Budget arguments
 and the single 60-second deadline remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
 
-The additive type-relations source passed its full four-case differential in
-hosted run `39113816903` on both backends with retained results. Configuration
-took 1s and build 14s; execution recorded 0s at integer-second resolution (below
-1s), under one unchanged production 60-second deadline. This was a standalone
-Debug build without sanitizers. Its source/tree and sanitized evidence hash are
-recorded above; the merge tree exactly matches the tested source tree.
+The independently reviewed additive type-relations component passed its first
+complete differential in hosted run `39113816903`. Its four cases cover 105 fixed
+requests, 210 authored calls across bytecode/SLJIT, ten preparation parses and
+retained-result lifetime checks. Configuration took 1s and build 14s; execution
+completed below the one-second timing resolution. This standalone Debug build
+was not sanitizer-instrumented. Exact source, merge tree and sanitized evidence
+are recorded in the milestone above.
 
 Union members, effects and record members are merged additive fixture components.
 The record preparation fix and Effects local-name correction passed the complete
@@ -687,10 +690,20 @@ transport integration: it must rebuild, audit and run all seven complete selecto
 Existing backend/lifetime assertions, instruction arguments and individual
 deadlines remain unchanged. No active adapters or native-unit results are imported.
 
-The active C extraction adapter remains deferred until its real native
-unit-fixtures and affected semantic/incremental contracts can run. The authored
-repair alone does not move normal compiler dispatch, complete a milestone, or
-establish stage-one/stage-two or installed tool-free build/link acceptance.
+`semantic_units.c` now uses the extracted C reference helper (PR #443). It
+supplies raw analyzer facts, copies returned diagnostics into the analyzer's
+ownership before freeing temporary storage, and retains the existing position
+sort. The authored source and evaluator are unchanged; this is the production C
+extraction boundary, not production dispatch of Chibi analysis. A C-only
+standalone tooling parent that consumes scheduler/render C++ targets now
+activates CXX through a narrow production include, leaving pure C consumers
+alone. On macOS, `language-semantic` (42 cases), `language-incremental` (13),
+`unit-fixtures` (2), `language-unit-analysis-chibi` (3) and the eight-case
+`desktop-dependencies` route pass, each under its own production 60-second
+deadline, as do the five CI aggregates. The desktop OpenGL case previously
+expected Linux relocation on every host; it now asserts that other hosts reject
+the same absolute paths as unowned. The earlier hosted Linux build failure was
+never classified and Linux remains unmeasured for this adapter.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

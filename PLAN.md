@@ -388,12 +388,14 @@ header/import extraction, lexical paths, routing and package graphs. Active
 constant admissibility and scalar folding operate on typed analysis facts.
 Authored lexical binding now owns symbol lookup, declaration admission and
 stable identity construction from explicit scope and declaration tables.
+Nominal record/union headers preserve declaration placement, origin checks and
+catalog metadata publication through the same authored lexical binding.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: port nominal declaration headers, then type/signature binding.
+Next component: port named annotation binding, then constructor/signature binding.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -501,62 +503,64 @@ Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `68d695a306fed8e1f829c4124814b0f4a2820062`, artifact host pushed
+- Starting checkpoint: `0282f6c9f17b66a11791d88817cbbc1f59809832`, lexical binding pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port nominal record/union declaration headers
+- Next action: port named annotation binding and catalog/import type lookup
 
-`lexical_binding.c` extracts the active analyzer's name, storage and callable
-lookup, duplicate admission and symbol identity construction. Existing analyzer
-wrappers supply borrowed facts with the actual construction-time symbol count.
-They still own symbol insertion, allocation and diagnostics. Name ownership,
-parameter replacement and diagnostic order are preserved.
+`nominal_binding.c` extracts the active record and union header decisions:
+placement, lexical declaration admission, origin checks and catalog metadata.
+The analyzer adapters still append symbols, preserve heap name ownership and
+publish catalog entries. A shared placement predicate avoids decoding rejected
+record names, preserving diagnostic order. Existing record and union origin
+checks intentionally differ; the extraction retains that behavior.
 
-`tools/compiler/lexical_binding/Binding.chibi` implements those decisions over
-flat scope, symbol and function tables, document keys and exact uint64 IDs.
-It preserves nearest-scope/reverse-declaration lookup, action precedence, shared
-state lookup, package namespace rules and separate legacy callable lookup.
-Stable IDs use the existing FNV-1a domains and bytes, including full-width owning
-function IDs and document identity for package locals. It does not obtain
-lookup decisions or hashes through a native compiler callback.
+`tools/compiler/nominal_binding/Nominal.chibi` implements the same decisions over
+raw lexical tables, symbol type facts and exact uint64 IDs. It calls the authored
+lexical component for admission and identity construction. Record catalog names
+remain qualified, union names remain bare, and reused symbols retain their
+existing type fields until publication. No native compiler-policy callback is
+introduced.
 
-Three pico cases compare 24 fixed table requests and 16 requests from four real
-analyses on bytecode and SLJIT. Comparisons include exact IDs, ordered diagnostics,
-source ranges, reserved names and 191-byte message truncation. Known wide-ID
-hashes and a literal diagnostic prefix supplement C comparisons. Input and
-producer arenas retire before comparison; retained diagnostic and ID results
-survive both module owner teardowns. The first preparation found reserved words
-used as local names; renaming them fixed the authored source without changing
-the language or workload.
+Three pico cases compare twelve raw requests and four requests from actual
+library, package and behavior headers on bytecode and SLJIT. They check placement
+and reserved-name precedence, origin/storage guards, exact IDs, inherited type
+metadata, catalog names and ordered diagnostic ranges. Inputs retire before
+comparison; retained published names and three diagnostics survive both module
+owner teardowns. The initial build caught enum-sign comparisons in the fixture.
+The first execution caught an invalid behavior-record fixture; a valid behavior
+union replaced it, while raw requests retain record-placement coverage.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed; initial 4.9s, source-name rebuild 4.0s. Build timing is separate. |
-| Lexical binding differential | 3 cases / 19,976 assertions, 1.081s. |
-| `make test-native` | Passed, 25.604s execution. |
-| `make test-materials` | Passed, 29.638s execution. |
-| `make test-projects` | Passed, 30.847s execution. |
-| `make test-language-all` | Passed, 19.073s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 26.686s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed after fixture casts, 1.9s; final fixture rebuild 4.2s. Build timing is separate. |
+| Nominal header differential | 3 cases / 5,756 assertions, 1.087s. |
+| `make test-native` | Passed, 24.987s execution. |
+| `make test-materials` | Passed, 28.940s execution. |
+| `make test-projects` | Passed, 30.348s execution. |
+| `make test-language-all` | Passed, 18.263s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 25.941s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Every execution route uses one production 60-second ceiling. The independently
-reviewed lexical route has 40 requests and 80 authored calls, each with a
-two-million-instruction budget. Six preparation parses and four analyzer inputs
-total ten parses. Inputs are bounded to 32 symbols, eight scopes, four functions,
-two documents, 220-byte names and 128-byte identities/keys. Results contain at
-most three diagnostics. No runtime files, child processes or GPU work occur.
+reviewed nominal route has sixteen requests and 32 authored calls, each with a
+100,000-instruction budget. Eight preparation parses and four analyzer inputs
+total twelve parses. Inputs are bounded to one symbol, one function, two scopes,
+two documents and strings below 128 bytes. Each compiler source is below 16 KiB,
+each analyzed source below 256 bytes. Results contain at most three diagnostics.
+No runtime files, child processes or GPU work occur.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
-are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `lexical-`
-and `build-lexical` logs. No scratch executable or project copy remains.
+are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `nominal-`
+and `build-nominal` logs. No scratch executable or project copy remains.
 
-This verifies lexical binding, not a complete compiler bootstrap. The prior
-checkpoint proves the snapshot component's executable closure in the private
-runtime host. Remaining semantic analysis, lowering, authored artifact
-construction, scanner ownership and stage-one/stage-two equivalence still need
-implementation and validation. Full-size scalar evaluation exhaustion remains
-unadmitted. No compiler implementation or stage-zero recovery path is deleted.
+This verifies nominal headers, not a complete compiler bootstrap. Prior
+checkpoints prove lexical binding and the snapshot component's executable
+closure in the private runtime host. Remaining semantic analysis, lowering,
+authored artifact construction, scanner ownership and stage-one/stage-two
+equivalence still need implementation and validation. Full-size scalar evaluation
+exhaustion remains unadmitted. No compiler implementation or stage-zero recovery
+path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at

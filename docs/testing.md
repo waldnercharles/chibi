@@ -1339,6 +1339,23 @@ There are no runtime files, services, children or GPU operations. Independently
 review before the first run, build separately and use one shared 60-second
 ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-nominal-binding-chibi` compares
+record and union header admission and nominal metadata publication. Three pico
+cases run twelve raw requests and four requests from real analyzed headers:
+32 authored calls across bytecode and SLJIT, each capped at 100,000 instructions.
+Two owners prepare the four compiler sources once each (all below 16 KiB), and
+four analyzed sources below 256 bytes add four parses, for twelve total.
+
+Inputs contain at most one symbol, one function, two scopes and two documents;
+strings are below 128 bytes. Cases compare placement rejection, source origin,
+record/union storage guards, exact uint64 IDs, inherited type metadata, catalog
+names and ordered diagnostics. Actual legacy and package headers supplement raw
+facts. The adapter copies input strings before execution and frees that storage
+before comparison. Retained published metadata and three diagnostics survive
+both owner teardowns. There are no runtime files, children, services or GPU
+operations. Independently review before the first run, build separately and use
+one shared 60-second ceiling outside the language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

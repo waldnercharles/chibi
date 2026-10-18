@@ -612,6 +612,13 @@ TOOLS = {
     # independent first-run review/shared60s, outside the language aggregate.
     'language-lexical-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--lexical-binding-chibi'],
+    # Three cases:12raw +4analyzed header requests,32authored calls at100k each.
+    # Two owners prepare4sources each (<16KiB);4actual inputs<256bytes:
+    # 12parses total. <=1symbol/1function/2scopes/2documents,strings<128bytes.
+    # No runtime IO/children/services/GPU; separate build, independent first-run
+    # review/shared60s, outside the language aggregate.
+    'language-nominal-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--nominal-binding-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

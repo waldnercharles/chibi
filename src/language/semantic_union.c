@@ -1,3 +1,4 @@
+#include "language/nominal_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -125,29 +126,56 @@ void script_analyzer_union_types(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        TSNode name = script_analyzer_field(node, "name");
-        int symbol = script_analyzer_symbol_new(
-            a,
-            name,
-            SCRIPT_TYPE,
-            (script_type){ .storage = PIN_UNION, .flags = SCRIPT_TYPE_UNION },
-            false
+        TSNode token = script_analyzer_field(node, "name");
+        char *name = script_analyzer_name_copy(a, token);
+        script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+        script_range range = script_analyzer_range(a, token);
+        script_nominal_declaration declaration = script_nominal_declare(
+            &a->out->constants,
+            &facts,
+            (script_nominal_context){
+                .lexical = { a->scope, a->function, a->package_scope, a->document_count },
+                .program_kind = a->out->kind,
+                .program_name = a->out->name,
+                .pointer_size = sizeof(void *) },
+            (script_nominal_request){ .kind = SCRIPT_NOMINAL_UNION,
+                                      .name = name,
+                                      .range = script_analyzer_range(a, node),
+                                      .name_range = range }
         );
-        script_symbol *s = &a->out->symbols[symbol];
-        script_range range = script_analyzer_range(a, name);
-        if (s->kind != SCRIPT_TYPE || s->type.storage != PIN_UNION ||
-            s->declaration.document != range.document ||
-            s->declaration.start != range.start) {
+        for (int j = 0; j < declaration.diagnostic_count; j++) {
+            apush(a->out->diagnostics, declaration.diagnostics[j]);
+        }
+        int symbol = declaration.existing;
+        if (declaration.declare && symbol < 0) {
+            apush(
+                a->out->symbols,
+                ((script_symbol){ .id = declaration.id,
+                                  .name = name,
+                                  .kind = SCRIPT_TYPE,
+                                  .type = declaration.declaration_type,
+                                  .declaration = range,
+                                  .scope = a->scope,
+                                  .initializer = -1,
+                                  .function = -1,
+                                  .writable = false })
+            );
+            symbol = acount(a->out->symbols) - 1;
+            name = NULL; /* The analysis now owns this heap symbol name. */
+        }
+        free(name);
+        if (!declaration.publish) {
             continue;
         }
-        s->type.nominal = s->id;
+        a->out->symbols[symbol].type = declaration.type;
         script_analyzer_publish_type(
             a,
-            (script_catalog_type){ .id = s->id,
-                                   .name = own(a, s->name),
-                                   .source_name = own(a, s->name),
-                                   .type = s->type,
-                                   .size = sizeof(void *) }
+            (script_catalog_type){ .id = declaration.id,
+                                   .name = declaration.name,
+                                   .source_name = declaration.source_name,
+                                   .type = declaration.type,
+                                   .authored_record = declaration.authored_record,
+                                   .size = declaration.size }
         );
     }
 }

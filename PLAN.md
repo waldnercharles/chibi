@@ -430,17 +430,46 @@ its sanitized status JSON SHA-256 is
 The fixture observer remains off by default. The production C extraction
 adapter remains deferred; this does not move the normal compiler off stage zero.
 
-The next type-relations component now has ordinary authored source and a
-dedicated differential route, `language-type-relations-chibi`, outside aggregates.
-Its finite corpus is 105 requests and 210 calls across bytecode and SLJIT, with
-ten preparation parses and a supplied budget argument of 50,000. Outlined and
-inline child activations inherit/reset that argument; it is not an invocation or
-global instruction ceiling. The exact integrated candidate still needs its first
-supervised runtime measurement under the shared 60-second deadline. No native
-type-relation adapter or language syntax change is introduced. Union members and
-effects remain reviewed, unlinked and unexecuted drafts. Complete authored
-semantic analysis, lowering, artifact production, stage one and stage two remain
-incomplete; these focused components do not establish self-hosting.
+The authored type-relations component and its dedicated differential route,
+`language-type-relations-chibi`, are merged in
+[PR #442](https://github.com/waldnercharles/chibi/pull/442) at
+`ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`, outside aggregates.
+Its four-case finite corpus passed 105 requests and 210 calls across bytecode
+and SLJIT, with ten preparation parses and retained-result checks, in
+[run 39113816903](https://github.com/waldnercharles/chibi-studio/actions/runs/39113816903).
+The supplied 50,000 instruction argument is inherited/reset per activation,
+not an invocation or global instruction ceiling. The tested source was
+`6787ff61d3516ad4d9064ec34b16b5514233d64e`; the merge matches its exact tree
+`95ddc9104ad6015f54c10fb59987ef31a65eaa34`. The sanitized status JSON SHA-256 is
+`06053425ed3d257bb9d201194895f4e643c80bf0efa43edcf797bc150c617752`.
+No native type-relation adapter or language syntax change is introduced.
+
+The additive union-members, effects and record-members candidate now wires
+three separate full differential routes into the existing language driver,
+with private C reference helpers and authored sources only. Normal production
+analyzers and binding finalizers remain unchanged. Union members retains
+24 requests, 48 calls and 32 parses with source/raw supplied budgets of two
+million/sixteen million; effects retains 34 requests, 68 calls and ten parses
+at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
+runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
+not whole-call or aggregate instruction ceilings. Each route remains outside
+aggregates under one unchanged production 60-second deadline. Hosted run
+39138442670 at source `ec13962865b093bbeb2693a46ec6dc22fac6e498` passed
+union members, record members, unit analysis and type relations, with execution
+identity, expected pico summaries and production deadlines verified. Effects
+failed during snapshot preparation before authored execution. An independently
+admitted complete three-source C syntax diagnostic reproduced one error in the
+Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
+cleanly. The local and its sole use are now named `isUnordered`, preserving
+reduction logic and all fixtures. Corrected-source syntax passed all three
+complete-source cases and nine assertions in 0.072 seconds under the unchanged
+production 60-second supervisor. The complete four-case effects differential
+still requires exact-candidate validation before claiming an execution pass. The status artifact SHA-256 is
+`6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
+No raw hosted diagnostics or source contents are exported.
+No result is claimed for the separately owned native-unit adapter candidate.
+Complete authored semantic analysis, lowering, artifact production, stage one
+and stage two remain incomplete; these components do not establish self-hosting.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -552,7 +581,7 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 ## Current checkpoint
 
 Last verified toolchain checkpoint: 2026-10-18 at
-`a5edefd3b79db958e444adc624df7ca8fa493e02` (PR #440).
+`ace559c9c294a450c95a3a730dcd6d9f1b5ce13c` (PR #442).
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
@@ -584,9 +613,20 @@ above; the merged tree exactly matches that tested source tree. Budget arguments
 and the single 60-second deadline remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
 
-The current additive type-relations candidate is independently source-reviewed
-and wired for its dedicated full differential. Its first runtime validation
-remains pending; the unit-analysis result is not evidence for that new component.
+The additive type-relations source passed its full four-case differential in
+hosted run `39113816903` on both backends with retained results. Configuration
+took 1s and build 14s; execution recorded 0s at integer-second resolution (below
+1s), under one unchanged production 60-second deadline. This was a standalone
+Debug build without sanitizers. Its source/tree and sanitized evidence hash are
+recorded above; the merge tree exactly matches the tested source tree.
+
+Union-members, effects and record-members remain additive fixture candidates.
+The first exact reviewed hosted measurement is recorded above: union passed,
+while effects and record members failed. The source-reviewed record preparation
+fix and diagnostic-only helper refinement still require exact combined review
+and a new full supervised measurement. Existing complete selectors, backend and
+lifetime assertions, instruction arguments and deadlines remain unchanged.
+No active adapters or concurrent native-unit results are incorporated here.
 
 The active C extraction adapter remains deferred until its real native
 unit-fixtures and affected semantic/incremental contracts can run. The authored
@@ -654,11 +694,16 @@ are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses
 `headers-`, `reader-` and their build logs. No scratch executable or project
 copy remains.
 
-At the owner's request, this checkpoint also saves three **unintegrated,
-uncompiled and unexecuted drafts**: `unit_analysis`, `union_members` and
-`effect_analysis`, each with C helpers, authored source and pico fixtures. Their
-source has been reviewed and finite workloads admitted, but active adapters,
-CMake embedding, dispatcher routes and execution evidence are still pending.
+The earlier checkpoint saved three unintegrated drafts: `unit_analysis`,
+`union_members` and `effect_analysis`, each with C helpers, authored source and
+pico fixtures. Unit analysis has since passed as recorded above. The current
+additive candidate wires union members and effects together with record members.
+Union and record members passed their full hosted routes in run 39138442670;
+effects reached a snapshot syntax failure. The `unordered` local-name correction
+passed all three complete-source syntax cases and nine assertions; full hosted
+effects differential evidence remains pending. Their
+active production adapters remain excluded. The workload records below retain
+the reviewed bounds and do not imply a corrected effects execution pass.
 
 - Unit analysis: 29 requests, 58 calls at 500,000 instructions and 14 parses.
   The old recursive evaluator and incorrect zero-capability guard intentionally
@@ -676,6 +721,12 @@ CMake embedding, dispatcher routes and execution evidence are still pending.
   propagation bound, exact diagnostic phases and stable binding ordering.
   Actual analyzed-source replays do not establish initial effect propagation;
   separate raw seed/cycle cases cover that behavior.
+
+- Record members: 26 requests, 52 calls at 500,000 supplied instructions,
+  32 parses and four runtime JSON decodes. Eight selection requests, thirteen
+  member requests, three refreshed-fact boundary requests and two publication
+  continuation requests retain the reviewed finite corpus. Defaults are not
+  analyzed or executed; layout and final record publication remain native.
 
 This verifies callable headers and annotation reading, not a complete compiler
 bootstrap. Prior checkpoints prove unit algebra, type construction, named/lexical

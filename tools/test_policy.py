@@ -636,6 +636,14 @@ TOOLS = {
     # review, separate build, shared 60s; outside the language aggregate.
     'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--type-constructors-chibi'],
+    # Four cases: 24 Parse/5 Same/10 Product/9 Format requests; 96 authored calls
+    # at 2m instructions each. Units/CoreStrings per backend: 4 preparation
+    # parses. At most 8 terms, 240 input/name bytes, format capacity 1..192.
+    # Fixed expected results supplement C parity; detached outputs and retained
+    # unit/UTF8 text survive both owners. No runtime IO/children/services/GPU.
+    # Independent first-run review, separate build, shared 60s; outside aggregate.
+    'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                  '--unit-algebra-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

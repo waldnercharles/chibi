@@ -1398,6 +1398,23 @@ each. There are no runtime files, children, services or GPU work.
 Independently review before the first run, build separately and use one shared
 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
+parsing, dimension equality, multiplication/division and formatting. Four pico
+cases run 24 Parse, five Same, ten Product and nine Format requests, totaling
+96 authored calls across bytecode and SLJIT at two million instructions each.
+Units and CoreStrings are prepared once per backend: four preparation parses.
+Inputs contain at most eight terms and 240 bytes per input or name; format
+capacities range from one to 192 bytes including the C terminator.
+
+Each C result has an independent expected witness. Equality, product and format
+inputs are raw algebra values, independent of C parsing. Cases cover missing
+and empty annotations, integer powers, overflow before cancellation, term order,
+sticky denominators, superscript/dot UTF-8 truncation and tiny output buffers.
+Detached results and a retained unit/string survive input and owner retirement.
+There are no runtime files, children, services or GPU work. Independently review
+before the first run, build separately and use one shared 60-second ceiling
+outside the language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

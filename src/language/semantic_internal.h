@@ -1,9 +1,7 @@
 #ifndef CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 #define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 
-#include "language/semantic.h"
-
-#define SCRIPT_MAX_DEPTH 256
+#include "language/constant_proof.h"
 
 /* Optional grammar fields have a null TSNode; Tree-sitter count/range APIs
  * require a real node even when the language permits the field to be absent. */
@@ -40,11 +38,6 @@ typedef struct
     bool typed;
     unsigned mutations;
 } narrowing;
-typedef struct
-{
-    unsigned generation;
-    int depth;
-} constant_proof;
 typedef struct
 {
     const script_syntax *syntax;

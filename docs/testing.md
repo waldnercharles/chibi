@@ -1272,6 +1272,27 @@ parses. Each retained C tree is walked three times, with depth bounded at 128.
 The fixed corpus does not exercise the 8 MiB aggregate source limit or the
 4,096-import limit at full size.
 
+`python3 tools/test_policy.py tool language-constant-proof-chibi` compares active
+constant admissibility using 36 fixed IR requests and two requests copied from
+real analyzer output. Three pico cases run 38 C proofs and 76 authored calls
+across bytecode and SLJIT, with two million instructions per call. Two retained
+owners prepare the actual IR and Proof packages (four source parses, each source
+smaller than 16 KiB); two short analyzer fixtures add two parses. Requests contain
+at most 257 expressions, 32 symbols and four aggregate arguments, with at most
+256 visited proof nodes. Step inputs range from -1 to 1,024; selected requests
+omit step accounting while retaining the depth bound.
+
+The adapter copies expression, symbol, type, effect and argument facts without
+computing policy. Acceptance, remaining steps and every successful cache depth
+must match C. Cases cover scalar restrictions, effects, rejected calls, symbols,
+ordered child failures, shared DAG reuse at different depths, depth boundaries
+and a cycle without a step budget. Input and producer storage retire before
+comparison, and retained results survive owner teardown. The fixture does not
+exercise the production 65,536-visit limit at full size. There are no runtime
+files, services, children or GPU operations. Independently review before the
+first run, build separately and use one shared 60-second ceiling outside the
+language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

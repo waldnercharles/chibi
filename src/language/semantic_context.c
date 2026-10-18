@@ -575,72 +575,6 @@ static bool starts_empty(script_type type)
     return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
            type.container != PIN_CONTAINER_SINGLE;
 }
-/* A compile-time value cannot read invocation or mutable storage. Calls are
- * excluded: being pure does not by itself promise compile-time evaluation. */
-static bool compile_time_value(const analyzer *a, int index, int depth, int *steps, bool scalar)
-{
-    if (index < 0 || depth >= SCRIPT_MAX_DEPTH) {
-        return false;
-    }
-    /* A proof made with less remaining depth also holds at a shallower visit.
-     * This retains the depth rule without expanding shared constant DAGs. */
-    constant_proof *proof = &a->constant_proofs[index];
-    if (proof->generation == a->constant_generation && proof->depth >= depth) {
-        return true;
-    }
-    if (steps && --*steps < 0) {
-        return false;
-    }
-    const script_expression *value = &a->out->expressions[index];
-    if (value->effects) {
-        return false;
-    }
-    if (scalar &&
-        (value->type.container != PIN_CONTAINER_SINGLE ||
-         (value->type.flags & ~(SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_LITERAL)) ||
-         value->type.storage < PIN_BOOL || value->type.storage > PIN_STR ||
-         (value->kind != SCRIPT_EXPR_CONSTANT &&
-          value->kind != SCRIPT_EXPR_SYMBOL && value->kind != SCRIPT_EXPR_UNARY &&
-          value->kind != SCRIPT_EXPR_BINARY && value->kind != SCRIPT_EXPR_CAST))) {
-        return false;
-    }
-    bool valid = false;
-    switch (value->kind) {
-        case SCRIPT_EXPR_CONSTANT:
-        case SCRIPT_EXPR_NIL: valid = true; break;
-        case SCRIPT_EXPR_SYMBOL:
-            valid = value->symbol >= 0 &&
-                    a->out->symbols[value->symbol].kind == SCRIPT_CONSTANT &&
-                    compile_time_value(a, a->out->symbols[value->symbol].initializer, depth + 1, steps, scalar);
-            break;
-        case SCRIPT_EXPR_UNARY:
-        case SCRIPT_EXPR_CAST:
-        case SCRIPT_EXPR_MEMBER:
-            valid = compile_time_value(a, value->left, depth + 1, steps, scalar);
-            break;
-        case SCRIPT_EXPR_BINARY:
-        case SCRIPT_EXPR_INDEX:
-            valid = compile_time_value(a, value->left, depth + 1, steps, scalar) &&
-                    compile_time_value(a, value->right, depth + 1, steps, scalar);
-            break;
-        case SCRIPT_EXPR_ARRAY:
-        case SCRIPT_EXPR_STRUCT:
-        case SCRIPT_EXPR_UNION:
-            valid = true;
-            for (int i = 0; i < acount(value->arguments); i++) {
-                if (!compile_time_value(a, value->arguments[i].value, depth + 1, steps, scalar)) {
-                    valid = false;
-                    break;
-                }
-            }
-            break;
-        default: break;
-    }
-    if (valid) {
-        *proof = (constant_proof){ a->constant_generation, depth };
-    }
-    return valid;
-}
 bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool scalar)
 {
     while (acount(a->constant_proofs) < acount(a->out->expressions)) {
@@ -652,7 +586,7 @@ bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool
         }
         a->constant_generation = 1;
     }
-    return compile_time_value(a, index, 0, steps, scalar);
+    return script_constant_prove(a->out, a->constant_proofs, a->constant_generation, index, steps, scalar);
 }
 bool script_analysis_constant(const script_analysis *analysis, int expression)
 {

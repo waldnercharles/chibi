@@ -582,6 +582,12 @@ TOOLS = {
     # separate build/shared60s, outside the language aggregate.
     'language-package-snapshot-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                         '--package-snapshot-chibi'],
+    # Three cases:38 queries,76 authored calls capped at2m instructions each.
+    # Two owners prepare IR+Proof:4parses;2short source parse/analyzes.
+    # <=257expressions/32symbols/4arguments/256visits perquery; no runtime IO,
+    # children/services/GPU. Independent first-run review, separate build/shared60s.
+    'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--constant-proof-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

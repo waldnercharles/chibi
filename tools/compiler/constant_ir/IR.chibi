@@ -1,0 +1,37 @@
+package constant_ir
+
+// These are resolved analyzer facts. References are pool indices; a negative
+// child/initializer denotes absence. Nonnegative references and argument spans
+// obey the same invariants as the analyzer's owned expression graph.
+Type :: struct { storage: int; container: int; flags: int; }
+Expression :: struct {
+    kind: int;
+    type: int;
+    symbol: int;
+    left: int;
+    right: int;
+    arg_start: int;
+    arg_count: int;
+    effects: int;
+}
+Symbol :: struct { kind: int; initializer: int; }
+Argument :: struct { value: int; }
+
+// Enum and bit-mask values retain the existing semantic and value ABI.
+Constant :: cast<int>(1);
+SymbolReference :: cast<int>(2);
+Unary :: cast<int>(3);
+Binary :: cast<int>(4);
+Cast :: cast<int>(5);
+Member :: cast<int>(7);
+Index :: cast<int>(9);
+Array :: cast<int>(10);
+Record :: cast<int>(11);
+Nil :: cast<int>(12);
+Union :: cast<int>(19);
+ConstantSymbol :: cast<int>(14);
+Single :: cast<int>(0);
+Boolean :: cast<int>(1);
+String :: cast<int>(13);
+Untyped :: cast<int>(16);
+Literal :: cast<int>(1024);

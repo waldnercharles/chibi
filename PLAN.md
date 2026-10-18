@@ -383,19 +383,20 @@ change instead of adding component-specific host behavior.
 
 ### M5. Bootstrap the complete compiler
 
-Status: in progress. Authored source snapshots now compose syntax diagnostics,
-header/import extraction, lexical paths, root/file/import routing and package
-graphs, with differential parity on a bounded corpus. Package graph construction
-was completed in M4. The normal compiler remains stage zero; this is not a
-stage-one or stage-two bootstrap.
+Status: in progress. Authored source snapshots compose syntax diagnostics,
+header/import extraction, lexical paths, routing and package graphs. Active
+constant admissibility now operates on raw typed analysis facts. Both have
+differential parity on bounded corpora. Package graph construction was completed
+in M4. The normal compiler remains stage zero; this is not a stage-one or
+stage-two bootstrap.
 
-Next component: port active constant admissibility and scalar folding against
-raw typed analysis facts. Preserve existing type/operator and budget rules;
-the inactive exact-rational draft is not the current compiler contract. In
-parallel, reuse the existing prepared executable format to establish a
-source-free runtime loader for the actual authored package closure. That closure
-has not yet been roundtripped. Nested authored record fields remain unsupported;
-these components use flat named fields and tagged payloads.
+Next component: port active scalar folding, preserving existing type/operator,
+conversion, error, short-circuit and budget rules. The inactive exact-rational
+draft is not the current compiler contract. In parallel, reuse the existing
+prepared executable format to establish a source-free runtime loader for the
+actual authored package closure. That closure has not yet been roundtripped.
+Nested authored record fields remain unsupported; these components use flat
+named fields and tagged payloads.
 
 Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
 the platform linker, and other external systems behind C ABIs where useful. The
@@ -499,74 +500,74 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `325ccd4a1c1d001f0716e9f3348a8cd1be54338a`, routing pushed
+- Starting checkpoint: `4e9c54001b70096cf96292e3a4ddb3f8cf5cad86`, snapshots pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port active constant admissibility against raw typed analysis
-  facts, preserving proof cache, depth and budget semantics
+- Next action: port active scalar folding with exact physical values and
+  separate proof/evaluation budgets
 
-`tools/compiler/source_snapshot/Snapshot.chibi` composes the authored path,
-routing, extraction, diagnostic and graph packages. It owns option validation,
-source byte budgets, strict UTF-8 validation, phase ordering, retained document
-and import prefixes, graph diagnostics and related locations. Exact declared
-sizes travel as `uint64`; bounded source prefixes preserve NUL detection after
-file routing. Declared collection counts exclude unused trailing rows.
+`tools/compiler/constant_admissibility/Proof.chibi` owns the active compiler's
+constant-admissibility decision over named expression, type, symbol and argument
+pools in `constant_ir/IR.chibi`. The adapter copies raw analyzer facts; it does
+not supply computed proof, promotion or effect-policy results. No compiler
+policy native capability was added.
 
-The private `compiler_syntax_parse` binding delegates parsing to Tree-sitter and
-copies complete public cursor facts into owned aligned arrays, including unnamed
-nodes, missing nodes, ERROR descendants and incoming field names. Syntax.chibi
-assembles those facts into named records. The binding performs no diagnostic,
-header, import or routing decisions; it retains no Tree-sitter pointers. The
-owned automatic-terminator scanner and generated grammar remain stage-zero C.
-The private JSON binding continues to delegate decoding to yyjson. Neither
-binding is exposed through game catalogs or public SDK headers.
+The iterative traversal preserves the C proof's order: invalid index/depth,
+successful depth-sensitive cache reuse, step accounting, effects and scalar
+restrictions, then ordered children. It checks both Boolean operands even when
+later evaluation could short-circuit, accepts only constant symbols, and caches
+successful nodes at the exact proof depth. Every query starts a fresh cache.
+Requests without step accounting retain the depth limit. The production
+65,536-step limit remains unchanged.
 
-Fifteen pico cases cover 45 snapshot requests and 90 authored Build calls across
-bytecode and SLJIT. They reuse all 24 existing resolver constructions and add
-validation precedence, valid multibyte comments, five invalid UTF-8 classes,
-source byte guards, invalid options and an empty snapshot. Two owners prepare
-eight actual sources each. Every authored call permits three million
-instructions. The measured corpus offered 71 files; 56 retained C documents
-were parsed, containing 373 public raw nodes. Full bounds, including preparation
-and comparison-only helpers, are recorded in `docs/testing.md`.
+The old recursive C traversal moved mechanically into private
+`src/language/constant_proof.c`. Analyzer cache allocation, generation handling,
+wrap clearing and public-root validation remain in their original wrapper.
+The normal compiler still uses this C implementation, which is also the
+independent differential oracle. The new header is private to the language
+build and owning fixture.
 
-The C implementation remains the differential oracle and the normal compiler
-path. Exact first diagnostics, related locations, retained document/import
-prefixes, raw node forests and complete graph observations match. Input and
-invocation storage retire before result comparison. Detached unions, arrays,
-record layouts and strings are checked for ownership; retained valid and invalid
-results survive subsequent calls and owner teardown. The shared compiler
-fixture now accepts multiple private definition packs while retaining the
-ordinary text/array-only default.
+Three pico cases cover 36 fixed IR requests and two real analyzer outputs,
+comparing 38 C proofs with 76 authored calls across bytecode and SLJIT. They
+compare acceptance, remaining steps and every cache depth, including failed
+queries that retain earlier successful proofs. Cases cover scalar flags/types,
+effects, calls, constant versus mutable symbols, ordered failures, shared DAGs,
+depth 255/256 and a cycle without step accounting. Two retained owners prepare
+two actual packages each; two short source fixtures add two parses. Requests
+have at most 257 expressions, 32 symbols and four arguments, and visit at most
+256 proof nodes. Every authored call permits two million instructions.
+
+Input and producer storage retire before comparison. Explicit arena checks
+verify detached union/array ownership; retained values and cache arrays survive
+owner teardown. Independent review fixed zero-filled cache initialization,
+unsupported record-array growth and preparation-failure guards before the first
+run. Explicit ownership assertions were then added and the unchanged workload
+rerun. No language or runtime semantics changed.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed, 5.6s. Build timing is separate. |
-| Authored snapshot differential | 15 cases / 224,018 assertions, 2.560s; bytecode and SLJIT. |
-| Existing package resolution | 8 cases / 164 assertions, 0.119s. |
-| Authored routes using the generalized fixture | 4 cases / 11,522 assertions, 0.587s. |
-| `make test-native` | Passed, 24.541s execution. |
-| `make test-materials` | Passed, 28.963s execution. |
-| `make test-projects` | Passed, 31.075s execution. |
-| `make test-language-all` | Passed, 18.517s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 26.224s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.2s, final fixture rebuild 1.0s. Build timing is separate. |
+| Authored constant proof differential | 3 cases / 21,564 assertions, 4.860s; bytecode and SLJIT. |
+| `make test-native` | Passed, 24.830s execution. |
+| `make test-materials` | Passed, 29.297s execution. |
+| `make test-projects` | Passed, 33.934s execution. |
+| `make test-language-all` | Passed, 18.237s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 31.637s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Each route uses one production 60-second ceiling. Python 3.12.14 is selected
-through the Homebrew PATH. Independent review fixed declared collection-count
-handling and fixture allocations for invalid option counts before execution.
-The first admitted run passed. Logs are under ignored
-`.chibi/evidence/toolchain-m5`, using `snapshot-` and `build-snapshot` names.
-No new scratch executable or project copy was created.
+through the Homebrew PATH. Logs are under ignored
+`.chibi/evidence/toolchain-m5`, using `proof-` and `build-proof` names. No new
+scratch executable or project copy was created. Exact workload bounds are in
+`docs/testing.md`; the corpus does not exercise 65,536 visits at full size.
 
-The fixed corpus does not establish performance at the 8 MiB aggregate source
-limit or the 4,096-import limit. Syntax's hidden-recovery rule remains matched
-by inspection without a real-parser witness in its fixed corpus. Semantic
-analysis, lowering, artifact construction, the scanner port and the complete
-stage-one/stage-two bootstrap remain. Existing prepared executable serialization
-is a candidate for the runtime loader; its use with this closure is not yet
-validated. No compiler implementation or recovery path is deleted.
+Active scalar evaluation, the remaining semantic analysis, lowering, artifact
+construction, scanner port and complete stage-one/stage-two bootstrap remain.
+The inactive exact-rational draft has not been activated. Existing prepared
+executable serialization is a candidate for the runtime loader; its use with
+the authored compiler closure is not yet validated. No compiler implementation
+or recovery path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at

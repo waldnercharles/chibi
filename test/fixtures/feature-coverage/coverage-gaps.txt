@@ -56,6 +56,10 @@ component Drive
 # package-routes-chibi differential exercises its decoded value and lifetime
 # through authored routing on both backends; it is absent from scene catalogs.
 
+# Compiler Syntax Parse belongs only to the private compiler catalog. The
+# package-snapshot-chibi differential compares its raw trees and detached
+# lifetimes on both backends. Scene catalogs do not expose compiler services.
+
 # Move Objects is a Studio-host service rather than a runtime catalog entry.
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
 # event and scene-move covers the scene contract. It cannot run in this fixture.

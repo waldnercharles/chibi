@@ -1243,6 +1243,35 @@ no runtime files, children, services or GPU operations. Independently review
 the fixed workload before first execution, build separately and use one shared
 60-second ceiling. This route remains outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-package-snapshot-chibi` reuses the
+eight resolver cases and adds seven validation cases: 45 snapshots and
+90 authored calls across bytecode and SLJIT, capped at three million instructions
+per call. Two retained owners prepare eight actual sources each, each source
+smaller than 16 KiB (sixteen source parses). The cases offer 71 files total,
+bounding C parses at 71 and private raw parser calls at 142. Requests have at
+most five files and four imports; actual
+source buffers are smaller than 1 KiB and raw trees have at most 1,024 nodes.
+The explicit invalid-path case declares `SIZE_MAX` bytes against a tiny buffer;
+both loaders must reject its path before accessing source bytes. It does not
+allocate or parse that declared size. Other precedence cases cover file parsing
+before later file routing, all-file parsing before import routing, and file
+routing before NUL/UTF-8 checks. Three tables cover valid multibyte comments,
+five invalid UTF-8 classes, missing source bytes, oversized declarations, invalid
+option counts/pointers and an empty snapshot. Each authored collection array
+also contains one invalid trailing row, which its declared count must exclude.
+Exact first errors, retained document/import prefixes, raw syntax and graph
+observations are compared. Input and invocation
+storage retire before detached result inspection; retained valid and invalid
+results survive owner teardown. Native bindings supply raw Tree-sitter nodes
+and external JSON decoding only. There are no runtime files, children, services
+or GPU operations. Independently review the fixed workload before its first
+execution, build separately and use one shared 60-second ceiling outside the
+language aggregate. Comparison alone uses 38 C root setups, at most 71 file
+routes and at most 71 header/import extractions from existing trees, adding no
+parses. Each retained C tree is walked three times, with depth bounded at 128.
+The fixed corpus does not exercise the 8 MiB aggregate source limit or the
+4,096-import limit at full size.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

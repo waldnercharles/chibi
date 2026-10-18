@@ -359,7 +359,7 @@ static bool prepare()
     for (int i = 0; i < 4; i++) {
         REQUIRE(files[i].size < 16384);
     }
-    return compiler_fixture_prepare_pack(&fixture, files, 4, &COMPILER_JSON_DEFINITION_PACK);
+    return compiler_fixture_prepare_packs(&fixture, files, 4, &COMPILER_JSON_DEFINITION_PACK, 1);
 }
 TEST_CASE(package_routes_roots)
 {

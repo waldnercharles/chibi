@@ -1,4 +1,5 @@
 #include "authoring/source_package_snapshot.h"
+#include "package_snapshot_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdlib.h>
@@ -13,6 +14,7 @@ enum
     MAX_FILES = 5
 };
 static source_package_snapshot *snapshots[MAX_SNAPSHOTS];
+static bool observe;
 static const source_package_collection collections[] = { { "core", "/sdk/core" } };
 static const source_package_input corpus[] = {
     { "/workspace/project/app/a.chibi", "package app\nimport first \"../math\"\nimport second \"project:math/.\"\n", 0 },
@@ -28,7 +30,7 @@ static void cleanup()
         snapshots[i] = NULL;
     }
 }
-static void create(
+static bool create(
     int slot,
     const source_package_input *files,
     int count,
@@ -53,6 +55,7 @@ static void create(
         .collection_count = root_count,
     };
     snapshots[slot] = source_package_snapshot_new(&options);
+    return !observe || package_snapshot_chibi_compare(&options, snapshots[slot]);
 }
 static bool valid(int slot)
 {
@@ -107,7 +110,7 @@ static bool located(const source_package_snapshot_error *failure, int document, 
 
 TEST_CASE(package_resolution_relative_and_collection_paths_share_identity)
 {
-    create(0, corpus, 5, "/workspace/./project", collections, 1);
+    REQUIRE(create(0, corpus, 5, "/workspace/./project", collections, 1));
     REQUIRE(valid(0));
     const source_packages *graph = source_package_snapshot_graph(snapshots[0]);
     REQUIRE(source_packages_count(graph) == 4);
@@ -140,7 +143,7 @@ TEST_CASE(package_resolution_aliases_are_file_local_and_blank_imports_keep_edges
         corpus[2],
         corpus[3],
     };
-    create(0, inputs, 4, "/workspace/project", NULL, 0);
+    REQUIRE(create(0, inputs, 4, "/workspace/project", NULL, 0));
     REQUIRE(valid(0));
     const source_packages *graph = source_package_snapshot_graph(snapshots[0]);
     int app = package(0, "project:app"), math = package(0, "project:math"),
@@ -173,7 +176,7 @@ TEST_CASE(package_resolution_path_failures_keep_the_quoted_token_range)
     for (int i = 0; i < 4; i++) {
         const source_package_input inputs[] = { { "app/a.chibi", texts[i], 0 },
                                                 corpus[2] };
-        create(0, inputs, 2, "/workspace/project", collections, 1);
+        REQUIRE(create(0, inputs, 2, "/workspace/project", collections, 1));
         const source_package_snapshot_error *failure = error(0);
         REQUIRE(located(failure, 0, texts[i]));
         REQUIRE(range_is(failure->diagnostic.range, 0, texts[i], tokens[i]));
@@ -183,7 +186,7 @@ TEST_CASE(package_resolution_path_failures_keep_the_quoted_token_range)
     const source_package_collection nested[] = { { "nested", "/workspace/project/app" } };
     const char *text = "package app\nimport lib \"../math\"\n";
     const source_package_input inputs[] = { { "app/a.chibi", text, 0 }, corpus[2] };
-    create(0, inputs, 2, "/workspace/project", nested, 1);
+    REQUIRE(create(0, inputs, 2, "/workspace/project", nested, 1));
     const source_package_snapshot_error *failure = error(0);
     REQUIRE(located(failure, 0, text));
     REQUIRE(range_is(failure->diagnostic.range, 0, text, "\"../math\""));
@@ -199,7 +202,7 @@ TEST_CASE(package_resolution_rejects_malformed_strings_and_headers_with_local_ra
     };
     for (int i = 0; i < 4; i++) {
         const source_package_input input = { "app/a.chibi", texts[i], 0 };
-        create(0, &input, 1, "/workspace/project", NULL, 0);
+        REQUIRE(create(0, &input, 1, "/workspace/project", NULL, 0));
         const source_package_snapshot_error *failure = error(0);
         REQUIRE(located(failure, 0, texts[i]));
         if (i == 0) {
@@ -216,14 +219,14 @@ TEST_CASE(package_resolution_rejects_malformed_strings_and_headers_with_local_ra
         { "app/a.chibi", "package app\n", 0 },
         { "app/b.chibi", "package other\n", 0 },
     };
-    create(0, mismatch, 2, "/workspace/project", NULL, 0);
+    REQUIRE(create(0, mismatch, 2, "/workspace/project", NULL, 0));
     const source_package_snapshot_error *failure = error(0);
     REQUIRE(located(failure, 1, mismatch[1].text));
     REQUIRE(range_is(failure->diagnostic.range, 1, mismatch[1].text, "other"));
     REQUIRE(range_is(failure->related, 0, mismatch[0].text, "app"));
     static const char nul_text[] = "package app\n\0trailing bytes";
     const source_package_input nul = { "app/a.chibi", nul_text, sizeof nul_text - 1 };
-    create(0, &nul, 1, "/workspace/project", NULL, 0);
+    REQUIRE(create(0, &nul, 1, "/workspace/project", NULL, 0));
     REQUIRE(error(0) && error(0)->diagnostic.range.document == 0);
     return true;
 }
@@ -234,7 +237,7 @@ TEST_CASE(package_resolution_rejects_duplicate_files_and_collection_roots)
         { "/workspace/project/app/./a.chibi", "package app\n", 0 },
         corpus[2]
     };
-    create(0, duplicate, 3, "/workspace/project", NULL, 0);
+    REQUIRE(create(0, duplicate, 3, "/workspace/project", NULL, 0));
     REQUIRE(error(0));
     REQUIRE(error(0)->diagnostic.range.document == 1);
     const source_package_collection roots[][2] = {
@@ -244,7 +247,7 @@ TEST_CASE(package_resolution_rejects_duplicate_files_and_collection_roots)
     };
     for (int i = 0; i < 3; i++) {
         const source_package_input file = { "app/a.chibi", "package app\n", 0 };
-        create(0, &file, 1, "/workspace/project", roots[i], 2);
+        REQUIRE(create(0, &file, 1, "/workspace/project", roots[i], 2));
         REQUIRE(error(0));
         REQUIRE(error(0)->diagnostic.range.document == -1);
     }
@@ -256,7 +259,7 @@ TEST_CASE(package_resolution_unused_cycles_reject_and_self_edges_remain_valid)
         { "a/a.chibi", "package alpha\nimport _ \"../b\"\n", 0 },
         { "b/b.chibi", "package beta\nimport _ \"../a\"\n", 0 },
     };
-    create(0, pair, 2, "/workspace/project", NULL, 0);
+    REQUIRE(create(0, pair, 2, "/workspace/project", NULL, 0));
     const source_package_snapshot_error *failure = error(0);
     REQUIRE(
         failure && failure->graph.code == SOURCE_PACKAGE_CYCLE &&
@@ -268,7 +271,7 @@ TEST_CASE(package_resolution_unused_cycles_reject_and_self_edges_remain_valid)
         { "b/b.chibi", "package beta\nimport _ \"../c\"\n", 0 },
         { "c/c.chibi", "package gamma\nimport _ \"../a\"\n", 0 },
     };
-    create(1, triple, 3, "/workspace/project", NULL, 0);
+    REQUIRE(create(1, triple, 3, "/workspace/project", NULL, 0));
     failure = error(1);
     REQUIRE(
         failure && failure->graph.code == SOURCE_PACKAGE_CYCLE &&
@@ -278,7 +281,7 @@ TEST_CASE(package_resolution_unused_cycles_reject_and_self_edges_remain_valid)
         { "a/a.chibi", "package alpha\nimport _ \".\"\nimport _ \"../b\"\n", 0 },
         { "b/b.chibi", "package beta\n", 0 },
     };
-    create(2, self, 2, "/workspace/project", NULL, 0);
+    REQUIRE(create(2, self, 2, "/workspace/project", NULL, 0));
     REQUIRE(valid(2));
     const source_packages *graph = source_package_snapshot_graph(snapshots[2]);
     int a = package(2, "project:a"), b = package(2, "project:b");
@@ -288,12 +291,12 @@ TEST_CASE(package_resolution_unused_cycles_reject_and_self_edges_remain_valid)
 }
 TEST_CASE(package_resolution_input_permutation_and_relocation_preserve_logical_keys)
 {
-    create(0, corpus, 5, "/workspace/project", collections, 1);
+    REQUIRE(create(0, corpus, 5, "/workspace/project", collections, 1));
     source_package_input reverse[5];
     for (int i = 0; i < 5; i++) {
         reverse[i] = corpus[4 - i];
     }
-    create(1, reverse, 5, "/workspace/project", collections, 1);
+    REQUIRE(create(1, reverse, 5, "/workspace/project", collections, 1));
     const source_package_input relocated[] = {
         { "/moved/project/app/a.chibi", corpus[0].text, 0 },
         { "/moved/project/app/z.chibi", corpus[1].text, 0 },
@@ -302,7 +305,7 @@ TEST_CASE(package_resolution_input_permutation_and_relocation_preserve_logical_k
         { "/moved/core/scalar/a.chibi", corpus[4].text, 0 },
     };
     const source_package_collection moved[] = { { "core", "/moved/core" } };
-    create(2, relocated, 5, "/moved/project", moved, 1);
+    REQUIRE(create(2, relocated, 5, "/moved/project", moved, 1));
     for (int i = 0; i < 3; i++) {
         REQUIRE(valid(i));
     }
@@ -341,7 +344,7 @@ TEST_CASE(package_resolution_owns_caller_roots_files_text_and_descriptors)
     source_package_input inputs[] = { { paths[0], texts[0], strlen(texts[0]) },
                                       { paths[1], texts[1], strlen(texts[1]) } };
     source_package_collection roots[] = { { name, root } };
-    create(0, inputs, 2, project, roots, 1);
+    REQUIRE(create(0, inputs, 2, project, roots, 1));
     free(project);
     free(name);
     free(root);
@@ -379,4 +382,11 @@ void test_language_package_resolution()
     RUN_TEST_CASE(package_resolution_input_permutation_and_relocation_preserve_logical_keys);
     RUN_TEST_CASE(package_resolution_owns_caller_roots_files_text_and_descriptors);
     pu_clear_setup();
+}
+
+void test_language_package_resolution_observed()
+{
+    observe = true;
+    test_language_package_resolution();
+    observe = false;
 }

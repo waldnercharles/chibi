@@ -383,16 +383,18 @@ change instead of adding component-specific host behavior.
 
 ### M5. Bootstrap the complete compiler
 
-Status: in progress. Authored syntax diagnostics, package-header/import
-extraction, lexical paths and root/file/import routing have differential parity
-on bounded corpora. Package graph construction was completed in M4. The normal
-compiler remains stage zero; this is not a stage-one or stage-two bootstrap.
+Status: in progress. Authored source snapshots now compose syntax diagnostics,
+header/import extraction, lexical paths, root/file/import routing and package
+graphs, with differential parity on a bounded corpus. Package graph construction
+was completed in M4. The normal compiler remains stage zero; this is not a
+stage-one or stage-two bootstrap.
 
-Next component: connect these components into an authored source snapshot,
-preserving input validation, per-file failure order, retained document prefixes
-and graph error locations. A private Tree-sitter binding may supply complete raw
-node facts; Chibi must own their interpretation. JSON decoding remains an external
-codec behind a private binding. Nested authored record fields remain unsupported;
+Next component: port active constant admissibility and scalar folding against
+raw typed analysis facts. Preserve existing type/operator and budget rules;
+the inactive exact-rational draft is not the current compiler contract. In
+parallel, reuse the existing prepared executable format to establish a
+source-free runtime loader for the actual authored package closure. That closure
+has not yet been roundtripped. Nested authored record fields remain unsupported;
 these components use flat named fields and tagged payloads.
 
 Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
@@ -497,70 +499,74 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `759e743b4c567b244bc25fc18f167a5d09989d83`, lexical paths pushed
+- Starting checkpoint: `325ccd4a1c1d001f0716e9f3348a8cd1be54338a`, routing pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: connect the authored resolver, extraction and graph components
-  into source snapshots, with a private raw Tree-sitter binding
+- Next action: port active constant admissibility against raw typed analysis
+  facts, preserving proof cache, depth and budget semantics
 
-`tools/compiler/package_routes/Routes.chibi` owns collection-name/root validation,
-first-error precedence, longest-root selection, file depth and stable keys, import
-collection lookup, and located routing diagnostics. It composes the authored
-path normalizer. A private `compiler_json_string` capability delegates only JSON
-decoding to yyjson, returning validity, owned decoded bytes and the full byte
-length. Chibi rejects embedded NUL and owns every subsequent routing decision.
-The binding is absent from game catalogs and public SDK headers.
+`tools/compiler/source_snapshot/Snapshot.chibi` composes the authored path,
+routing, extraction, diagnostic and graph packages. It owns option validation,
+source byte budgets, strict UTF-8 validation, phase ordering, retained document
+and import prefixes, graph diagnostics and related locations. Exact declared
+sizes travel as `uint64`; bounded source prefixes preserve NUL detection after
+file routing. Declared collection counts exclude unused trailing rows.
 
-The existing C policy moved unchanged into private `source_package_routes`
-helpers. Snapshot delegation retains its sequence: path guard before byte budget,
-retention before file routing, NUL/UTF-8 validation before parsing, then imports
-after all files. This C implementation remains authoritative on the normal path
-and supplies the differential oracle.
+The private `compiler_syntax_parse` binding delegates parsing to Tree-sitter and
+copies complete public cursor facts into owned aligned arrays, including unnamed
+nodes, missing nodes, ERROR descendants and incoming field names. Syntax.chibi
+assembles those facts into named records. The binding performs no diagnostic,
+header, import or routing decisions; it retains no Tree-sitter pointers. The
+owned automatic-terminator scanner and generated grammar remain stage-zero C.
+The private JSON binding continues to delegate decoding to yyjson. Neither
+binding is exposed through game catalogs or public SDK headers.
 
-Four pico cases cover thirteen root requests, eleven file routes and sixteen
-imports. Each file/import request builds its roots independently in Chibi, giving
-67 C oracle calls and 134 authored calls across bytecode and SLJIT. Two owners
-prepare four actual sources each. Every call permits one million instructions;
-requests use at most three roots, fewer than 128 input bytes and seventeen
-directory segments. Cases include both duplicate-root errors, relocation,
-nested-root ownership, depth boundaries, empty collection tails, escaped/raw
-Unicode, surrogate pairs, invalid JSON and embedded/leading NUL.
+Fifteen pico cases cover 45 snapshot requests and 90 authored Build calls across
+bytecode and SLJIT. They reuse all 24 existing resolver constructions and add
+validation precedence, valid multibyte comments, five invalid UTF-8 classes,
+source byte guards, invalid options and an empty snapshot. Two owners prepare
+eight actual sources each. Every authored call permits three million
+instructions. The measured corpus offered 71 files; 56 retained C documents
+were parsed, containing 373 public raw nodes. Full bounds, including preparation
+and comparison-only helpers, are recorded in `docs/testing.md`.
 
-Success fields and exact first diagnostics match C. The C root helper's partial
-prefix on rejection is not part of the authored rejection payload. Invocation
-and input storage retire before comparison; detached union, array, record-layout
-and string ownership is checked explicitly. Retained root, file and import
-results also survive later calls and owner teardown. Exact caps are in
-`docs/testing.md`.
+The C implementation remains the differential oracle and the normal compiler
+path. Exact first diagnostics, related locations, retained document/import
+prefixes, raw node forests and complete graph observations match. Input and
+invocation storage retire before result comparison. Detached unions, arrays,
+record layouts and strings are checked for ownership; retained valid and invalid
+results survive subsequent calls and owner teardown. The shared compiler
+fixture now accepts multiple private definition packs while retaining the
+ordinary text/array-only default.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.4s, final language rebuild 1.0s. Build timing is separate. |
-| Authored routes differential | 4 cases / 11,521 assertions, 1.140s; bytecode and SLJIT. |
-| Existing package resolution | 8 cases / 140 assertions, 0.139s. |
-| Authored paths with the unchanged default catalog | 3 cases / 1,436 assertions, 0.739s. |
-| `make test-native` | Passed, 26.113s execution. |
-| `make test-materials` | Passed, 28.871s execution. |
-| `make test-projects` | Passed, 30.756s execution. |
-| `make test-language-all` | Passed, 18.958s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 27.335s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 5.6s. Build timing is separate. |
+| Authored snapshot differential | 15 cases / 224,018 assertions, 2.560s; bytecode and SLJIT. |
+| Existing package resolution | 8 cases / 164 assertions, 0.119s. |
+| Authored routes using the generalized fixture | 4 cases / 11,522 assertions, 0.587s. |
+| `make test-native` | Passed, 24.541s execution. |
+| `make test-materials` | Passed, 28.963s execution. |
+| `make test-projects` | Passed, 31.075s execution. |
+| `make test-language-all` | Passed, 18.517s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.224s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Each route uses one production 60-second ceiling. Python 3.12.14 is selected
-through the Homebrew PATH. Independent review fixed a fixture failure-path null
-dereference before execution. The first run then exposed use of a single-result
-native callback for three outputs; switching to the existing context callback
-fixed preparation without changing runtime validation or language semantics.
-The same admitted workload passed afterward. Logs are under ignored
-`.chibi/evidence/toolchain-m5`, using `routes-` and `build-routes*` names.
+through the Homebrew PATH. Independent review fixed declared collection-count
+handling and fixture allocations for invalid option counts before execution.
+The first admitted run passed. Logs are under ignored
+`.chibi/evidence/toolchain-m5`, using `snapshot-` and `build-snapshot` names.
 No new scratch executable or project copy was created.
 
-The normal compiler still uses C policy. Authored snapshot orchestration, the
-owned automatic-terminator scanner, semantic analysis, lowering and artifact
-construction remain. Syntax's hidden-recovery rule is matched by inspection
-without a real-parser witness in its fixed corpus. No compiler implementation
-or recovery path is deleted by this increment.
+The fixed corpus does not establish performance at the 8 MiB aggregate source
+limit or the 4,096-import limit. Syntax's hidden-recovery rule remains matched
+by inspection without a real-parser witness in its fixed corpus. Semantic
+analysis, lowering, artifact construction, the scanner port and the complete
+stage-one/stage-two bootstrap remain. Existing prepared executable serialization
+is a candidate for the runtime loader; its use with this closure is not yet
+validated. No compiler implementation or recovery path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at

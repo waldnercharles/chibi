@@ -575,6 +575,13 @@ TOOLS = {
     # Independent first-run review, separate build/shared60s, outside aggregate.
     'language-package-routes-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--package-routes-chibi'],
+    # Fifteen cases:45 snapshots,90 authored calls capped at3m instructions.
+    # Two retained owners prepare8sources each; <=5files/4imports per request.
+    # <=71 C parses and142 raw authored parses; sources<1KiB, trees<=1024nodes.
+    # No runtime files/children/services/GPU; first-run independent admission,
+    # separate build/shared60s, outside the language aggregate.
+    'language-package-snapshot-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                        '--package-snapshot-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

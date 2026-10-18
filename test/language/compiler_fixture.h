@@ -23,11 +23,12 @@ typedef struct
 
 bool compiler_fixture_prepare(compiler_fixture *, const source_package_input *, int count);
 /* Additional private primitives are opt-in; ordinary fixtures keep their catalog. */
-bool compiler_fixture_prepare_pack(
+bool compiler_fixture_prepare_packs(
     compiler_fixture *,
     const source_package_input *,
     int count,
-    const native_definition_pack *additional
+    const native_definition_pack *additional,
+    int additional_count
 );
 void compiler_fixture_free(compiler_fixture *);
 const authoring_package *compiler_fixture_package(

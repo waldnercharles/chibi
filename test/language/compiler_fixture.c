@@ -5,10 +5,12 @@
 #include "execution/status.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/text_definition.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -51,29 +53,33 @@ void compiler_fixture_free(compiler_fixture *fixture)
 }
 bool compiler_fixture_prepare(compiler_fixture *fixture, const source_package_input *files, int count)
 {
-    return compiler_fixture_prepare_pack(fixture, files, count, NULL);
+    return compiler_fixture_prepare_packs(fixture, files, count, NULL, 0);
 }
-bool compiler_fixture_prepare_pack(
+bool compiler_fixture_prepare_packs(
     compiler_fixture *fixture,
     const source_package_input *files,
     int count,
-    const native_definition_pack *additional
+    const native_definition_pack *additional,
+    int additional_count
 )
 {
-    native_definition_pack packs[3] = { NATIVE_TEXT_DEFINITION_PACK,
-                                        NATIVE_ARRAY_DEFINITION_PACK };
-    if (additional) {
-        packs[2] = *additional;
+    REQUIRE(additional_count >= 0 && (!additional_count || additional));
+    native_definition_pack *packs = xmalloc(((size_t)additional_count + 2) * sizeof *packs);
+    packs[0] = NATIVE_TEXT_DEFINITION_PACK;
+    packs[1] = NATIVE_ARRAY_DEFINITION_PACK;
+    for (int i = 0; i < additional_count; i++) {
+        packs[i + 2] = additional[i];
     }
     char message[192];
     fixture->native = native_capabilities_from_definition_packs(
         NULL,
         0,
         packs,
-        additional ? 3 : 2,
+        additional_count + 2,
         message,
         sizeof message
     );
+    free(packs);
     REQUIRE(fixture->native);
     source_package_collection collections[] = { { "core", "/sdk/core" } };
     source_package_snapshot_options options = { .project_root = "/compiler",

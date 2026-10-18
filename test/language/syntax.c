@@ -159,6 +159,55 @@ TEST_CASE(language_system_queries_and_control_flow)
     return true;
 }
 
+TEST_CASE(language_nested_typed_records_and_explicit_labels)
+{
+    parse(
+        "library Parser { Package :: struct { directory: string; name: string; "
+        "member_start: int; member_count: int; }\n"
+        "Main :: fn(enabled: bool) -> int {\n"
+        " result: int = 0;\n"
+        " if enabled {\n"
+        "  item: Package = {directory: \"app\", name: \"sample\",\n"
+        "                   member_start: 3, member_count: 4};\n"
+        "  result = item.member_start + item.member_count;\n"
+        " }\n"
+        " if true {\n"
+        " ordinary:\n"
+        " result = result + 1;\n"
+        " compound: result += 1;\n"
+        " }\n"
+        " return result;\n"
+        "} }"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode library = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    TSNode body = field(library, "body");
+    TSNode function = ts_node_named_child(body, 1);
+    body = field(function, "body");
+    REQUIRE(ts_node_named_child_count(body) == 4);
+    TSNode branch = ts_node_named_child(body, 1);
+    TSNode nested = field(branch, "consequence");
+    REQUIRE(ts_node_named_child_count(nested) == 2);
+    TSNode item = ts_node_named_child(nested, 0);
+    REQUIRE(!strcmp(ts_node_type(item), "local_declaration"));
+    REQUIRE(node_text(field(item, "name"), "item"));
+    REQUIRE(node_text(field(item, "type"), "Package"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(nested, 1)), "assignment"));
+    TSNode labels = field(ts_node_named_child(body, 2), "consequence");
+    REQUIRE(ts_node_named_child_count(labels) == 4);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 0)), "label_statement"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 1)), "assignment"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 2)), "label_statement"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(labels, 3)), "assignment"));
+    parse("system State { inferred := 1; typed: int = 2; }");
+    REQUIRE(original->diagnostic_count == 0);
+    body = declaration_body();
+    REQUIRE(ts_node_named_child_count(body) == 2);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "state_declaration"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 1)), "state_declaration"));
+    return true;
+}
+
 TEST_CASE(language_definitions_unions_and_type_patterns)
 {
     parse(
@@ -526,6 +575,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
+    RUN_TEST_CASE(language_nested_typed_records_and_explicit_labels);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);

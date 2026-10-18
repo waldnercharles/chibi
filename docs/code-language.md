@@ -323,6 +323,21 @@ branches use `sequence { branch { ... } branch { ... } }` and run in their nativ
 order. Labels and `goto` express shared or irreducible control flow when structured
 blocks cannot describe it.
 
+A typed local's type must begin on the same line as its declaration colon:
+`item: Package = {value: 7};`. A complete `name: Type = value` takes precedence
+over a label followed by an assignment. Put a label's plain assignment on the
+following line to distinguish the two:
+
+```code
+ordinary:
+result = result + 1;
+```
+
+Same-line labels before other statement forms, such as `finish: goto finish;`
+or `compound: result += 1;`, remain valid. Inferred `:=` locals and persistent
+system-root declarations retain their existing meaning. See the
+[approved parse decision](language-contracts/typed-local-label-proposal.md).
+
 A `switch` evaluates its value once and executes the matching case. Cases never
 fall through, so they do not need `break`. `case:` is the default. The switch
 keeps its outer braces; braces around each case body are optional:

@@ -233,7 +233,7 @@ module.exports = grammar({
     // Systems accept both declarations and statements at their root. Prefer
     // persistent state there. Callable bodies require explicit state storage.
     state_declaration: ($) =>
-      prec.dynamic(1, seq(
+      prec.dynamic(2, seq(
         optional(field("storage", choice(K.state, K.shared))),
         $._state_declaration_value,
       )),
@@ -417,11 +417,12 @@ module.exports = grammar({
         $.label_statement,
       ),
     local_declaration: ($) =>
-      seq(
-        field("name", $._name),
-        choice(":=", seq(":", field("type", $.type), "=")),
-        field("value", $._expression),
-        $._end,
+      choice(
+        seq(field("name", $._name), ":=", field("value", $._expression), $._end),
+        prec.dynamic(1, seq(
+          field("name", $._name), ":", field("type", $.type), "=",
+          field("value", $._expression), $._end,
+        )),
       ),
     assignment: ($) =>
       seq(
@@ -509,7 +510,10 @@ module.exports = grammar({
     yield_statement: ($) => seq(K.yield, $._end),
     cancel_statement: ($) => seq(K.cancel, field("value", $._expression),
         optional(seq(K.after, field("duration", $._expression))), $._end),
-    label_statement: ($) => seq(field("name", $._name), ":"),
+    label_statement: ($) => choice(
+      prec.dynamic(2, seq(field("name", $._name), ":", $._automatic_terminator)),
+      seq(field("name", $._name), ":"),
+    ),
     _expression: ($) =>
       choice(
         $.identifier,

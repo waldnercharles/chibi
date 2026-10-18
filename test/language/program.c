@@ -281,9 +281,17 @@ static execution_program *other_program;
 static bool program_prepared_type(void *, uint64_t, execution_prepared_type *);
 static native_capabilities *state_native;
 static execution_inspector *debugger;
+static behavior_function_context parser_context;
+static behavior_function_activation parser_activation;
+static arena parser_storage;
 
 static void cleanup()
 {
+    behavior_function_release_host(&parser_context);
+    behavior_function_activation_free(&parser_activation);
+    parser_activation = (behavior_function_activation){ 0 };
+    parser_context = (behavior_function_context){ 0 };
+    arena_free(&parser_storage);
     execution_program_free(other_program);
     execution_program_free(program);
     execution_inspector_free(debugger);
@@ -585,6 +593,69 @@ static ecs_entity positioned(double x, bool moving)
     }
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
+}
+
+TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
+{
+    const char
+        *source = "library Parser { Package :: struct { directory: string; "
+                  "name: string; "
+                  "member_start: int; member_count: int; }\n"
+                  "Main :: pure fn(enabled: bool) -> int {\n"
+                  " result: int = 0;\n"
+                  " if enabled {\n"
+                  "  item: Package = {directory: \"app\", name: \"sample\",\n"
+                  "                   member_start: 3, member_count: 4};\n"
+                  "  result = item.member_start + item.member_count;\n"
+                  " }\n"
+                  " if true {\n"
+                  " ordinary:\n"
+                  " result = result + 1;\n"
+                  " compound: result += 1;\n"
+                  " }\n"
+                  " return result;\n"
+                  "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_module(source, backends[b]));
+        REQUIRE(execution_module_function_count(module) == 1);
+        const behavior_function *function = execution_module_function_at(module, 0)
+                                                .body;
+        REQUIRE(function);
+        for (int enabled = 0; enabled < 2; enabled++) {
+            behavior_function_release_host(&parser_context);
+            behavior_function_activation_free(&parser_activation);
+            parser_activation = (behavior_function_activation){ 0 };
+            arena_free(&parser_storage);
+            if (behavior_function_resumable(function)) {
+                behavior_function_activation_init(function, &parser_activation);
+            }
+            pin_value argument = { .type = PIN_BOOL, .b = enabled },
+                      result = { .type = PIN_I32 };
+            parser_context = (behavior_function_context){
+                .activation = behavior_function_resumable(function) ? &parser_activation
+                                                                    : NULL,
+                .arguments = &argument,
+                .argument_count = 1,
+                .results = &result,
+                .budget = 1000
+            };
+            behavior_function_bind_storage(&parser_context, &parser_storage);
+            REQUIRE(behavior_function_bind(function, &parser_context, NULL, 0));
+            behavior_run_scope runs = { 0 };
+            behavior_run_scope_begin(&runs);
+            int status = behavior_function_run(function, &parser_context, b != 0);
+            behavior_run_scope_end(&runs);
+            REQUIRE(status == FLOW_OK && parser_context.returned);
+            REQUIRE(result.type == PIN_I32 && result.i == (enabled ? 9 : 2));
+            REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
+            REQUIRE(b ? !runs.counts.bytecode_entries : runs.counts.bytecode_entries > 0);
+            REQUIRE(backends[b] != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
+            REQUIRE(backends[b] != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
+        }
+    }
+    return true;
 }
 
 TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
@@ -7529,6 +7600,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);

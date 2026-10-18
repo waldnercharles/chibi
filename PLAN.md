@@ -15,7 +15,9 @@ This is the active implementation plan for the `chibi` repository. A request to
 4. Run that milestone's checks under the repository's current test policy.
 5. Update the milestone ledger and [Current checkpoint](#current-checkpoint) in
    the same commit. Keep only current evidence here; Git retains old checkpoints.
-6. Continue with the next ready milestone while time and context allow. If work
+6. Push this branch to `origin` after each completed, reviewed and validated
+   milestone, as requested by the owner on 2026-10-17.
+7. Continue with the next ready milestone while time and context allow. If work
    must stop, leave a clean, committed checkpoint with one explicit next action.
 
 Routine implementation decisions are authorized. Ask before changing the stable
@@ -186,7 +188,7 @@ Current integration constraints:
 | M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
-| M4 | **Ready** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
+| M4 | **In progress** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
@@ -363,6 +365,9 @@ and the package graph and syntax fixtures remain bounded and deterministic.
 
 ### M4. Port the first compiler component
 
+Status: in progress. The approved parser correction is recorded first; the
+owned-value correction and authored graph follow as separate reviewed changes.
+
 Port package graph construction and dependency ordering from the current C
 implementation to ordinary `.chibi`. It is the selected first component because
 it is deterministic, already has bounded adversarial fixtures, and is required by
@@ -478,90 +483,72 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `19ec9e44bd5c780cdadad4c4baa476db28983efe`, executable imports
+- Starting checkpoint: `26e0821419e753f42041383bbe4f25db77b62121`, M3 complete
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
-- Latest fetch and merge check: upstream unchanged; already an ancestor
-- Completed milestones: M0 through M3; M4 and M7 are ready
-- Next action: port package graph construction and ordering to ordinary Chibi
-  for M4, comparing it with the existing C fixture corpus on both backends
+- Latest fetch: upstream unchanged and already an ancestor
+- Completed milestones: M0 through M3; M4 is in progress
+- Recorded M4 change: approved typed-declaration precedence
+- Next action: record the reviewed owned-value correction, then the authored graph
 
-The final M3 increment adds `source_package_snapshot_load` to the owning SDK.
-It reads a complete explicit source forest through POSIX directory descriptors,
-canonicalizes root symlinks, rejects other non-hidden symlinks and nonregular
-sources, and enforces source/path/depth/entry limits. Explicit nested roots are
-scanned independently, including roots below hidden directories; ancestor scans
-prune their subtrees. Sorted owned buffers feed the existing resolver. Read-time
-metadata checks detect changed files/directories; this does not claim an atomic
-snapshot of the entire filesystem. Windows reports unsupported disk loading.
+The owner approved declaration precedence on 2026-10-17: `name: Type = value`
+is a declaration when its type begins on the colon's line. A label before a
+plain assignment ends on its own line. Inferred locals and system-root
+persistent state retain their meanings. The language reference and
+`docs/language-contracts/typed-local-label-proposal.md` record the approved rule.
+The parser is regenerated with the existing Tree-sitter 0.25.10 generator,
+ABI 15. The old parser fails the new syntax regression.
 
-The SDK ships `core:strings` with pure byte access, owned slicing, lexical
-comparison, ASCII identifier checking and slash-basename extraction. Three
-service-free native primitives extend the existing text pack. Existing pure
-native arrays work with typed integer, string and authored-record values.
-Unrestricted authored generic specialization remains unimplemented. Numeric
-literals supplied to generic native parameters currently infer as double;
-compiler callers use explicit typed values where integer storage is required.
+The complete reviewed M4 working tree is being recorded in separate parser,
+owned-value and compiler-component commits. The following evidence belongs to
+that combined candidate; it does not claim each intermediate commit was tested
+in isolation. The remaining changes are already implemented and reviewed.
 
-Final macOS source-tree evidence:
+The owned-value correction classifies member/index writes by their storage
+root. Owned local, result and by-value parameter writes remain pure; references,
+state, components and reflected setters remain external writes. Mutated or
+reference-exposed by-value parameters receive callee-owned headers. Read-only
+parameters keep their existing lowering shape, including row-builder proofs.
+Plain standalone entries receive their owner's argument signature. Tests cover
+caller isolation, explicit references, reference exposure, inline and standalone
+entries, and values surviving module teardown. Both the semantic and ownership
+regressions failed before their corresponding fixes.
 
-| Check | Result |
+The authored `tools/compiler/package_graph/Graph.chibi` uses ordinary package
+imports, flat records, arrays and a union result. It owns membership, file-local
+aliases, sparse dependency edges, deterministic order and diagnostic selection.
+The shared 23-case C corpus supplies all inputs. Both backends compare every
+package/member, dependency cell, alias binding, order entry and diagnostic field,
+plus bounded public queries. There are two prepared owners, 56 Builds and 348
+queries; exact execution limits remain in `docs/testing.md`.
+
+| Check on the combined macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed, 1.2s final incremental build; build separate from execution. |
-| `python3 tools/test_policy.py tool language-package-files` | 8 cases, 149 assertions, 0.721s. |
-| `python3 tools/test_policy.py tool language-package-core` | 4 cases, 802 assertions, 0.890s. |
-| `make test-native` | Passed, 25.611s execution. |
-| `make test-materials` | Passed, 29.425s execution. |
-| `make test-projects` | Passed, 31.449s execution. |
-| `make test-language-all` | Passed, 19.018s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 25.884s execution. |
-| Eight changed C files, clang-format 22; `git diff --check` | Passed. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 2.5s final build; configuration/build separate from execution. |
+| Authored graph differential | 23 cases / 166,502 assertions, 3.706s; bytecode and SLJIT. |
+| Record runtime | 5 cases / 2,123 assertions, 0.987s; bytecode and SLJIT. |
+| Syntax within language aggregate | 13 cases / 503 assertions. |
+| Semantic within language aggregate | 42 cases / 533 assertions. |
+| Program within language aggregate | 125 cases / 10,920 assertions. |
+| `make test-language-all` | Passed, 17.670s execution. |
+| `make test-native` | Passed, 25.005s execution. |
+| `make test-materials` | Passed, 28.768s execution. |
+| `make test-projects` | Passed, 32.310s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.080s execution. |
+| Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Relocated installed SDK execution:
+Each execution route uses one production 60-second ceiling. Python 3.12.14 is
+selected through the Homebrew PATH. Independent review found no unresolved
+correctness, lifetime or workload issue. Logs and retained diagnostic source
+copies are under ignored `.chibi/evidence/toolchain-m4`; no new scratch executable
+or project copy remains. M3's installed Linux/macOS evidence is in its committed
+checkpoint; this increment does not claim a new installed-SDK or Linux run.
 
-| Route | macOS | Linux |
-| --- | --- | --- |
-| Package imports | 11 cases / 808 assertions, 1.045s | 11 / 808, 0.065s |
-| Package files | 8 / 149, 0.192s | 8 / 149, 0.055s |
-| Package core | 4 / 802, 0.335s | 4 / 802, 0.088s |
-| Package graph | Previous M3 source-tree evidence | 23 / 457, 0.042s |
-| Package syntax | Previous M3 source-tree evidence | 11 / 292, 0.044s |
-| Package resolution | Previous M3 source-tree evidence | 8 / 140, 0.039s |
-| Sibling execution | Previous M3 source-tree evidence | 7 / 559, 0.045s |
-
-The macOS SDK and consumers use Debug assertions and ASan/UBSan; Linux uses
-Debug assertions without sanitizers. All authored calls verify bytecode or real
-SLJIT entries. Each route and required group uses one production 60-second
-execution ceiling; build/configuration/install work is separate. Python 3.12.14
-is selected through the Homebrew PATH on macOS; the existing Alpine guest uses
-Python 3.12.15, Clang 21.1.2 and CMake 4.1.3. No new VM or guest dependency was
-installed. The existing VM was restored from Running to its initial Stopped state.
-
-The installed proof checks ten public headers, five owning archives and the
-shipped core source against their exact source/build inputs. Package fixtures
-compile against installed public headers and link relocated archives. The core
-fixture embeds the installed source through relocatable `Chibi_CORE_SOURCE_DIR`.
-The existing dispatcher also contains private unrelated fixtures and `numeric.c`;
-this is public package-API provenance, not an entirely source-free dispatcher.
-Stable artifact/source hashes, preserved compiler commands, imported targets and
-logs are under ignored `.chibi/evidence/toolchain-m3/{installed,linux}`. All 3,136
-source hashes matched across the installed proof before the coverage-manifest
-comment correction and this ledger update.
-
-Independent review admitted both finite workloads and found no unresolved
-correctness, ownership or portability issue in the supported adapter. The disk
-route uses 22 loads, 12 preparations and ten budget-2,000 calls; it creates only
-fixed disposable trees, including one sparse oversized source and a FIFO that
-is never opened. Core uses 12 preparations and 66 budget-10,000 calls, without
-filesystem, process or service work. Exact limits are recorded in `docs/testing.md`.
-Builds caught a Darwin feature-macro issue and a nonpublic fixture include, both
-fixed. Core's first run caught the generic numeric-literal inference limitation;
-its final fixture uses the existing typed contract. The project group caught
-invalid feature-coverage exclusions; these pure uncategorized capabilities now
-have an explanatory comment rather than names absent from the scene catalog.
-
-M3 generated SDK and consumer directories were removed after provenance capture;
-logs, manifests and reconstruction commands remain. The four previously pending M2 SDK/source/build copies were also removed after
-checking their ownership markers and retained reconstruction evidence. Shared dependency caches remain. Full native/render/Studio/
-browser/device and other quarantined suites were not run and are not passed.
-Only changed C files were format-checked. The branch has not been pushed or
-merged. The compiler still uses stage zero; M3 completion is not self-hosting.
+The corpus reaches 256 files and 255 imports. It does not prove performance or
+memory bounds at the resolver's full 4,096-import envelope. General authored
+generics and managed/nested record fields remain separate language gaps; this
+component needs neither. Labels at an authored callable's outermost body still
+lack predeclaration; the regression uses supported nested block scope. Numeric
+seeds for generic native arrays use explicit integer types. Full native/render/
+Studio/browser/device and other quarantined suites remain disabled, not passed.
+The normal compiler still uses stage zero and the C graph remains authoritative.
+No compiler implementation or recovery path has been deleted.

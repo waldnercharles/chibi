@@ -1369,9 +1369,8 @@ private interface's contract.
 `python3 tools/test_policy.py tool language-scalar-lowering-chibi` selects one
 C/pico_unit case in the existing `test_language --scalar-lowering-chibi`
 dispatcher. It compares an authored Bool/I32 value-evaluator lowering component
-with the production native emitter before optimization. This is source-only
-registration: independent exact-source and workload admission is required before
-the first supervised invocation. It is outside every native and Wasm aggregate.
+with the production native emitter before optimization. It passes 1 case /
+33,382 assertions in 3.2s on macOS and is outside every native and Wasm aggregate.
 
 One embedded `tools/compiler/scalar_lowering/Lower.chibi` source, below 32 KiB,
 is prepared once for BYTECODE and once for SLJIT. Those two preparations execute
@@ -1413,15 +1412,17 @@ the new scalar-only differential does not establish that broader coverage.
 The oracle header remains private and is not installed as an SDK contract.
 
 There are no workload files, children, services, network requests, engine frames,
-GPU operations, sleeps or benchmark loops. After admission, run the complete
-fixed fixture under one unchanged production 60-second supervisor deadline,
+GPU operations, sleeps or benchmark loops. Run the complete fixed fixture under
+one unchanged production 60-second supervisor deadline,
 including preparation, initializers, calls, materialization, round trips and
 cleanup. Build/configuration timing stays separate. A timeout does not authorize
 splitting the workload. Native producer verification, optimization, finalization,
 liveness/borrowing/runtime rewriting, parallel proof, definition snapshots,
 module publication, prepared serialization and backend emission remain required.
-This evaluator component is not a completed source compiler, stage-one/stage-two
-self-build or compiler-free normal build/link path; no measured pass is recorded.
+The shared emitter's managed binding and dependency callers pass the five-case
+`language-binding-schedule` and `language-binding-benchmark` routes on native and
+Wasm builds. This evaluator component is not a completed source compiler,
+stage-one/stage-two self-build or compiler-free normal build/link path.
 
 `python3 tools/test_policy.py tool language-lexical-binding-chibi` compares
 lexical lookup, declaration admission and stable identity construction. Three

@@ -506,8 +506,9 @@ typed-expression traversal and plan emission. The native adapter decodes that
 plan and retains builder verification, optimization, finalization, liveness,
 borrowing, runtime rewriting, parallel proof, definition snapshots, module
 publication, serialization and backend emission. Its private reference oracle
-shares the production value-evaluator emitter, so managed binding and dependency
-results also need the expanded five-case binding-schedule coverage.
+shares the production value-evaluator emitter. The differential passes 1 case /
+33,382 assertions; binding-schedule (5 cases) and binding-benchmark pass on native
+and Wasm, as does the complete Wasm group.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged

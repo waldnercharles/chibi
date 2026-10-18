@@ -1,3 +1,4 @@
+#include "language/lexical_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -50,22 +51,10 @@ static TSNode unparenthesized_parent(TSNode node)
 }
 int script_analyzer_callable_symbol(const analyzer *a, const char *name)
 {
-    int symbol = script_analyzer_lookup_name(a, name);
-    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
-        return symbol;
-    }
-    for (int scope = a->scope; scope >= 0; scope = a->out->scopes[scope].parent) {
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *candidate = &a->out->symbols[i];
-            if (candidate->scope == scope &&
-                (candidate->kind == SCRIPT_FUNCTION || candidate->kind == SCRIPT_MACRO) &&
-                !strcmp(candidate->name, name)) {
-                return i;
-            }
-        }
-    }
-    return -1;
+    script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+    return script_lexical_callable(&facts, a->scope, name);
 }
+
 int script_analyzer_parameter_index(const script_catalog_parameter *parameters, int count, const char *name)
 {
     int found = -1;

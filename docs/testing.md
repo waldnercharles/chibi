@@ -1320,6 +1320,25 @@ not establish these type invariants. The corpus also checks result-width changes
 within a family; malformed cross-family C union reinterpretation is outside this
 private interface's contract.
 
+`python3 tools/test_policy.py tool language-lexical-binding-chibi` compares
+lexical lookup, declaration admission and stable identity construction. Three
+pico cases run 40 requests (24 fixed tables and 16 requests from four real
+analyses) through C and both authored backends: 80 authored calls, each capped at
+two million instructions. Two owners prepare Binding, Diagnostics and Strings
+once each; those six parses and four analyzer inputs total ten parses.
+
+Each request contains at most 32 symbols, eight scopes, four functions and two
+documents. Names are at most 220 bytes, identities and document keys 128 bytes,
+and declaration results contain at most three diagnostics. The adapter copies
+raw scopes, symbols, functions and document keys. Lookup precedence, parameter
+replacement, package namespace rules, exact uint64 identities, diagnostic order,
+ranges and 191-byte truncation must match. Fixed expected hashes and message
+prefixes supplement differential comparisons. Input and producer storage retire
+before comparison; retained declaration results survive both owner teardowns.
+There are no runtime files, services, children or GPU operations. Independently
+review before the first run, build separately and use one shared 60-second
+ceiling outside the language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

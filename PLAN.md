@@ -386,14 +386,15 @@ change instead of adding component-specific host behavior.
 Status: in progress. Authored source snapshots compose syntax diagnostics,
 header/import extraction, lexical paths, routing and package graphs. Active
 constant admissibility and scalar folding operate on typed analysis facts.
+Authored lexical binding now owns symbol lookup, declaration admission and
+stable identity construction from explicit scope and declaration tables.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: port lexical symbol lookup, declaration admission and stable
-identity construction, then connect nominal declarations and type/signature
-binding. The inactive exact-rational draft remains unused. Full-size scalar
+Next component: port nominal declaration headers, then type/signature binding.
+The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
 payloads.
@@ -496,85 +497,63 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified: 2026-10-17.
+Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `c83ed0ee5e08189a047a9bb2cf16642eb4eeba6a`, scalar folding pushed
+- Starting checkpoint: `68d695a306fed8e1f829c4124814b0f4a2820062`, artifact host pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port lexical symbol lookup, declaration admission and stable IDs
+- Next action: port nominal record/union declaration headers
 
-The private `chibi-compiler-host` loads a closed prepared executable artifact and
-invokes an explicit entry ID. Its native catalog contains text, arrays, external
-JSON decoding and raw Tree-sitter parsing. It does not prepare source or link
-C semantic analysis or lowering. The actual binary's symbols and Ninja link
-inputs confirm that boundary; the generated parser and owned scanner remain
-transitional dependencies.
+`lexical_binding.c` extracts the active analyzer's name, storage and callable
+lookup, duplicate admission and symbol identity construction. Existing analyzer
+wrappers supply borrowed facts with the actual construction-time symbol count.
+They still own symbol insertion, allocation and diagnostics. Name ownership,
+parameter replacement and diagnostic order are preserved.
 
-`compiler_artifact.c` frames the existing target-compatible prepared modules in
-a versioned binary container with a root ID and identity-sorted records. It checks
-lengths, duplicate IDs/names, missing roots and trailing bytes before loading the
-closed dependency set. Module loading retains the existing format, ABI, import
-and native-binding checks. Source preparation and compiler policy are not part
-of this wire adapter.
+`tools/compiler/lexical_binding/Binding.chibi` implements those decisions over
+flat scope, symbol and function tables, document keys and exact uint64 IDs.
+It preserves nearest-scope/reverse-declaration lookup, action precedence, shared
+state lookup, package namespace rules and separate legacy callable lookup.
+Stable IDs use the existing FNV-1a domains and bytes, including full-width owning
+function IDs and document identity for package locals. It does not obtain
+lookup decisions or hashes through a native compiler callback.
 
-The host copies input values against decoded signatures and emits owned JSON
-results with actual backend counters. Its private transport preserves uint64
-values and invalid UTF-8 input bytes without changing ordinary JSON adapters.
-Regular-file byte limits, bounded batch counts, instruction limits and the
-parent's hard deadline bound work. Signature-aware quotas precede conversion;
-reference/address argument or result banks are rejected before JSON decoding.
-Input bytes may retire after loading or invocation. Both runtime modules and
-native bindings remain owned until host teardown.
-
-Six tooling cases launch a source producer followed by fresh bytecode and SLJIT
-product processes. The producer prepares the actual eight-package snapshot
-closure, serializes it, and compares containers built from forward and reversed
-record order. Five requests cover a three-file import graph, syntax failure,
-invalid UTF-8, NUL-prefix length and an exact uint64 maximum declared size.
-Results match the source-produced expected output byte for byte. Both product
-runs report only their selected backend, with no inspection fallback.
-
-Truncation, duplicate IDs and trailing data reject before executable decoding.
-A fourth child checks bad-magic CLI rejection. A separate tiny runtime-built
-reference entry must reject a numeric pointer before execution. The first run
-found a partial-load cleanup assertion; guarding the absent package collection
-fixed it, and the existing malformed-input case now passes.
-
-The executable installs privately under `libexec/chibi`. SDK provenance tracks
-both private hosts and their direct implementation objects under Ninja and
-Makefiles. The implementation is an object library with no separate installed
-archive or public headers. Existing ownership fixtures verify missing/changed
-installed bytes and reject an implementation linked only into an unrelated
-executable. Normal SDK build/install paths already build all configured targets.
+Three pico cases compare 24 fixed table requests and 16 requests from four real
+analyses on bytecode and SLJIT. Comparisons include exact IDs, ordered diagnostics,
+source ranges, reserved names and 191-byte message truncation. Known wide-ID
+hashes and a literal diagnostic prefix supplement C comparisons. Input and
+producer arenas retire before comparison; retained diagnostic and ID results
+survive both module owner teardowns. The first preparation found reserved words
+used as local names; renaming them fixed the authored source without changing
+the language or workload.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed; initial 7.2s, final 4.8s. Build timing is separate. |
-| Compiler artifact/runtime differential | 6 tooling cases / 79 assertions, plus the child producer case; 4.376s. |
-| Ninja/Makefiles package ownership | 2 cases / 158 assertions, 5.637s. |
-| Actual binary symbols and link inputs | No C source parser, analyzer, lowering or package preparation entry points. |
-| `make test-native` | Passed, 23.486s execution. |
-| `make test-materials` | Passed, 29.097s execution. |
-| `make test-projects` | Passed, 30.594s execution. |
-| `make test-language-all` | Passed, 18.290s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 25.594s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed; initial 4.9s, source-name rebuild 4.0s. Build timing is separate. |
+| Lexical binding differential | 3 cases / 19,976 assertions, 1.081s. |
+| `make test-native` | Passed, 25.604s execution. |
+| `make test-materials` | Passed, 29.638s execution. |
+| `make test-projects` | Passed, 30.847s execution. |
+| `make test-language-all` | Passed, 19.073s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.686s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Every execution route uses one production 60-second ceiling. The artifact route
-has four supervised children, each capped at ten seconds; 15 Build calls have
-three-million-instruction budgets. At most 32 source parses include preparation.
-Artifacts are capped at 16 MiB, request JSON at 8 KiB and captured output at
-256 KiB. Fixtures remove their disposable directories and artifacts. Exact
-bounds, including packaging's 22 child invocations, are in `docs/testing.md`.
+Every execution route uses one production 60-second ceiling. The independently
+reviewed lexical route has 40 requests and 80 authored calls, each with a
+two-million-instruction budget. Six preparation parses and four analyzer inputs
+total ten parses. Inputs are bounded to 32 symbols, eight scopes, four functions,
+two documents, 220-byte names and 128-byte identities/keys. Results contain at
+most three diagnostics. No runtime files, child processes or GPU work occur.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
-are under ignored `.chibi/evidence/toolchain-m5` with `artifact-` and
-`build-artifact` names. No scratch executable or project copy remains.
+are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `lexical-`
+and `build-lexical` logs. No scratch executable or project copy remains.
 
-This verifies the snapshot component's executable closure, not a complete
-compiler bootstrap. Remaining semantic analysis, lowering, authored artifact
+This verifies lexical binding, not a complete compiler bootstrap. The prior
+checkpoint proves the snapshot component's executable closure in the private
+runtime host. Remaining semantic analysis, lowering, authored artifact
 construction, scanner ownership and stage-one/stage-two equivalence still need
 implementation and validation. Full-size scalar evaluation exhaustion remains
 unadmitted. No compiler implementation or stage-zero recovery path is deleted.
@@ -582,7 +561,7 @@ unadmitted. No compiler implementation or stage-zero recovery path is deleted.
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at
 `c541133b689c620a377982ee339c017b6d12b263`. Neither branch was imported.
-M3's installed Linux/macOS evidence remains in its committed checkpoint. The
-small packaging fixtures do not establish a new full installed-SDK or Linux
-claim. Full native/render/Studio, browser/device and other quarantined suites
+M3's installed Linux/macOS evidence remains in its committed checkpoint. This
+checkpoint does not establish a new installed-SDK or Linux claim.
+Full native/render/Studio, browser/device and other quarantined suites
 remain disabled, not passed.

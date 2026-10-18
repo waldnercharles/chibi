@@ -1,10 +1,10 @@
+#include "language/lexical_binding.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <ctype.h>
-#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,17 +112,10 @@ int script_analyzer_scope_new(analyzer *a, TSNode node)
 }
 int script_analyzer_lookup_name(const analyzer *a, const char *name)
 {
-    for (int scope = a->scope; scope >= 0; scope = a->out->scopes[scope].parent) {
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *symbol = &a->out->symbols[i];
-            if (symbol->scope == scope && symbol->kind != SCRIPT_FUNCTION &&
-                symbol->kind != SCRIPT_MACRO && !strcmp(symbol->name, name)) {
-                return i;
-            }
-        }
-    }
-    return -1;
+    script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+    return script_lexical_name(&facts, a->scope, name);
 }
+
 int script_analyzer_lookup(analyzer *a, TSNode node)
 {
     char *name = script_analyzer_name_copy(a, node);
@@ -133,111 +126,43 @@ int script_analyzer_lookup(analyzer *a, TSNode node)
 int script_analyzer_lookup_storage(analyzer *a, TSNode node, script_symbol_kind kind)
 {
     char *name = script_analyzer_name_copy(a, node);
-    int found = -1;
-    for (int scope = a->scope; scope >= 0 && found < 0;
-         scope = a->out->scopes[scope].parent) {
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *symbol = &a->out->symbols[i];
-            if (symbol->scope == scope && !strcmp(symbol->name, name) &&
-                (symbol->kind == kind ||
-                 (kind == SCRIPT_STATE && symbol->kind == SCRIPT_SHARED_STATE))) {
-                found = i;
-                break;
-            }
-        }
-    }
+    script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+    int found = script_lexical_storage(&facts, a->scope, name, kind);
     free(name);
     return found;
 }
+
 static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind, script_type type, bool writable)
 {
-    if (!strcmp(name, "Cancelled")) {
-        script_analyzer_diagnostic(a, node, "'Cancelled' is reserved for the cancellation singleton");
+    script_lexical_facts facts = script_lexical_view(a->out, acount(a->out->symbols));
+    script_range range = script_analyzer_range(a, node);
+    script_lexical_declaration declaration = script_lexical_declare(
+        &facts,
+        (script_lexical_context){ a->scope, a->function, a->package_scope, a->document_count },
+        range,
+        name,
+        kind
+    );
+    for (int i = 0; i < declaration.diagnostic_count; i++) {
+        apush(a->out->diagnostics, declaration.diagnostics[i]);
     }
-    int existing = script_analyzer_lookup_name(a, name);
-    bool package_declaration = a->document_count && a->scope == a->package_scope;
-    if (package_declaration) {
-        existing = -1;
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *candidate = &a->out->symbols[i];
-            if (candidate->scope == a->scope && !strcmp(candidate->name, name)) {
-                existing = i;
-                break;
-            }
-        }
-    } else if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
-        existing = -1;
-        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
-            const script_symbol *candidate = &a->out->symbols[i];
-            if (candidate->scope == a->scope &&
-                (candidate->kind == SCRIPT_FUNCTION || candidate->kind == SCRIPT_MACRO) &&
-                !strcmp(candidate->name, name)) {
-                existing = i;
-                break;
-            }
-        }
-    }
-    bool result_parameter = existing >= 0 &&
-                            (kind == SCRIPT_RESULT || kind == SCRIPT_LOCAL) &&
-                            a->out->symbols[existing].kind == SCRIPT_PARAMETER;
-    if (existing >= 0 && a->out->symbols[existing].scope == a->scope &&
-        !result_parameter) {
-        script_analyzer_diagnostic(a, node, "Duplicate declaration '%s'", name);
-        if (package_declaration) {
-            script_diagnostic previous = { .range = a->out->symbols[existing].declaration };
-            snprintf(previous.message, sizeof previous.message, "Previous declaration '%s' is here", name);
-            apush(a->out->diagnostics, previous);
-        }
+    if (declaration.existing >= 0) {
         free(name);
-        return existing;
+        return declaration.existing;
     }
-    script_symbol symbol = { .name = name,
+    script_symbol symbol = { .id = declaration.id,
+                             .name = name,
                              .kind = kind,
                              .type = type,
-                             .declaration = script_analyzer_range(a, node),
+                             .declaration = range,
                              .scope = a->scope,
                              .initializer = -1,
                              .function = -1,
                              .writable = writable };
-    const char *program = a->out->identity ? a->out->identity : "";
-    size_t size = strlen(program) + strlen(name) + 32;
-    char *identity = xmalloc(size);
-    const char *domain = kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO
-                           ? ":callable"
-                       : result_parameter ? kind == SCRIPT_LOCAL ? ":local" : ":result"
-                                          : "";
-    if (package_declaration) {
-        snprintf(identity, size, "%s:%d:%s%s", program, kind, name, domain);
-        symbol.id = script_catalog_id("package-symbol", identity);
-    } else if (
-        a->document_count && a->function >= 0 && a->out->functions[a->function].symbol >= 0
-    ) {
-        uint64_t owner = a->out->symbols[a->out->functions[a->function].symbol].id;
-        script_range scope = a->out->scopes[a->scope].range;
-        const char *key = a->out->documents[scope.document].key;
-        bool direct = a->scope == a->out->functions[a->function].scope;
-        size = strlen(key) + strlen(name) + 96;
-        identity = xrealloc(identity, size);
-        snprintf(
-            identity,
-            size,
-            "%" PRIu64 ":%s:%d:%d:%s%s",
-            owner,
-            key,
-            direct ? -1 : scope.start,
-            kind,
-            name,
-            domain
-        );
-        symbol.id = script_catalog_id("package-local", identity);
-    } else {
-        snprintf(identity, size, "%s:%d:%s%s", program, a->scope, name, domain);
-        symbol.id = script_catalog_id("symbol", identity);
-    }
-    free(identity);
     apush(a->out->symbols, symbol);
     return acount(a->out->symbols) - 1;
 }
+
 int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable)
 {
     return declare(a, node, script_analyzer_name_copy(a, node), kind, type, writable);

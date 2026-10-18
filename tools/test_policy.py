@@ -605,6 +605,13 @@ TOOLS = {
     # separate build/shared60s, outside the language aggregate.
     'language-constant-scalar-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--constant-scalar-chibi'],
+    # Three cases:40 requests,80 authored calls capped at2m instructions each.
+    # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
+    # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,
+    # three diagnostics. No runtime IO, children/services/GPU; separate build,
+    # independent first-run review/shared60s, outside the language aggregate.
+    'language-lexical-binding-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--lexical-binding-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

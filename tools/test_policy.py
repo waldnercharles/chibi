@@ -539,6 +539,12 @@ TOOLS = {
     # First measurement requires independent exact-source/workload review.
     'language-package-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                    '--package-execution'],
+    # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
+    # and 34 imports, five files/four imports per snapshot, three owners live.
+    # Each source<1KiB; no filesystem, authored execution, children or GPU.
+    # First measurement requires independent review; separate build, shared60s.
+    'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--package-resolution'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

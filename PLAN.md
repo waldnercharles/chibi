@@ -112,8 +112,9 @@ vendor:     optional low-level bindings to external native libraries
 ```
 
 The SDK can analyze and execute explicitly supplied sibling package snapshots.
-Project package discovery and executable imports remain unimplemented. The
-private graph and syntax fixtures do not establish authored import execution.
+An owned resolver snapshot resolves imports against explicit collection roots.
+Project package discovery and executable imports remain unimplemented; resolving
+the graph does not establish authored import execution.
 
 ### Bootstrap terms
 
@@ -337,12 +338,13 @@ its authored-game meaning.
 
 ### M3. Make packages executable
 
-Status: in progress. The first increment adds owned multi-document analysis and
-execution of sibling functions, constants, records and unions on bytecode and
-SLJIT. Sources retain individual paths, text and local diagnostic ranges; exported
-identities do not depend on sibling input order. Imports still report that package
-resolution is required. Next: connect explicit collection roots and file-local
-imports to the package graph, then package lowering and incremental generations.
+Status: in progress. Owned multi-document analysis executes sibling functions,
+constants, records and unions on bytecode and SLJIT. The resolver snapshot now
+connects explicit collection roots and file-local imports to the package graph,
+with owned source buffers and located errors. Sources retain individual paths,
+text and local diagnostic ranges; exported identities exclude sibling input
+order and physical installation paths. Next: connect resolved imports to semantic
+exports, dependency lowering and incremental generations.
 
 Extend the current package syntax and private graph into the smallest public,
 multi-file package system needed by the compiler. This milestone owns import
@@ -472,59 +474,62 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `1118b10a60e05d359227c79cf0347f75f736d2f7`, M2
+- Starting checkpoint: `393ec7b135940d38987bc8e6cc7fec5bc9910293`, sibling package execution
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch and merge check: upstream unchanged; already an ancestor
 - Completed milestones: M0, M1 and M2; M3 is in progress
-- Next action: resolve explicit package roots and file-local imports, connect
-  dependency exports and lowering, then retain incremental package generations
+- Next action: connect resolved imports to dependency exports and lowering,
+  then retain incremental package generations
 
-The first M3 increment exposes `script_analyze_package` and
-`script_declarations_package` through the existing authoring SDK. Explicit sibling
-snapshots share declarations before bodies; functions, constants, records and
-unions compile together, including mutual recursion and record defaults from
-sibling constants. Analyses own each document's path, key and exact text.
-Diagnostics retain the input document index and local source range; lowered
-instruction origins retain the display path. Exported symbol identities exclude
-file order and unrelated sibling scope ordinals. Legacy single-source analysis,
-recovery and project/editor entry points retain their existing behavior.
+The second M3 increment exposes `source_package_snapshot` and its resolved graph
+through `Chibi::source_catalog`. The snapshot copies supplied source buffers and
+explicit roots, normalizes lexical paths, decodes import strings, and resolves
+relative or collection-qualified imports. The longest containing root determines
+each file's ownership and stable collection-relative key. File-local aliases and
+blank imports use the existing graph checker for missing packages, duplicate
+bindings and dependency cycles. Diagnostics retain the offending document and
+token range, related locations and cycle import indices. Callers can release
+their input buffers immediately.
 
-The new public range field is propagated through semantic analysis, lowering and
-source diagnostics. Existing positional initializers explicitly select document
-zero. Package analyses are not passed into single-file editor navigation or
-formatting. Imports and package state/game declarations remain explicitly rejected
-by the new entry point; this is not M3 completion or a self-hosted compiler.
+The graph and private syntax extractor now compile once in the owning SDK
+library. SDK contracts declare its JSON string-decoder dependency. Lexical
+resolution performs no filesystem reads or symlink canonicalization; a future
+disk adapter must supply physically canonical paths. Graph order is deterministic
+for the supplied canonical paths. Sibling execution remains supported by the
+previous increment, but semantic analysis still rejects imports. This is not M3
+completion or a self-hosted compiler.
 
 Final macOS candidate evidence:
 
 | Check | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed; initial compile 12.8s, final corrective build separate from execution. |
-| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.688s; both bytecode and SLJIT verified by backend counters. |
-| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.133s. |
-| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.169s. |
-| `make test-native` | Passed, 25.002s execution. |
-| `make test-materials` | Passed, 28.443s execution. |
-| `make test-projects` | Passed, 30.265s execution. |
-| `make test-language-all` | Passed, 18.015s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 25.106s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 4.6s; build separate from execution. |
+| `python3 tools/test_policy.py tool language-package-resolution` | 8 cases, 140 assertions, 0.662s. |
+| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.152s; bytecode and SLJIT verified by backend counters. |
+| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.131s. |
+| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.131s. |
+| `make test-native` | Passed, 24.952s execution. |
+| `make test-materials` | Passed, 28.681s execution. |
+| `make test-projects` | Passed, 30.822s execution. |
+| `make test-language-all` | Passed, 18.314s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 26.182s execution. |
 | Changed C files, clang-format 22; `git diff --check` | Passed. |
 
 Each admitted execution command used one production 60-second deadline. Native
 macOS drivers use Debug assertions and ASan/UBSan; the standalone tooling group
 uses its separate Debug configuration. Python 3.12.14 was selected through
-`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. The focused package route
-is separate from the required language aggregate. It uses twelve fixed source
-texts below 1 KiB, at most three documents per snapshot and sixteen direct
-bounded calls, with no filesystem, subprocess, world or GPU workload.
+`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. Focused package routes
+remain separate from the required language aggregate. The resolver route has
+24 snapshot constructions, at most 56 parses and 34 imports, five files/four
+imports per snapshot and three simultaneous owners. Each source is below 1 KiB;
+it performs no filesystem, subprocess, authored execution or GPU work.
 
-Independent review found and resolved package record defaults being evaluated
-before sibling constants were declared. Restoring the old order made the new
-regression fail with `Unknown value 'Base'` (five cases passed, two failed,
-0.696s). The corrected order passes the final seven cases. Final review found
-no unresolved correctness or ownership issue. Evidence is retained under ignored
-`.chibi/evidence/toolchain-m3/`; previous M2 source reconstruction and installed
-SDK proof remain under `.chibi/evidence/toolchain-m2/`.
+Independent review admitted the bounded resolver workload before its first run
+and found no unresolved correctness or ownership issue. Configuration caught an
+undeclared `chibi_json` dependency; the matching SDK contract was corrected before
+the successful build. Evidence is retained under ignored
+`.chibi/evidence/toolchain-m3/resolution-*.log`; earlier M3 and M2 evidence remains
+in their respective directories.
 
 M2 scratch cleanup is pending: `relocated-sdk`, `clean-source`, `clean-build` and
 `packaged-sdk` still exist inside its evidence directory. Exact removal attempts
@@ -532,8 +537,8 @@ did not complete; no approval-review reason was returned. Their manifests and
 reconstruction patch are preserved separately. Shared dependency caches remain.
 
 This M3 increment has macOS execution evidence only. Linux, relocated installed
-SDK package imports, portable `core:` modules, import resolution, incremental
-package invalidation and package-level dependency lowering are still pending.
+SDK package imports, portable `core:` modules, executable import bindings,
+incremental package invalidation and dependency lowering are still pending.
 The M2 Linux and installed-build results belong to their recorded earlier trees.
 Full native/render/Studio/browser/device and other quarantined suites were not
 run and are not passed. Only changed C files were format-checked. The branch has

@@ -9,14 +9,15 @@ typedef struct
     script_range alias; /* Zero for an implicit alias; includes explicit _. */
 } source_package_import_syntax;
 
-/* Private extraction snapshot. Name and alias strings, descriptor arrays and
+/* Private extraction snapshot used by source_package_snapshot. Name and alias strings, descriptor arrays and
  * locations are owned. Path and directory strings are borrowed from the caller.
  * The syntax is read only during extraction; keep it when interpreting ranges.
  * Imports preserve source order. Their directory starts NULL: the caller must
  * resolve every path and assign a canonical borrowed directory before passing
  * the descriptors to source_packages_new. No implicit path resolution occurs.
  * Keep this owner, all borrowed paths/directories and the final descriptor arrays
- * alive until the graph is freed. No catalog/runtime/SDK entrypoint uses this. */
+ * alive until the graph is freed. The owning SDK snapshot handles resolution;
+ * callers do not use this extraction record as an executable package. */
 typedef struct
 {
     source_package_file file;

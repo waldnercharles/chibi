@@ -1097,6 +1097,15 @@ performs no filesystem, subprocess, world or GPU work. Build separately and run
 under one shared 60-second production deadline. The independent package graph
 and syntax routes remain unchanged; this focused route is not in the aggregate.
 
+`python3 tools/test_policy.py tool language-package-resolution` selects eight
+fixed C cases for explicit roots, equivalent paths, file-local aliases, blank
+imports, located invalid paths and strings, duplicates, cycles, stable keys and
+owned input lifetimes. There are 24 snapshot constructions, at most 56 parses and
+34 import declarations, with up to five files and four imports per snapshot and
+three simultaneous owners. Each source is below 1 KiB. The route performs no
+filesystem, process, authored execution or GPU work. Build separately and use
+one shared 60-second deadline; this focused route is also outside the aggregate.
+
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects eighteen C cases in the

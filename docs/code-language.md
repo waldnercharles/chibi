@@ -37,11 +37,26 @@ origins retain its display path after the analysis is freed. Exported identities
 depend on package identity and declaration, not input order or unrelated sibling
 files. Debug record ordinals and byte offsets are not durable identities.
 
-This is the first M3 increment in [the toolchain plan](../PLAN.md). Imports,
-package globals and embedded game roots are rejected by this entry point until
-their resolution and ownership are implemented. Project loading, formatting and
-editor navigation still use their existing single-source entry points. Package
-analysis does not discover files or change the public build command.
+`source_package_snapshot_new` in `Chibi::source_catalog` separately resolves a
+complete set of source buffers against explicit project and collection roots.
+It owns parsed documents, groups sibling files, resolves relative and
+`collection:path` imports, and retains file-local aliases and blank import edges.
+Its graph reports missing packages, duplicate bindings and cycles with source
+locations. Package and document keys use collection-relative paths so relocating
+an installation preserves their identities. Graph ordering is deterministic for
+the supplied canonical paths.
+
+Resolution is lexical and does not read the filesystem or follow symlinks. A disk
+adapter must provide physically canonical roots and paths when containment is
+required. Relative imports cannot leave the declaring file's longest matching
+collection root. Inputs are bounded to 256 files, 512 KiB each and 8 MiB total;
+the public header records path, nesting and import limits.
+
+These are M3 increments in [the toolchain plan](../PLAN.md). Resolved imports are
+not yet connected to semantic analysis or dependency execution. Package analysis
+still rejects imports, package globals and embedded game roots. Project loading,
+formatting and editor navigation use their existing single-source entry points.
+Neither API discovers files or changes the public build command.
 
 ## Declarative documents
 

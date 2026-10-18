@@ -156,7 +156,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_graph_compilation "${CHIBI_SDK_ROOT}/src/graph"
         chibi_graph_authoring chibi_shader_runtime chibi_model_runtime chibi_fields chibi_field_catalog chibi_field_capabilities)
     chibi_sdk_contract(chibi_source_catalog "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_authoring chibi_input_map chibi_asset_text chibi_ui_document)
+        chibi_authoring chibi_input_map chibi_asset_text chibi_ui_document chibi_json)
     chibi_sdk_contract(chibi_source_presentation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_authoring chibi_graph_model chibi_text_source chibi_json chibi_graph_authoring)
     chibi_sdk_contract(chibi_graph_catalog "${CHIBI_SDK_ROOT}/src/authoring"

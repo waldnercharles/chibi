@@ -43,6 +43,7 @@ void test_language_package_paths_chibi();
 void test_language_package_routes_chibi();
 void test_language_package_snapshot_chibi();
 void test_language_constant_proof_chibi();
+void test_language_constant_scalar_chibi();
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
@@ -130,6 +131,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--package-snapshot-chibi");
     bool constant_proof_chibi = argc == 2 &&
                                 !strcmp(argv[1], "--constant-proof-chibi");
+    bool constant_scalar_chibi = argc == 2 &&
+                                 !strcmp(argv[1], "--constant-scalar-chibi");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -160,18 +163,18 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !inferred_arrays && !inferred_array_repro && !root_state &&
-         !benchmark && !activation_benchmark && !binding_benchmark &&
-         !borrow_benchmark && !incremental_benchmark && !record_publication &&
-         !record_publication_repro && !record_values && !record_document &&
-         !record_state && !record_services && !record_compatibility &&
-         !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
-         !syntax_chibi && !package_syntax && !package_syntax_chibi &&
-         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !package_execution && !package_resolution &&
+         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
+         !record_values && !record_document && !record_state && !record_services &&
+         !record_compatibility && !record_semantic && !record_prepared_runtime &&
+         !outliner_projection && !row_builder && !row_array && !record_runtime &&
+         !runtime_attribution && !wasm && !program && !query_program &&
+         !incremental && !modules && !ranges && !numeric_exact_core &&
+         !package_graph && !package_graph_chibi && !syntax_chibi &&
+         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
+         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
+         !constant_scalar_chibi && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !build_workflow &&
@@ -187,7 +190,7 @@ int main(int argc, char **argv)
             "--ranges | --numeric-exact-core | --package-graph | "
             "--package-graph-chibi | --syntax-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
-            "--constant-proof-chibi | "
+            "--constant-proof-chibi | --constant-scalar-chibi | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
@@ -326,6 +329,8 @@ int main(int argc, char **argv)
         test_language_package_snapshot_chibi();
     } else if (constant_proof_chibi) {
         test_language_constant_proof_chibi();
+    } else if (constant_scalar_chibi) {
+        test_language_constant_scalar_chibi();
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

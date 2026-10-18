@@ -588,6 +588,13 @@ TOOLS = {
     # children/services/GPU. Independent first-run review, separate build/shared60s.
     'language-constant-proof-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--constant-proof-chibi'],
+    # Three cases:70 fixed requests,140 authored calls capped at2m instructions.
+    # Two owners prepare4sources each (<64KiB/source):8preparation parses.
+    # <=7expressions/1symbol/0aggregate arguments perrequest; no full65536visit
+    # exhaustion, runtime IO, children/services/GPU. Independent first-run review,
+    # separate build/shared60s, outside the language aggregate.
+    'language-constant-scalar-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--constant-scalar-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.
@@ -659,6 +666,8 @@ TOOLS = {
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
     # Bounded union scalar replacement and checked component-read differential/control-flow cases.
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],
+    # Union-array regression adds2preparations/4dispatches@10k,arrays<=2items;
+    # local writes preserve snapshots and retainedstate; no IO/services/GPU.
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
     # Reviewed finite public builder/VM/native contracts and verifier rejection cases.

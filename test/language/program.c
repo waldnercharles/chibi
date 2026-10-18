@@ -18,6 +18,7 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
@@ -7421,6 +7422,46 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     return true;
 }
 
+TEST_CASE(program_union_arrays_keep_owned_writable_values)
+{
+    /* Two preparation parses and four dispatches, each capped at 10000
+     * instructions. All arrays contain at most two tagged scalar values. */
+    const char
+        *source = "behavior UnionArrays { "
+                  "Value :: union { Item(value: int) }; "
+                  "total: double = 0; saved_result: Value[] = []; "
+                  "Read :: pure (value: Value) -> int { "
+                  "switch value { case .Item(number): return number; } } "
+                  "Edit :: pure (values: Value[]) -> Value[] { "
+                  "local: Value[] = values; "
+                  "local = array_add(local, Value.Item(2)); "
+                  "local[0] = Value.Item(3); return local; } "
+                  "on Impulse(amount, enabled) { "
+                  "if enabled { "
+                  "original: Value[] = [Value.Item(1)]; copy := original; "
+                  "changed := Edit(original); saved_result = changed; "
+                  "total = Read(original[0])*1000 + Read(copy[0])*100 + "
+                  "Read(changed[0])*10 + Read(changed[1]); "
+                  "} else { total = Read(saved_result[0])*10 + "
+                  "Read(saved_result[1]); } "
+                  "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        pin_value args[] = { { .type = PIN_F64 }, { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1132));
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 32));
+    }
+    return true;
+}
+
 TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
 {
     enum
@@ -7597,6 +7638,7 @@ void test_language_program()
     RUN_TEST_CASE(program_pattern_bindings_share_and_spellings);
     RUN_TEST_CASE(program_switches_use_narrowed_union_tags);
     RUN_TEST_CASE(program_general_unions_construct_match_and_extract);
+    RUN_TEST_CASE(program_union_arrays_keep_owned_writable_values);
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);

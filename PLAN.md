@@ -385,16 +385,16 @@ change instead of adding component-specific host behavior.
 
 Status: in progress. Authored source snapshots compose syntax diagnostics,
 header/import extraction, lexical paths, routing and package graphs. Active
-constant admissibility now operates on raw typed analysis facts. Both have
-differential parity on bounded corpora. Package graph construction was completed
-in M4. The normal compiler remains stage zero; this is not a stage-one or
+constant admissibility and scalar folding now operate on typed analysis facts.
+These components have differential parity on bounded corpora. Package graph
+construction was completed in M4. The normal compiler remains stage zero; this is not a stage-one or
 stage-two bootstrap.
 
-Next component: port active scalar folding, preserving existing type/operator,
-conversion, error, short-circuit and budget rules. The inactive exact-rational
-draft is not the current compiler contract. In parallel, reuse the existing
-prepared executable format to establish a source-free runtime loader for the
-actual authored package closure. That closure has not yet been roundtripped.
+Next component: reuse the existing prepared executable format to establish a
+source-free runtime loader for the actual authored package closure. That closure
+has not yet been roundtripped. Scalar folding retains the active physical-value
+contract; the inactive exact-rational draft has not been activated. Full-size
+evaluation-budget exhaustion also needs separate resource admission.
 Nested authored record fields remain unsupported; these components use flat
 named fields and tagged payloads.
 
@@ -500,74 +500,77 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `4e9c54001b70096cf96292e3a4ddb3f8cf5cad86`, snapshots pushed
+- Starting checkpoint: `ad4227b8632f47e90cdb3f97a9b531625689c694`, admissibility pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port active scalar folding with exact physical values and
-  separate proof/evaluation budgets
+- Next action: load and execute the actual authored compiler package closure
+  from the existing prepared format in a runtime host without the C frontend
 
-`tools/compiler/constant_admissibility/Proof.chibi` owns the active compiler's
-constant-admissibility decision over named expression, type, symbol and argument
-pools in `constant_ir/IR.chibi`. The adapter copies raw analyzer facts; it does
-not supply computed proof, promotion or effect-policy results. No compiler
-policy native capability was added.
+`tools/compiler/constant_scalar/Scalar.chibi` owns physical scalar values,
+conversions and operators. `constant_folding/Fold.chibi` performs full
+admissibility followed by iterative evaluation with separate 65,536-step
+budgets. Evaluation deliberately revisits shared expressions; memoizing results
+would change budget failures. Boolean evaluation short-circuits only after both
+operands have passed admissibility. The IR adapter copies raw type, operator,
+literal, symbol and effect facts without computing compiler policy.
 
-The iterative traversal preserves the C proof's order: invalid index/depth,
-successful depth-sensitive cache reuse, step accounting, effects and scalar
-restrictions, then ordered children. It checks both Boolean operands even when
-later evaluation could short-circuit, accepts only constant symbols, and caches
-successful nodes at the exact proof depth. Every query starts a fresh cache.
-Requests without step accounting retain the depth limit. The production
-65,536-step limit remains unchanged.
+The port preserves thirteen scalar storage variants, exact wide integers,
+floating-point bits, conversion restrictions, wrapping arithmetic, invalid
+integer division, masked shifts, error strings and final result conversion.
+Integer intermediates retain their full bits until publication to the declared
+result width. Floating operands round before publication to the result precision.
+These private interfaces consume type-correct analyzer facts: comparisons and
+logical negation have Boolean results; integer and floating operations retain
+their result families. Admissibility alone does not establish those invariants.
+Malformed cross-family reinterpretations of C union storage are outside this
+contract.
 
-The old recursive C traversal moved mechanically into private
-`src/language/constant_proof.c`. Analyzer cache allocation, generation handling,
-wrap clearing and public-root validation remain in their original wrapper.
-The normal compiler still uses this C implementation, which is also the
-independent differential oracle. The new header is private to the language
-build and owning fixture.
+The existing C evaluator moved mechanically into private
+`src/language/scalar_constant.c`. The normal compiler still calls it after its
+existing admissibility wrapper; it is also the independent differential oracle.
+The inactive exact-rational implementation remains unused. No compiler policy
+native capability or new conversion primitive was added.
 
-Three pico cases cover 36 fixed IR requests and two real analyzer outputs,
-comparing 38 C proofs with 76 authored calls across bytecode and SLJIT. They
-compare acceptance, remaining steps and every cache depth, including failed
-queries that retain earlier successful proofs. Cases cover scalar flags/types,
-effects, calls, constant versus mutable symbols, ordered failures, shared DAGs,
-depth 255/256 and a cycle without step accounting. Two retained owners prepare
-two actual packages each; two short source fixtures add two parses. Requests
-have at most 257 expressions, 32 symbols and four arguments, and visit at most
-256 proof nodes. Every authored call permits two million instructions.
+Three pico cases compare 70 fixed C requests with 140 authored calls across
+bytecode and SLJIT. Two owners prepare the four actual packages each (eight
+parses, sources below 64 KiB). Requests have at most seven expressions, one
+symbol and no aggregate arguments; every authored call permits two million
+instructions. Six explicit result-storage regressions check widening and
+floating-point rounding. Input and producer storage retire before comparison.
+Arena checks verify detached union and string ownership, including retained
+name and null-text results after both owners are freed.
 
-Input and producer storage retire before comparison. Explicit arena checks
-verify detached union/array ownership; retained values and cache arrays survive
-owner teardown. Independent review fixed zero-filled cache initialization,
-unsupported record-array growth and preparation-failure guards before the first
-run. Explicit ownership assertions were then added and the unchanged workload
-rerun. No language or runtime semantics changed.
+The first run failed during preparation because the analyzer incorrectly
+unwrapped unchanged union-element arrays, removing their writable status.
+Unwrapping now requires an original single union value; the separate optional
+array path is unchanged. A bounded program regression checks local append and
+index writes, caller snapshot preservation and array retention across events on
+both backends: two preparations and four dispatches capped at 10,000 instructions,
+with arrays of at most two values. The repaired scalar run passed.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.2s, final fixture rebuild 1.0s. Build timing is separate. |
-| Authored constant proof differential | 3 cases / 21,564 assertions, 4.860s; bytecode and SLJIT. |
-| `make test-native` | Passed, 24.830s execution. |
-| `make test-materials` | Passed, 29.297s execution. |
-| `make test-projects` | Passed, 33.934s execution. |
-| `make test-language-all` | Passed, 18.237s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 31.637s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.9s, repaired candidate 2.3s. Build timing is separate. |
+| Authored scalar folding differential | 3 cases / 14,874 assertions, 16.201s; bytecode and SLJIT. |
+| Authored constant proof differential after IR extension | 3 cases / 25,320 assertions, 4.308s; bytecode and SLJIT. |
+| `make test-language-all`, including the union-array regression | Passed, 17.487s execution. |
+| `make test-native` | Passed, 24.459s execution. |
+| `make test-materials` | Passed, 28.772s execution. |
+| `make test-projects` | Passed, 31.200s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 25.430s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Each route uses one production 60-second ceiling. Python 3.12.14 is selected
 through the Homebrew PATH. Logs are under ignored
-`.chibi/evidence/toolchain-m5`, using `proof-` and `build-proof` names. No new
+`.chibi/evidence/toolchain-m5`, using `scalar-` and `build-scalar` names. No new
 scratch executable or project copy was created. Exact workload bounds are in
-`docs/testing.md`; the corpus does not exercise 65,536 visits at full size.
+`docs/testing.md`; full 65,536-evaluation exhaustion is not covered or admitted.
 
-Active scalar evaluation, the remaining semantic analysis, lowering, artifact
-construction, scanner port and complete stage-one/stage-two bootstrap remain.
-The inactive exact-rational draft has not been activated. Existing prepared
-executable serialization is a candidate for the runtime loader; its use with
-the authored compiler closure is not yet validated. No compiler implementation
-or recovery path is deleted.
+The remaining semantic analysis, lowering, artifact construction, scanner port
+and complete stage-one/stage-two bootstrap remain. The authored compiler closure
+has not yet been roundtripped through the existing prepared format. No compiler
+implementation or recovery path is deleted.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at

@@ -3,10 +3,14 @@ package constant_ir
 // These are resolved analyzer facts. References are pool indices; a negative
 // child/initializer denotes absence. Nonnegative references and argument spans
 // obey the same invariants as the analyzer's owned expression graph.
-Type :: struct { storage: int; container: int; flags: int; }
+// Scalar folding also requires type-correct operator result families and
+// literal storage. Admissibility does not validate arbitrary hand-built IR.
+Type :: struct { storage: int; container: int; flags: int; has_nominal: bool; }
 Expression :: struct {
     kind: int;
+    op: int;
     type: int;
+    literal: int;
     symbol: int;
     left: int;
     right: int;

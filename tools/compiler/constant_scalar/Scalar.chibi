@@ -1,0 +1,516 @@
+package constant_scalar
+
+// Physical storage is explicit. Wide integers never pass through double or
+// text. Presence preserves NULL literal strings independently of empty text.
+Value :: union {
+    Bool(value: bool)
+    | I8(value: int8)
+    | U8(value: byte)
+    | I16(value: int16)
+    | U16(value: uint16)
+    | I32(value: int)
+    | U32(value: uint)
+    | I64(value: int64)
+    | U64(value: uint64)
+    | F32(value: float)
+    | F64(value: double)
+    | Name(value: string, has_value: bool)
+    | Text(value: string, has_value: bool)
+}
+Result :: union { Folded(value: Value) | Failed(message: string) }
+Conversion :: union { Accepted(value: Value) | Rejected }
+
+OpNone :: cast<int>(0);
+OpAdd :: cast<int>(1);
+OpSub :: cast<int>(2);
+OpMul :: cast<int>(3);
+OpDiv :: cast<int>(4);
+OpMod :: cast<int>(5);
+OpNeg :: cast<int>(6);
+OpNot :: cast<int>(7);
+OpAnd :: cast<int>(8);
+OpOr :: cast<int>(9);
+OpEq :: cast<int>(10);
+OpNe :: cast<int>(11);
+OpLt :: cast<int>(12);
+OpLe :: cast<int>(13);
+OpGt :: cast<int>(14);
+OpGe :: cast<int>(15);
+OpBitAnd :: cast<int>(16);
+OpBitOr :: cast<int>(17);
+OpBitXor :: cast<int>(18);
+OpShiftLeft :: cast<int>(19);
+OpShiftRight :: cast<int>(20);
+OpBitNot :: cast<int>(21);
+
+Storage :: pure fn(value: Value) -> int {
+    switch value {
+        case .Bool(item): return 1;
+        case .I8(item): return 2;
+        case .U8(item): return 3;
+        case .I16(item): return 4;
+        case .U16(item): return 5;
+        case .I32(item): return 6;
+        case .U32(item): return 7;
+        case .I64(item): return 8;
+        case .U64(item): return 9;
+        case .F32(item): return 10;
+        case .F64(item): return 11;
+        case .Name(item, present): return 12;
+        case .Text(item, present): return 13;
+    }
+}
+
+ToDouble :: pure fn(value: Value) -> Conversion {
+    switch value {
+        case .Bool(item):
+            if (item) { return Conversion.Accepted(Value.F64(1.0)); }
+            return Conversion.Accepted(Value.F64(0.0));
+        case .I8(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .U8(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .I16(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .U16(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .I32(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .U32(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .I64(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .U64(item):
+            return Conversion.Rejected;
+        case .F32(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .F64(item):
+            return Conversion.Accepted(Value.F64(cast<double>(item)));
+        case .Name(item, present):
+            return Conversion.Rejected;
+        case .Text(item, present):
+            return Conversion.Rejected;
+    }
+}
+
+Convert :: pure fn(value: Value, target: int) -> Conversion {
+    if (Storage(value) == target) { return Conversion.Accepted(value); }
+    if (target == 11) { return ToDouble(value); }
+    if (target == 10) {
+        converted := ToDouble(value);
+        switch converted {
+            case .Rejected: return Conversion.Rejected;
+            case .Accepted(wide):
+                if (wide is .F64(item)) { return Conversion.Accepted(Value.F32(cast<float>(item))); }
+                return Conversion.Rejected;
+        }
+    }
+    switch value {
+        case .Bool(item):
+            return Conversion.Rejected;
+        case .I8(item):
+            return Conversion.Rejected;
+        case .U8(item):
+            return Conversion.Rejected;
+        case .I16(item):
+            return Conversion.Rejected;
+        case .U16(item):
+            return Conversion.Rejected;
+        case .I32(item):
+            if (target == 7) { return Conversion.Accepted(Value.U32(cast<uint>(item))); }
+            if (target == 9) { return Conversion.Accepted(Value.U64(cast<uint64>(item))); }
+            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
+            return Conversion.Rejected;
+        case .U32(item):
+            return Conversion.Rejected;
+        case .I64(item):
+            return Conversion.Rejected;
+        case .U64(item):
+            return Conversion.Rejected;
+        case .F32(item):
+            if (target == 3) { return Conversion.Accepted(Value.U8(cast<byte>(item))); }
+            if (target == 6) { return Conversion.Accepted(Value.I32(cast<int>(item))); }
+            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
+            return Conversion.Rejected;
+        case .F64(item):
+            if (target == 3) { return Conversion.Accepted(Value.U8(cast<byte>(item))); }
+            if (target == 6) { return Conversion.Accepted(Value.I32(cast<int>(item))); }
+            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
+            return Conversion.Rejected;
+        case .Name(item, present):
+            if (target == 13) { return Conversion.Accepted(Value.Text(item, present)); }
+            return Conversion.Rejected;
+        case .Text(item, present):
+            if (target == 12) { return Conversion.Accepted(Value.Name(item, present)); }
+            return Conversion.Rejected;
+    }
+}
+
+StringValue :: pure fn(value: string, present: bool) -> string {
+    if (!present) { return ""; }
+    return value;
+}
+
+// Operator selection and errors are compiler policy; the selected typed
+// expressions use the same ordinary runtime arithmetic and cast primitives.
+PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
+    if (op == OpNone) { return Result.Folded(left); }
+    switch left {
+        case .Bool(x):
+            if (op == OpNot) { return Result.Folded(Value.Bool(!x)); }
+            if (right is .Bool(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .I8(x):
+            if (right is .I8(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .U8(x):
+            if (right is .U8(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .I16(x):
+            if (right is .I16(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .U16(x):
+            if (right is .U16(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .I32(x):
+            if (op == OpNeg) { return Result.Folded(Value.I32(-x)); }
+            if (right is .I32(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == cast<int>(-2147483648) && y == -1))) {
+                    return Result.Failed("invalid integer division or remainder");
+                }
+                if (op == OpAdd) { return Result.Folded(Value.I32(x + y)); }
+                if (op == OpSub) { return Result.Folded(Value.I32(x - y)); }
+                if (op == OpMul) { return Result.Folded(Value.I32(x * y)); }
+                if (op == OpDiv) { return Result.Folded(Value.I32(x / y)); }
+                if (op == OpMod) { return Result.Folded(Value.I32(x % y)); }
+                if (op == OpLt) { return Result.Folded(Value.Bool(x < y)); }
+                if (op == OpLe) { return Result.Folded(Value.Bool(x <= y)); }
+                if (op == OpGt) { return Result.Folded(Value.Bool(x > y)); }
+                if (op == OpGe) { return Result.Folded(Value.Bool(x >= y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .U32(x):
+            if (right is .U32(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if (op == OpAdd) { return Result.Folded(Value.U32(x + y)); }
+                if (op == OpMul) { return Result.Folded(Value.U32(x * y)); }
+            }
+            return Result.Failed("unsupported unsigned constant operator");
+        case .I64(x):
+            if (op == OpNeg) { return Result.Folded(Value.I64(-x)); }
+            if (right is .I64(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == cast<int64>(-9223372036854775808) && y == -1))) {
+                    return Result.Failed("invalid integer division or remainder");
+                }
+                if (op == OpAdd) { return Result.Folded(Value.I64(x + y)); }
+                if (op == OpSub) { return Result.Folded(Value.I64(x - y)); }
+                if (op == OpMul) { return Result.Folded(Value.I64(x * y)); }
+                if (op == OpDiv) { return Result.Folded(Value.I64(x / y)); }
+                if (op == OpMod) { return Result.Folded(Value.I64(x % y)); }
+                if (op == OpLt) { return Result.Folded(Value.Bool(x < y)); }
+                if (op == OpLe) { return Result.Folded(Value.Bool(x <= y)); }
+                if (op == OpGt) { return Result.Folded(Value.Bool(x > y)); }
+                if (op == OpGe) { return Result.Folded(Value.Bool(x >= y)); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .U64(x):
+            if (right is .U64(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if (op == OpAdd) { return Result.Folded(Value.U64(x + y)); }
+                if (op == OpMul) { return Result.Folded(Value.U64(x * y)); }
+            }
+            return Result.Failed("unsupported unsigned constant operator");
+        case .F32(x):
+            if (op == OpNeg) { return Result.Folded(Value.F32(-x)); }
+            if (right is .F32(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if (op == OpAdd) { return Result.Folded(Value.F32(x + y)); }
+                if (op == OpSub) { return Result.Folded(Value.F32(x - y)); }
+                if (op == OpMul) { return Result.Folded(Value.F32(x * y)); }
+                if (op == OpDiv) { return Result.Folded(Value.F32(x / y)); }
+                if (op == OpLt) { return Result.Folded(Value.Bool(x < y)); }
+                if (op == OpLe) { return Result.Folded(Value.Bool(x <= y)); }
+                if (op == OpGt) { return Result.Folded(Value.Bool(x > y)); }
+                if (op == OpGe) { return Result.Folded(Value.Bool(x >= y)); }
+            }
+            return Result.Failed("unsupported floating-point constant operator");
+        case .F64(x):
+            if (op == OpNeg) { return Result.Folded(Value.F64(-x)); }
+            if (right is .F64(y)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
+                if (op == OpAdd) { return Result.Folded(Value.F64(x + y)); }
+                if (op == OpSub) { return Result.Folded(Value.F64(x - y)); }
+                if (op == OpMul) { return Result.Folded(Value.F64(x * y)); }
+                if (op == OpDiv) { return Result.Folded(Value.F64(x / y)); }
+                if (op == OpLt) { return Result.Folded(Value.Bool(x < y)); }
+                if (op == OpLe) { return Result.Folded(Value.Bool(x <= y)); }
+                if (op == OpGt) { return Result.Folded(Value.Bool(x > y)); }
+                if (op == OpGe) { return Result.Folded(Value.Bool(x >= y)); }
+            }
+            return Result.Failed("unsupported floating-point constant operator");
+        case .Name(x, present):
+            if (right is .Name(y, other_present)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(StringValue(x, present) == StringValue(y, other_present))); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(StringValue(x, present) != StringValue(y, other_present))); }
+            }
+            if (right is .Text(y, other_present)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(StringValue(x, present) == StringValue(y, other_present))); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(StringValue(x, present) != StringValue(y, other_present))); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+        case .Text(x, present):
+            if (right is .Name(y, other_present)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(StringValue(x, present) == StringValue(y, other_present))); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(StringValue(x, present) != StringValue(y, other_present))); }
+            }
+            if (right is .Text(y, other_present)) {
+                if (op == OpEq) { return Result.Folded(Value.Bool(StringValue(x, present) == StringValue(y, other_present))); }
+                if (op == OpNe) { return Result.Folded(Value.Bool(StringValue(x, present) != StringValue(y, other_present))); }
+            }
+            return Result.Failed("unsupported scalar constant operator");
+    }
+}
+
+// Integer storage publication retains the complete C intermediate word before
+// truncating to the destination width. Typed bit loops avoid lossy float casts
+// and do not require additional integer conversion primitives.
+Bits :: pure fn(value: Value) -> uint64 {
+    switch value {
+        case .I8(item):
+            return cast<uint64>(cast<int>(cast<double>(item)));
+        case .U8(item):
+            return cast<uint64>(cast<int>(cast<double>(item)));
+        case .I16(item):
+            return cast<uint64>(cast<int>(cast<double>(item)));
+        case .U16(item):
+            return cast<uint64>(cast<int>(cast<double>(item)));
+        case .I32(item):
+            return cast<uint64>(item);
+        case .U32(item):
+            bits: uint64 = cast<uint64>(0);
+            weight: uint = cast<uint>(1);
+            bit: uint64 = cast<uint64>(1);
+            index: int = 0;
+            while (index < 32) {
+                if ((item & weight) != 0) { bits = bits | bit; }
+                weight = weight << cast<uint>(1);
+                bit = bit << cast<uint64>(1);
+                index += 1;
+            }
+            return bits;
+        case .I64(item):
+            bits: uint64 = cast<uint64>(0);
+            weight: int64 = cast<int64>(1);
+            bit: uint64 = cast<uint64>(1);
+            index: int = 0;
+            while (index < 64) {
+                if ((item & weight) != 0) { bits = bits | bit; }
+                weight = weight << cast<int64>(1);
+                bit = bit << cast<uint64>(1);
+                index += 1;
+            }
+            return bits;
+        case .U64(item):
+            return item;
+        case .Bool(item): return cast<uint64>(0);
+        case .F32(item): return cast<uint64>(0);
+        case .F64(item): return cast<uint64>(0);
+        case .Name(item, present): return cast<uint64>(0);
+        case .Text(item, present): return cast<uint64>(0);
+    }
+}
+
+Publish :: pure fn(bits: uint64, storage: int) -> Result {
+    if (storage == 2) {
+        value: int8 = cast<int8>(0);
+        weight: int8 = cast<int8>(1);
+        index: int = 0;
+        while (index < 8) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<int8>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.I8(value));
+    }
+    if (storage == 3) {
+        value: byte = cast<byte>(0);
+        weight: byte = cast<byte>(1);
+        index: int = 0;
+        while (index < 8) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<byte>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.U8(value));
+    }
+    if (storage == 4) {
+        value: int16 = cast<int16>(0);
+        weight: int16 = cast<int16>(1);
+        index: int = 0;
+        while (index < 16) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<int16>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.I16(value));
+    }
+    if (storage == 5) {
+        value: uint16 = cast<uint16>(0);
+        weight: uint16 = cast<uint16>(1);
+        index: int = 0;
+        while (index < 16) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<uint16>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.U16(value));
+    }
+    if (storage == 6) {
+        value: int = cast<int>(0);
+        weight: int = cast<int>(1);
+        index: int = 0;
+        while (index < 32) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<int>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.I32(value));
+    }
+    if (storage == 7) {
+        value: uint = cast<uint>(0);
+        weight: uint = cast<uint>(1);
+        index: int = 0;
+        while (index < 32) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<uint>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.U32(value));
+    }
+    if (storage == 8) {
+        value: int64 = cast<int64>(0);
+        weight: int64 = cast<int64>(1);
+        index: int = 0;
+        while (index < 64) {
+            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
+            bits = bits >> cast<uint64>(1);
+            weight = weight << cast<int64>(1);
+            index += 1;
+        }
+        return Result.Folded(Value.I64(value));
+    }
+    if (storage == 9) { return Result.Folded(Value.U64(bits)); }
+    return Result.Failed("unsupported scalar constant operator");
+}
+
+Width :: pure fn(storage: int) -> int {
+    if (storage == 2 || storage == 3) { return 8; }
+    if (storage == 4 || storage == 5) { return 16; }
+    if (storage == 6 || storage == 7) { return 32; }
+    return 64;
+}
+Signed :: pure fn(storage: int) -> bool {
+    return storage == 2 || storage == 4 || storage == 6 || storage == 8;
+}
+BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result {
+    source := Storage(left);
+    width := Width(source);
+    mask := ~cast<uint64>(0) >> cast<uint64>(64 - width);
+    x := Bits(left) & mask;
+    y: uint64 = cast<uint64>(0);
+    if (op != OpBitNot) { y = Bits(right); }
+    shift := y & cast<uint64>(width - 1);
+    bits: uint64 = cast<uint64>(0);
+    if (op == OpBitAnd) { bits = x & y; }
+    if (op == OpBitOr) { bits = x | y; }
+    if (op == OpBitXor) { bits = x ^ y; }
+    if (op == OpBitNot) { bits = ~x; }
+    if (op == OpShiftLeft) { bits = x << shift; }
+    if (op == OpShiftRight) {
+        bits = x >> shift;
+        if (shift != cast<uint64>(0) && Signed(source) &&
+            (x & (cast<uint64>(1) << cast<uint64>(width - 1))) != cast<uint64>(0)) {
+            bits = bits | (mask ^ (mask >> shift));
+        }
+    }
+    return Publish(bits & mask, storage);
+}
+
+// This internal interface consumes well-typed analyzer IR: comparisons and
+// logical not publish Bool, float arithmetic publishes F32/F64, and integer
+// operations publish integer storage. Destination integer width may differ
+// from the operands; publication must not first wrap at the operand width.
+Operation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result {
+    if (op == OpNone) { return Result.Folded(left); }
+    source := Storage(left);
+    if (op >= OpBitAnd && op <= OpBitNot && source >= 2 && source <= 9) {
+        return BitOperation(op, left, right, storage);
+    }
+    if (op != OpEq && op != OpNe && op != OpNot &&
+        op != OpLt && op != OpLe && op != OpGt && op != OpGe) {
+        if (left is .I32(x)) {
+            y: int = 0;
+            if (right is .I32(operand)) { y = operand; }
+            if ((op == OpDiv || op == OpMod) &&
+                (y == 0 || (x == cast<int>(-2147483648) && y == -1))) {
+                return Result.Failed("invalid integer division or remainder");
+            }
+            wide := PhysicalOperation(op, Value.I64(cast<int64>(x)), Value.I64(cast<int64>(y)));
+            switch wide {
+                case .Failed(message): return wide;
+                case .Folded(value): return Publish(Bits(value), storage);
+            }
+        }
+        if (left is .U32(x)) {
+            if (op != OpAdd && op != OpMul) { return Result.Failed("unsupported unsigned constant operator"); }
+            xBits := Bits(left);
+            yBits := Bits(right);
+            if (op == OpAdd) { return Publish(xBits + yBits, storage); }
+            return Publish(xBits * yBits, storage);
+        }
+    }
+    operated := PhysicalOperation(op, left, right);
+    switch operated {
+        case .Failed(message): return operated;
+        case .Folded(value):
+            resultStorage := Storage(value);
+            if (resultStorage >= 2 && resultStorage <= 9) { return Publish(Bits(value), storage); }
+            if (resultStorage == 10 || resultStorage == 11) {
+                converted := Convert(value, storage);
+                switch converted {
+                    case .Rejected: return Result.Failed("unsupported scalar constant conversion");
+                    case .Accepted(item): return Result.Folded(item);
+                }
+            }
+            return operated;
+    }
+}

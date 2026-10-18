@@ -1293,6 +1293,33 @@ files, services, children or GPU operations. Independently review before the
 first run, build separately and use one shared 60-second ceiling outside the
 language aggregate.
 
+`python3 tools/test_policy.py tool language-constant-scalar-chibi` compares active
+scalar folding using 70 fixed requests and 140 authored calls across bytecode and
+SLJIT. Three pico cases prepare the four actual compiler packages once per
+backend (eight source parses, each below 64 KiB). Each call permits two million
+instructions and contains at most seven expressions, one symbol and no aggregate
+arguments. The C oracle runs admissibility followed by the extracted active
+evaluator; the authored implementation uses separate proof and evaluation
+budgets, preserving the production limit of 65,536 for each.
+
+The corpus covers all thirteen physical scalar variants, exact floating-point
+bits, numeric conversions, integer wrap and division failures, masked shifts,
+result storage and float rounding, string presence, symbols, promotion and
+Boolean short-circuiting after full admissibility. Inputs retire before result
+inspection. Explicit arena checks verify detached union and string ownership;
+retained name and null-text results survive both owner teardowns. The repeated
+DAG workload needed to exhaust 65,536 evaluations is not included or admitted.
+There are no runtime files, services, children or GPU operations. Independently
+review before the first run, build separately and use one shared 60-second
+ceiling outside the language aggregate.
+
+The folding interface consumes type-correct analyzer facts: literals carry their
+declared storage, comparisons and logical negation produce Boolean values, and
+integer and floating operators retain their result families. Admissibility does
+not establish these type invariants. The corpus also checks result-width changes
+within a family; malformed cross-family C union reinterpretation is outside this
+private interface's contract.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction
@@ -1304,6 +1331,14 @@ references update caller roots, and returned snapshots survive module teardown.
 Scalar arguments, reference exposure, inline and standalone entries share these
 checks. That standalone route now has five cases and 28 calls total. These additions
 create no frames, workers, files, processes or GPU work.
+
+Scalar folding exposed an analyzer bug where unchanged union-element arrays
+were treated as single union values and unwrapped. Its `language-program`
+regression adds two preparation parses and four event dispatches across the two
+backends, each capped at 10,000 instructions. Arrays contain at most two tagged
+scalar values. Local append, reassignment and element writes preserve caller
+snapshots; a returned array retained in behavior state survives the first
+activation. The existing array capability pack supplies the append operation.
 
 ## Private build-host process checks
 

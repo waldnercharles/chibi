@@ -637,6 +637,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             narrowed.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
         }
         if (((symbol.type.flags & SCRIPT_TYPE_UNION) &&
+             symbol.type.container == PIN_CONTAINER_SINGLE &&
              (!(narrowed.flags & SCRIPT_TYPE_UNION) || narrowed.container != PIN_CONTAINER_SINGLE ||
               ((narrowed.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
                !(symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL)))) ||

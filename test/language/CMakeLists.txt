@@ -86,6 +86,19 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CONSTANT_PROOF_BYTES "${CHIBI_CONSTAN
 configure_file(constant_proof_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/constant_proof_chibi_source.h" @ONLY)
 
+set(constant_scalar_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/constant_scalar/Scalar.chibi")
+set(constant_folding_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/constant_folding/Fold.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${constant_scalar_source}" "${constant_folding_source}")
+file(READ "${constant_scalar_source}" CHIBI_CONSTANT_SCALAR_HEX HEX)
+file(READ "${constant_folding_source}" CHIBI_CONSTANT_FOLDING_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CONSTANT_SCALAR_BYTES "${CHIBI_CONSTANT_SCALAR_HEX}")
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CONSTANT_FOLDING_BYTES "${CHIBI_CONSTANT_FOLDING_HEX}")
+set(CHIBI_SCALAR_IR_BYTES "${CHIBI_CONSTANT_IR_BYTES}")
+set(CHIBI_SCALAR_PROOF_BYTES "${CHIBI_CONSTANT_PROOF_BYTES}")
+configure_file(constant_scalar_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/constant_scalar_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -115,8 +128,8 @@ set_source_files_properties(package_syntax.c package_syntax_chibi.c package_path
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::json Chibi::language_syntax)
-target_sources(test_language PRIVATE constant_proof_chibi.c)
-set_source_files_properties(constant_proof_chibi.c
+target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c)
+set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c

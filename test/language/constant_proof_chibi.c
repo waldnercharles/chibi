@@ -172,7 +172,8 @@ static bool pack(int backend, const script_analysis *analysis, request query, pi
         const script_expression *e = &analysis->expressions[i];
         pin_value *row = &exprs->items[i], *type = &types->items[i];
         REQUIRE(
-            put(row, "kind", integer(e->kind)) && put(row, "type", integer(i)) &&
+            put(row, "kind", integer(e->kind)) && put(row, "op", integer(e->op)) &&
+            put(row, "literal", integer(-1)) && put(row, "type", integer(i)) &&
             put(row, "symbol", integer(e->symbol)) &&
             put(row, "left", integer(e->left)) &&
             put(row, "right", integer(e->right)) &&
@@ -183,7 +184,8 @@ static bool pack(int backend, const script_analysis *analysis, request query, pi
         REQUIRE(
             put(type, "storage", integer(e->type.storage)) &&
             put(type, "container", integer(e->type.container)) &&
-            put(type, "flags", integer(bits(e->type.flags)))
+            put(type, "flags", integer(bits(e->type.flags))) &&
+            put(type, "has_nominal", boolean(e->type.nominal != 0))
         );
         for (int j = 0; j < acount(e->arguments); j++) {
             REQUIRE(

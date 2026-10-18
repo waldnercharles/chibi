@@ -636,6 +636,15 @@ TOOLS = {
     # review, separate build, shared 60s; outside the language aggregate.
     'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--type-constructors-chibi'],
+    # Four cases: 105 fixed requests, 210 calls with budget argument 50k.
+    # Child activations inherit/reset it; not a global instruction ceiling.
+    # Five compiler sources/backend (<32 KiB each): ten preparation parses.
+    # Caps: 5 definitions, 8 variants/types, 4 uint64 IDs, 3 alias links.
+    # C parity plus fixed answers; cycle results survive all producer owners.
+    # No runtime IO/JSON policy calls/children/services/GPU. Exact-source review
+    # before first run; separate build, one shared 60s; outside aggregates.
+    'language-type-relations-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--type-relations-chibi'],
     # Four cases: 24 Parse/5 Same/10 Product/9 Format requests; 96 authored calls
     # at 2m instructions each. Units/CoreStrings per backend: 4 preparation
     # parses. At most 8 terms, 240 input/name bytes, format capacity 1..192.

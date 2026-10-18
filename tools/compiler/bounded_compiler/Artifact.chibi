@@ -1,0 +1,41 @@
+package bounded_compiler
+
+import strings "core:strings"
+
+// CHIBICLO v1 is ordinary authored package policy. The inner CHIBIPRE v15
+// payload is still produced by the explicitly transitional native finalizer.
+// One closed, import-free module needs no sorting or dependency fingerprints.
+ArtifactWord :: pure fn(bytes: byte[], offset: int, value: uint64) -> byte[] {
+    index: int = 0;
+    while (index < 8) {
+        bytes[offset + index] = byte(wrap: value);
+        value = value >> 8;
+        index += 1;
+    }
+    return bytes;
+}
+
+Artifact :: pure fn(identity: string, module: uint64, payload: byte[]) -> byte[] {
+    name_size := strings.ByteLength(identity);
+    bytes := resize([byte(0)], 56 + name_size + length(payload));
+    magic: byte[] = [67, 72, 73, 66, 73, 67, 76, 79];
+    index: int = 0;
+    while (index < 8) { bytes[index] = magic[index]; index += 1; }
+    bytes = ArtifactWord(bytes, 8, 1);
+    bytes = ArtifactWord(bytes, 16, module);
+    bytes = ArtifactWord(bytes, 24, 1);
+    bytes = ArtifactWord(bytes, 32, module);
+    bytes = ArtifactWord(bytes, 40, uint64(name_size));
+    bytes = ArtifactWord(bytes, 48, uint64(length(payload)));
+    index = 0;
+    while (index < name_size) {
+        bytes[56 + index] = byte(strings.ByteAt(identity, index));
+        index += 1;
+    }
+    index = 0;
+    while (index < length(payload)) {
+        bytes[56 + name_size + index] = payload[index];
+        index += 1;
+    }
+    return bytes;
+}

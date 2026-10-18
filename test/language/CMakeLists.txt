@@ -229,6 +229,7 @@ set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prepared)
+include(bounded_compiler_chibi.cmake)
 target_sources(test_language PRIVATE scalar_lowering_chibi.c)
 set_source_files_properties(scalar_lowering_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

@@ -721,6 +721,16 @@ still unsupported by the verifier and backends. On macOS the five CI aggregates,
 the Wasm group and 40 focused language and tool selectors pass, each under its
 own 60-second deadline; Linux is unmeasured.
 
+The bounded authored package compiler (PR #449,
+`tools/compiler/bounded_compiler`) now runs. Stage zero prepares its 18-file
+closure, and the authored `Compile` entry turns one-function source packages
+into CHIBICLO artifacts. Those artifacts run on bytecode and SLJIT. On macOS,
+`language-bounded-compiler-chibi` passes 42 sources on both compiler backends,
+with 28 accepted payloads and 56 target runs, in 15.9 s. The expression subset
+is deliberately small (see `docs/bounded-authored-compiler.md`). The inner
+CHIBIPRE payload still comes from the native finalizer, so this is not stage
+one or stage two.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

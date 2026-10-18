@@ -609,21 +609,57 @@ The candidate also carries a private temporary hosted-validation helper and
 pinned dependency input. Its separate public control only checks exact source
 identity and invokes fixed phases; exports contain fixed status/timing and
 commit/tree identities, never source, history, build metadata or raw logs.
-The first real native validation remains pending. It must build the actual
-reflection/catalog closure and run existing `language-semantic` (42 cases),
-`language-incremental` (13), `unit-fixtures` (2), and the full authored unit
-differential (3), each under its unchanged production 60-second deadline.
-This larger route requests explicit ASan/UBSan compile/link flags and verifies
-instrumentation on-runner; no sanitizer pass or build-duration fit is claimed
-before it executes. Earlier authored-only evidence cannot substitute for this
-adapter's exact-head evidence. Configuration/build timing is separate.
+Three native validation attempts stopped before tests. The latest diagnostic
+run, [39136813764](https://github.com/waldnercharles/chibi-studio/actions/runs/39136813764),
+used source `c505ec08ca674b0f18562e63911ab55c6a5fdafb`, tree
+`2005b39d236edc18529483fdb485498eedd0a9b0`, and control
+`0c2ca8b6678003e1ab32f776a2834fe0a6f97724`, tree
+`24eacb8feb83f9881a09cb15f859206686e9680e`. Reflection configured in 3s and built
+in 2s. Tooling configuration failed after 31s with fixed status
+`configuration_failure_unclassified`, stage `generate`, owner `unknown`.
+All four selected native tests were `not_started`. Sanitized status JSON SHA-256:
+`6e5ce2af34a0a9269550b2dd2533933c35408475ad87ffa838c51ba1ab97f34a`.
+No raw diagnostics were exported or read, so this evidence does not identify
+the actual failure's root cause.
 
-Next action: independently review this complete adapter/validation candidate,
-then run those four admitted selectors on its exact head. Do not land it unless
-the actual native fixtures and all affected contracts pass. M5 remains in
-progress; neither this extraction nor the component proofs establish complete
-semantic analysis, stage-one/stage-two self-compilation or installed build/link
-with CMake, Clang and GCC unavailable.
+Source review found a separate CMake directory-scope contract defect: a C-only
+standalone tooling parent consumes scheduler/render C++ targets after the SDK
+child enables CXX. The candidate activates CXX in that parent when those actual
+targets exist, using a narrow production include. It leaves genuine pure C
+consumers alone and preserves the existing C++ shim exception. Its owning
+C/pico_unit regression exercises real parent generation rules, including a pure
+C case with an invalid CXX compiler, through the complete existing
+`desktop-dependencies` route. The route now contains eight cases and twenty
+direct children. All children retain their existing ten-second limits within
+one shared production 60-second deadline; nested compiler probes count within
+those bounds. This is source-counted workload awaiting independent finite-workload
+admission and execution, not measured success or attribution of the hosted failure.
+
+The private helper proposal adds that complete eight-case route while retaining
+mandatory `language-semantic` (42 cases), `language-incremental` (13),
+`unit-fixtures` (2), and the full authored unit differential (3). Each complete
+selector has its own unchanged production 60-second deadline. There are no
+subsets or retries. The exact five selectors and their successful full summaries
+are required by the verdict. Configuration/build timing remains separate;
+ASan/UBSan instrumentation checks, pinned dependencies, two build workers,
+source/control identity and minimal-output privacy gates remain intact.
+
+This integrated source candidate and its public control proposal are local and
+unrun. The public proposal keeps invalid source pins and review=false until the
+shared Studio PR #81 branch is released and immutable source/control admission
+is complete; semantic validation currently owns that branch. No CMake
+configuration, native build, expanded fixture route or native selector pass is
+claimed for this candidate. C syntax-only checks, shell syntax and source review
+are not runtime evidence. Actual standalone native tooling generation/build
+must validate the include call site in addition to the isolated regression.
+
+Next action: independently review the complete source and expanded workload,
+then prepare immutable source/control identities for final admission. Do not
+land it unless the native fixtures and all affected contracts pass on that exact
+candidate. Earlier authored-only evidence cannot substitute for this adapter's
+native evidence. M5 remains in progress; neither this extraction nor the component
+proofs establish complete semantic analysis, stage-one/stage-two self-compilation
+or installed build/link with CMake, Clang and GCC unavailable.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

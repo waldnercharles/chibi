@@ -2278,3 +2278,33 @@ This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
 It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
+
+
+## Tooling parent C++ language activation
+
+The existing `desktop-dependencies` C/pico_unit selector adds one finite case
+with four configure-only fixtures: a pure C runtime consumer with an invalid
+C++ compiler path, a child-enabled scheduler with a parent C consumer, a
+child-enabled renderer with a parent C++ consumer, and an imported renderer.
+The C++ consumers reuse the existing `test/draw_backend.cpp` pass-through shim;
+no new C++ logic or standalone executable is added. The fixtures generate real
+Ninja rules through the production tooling language include. They do not build
+the fixture targets, fetch dependencies, execute fixture code or use a GPU.
+CMake's compiler identification/try-compile subprocesses remain part of each
+bounded configuration child.
+
+The whole existing selector now has eight C cases and twenty direct children
+(previously seven/sixteen). Its existing ten-second child limits and one shared
+production 60-second route deadline remain unchanged. The added case performs
+four `REQUIRE` checks, one per successful complete configuration/generation.
+This is source-counted workload, not a measured pass; independent exact-source
+and expanded-workload admission is required before first execution. Parent
+C++ activation follows actual scheduler/render targets, leaving pure C SDK
+consumers alone. Hosted native compiler validation still separately requires
+all four previously selected full selectors. The private helper proposal adds
+the complete eight-case desktop selector to its required verdict with the same
+summary, sanitizer, timing and identity gates. This five-selector hosted workload
+is unrun and needs independent source/workload admission before final immutable
+control pins can replace the unarmed public proposal. No subsets or extra attempts
+are introduced; the 60-second ceiling covers the entire desktop selector, not
+each case separately.

@@ -134,7 +134,7 @@ execute() {
     identity
     case "$SELECTOR" in
       language-semantic|language-incremental|language-unit-analysis-chibi) sha256sum -c "$WORK/language.sha256" ;;
-      unit-fixtures) sha256sum -c "$WORK/tools.sha256" ;;
+      unit-fixtures|desktop-dependencies) sha256sum -c "$WORK/tools.sha256" ;;
       *) return 2 ;;
     esac
     cd "$ROOT"
@@ -206,7 +206,7 @@ configuration_status() {
 collect() {
     local phase rc seconds selector expected summary outcome diagnostic diagnostic_stage diagnostic_owner classification
     : > "$WORK/phases.jsonl"
-    for phase in prepare dependencies configure_reflect build_reflect configure_tools build_tools configure_language build_language execute-language-semantic execute-language-incremental execute-unit-fixtures execute-language-unit-analysis-chibi; do
+    for phase in prepare dependencies configure_reflect build_reflect configure_tools build_tools configure_language build_language execute-language-semantic execute-language-incremental execute-unit-fixtures execute-language-unit-analysis-chibi execute-desktop-dependencies; do
         [[ -f "$WORK/$phase.exit" ]] || continue
         rc=$(cat "$WORK/$phase.exit"); seconds=$(cat "$WORK/$phase.seconds")
         [[ "$rc" =~ ^[0-9]{1,3}$ && "$seconds" =~ ^[0-9]{1,8}$ ]]
@@ -222,8 +222,8 @@ collect() {
           '{phase:$phase,exit:$rc,elapsed_seconds:$seconds,diagnostic:$diagnostic,diagnostic_stage:$stage,diagnostic_owner:$owner}' >> "$WORK/phases.jsonl"
     done
     : > "$WORK/results.jsonl"
-    for selector in language-semantic language-incremental unit-fixtures language-unit-analysis-chibi; do
-        case "$selector" in language-semantic) expected=42 ;; language-incremental) expected=13 ;; unit-fixtures) expected=2 ;; language-unit-analysis-chibi) expected=3 ;; esac
+    for selector in language-semantic language-incremental unit-fixtures language-unit-analysis-chibi desktop-dependencies; do
+        case "$selector" in language-semantic) expected=42 ;; language-incremental) expected=13 ;; unit-fixtures) expected=2 ;; language-unit-analysis-chibi) expected=3 ;; desktop-dependencies) expected=8 ;; esac
         outcome=not_started
         if [[ -f "$WORK/execute-$selector.exit" ]]; then
             rc=$(cat "$WORK/execute-$selector.exit")
@@ -259,11 +259,12 @@ verdict() {
         "prepare", "dependencies", "configure_reflect", "build_reflect",
         "configure_tools", "build_tools", "configure_language", "build_language",
         "execute-language-semantic", "execute-language-incremental",
-        "execute-unit-fixtures", "execute-language-unit-analysis-chibi"
+        "execute-unit-fixtures", "execute-language-unit-analysis-chibi",
+        "execute-desktop-dependencies"
       ] | sort)) and
       ((.results | map(.selector) | sort) == ([
         "language-semantic", "language-incremental", "unit-fixtures",
-        "language-unit-analysis-chibi"
+        "language-unit-analysis-chibi", "desktop-dependencies"
       ] | sort)) and
       all(.results[]; .outcome == "passed") and all(.phases[]; .exit == 0)
     ' "$PUBLIC/status.json" >/dev/null
@@ -272,7 +273,7 @@ phase=${1:-invalid}
 case "$phase" in prepare|dependencies|configure_reflect|build_reflect|configure_tools|build_tools|configure_language|build_language|execute|collect|verdict) ;; *) printf 'phase=invalid exit=2\n' >&3; exit 2 ;; esac
 key=$phase
 if [[ "$phase" == execute ]]; then
-    case "${SELECTOR:-}" in language-semantic|language-incremental|unit-fixtures|language-unit-analysis-chibi) ;; *) printf 'phase=execute exit=2\n' >&3; exit 2 ;; esac
+    case "${SELECTOR:-}" in language-semantic|language-incremental|unit-fixtures|language-unit-analysis-chibi|desktop-dependencies) ;; *) printf 'phase=execute exit=2\n' >&3; exit 2 ;; esac
     key="execute-$SELECTOR"
 fi
 started=$SECONDS

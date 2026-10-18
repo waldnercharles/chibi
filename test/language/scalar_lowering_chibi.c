@@ -278,26 +278,20 @@ static bool record(int b, const char *name, pin_value *out)
 }
 static bool rows(int b, const char *name, int count, pin_value *out)
 {
-    pin_array *a = pin_array_snapshot_allocate(&input, PIN_STRUCT, NULL, count);
-    REQUIRE(a);
-    for (int i = 0; i < count; i++) {
-        REQUIRE(record(b, name, &a->items[i]));
-    }
-    if (count) {
-        a->record = a->items[0].record;
-    }
+    /* Empty record arrays still carry their shape, just like nonempty rows. */
+    const pin_record *shape = compiler_fixture_record(&fixture, b, PACKAGE, name, &input);
+    REQUIRE(shape);
+    pin_array
+        *array = pin_array_snapshot_allocate(&input, PIN_STRUCT, shape->type.name, count);
+    REQUIRE(array);
+    array->record = shape;
     *out = (pin_value){ .type = PIN_STRUCT,
                         .container = PIN_CONTAINER_ARRAY,
-                        .record = count ? a->items[0].record : NULL,
-                        .type_name = count ? a->items[0].type_name : NULL,
-                        .ptr = a };
-    /* Empty record arrays still carry their shape, just like nonempty rows. */
-    if (!count) {
-        const pin_record *shape = compiler_fixture_record(&fixture, b, PACKAGE, name, &input);
-        REQUIRE(shape);
-        a->record = shape;
-        out->record = shape;
-        out->type_name = shape->type.name;
+                        .record = shape,
+                        .type_name = shape->type.name,
+                        .ptr = array };
+    for (int i = 0; i < count; i++) {
+        REQUIRE(record(b, name, &array->items[i]));
     }
     return true;
 }

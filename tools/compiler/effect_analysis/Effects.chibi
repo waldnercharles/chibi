@@ -252,12 +252,12 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
    foreach(id in checked) { duplicate = duplicate || id == componentID; }
    if(componentID != cast<uint64>(0) && !duplicate) {
     checked = array_add(checked,componentID);
-    unordered := row.reduction == 3;
+    isUnordered := row.reduction == 3;
     j := i+1;
     conflict := false;
     while(j < length(statements) && !conflict) {
      other := statements[j];
-     if(other.kind == Reduce && ComponentTarget(environment,other.expression) == componentID && (other.reduction == 3) != unordered) {
+     if(other.kind == Reduce && ComponentTarget(environment,other.expression) == componentID && (other.reduction == 3) != isUnordered) {
       diagnostics = Report(environment,diagnostics,other.range,"A component cannot mix ordered and unordered reductions in one system"); conflict = true;
      }
      j += 1;
@@ -389,7 +389,7 @@ Order :: pure fn(environment: Environment) -> Ordering {
  foreach(row in bindings) { emitted = array_add(emitted,false); }
  pass: int = 0;
  while(pass < length(bindings)) {
-  found := -1;
+  found: int = -1;
   i: int = 0;
   while(i < length(bindings) && found < 0) {
    if(!emitted[i]) {

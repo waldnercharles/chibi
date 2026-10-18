@@ -427,27 +427,58 @@ were reproduced on bytecode and SLJIT. The full authored unit differential is
 green in [run 39112565011](https://github.com/waldnercharles/chibi-studio/actions/runs/39112565011);
 its sanitized status JSON SHA-256 is
 `3f290081324f0a89d1aae1fdd013ba7649ea4a5eac4e2046ffddf1a765218cfb`.
-The fixture observer remains off by default. The next increment connects the
-production analyzer to the already extracted C reference helper; it does not
-move the normal compiler off stage zero or dispatch authored analysis in production.
+The fixture observer remains off by default. The native candidate connects the
+production analyzer to the extracted C reference helper; its build and native
+validation remain incomplete. It does not move the normal compiler off stage zero
+or dispatch authored analysis in production.
 
 The authored type-relations component and its dedicated differential route,
 `language-type-relations-chibi`, are merged in
 [PR #442](https://github.com/waldnercharles/chibi/pull/442) at
 `ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`, outside aggregates.
-Its finite corpus is 105 requests and 210 calls across bytecode and SLJIT, with
-ten preparation parses and a supplied budget argument of 50,000. Outlined and
-inline child activations inherit/reset that argument; it is not an invocation or
-global instruction ceiling. Its four-case differential passed on both backends
-in [run 39113816903](https://github.com/waldnercharles/chibi-studio/actions/runs/39113816903)
-under the unchanged 60-second deadline. The tested source was
-`6787ff61d3516ad4d9064ec34b16b5514233d64e`; the merge tree matches the tested tree
+Its four-case finite corpus passed 105 requests and 210 calls across bytecode
+and SLJIT, with ten preparation parses and retained-result checks, in
+[run 39113816903](https://github.com/waldnercharles/chibi-studio/actions/runs/39113816903).
+The supplied 50,000 instruction argument is inherited/reset per activation,
+not an invocation or global instruction ceiling. The tested source was
+`6787ff61d3516ad4d9064ec34b16b5514233d64e`; the merge matches its exact tree
 `95ddc9104ad6015f54c10fb59987ef31a65eaa34`. The sanitized status JSON SHA-256 is
 `06053425ed3d257bb9d201194895f4e643c80bf0efa43edcf797bc150c617752`.
-No native type-relation adapter or language syntax change is introduced. Union members and
-effects remain reviewed, unlinked and unexecuted drafts. Complete authored
-semantic analysis, lowering, artifact production, stage one and stage two remain
-incomplete; these focused components do not establish self-hosting.
+No native type-relation adapter or language syntax change is introduced.
+
+The additive union-members, effects and record-members work merged in PR #444
+at `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb`. It wires
+three separate full differential routes into the existing language driver,
+with private C reference helpers and authored sources only. Normal production
+analyzers and binding finalizers remain unchanged. Union members retains
+24 requests, 48 calls and 32 parses with source/raw supplied budgets of two
+million/sixteen million; effects retains 34 requests, 68 calls and ten parses
+at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
+runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
+not whole-call or aggregate instruction ceilings. Each route remains outside
+aggregates under one unchanged production 60-second deadline. Hosted run
+39138442670 at source `ec13962865b093bbeb2693a46ec6dc22fac6e498` passed
+union members, record members, unit analysis and type relations, with execution
+identity, expected pico summaries and production deadlines verified. Effects
+failed during snapshot preparation before authored execution. An independently
+admitted complete three-source C syntax diagnostic reproduced one error in the
+Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
+cleanly. The local and its sole use are now named `isUnordered`, preserving
+reduction logic and all fixtures. Corrected-source syntax passed all three
+complete-source cases and nine assertions in 0.072 seconds under the unchanged
+production 60-second supervisor. The earlier failed-run status artifact SHA-256 is
+`6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
+The corrected source `b57ac78c53c170139d8f807158c076f971a2202b` then passed all
+five complete semantic selectors in
+[run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564):
+union members, effects, record members, unit analysis and type relations.
+The landed merge tree equals the tested tree
+`09d520fe2a5723226126b0879faaee390e87b7b9`. Sanitized status JSON SHA-256:
+`7d85449277f819cf77949ad6fb2fec52c49923473bbea8aef069f1ff86dea84a`.
+No raw hosted diagnostics or source contents are exported.
+Those compiler-only results do not replace the native adapter build or tests.
+Complete authored semantic analysis, lowering, artifact production, stage one
+and stage two remain incomplete; these components do not establish self-hosting.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -559,7 +590,9 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 ## Current checkpoint
 
 Last verified toolchain checkpoint: 2026-10-18 at
-`ace559c9c294a450c95a3a730dcd6d9f1b5ce13c` (PR #442).
+`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), tree
+`09d520fe2a5723226126b0879faaee390e87b7b9`. The native adapter integration
+described below is a separate unrun candidate.
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
@@ -599,6 +632,15 @@ completed below the one-second timing resolution. This standalone Debug build
 was not sanitizer-instrumented. Exact source, merge tree and sanitized evidence
 are recorded in the milestone above.
 
+PR #444's additive union/effects/record work passed all five complete semantic
+routes on exact source `b57ac78c53c170139d8f807158c076f971a2202b` in hosted
+run `39140946564`. Configuration took 3s and build 15s; union, effects, record,
+unit and type-relation execution took 7s, 1s, 1s, 3s and below 1s respectively,
+each within its unchanged production 60-second deadline. Source/tree and
+sanitized evidence are recorded above. Its normal production analyzers remain
+unchanged. This integration preserves every semantic source, generated-header
+template and dispatcher registration byte-for-byte from the landed target.
+
 The current candidate wires `semantic_units.c` to the extracted C reference
 helper. It supplies raw analyzer facts, copies returned diagnostics into the
 analyzer's ownership before freeing temporary storage, and retains the existing
@@ -609,8 +651,8 @@ The candidate also carries a private temporary hosted-validation helper and
 pinned dependency input. Its separate public control only checks exact source
 identity and invokes fixed phases; exports contain fixed status/timing and
 commit/tree identities, never source, history, build metadata or raw logs.
-Three native validation attempts stopped before tests. The latest diagnostic
-run, [39136813764](https://github.com/waldnercharles/chibi-studio/actions/runs/39136813764),
+Three earlier native validation attempts stopped during configuration before
+tests. The last of those diagnostic runs, [39136813764](https://github.com/waldnercharles/chibi-studio/actions/runs/39136813764),
 used source `c505ec08ca674b0f18562e63911ab55c6a5fdafb`, tree
 `2005b39d236edc18529483fdb485498eedd0a9b0`, and control
 `0c2ca8b6678003e1ab32f776a2834fe0a6f97724`, tree
@@ -632,10 +674,11 @@ C case with an invalid CXX compiler, through the complete existing
 `desktop-dependencies` route. The route now contains eight cases and twenty
 direct children. All children retain their existing ten-second limits within
 one shared production 60-second deadline; nested compiler probes count within
-those bounds. This is source-counted workload awaiting independent finite-workload
-admission and execution, not measured success or attribution of the hosted failure.
+those bounds. Independent source and finite-workload review admitted the complete
+route; its actual execution is still pending. No cause is assigned to the earlier
+unclassified generation failure from source inspection alone.
 
-The private helper proposal adds that complete eight-case route while retaining
+The private helper requires that complete eight-case route while retaining
 mandatory `language-semantic` (42 cases), `language-incremental` (13),
 `unit-fixtures` (2), and the full authored unit differential (3). Each complete
 selector has its own unchanged production 60-second deadline. There are no
@@ -644,22 +687,39 @@ are required by the verdict. Configuration/build timing remains separate;
 ASan/UBSan instrumentation checks, pinned dependencies, two build workers,
 source/control identity and minimal-output privacy gates remain intact.
 
-This integrated source candidate and its public control proposal are local and
-unrun. The public proposal keeps invalid source pins and review=false until the
-shared Studio PR #81 branch is released and immutable source/control admission
-is complete; semantic validation currently owns that branch. No CMake
-configuration, native build, expanded fixture route or native selector pass is
-claimed for this candidate. C syntax-only checks, shell syntax and source review
-are not runtime evidence. Actual standalone native tooling generation/build
-must validate the include call site in addition to the isolated regression.
+After the CXX correction, native run
+[39139386112](https://github.com/waldnercharles/chibi-studio/actions/runs/39139386112)
+used source `06a5ae206b4daf2a5f58d66969faa008bf9c57f3`, tree
+`da159481fb0d25c9deacd9e87525ac4a82846dff`, and control
+`02894277346e9c3d8dafdf56b48497b93c9a0052`, tree
+`ee674c048a629cc1d8fc72f19b7fa4809f44d40c`. Actual standalone tooling generation
+passed in 41s. Tooling build then failed exit 1 after 170s. No successful binary
+instrumentation verification or selector result was established. All five
+selectors were `not_started`. Sanitized status JSON SHA-256:
+`68e2f90aad4d1e97ae5f7f8617e3a00dec77dfbbdd1e23b51cceb497ca22a0e6`.
+The helper did not yet classify build failures, so the cause remains unknown.
+No raw hosted log retrieval or source/build-metadata export is used to infer it.
 
-Next action: independently review the complete source and expanded workload,
-then prepare immutable source/control identities for final admission. Do not
-land it unless the native fixtures and all affected contracts pass on that exact
-candidate. Earlier authored-only evidence cannot substitute for this adapter's
-native evidence. M5 remains in progress; neither this extraction nor the component
-proofs establish complete semantic analysis, stage-one/stage-two self-compilation
-or installed build/link with CMake, Clang and GCC unavailable.
+The current local integration combines that native candidate with landed PR #444
+through their exact common base `ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`.
+It retains both deltas and adds the independently reviewed diagnostic-only helper:
+failed tooling builds emit closed compile/link/generate/driver hints in the
+existing fixed status fields. Build commands, dependencies, five selectors,
+counts, deadlines, privacy, identity and verdict gates remain unchanged.
+The integration itself has not been configured, built or executed. Prior semantic
+passes and native generation success are evidence for their recorded parents,
+not a pass for this combined candidate. The unarmed public control proposal keeps
+invalid source pins and review=false; the transport integration has the next
+hosted slot. Final control publication must wait for release and immutable review.
+
+Next action: independently review this normal integration and its actual shared
+file resolutions, then prepare immutable source/control identities for final
+admission. Run the same five complete native selectors after a successful build;
+any additional affected-contract gate needs independent admission. Do not land
+unless required native and affected-contract checks pass on the exact candidate.
+M5 remains in progress; these component proofs do not establish complete semantic
+analysis, stage-one/stage-two self-compilation or installed build/link with CMake,
+Clang and GCC unavailable.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
@@ -722,11 +782,16 @@ are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses
 `headers-`, `reader-` and their build logs. No scratch executable or project
 copy remains.
 
-At the owner's request, this checkpoint also saves three **unintegrated,
-uncompiled and unexecuted drafts**: `unit_analysis`, `union_members` and
-`effect_analysis`, each with C helpers, authored source and pico fixtures. Their
-source has been reviewed and finite workloads admitted, but active adapters,
-CMake embedding, dispatcher routes and execution evidence are still pending.
+The earlier checkpoint saved three unintegrated drafts: `unit_analysis`,
+`union_members` and `effect_analysis`, each with C helpers, authored source and
+pico fixtures. Unit analysis has since passed as recorded above. The current
+additive candidate wires union members and effects together with record members.
+Union and record members passed their full hosted routes in run 39138442670;
+effects reached a snapshot syntax failure. The `unordered` local-name correction
+passed all three complete-source syntax cases and nine assertions; full hosted
+effects differential evidence remains pending. Their
+active production adapters remain excluded. The workload records below retain
+the reviewed bounds and do not imply a corrected effects execution pass.
 
 - Unit analysis: 29 requests, 58 calls at 500,000 instructions and 14 parses.
   The old recursive evaluator and incorrect zero-capability guard intentionally
@@ -744,6 +809,12 @@ CMake embedding, dispatcher routes and execution evidence are still pending.
   propagation bound, exact diagnostic phases and stable binding ordering.
   Actual analyzed-source replays do not establish initial effect propagation;
   separate raw seed/cycle cases cover that behavior.
+
+- Record members: 26 requests, 52 calls at 500,000 supplied instructions,
+  32 parses and four runtime JSON decodes. Eight selection requests, thirteen
+  member requests, three refreshed-fact boundary requests and two publication
+  continuation requests retain the reviewed finite corpus. Defaults are not
+  analyzed or executed; layout and final record publication remain native.
 
 This verifies callable headers and annotation reading, not a complete compiler
 bootstrap. Prior checkpoints prove unit algebra, type construction, named/lexical

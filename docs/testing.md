@@ -1476,6 +1476,85 @@ input, syntax and module retirement. No runtime files, children, services or GPU
 work occur. Independently review before the first run, build separately and use
 one shared 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-union-members-chibi` selects three
+C/pico_unit cases: sixteen source requests and eight raw cycle-validation
+requests, each on bytecode and SLJIT, for 48 authored calls and 32 parses.
+Source calls supply 2,000,000 instructions; raw validation supplies 16,000,000.
+Both budgets are inherited/reset per activation, including outlined and inline
+children; neither is a whole-call or corpus instruction ceiling. Eight compiler
+sources per backend are below 32 KiB. Sixteen fact sources are at most 512 bytes,
+256 syntax nodes and depth 32; initial source tables hold at most two symbols
+and definitions, one scope and no functions, imports or capabilities.
+
+The fixed raw maximum is 257 definitions/fields, two variants, four roots,
+520 types and 1,024 IDs, with at most 66,049 nominal comparisons, 258 traversal
+calls and 514 persistent state writes. Cases preserve the 256-definition success
+boundary, 257-definition failure and cycle-before-depth ordering. Comparisons
+cover ordered diagnostics, uses, constructor publication/reuse, full-width tags,
+embedded NUL and results retained after input/module retirement. Positive native
+task capability-result metadata is uncovered, and this corpus does not establish
+all import/native/multi-document combinations or arbitrary state continuation.
+The validator remains recursive; source review is not evidence that the runtime
+executes its depth-boundary workload. The normal union analyzer is unchanged.
+
+`python3 tools/test_policy.py tool language-effect-analysis-chibi` selects four
+C/pico_unit cases: 24 raw Analyze graphs, six Order graphs and four analyzed
+source replays, for 34 requests and 68 authored calls across bytecode and SLJIT.
+The supplied 500,000 instruction budget is inherited/reset per activation,
+not a whole-call or corpus instruction ceiling. Three compiler sources per
+backend below 32 KiB plus four fact sources below 512 bytes total ten parses.
+Raw maxima are 24 expressions except one fixed 85-expression graph, 16 statements,
+six functions, eight symbols/scopes, two queries, four bindings, eight arguments,
+16 children, six capabilities, three catalog types and sixteen read/write IDs.
+Actual facts cap expressions/statements at 64, functions at eight, symbols at 32,
+scopes at sixteen, queries at four and bindings at eight; shared bounds are
+128 IDs, 256 ranges, 32 diagnostics and 240 text bytes.
+
+The corpus retains the function-count-plus-one propagation stop, dependency
+cycles, task masks, diagnostic phases, stable binding order and owned outputs.
+Raw seeds establish initial propagation; analyzed replays already contain final
+effects and only establish schema, diagnostics and ownership. The two existing
+forward-edge graphs assert the finite propagation stop, and actual diagnostic
+matching is an ordered subsequence without reusing matches. The reviewed
+explicit-int generic inference correction is included in `Effects.chibi`.
+The normal effect analyzer and binding finalizer are unchanged.
+
+These union/effects routes add private C reference helpers and exact authored
+source embeddings to the existing language driver; there is no active production
+adapter, new executable, public package or language syntax. No runtime files,
+workload children, network, sleeps, services, engine frames or GPU work occur.
+Both full routes stay outside all aggregates. Independently review the exact
+combined source and finite workloads before their first executions, each under
+one unchanged production 60-second deadline including preparation and cleanup;
+configuration/build timing is separate. Registration records no measured pass,
+active authored compiler dispatch or complete compiler bootstrap.
+
+`python3 tools/test_policy.py tool language-record-members-chibi` is a standalone
+source-only differential route for record declaration selection and one-member
+name/type discovery. Five fixed C/pico_unit cases make 26 requests and 52 authored
+calls across bytecode and SLJIT, with 32 parses and four runtime JSON decodes.
+Each call supplies budget 500,000, which outlined and inline child activations
+inherit/reset. This is not a shared invocation or corpus instruction ceiling.
+
+Eight compiler sources per backend are below 32 KiB each. Sixteen fact-source
+parses use inputs below 256 bytes, at most 128 nodes and depth 32. Raw facts have
+one scope, at most one symbol, three definitions, two variants and three prior
+names; pools hold 64 type rows and 128 exact IDs. Per-member outputs have at most
+four combined diagnostics, one use and one constructor publication. Fixed
+annotation shapes are primitive/named types, a single modifier or a two-member
+structural union; bounded table scans and these finite shapes bound the work.
+
+Coverage includes original selection guards, ordered diagnostics, full reader
+results, a caller-supplied refreshed-fact boundary, publication continuation and
+owned results after producer retirement. Defaults are neither analyzed nor run;
+layout, final publication and the production record analyzer remain unchanged.
+There are no runtime files, workload children, services, network, sleeps, engine
+frames or GPU work. This route is outside all aggregates. Independent review of
+the exact combined source and workload is required before first execution under
+one unchanged production 60-second deadline, including preparation and cleanup.
+Build/configuration timing is separate. Registration is not runtime evidence or
+a compiler-bootstrap claim; no measured pass is recorded here.
+
 `python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
 C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
 requests and four actual analyzed sources make 58 authored call attempts across

@@ -203,6 +203,88 @@ configuration_status() {
     fi
     printf '%s %s %s\n' "$diagnostic" "$stage" "$owner"
 }
+build_status() {
+    local text line header='' location payload='' diagnostic=build_failure_unclassified stage=unknown owner=none
+    local compiler_location='^[[:alnum:]_./+-]+:[0-9]+(:[0-9]+)?: (fatal )?error: '
+    local compiler_driver='^([[:alnum:]_./+-]*/)?(clang(\+\+)?(-[0-9]+)?|gcc(-[0-9]+)?|g\+\+(-[0-9]+)?|cc|c\+\+): (fatal )?error: '
+    local linker_driver='^([[:alnum:]_./+-]*/)?(([[:alnum:]_+-]+-)?ld(\.[[:alnum:]_-]+)?|collect2): '
+    local linker_location='^[[:alnum:]_./+()-]+(:[0-9]+)?(:\([^[:space:]]+\))?: (undefined reference to|undefined symbol:|multiple definition of|duplicate symbol:)(.*)$'
+    if ! text=$(sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g;s/\r//g;s/^[ \t]+//' "$1" 2>/dev/null); then
+        printf 'build_failure_unclassified unknown none\n'
+        return
+    fi
+    # Pick an authoritative fatal envelope before inspecting its payload.
+    # Token-shaped locations exclude command echoes; skip numbered excerpts.
+    while IFS= read -r line; do
+        [[ "$line" =~ ^([0-9]+)?[[:space:]]*\| ]] && continue
+        [[ "$line" == 'warning: '* || "$line" == 'note: '* ]] && continue
+        payload=${line#*: }
+        if [[ "$line" =~ ^CMake\ Error(\ at\ |\ in\ |:|$) ]]; then
+            stage=generate
+        elif [[ "$line" == 'ninja: error: '* ]]; then
+            stage=driver
+        elif [[ "$line" =~ $compiler_location ]]; then
+            stage=compile
+        elif [[ "$line" =~ $compiler_driver ]]; then
+            stage=compile
+            [[ "$payload" == 'error: linker command failed with exit code '* ]] && stage=link
+        elif [[ "$line" =~ $linker_driver ]]; then
+            [[ "$payload" == 'warning: '* || "$payload" == 'note: '* ]] && continue
+            if [[ "$payload" =~ $linker_location ]]; then
+                payload=${BASH_REMATCH[3]}${BASH_REMATCH[4]}
+            elif [[ ! "$payload" =~ ^(error:\ |fatal:\ |cannot\ |unrecognized\ |unrecognised\ |symbol\(s\)\ not\ found|undefined\ reference\ to|undefined\ symbol:|multiple\ definition\ of|duplicate\ symbol:) ]]; then
+                continue
+            fi
+            stage=link
+        elif [[ "$line" =~ $linker_location ]]; then
+            payload=${BASH_REMATCH[3]}${BASH_REMATCH[4]}
+            stage=link
+        else
+            continue
+        fi
+        header=$line
+        break
+    done <<< "$text"
+    if [[ -z "$header" ]]; then
+        printf '%s %s %s\n' "$diagnostic" "$stage" "$owner"
+        return
+    fi
+    owner=unknown
+    location=${header%%:*}
+    case "$location" in
+      *'/dependencies/'*|*'/_deps/'*) owner=dependency ;;
+      sdk/*|*'/sdk/'*|*' sdk/'*) owner=sdk ;;
+      test/tools/*|*'/test/tools/'*|*' test/tools/'*) owner=tools ;;
+      test/language/*|*'/test/language/'*|*' test/language/'*) owner=language ;;
+      src/*|*'/src/'*|*' src/'*) owner=engine ;;
+      *'/Modules/'*) owner=cmake ;;
+    esac
+    case "$stage" in
+      generate) diagnostic=build_generation_error ;;
+      driver) diagnostic=build_driver_error ;;
+      compile)
+        diagnostic=build_compiler_error
+        if [[ "$payload" == 'fatal error: '* ]] &&
+           [[ "$payload" == *' file not found' || "$payload" == *' No such file or directory' ]]; then
+            diagnostic=build_missing_header
+        fi ;;
+      link)
+        diagnostic=build_linker_error
+        payload=${payload#error: }
+        payload=${payload#fatal: }
+        case "$payload" in
+          'undefined reference to'*|'undefined symbol:'*)
+            diagnostic=build_undefined_symbol
+            if [[ "$payload" =~ __asan_|__ubsan_|__lsan_|__sanitizer_ ]]; then
+                diagnostic=build_undefined_sanitizer_symbol
+            elif [[ "$payload" =~ __cxa_|__gxx_personality_v0|operator\ (new|delete)|std::|_ZSt ]]; then
+                diagnostic=build_undefined_cxx_symbol
+            fi ;;
+          'multiple definition of'*|'duplicate symbol:'*) diagnostic=build_duplicate_symbol ;;
+        esac ;;
+    esac
+    printf '%s %s %s\n' "$diagnostic" "$stage" "$owner"
+}
 collect() {
     local phase rc seconds selector expected summary outcome diagnostic diagnostic_stage diagnostic_owner classification
     : > "$WORK/phases.jsonl"
@@ -214,6 +296,11 @@ collect() {
         if [[ "$phase" == configure_tools && "$rc" != 0 ]]; then
             if ! classification=$(configuration_status "$WORK/$phase.log"); then
                 classification='configuration_failure_unclassified unknown none'
+            fi
+            read -r diagnostic diagnostic_stage diagnostic_owner <<< "$classification"
+        elif [[ "$phase" == build_tools && "$rc" != 0 ]]; then
+            if ! classification=$(build_status "$WORK/$phase.log"); then
+                classification='build_failure_unclassified unknown none'
             fi
             read -r diagnostic diagnostic_stage diagnostic_owner <<< "$classification"
         fi

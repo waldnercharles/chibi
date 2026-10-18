@@ -97,7 +97,7 @@ TEST_CASE(record_semantic_operators)
     parse(
         "library Defaults { Row :: struct { depth: int = Later + 1; wrap: int "
         "= 2147483647 + 1; shift: int = -1 >> 33; flag: bool = true or "
-        "(cast<int>(1) / cast<int>(0) > 0); same: bool = \"x\" == \"x\"; "
+        "(int(1) / int(0) > 0); same: bool = \"x\" == \"x\"; "
         "label: string = Text; } Later :: 3; Text :: \"saved\"; Make :: () -> "
         "Row { return {}; } }",
         &empty

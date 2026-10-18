@@ -29,14 +29,14 @@ Update :: union {
 Members :: union { Built(environment: Environment, updates: Update[], diagnostics: syntax.Diagnostic[], uses: named.Use[]) }
 
 Validation :: union { Checked(root: int, error: int, states: int[]) }
-MaxDepth :: cast<int>(256);
+MaxDepth: int : 256;
 
 // All helpers reachable from the depth-256 traversal use the existing
 // unlimited callable depth setting; imported convenience helpers retain their
 // ordinary depth64 and therefore are not called on a deep traversal frame.
 CycleID :: pure fn(ids: uint64[], slot: int) -> uint64 {
     depth_limit 0;
-    if (slot < 0) { return cast<uint64>(0); }
+    if (slot < 0) { return uint64(0); }
     return ids[slot];
 }
 CycleType :: pure fn(types: named.Type[], ids: uint64[], index: int) -> named.Value {
@@ -330,7 +330,7 @@ BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int
     fields: DeclaredField[] = [];
     types: named.Type[] = [];
     ids: uint64[] = [];
-    union_id := cast<uint64>(0);
+    union_id := uint64(0);
     switch union_value { case .Typed(storage, container, flags, nominal, parameter): union_id = nominal; }
     switch tree { case .Raw(nodes, field_names, named_flags, extra_flags, source):
         child := nodes[node].first_child;
@@ -342,7 +342,7 @@ BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int
                 switch reader.Name(tree, name_node, document) { case .Name(name, errors):
                     current = Errors(current, errors);
                     tag := binding.ID("union-literal", name);
-                    payload := named.Value.Typed(13, 0, 1024, cast<uint64>(0), tag);
+                    payload := named.Value.Typed(13, 0, 1024, uint64(0), tag);
                     if (literal_node < 0) {
                         key := strings.Slice(format_text("{}:{}", union_id, name), 0, 511);
                         tag = binding.ID("union-variant", key);
@@ -435,7 +435,7 @@ Build :: pure fn(environment: Environment, tree: reader.Tree, body: int, scope: 
         states: int[] = [];
         switch current { case .Built(live, current_updates, current_diagnostics, current_uses):
             switch live { case .Tables(reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
-                states = resize([cast<int>(0)], length(definitions));
+                states = resize([int(0)], length(definitions));
             }
         }
         child = nodes[body].first_child;

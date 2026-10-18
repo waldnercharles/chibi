@@ -778,6 +778,14 @@ static const script_expression *expression_at(const collector *c, TSNode node, s
     }
     return NULL;
 }
+/* T(value) with one positional value, analyzed as a conversion. */
+static bool conversion(const collector *c, TSNode call)
+{
+    TSNode arguments = field(call, "arguments");
+    return ts_node_named_child_count(arguments) == 1 &&
+           !is(ts_node_named_child(arguments, 0), "named_argument") &&
+           expression_at(c, call, SCRIPT_EXPR_CAST);
+}
 /* An argument written in the call's own list. Defaults span the whole list;
  * an action's configured arguments lie at its declaration. */
 static int written_argument(const collector *c, TSNode node, const script_expression *call, int parameter)
@@ -1111,8 +1119,9 @@ static void collect(collector *c, TSNode node, pass phase)
         }
     } else if (!strcmp(type, "handler")) {
         handler(c, node);
-    } else if (!strcmp(type, "cast_expression")) {
-        unwrap_node(c, node, field(node, "value"));
+    } else if (!strcmp(type, "call_expression") && conversion(c, node)) {
+        /* Equivalence keeps only conversions whose value already has the type. */
+        unwrap_node(c, node, ts_node_named_child(field(node, "arguments"), 0));
     } else if (!strcmp(type, "parenthesized_expression") && !grouping(c, node)) {
         unwrap_node(c, node, field(node, "expression"));
     } else if (!strcmp(type, "member_expression")) {

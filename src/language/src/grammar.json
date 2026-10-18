@@ -1496,8 +1496,34 @@
           }
         },
         {
-          "type": "STRING",
-          "value": "::"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "::"
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "type",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "type"
+                  }
+                },
+                {
+                  "type": "STRING",
+                  "value": ":"
+                }
+              ]
+            }
+          ]
         },
         {
           "type": "FIELD",
@@ -3661,10 +3687,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "cast_expression"
-        },
-        {
-          "type": "SYMBOL",
           "name": "is_expression"
         },
         {
@@ -4129,47 +4151,6 @@
               }
             ]
           }
-        }
-      ]
-    },
-    "cast_expression": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "cast"
-        },
-        {
-          "type": "STRING",
-          "value": "<"
-        },
-        {
-          "type": "FIELD",
-          "name": "type",
-          "content": {
-            "type": "SYMBOL",
-            "name": "type"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ">"
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "value",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_expression"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
         }
       ]
     },
@@ -5352,10 +5333,12 @@
     ],
     [
       "_state_declaration_value",
+      "constant_declaration",
       "local_declaration",
       "label_statement"
     ],
     [
+      "constant_declaration",
       "local_declaration",
       "label_statement"
     ],
@@ -5615,10 +5598,6 @@
       {
         "type": "STRING",
         "value": "engine"
-      },
-      {
-        "type": "STRING",
-        "value": "cast"
       },
       {
         "type": "STRING",

@@ -247,12 +247,13 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
 }
 TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs)
 {
-    const char *source =
-        "behavior Cache { state total:double=0; state kept:string=\"\"; "
-        "Echo :: (value:string)->string { return value; } "
-        "on Text(value:string) { kept=Echo(value); } "
-        "on Run(amount:double) { if amount<0 { values:=[10,20]; "
-        "total=values[cast<int>(-amount)]; } else { total+=amount; } } }";
+    const char
+        *source = "behavior Cache { state total:double=0; state "
+                  "kept:string=\"\"; "
+                  "Echo :: (value:string)->string { return value; } "
+                  "on Text(value:string) { kept=Echo(value); } "
+                  "on Run(amount:double) { if amount<0 { values:=[10,20]; "
+                  "total=values[int(-amount)]; } else { total+=amount; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         REQUIRE(prepare(source, backends[backend]));

@@ -941,6 +941,13 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             break;
         case BF_CAST:
             CHECK(behavior_scalar_cast_supported(f->slots[i->left], i->type), "invalid numeric cast");
+            CHECK(
+                i->target == BEHAVIOR_CAST_EXACT ||
+                    ((i->target == BEHAVIOR_CAST_WRAP || i->target == BEHAVIOR_CAST_CLAMP) &&
+                     behavior_scalar_integer(f->slots[i->left]) &&
+                     behavior_scalar_integer(i->type)),
+                "invalid numeric cast mode"
+            );
             break;
         case BF_CONVERT:
             CHECK(

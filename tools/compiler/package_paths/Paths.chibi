@@ -48,7 +48,7 @@ Normalize :: pure fn(request: Request) -> Path {
     if (size >= 4096) { return Path.Invalid; }
 
     result := "/";
-    starts := resize([cast<int>(0)], 2048);
+    starts := resize([int(0)], 2048);
     depth: int = 0;
     position: int = 0;
     while (position < size) {

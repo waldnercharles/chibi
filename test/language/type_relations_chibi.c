@@ -15,8 +15,8 @@
 #include <stdio.h>
 #include <string.h>
 
-/* 105 explicit requests: 18 equal, 15 numeric, 30 assignment, 33 catalog and
- * 9 canonical, each once on VM and SLJIT = 210 direct calls. The 50,000
+/* 111 explicit requests: 18 equal, 15 numeric, 36 assignment, 33 catalog and
+ * 9 canonical, each once on VM and SLJIT = 222 direct calls. The 50,000
  * budget argument is inherited/reset per activation, not a whole-call ceiling.
  * One production 60-second supervisor bounds this fixed corpus. Five compiler
  * inputs per backend give ten parses; no extra source or combinations execute.
@@ -516,6 +516,42 @@ static const relation_case numeric_cases[] = {
     { "numeric literal allowed", REL_NUMERIC, EMPTY, TYPE(PIN_I32, 0, LITERAL, 0, HIGH), { 0 }, true }
 };
 static const relation_case assignment_cases[] = {
+    { "integer widening",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_I32, 0, 0, 0, 0),
+      TYPE(PIN_U8, 0, 0, 0, 0),
+      true },
+    { "integer narrowing",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_I8, 0, 0, 0, 0),
+      TYPE(PIN_I32, 0, 0, 0, 0),
+      false },
+    { "signed to unsigned",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_U64, 0, 0, 0, 0),
+      TYPE(PIN_I32, 0, 0, 0, 0),
+      false },
+    { "unsigned to equal signed",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_I32, 0, 0, 0, 0),
+      TYPE(PIN_U32, 0, 0, 0, 0),
+      false },
+    { "integer to double",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_F64, 0, 0, 0, 0),
+      TYPE(PIN_U64, 0, 0, 0, 0),
+      true },
+    { "double to integer",
+      REL_ASSIGNABLE,
+      EMPTY,
+      TYPE(PIN_I16, 0, 0, 0, 0),
+      TYPE(PIN_F64, 0, 0, 0, 0),
+      true },
     { "expected error before boxed",
       REL_ASSIGNABLE,
       EMPTY,
@@ -732,7 +768,7 @@ TEST_CASE(type_relations_scalar_tables_match_native_oracle)
     for (int i = 0; i < COUNT(assignment_cases); i++) {
         REQUIRE(run_relation(&assignment_cases[i]));
     }
-    REQUIRE(parses == 10 && calls == 126);
+    REQUIRE(parses == 10 && calls == 138);
     return true;
 }
 
@@ -942,7 +978,7 @@ TEST_CASE(type_relations_catalog_tables_match_native_oracle)
     for (int i = 0; i < COUNT(catalog_cases); i++) {
         REQUIRE(run_relation(&catalog_cases[i]));
     }
-    REQUIRE(calls == 192);
+    REQUIRE(calls == 204);
     return true;
 }
 static const canonical_case canonical_cases[] = {
@@ -1014,12 +1050,12 @@ TEST_CASE(type_relations_canonical_tables_match_native_oracle)
             }
         }
     }
-    REQUIRE(calls == 210 && parses == 10);
+    REQUIRE(calls == 222 && parses == 10);
     return true;
 }
 TEST_CASE(type_relations_canonical_results_outlive_all_producers)
 {
-    REQUIRE(prepared && calls == 210 && parses == 10);
+    REQUIRE(prepared && calls == 222 && parses == 10);
     cleanup();
     compiler_fixture_free(&fixture);
     prepared = false;

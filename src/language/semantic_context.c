@@ -198,17 +198,30 @@ script_type script_analyzer_boolean_type()
 }
 void script_analyzer_require(analyzer *a, TSNode node, script_type expected, script_type actual)
 {
-    if (!script_catalog_type_assignable(a->catalog, expected, actual)) {
+    if (script_catalog_type_assignable(a->catalog, expected, actual)) {
+        return;
+    }
+    if (script_type_numeric(expected) && script_type_numeric(actual)) {
+        /* Only integer narrowing and sign changes reach here. */
         script_analyzer_diagnostic(
             a,
             node,
-            "Incompatible types: expected %s%s, got %s%s",
+            "Incompatible types: expected %s, got %s; convert with %s(value)",
             script_scalar_name(expected.storage),
-            expected.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "",
             script_scalar_name(actual.storage),
-            actual.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
+            script_scalar_name(expected.storage)
         );
+        return;
     }
+    script_analyzer_diagnostic(
+        a,
+        node,
+        "Incompatible types: expected %s%s, got %s%s",
+        script_scalar_name(expected.storage),
+        expected.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "",
+        script_scalar_name(actual.storage),
+        actual.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
+    );
 }
 const script_expression *script_analyzer_result_source(const analyzer *a, int index)
 {
@@ -272,6 +285,17 @@ static script_type named_resolution(analyzer *a, script_named_resolution result)
         apush(a->out->uses, result.use);
     }
     return result.type;
+}
+script_type script_analyzer_conversion_type(analyzer *a, TSNode node, const char *name)
+{
+    script_named_facts facts = script_analyzer_named_facts(a);
+    script_named_request request = { a->scope, script_analyzer_range(a, node) };
+    script_named_resolution result = script_named_text(&facts, request, name);
+    if (result.has_diagnostic || (result.type.flags & SCRIPT_TYPE_ERROR) ||
+        result.type.storage == PIN_FLOW) {
+        return script_analyzer_bad_type();
+    }
+    return named_resolution(a, result);
 }
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source)
 {
@@ -436,12 +460,24 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
             record->type.flags &= ~SCRIPT_TYPE_LITERAL;
         }
     } else {
-        script_analyzer_require(
-            a,
-            a->initializers[index].value,
-            expected,
-            script_analyzer_expr_type(a, value)
-        );
+        script_type actual = script_analyzer_expr_type(a, value);
+        script_analyzer_require(a, a->initializers[index].value, expected, actual);
+        if (record->kind == SCRIPT_CONSTANT && script_type_numeric(expected) &&
+            script_type_numeric(actual) && actual.storage != expected.storage) {
+            /* A typed constant holds its declared storage. */
+            value = script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_CAST,
+                                     .type = expected,
+                                     .range = a->out->expressions[value].range,
+                                     .left = value,
+                                     .right = -1,
+                                     .symbol = -1,
+                                     .entry = -1 }
+            );
+            record = &a->out->symbols[symbol];
+            record->initializer = value;
+        }
     }
     if (record->kind == SCRIPT_ACTION && a->out->expressions[value].result_count) {
         record->type = (script_type){ .storage = PIN_STRUCT,

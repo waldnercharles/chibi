@@ -123,6 +123,12 @@ static bool map_reproduces_source()
     return true;
 }
 
+TEST_CASE(source_format_spaces_typed_constant_colons)
+{
+    REQUIRE(format("library L {\n    Limit:int:5\n    Mask :: 255\n}\n"));
+    REQUIRE(strstr(text, "Limit: int : 5") && strstr(text, "Mask :: 255"));
+    return true;
+}
 TEST_CASE(source_format_options_preserve_defaults)
 {
     const char *input = "behavior Demo{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
@@ -482,14 +488,14 @@ TEST_CASE(source_format_system_types_and_control_flow)
 {
     REQUIRE(format(
         "system Move(Position p) without Disabled{query p;\n"
-        "on Tick(dt:float){for(i in 0..3){p.x+=cast<float>(i);}\n"
+        "on Tick(dt:float){for(i in 0..3){p.x+=float(i);}\n"
         "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
         "case: {break;}}}\n"
         "F :: fn(x:array<int>)->(r:int){return(g<int>(x[0]));}}"
     ));
     REQUIRE(strstr(text, "array<int>"));
     REQUIRE(strstr(text, "g<int>(x[0])"));
-    REQUIRE(strstr(text, "cast<float>(i)"));
+    REQUIRE(strstr(text, "float(i)"));
     return true;
 }
 
@@ -835,10 +841,10 @@ TEST_CASE(source_minimize_preserves_alias_cast_and_storage_comments)
     REQUIRE(minimize_valid(
         &catalog,
         "library Demo { state total: /* declared */ float = 0.0\n"
-        "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "F :: fn() -> (r: float) { r = float(/* cast */ state./* member "
         "*/total); } }",
         "library Demo { total: /* declared */ float = 0.0\n"
-        "F :: fn() -> (r: float) { r = cast</* cast */ float>(state./* member "
+        "F :: fn() -> (r: float) { r = float(/* cast */ state./* member "
         "*/total) } }"
     ));
     return true;
@@ -1284,6 +1290,7 @@ void test_language_root_state()
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

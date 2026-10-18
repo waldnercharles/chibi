@@ -509,7 +509,7 @@ TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
     static const char source
         [] = "package binary_fixture\n"
              "Echo :: pure fn(values: byte[]) -> byte[] { return values; }\n"
-             "Scalar :: pure fn() -> byte { return cast<byte>(7); }\n"
+             "Scalar :: pure fn() -> byte { return byte(7); }\n"
              "Integers :: pure fn() -> int[] { values: int[] = []; return "
              "values; }\n"
              "Loop :: pure fn(spin: bool) -> byte[] {\n"

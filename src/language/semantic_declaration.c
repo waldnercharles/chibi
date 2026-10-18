@@ -20,11 +20,13 @@ bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *w
 }
 void script_analyzer_declare_constant(analyzer *a, TSNode node)
 {
+    TSNode type = script_analyzer_field(node, "type");
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
         SCRIPT_CONSTANT,
-        (script_type){ .flags = SCRIPT_TYPE_UNTYPED },
+        ts_node_is_null(type) ? (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
+                              : script_analyzer_type_node(a, type),
         false
     );
     apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));

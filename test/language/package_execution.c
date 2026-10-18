@@ -32,7 +32,7 @@ static const script_lower_bindings bindings = { .generation = 1 };
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
 static const input siblings[] = {
     { "/display/pkg/a.chibi", "pkg/a.chibi", "package sample\nMain :: fn(value: int) -> int { return Add(value) + Bias(); }\n" },
-    { "/display/pkg/z.chibi", "pkg/z.chibi", "package sample\nAdd :: fn(value: int) -> int { return value + 2; }\nBias :: fn() -> int { return 3; }\nBase :: cast<int>(4);\n" },
+    { "/display/pkg/z.chibi", "pkg/z.chibi", "package sample\nAdd :: fn(value: int) -> int { return value + 2; }\nBias :: fn() -> int { return 3; }\nBase: int : 4;\n" },
 };
 static const input unrelated = {
     "/display/pkg/00-extra.chibi",

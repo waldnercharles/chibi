@@ -100,6 +100,8 @@ void script_analyzer_require_values(analyzer *, TSNode, int target, int value);
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source);
 script_type script_analyzer_read_type(analyzer *, TSNode, bool signature, char **unit);
 script_type script_analyzer_type_node(analyzer *a, TSNode node);
+/* The type a conversion callee names, or an error type with nothing recorded. */
+script_type script_analyzer_conversion_type(analyzer *a, TSNode node, const char *name);
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);

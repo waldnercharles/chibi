@@ -44,7 +44,7 @@ Environment :: union {
 Value :: union { Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64) }
 
 IDAt :: pure fn(ids: uint64[], slot: int) -> uint64 {
-    if (slot < 0) { return cast<uint64>(0); }
+    if (slot < 0) { return uint64(0); }
     return ids[slot];
 }
 TypeAt :: pure fn(types: Type[], ids: uint64[], index: int) -> Value {
@@ -54,21 +54,21 @@ TypeAt :: pure fn(types: Type[], ids: uint64[], index: int) -> Value {
 }
 Builtin :: pure fn(name: string) -> Value {
     if (name == "Cancelled") {
-        return Value.Typed(18, 0, 512, cast<uint64>(0x63616e63656c6c65), cast<uint64>(0));
+        return Value.Typed(18, 0, 512, uint64(0x63616e63656c6c65), uint64(0));
     }
     names: string[] = ["void", "bool", "int8", "byte", "int16", "uint16", "int", "uint",
                        "int64", "uint64", "float", "double", "name", "string", "handle", "struct", "enum"];
     index: int = 0;
     while (index < length(names)) {
-        if (names[index] == name) { return Value.Typed(index, 0, 0, cast<uint64>(0), cast<uint64>(0)); }
+        if (names[index] == name) { return Value.Typed(index, 0, 0, uint64(0), uint64(0)); }
         index += 1;
     }
-    if (name == "number") { return Value.Typed(11, 0, 0, cast<uint64>(0), cast<uint64>(0)); }
-    if (name == "exec" || name == "flow") { return Value.Typed(0, 0, 0, cast<uint64>(0), cast<uint64>(0)); }
-    if (name == "entity") { return Value.Typed(14, 0, 0, binding.ID("type", "ecs.entity"), cast<uint64>(0)); }
-    if (name == "task") { return Value.Typed(17, 0, 64, cast<uint64>(0), cast<uint64>(0)); }
-    if (name == "any") { return Value.Typed(0, 0, 16, cast<uint64>(0), cast<uint64>(0)); }
-    return Value.Typed(0, 0, 1, cast<uint64>(0), cast<uint64>(0));
+    if (name == "number") { return Value.Typed(11, 0, 0, uint64(0), uint64(0)); }
+    if (name == "exec" || name == "flow") { return Value.Typed(0, 0, 0, uint64(0), uint64(0)); }
+    if (name == "entity") { return Value.Typed(14, 0, 0, binding.ID("type", "ecs.entity"), uint64(0)); }
+    if (name == "task") { return Value.Typed(17, 0, 64, uint64(0), uint64(0)); }
+    if (name == "any") { return Value.Typed(0, 0, 16, uint64(0), uint64(0)); }
+    return Value.Typed(0, 0, 1, uint64(0), uint64(0));
 }
 Bad :: pure fn(value: Value) -> bool {
     switch value { case .Typed(storage, container, flags, nominal, parameter): return (flags & 1) != 0; }
@@ -215,7 +215,7 @@ FindType :: pure fn(environment: Environment, scope: int, document: int, name: s
     }
 }
 UseAt :: pure fn(environment: Environment, request: Request, symbol: int, nominal: uint64) -> TypeUse {
-    if (symbol < 0 && nominal == cast<uint64>(0)) { return TypeUse.Absent; }
+    if (symbol < 0 && nominal == uint64(0)) { return TypeUse.Absent; }
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                      identity, package_scope, has_native, has_documents, entity_id):
@@ -243,7 +243,7 @@ Complete :: pure fn(environment: Environment, request: Request, value: Value, sy
             use := TypeUse.Absent;
             if ((flags & 1) == 0) {
                 useNominal := nominal;
-                if (symbol >= 0) { useNominal = cast<uint64>(0); }
+                if (symbol >= 0) { useNominal = uint64(0); }
                 use = UseAt(environment, request, symbol, useNominal);
             }
             if ((flags & 2) != 0) {
@@ -290,7 +290,7 @@ BindName :: pure fn(environment: Environment, request: Request, name: string,
                     diagnostics = array_add(diagnostics, diagnostic);
                 }
             }
-            if (name == "entity" && entity_id != cast<uint64>(0)) { value = WithNominal(value, entity_id); }
+            if (name == "entity" && entity_id != uint64(0)) { value = WithNominal(value, entity_id); }
             useSymbol: int = -1;
             switch lexical {
                 case .Tables(scopes, symbols, functions, lexical_ids, keys):
@@ -336,7 +336,7 @@ Text :: pure fn(environment: Environment, request: Request) -> Resolution {
         container = 1;
     }
     prefixes: string[] = ["set<", "map<", "array<"];
-    containers: int[] = [cast<int>(2), cast<int>(3), cast<int>(1)];
+    containers: int[] = [int(2), int(3), int(1)];
     index = 0;
     while (index < length(prefixes)) {
         prefix := prefixes[index];

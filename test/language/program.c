@@ -550,14 +550,26 @@ static bool compile(const char *source, behavior_backend backend)
 }
 /* Historical migration cases assert their intermediate spelling, then run
  * it through the current declaration migration before exercising execution. */
+/* Historical outputs continue through every later source step. */
+static char *current_source(const char *source)
+{
+    char error[192], *declared = NULL, *converted = NULL;
+    if (chibi_migrate_declarations(source, &declared, error, sizeof error) ||
+        chibi_migrate_conversions(declared ? declared : source, &converted, error, sizeof error)) {
+        fprintf(stderr, "migration: %s\n", error);
+        free(declared);
+        return NULL;
+    }
+    if (converted) {
+        free(declared);
+        return converted;
+    }
+    return declared ? declared : xstrdup(source);
+}
 static bool compile_migrated(const char *source, behavior_backend backend)
 {
-    char error[192], *current = NULL;
-    if (chibi_migrate_declarations(source, &current, error, sizeof error)) {
-        fprintf(stderr, "migration: %s\n", error);
-        return false;
-    }
-    bool valid = compile(current ? current : source, backend);
+    char *current = current_source(source);
+    bool valid = current && compile(current, backend);
     free(current);
     return valid;
 }
@@ -1395,12 +1407,12 @@ TEST_CASE(program_query_admission_is_frozen_before_row_writes)
 TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
 {
     const char *sources[] = {
-        "system Ordered where Risky(cast<int>(self.Position.x)) and "
+        "system Ordered where Risky(int(self.Position.x)) and "
         "has(Velocity) { "
         "Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; "
         "} }",
         "system Guarded where has(Velocity) and "
-        "Risky(cast<int>(self.Position.x)) { "
+        "Risky(int(self.Position.x)) { "
         "Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; "
         "} }",
     };
@@ -2481,6 +2493,61 @@ TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
     REQUIRE(value && value->type == PIN_STR && !strcmp(value->str, "producer text"));
     return true;
 }
+static bool int_state(execution_instance *instance, const char *name, pin_type type, int64_t expected)
+{
+    const pin_value *value = execution_instance_state(instance, state_id(name));
+    return value && value->type == type &&
+           (int64_t)behavior_scalar_bits(*value) == expected;
+}
+/* T(value) fails when an integer does not fit; wrap and clamp choose the bits. */
+TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
+{
+    const char
+        *source = "behavior Convert {\n"
+                  "  wide: int = -300; wrapped: int = 0; clamped: int = 0;\n"
+                  "  mixed: int64 = 0; narrow: byte = 0;\n"
+                  "  same: bool = true; below: bool = false; small: int = 0;\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    wrapped = byte(wrap: wide); clamped = byte(clamp: "
+                  "-wide);\n"
+                  "    mixed = wide + uint(7);\n"
+                  "    same = wide == uint(0); below = wide < uint(7);\n"
+                  "    small = byte(200) + int8(-100);\n"
+                  "    if (enabled) { narrow = byte(wide); }\n"
+                  "  }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        /* The engine catalog's Byte literal must not shadow byte(value). */
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = false } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "wrapped", PIN_I32, 212));
+        REQUIRE(int_state(instance, "clamped", PIN_I32, 255));
+        REQUIRE(int_state(instance, "mixed", PIN_I64, -293));
+        REQUIRE(
+            int_state(instance, "same", PIN_BOOL, 0) &&
+            int_state(instance, "below", PIN_BOOL, 1)
+        );
+        REQUIRE(int_state(instance, "small", PIN_I32, 100));
+        args[1].b = true;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        int start = (int)(strstr(source, "byte(wide)") - source);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
+        REQUIRE(!strcmp(failure->message, "Value does not fit in byte"));
+        REQUIRE(failure->start == start && failure->end == start + (int)strlen("byte(wide)"));
+        REQUIRE(int_state(instance, "narrow", PIN_U8, 0));
+        execution_program_free(program);
+        program = NULL;
+    }
+    return true;
+}
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
 {
     const char *
@@ -2687,8 +2754,8 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
 {
     const char
         *source = "behavior Widths { widened:double=0; narrowed:float=0; "
-                  "on Tick { widened=cast<double>(NativeFloat()); "
-                  "narrowed=cast<float>(widened+0.25); } }";
+                  "on Tick { widened=double(NativeFloat()); "
+                  "narrowed=float(widened+0.25); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     static const script_catalog_parameter result = { .name = "amount",
                                                      .type = { .storage = PIN_F32 } };
@@ -2756,7 +2823,7 @@ TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit)
     const char *source = "behavior Mixed { count:int=3; level:float=2.5; "
                          "below:bool=false; "
                          "scaled:float=0; on Tick { below = level < count; "
-                         "scaled = cast<float>(count); } }";
+                         "scaled = float(count); } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -6411,7 +6478,7 @@ TEST_CASE(program_constant_definitions_and_optional_fn_execute)
 {
     const char *source =
         "behavior Constants {\n"
-        "Values :: [2, 3]; Base :: cast<int>(Values[0]); Multiplier :: Base + "
+        "Values :: [2, 3]; Base: int : Values[0]; Multiplier :: Base + "
         "1;\n"
         "Bonus :: union { None | Amount(value: int) }; Extra :: "
         "Bonus.Amount(Base);\n"
@@ -6515,6 +6582,79 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
     return true;
 }
 
+TEST_CASE(program_version_24_casts_migrate_to_conversions)
+{
+    const char
+        *source = "library Bits {\n"
+                  "Mask /* m */ :: cast<uint>(/* keep */ 255)\n"
+                  "Shift :: cast<uint>(4)\n"
+                  "// cast<int>(x) stays in comments.\n"
+                  "Low :: fn(x: int, e: entity) -> byte {\n"
+                  "    other := cast<handle<\"ecs.entity\">>(e)\n"
+                  "    return cast<byte>(/* low */ cast<uint>(x) & Mask)\n"
+                  "}\n"
+                  "}";
+    const char *expected = "library Bits {\n"
+                           "Mask /* m */ : uint : /* keep */ 255\n"
+                           "Shift: uint : 4\n"
+                           "// cast<int>(x) stays in comments.\n"
+                           "Low :: fn(x: int, e: entity) -> byte {\n"
+                           "    other := entity(e)\n"
+                           "    return byte(/* low */ uint(x) & Mask)\n"
+                           "}\n"
+                           "}";
+    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_conversions(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_conversions("library L { N :: 1 }", &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    REQUIRE(
+        chibi_migrate_conversions(
+            "library L { F :: fn(x: int) { y := cast<int[]>(x) } }",
+            &unchanged,
+            error,
+            sizeof error
+        ) < 0
+    );
+    REQUIRE(!unchanged && strstr(error, "no T(value) spelling"));
+    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256], json[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(
+        json,
+        sizeof json,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "Low ::") - source)
+    );
+    char *metadata = authoring_source_metadata_bind(json, source);
+    REQUIRE(metadata);
+    const char *files[] = { "Bits.chibi", "Bits.chibi.meta" };
+    const char *contents[] = { source, metadata };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        REQUIRE(fputs(contents[i], file) >= 0);
+        REQUIRE(!fclose(file));
+    }
+    free(metadata);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
+    snprintf(path, sizeof path, "%s/%s", root, files[0]);
+    const char *text = read_whole(path);
+    REQUIRE(text && !strcmp(text, expected));
+    snprintf(path, sizeof path, "%s/%s", root, files[1]);
+    text = read_whole(path);
+    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Low ::") - expected));
+    REQUIRE(text && authoring_source_metadata_matches(text, expected));
+    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    free(migrated);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -7668,6 +7808,7 @@ void test_language_program()
     RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
+    RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);
@@ -7716,6 +7857,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers);
     RUN_TEST_CASE(program_constant_definitions_and_optional_fn_execute);
     RUN_TEST_CASE(program_version_23_declarations_and_switch_migrate);
+    RUN_TEST_CASE(program_version_24_casts_migrate_to_conversions);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

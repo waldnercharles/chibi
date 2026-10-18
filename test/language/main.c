@@ -220,16 +220,15 @@ int main(int argc, char **argv)
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
-         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
-         !package_execution &&
-         !package_resolution && !package_imports && !package_files &&
-         !package_core && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !type_constructors_chibi && !type_relations_chibi &&
+         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
+         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
+         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
+         !record_members_chibi && !package_execution && !package_resolution &&
+         !package_imports && !package_files && !package_core && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(

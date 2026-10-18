@@ -5,6 +5,7 @@
 #include "types/array.h"
 
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -958,6 +959,102 @@ void script_analyzer_finish_boxes(analyzer *a)
         }
     }
 }
+/* T(value) converts to T. Integer narrowing is EXACT unless the argument is
+ * named wrap or clamp. A non-numeric T only supplies the expected type. */
+/* An exact conversion types a literal as T. wrap and clamp read an integer
+ * literal as int64, or uint64 above int64, and leave a fraction untyped so the
+ * integer check rejects it; other operands give their literals int64. */
+static script_type mode_operand(const analyzer *a, TSNode value)
+{
+    if (!script_analyzer_is(value, "number")) {
+        return (script_type){ .storage = PIN_I64 };
+    }
+    char *text = script_analyzer_text_copy(a, value);
+    bool hex = strpbrk(text, "xX") != NULL;
+    script_type type = { .flags = SCRIPT_TYPE_UNTYPED };
+    if (hex || !strpbrk(text, ".eE")) {
+        /* Too large for uint64 saturates, and the literal reports its range. */
+        uintmax_t parsed = strtoumax(text, NULL, hex ? 16 : 10);
+        type = (script_type){ .storage = parsed > INT64_MAX ? PIN_U64 : PIN_I64 };
+    }
+    free(text);
+    return type;
+}
+static int conversion(analyzer *a, TSNode node, script_type type)
+{
+    TSNode arguments = script_analyzer_field(node, "arguments"), value = { 0 };
+    int count = 0;
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (!ts_node_is_extra(child)) {
+            value = child;
+            count++;
+        }
+    }
+    behavior_cast_mode mode = BEHAVIOR_CAST_EXACT;
+    if (count != 1 || !ts_node_is_null(script_analyzer_field(node, "type_arguments"))) {
+        script_analyzer_diagnostic(a, node, "Conversion takes one value");
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = script_analyzer_bad_type(),
+                                 .range = script_analyzer_range(a, node),
+                                 .left = -1,
+                                 .right = -1,
+                                 .symbol = -1,
+                                 .entry = -1 }
+        );
+    }
+    if (script_analyzer_is(value, "named_argument")) {
+        TSNode label = script_analyzer_field(value, "name");
+        mode = script_analyzer_text_is(a, label, "wrap")  ? BEHAVIOR_CAST_WRAP
+             : script_analyzer_text_is(a, label, "clamp") ? BEHAVIOR_CAST_CLAMP
+                                                          : BEHAVIOR_CAST_EXACT;
+        if (mode == BEHAVIOR_CAST_EXACT) {
+            script_analyzer_diagnostic(a, label, "A conversion argument may only be named wrap or clamp");
+        }
+        value = script_analyzer_field(value, "value");
+    }
+    script_type literal = mode == BEHAVIOR_CAST_EXACT ? type : mode_operand(a, value);
+    script_expression result = { .kind = SCRIPT_EXPR_CAST,
+                                 .type = type,
+                                 .range = script_analyzer_range(a, node),
+                                 .left = script_analyzer_expression(a, value, literal),
+                                 .right = -1,
+                                 .symbol = -1,
+                                 .entry = -1,
+                                 .conversion = mode };
+    script_type actual = script_analyzer_expr_type(a, result.left);
+    bool numeric = script_type_numeric(actual) && script_type_numeric(type);
+    bool integers = numeric && actual.storage <= PIN_U64 && type.storage <= PIN_U64;
+    if (mode != BEHAVIOR_CAST_EXACT && !integers &&
+        !(actual.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "wrap and clamp convert between integer types");
+    }
+    if (!numeric && script_catalog_type_assignable(a->catalog, type, actual)) {
+        return result.left;
+    }
+    if (!numeric && !(actual.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, node, "Conversion requires numeric values or the value's own type");
+    }
+    /* A compile-time integer that does not fit is an error, not a runtime trap. */
+    pin_value constant, converted;
+    if (integers && mode == BEHAVIOR_CAST_EXACT &&
+        !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant) &&
+        !behavior_scalar_cast(constant, type.storage, mode, &converted)) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "Constant does not fit in %s; use %s(wrap: value) or %s(clamp: "
+            "value)",
+            script_scalar_name(type.storage),
+            script_scalar_name(type.storage),
+            script_scalar_name(type.storage)
+        );
+    }
+    result.effects = script_analyzer_expr_effects(a, result.left);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode target = script_analyzer_field(node, "function"),
@@ -1111,7 +1208,23 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 free(method);
             }
         }
-        if (!capability && function_index < 0) {
+        /* Numeric type names always convert; other types yield to a
+         * capability of the same name, such as a literal node. */
+        bool numeric = script_type_numeric(script_builtin_type(name));
+        script_type converted = (index == -1 || (index >= 0 && numeric)) &&
+                                        !imported &&
+                                        script_analyzer_is(target, "identifier")
+                                  ? script_analyzer_conversion_type(a, target, name)
+                                  : script_analyzer_bad_type();
+        if (function_index < 0 && !(converted.flags & SCRIPT_TYPE_ERROR) &&
+            (index == -1 || numeric)) {
+            free(name);
+            free(resolved_arguments);
+            return conversion(a, node, converted);
+        }
+        if (!capability && function_index < 0 && !strcmp(name, "cast")) {
+            script_analyzer_diagnostic(a, target, "cast<T>(value) was removed; write T(value)");
+        } else if (!capability && function_index < 0) {
             script_analyzer_diagnostic(a, target, "%s callable '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
         }
     }

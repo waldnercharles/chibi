@@ -500,7 +500,7 @@ TEST_CASE(constant_proof_raw_facts_match)
 TEST_CASE(constant_proof_analyzer_facts_match)
 {
     const char *sources[] = {
-        "library Facts { Seed :: cast<int>(2); Sum :: Seed + 3; Run :: pure "
+        "library Facts { Seed: int : 2; Sum :: Seed + 3; Run :: pure "
         "fn(value: int) -> int { return value + Sum; } }",
         "library Facts { Run :: pure fn() -> int { local: int = 1; return "
         "local; } }",

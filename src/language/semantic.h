@@ -4,6 +4,7 @@
 #include "capabilities/catalog.h"
 #include "language/syntax.h"
 #include "support/arena.h"
+#include "types/scalar.h"
 
 typedef enum
 {
@@ -140,6 +141,7 @@ typedef struct
     bool negated;
     uint64_t *pattern_tags;
     int pattern_tag_count;
+    behavior_cast_mode conversion; /* SCRIPT_EXPR_CAST range policy. */
 } script_expression;
 typedef enum
 {

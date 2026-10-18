@@ -48,7 +48,48 @@ struct ui_mount
     uint64_t applied;       /* the model revision already applied */
     bool autofocus; /* installed, and its autofocus element not yet focused */
     mount_list *lists;
+    uint64_t identity, generation, binding;
 };
+
+/* Mounts and their queues are confined to the UI thread. Exhaustion must not
+ * revive an old origin in either Debug or Release. */
+static uint64_t origin_sequence;
+static uint64_t next_origin()
+{
+    if (origin_sequence == UINT64_MAX) {
+        abort();
+    }
+    return ++origin_sequence;
+}
+
+void ui_mount_bind_origin(ui_mount *m, uint64_t binding)
+{
+    if (m->binding != binding) {
+        m->generation = next_origin();
+        m->binding = binding;
+    }
+}
+
+ui_activation_origin ui_mount_origin(const ui_mount *m)
+{
+    return (ui_activation_origin){ .mount = m->identity,
+                                   .generation = m->installed ? m->generation : 0,
+                                   .binding = m->binding };
+}
+
+bool ui_mount_origin_current(const ui_mount *m, const ui_activation_origin *origin)
+{
+    return origin && origin->mount == m->identity &&
+           origin->generation == m->generation && origin->binding &&
+           origin->binding == m->binding && m->installed && ui_mount_root(m);
+}
+
+static void enqueue(ui_mount *m, ui_activation a)
+{
+    a.origin = ui_mount_origin(m);
+    a.origin.request = next_origin();
+    apush(m->pending, a);
+}
 
 static void forget_lists(ui_mount *m)
 {
@@ -77,6 +118,7 @@ static const struct
 ui_mount *ui_mount_new(const char *content_root, const char *name)
 {
     ui_mount *m = xcalloc(1, sizeof *m);
+    m->identity = m->generation = next_origin();
     m->content_root = xstrdup(content_root);
     m->name = xstrdup(name);
     return m;
@@ -202,6 +244,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     bool same_mount = rml_element_attribute(root, "data-ui", mounted, sizeof mounted) &&
                       !strcmp(mounted, m->name);
     if (root != ui_mount_root(m) || !same_mount) {
+        m->generation = next_origin();
         rml_element_ref_destroy(m->root);
         m->root = rml_element_ref_create(root);
         m->installed = false;
@@ -216,6 +259,7 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
         rml_element_add_event_listener(root, RML_EVENT_KEYDOWN, listener, true);
     }
     if (!m->installed && m->markup) {
+        m->generation = next_origin();
         rml_backend_take_warning();
         rml_element_set_inner_rml(root, m->markup);
         const char *warning = rml_backend_take_warning();
@@ -251,6 +295,7 @@ void ui_mount_detach(ui_mount *m)
     if (!m) {
         return;
     }
+    m->generation = next_origin();
     rml_element_ref_destroy(m->root);
     m->root = NULL;
     m->installed = false;
@@ -357,7 +402,7 @@ static void listen_key(ui_mount *m, const rml_event *event)
             bound_event(bindings, key, name, sizeof name)) {
             ui_activation a = activation(el, event);
             snprintf(a.event, sizeof a.event, "%s", name);
-            apush(m->pending, a);
+            enqueue(m, a);
             rml_event_stop_propagation(event);
             return;
         }
@@ -390,7 +435,7 @@ bool ui_mount_area_key(ui_mount *m, const char *key)
     ui_activation a = { .anchor = rml_element_ref_create(el) };
     snprintf(a.event, sizeof a.event, "%s", name);
     snprintf(a.id, sizeof a.id, "%s", rml_element_id(el));
-    apush(m->pending, a);
+    enqueue(m, a);
     return true;
 }
 
@@ -415,7 +460,7 @@ void ui_mount_emit(ui_mount *m, const rml_event *event, const char *name, int ar
         a.value = strtof(value, &end);
         a.has_value = end != value;
     }
-    apush(m->pending, a);
+    enqueue(m, a);
 }
 
 bool ui_mount_pending(const ui_mount *m)

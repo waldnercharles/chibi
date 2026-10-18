@@ -93,6 +93,9 @@ static bool lookup(analyzer *a, TSNode node, compile_binding *bindings, const ch
         return true;
     }
     int symbol = script_analyzer_lookup_name(a, name);
+    if (symbol < 0 && script_analyzer_import_namespace(a, node, name)) {
+        symbol = script_analyzer_package_constant(a, node);
+    }
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE) {
         *out = (compile_value){ .is_type = true, .type = a->out->symbols[symbol].type };
         return true;
@@ -113,7 +116,7 @@ static bool lookup(analyzer *a, TSNode node, compile_binding *bindings, const ch
         *out = (compile_value){ .value = value };
         return true;
     }
-    int type = script_catalog_find_type(a->catalog, name);
+    int type = script_analyzer_find_type(a, node, name);
     if (type >= 0) {
         *out = (compile_value){ .is_type = true, .type = a->catalog->types[type].type };
         out->type.nominal = a->catalog->types[type].id;
@@ -191,7 +194,9 @@ static bool compile_named(
     char *name = script_analyzer_name_copy(a, node);
     char *dot = strchr(name, '.');
     bool valid;
-    if (dot) {
+    if (script_analyzer_import_namespace(a, node, name)) {
+        valid = lookup(a, node, bindings, name, out);
+    } else if (dot) {
         *dot = '\0';
         compile_value *type = &frame->first;
         valid = lookup(a, node, bindings, name, type) && type->is_type &&
@@ -214,7 +219,14 @@ static bool compile_member(
     compile_expression_frame *frame
 )
 {
-
+    char *qualified = script_analyzer_qualified_name(a, node);
+    bool imported = script_analyzer_import_namespace(a, node, qualified);
+    if (imported) {
+        bool valid = lookup(a, node, bindings, qualified, out);
+        free(qualified);
+        return valid;
+    }
+    free(qualified);
     compile_value *type = &frame->first;
     if (!script_analyzer_compile_expression(a, script_analyzer_field(node, "object"), bindings, type, budget)) {
         return false;

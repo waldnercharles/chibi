@@ -49,6 +49,7 @@ static size_t own_bytes(const behavior_function *f)
     COUNT(calls);
     COUNT(definitions);
     COUNT(data_values);
+    COUNT(appends);
     COUNT(instructions);
     COUNT(slots);
     COUNT(locals);

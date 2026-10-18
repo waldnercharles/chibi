@@ -1,5 +1,6 @@
 #include "execution/definition.h"
 #include "execution/status.h"
+#include "execution/work_internal.h"
 #include "support/array.h"
 
 #include <math.h>
@@ -969,7 +970,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                 fprintf(out, "v%d=(float)c->delta_seconds;\n", i->output);
                 break;
             case BF_CHECK:
-                fprintf(out, "if(steps>=c->budget){");
+                fprintf(out, "if(steps>=c->budget || !behavior_function_charge_work(c)){");
                 failure(out, i, BEHAVIOR_FUNCTION_BUDGET);
                 fprintf(out, "}++steps;\n");
                 break;
@@ -1148,10 +1149,15 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "_callee_%d", index);
     }
     fputs("(behavior_function_context *c) {\n", out);
+    if (f->root_steps) {
+        fprintf(out, "if(c->work){c->error_status=%d;c->failure=%d;c->error_message=(const char*)", FLOW_ERR_STATE, BEHAVIOR_FUNCTION_STATE);
+        type_name(out, EXECUTION_WORK_UNSUPPORTED);
+        fprintf(out, ";c->node_id=0;c->error_frame=0;c->error_source=c->error_stack=c->error_pin=-1;c->error_steps=c->steps;return %d;}\n", FLOW_ERR_STATE);
+    }
     if (f->fast && !f->rows) {
         fprintf(
             out,
-            "if(c->steps<=c->budget && c->budget-c->steps>=%du && "
+            "if(!c->work && c->steps<=c->budget && c->budget-c->steps>=%du && "
             "c->budget>=%du && ",
             f->fast->root_steps,
             f->fast->child_budget

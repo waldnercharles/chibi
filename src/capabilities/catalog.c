@@ -70,7 +70,11 @@ int script_catalog_find_type(const script_catalog *catalog, const char *name)
             (type->source_name && script_name_matches(type->source_name, name)) ||
             (type->key && script_name_matches(type->key, name))) {
             if (found >= 0) {
-                found = -2;
+                /* An authored declaration can also be present in its project's
+                 * catalog. Multiple views of one identity are not ambiguous. */
+                if (catalog->types[found].id != type->id) {
+                    found = -2;
+                }
                 continue;
             }
             if (found != -2) {

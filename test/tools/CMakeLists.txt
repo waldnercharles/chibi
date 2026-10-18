@@ -90,7 +90,7 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c package_ownership.c desktop_dependencies.c collab.c
+add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_record_consumer> $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c chibi_cli.c package_ownership.c desktop_dependencies.c collab.c
     validate_project.c fixture_format.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
@@ -105,6 +105,16 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+if(UNIX AND NOT CMAKE_CROSSCOMPILING)
+    target_sources(test_tools PRIVATE studio_outliner_browser.c)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_STUDIO_OUTLINER_BROWSER=1)
+endif()
+if(TARGET chibi_build_host)
+    target_sources(test_tools PRIVATE build_process.c build_toolchain.c)
+    target_link_libraries(test_tools PRIVATE chibi_build_host)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_BUILD_PROCESS=1)
+    add_dependencies(test_tools chibi-build-host)
+endif()
 if(TARGET Chibi::shader_runtime)
     add_library(chibi_shader_bake_consumer OBJECT shader_bake.c)
     target_include_directories(chibi_shader_bake_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
@@ -134,9 +144,9 @@ if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_I
     endforeach()
     configure_file(export_compiler.h.in
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/export_compiler.h" @ONLY)
-    set_source_files_properties(c_export.c record_c_export.c row_builder_c.c PROPERTIES
+    set_source_files_properties(c_export.c record_c_export.c row_builder_c.c request_work_c.c PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_sources(test_tools PRIVATE c_export.c record_c_export.c row_builder_c.c)
+    target_sources(test_tools PRIVATE c_export.c record_c_export.c row_builder_c.c request_work_c.c)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution Chibi::array_capabilities ${CMAKE_DL_LIBS})
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
 endif()

@@ -1,6 +1,8 @@
+#include "execution/authority.h"
 #include "execution/inspection.h"
 #include "execution/status.h"
 #include "runtime/behaviors/module_set.h"
+#include "runtime/behaviors/source_authority.h"
 #include "source_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -14,6 +16,7 @@ static void reap_attachments(source_registry *);
 
 static void begin_boundary(source_registry *r)
 {
+    execution_authority_invalidate();
     assert(!r->staging);
     if (r->executing) {
         return;
@@ -433,6 +436,7 @@ static int begin_programs(source_registry *r, double now, double delta)
 }
 static int dispatch_event(
     source_registry *r,
+    execution_dispatch *dispatch,
     uint64_t owner,
     const char *name,
     const pin_value *arguments,
@@ -441,23 +445,41 @@ static int dispatch_event(
     double delta
 )
 {
+    execution_authority_invalidate();
+    if (execution_dispatch_cancelled(dispatch)) {
+        return FLOW_ERR_STATE;
+    }
+    execution_dispatch_retain(dispatch);
     begin_boundary(r);
     r->executing++;
     int dispatched = 0;
-    for (int i = 0; i < acount(r->records); i++) {
+    for (int i = 0; i < acount(r->records) && !execution_dispatch_cancelled(dispatch);
+         i++) {
         source_record record = r->records[i];
         uint64_t event = event_id(&record, name);
         if (!event) {
             continue;
         }
-        int status = execution_program_dispatch(record.program, event, owner, arguments, count, now, delta, 10000);
+        int status = execution_program_dispatch_tagged(
+            record.program,
+            dispatch,
+            event,
+            owner,
+            arguments,
+            count,
+            now,
+            delta,
+            10000
+        );
         if (status < 0) {
             r->executing--;
+            execution_dispatch_free(dispatch);
             return program_status(r, record.program, status);
         }
         dispatched++;
     }
     r->executing--;
+    execution_dispatch_free(dispatch);
     return dispatched;
 }
 int source_dispatch(
@@ -470,7 +492,32 @@ int source_dispatch(
     double delta
 )
 {
-    return dispatch_event(r, ecs_entity_to_u64(entity), name, arguments, count, now, delta);
+    return dispatch_event(r, NULL, ecs_entity_to_u64(entity), name, arguments, count, now, delta);
+}
+int source_dispatch_tagged(
+    source_registry *r,
+    execution_dispatch *dispatch,
+    ecs_entity entity,
+    const char *name,
+    const pin_value *arguments,
+    int count,
+    double now,
+    double delta
+)
+{
+    return dispatch_event(r, dispatch, ecs_entity_to_u64(entity), name, arguments, count, now, delta);
+}
+int source_dispatch_all_tagged(
+    source_registry *r,
+    execution_dispatch *dispatch,
+    const char *name,
+    const pin_value *arguments,
+    int count,
+    double now,
+    double delta
+)
+{
+    return dispatch_event(r, dispatch, 0, name, arguments, count, now, delta);
 }
 int source_field_changed(
     source_registry *r,
@@ -513,7 +560,7 @@ int source_dispatch_all(
     double delta
 )
 {
-    return dispatch_event(r, 0, name, arguments, count, now, delta);
+    return dispatch_event(r, NULL, 0, name, arguments, count, now, delta);
 }
 int source_bind_service(source_registry *r, const char *name, void *value)
 {

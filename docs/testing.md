@@ -1133,6 +1133,128 @@ CI remains partial coverage. Report the checks that actually ran. Applicable
 server-required checks, independent review, explicit holds and approval rules
 remain binding.
 
+## Package execution checks
+
+`python3 tools/test_policy.py tool language-package-execution` selects eight
+fixed C cases in `test_language`: sibling calls and mutual recursion on bytecode
+and SLJIT, stable exported identities, document-local errors, duplicate exports,
+declaration discovery, source ownership, sibling records/unions/constants, and
+await effects when a sibling callable shadows a native component accessor.
+The workload has at most three documents per snapshot, fourteen fixed texts below
+1 KiB each, 36 parses, 17 analyses, twelve lowering attempts, eight backend
+finalizations and sixteen direct calls with instruction budgets of 2,000. It
+performs no filesystem, subprocess, world or GPU work. Build separately and run
+under one shared 60-second production deadline. The independent package graph
+and syntax routes remain unchanged; this focused route is not in the aggregate.
+
+`python3 tools/test_policy.py tool language-package-resolution` selects eight
+fixed C cases for explicit roots, equivalent paths, file-local aliases, blank
+imports, located invalid paths and strings, duplicates, cycles, stable keys and
+owned input lifetimes. There are 24 snapshot constructions, at most 56 parses and
+34 import declarations, with up to five files and four imports per snapshot and
+three simultaneous owners. Each source is below 1 KiB. The route performs no
+filesystem, process, authored execution or GPU work. Build separately and use
+one shared 60-second deadline; this focused route is also outside the aggregate.
+
+`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
+C cases for dependency execution, alias isolation, self imports, owned exported
+records/unions/constants, stable identities, incremental invalidation, retained
+generations, concrete signatures and constant defaults. It also checks owned
+union payload defaults, malformed public export bindings, imported compile-time
+constants, and explicit rejection of unsupported package template exports. The workload has
+46 preparations, 147 offered files, 81 import declarations, at most 131 package
+visits before reuse, and 34 direct calls with instruction budgets of 2,000.
+One catalog snapshot and one additional parse/nine semantic-only analyses cover
+the metadata cases. At most four owners and five source files per snapshot are
+live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
+Build separately and run under one shared 60-second deadline. This focused
+route is outside the language aggregate.
+
+## Disk package-source checks
+
+`python3 tools/test_policy.py tool language-package-files` selects eight fixed
+C cases on native Linux and macOS. It reads disposable source forests through
+`source_package_snapshot_load`, then prepares siblings, relative dependencies
+and an explicit `core:` collection on bytecode and SLJIT. Cases check relocation
+identities, unchanged reuse and dependent invalidation, missing-import source
+ranges, descendant symlink rejection, explicit root symlink canonicalization,
+duplicate physical roots and scanning overlapping roots once. An explicit root
+under a hidden ancestor remains visible. NUL, an oversized regular file and a
+`.chibi` FIFO are rejected; the FIFO has no writer.
+
+The finite workload has 22 loader calls, 12 preparations, at most 63 parses and
+30 imports, at most 36 package visits before reuse, and ten direct calls with
+instruction budget 2,000. Each loaded forest has four source files and at most
+20 visited directory entries, including dot entries. Eight disposable temporary directories contain
+at most 19 recorded cleanup paths per case; cleanup uses only those known paths
+and never follows links. Ordinary sources are below 1 KiB. One sparse oversized
+file is exactly 512 KiB plus one byte; one FIFO and five symlinks are created.
+There are no subprocesses, network operations, engine frames or GPU work.
+
+Build separately and execute once under the production supervisor's shared
+60-second deadline after independent source and workload admission. This route
+is outside the language aggregate. Windows retains the explicit unsupported
+filesystem adapter; buffer-based package APIs are unaffected. Source registration
+records no execution result.
+
+`python3 tools/test_policy.py tool language-package-core` selects four fixed
+C cases using the actual shipped `core:strings` source and pure text/array packs.
+It covers unsigned bytes, slice bounds and ownership, lexical ordering, ASCII
+identifiers, basename extraction, generic native arrays, binding-generation
+invalidation and retained modules on bytecode and SLJIT. Twelve preparations
+supply 24 files and 12 imports, with at most 24 package visits before reuse and
+66 direct calls, each with a 10,000-instruction budget. At most three owners
+and three-element arrays are live; core source is below 16 KiB and the app below
+2 KiB. There is no filesystem, process, service or GPU work. Installed consumers
+embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
+independently review before the first run under one shared 60-second deadline.
+This focused route is outside the language aggregate.
+
+## Private build-host process checks
+
+`python3 tools/test_policy.py tool build-process` selects eighteen C cases in the
+existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
+`policy_worker` dependency separately. The route uses one disposable directory,
+fixed authored sources, at most 54 controlled process launches or failed
+spawn attempts, and one shared 60-second production deadline. It performs no
+engine configure/build, network, renderer or GPU work. Case deadlines are at
+most two seconds, with shorter deliberate timeout/cancellation budgets; every
+native case clamps its budget to the inherited deadline.
+
+Cases cover exact argv and cwd, explicit environment and parent isolation,
+separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+and descendants whose leader exits first. The private host executes both the
+controlled source and unchanged recording workflow on bytecode and SLJIT, with
+actual backend counters and failure-path assertions. Compiler-enabled full
+native builds also verify absence from the ordinary game catalog; minimal
+compiler-only builds verify rejection by a catalog without build capabilities.
+Two CLI invocations cover source loading, a nonzero authored result and a missing
+entry. Seven additional cases cover argument and returned-value lifetimes,
+string operations, truncated or binary output rejection, regular-file and size
+limits, and atomic write failure cleanup. Their fixed file workload is about
+7 MiB. The original eight `language-build-workflow` recording cases remain an
+independent admitted route.
+
+`python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
+installed authored build program. Four cases make 38 API invocations across
+bytecode and SLJIT; one runs the host CLI with exact tail arguments. Ten tiny
+Git roots and at most 53 controlled CMake attempts cover compiler/environment/
+cache precedence, explicit typed and split definitions, loaded inputs, compiler
+identity, private dependency overrides, failure/retry and exact argument
+forwarding. The sixth case uses the production Makefile to select recovery for
+missing/old hosts and authored orchestration for a compatible host, including
+paths with spaces; three outer and three recursive Make calls run marker recipes
+only. The process route also tests the private protocol query used by this
+transition. Python runs only the production input probes; no Python tests are
+introduced. These cases never configure or build the engine. Actual clean-source
+configuration and compilation are separate build evidence.
+
+`build-process`, `build-toolchain` and M0's `chibi-cli` remain focused routes. The complete
+`make test-tools` group builds a runtime-only tooling driver and does not build
+the private host or public launcher. Route registration does not add either
+fixture to that aggregate. Current platform results belong in `PLAN.md`;
+Windows does not build or select the private host.
+
 ## Batch validation (CUT62)
 
 Publication uses independently reviewed validation for the affected contracts.
@@ -1756,6 +1878,9 @@ caret map across semantic rewriting.
 `python3 tools/test_policy.py tool language-record-publication` is a standalone
 seven-case CPU route. It prepares a two-source project catalog with a declaring
 record library and an importing behavior, then stages and commits both sources.
+The library constructs a local record whose type name also names a result;
+four fixed lookup assertions distinguish duplicate views of one identity from
+different identities with the same short name and retain qualified lookup.
 The BYTECODE and SLJIT variants cover preparation/code generation and canonical
 publication, not authored-function execution. The fixture has zero authored
 calls, attachments, event dispatches, frames, child processes or network work.
@@ -1775,11 +1900,12 @@ updated independent exact-source admission for the redesigned workload before
 execution.
 
 `language-record-publication-repro` runs only the first case's BYTECODE half
-with the same success expectation. On the fixture-only baseline it must fail
-at source staging with `duplicate prepared type requirement`, before commit.
-That red invocation has two parses, eight declaration analyses, at most ten full
+with the same success expectation. The historical fixture-only baseline used
+a single-result constructor and failed at source staging with
+`duplicate prepared type requirement`, before commit. The current specimen also
+covers named-result type lookup and has two parses, eight declaration analyses, at most ten full
 analyses, two lower calls, two module finalizations, one stage and no authored
-calls. Red and green runs each use one production 60-second deadline with
+calls. Each invocation uses one production 60-second deadline with
 build/configuration kept separate. This focused evidence does not establish
 full Studio startup, rendering or native-catalog-only helper coverage.
 
@@ -1834,3 +1960,286 @@ This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
 It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
+
+## Live Outliner foundation checks
+
+The standalone `language-authority` route has nine independently reviewed C
+cases on bytecode and SLJIT: 22 scenario preparations plus four imported helpers,
+one entity per scenario, at most two registrations, four initial queued events
+plus one followup, and two held requests. Direct entries have 1,000 instructions
+per authored frame; the source-fanout case invokes three handlers per backend
+with the existing 10,000-instruction source budget. It checks uninterrupted
+context proof, live root state, nested invalidation, precise cancellation,
+queued payload order, token ownership, late requests and lifecycle reuse.
+
+The standalone `language-source-guard` route has three independently reviewed
+C cases, six tiny bytecode preparations and at most two registrations. It checks
+final-set refusal, atomic publication, no-op publication and guard lifetime
+without dispatching authored code.
+
+The standalone `studio-outliner-projection` and `studio-outliner-row-policies`
+routes consume the installed Studio acceptance binary from `CHIBI_STUDIO_BUILD`
+and the exact authored library from `CHIBI_OUTLINER_SOURCE`. Projection prepares
+the source twice, makes 80 direct calls across bytecode and SLJIT, and checks 46
+rows and 40 headers, including all fields, input immutability and retained output
+ownership. Fixed input arrays have at most 11 entries and text at most 134 bytes.
+The instruction budget is 20,000 per authored frame; it is not a total-call
+budget. The fixed inputs expand to fewer than 1,000 authored function invocations
+per backend. The helper fixture makes 82 direct calls with 2,000 instructions per
+frame. Each route's two preparations also evaluate 44 named constants under the
+existing 100,000-instruction compile-time evaluator limit. Neither route launches
+children, renders frames or writes files. Pure projection does not establish live
+publication, UI queue, reload or browser correctness.
+
+Build separately, then run each route under the unchanged whole-invocation
+60-second production supervisor. Independent static workload review admits these
+standalone first measurements only; they are not added to an aggregate. Record
+execution results separately from source admission.
+
+The standalone `language-outliner-contract` route has four C cases and 20 module
+finalizations (five source preparations with two modules each, plus ten manually
+constructed modules), on bytecode and compiled backends. Its 40 validator calls
+cover canonical schema/callback/ABI metadata, accepted policy edits,
+unconditional or one-branch payload clearing, and typed F32/F64 constants. The
+four added floating modules each accept a scalar result write and reject
+substituting that floating slot for its integer result-header index. The added
+case requires updated independent source admission. There is no authored
+execution, renderer, network, subprocess or sleep. Two empty
+temporary directories are created; no source files are written. The same
+60-second standalone first-measurement rule applies; no aggregate is expanded.
+
+The separate `studio-outliner-live-guards` route checks same-pointer scene epoch
+changes, deferred capture failure followed by FIFO controls, and duplicate
+publication. It reuses the live fixture's two mounts and one-actor worlds with
+four collection preparations, four new modules, 22 bounded constant evaluations,
+eight sends, one deferred replay and two empty Begin handlers. It performs no
+pumps, layout, updates, rendering, frames, child processes or file writes.
+Independent source review admits one standalone first measurement under the
+unchanged whole-invocation 60-second supervisor. Controlled epoch changes test
+the authority input; they do not claim coverage of actual scene loading.
+
+The separate `studio-outliner-scale` route is an independently reviewed fixed
+diagnostic, not a production budget change or scene limit. It prepares twice
+(44 constant evaluations) and calls Project four times: 10,000 then 1,000,000
+steps per frame on bytecode and actual SLJIT. One input has 4,096 flat actors,
+32 requested rows and empty filter/prototype/component/field/attachment arrays.
+Each call has at most 4,293 logical authored starts and 8,585 backend entries.
+Canonical growing integer arrays alone would copy 67,125,248 payload bytes per
+complete call. Public copy counters require at most 1,114,112 packed bytes for
+both private append chains and the permitted parent snapshots for visible rows,
+rejecting either accumulator's return to quadratic prefix copying. Call storage
+is freed before the next call. The fixture reports direct
+run time, top-frame steps and value-arena usage, requires exact outputs on
+success, and checks all input ownership and immutability. The smaller budget
+accepts only exact budget exhaustion or a complete correct result; the larger
+diagnostic budget requires success. No rendering, scene, graph display, child
+process or file write runs. Execute once under the unchanged standalone
+60-second production supervisor; this is not an aggregate or UI-latency result.
+
+The standalone `studio-outliner-work` route runs four pure C arithmetic cases
+against the installed-SDK Studio consumer. Its fixed inventory makes 38 workload
+measurements and 43 checked allowance calculations, with at most eight actors
+and a 128-byte scene path. It checks Page extrema, folded-text loop bounds,
+hierarchy depth, repeated component spans, disjoint field spans, attachments,
+invalid facts and overflow with unchanged outputs on failure. It prepares no
+sources and creates no runtime, UI context, files, frames or child processes.
+It remains outside aggregates under the unchanged production 60-second deadline;
+source review admits its first measurement, not a passing result.
+
+The standalone `studio-outliner-live-fuel` route exercises the real installed-SDK
+Capture, authored Project and guarded Publish on bytecode and actual SLJIT. One
+case prepares eight collections/eight modules and evaluates 44 library constants.
+Each backend sends ShowRows, one exact shipped Refresh for 4,096 flat actors and
+32 rows, FoldRoot, and two one-actor Reveal requests with bounded fault loops
+before Project and after accepted Publish. Both loops start at one and remain
+below 32,768, allowing at most 32,767 iterations even if metering fails. The
+checked allowance must stop them with precise source-attributed budget errors.
+Literal assertions cover every header and row field, retained prior publication
+on the first failure and the new valid publication after the second failure.
+At most 4,097 actors exist per backend and 8,615 scoped runtime entries execute;
+the two backends use ten sends and four empty Begin handlers in total. Each
+backend uses the existing two-scene/two-mount fixture, one 320x200 RmlUi context
+and sixteen embedded font faces. No document is shown; there are no layout or
+context updates, pumps, debugger resumes, rendered frames, files or children.
+Exact account consumption is tested by the engine request-work fixture, not
+observed here. This route remains outside aggregates under the unchanged shared
+60-second supervisor and requires independent exact-source and wiring admission.
+
+The standalone `studio-outliner-browser` route runs the real serial Studio web
+build in one disposable Chromium page through the native Unix C tooling driver.
+Independent source review admits one first measurement under the unchanged
+whole-invocation 60-second supervisor; no aggregate includes this route. Build
+the driver and the matching Studio web package separately before running:
+
+```sh
+CHIBI_TOOLS_BUILD_DIR=/absolute/tooling-build \
+CHIBI_STUDIO_WEB_ROOT=/absolute/studio-web/bin \
+CHIBI_STUDIO_SOURCE=/absolute/chibi-studio \
+CHIBI_STUDIO_BROWSER_ARTIFACTS=/absolute/empty-artifact-directory \
+python3 tools/test_policy.py tool studio-outliner-browser
+```
+
+The three Studio paths must be absolute; the artifact directory must already
+exist and output files are created exclusively. `CHIBI_TEST_BROWSER` may name an
+absolute Chromium executable; defaults are `/usr/bin/chromium` on Linux and the
+standard Google Chrome application on macOS. Other driver configurations report
+the route unavailable. Browser sandbox settings are preserved. If the browser,
+sandbox or graphics backend cannot start, report the failure without adding a
+security override or extending the workload/deadline.
+
+The checked-in `projects/studio/project.kdl` opens `scenes/Studio.kdl`, with 43
+actors beginning Settings, Data and Theme. The fixture uses 16 application
+frames at 1280 by 720 and DPR 1, seven fixed frame gates, 52 CDP commands (cap 96),
+and three PNG screenshots. Trusted pointer and key events focus the Filter
+field, type `Settings`, then replace it with `__outliner_missing__`. It allows
+at most 64 loopback HTTP requests, five allowlisted web artifacts of at most
+64 MiB each, 2,048 CDP messages of at most 8 MiB, and 64 KiB of diagnostics.
+A 55-second progress deadline, checked one-second socket timeouts and one shared
+one-second teardown allowance remain inside the production 60-second ceiling.
+The six gate-side 64-by-36 canvas samples add no application frames; C validates
+three samples for nonuniform pixels and changes between screenshots.
+
+`review.txt` records the required manual check: initial Studio root count 43 and
+Settings/Data/Theme rows, one Settings match, then zero matches and the exact
+unmatched-filter notice. Pixel changes do not automatically prove labels or
+counts. The C case also requires no observed JavaScript or Studio status errors
+and compares exactly four bundled files with the supplied checkout:
+`project.kdl`, `Studio.kdl`, `OutlinerRowPolicies.chibi` and `OutlinerRows.chibi`.
+Record the exact web-package and installed-SDK provenance separately; those four
+comparisons do not establish full package identity. Keep all three PNGs and
+`browser.log` with the manual review. Source admission is not a measured pass,
+and this route makes no worker-mode, WebGPU, performance, stale-event or full
+Studio coverage claim.
+
+The standalone `studio-sdk-identity` route checks consumer invalidation when a
+replacement SDK preserves older installed timestamps. Set `CHIBI_STUDIO_SOURCE`
+to the absolute Studio checkout path, and `CHIBI_TOOLS_BUILD_DIR` to the tooling
+build, then run `python3 tools/test_policy.py tool studio-sdk-identity` under the
+unchanged 60-second supervisor. It is not part of any aggregate. Independent
+exact-source review admits one first standalone measurement; source admission
+alone is not a measured pass.
+
+One pico case symlinks the actual Studio `CMakeLists.txt` into an owned temporary
+source tree with tiny C probes and dependency placeholders. A fixed 56-target
+SDK facade supplies one real probe archive/header and 55 interface targets.
+Two generations use the same source and build directories: only the SDK header,
+archive and manifest change, with all three mtimes restored to 2000-01-01 before
+an explicit configure. The second generation checks the compiled identity and
+header values of the Studio library and each executable, plus the linked SDK
+function result. This exercises production CMake invalidation without mirroring
+its implementation or touching any real SDK/Studio source.
+
+The exact workload is twelve direct supervised children: two tiny SDK C
+compilations, two archive updates, two real CMake configures, two serial builds
+and four tiny executable runs. Each build has twelve consumer C objects and
+three links/archives; the first configure also performs the ordinary fixed C
+and C++ compiler checks. C++ is enabled only by the real consumer CMake and used
+as its link driver; all fixture logic is C. Scratch code is unsanitized with
+dead-code stripping. FetchContent is disconnected, resources are fixed tiny
+placeholders, and no rendering or network runs. The existing ten-second child
+cap, process-group ownership and shared 60-second deadline include all setup,
+compilation, execution and cleanup of the one owned temporary tree. Explicit
+configuration is required: an older replacement manifest alone need not trigger
+Ninja's automatic CMake regeneration.
+
+The standalone `language-scalar-append` and `wasm-scalar-append` routes share six
+finite C cases for local I32 append optimization. Eight source preparations and
+finalizations cover two
+accumulators, conditional append sites, readonly helper arguments, retained and
+forked prefixes, escaped snapshots, context reuse after same-address arena reset,
+inspection and rebound callbacks. Across bytecode and the compiled backend it
+performs 24 top-level calls, 402 authored helper calls and 818 authored appends;
+the largest loop has 128 iterations and each frame retains a 20,000-step limit.
+Fourteen copied-instruction proofs reject unsafe entry and writes without executing
+malformed instructions. A separate low-level case adds seven appends, one
+checked overflow rejection and two collections to check managed roots and
+prefix isolation. Ten authored length calls and eight authored get calls observe
+the private arrays; ten direct reader calls check owning and snapshot wrappers,
+including four invalid-index rejections. Twelve pure variadic text calls cover
+the Outliner's eligibility requirement without exposing private arrays. There are no worlds, renderer
+frames, processes, network or sleeps. This route is outside aggregates and uses
+the unchanged production 60-second supervisor. Exact-source independent review
+and first measurement are required; source review alone is not a test pass.
+
+`wasm-scalar-append` runs the existing C dispatcher through Node at
+`CHIBI_WASM_BUILD_DIR/test_language.js --scalar-append`. The Emscripten
+fixture uses bytecode and `TEST_COMPILED_BACKEND=BEHAVIOR_WASM`; its counters
+require actual Wasm entries, zero bytecode entries in the compiled half, and
+zero inspection fallback. It retains the same plan, copy, alias and collection
+assertions and adds no workloads to the Wasm aggregate. Build configuration
+and compilation remain separate from the one shared 60-second test deadline.
+
+The standalone native `language-outliner-work` route prepares the two exact
+shipped Studio Outliner sources named by the required `CHIBI_OUTLINER_CONTENT`
+environment variable. One C case reads those two regular files once (13,109
+source bytes plus two EOF probes), checks their reviewed byte identities, and
+prepares one collection from seven fixed in-memory overlays. The two modules
+contain eight controller handlers and twelve library functions; preparation
+includes the existing 22 compiler constant evaluations, each under its existing
+100,000-step frame bound. No controller or helper runs at runtime. The case
+checks the full declaration inventory and traverses the fourteen canonical
+bodies reachable from Refresh/RevealObject, printing their BF_CHECK census and
+checked sum. It creates and removes one empty owned temporary directory; there
+are no worlds, frames, renderers, subprocesses or network operations. It remains
+outside aggregates under the unchanged shared 60-second supervisor. This is a
+static checkpoint census, not a native-operation or wall-time performance bound.
+
+The standalone `language-request-work` route runs five C cases for retained
+request checkpoint fuel through bytecode and the actual compiled backend.
+Set `CHIBI_LANGUAGE_BUILD_DIR` to the native driver build and run
+`python3 tools/test_policy.py tool language-request-work`. The same C cases
+compiled with Emscripten run as `python3 tools/test_policy.py tool
+wasm-request-work`, using `CHIBI_WASM_BUILD_DIR` and the existing Node launcher.
+That route executes bytecode plus generated Wasm; it makes no browser, worker
+or rendering claim. Both are standalone first measurements under the existing
+shared 60-second deadline, and neither joins an aggregate. Source review alone
+is not a measured pass.
+
+Across both backends, the exact request-work fixture prepares twelve source
+modules (ten behaviors and two imported helpers) and six tiny IR definitions.
+It creates forty tokens in total, at most four live; retains at most one host
+request; and uses at most seven of sixteen observation slots per preparation.
+There are ten queued emits, twenty dispatch API calls, twelve pumps, two updates,
+fourteen direct tiny-function calls plus two outlined child entries, fourteen
+synchronous helper calls including those children, two task starts, two continuation starts
+and two host completions. Loops have at most 32 iterations, recursion has three
+calls, and every request limit/grant is at most 1,000. There are no files,
+renderer frames, subprocesses, clocks, sleeps or retries with increased limits.
+
+Assertions cover retained queued limits under a later pump budget of one,
+shared local/imported/recursive-helper consumption, one absolute grant without
+resetting spent work, forged/foreign/duplicate/cancelled/resumed rejection,
+remaining control FIFO order after exhaustion, no allowance renewal on
+re-enqueue, inherited task/continuation fuel without grant authority, caller
+reference release during execution and ordinary activation-cache reuse.
+Tiny float-only entries check exact first/second-check exhaustion diagnostics,
+legacy frame-budget failure without extra debit, outlined child exhaustion and
+specific unsupported-prepaid rejection, including a direct native SLJIT entry.
+The route does not separately exercise a grant at exactly the initial limit or
+a grant after nested dispatch; the authority route retains its nested-proof
+revocation regression.
+
+The standalone `request-work-c` route runs one C case with two verified IR
+definitions (six and four instructions), one configured native compiler child,
+one temporary shared library and fourteen calls: seven bytecode and seven
+through the actual generated-C entries. Generated source is below 16 KiB.
+It checks second/first-check fuel exhaustion, finite legacy-budget/account
+parity, unchanged ordinary budgets and precise unsupported-prepaid failure
+before output mutation. Set `CHIBI_TOOLS_BUILD_DIR` and run
+`python3 tools/test_policy.py tool request-work-c`. The existing ten-second
+child cap and shared 60-second supervisor cover preparation, compilation,
+loading, calls and cleanup. The route requires the existing native in-tree
+POSIX single-configuration C-export build; unavailable targets report that
+restriction. It is independently admitted for its first standalone measurement
+and is outside aggregates.
+
+Request fuel is opt-in through `execution_dispatch_new_work`. It charges
+canonical authored checkpoints shared by the retained origin; ordinary events
+keep their existing frame budgets. `execution_context_grant_work` permits one
+nondecreasing absolute grant from the original uninterrupted live handler and
+preserves spent work. A callback at the last paid checkpoint may still grant.
+Direct prepaid definitions lacking checked code fail with `FLOW_ERR_STATE` and
+`Request work policy requires canonical execution checkpoints`. The new context
+and balance layout changes the prepared ABI fingerprint, so SDKs and consumers
+must be rebuilt together. This meter does not bound native work or wall time,
+add asynchronous publication, or roll back an already valid guarded Publish.

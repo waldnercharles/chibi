@@ -166,10 +166,12 @@ target_link_libraries(chibi_value_document PUBLIC chibi_types chibi_asset_values
 
 add_library(chibi_capabilities STATIC "${CHIBI_SDK_ROOT}/src/capabilities/catalog.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_values.c"
+    "${CHIBI_SDK_ROOT}/src/capabilities/catalog_snapshot.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/definition.c")
 add_library(Chibi::capabilities ALIAS chibi_capabilities)
 set_target_properties(chibi_capabilities PROPERTIES EXPORT_NAME capabilities)
-chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h)
+chibi_sdk_headers(chibi_capabilities PUBLIC capabilities/catalog.h capabilities/definition.h
+    capabilities/catalog_snapshot.h)
 target_link_libraries(chibi_capabilities PUBLIC chibi_types)
 
 add_library(chibi_execution_contract INTERFACE)
@@ -279,6 +281,9 @@ add_library(Chibi::text_capabilities ALIAS chibi_text_capabilities)
 set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabilities)
 chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
 target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
+# Authored core collection sources are explicit snapshot inputs for SDK users.
+install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
+    DESTINATION share/chibi/core/strings)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")
@@ -299,7 +304,8 @@ add_library(chibi_behavior_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/module_set.c")
 add_library(Chibi::behavior_runtime ALIAS chibi_behavior_runtime)
 set_target_properties(chibi_behavior_runtime PROPERTIES EXPORT_NAME behavior_runtime)
-chibi_sdk_headers(chibi_behavior_runtime PUBLIC runtime/behaviors/source.h runtime/behaviors/package.h
+chibi_sdk_headers(chibi_behavior_runtime PUBLIC runtime/behaviors/source.h runtime/behaviors/source_authority.h
+    runtime/behaviors/source_guard.h runtime/behaviors/package.h
     runtime/behaviors/module_set.h runtime/event_catalog.h)
 target_link_libraries(chibi_behavior_runtime PUBLIC chibi_execution chibi_events)
 add_library(chibi_native_prepared STATIC "${CHIBI_SDK_ROOT}/src/runtime/native_prepared.c")
@@ -405,11 +411,15 @@ if(CHIBI_SDK_BUILD_COMPILER)
     include(asset_text.cmake)
     include(graph.cmake)
     add_library(chibi_studio_capabilities STATIC "${CHIBI_SDK_ROOT}/src/authoring/studio_native.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/studio_definition.c"
+        "${CHIBI_SDK_ROOT}/src/authoring/studio_outliner_schema.c"
+        "${CHIBI_SDK_ROOT}/src/authoring/studio_outliner_definition.c")
     add_library(Chibi::studio_capabilities ALIAS chibi_studio_capabilities)
     set_target_properties(chibi_studio_capabilities PROPERTIES EXPORT_NAME studio_capabilities)
-    chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h)
-    target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution)
+    chibi_sdk_headers(chibi_studio_capabilities PUBLIC authoring/studio_schema.h authoring/studio_definition.h
+        authoring/studio_outliner_schema.h authoring/studio_outliner_definition.h)
+    target_link_libraries(chibi_studio_capabilities PUBLIC chibi_native_capabilities PRIVATE chibi_execution
+        chibi_array_capabilities chibi_text_capabilities)
     list(APPEND CHIBI_SDK_TARGETS chibi_studio_capabilities)
     add_library(chibi_studio_graph STATIC "${CHIBI_SDK_ROOT}/src/graph/nodes/studio_nodes.c")
     add_library(Chibi::studio_graph ALIAS chibi_studio_graph)
@@ -550,6 +560,30 @@ if(CHIBI_SDK_BUILD_COMPILER)
             include(preview.cmake)
         endif()
     endif()
+endif()
+# Private executable and authored orchestration; no build capabilities in game catalogs.
+if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+    add_library(chibi_build_host OBJECT "${CHIBI_SDK_ROOT}/src/host/build_host.c"
+        "${CHIBI_SDK_ROOT}/src/host/build_catalog.c"
+        "${CHIBI_SDK_ROOT}/src/host/build_values.c"
+        "${CHIBI_SDK_ROOT}/src/host/build_io.c")
+    foreach(header build_host build_host_internal build_values build_io process)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
+    endforeach()
+    target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
+    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
+    target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
+    add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c"
+        "${CHIBI_SDK_ROOT}/src/host/process.c")
+    target_link_libraries(chibi-build-host PRIVATE chibi_build_host chibi_support)
+    target_compile_options(chibi-build-host PRIVATE -Wall -Wextra -Werror)
+    install(TARGETS chibi-build-host RUNTIME DESTINATION libexec/chibi)
+    install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
+        DESTINATION share/chibi/tools/toolchain)
+    install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py"
+        "${CHIBI_SDK_ROOT}/tools/dependency_package.py"
+        "${CHIBI_SDK_ROOT}/tools/fetchcontent_cache.py" DESTINATION share/chibi/tools)
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)

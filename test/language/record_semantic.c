@@ -207,14 +207,14 @@ TEST_CASE(record_semantic_catalog_lifetime)
     script_catalog source = { .types = analysis->types,
                               .type_count = analysis->type_count },
                    old, edited;
-    REQUIRE(source_catalog_snapshot(&first, &source, &old));
+    REQUIRE(script_catalog_snapshot(&first, &source, &old));
     REQUIRE(source_catalog_default_key(&old, &first_key));
     uint64_t id = old.types[0].id, layout = old.types[0].layout;
     parse("Rows :: library { Row :: struct { label: string = \"owned-second\"; } }", &empty);
     REQUIRE(analysis->valid);
     source = (script_catalog){ .types = analysis->types,
                                .type_count = analysis->type_count };
-    REQUIRE(source_catalog_snapshot(&second, &source, &edited));
+    REQUIRE(script_catalog_snapshot(&second, &source, &edited));
     REQUIRE(source_catalog_default_key(&edited, &second_key));
     REQUIRE(edited.types[0].id == id && edited.types[0].layout == layout);
     REQUIRE(source_catalog_metadata_equal(&old, &edited));
@@ -270,7 +270,7 @@ TEST_CASE(record_semantic_collection_catalog_identity)
                               .capabilities = &capability,
                               .capability_count = 1 },
                    saved;
-    REQUIRE(source_catalog_snapshot(&first, &source, &saved));
+    REQUIRE(script_catalog_snapshot(&first, &source, &saved));
     REQUIRE(source_catalog_metadata_equal(&source, &saved));
     REQUIRE(script_catalog_key_type(&saved, map).storage == PIN_STR);
     REQUIRE(script_type_equal(script_catalog_element_type(&saved, map), array));
@@ -397,7 +397,7 @@ TEST_CASE(record_semantic_generic_catalog_snapshot_owns_bindings_and_parameters)
                               .specializations = &specialization,
                               .specialization_count = 1 },
                    saved;
-    REQUIRE(source_catalog_snapshot(&first, &source, &saved));
+    REQUIRE(script_catalog_snapshot(&first, &source, &saved));
     REQUIRE(source_catalog_metadata_equal(&source, &saved));
     REQUIRE(source_catalog_default_key(&source, &first_key));
     definition.source_generation++;

@@ -6,6 +6,8 @@
 #include "types/value_format.h"
 
 #include <assert.h>
+#include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #define FMT_TEXT_MAX_ARGS 12
@@ -379,6 +381,101 @@ static const char *text_equal_call(arena *storage, const pin_value *arguments, i
 const node_host_call NATIVE_FORMAT_TEXT_HOST = { .value = fmt_text_call,
                                                  .variadic = true };
 const node_host_call NATIVE_TEXT_EQUAL_HOST = { .value = text_equal_call };
+static const char *text_bytes(
+    const pin_value *arguments,
+    int count,
+    int expected,
+    const char **text,
+    size_t *length
+)
+{
+    if (!arguments || count != expected || arguments[0].container != PIN_CONTAINER_SINGLE ||
+        (arguments[0].type != PIN_STR && arguments[0].type != PIN_NAME)) {
+        return "Invalid text byte operation arguments";
+    }
+    for (int i = 1; i < count; i++) {
+        if (arguments[i].container != PIN_CONTAINER_SINGLE ||
+            arguments[i].type != PIN_I32) {
+            return "Invalid text byte operation index";
+        }
+    }
+    *text = arguments[0].str ? arguments[0].str : "";
+    *length = strlen(*text);
+    if (*length > INT_MAX) {
+        return "Text byte length exceeds int range";
+    }
+    return NULL;
+}
+static const char *text_byte_length_call(arena *, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 1, &text, &length);
+    if (error) {
+        return error;
+    }
+    *result = (pin_value){ .type = PIN_I32, .type_name = "int", .i = (int)length };
+    return NULL;
+}
+static const char *text_byte_at_call(arena *, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 2, &text, &length);
+    if (error) {
+        return error;
+    }
+    int index = arguments[1].i;
+    *result = (pin_value){ .type = PIN_I32,
+                           .type_name = "int",
+                           .i = index >= 0 && (size_t)index < length
+                                  ? (unsigned char)text[index]
+                                  : -1 };
+    return NULL;
+}
+static const char *text_slice_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    const char *text;
+    size_t length;
+    const char *error = text_bytes(arguments, count, 3, &text, &length);
+    if (error) {
+        return error;
+    }
+    size_t start = arguments[1].i > 0 ? (size_t)arguments[1].i : 0;
+    if (start > length) {
+        start = length;
+    }
+    size_t take = arguments[2].i > 0 ? (size_t)arguments[2].i : 0;
+    if (take > length - start) {
+        take = length - start;
+    }
+    char *copy = arena_alloc(storage, take + 1);
+    if (!copy) {
+        return "Text slice allocation failed";
+    }
+    memcpy(copy, text + start, take);
+    copy[take] = 0;
+    *result = (pin_value){ .type = PIN_STR, .type_name = "const char *", .str = copy };
+    return NULL;
+}
+const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL = { .value = text_byte_length_call };
+const node_host_call NATIVE_TEXT_BYTE_AT_CALL = { .value = text_byte_at_call };
+const node_host_call NATIVE_TEXT_SLICE_CALL = { .value = text_slice_call };
+static const char *entity_decimal_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+{
+    if (!arguments || count != 1 || arguments[0].type != PIN_HANDLE ||
+        arguments[0].container != PIN_CONTAINER_SINGLE ||
+        !arguments[0].type_name || strcmp(arguments[0].type_name, "ecs.entity")) {
+        return "Entity Decimal requires one entity";
+    }
+    char text[21];
+    snprintf(text, sizeof text, "%" PRIu64, arguments[0].u64);
+    *result = (pin_value){ .type = PIN_STR,
+                           .type_name = "const char *",
+                           .str = fmt_arena_strdup(storage, text) };
+    return NULL;
+}
+const node_host_call NATIVE_ENTITY_DECIMAL_CALL = { .value = entity_decimal_call };
 #define SNAPSHOT(KEY, FN, VARIADIC)                                                                       \
     static const char *KEY##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *out) \
     {                                                                                                     \

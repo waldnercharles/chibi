@@ -166,7 +166,9 @@ enum
 {
     BF_HOST_BORROW_ARRAY = 1,
     BF_HOST_BUILD_ROW = 2,
-    BF_HOST_RETAIN_ROWS = 3
+    BF_HOST_RETAIN_ROWS = 3,
+    BF_HOST_APPEND_SCALAR = 4,
+    BF_HOST_RETAIN_SCALAR = 5
 };
 static inline bool behavior_function_math(behavior_function_op op)
 {

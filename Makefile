@@ -33,6 +33,10 @@ CHIBI_COLLAB_URL ?=
 FAST_BUILD_DIR ?= $(BUILD_DIR)
 JOBS ?= 8
 BUILD_TARGET ?= chibi chibi-compile chibi-player chibi_ctl
+BUILD_HOST ?= $(BUILD_DIR)/sdk/chibi-build-host
+BUILD_PROGRAM ?= tools/toolchain/Build.chibi
+BUILD_TIMEOUT_MS ?= 1800000
+BUILD_HOST_TARGET = $(if $(filter Linux Darwin,$(shell uname -s)),chibi-build-host,)
 VERBOSE ?= 0
 export VERBOSE TEST_ARGS AGENT_SELECTOR
 MAKEFLAGS += --no-print-directory
@@ -101,8 +105,16 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 2 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+
+.PHONY: toolchain-build stage-zero-build
+toolchain-build:
+	@$(QUIET) native-toolchain -- "$(BUILD_HOST)" --root "$(CURDIR)" --source "$(BUILD_PROGRAM)" --entry Build --timeout-ms "$(BUILD_TIMEOUT_MS)" -- native "$(BUILD_DIR)" $(foreach target,$(BUILD_TARGET),--target $(target)) --jobs "$(JOBS)" -- $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
+
+# Recovery also creates the private host used by subsequent builds.
+stage-zero-build:
 	@$(QUIET) configure-native -- sh tools/configure_native.sh "$(BUILD_DIR)" $(NATIVE_TOOLCHAIN_FLAGS) $(LOCAL_CMAKE_FLAGS) $(if $(strip $(LIBCLANG_ROOT)),-DLIBCLANG_ROOT="$(LIBCLANG_ROOT)",)
-	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET),) --parallel $(JOBS)
+	@$(QUIET) build -- cmake --build "$(BUILD_DIR)" $(if $(strip $(BUILD_TARGET)),--target $(BUILD_TARGET) $(BUILD_HOST_TARGET),) --parallel $(JOBS)
 
 build-debug:
 	@$(MAKE) build BUILD_DIR="$(DEBUG_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(DEBUG_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
@@ -214,7 +226,7 @@ benchmark:
 # Browser Studio consumes a separately packaged Emscripten SDK generation.
 .PHONY: web-sdk-build package-web-sdk
 web-sdk-build: sdk-reflect-build
-	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" -G Ninja $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-web-sdk -- cmake --build "$(WEB_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-web-sdk: web-sdk-build

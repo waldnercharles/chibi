@@ -104,25 +104,12 @@ pin_value native_array_make(const pin_value *inputs, int count, arena *a)
 
 pin_value native_array_get(const pin_value *inputs, int count, arena *a)
 {
-    (void)count;
-    const pin_array *array = array_arg(inputs, 0);
-    int index = inputs[1].i;
-    if (!array || index < 0 || index >= array->count) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    pin_value value, item = pin_array_get(array, index);
-    if (pin_value_snapshot_to_arena(a, &value, &item)) {
-        return (pin_value){ .type = PIN_FLOW };
-    }
-    return value;
+    return pin_array_get_result(inputs, count, a);
 }
 
 pin_value native_array_length(const pin_value *inputs, int count, arena *a)
 {
-    (void)count;
-    (void)a;
-    const pin_array *array = array_arg(inputs, 0);
-    return scalar(PIN_I32, array ? array->count : 0);
+    return pin_array_length(inputs, count, a);
 }
 
 pin_value native_array_last_index(const pin_value *inputs, int count, arena *a)
@@ -447,7 +434,15 @@ static const char *resize_error(const pin_value *inputs)
 #define ADD(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                      \
     const node_host_call NATIVE_ARRAY_add_HOST = { .value = pin_array_add_call }; \
     const node_host_call NATIVE_ARRAY_add_CALL = { .value = pin_array_add_call };
-NATIVE_ARRAY_OPERATIONS_WITH_ADD(CALL, ADD)
+#define READ(KERNEL, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC)                  \
+    const node_host_call NATIVE_ARRAY_##KERNEL##_HOST = {                      \
+        .value = pin_array_##KERNEL##_owned_call                               \
+    };                                                                         \
+    const node_host_call NATIVE_ARRAY_##KERNEL##_CALL = {                      \
+        .value = pin_array_##KERNEL##_call                                     \
+    };
+NATIVE_ARRAY_OPERATIONS_WITH_READERS(CALL, ADD, READ, READ)
+#undef READ
 #undef ADD
 #undef CALL
 const node_access NATIVE_ARRAY_ACCESS = { .flags = NODE_EFFECT_PURE };

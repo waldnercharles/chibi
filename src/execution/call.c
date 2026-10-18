@@ -96,6 +96,7 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     frame_leave(frame, FLOW_OK);
     behavior_function_reset_host(&frame->context);
     behavior_function_reset_activation(frame->function, &frame->activation);
+    frame->context.work = NULL;
     arena_reset(&frame->storage);
     frame->invocation = (behavior_function_invocation){ 0 };
     /* Live frames are an execution requirement, not an idle-retention budget.
@@ -267,6 +268,7 @@ static invocation_frame *frame_new(
         .command_results = frame->context.command_results,
         .services = parent->services,
         .budget = parent->budget,
+        .work = parent->work,
         .call_depth = depth,
         .inspection_user = parent->inspection_user,
         .source_debug_user = parent->source_debug_user,
@@ -351,6 +353,7 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->program_name = root->program_name;
     context->now = root->now;
     context->delta_seconds = root->delta_seconds;
+    context->work = root->work;
     context->instance_time = root->instance_time;
     context->variables = root->variables;
     context->states = root->states;
@@ -536,6 +539,9 @@ static void trace_context(
             pin_value_trace(&value, mark, user);
         }
     }
+    for (int i = acount(f->data_values); i < acount(ctx->data->values); i++) {
+        trace_value(&ctx->data->values[i], BEHAVIOR_VALUE, mark, user);
+    }
 }
 void behavior_function_trace_values(
     const behavior_function *f,
@@ -601,7 +607,7 @@ static void visit_context(
     if (!ctx->data) {
         return;
     }
-    visit_bank(ctx->data->values, acount(f->data_values), visit, user);
+    visit_bank(ctx->data->values, acount(ctx->data->values), visit, user);
     for (int i = 0; i < acount(f->data_values); i++) {
         if (f->data_values[i].size) {
             pin_value value = f->data_values[i].initial;

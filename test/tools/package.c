@@ -3,10 +3,12 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 static char directory[1024], build[1024], output[1024], log_path[1024];
@@ -411,7 +413,7 @@ TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
     return true;
 }
 
-TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
+TEST_CASE(web_sdk_recipe_selects_ninja_and_configuration_definitions)
 {
     char source[1024], bin[1024], filename[1024], original[1024], search[8192];
     path(source, directory, "web-recipe");
@@ -434,6 +436,7 @@ TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
         filename,
         "#!/bin/sh\nset -eu\n"
         "test \"$1\" = sdk-web\ntest \"$2\" = web-sdk\nshift 2\n"
+        "test \"$1\" = -G\ntest \"$2\" = Ninja\nshift 2\n"
         "for argument do\n case $argument in -D*=*) ;; *) exit 1 ;; "
         "esac\ndone\n"
         "printf '%s\\n' \"$@\" > configure-arguments\n"
@@ -524,6 +527,244 @@ TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints)
     return true;
 }
 
+/* Exercise the real Studio consumer CMake with a fixed, tiny SDK facade. The
+ * facade has the 53 Studio packages and three acceptance-only capabilities;
+ * only support owns code. No real SDK or Studio source is copied or built. */
+TEST_CASE(studio_sdk_identity_invalidates_older_installed_inputs)
+{
+    const char *studio = getenv("CHIBI_STUDIO_SOURCE");
+    REQUIRE(studio && studio[0] == '/' && strlen(studio) < 900);
+    char original[1024], filename[1024], source[1024], sdk[1024];
+    path(original, studio, "CMakeLists.txt");
+    struct stat info;
+    REQUIRE(!stat(original, &info) && S_ISREG(info.st_mode));
+    path(source, directory, "source");
+    path(sdk, directory, "sdk");
+    path(build, directory, "build");
+    static const char *const folders[] = { "source",
+                                           "source/cmake",
+                                           "source/src",
+                                           "source/src/host",
+                                           "source/src/editor",
+                                           "source/src/editor/rmlui",
+                                           "source/src/editor/rmlui/resources",
+                                           "source/tests",
+                                           "source/tests/acceptance",
+                                           "source/projects",
+                                           "source/projects/studio",
+                                           "sdk",
+                                           "sdk/bin",
+                                           "sdk/include",
+                                           "sdk/lib",
+                                           "sdk/lib/cmake",
+                                           "sdk/lib/cmake/Chibi",
+                                           "sdk/share",
+                                           "sdk/share/chibi" };
+    for (int i = 0; i < (int)(sizeof folders / sizeof *folders); i++) {
+        path(filename, directory, folders[i]);
+        REQUIRE(!mkdir(filename, 0700));
+    }
+    path(filename, source, "CMakeLists.txt");
+    REQUIRE(!symlink(original, filename));
+    path(filename, source, "cmake/apply_patch.cmake");
+    tool_write(filename, "# No dependency patches in this fixture.\n");
+    path(filename, source, "cmake/zep_dependencies.cmake");
+    tool_write(filename, "add_library(zep INTERFACE)\n");
+    path(filename, source, "cmake/studio_sources.cmake");
+    tool_write(filename, "set(STUDIO_SOURCES src/probe.c)\n");
+    path(filename, sdk, "lib/cmake/Chibi/ChibiConfig.cmake");
+    tool_write(
+        filename,
+        "get_filename_component(prefix \"${CMAKE_CURRENT_LIST_DIR}/../../..\" "
+        "ABSOLUTE)\n"
+        "set(Chibi_VERSION 0.0.0)\n"
+        "set(Chibi_RESOURCE_DIR \"${prefix}/share/chibi\")\n"
+        "foreach(name asset_authoring asset_json asset_text asset_values "
+        "authoring\n"
+        " behavior_runtime capabilities component_presentation "
+        "declared_components ecs\n"
+        " engine entity_runtime execution execution_contract field_catalog "
+        "graph_authoring\n"
+        " graph_compilation graph_model graph_catalog image_preparation "
+        "input_map json\n"
+        " material_runtime model_authoring model_runtime native_types "
+        "physics_runtime\n"
+        " platform project_compilation project_document project_preparation "
+        "prototype_document\n"
+        " reference_index render save_runtime scenario_document "
+        "scene_authoring scene_document\n"
+        " scene_runtime shader_preparation source_catalog source_presentation "
+        "spatial_runtime\n"
+        " studio_capabilities studio_graph text_source tilemap_runtime types "
+        "ui ui_authoring\n"
+        " ui_document value_document array_capabilities text_capabilities "
+        "host_native_catalog)\n"
+        " add_library(Chibi::${name} INTERFACE IMPORTED)\n"
+        "endforeach()\n"
+        "add_library(Chibi::support STATIC IMPORTED)\n"
+        "set_target_properties(Chibi::support PROPERTIES\n"
+        " IMPORTED_LOCATION \"${prefix}/lib/libprobe.a\"\n"
+        " INTERFACE_INCLUDE_DIRECTORIES \"${prefix}/include\")\n"
+    );
+    static const char *const placeholders[] = {
+        "source/src/host/state_file.c",
+        "source/src/host/stacktrace.c",
+        "source/src/studio_registry.c",
+        "source/tests/acceptance/host.c",
+        "source/tests/acceptance/application.c",
+        "source/tests/acceptance/debugger.c",
+        "source/projects/studio/fixture.txt",
+        "source/src/editor/rmlui/resources/fixture.txt",
+        "sdk/bin/chibi",
+        "sdk/bin/chibi-compile",
+        "sdk/bin/chibi-player"
+    };
+    for (int i = 0; i < (int)(sizeof placeholders / sizeof *placeholders); i++) {
+        path(filename, directory, placeholders[i]);
+        tool_write(filename, "/* Fixed fixture placeholder; never executed. */\n");
+    }
+    /* Untagged consumers can pass generation A. Their stale header values then
+     * fail generation B, so this case detects invalidation rather than merely
+     * requiring the new definition to exist. */
+    path(filename, source, "src/probe.c");
+    tool_write(
+        filename,
+        "#include <probe.h>\n#include <string.h>\n"
+        "#ifndef CHIBI_STUDIO_SDK_BUILD_ID\n"
+        "#define CHIBI_STUDIO_SDK_BUILD_ID SDK_BUILD_ID\n#endif\n"
+        "int studio_generation(const char *id, int value) {\n"
+        " return !strcmp(CHIBI_STUDIO_SDK_BUILD_ID, id) && SDK_GENERATION == "
+        "value;\n}\n"
+    );
+    const char *main_source =
+        "#include <probe.h>\n#include <stdio.h>\n#include <string.h>\n"
+        "#ifndef CHIBI_STUDIO_SDK_BUILD_ID\n"
+        "#define CHIBI_STUDIO_SDK_BUILD_ID SDK_BUILD_ID\n#endif\n"
+        "int studio_generation(const char *, int);\nint sdk_generation(void);\n"
+        "int main(int argc, char **argv) {\n"
+        " if (argc != 2 || (strcmp(argv[1], \"1\") && strcmp(argv[1], \"2\"))) "
+        "return 2;\n"
+        " int value = argv[1][0] - '0';\n"
+        " const char *id = value == 1\n"
+        "  ? "
+        "\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n"
+        "  : "
+        "\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\";"
+        "\n"
+        " int valid = !strcmp(CHIBI_STUDIO_SDK_BUILD_ID, id) && SDK_GENERATION "
+        "== value\n"
+        "  && studio_generation(id, value) && sdk_generation() == value;\n"
+        " if (!valid) fprintf(stderr, \"stale consumer: own=%s header=%d "
+        "library=%d archive=%d expected=%d\\n\",\n"
+        "  CHIBI_STUDIO_SDK_BUILD_ID, SDK_GENERATION, studio_generation(id, "
+        "value), sdk_generation(), value);\n"
+        " return !valid;\n}\n";
+    path(filename, source, "src/host/main.c");
+    tool_write(filename, main_source);
+    path(filename, source, "tests/acceptance/main.c");
+    tool_write(filename, main_source);
+    path(filename, directory, "sdk-probe.c");
+    tool_write(filename, "#include <probe.h>\nint sdk_generation(void) { return SDK_GENERATION; }\n");
+
+    char header[1024], archive[1024], manifest[1024], host[1024], acceptance[1024];
+    path(header, sdk, "include/probe.h");
+    path(archive, sdk, "lib/libprobe.a");
+    path(manifest, sdk, "share/chibi/package.json");
+    path(host, build, "bin/chibi-dev");
+    path(acceptance, build, "bin/studio-acceptance");
+    char prefix[1200];
+    snprintf(prefix, sizeof prefix, "-DChibi_DIR=%s/lib/cmake/Chibi", sdk);
+#ifdef __APPLE__
+    const char *link_flags = "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip";
+#else
+    const char *link_flags = "-DCMAKE_EXE_LINKER_FLAGS=-Wl,--gc-sections";
+#endif
+    const char *configure[] = {
+        "cmake",
+        "-S",
+        source,
+        "-B",
+        build,
+        "-G",
+        "Ninja",
+        prefix,
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=cc",
+        "-DCMAKE_CXX_COMPILER=c++",
+        "-DCMAKE_TOOLCHAIN_FILE=",
+        "-DCMAKE_C_FLAGS=-ffunction-sections -fdata-sections",
+        "-DCMAKE_C_FLAGS_RELEASE=-O0",
+        "-DCMAKE_CXX_FLAGS=",
+        "-DCMAKE_CXX_FLAGS_RELEASE=-O0",
+        link_flags,
+        "-DCHIBI_STUDIO_BUILD_ACCEPTANCE=ON",
+        "-DFETCHCONTENT_FULLY_DISCONNECTED=ON",
+        "-DFETCHCONTENT_UPDATES_DISCONNECTED=ON",
+        NULL
+    };
+    const char *compile[] = { "cc",
+                              "-ffunction-sections",
+                              "-fdata-sections",
+                              "-Isdk/include",
+                              "-c",
+                              "sdk-probe.c",
+                              "-o",
+                              "sdk-probe.o",
+                              NULL };
+    const char *pack[] = { "ar", "rcs", archive, "sdk-probe.o", NULL };
+    const char *rebuild[] = {
+        "cmake", "--build",  build,          "--parallel",
+        "1",     "--target", "chibi-studio", "studio-acceptance",
+        NULL
+    };
+    const char *identities[] = {
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    };
+    const struct timespec older[] = { { .tv_sec = 946684800 }, { .tv_sec = 946684800 } };
+    for (int generation = 0; generation < 2; generation++) {
+        char text[256];
+        snprintf(
+            text,
+            sizeof text,
+            "#define SDK_GENERATION %d\n#define SDK_BUILD_ID \"%s\"\n",
+            generation + 1,
+            identities[generation]
+        );
+        tool_write(header, text);
+        snprintf(text, sizeof text, "{\"build_id\":\"%s\"}\n", identities[generation]);
+        tool_write(manifest, text);
+        REQUIRE(tool_run(compile, directory, log_path) == 0);
+        REQUIRE(tool_run(pack, directory, log_path) == 0);
+        const char *installed[] = { header, archive, manifest };
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(!utimensat(AT_FDCWD, installed[i], older, 0));
+            REQUIRE(!stat(installed[i], &info) && info.st_mtime == older[1].tv_sec);
+        }
+        if (generation) {
+            REQUIRE(!stat(host, &info) && info.st_mtime > older[1].tv_sec);
+            REQUIRE(!stat(acceptance, &info) && info.st_mtime > older[1].tv_sec);
+        }
+        REQUIRE(tool_run(configure, directory, log_path) == 0);
+        REQUIRE(tool_run(rebuild, directory, log_path) == 0);
+        const char *number = generation ? "2" : "1";
+        const char *run_host[] = { host, number, NULL };
+        const char *run_acceptance[] = { acceptance, number, NULL };
+        REQUIRE(tool_run(run_host, directory, log_path) == 0);
+        REQUIRE(tool_run(run_acceptance, directory, log_path) == 0);
+    }
+    return true;
+}
+
+void test_tool_studio_sdk_identity()
+{
+    strcpy(directory, "/tmp/chibi-studio-sdk-XXXXXX");
+    assert(mkdtemp(directory));
+    path(log_path, directory, "command.log");
+    RUN_TEST_CASE(studio_sdk_identity_invalidates_older_installed_inputs);
+    tool_remove_tree(directory);
+}
+
 void test_tool_package()
 {
     strcpy(directory, "/tmp/chibi-package-XXXXXX");
@@ -557,7 +798,7 @@ void test_tool_package()
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
-    RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
+    RUN_TEST_CASE(web_sdk_recipe_selects_ninja_and_configuration_definitions);
     RUN_TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints);
     tool_remove_tree(directory);
 }

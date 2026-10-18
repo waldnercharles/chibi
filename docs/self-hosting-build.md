@@ -1,9 +1,8 @@
 # Chibi build tooling and self-hosting
 
-Status: the first recording-host proof builds and passes on native bytecode and
-SLJIT. It uses existing Chibi syntax and adds no compiler grammar, process
-permission, game host capability or replacement build system. The long-term goal
-is a Chibi-authored compiler and tooling, reached through bounded, tested steps.
+The recording proof and private real-process host use existing Chibi syntax on
+bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
+`PLAN.md` owns milestone status and current validation evidence.
 
 ## First increment
 
@@ -33,15 +32,114 @@ The exact standalone language target was built separately. Broader native,
 materials, projects, language and tooling groups were not run for this proof;
 unmeasured and quarantined checks are not passed.
 
-## Next build-host increment
+## Private process host
 
-A separately reviewed, explicit build-only host may execute direct argv without
-a shell. It must define cwd/environment, own retained arguments, bound time and
-output, propagate spawn/exit errors, and cancel and reap its process group. Normal
-game hosts must not acquire process execution. The existing C process helper is
-an implementation starting point, not proof of these Chibi-facing contracts.
-Initially Chibi would orchestrate existing CMake/C compiler steps. This is useful
-language-native build logic, but it is not a compiler written in Chibi.
+Stage zero builds `chibi-build-host` on Linux and macOS. The SDK installs the
+private executable in `libexec/chibi`; its capabilities stay out of ordinary
+game catalogs and public SDK library exports. Windows retains the
+existing stage-zero path; its equivalent process-tree implementation is pending.
+
+```text
+chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]
+```
+
+The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
+named zero-argument function returning `int`. Relative source paths resolve from
+the explicit root. The CLI uses bytecode; the private C invocation API also
+supports SLJIT. Tests verify backend entry counters. Source preparation and
+execution share the invocation budget. A supervised invocation may omit
+`--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
+
+The private catalog includes `RunBuildStep(arguments: string[]) -> int` and
+`BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
+directory. PATH lookup selects the executable separately from the authored
+`argv[0]`, preserving every argument, including empty strings and shell syntax.
+No shell interprets the arguments. The host copies the root, arguments and
+allowlisted environment for the child lifetime and never changes parent cwd or
+environment.
+
+The environment snapshot includes compiler, flags, CMake, SDK, dependency-cache,
+ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths
+and the inherited test deadline. `environment_names` in `build_host.c` owns the
+explicit allowlist. Missing allowed names read as empty strings; other names
+are capability errors. The snapshot is limited to 1 MiB. Each invocation permits
+64 steps and each step permits
+256 arguments totaling 64 KiB. Captured stdout and stderr each retain at most
+4,095 bytes across all steps; truncation remains visible in the result and CLI.
+
+Child exits return `0..255`; signal termination returns the negative signal
+number. Invalid input, spawn failure, timeout, cancellation and host failure
+are capability errors with stable diagnostics. The CLI maps a returned negative
+signal number to the conventional `128 + signal` exit status.
+
+Entry selection rejects generic declarations even if another function has
+materialized a zero-runtime-argument specialization. The integration fixture
+adds two fixed preparations (bytecode and SLJIT), with no authored execution or
+child processes.
+
+One absolute deadline bounds every child, including the inherited production
+test deadline. The native clock matches Python's supervisor on each platform:
+macOS uptime excludes sleep, while Linux uses `CLOCK_MONOTONIC`. The host kills
+the complete child process group and reaps its direct child on termination,
+including when a leader exits before its descendants. This is process-group
+cleanup, not containment of children that deliberately create detached sessions.
+
+`BuildProcessFixture.chibi` runs only the controlled C worker supplied through
+its private environment. The original `BuildWorkflow.chibi` also runs unchanged
+against a disposable worker named `cmake`, testing sequence and failure behavior
+without configuring or building the engine. Compiler self-hosting belongs to
+later milestones.
+
+## Installed stage-zero build program
+
+`tools/toolchain/Build.chibi` owns native profile selection, compiler and SDK
+precedence, CMake arguments, configuration-cache decisions, process sequencing
+and failure reporting. The SDK installs it in `share/chibi/tools/toolchain`.
+Run it through the private host with an explicit engine source checkout as root:
+
+```sh
+SDK/libexec/chibi/chibi-build-host --root SOURCE \
+  --source SDK/share/chibi/tools/toolchain/Build.chibi \
+  --entry Build --timeout-ms 1800000 -- \
+  tool-host BUILD --target chibi-build-host --jobs 8 -- \
+  -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF
+```
+
+Use absolute SDK paths when source and installation are in different directories.
+`native` configures the root CMake project. `tool-host` configures `sdk/` with
+the compiler enabled and native/desktop packages disabled; explicit CMake
+definitions come last. Repeated `--target` selects build targets, `--jobs` selects
+parallelism, and `--configure-only` stops before compilation. Arguments after
+`--` pass directly to CMake. The public `chibi build` still builds authored games.
+
+`make build` uses this program when its private host reports protocol version 2
+through `--protocol-version`. A cold build or an older host
+uses `make stage-zero-build`, which retains the existing shell/CMake recovery
+path and builds the host for subsequent invocations. `BUILD_HOST` and
+`BUILD_PROGRAM` can select a relocated installation. The explicit recovery
+target remains available if the authored driver cannot run.
+
+The program gives explicit compiler/toolchain/preload options precedence over
+fresh-build defaults, retains cached selections, and discovers the matching
+macOS SDK. The configuration stamp tracks caller arguments, environment,
+loaded CMake files, new configuration files, dependency inputs and compiler/tool
+identities. It is written atomically only after successful configuration. Build
+targets and parallelism do not invalidate configuration.
+
+Three installed Python helpers remain transitional dependencies:
+`configure_inputs.py` retains the existing read-only signature, compiler SDK and
+dependency-override probes; `dependency_package.py` and `fetchcontent_cache.py`
+retain dependency acquisition and cache ownership. Their replacement and removal
+gates remain in the toolchain inventory. CMake still owns the stage-zero graph.
+
+The private primitives expose exact arguments, platform and root paths,
+executable lookup, bounded regular-text reads, atomic writes, directory creation,
+last-process output and string/array operations. File and text values are limited
+to 1 MiB, arrays to 8,192 entries and 1 MiB of text, and retained helper storage
+to 32 MiB per invocation. Last-output accessors reject truncation and embedded
+NUL bytes, so authored protocol parsing cannot accept a partial result. Returned
+values remain owned by the invocation until it finishes; parent cwd and
+environment are never mutated.
 
 ## Bootstrap and backend milestones
 

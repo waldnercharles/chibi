@@ -2,12 +2,48 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <yyjson.h>
+
+const script_syntax *script_analyzer_document_syntax(const analyzer *a, int document)
+{
+    if (!a->document_count) {
+        return a->syntax;
+    }
+    assert(document >= 0 && document < a->document_count);
+    return a->documents[document].syntax;
+}
+static int node_document(const analyzer *a, TSNode node)
+{
+    if (!a->document_count || ts_node_is_null(node)) {
+        return 0;
+    }
+    for (int i = 0; i < a->document_count; i++) {
+        if (a->documents[i].syntax->tree == node.tree) {
+            return i;
+        }
+    }
+    assert(!"semantic node belongs to an unknown document");
+    return 0;
+}
+const script_syntax *script_analyzer_syntax(const analyzer *a, TSNode node)
+{
+    return script_analyzer_document_syntax(a, node_document(a, node));
+}
+script_range script_analyzer_range(const analyzer *a, TSNode node)
+{
+    script_range range = ts_node_is_null(node)
+                           ? (script_range){ .line = 1, .column = 1 }
+                           : script_node_range(node);
+    range.document = node_document(a, node);
+    return range;
+}
 
 TSNode script_analyzer_field(TSNode node, const char *name)
 {
@@ -24,25 +60,25 @@ bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text)
     if (ts_node_is_null(node)) {
         return false;
     }
-    script_range range = script_analyzer_range(node);
+    script_range range = script_analyzer_range(a, node);
     return (size_t)(range.end - range.start) == strlen(text) &&
-           !memcmp(a->syntax->text + range.start, text, strlen(text));
+           !memcmp(script_analyzer_syntax(a, node)->text + range.start, text, strlen(text));
 }
 char *script_analyzer_text_copy(const analyzer *a, TSNode node)
 {
     if (ts_node_is_null(node)) {
         return xstrdup("");
     }
-    script_range range = script_analyzer_range(node);
+    script_range range = script_analyzer_range(a, node);
     size_t size = (size_t)(range.end - range.start);
     char *text = xmalloc(size + 1);
-    memcpy(text, a->syntax->text + range.start, size);
+    memcpy(text, script_analyzer_syntax(a, node)->text + range.start, size);
     text[size] = 0;
     return text;
 }
 void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...)
 {
-    script_diagnostic d = { .range = script_analyzer_range(node) };
+    script_diagnostic d = { .range = script_analyzer_range(a, node) };
     va_list args;
     va_start(args, format);
     vsnprintf(d.message, sizeof d.message, format, args);
@@ -71,7 +107,7 @@ char *script_analyzer_name_copy(analyzer *a, TSNode node)
 }
 int script_analyzer_scope_new(analyzer *a, TSNode node)
 {
-    apush(a->out->scopes, ((script_scope){ a->scope, a->function, script_analyzer_range(node) }));
+    apush(a->out->scopes, ((script_scope){ a->scope, a->function, script_analyzer_range(a, node) }));
     return acount(a->out->scopes) - 1;
 }
 int script_analyzer_lookup_name(const analyzer *a, const char *name)
@@ -119,7 +155,17 @@ static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind
         script_analyzer_diagnostic(a, node, "'Cancelled' is reserved for the cancellation singleton");
     }
     int existing = script_analyzer_lookup_name(a, name);
-    if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
+    bool package_declaration = a->document_count && a->scope == a->package_scope;
+    if (package_declaration) {
+        existing = -1;
+        for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
+            const script_symbol *candidate = &a->out->symbols[i];
+            if (candidate->scope == a->scope && !strcmp(candidate->name, name)) {
+                existing = i;
+                break;
+            }
+        }
+    } else if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
         existing = -1;
         for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
             const script_symbol *candidate = &a->out->symbols[i];
@@ -137,13 +183,18 @@ static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind
     if (existing >= 0 && a->out->symbols[existing].scope == a->scope &&
         !result_parameter) {
         script_analyzer_diagnostic(a, node, "Duplicate declaration '%s'", name);
+        if (package_declaration) {
+            script_diagnostic previous = { .range = a->out->symbols[existing].declaration };
+            snprintf(previous.message, sizeof previous.message, "Previous declaration '%s' is here", name);
+            apush(a->out->diagnostics, previous);
+        }
         free(name);
         return existing;
     }
     script_symbol symbol = { .name = name,
                              .kind = kind,
                              .type = type,
-                             .declaration = script_analyzer_range(node),
+                             .declaration = script_analyzer_range(a, node),
                              .scope = a->scope,
                              .initializer = -1,
                              .function = -1,
@@ -163,14 +214,39 @@ static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind
             needed,
             "%llu:%d:%s%s",
             (unsigned long long)a->specialization,
-            script_analyzer_range(node).start,
+            script_analyzer_range(a, node).start,
             name,
             domain
         );
+        symbol.id = script_catalog_id("symbol", identity);
+    } else if (package_declaration) {
+        snprintf(identity, size, "%s:%d:%s%s", program, kind, name, domain);
+        symbol.id = script_catalog_id("package-symbol", identity);
+    } else if (
+        a->document_count && a->function >= 0 && a->out->functions[a->function].symbol >= 0
+    ) {
+        uint64_t owner = a->out->symbols[a->out->functions[a->function].symbol].id;
+        script_range scope = a->out->scopes[a->scope].range;
+        const char *key = a->out->documents[scope.document].key;
+        bool direct = a->scope == a->out->functions[a->function].scope;
+        size = strlen(key) + strlen(name) + 96;
+        identity = xrealloc(identity, size);
+        snprintf(
+            identity,
+            size,
+            "%" PRIu64 ":%s:%d:%d:%s%s",
+            owner,
+            key,
+            direct ? -1 : scope.start,
+            kind,
+            name,
+            domain
+        );
+        symbol.id = script_catalog_id("package-local", identity);
     } else {
         snprintf(identity, size, "%s:%d:%s%s", program, a->scope, name, domain);
+        symbol.id = script_catalog_id("symbol", identity);
     }
-    symbol.id = script_catalog_id("symbol", identity);
     free(identity);
     apush(a->out->symbols, symbol);
     return acount(a->out->symbols) - 1;
@@ -188,7 +264,7 @@ int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, scrip
 }
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member)
 {
-    apush(a->out->uses, ((script_use){ script_analyzer_range(node), symbol, kind, member }));
+    apush(a->out->uses, ((script_use){ script_analyzer_range(a, node), symbol, kind, member }));
 }
 bool script_analyzer_present(const analyzer *a, int symbol)
 {
@@ -264,12 +340,12 @@ static void type_use(analyzer *a, TSNode node, int symbol, uint64_t nominal)
     if (symbol < 0 && !nominal) {
         return;
     }
-    script_range range = script_analyzer_range(node);
+    script_range range = script_analyzer_range(a, node);
     for (int i = 0; i < acount(a->out->uses); i++) {
         const script_use *use = &a->out->uses[i];
         if (use->kind == SCRIPT_TYPE_USE && use->symbol == symbol &&
-            use->member == nominal && use->range.start == range.start &&
-            use->range.end == range.end) {
+            use->member == nominal && use->range.document == range.document &&
+            use->range.start == range.start && use->range.end == range.end) {
             return;
         }
     }
@@ -351,7 +427,7 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
                             a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
             type = a->out->symbols[symbol].type;
         } else {
-            int index = script_catalog_find_type(a->catalog, name);
+            int index = script_analyzer_find_type(a, node, name);
             if (index < 0) {
                 script_analyzer_diagnostic(a, node, "%s type '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
             } else {
@@ -538,7 +614,7 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                                 a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
                 type = a->out->symbols[symbol].type;
             } else if (type.flags & SCRIPT_TYPE_ERROR) {
-                int index = script_catalog_find_type(a->catalog, name);
+                int index = script_analyzer_find_type(a, node, name);
                 if (index >= 0) {
                     type = a->catalog->types[index].type;
                     type.nominal = a->catalog->types[index].id;
@@ -692,6 +768,19 @@ bool script_analyzer_compile_time_value(analyzer *a, int index, int *steps, bool
         a->constant_generation = 1;
     }
     return compile_time_value(a, index, 0, steps, scalar);
+}
+bool script_analysis_constant(const script_analysis *analysis, int expression)
+{
+    if (!analysis || expression < 0 || expression >= analysis->expression_count) {
+        return false;
+    }
+    /* The shared proof reads the analysis; only this temporary analyzer owns
+     * and changes its proof cache. */
+    analyzer a = { .out = (script_analysis *)analysis };
+    int steps = 65536;
+    bool constant = script_analyzer_compile_time_value(&a, expression, &steps, false);
+    afree(a.constant_proofs);
+    return constant;
 }
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {

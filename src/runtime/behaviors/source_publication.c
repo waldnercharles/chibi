@@ -14,6 +14,72 @@ static int publication_error(char *error, size_t size, const char *message)
     }
     return -1;
 }
+
+static source_module_view *module_views(const source_record *records, bool applied)
+{
+    source_module_view *views = NULL;
+    for (int i = 0; i < acount(records); i++) {
+        apush(
+            views,
+            ((source_module_view){
+                .name = records[i].name,
+                .module = applied ? execution_program_module(records[i].program)
+                                  : records[i].module })
+        );
+    }
+    return views;
+}
+
+bool source_set_publication_guard(source_registry *r, source_publication_guard guard, char *error, size_t size)
+{
+    assert(r && !r->executing && !r->staging && (!size || error));
+    if (!guard.validate) {
+        publication_error(error, size, "Source publication guard requires validation");
+        return false;
+    }
+    if (r->guard.validate) {
+        bool same = r->guard.user == guard.user &&
+                    r->guard.validate == guard.validate &&
+                    r->guard.published == guard.published;
+        if (!same) {
+            publication_error(error, size, "Source publication guard is already installed");
+        }
+        return same;
+    }
+    source_module_view *current = module_views(r->records, true);
+    r->executing++;
+    bool valid = guard.validate(guard.user, current, acount(current), current, acount(current), error, size);
+    if (valid) {
+        r->guard = guard;
+        if (guard.published) {
+            guard.published(guard.user, current, acount(current));
+        }
+    }
+    r->executing--;
+    afree(current);
+    return valid;
+}
+
+static bool guard_candidate(source_registry *r, const source_record *final, char *error, size_t size)
+{
+    if (!r->guard.validate) {
+        return true;
+    }
+    source_module_view *current = module_views(r->records, true);
+    source_module_view *candidate = module_views(final, false);
+    bool valid = r->guard.validate(
+        r->guard.user,
+        current,
+        acount(current),
+        candidate,
+        acount(candidate),
+        error,
+        size
+    );
+    afree(current);
+    afree(candidate);
+    return valid;
+}
 static void program_rejection(
     const source_registry *r,
     const source_publication *entry,
@@ -189,6 +255,9 @@ source_staging *source_stage(
     if (!valid_events) {
         goto done;
     }
+    if (!guard_candidate(r, final, error, size)) {
+        goto done;
+    }
     for (int i = 0; i < acount(r->services); i++) {
         apush(bindings, r->services[i]);
     }
@@ -309,6 +378,12 @@ void source_commit(source_staging *stage)
     afree(r->records);
     r->records = final;
     final = NULL;
+
+    if (r->guard.published) {
+        source_module_view *current = module_views(r->records, true);
+        r->guard.published(r->guard.user, current, acount(current));
+        afree(current);
+    }
 
     stage->final = NULL;
     r->staging = NULL;

@@ -1,9 +1,9 @@
 #ifndef CHIBI_AUTHORING_SOURCE_PACKAGES_H
 #define CHIBI_AUTHORING_SOURCE_PACKAGES_H
 
-/* Private package-discovery seam, not an active source-language entrypoint.
- * The catalog supplies the complete parsed membership of one snapshot and
- * canonical resolved directories after collection/root validation. This module
+/* Resolved package graph, constructed by the owning source_package_snapshot.
+ * Direct callers supply complete parsed membership and canonical resolved
+ * directories after collection/root validation. This module
  * never reads disk, parses text, resolves paths, or starts authored code.
  * All input arrays and strings remain immutable and alive until free. Returned
  * package indices are snapshot-local; the canonical directory is the identity. */

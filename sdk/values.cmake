@@ -11,11 +11,47 @@ if(NOT CHIBI_CUTE_MATH_INCLUDE_DIR)
     FetchContent_MakeAvailable(chibi_math_source)
     set(CHIBI_CUTE_MATH_INCLUDE_DIR "${chibi_math_source_SOURCE_DIR}/include")
 endif()
+# The math and desktop providers export the same offset contract. Patch an owned
+# copy so explicit header providers and shared dependency caches stay untouched.
+set(cute_offset_patch "${CHIBI_SDK_ROOT}/cmake/patches/cute-offset-of.patch")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${cute_offset_patch}")
+set(cute_math_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/cute-math")
+configure_file("${CHIBI_CUTE_MATH_INCLUDE_DIR}/cute_defines.h"
+    "${cute_math_patched_root}/include/cute_defines.h" COPYONLY)
+find_package(Git REQUIRED)
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${cute_math_patched_root}"
+        "${GIT_EXECUTABLE}" apply --reverse --check --unsafe-paths
+        "--directory=${cute_math_patched_root}" "${cute_offset_patch}"
+    WORKING_DIRECTORY "${cute_math_patched_root}"
+    RESULT_VARIABLE cute_offset_applied OUTPUT_QUIET ERROR_QUIET)
+if(NOT cute_offset_applied EQUAL 0)
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E env "GIT_CEILING_DIRECTORIES=${cute_math_patched_root}"
+            "${GIT_EXECUTABLE}" apply --unsafe-paths
+            "--directory=${cute_math_patched_root}" "${cute_offset_patch}"
+        WORKING_DIRECTORY "${cute_math_patched_root}"
+        RESULT_VARIABLE cute_offset_result ERROR_VARIABLE cute_offset_error)
+    if(NOT cute_offset_result EQUAL 0)
+        message(FATAL_ERROR "Could not patch Cute math offsets: ${cute_offset_error}")
+    endif()
+endif()
+file(READ "${cute_math_patched_root}/include/cute_defines.h" cute_math_defines)
+string(FIND "${cute_math_defines}" "#define CF_OFFSET_OF(T, member) ((int)offsetof(T, member))"
+    cute_offset_macro)
+string(FIND "${cute_math_defines}" "#include <stddef.h>" cute_offset_include)
+if(cute_offset_macro EQUAL -1 OR cute_offset_include EQUAL -1)
+    message(FATAL_ERROR "Cute math header does not contain the required standard offset definition")
+endif()
 add_library(chibi_math INTERFACE)
 add_library(Chibi::math ALIAS chibi_math)
 set_target_properties(chibi_math PROPERTIES EXPORT_NAME math)
 foreach(header cute_defines.h cute_user_config.h cute_math.h cute_math3d.h)
-    configure_file("${CHIBI_CUTE_MATH_INCLUDE_DIR}/${header}"
+    set(cute_math_header "${CHIBI_CUTE_MATH_INCLUDE_DIR}/${header}")
+    if(header STREQUAL "cute_defines.h")
+        set(cute_math_header "${cute_math_patched_root}/include/${header}")
+    endif()
+    configure_file("${cute_math_header}"
         "${CHIBI_SDK_HEADER_ROOT}/math/${header}" COPYONLY)
     install(FILES "${CHIBI_SDK_HEADER_ROOT}/math/${header}" DESTINATION include/chibi/math)
 endforeach()

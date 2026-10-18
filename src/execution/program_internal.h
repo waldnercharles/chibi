@@ -1,6 +1,7 @@
 #ifndef CHIBI_EXECUTION_PROGRAM_INTERNAL_H
 #define CHIBI_EXECUTION_PROGRAM_INTERNAL_H
 #include "ecs/ecs.h"
+#include "execution/authority_internal.h"
 #include "execution/component.h"
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
@@ -37,6 +38,10 @@ typedef struct
 struct execution_activation
 {
     execution_instance *instance;
+    execution_dispatch *dispatch;
+    uint64_t dispatch_event, authority_activation, authority_slice;
+    execution_activation *authority_previous;
+    bool active, authority_handler, authority_valid;
     const behavior_function *function;
     behavior_function_context context;
     behavior_function_activation activation;
@@ -120,6 +125,7 @@ struct execution_instance
 typedef struct
 {
     uint64_t event, owner;
+    execution_dispatch *dispatch;
     pin_value *arguments;
     int count;
     arena storage;
@@ -205,6 +211,11 @@ struct execution_program
     const execution_module *replacement_module;
 };
 
+void program_authority_enter(execution_activation *);
+void program_authority_begin(execution_activation *);
+void program_authority_end(execution_activation *);
+void program_authority_leave(execution_activation *);
+void program_authority_inherit(execution_activation *, const execution_activation *);
 bool program_same_type(pin_value a, pin_value b);
 bool program_world_views_allowed(const behavior_function_context *);
 bool program_view_disjoint(

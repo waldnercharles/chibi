@@ -16,6 +16,7 @@ enum
     ROW_PROOF_LIMIT = 8192,
     ROW_BUFFER_LIMIT = 65536
 };
+static bool scalar_allowed(const behavior_function *, const behavior_function_context *);
 
 typedef enum
 {
@@ -610,7 +611,10 @@ size_t behavior_function_row_preparation_bytes(const behavior_function *f)
     return sizeof(behavior_row_plan) +
            (slots + 1) * (sizeof(int) + sizeof(row_value)) +
            (data + 1) * (sizeof(int) + sizeof(row_value) + 2 * sizeof(bool)) +
-           (locals + 1) * (sizeof(row_value) + 2 * sizeof(bool));
+           (locals + 1) * (sizeof(row_value) + 2 * sizeof(bool)) +
+           ((size_t)acount(f->host_calls) + 1) * sizeof(int) +
+           (2 * (size_t)acount(f->host_calls) + 16) * sizeof(behavior_append_plan) +
+           sizeof(dyna_hdr) + (slots + data + locals + 3) * sizeof(unsigned);
 }
 
 void behavior_function_row_builder(behavior_function *f)
@@ -653,6 +657,9 @@ void behavior_function_row_builder(behavior_function *f)
 
 bool behavior_function_rows_allowed(const behavior_function *f, const behavior_function_context *ctx)
 {
+    if (!scalar_allowed(f, ctx)) {
+        return false;
+    }
     if (!f->rows) {
         return true;
     }
@@ -752,4 +759,560 @@ const char *behavior_function_retain_rows(behavior_function_context *ctx, int ho
     value.type_name = array->type_name;
     ctx->data->values[h->result_first] = value;
     return NULL;
+}
+
+/* Scalar append does not depend on a loop's shape or trip count. The paired
+ * assignment is structural; a separate whole-body proof protects every alias
+ * of its private prefixes, including aliases carried around back edges. */
+enum
+{
+    APPEND_ARRAY = 1,
+    APPEND_ITEMS = 2,
+    APPEND_BANK = 4,
+    APPEND_CONTEXT = 8,
+    APPEND_RESULTS = 16,
+    APPEND_RESULT = 32,
+    APPEND_WORK = ROW_PROOF_LIMIT * 32
+};
+static bool scalar_array(pin_value v)
+{
+    return v.type == PIN_I32 && v.container == PIN_CONTAINER_ARRAY &&
+           !v.type_name && !v.record;
+}
+static bool scalar_add(const behavior_function *f, int host)
+{
+    const behavior_function_host_call *h = &f->host_calls[host];
+    if (!value_call(h->call, pin_array_add_call) || !h->capability_id ||
+        !h->capability_abi || h->result_first != h->first + 2 || h->result_count != 1) {
+        return false;
+    }
+    pin_value item = f->data_values[h->first + 1].initial;
+    return scalar_array(f->data_values[h->first].initial) &&
+           scalar_array(f->data_values[h->result_first].initial) &&
+           item.type == PIN_I32 && item.container == PIN_CONTAINER_SINGLE &&
+           !item.type_name && !item.record;
+}
+static bool scalar_snapshot(const behavior_function *f, int host)
+{
+    const behavior_function_host_call *h = &f->host_calls[host];
+    return intrinsic(h, &EXECUTION_snapshot_call) &&
+           h->result_first == h->first + 1 &&
+           scalar_array(f->data_values[h->first].initial) &&
+           scalar_array(f->data_values[h->result_first].initial);
+}
+static bool scalar_reader(const behavior_function *f, int host)
+{
+    const behavior_function_host_call *h = &f->host_calls[host];
+    bool get = value_call(h->call, pin_array_get_call) ||
+               value_call(h->call, pin_array_get_owned_call);
+    bool length = value_call(h->call, pin_array_length_call) ||
+                  value_call(h->call, pin_array_length_owned_call);
+    if ((!get && !length) || !h->capability_id || !h->capability_abi ||
+        h->result_first != h->first + (get ? 2 : 1) || h->result_count != 1 ||
+        !scalar_array(f->data_values[h->first].initial)) {
+        return false;
+    }
+    for (int j = h->first + 1; j <= h->result_first; j++) {
+        pin_value value = f->data_values[j].initial;
+        /* Native declared defaults retain the builtin index name. Results
+         * and generic array elements are lowered as unnamed scalar pins. */
+        bool index_name = get && j == h->first + 1 && value.type_name &&
+                          !strcmp(value.type_name, "int");
+        if (value.type != PIN_I32 || value.container != PIN_CONTAINER_SINGLE ||
+            (value.type_name && !index_name) || value.record) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool zero_slot(const row_proof *p, int slot)
+{
+    const behavior_function_instruction *i = definition(p, slot);
+    return i && i->op == BF_CONSTANT && !i->value.u64;
+}
+static bool scalar_observer(const behavior_function *f, int pc)
+{
+    behavior_function_op op = f->instructions[pc].op;
+    return !behavior_function_runtime_keeps(f, pc) &&
+           (behavior_function_observer(op) || op == BF_POINT ||
+            op == BF_SOURCE_POINT || op == BF_SOURCE_WATCH);
+}
+static bool scalar_pair(row_proof *p, int pc, behavior_append_plan *out)
+{
+    const behavior_function *f = p->f;
+    int add = f->instructions[pc].target;
+    const behavior_function_host_call *h = &f->host_calls[add];
+    int local = loaded_bank(p, input_slot(p, pc, h->first));
+    if (local < 0 || !scalar_array(f->data_values[local].initial) ||
+        f->data_values[local].kind != BEHAVIOR_VALUE) {
+        return false;
+    }
+    int retain = -1, retain_pc = -1, commit = -1;
+    for (int at = pc + 1; at < acount(f->instructions); at++) {
+        if (++p->work > APPEND_WORK) {
+            return false;
+        }
+        /* Authored assignment points and result watches sit between the add
+         * and its retain. They cannot observe this uninspected runtime body;
+         * scalar_allowed selects canonical copies whenever inspection runs. */
+        if (scalar_observer(f, at)) {
+            continue;
+        }
+        const behavior_function_instruction *i = &f->instructions[at];
+        if (i->op == BF_HOST_CALL) {
+            if (retain >= 0 || !scalar_snapshot(f, i->target)) {
+                return false;
+            }
+            retain = i->target;
+            retain_pc = at;
+            const behavior_function_host_call *r = &f->host_calls[retain];
+            int source = input_slot(p, at, r->first);
+            if (loaded_bank(p, source) != h->result_first ||
+                p->definitions[source] <= pc) {
+                return false;
+            }
+            continue;
+        }
+        if (i->op == BF_WRITE && address_bank(p, i->right) == local) {
+            if (retain < 0 || i->offset != offsetof(pin_value, d) ||
+                loaded_bank(p, i->left) != f->host_calls[retain].result_first ||
+                p->definitions[i->left] <= retain_pc) {
+                return false;
+            }
+            commit = at;
+            break;
+        }
+        if (i->op != BF_CONSTANT && i->op != BF_HOST_SLOT && i->op != BF_LOAD &&
+            i->op != BF_WRITE) {
+            return false;
+        }
+    }
+    if (commit < 0) {
+        return false;
+    }
+    const behavior_function_host_call *r = &f->host_calls[retain];
+    for (int at = 0; at < acount(f->instructions); at++) {
+        const behavior_function_instruction *i = &f->instructions[at];
+        if ((i->op == BF_JUMP || i->op == BF_BRANCH) && i->target > pc &&
+            i->target <= commit) {
+            return false;
+        }
+        if (at <= pc || at > commit || i->op == BF_HOST_CALL ||
+            scalar_observer(f, at)) {
+            continue;
+        }
+        if (i->op == BF_CONSTANT && !i->value.u64) {
+            continue;
+        }
+        if (i->op == BF_HOST_SLOT && !i->target &&
+            (i->left == h->first || i->left == h->result_first || i->left == r->first ||
+             i->left == r->result_first || i->left == local)) {
+            continue;
+        }
+        if (i->op == BF_LOAD && i->offset == offsetof(pin_value, d) &&
+            (address_bank(p, i->left) == h->result_first ||
+             address_bank(p, i->left) == r->result_first)) {
+            continue;
+        }
+        if (i->op == BF_WRITE && i->offset == offsetof(pin_value, d)) {
+            int bank = address_bank(p, i->right);
+            if (at == commit ||
+                (bank == r->first && loaded_bank(p, i->left) == h->result_first) ||
+                (zero_slot(p, i->left) &&
+                 (bank == h->first || bank == h->result_first ||
+                  bank == r->first || bank == r->result_first))) {
+                continue;
+            }
+        }
+        return false;
+    }
+    if (!behavior_function_runtime_keeps(f, pc) ||
+        !behavior_function_runtime_keeps(f, retain_pc) ||
+        f->runtime_body[pc].op != BF_HOST_CALL || f->runtime_body[pc].target != add ||
+        f->runtime_body[pc].right || f->runtime_body[retain_pc].op != BF_HOST_CALL ||
+        f->runtime_body[retain_pc].target != retain ||
+        f->runtime_body[retain_pc].right) {
+        return false;
+    }
+    *out = (behavior_append_plan){ .add = add,
+                                   .retain = retain,
+                                   .local = local,
+                                   .add_pc = pc,
+                                   .retain_pc = retain_pc };
+    return true;
+}
+static bool append_header_field(const behavior_function_instruction *i)
+{
+    return (i->type == PIN_I32 && (i->offset == offsetof(pin_value, type) ||
+                                   i->offset == offsetof(pin_value, container))) ||
+           (i->type == BF_POINTER_TYPE &&
+            (i->offset == offsetof(pin_value, ptr) ||
+             i->offset == offsetof(pin_value, type_name) ||
+             i->offset == offsetof(pin_value, record)));
+}
+static bool append_merge(unsigned *value, unsigned added, bool *changed)
+{
+    if ((*value | added) != *value) {
+        *value |= added;
+        *changed = true;
+    }
+    return true;
+}
+static bool append_instruction(
+    row_proof *p,
+    const behavior_function_instruction *i,
+    unsigned *slots,
+    unsigned *banks,
+    unsigned *locals,
+    bool *changed
+)
+{
+    const behavior_function *f = p->f;
+    if (i->indirect || ++p->work > APPEND_WORK) {
+        return false;
+    }
+    unsigned a = i->left_slot ? slots[i->left] : 0,
+             b = i->right_slot ? slots[i->right] : 0,
+             c = behavior_function_third_slot(i->op) ? slots[i->target] : 0,
+             out = 0;
+    switch (i->op) {
+        case BF_HOST_SLOT:
+            out = i->target ? banks[i->left] : APPEND_BANK;
+            break;
+        case BF_CONTEXT:
+            if (i->target == 1) {
+                out = APPEND_CONTEXT;
+            } else if (i->type == BF_POINTER_TYPE && i->offset == offsetof(behavior_function_context, results)) {
+                out = APPEND_RESULTS;
+            } else if (!((i->type == PIN_BOOL &&
+                          i->offset == offsetof(behavior_function_context, exit_requested)) ||
+                         (i->type == PIN_U64 &&
+                          i->offset ==
+                              offsetof(behavior_function_context, returned_outcome)))) {
+                return false;
+            }
+            break;
+        case BF_LOCAL: out = locals[i->left]; break;
+        case BF_SAVE:
+            if (a && a != APPEND_ARRAY) {
+                return false;
+            }
+            return append_merge(&locals[i->target], a, changed);
+        case BF_LOAD:
+        case BF_READ:
+            if (a == APPEND_BANK) {
+                int bank = address_bank(p, i->left);
+                if (bank < 0 || (i->offset != offsetof(pin_value, d) &&
+                                 !append_header_field(i))) {
+                    return false;
+                }
+                out = i->offset == offsetof(pin_value, ptr) ? banks[bank] : 0;
+            } else if (a == APPEND_ARRAY) {
+                if (i->type == BF_POINTER_TYPE &&
+                    (i->offset == offsetof(pin_array, items) ||
+                     i->offset == offsetof(pin_array, data))) {
+                    out = APPEND_ITEMS;
+                } else if (!((i->type == PIN_I32 &&
+                              i->offset == offsetof(pin_array, count)) ||
+                             (i->type == BF_POINTER_TYPE &&
+                              i->offset == offsetof(pin_array, stride)))) {
+                    return false;
+                }
+            } else if (a == APPEND_ITEMS) {
+                if (i->type != PIN_I32 ||
+                    (i->offset && i->offset != offsetof(pin_value, d))) {
+                    return false;
+                }
+            } else if (a) {
+                return false;
+            }
+            break;
+        case BF_ADD:
+        case BF_INDEX:
+            if (a == APPEND_ITEMS && !b) {
+                out = APPEND_ITEMS;
+            } else if (i->op == BF_INDEX && a == APPEND_RESULTS && !b && i->offset == sizeof(pin_value)) {
+                const behavior_function_instruction *index = definition(p, i->right);
+                if (!index || index->op != BF_CONSTANT || index->type != PIN_I32 ||
+                    index->value.i < 0 || index->value.i >= f->result_count) {
+                    return false;
+                }
+                out = APPEND_RESULT;
+            } else if (a || b) {
+                return false;
+            }
+            break;
+        case BF_SELECT:
+            if (a || (b && c && b != c) ||
+                ((b | c) && (b | c) != APPEND_ARRAY && (b | c) != APPEND_ITEMS)) {
+                return false;
+            }
+            out = b | c;
+            break;
+        case BF_WRITE:
+            if (b == APPEND_BANK) {
+                int bank = address_bank(p, i->right);
+                if (bank < 0 || i->offset != offsetof(pin_value, d) ||
+                    (a && (a != APPEND_ARRAY || i->type != BF_POINTER_TYPE ||
+                           !scalar_array(f->data_values[bank].initial)))) {
+                    return false;
+                }
+                return append_merge(&banks[bank], a, changed);
+            }
+            if (a) {
+                return false;
+            }
+            if (b == APPEND_CONTEXT) {
+                return (i->type == PIN_BOOL &&
+                        i->offset ==
+                            offsetof(behavior_function_context, exit_requested)) ||
+                       (i->type == PIN_U64 &&
+                        i->offset ==
+                            offsetof(behavior_function_context, returned_outcome));
+            }
+            return b == APPEND_RESULT && append_header_field(i);
+        case BF_HOST_CALL: {
+            const behavior_function_host_call *h = &f->host_calls[i->target];
+            const node_host_call *call = h->call;
+            if (!call->value || call->invoke || call->context || call->action ||
+                call->service || call->missing_service || call->optional_service) {
+                return false;
+            }
+            for (int j = h->first; j < h->result_first; j++) {
+                if (++p->work > APPEND_WORK ||
+                    (banks[j] &&
+                     (banks[j] != APPEND_ARRAY || j != h->first ||
+                      (!scalar_snapshot(f, i->target) && !scalar_add(f, i->target) &&
+                       !scalar_reader(f, i->target))))) {
+                    return false;
+                }
+            }
+            break;
+        }
+        case BF_INVOKE: {
+            const behavior_function_invocation *call = &f->calls[i->left];
+            const behavior_function *callee = call->function;
+            if (!callee || call->task || call->count != callee->argument_count) {
+                return false;
+            }
+            for (int j = 0; j < call->count; j++) {
+                if (++p->work > APPEND_WORK ||
+                    (banks[call->first + j] &&
+                     (banks[call->first + j] != APPEND_ARRAY ||
+                      callee->argument_kinds[j] != BEHAVIOR_VALUE ||
+                      !scalar_array(callee->argument_defaults[j])))) {
+                    return false;
+                }
+            }
+            /* frame_new either makes an owned snapshot or uses the callee's
+             * independent readonly-collection proof. Returns snapshot again. */
+            break;
+        }
+        case BF_EQ:
+        case BF_NE:
+            if (a || b) {
+                if (!((a == APPEND_ARRAY && !b && zero_slot(p, i->right)) ||
+                      (b == APPEND_ARRAY && !a && zero_slot(p, i->left)))) {
+                    return false;
+                }
+            }
+            break;
+        case BF_ASSERT: return !a || a == APPEND_ARRAY;
+        case BF_COMMAND:
+        case BF_COMMAND_BEGIN:
+        case BF_COMPONENT_WRITE:
+        case BF_RETRIGGER:
+        case BF_STATE_SELECT:
+        case BF_STORE_VALUE:
+        case BF_SUSPEND:
+        case BF_DELAY:
+        case BF_WATCH_BEGIN:
+        case BF_WATCH_VALUE:
+        case BF_TRACE: return false;
+        default:
+            if (a || b || c) {
+                return false;
+            }
+            break;
+    }
+    return i->op >= BF_STORE || append_merge(&slots[i->output], out, changed);
+}
+void behavior_function_scalar_builder(behavior_function *f)
+{
+    int count = acount(f->instructions), nslots = acount(f->slots),
+        nbanks = acount(f->data_values), nlocals = acount(f->locals);
+    if (f->rows || f->appends || f->fast || f->batchable || f->waits ||
+        !f->runtime_body || count > ROW_PROOF_LIMIT ||
+        nslots > ROW_PROOF_LIMIT || nbanks > ROW_PROOF_LIMIT ||
+        nlocals > ROW_PROOF_LIMIT || acount(f->host_calls) > ROW_PROOF_LIMIT) {
+        return;
+    }
+    row_proof p = { .f = f };
+    p.definitions = xmalloc(((size_t)nslots + 1) * sizeof *p.definitions);
+    for (int j = 0; j <= nslots; j++) {
+        p.definitions[j] = -1;
+    }
+    int *uses = xcalloc((size_t)acount(f->host_calls) + 1, sizeof *uses);
+    bool safe = true;
+    for (int pc = 0; pc < count && safe; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op < BF_STORE) {
+            safe = p.definitions[i->output] < 0;
+            p.definitions[i->output] = pc;
+        }
+        if (i->op == BF_HOST_CALL) {
+            uses[i->target]++;
+        }
+    }
+    behavior_append_plan *plans = NULL;
+    for (int pc = 0; pc < count && safe; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        behavior_append_plan plan;
+        if (i->op == BF_HOST_CALL && scalar_add(f, i->target) && uses[i->target] == 1 &&
+            scalar_pair(&p, pc, &plan) && uses[plan.retain] == 1) {
+            apush(plans, plan);
+        }
+    }
+    free(uses);
+    unsigned *slots = xcalloc((size_t)nslots + 1, sizeof *slots),
+             *banks = xcalloc((size_t)nbanks + 1, sizeof *banks),
+             *locals = xcalloc((size_t)nlocals + 1, sizeof *locals);
+    for (int j = 0; j < acount(plans); j++) {
+        banks[f->host_calls[plans[j].add].result_first] = APPEND_ARRAY;
+        banks[f->host_calls[plans[j].retain].result_first] = APPEND_ARRAY;
+    }
+    bool changed = true;
+    while (safe && changed && acount(plans)) {
+        changed = false;
+        for (int pc = 0; pc < count && safe; pc++) {
+            if (behavior_function_runtime_keeps(f, pc)) {
+                safe = append_instruction(&p, &f->runtime_body[pc], slots, banks, locals, &changed);
+            }
+        }
+    }
+    free(slots);
+    free(banks);
+    free(locals);
+    free(p.definitions);
+    if (!safe) {
+        afree(plans);
+        return;
+    }
+    f->appends = plans;
+    for (int j = 0; j < acount(plans); j++) {
+        int pcs[] = { plans[j].add_pc, plans[j].retain_pc };
+        for (int k = 0; k < 2; k++) {
+            int mode = k ? BF_HOST_RETAIN_SCALAR : BF_HOST_APPEND_SCALAR;
+            f->runtime_body[pcs[k]].right = mode;
+            f->runtime_instructions[f->runtime_map[pcs[k]]].right = mode;
+        }
+    }
+}
+size_t behavior_function_append_storage_bytes(const behavior_function *f)
+{
+    return (size_t)acount(f->appends) * sizeof(pin_array_builder);
+}
+void behavior_function_append_reset(behavior_data_storage *data)
+{
+    if (!data || !data->function->appends) {
+        return;
+    }
+    int first = acount(data->function->data_values);
+    memset(data->buffers[first], 0, behavior_function_append_storage_bytes(data->function));
+    memset(
+        data->values + first,
+        0,
+        (size_t)acount(data->function->appends) * sizeof *data->values
+    );
+}
+static bool scalar_allowed(const behavior_function *f, const behavior_function_context *ctx)
+{
+    if (!f->appends) {
+        return true;
+    }
+    bool storage = ctx->data && ctx->data->function == f &&
+                   acount(ctx->data->values) ==
+                       acount(f->data_values) + acount(f->appends) &&
+                   acount(ctx->data->buffers) == acount(f->data_values) + 1;
+    bool safe = storage && ctx->value_storage && program_call_views_allowed(ctx) &&
+                !behavior_function_inspection_required(f, ctx) &&
+                acount(ctx->data->calls) == acount(f->host_calls);
+    for (int j = 0; safe && j < acount(f->host_calls); j++) {
+        const node_host_call *expected = f->host_calls[j].call;
+        const behavior_data_binding *actual = &ctx->data->calls[j];
+        safe = actual->value == expected->value && !actual->invoke &&
+               !actual->context && !actual->action && !actual->service;
+    }
+    for (int j = 0; safe && j < acount(f->data_values); j++) {
+        /* The proof permits private prefixes only in declared plain I32[]
+         * banks. Unrelated native results may carry owned metadata that a
+         * fresh invocation overwrites after its arena has been reset. */
+        if (scalar_array(f->data_values[j].initial)) {
+            safe = scalar_array(ctx->data->values[j]);
+        }
+    }
+    bool owner_changed = false;
+    if (storage) {
+        const pin_array_builder *builders = ctx->data->buffers[acount(f->data_values)];
+        for (int j = 0; j < acount(f->appends); j++) {
+            owner_changed |= builders[j].owner && builders[j].owner != ctx->value_storage;
+        }
+    }
+    if (storage &&
+        (!safe || owner_changed || !ctx->activation || !ctx->activation->pc)) {
+        behavior_function_append_reset(ctx->data);
+    }
+    return safe;
+}
+static int append_cache(const behavior_function *f, int plan)
+{
+    for (int j = 0; j < plan; j++) {
+        if (f->appends[j].local == f->appends[plan].local) {
+            return j;
+        }
+    }
+    return plan;
+}
+const char *behavior_function_append_scalar(behavior_function_context *ctx, int host)
+{
+    const behavior_function *f = ctx->data->function;
+    int index = 0;
+    while (index < acount(f->appends) && f->appends[index].add != host) {
+        index++;
+    }
+    assert(index < acount(f->appends));
+    index = append_cache(f, index);
+    int first = acount(f->data_values);
+    pin_array_builder *builders = ctx->data->buffers[first];
+    const behavior_function_host_call *h = &f->host_calls[host];
+    const char *error = pin_array_build_i32(
+        ctx->value_storage,
+        &builders[index],
+        ctx->data->values + h->first,
+        ctx->data->values + h->result_first
+    );
+    if (!error) {
+        ctx->data->values[first + index] = ctx->data->values[h->result_first];
+    }
+    return error;
+}
+const char *behavior_function_retain_scalar(behavior_function_context *ctx, int host)
+{
+    const behavior_function *f = ctx->data->function;
+    const behavior_function_host_call *h = &f->host_calls[host];
+    int first = acount(f->data_values);
+    for (int j = 0; j < acount(f->appends); j++) {
+        if (f->appends[j].retain == host && ctx->data->values[h->first].ptr &&
+            ctx->data->values[h->first].ptr ==
+                ctx->data->values[first + append_cache(f, j)].ptr) {
+            ctx->data->values[h->result_first] = ctx->data->values[h->first];
+            return NULL;
+        }
+    }
+    return EXECUTION_snapshot_call.value(
+        ctx->value_storage,
+        ctx->data->values + h->first,
+        1,
+        ctx->data->values + h->result_first
+    );
 }

@@ -259,6 +259,7 @@ static int start_task(behavior_function_context *ctx, int index)
         ctx->error_message = "task arguments do not match the function";
         return FLOW_ERR_ARGUMENT;
     }
+    program_authority_inherit(a, caller);
     capture_references(a, call);
     /* An outcome continuation runs on behalf of the task that owns it. */
     execution_task *t = task_new(instance),
@@ -363,7 +364,8 @@ static void cancel(execution_instance *instance, uint64_t handle)
         cancel(instance, handle_of(instance, c));
     }
     execution_activation *a = find(instance, handle)->activation;
-    if (a->running) {
+    if (a->active) {
+        a->authority_valid = false;
         a->stopping = true;
         return;
     }

@@ -910,6 +910,7 @@ static void detach_row(execution_program *p, int index)
 }
 void execution_program_detach(execution_program *p, uint64_t owner)
 {
+    program_authority_invalidate();
     if (paused_system(p)) {
         bool found = false;
         for (int i = 0; i < acount(p->instances); i++) {
@@ -929,8 +930,15 @@ void execution_program_detach(execution_program *p, uint64_t owner)
         i++;
     }
 }
+static void event_free(queued_event *event)
+{
+    free(event->arguments);
+    arena_free(&event->storage);
+    program_dispatch_free(event->dispatch);
+}
 void execution_program_free(execution_program *p)
 {
+    program_authority_invalidate();
     if (!p) {
         return;
     }
@@ -957,8 +965,7 @@ void execution_program_free(execution_program *p)
     }
     afree(p->imports);
     for (int i = 0; i < acount(p->events); i++) {
-        free(p->events[i].arguments);
-        arena_free(&p->events[i].storage);
+        event_free(&p->events[i]);
     }
     afree(p->events);
     for (int i = 0; i < acount(p->field_edges); i++) {
@@ -987,9 +994,10 @@ void execution_program_free(execution_program *p)
 }
 static void record_failure(const behavior_function *f, const behavior_function_context *ctx, int status)
 {
+    program_authority_invalidate();
     execution_activation *a = ctx->inspection_user;
     execution_program *p = a->instance->program;
-    if (p->failure.status) {
+    if (p->failure.status || a->stopping || execution_dispatch_cancelled(a->dispatch)) {
         return;
     }
     const execution_module_plan *scope = &((execution_instance *)ctx->value_owner)
@@ -1465,6 +1473,7 @@ int program_dispatch_handler(
 }
 static int dispatch_to(
     execution_instance *instance,
+    execution_dispatch *dispatch,
     uint64_t event,
     uint64_t source,
     const pin_value *arguments,
@@ -1477,6 +1486,9 @@ static int dispatch_to(
     execution_program *p = instance->program;
     int found = 0;
     for (int i = 0; i < p->module->plan.function_count; i++) {
+        if (execution_dispatch_cancelled(dispatch)) {
+            return FLOW_OK;
+        }
         const execution_module_function *f = &p->module->plan.functions[i];
         if (f->event != event || f->action || !f->body ||
             f->kind == EXECUTION_FUNCTION_SYSTEM) {
@@ -1504,6 +1516,9 @@ static int dispatch_to(
         if (!a) {
             return FLOW_ERR_ARGUMENT;
         }
+        a->dispatch = program_dispatch_retain(dispatch);
+        a->dispatch_event = event;
+        a->authority_handler = dispatch != NULL;
         found++;
         int status = program_activation_run(a, now, delta, budget);
         if (status == FLOW_SUSPENDED_RESULT || status == FLOW_PAUSED_RESULT ||
@@ -1528,7 +1543,8 @@ int execution_instance_dispatch(
     unsigned budget
 )
 {
-    int status = dispatch_to(instance, event, instance->owner, arguments, count, now, delta, budget);
+    program_authority_invalidate();
+    int status = dispatch_to(instance, NULL, event, instance->owner, arguments, count, now, delta, budget);
     program_apply_services(instance->program->owner_program);
     program_collect_states(instance->program);
     return status;
@@ -1549,6 +1565,7 @@ int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_
             if (!program_same_type(instance->program->module->plan.states[i].initial, value)) {
                 return FLOW_ERR_ARGUMENT;
             }
+            program_authority_invalidate();
             int status = state_assign(instance_storage(instance, i), &value);
             sync_state(instance);
             if (!instance->running) {
@@ -1567,6 +1584,36 @@ int execution_instance_pending(const execution_instance *instance)
     }
     return pending;
 }
+int execution_program_emit_tagged(
+    execution_program *p,
+    execution_dispatch *dispatch,
+    uint64_t event,
+    uint64_t owner,
+    const pin_value *arguments,
+    int count
+)
+{
+    program_authority_invalidate();
+    if (!event || count < 0) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (execution_dispatch_cancelled(dispatch)) {
+        return FLOW_ERR_STATE;
+    }
+    queued_event e = { .event = event,
+                       .owner = owner,
+                       .count = count,
+                       .dispatch = program_dispatch_retain(dispatch) };
+    e.arguments = xcalloc((size_t)(count + 1), sizeof *e.arguments);
+    for (int i = 0; i < count; i++) {
+        if (pin_value_snapshot_to_arena(&e.storage, &e.arguments[i], &arguments[i])) {
+            event_free(&e);
+            return FLOW_ERR_ARGUMENT;
+        }
+    }
+    apush(p->events, e);
+    return FLOW_OK;
+}
 int execution_program_emit(
     execution_program *p,
     uint64_t event,
@@ -1575,23 +1622,11 @@ int execution_program_emit(
     int count
 )
 {
-    if (!event || count < 0) {
-        return FLOW_ERR_ARGUMENT;
-    }
-    queued_event e = { .event = event, .owner = owner, .count = count };
-    e.arguments = xcalloc((size_t)(count + 1), sizeof *e.arguments);
-    for (int i = 0; i < count; i++) {
-        if (pin_value_snapshot_to_arena(&e.storage, &e.arguments[i], &arguments[i])) {
-            free(e.arguments);
-            arena_free(&e.storage);
-            return FLOW_ERR_ARGUMENT;
-        }
-    }
-    apush(p->events, e);
-    return FLOW_OK;
+    return execution_program_emit_tagged(p, NULL, event, owner, arguments, count);
 }
 void execution_program_set_enabled(execution_program *p, bool enabled)
 {
+    program_authority_invalidate();
     if (paused_system(p)) {
         if (p->enabled == enabled) {
             return;
@@ -2083,6 +2118,7 @@ static int merge_row_chunks(execution_program *p)
 }
 int execution_program_run_system_parallel(execution_program *p, const task_system *tasks)
 {
+    program_authority_invalidate();
     assert(p && p->system_prepared && !p->system_ran && !p->dispatching && !p->running);
     int budget = tasks ? tasks->workers : 1;
     assert(budget > 0 && budget <= TASK_WORKER_MAX);
@@ -2181,10 +2217,13 @@ static int dispatch_events(execution_program *p)
     for (int i = 0; i < acount(events); i++) {
         queued_event *e = &events[i];
         int failure = FLOW_OK;
-        for (int j = 0; j < acount(p->instances); j++) {
+        for (int j = 0;
+             j < acount(p->instances) && !execution_dispatch_cancelled(e->dispatch);
+             j++) {
             execution_instance *instance = p->instances[j];
             int status = dispatch_to(
                 instance,
+                e->dispatch,
                 e->event,
                 e->owner,
                 e->arguments,
@@ -2201,16 +2240,23 @@ static int dispatch_events(execution_program *p)
                 break;
             }
         }
-        free(e->arguments);
-        arena_free(&e->storage);
+        event_free(e);
         if (failure < 0) {
             queued_event *later = p->events;
             p->events = NULL;
             for (int j = i + 1; j < acount(events); j++) {
-                apush(p->events, events[j]);
+                if (execution_dispatch_cancelled(events[j].dispatch)) {
+                    event_free(&events[j]);
+                } else {
+                    apush(p->events, events[j]);
+                }
             }
             for (int j = 0; j < acount(later); j++) {
-                apush(p->events, later[j]);
+                if (execution_dispatch_cancelled(later[j].dispatch)) {
+                    event_free(&later[j]);
+                } else {
+                    apush(p->events, later[j]);
+                }
             }
             afree(later);
             afree(events);
@@ -2222,6 +2268,7 @@ static int dispatch_events(execution_program *p)
 }
 static int program_run(execution_program *p, double now, double delta, unsigned budget, int phase)
 {
+    program_authority_invalidate();
     if (p->system_prepared && p->module->effects.reduce_count &&
         p->system_status == FLOW_PAUSED_RESULT) {
         return FLOW_PAUSED_RESULT;
@@ -2236,8 +2283,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
     if (streaming(p)) {
         /* These modules have no handlers, bindings, state, or suspension. */
         for (int i = 0; i < acount(p->events); i++) {
-            free(p->events[i].arguments);
-            arena_free(&p->events[i].storage);
+            event_free(&p->events[i]);
         }
         asetlen(p->events, 0);
         int status = prepare_stream(p);
@@ -2270,7 +2316,8 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
         program_tasks_tick(instance, now);
         for (int j = 0; j < acount(instance->activations);) {
             execution_activation *a = instance->activations[j];
-            if (!a->finished && a->context.wake_time > now) {
+            if (!a->finished && a->context.wake_time > now &&
+                !execution_dispatch_cancelled(a->dispatch)) {
                 j++;
                 continue;
             }
@@ -2346,6 +2393,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
 }
 int execution_program_step(execution_program *p, double now, double delta, unsigned budget)
 {
+    program_authority_invalidate();
     if (p->module->effects.reduce_count) {
         int status = execution_program_update(p, now, delta, budget);
         return status ? status : execution_program_bindings(p, now, delta, budget);
@@ -2358,6 +2406,7 @@ int execution_program_step(execution_program *p, double now, double delta, unsig
 }
 int execution_program_pump(execution_program *p, double now, double delta, unsigned budget)
 {
+    program_authority_invalidate();
     if (p->system_prepared && p->module->effects.reduce_count) {
         return FLOW_PAUSED_RESULT;
     }
@@ -2368,6 +2417,7 @@ int execution_program_pump(execution_program *p, double now, double delta, unsig
 static int prepare_system(execution_program *, double, double, unsigned, bool);
 int execution_program_update(execution_program *p, double now, double delta, unsigned budget)
 {
+    program_authority_invalidate();
     if (p->module->effects.reduce_count) {
         int status = prepare_system(p, now, delta, budget, true);
         if (status < 0) {
@@ -2441,10 +2491,12 @@ static int prepare_system(execution_program *p, double now, double delta, unsign
 }
 int execution_program_prepare_system(execution_program *p, double now, double delta, unsigned budget)
 {
+    program_authority_invalidate();
     return prepare_system(p, now, delta, budget, false);
 }
 int execution_program_run_system(execution_program *p)
 {
+    program_authority_invalidate();
     assert(p && p->system_prepared && !p->system_ran && !p->dispatching && !p->running);
     p->system_ran = true;
     p->system_status = FLOW_OK;
@@ -2543,6 +2595,7 @@ void execution_program_cancel_system(execution_program *p)
 }
 int execution_program_bindings(execution_program *p, double now, double delta, unsigned budget)
 {
+    program_authority_invalidate();
     if (p->system_prepared && p->module->effects.reduce_count) {
         return FLOW_PAUSED_RESULT;
     }
@@ -2797,6 +2850,7 @@ execution_program *execution_program_prepare_replace_services(
 }
 void execution_program_commit_replace(execution_program *p, execution_program *next)
 {
+    program_authority_invalidate();
     assert(
         p && next && !p->dispatching && !p->running &&
         (!p->system_prepared || paused_system(p)) && !next->dispatching &&
@@ -2937,6 +2991,7 @@ int execution_program_bind_service(execution_program *p, const char *name, void 
     if (!execution_program_service_bind_valid(p, name, value)) {
         return FLOW_ERR_STATE;
     }
+    program_authority_invalidate();
     p = p->owner_program;
     if (!services_busy(p)) {
         bind_service(p, name, value);
@@ -2953,6 +3008,24 @@ int execution_program_bind_service(execution_program *p, const char *name, void 
     return FLOW_OK;
 }
 
+int execution_program_dispatch_tagged(
+    execution_program *p,
+    execution_dispatch *dispatch,
+    uint64_t event,
+    uint64_t source,
+    const pin_value *arguments,
+    int count,
+    double now,
+    double delta,
+    unsigned budget
+)
+{
+    int status = execution_program_emit_tagged(p, dispatch, event, source, arguments, count);
+    if (status < 0 || p->dispatching || p->running || p->system_prepared) {
+        return status;
+    }
+    return execution_program_pump(p, now, delta, budget);
+}
 int execution_program_dispatch(
     execution_program *p,
     uint64_t event,
@@ -2964,11 +3037,7 @@ int execution_program_dispatch(
     unsigned budget
 )
 {
-    int status = execution_program_emit(p, event, source, arguments, count);
-    if (status < 0 || p->dispatching || p->running || p->system_prepared) {
-        return status;
-    }
-    return execution_program_pump(p, now, delta, budget);
+    return execution_program_dispatch_tagged(p, NULL, event, source, arguments, count, now, delta, budget);
 }
 
 void execution_program_invalidate_bindings(execution_program *p)

@@ -2,6 +2,7 @@
 
 #include "execution/definition.h"
 #include "execution/status.h"
+#include "execution/work_internal.h"
 #include "support/array.h"
 
 #include <assert.h>
@@ -99,6 +100,16 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
     ctx->points = f->points;
     ctx->watches = f->watches;
     ctx->edges = f->edges;
+    if (ctx->work && f->root_steps) {
+        int result = behavior_function_reject_work(ctx);
+        if (ctx->failure_observer) {
+            ctx->failure_observer(f, ctx, result);
+        }
+        if (ctx->owned_host) {
+            behavior_function_release_host(ctx);
+        }
+        return result;
+    }
     bool owned = !ctx->queries && !ctx->commands &&
                  (acount(f->queries) || acount(f->commands) ||
                   (!ctx->data && (acount(f->host_calls) ||
@@ -106,6 +117,9 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
     if (owned) {
         behavior_function_prepare_host(f, ctx);
         ctx->owned_host = true;
+    }
+    if (f->appends && behavior_function_inspection_required(f, ctx)) {
+        behavior_function_append_reset(ctx->data);
     }
     int result = compiled ? run_compiled(f, ctx)
                           : behavior_function_run_interpreted(f, ctx);

@@ -50,10 +50,16 @@ typedef struct
     bool pattern_cached;
     int pattern_expression, pattern_value;
 } lower;
+static uint64_t document_id(const script_analysis *analysis, script_range range)
+{
+    const script_source_document
+        *document = script_analysis_document(analysis, range.document);
+    return document ? script_catalog_id("source-document", document->key) : 0;
+}
 static void error(lower *l, script_range range, const char *message)
 {
     execution_module_diagnostic d = {
-        .range = { range.start, range.end, range.line, range.column }
+        .range = { range.start, range.end, range.line, range.column, range.document }
     };
     snprintf(d.message, sizeof d.message, "%s", message);
     apush(l->module->diagnostics, d);
@@ -69,7 +75,14 @@ static void builder_error(lower *l, behavior_function_builder *builder, script_r
             range = (script_range){ origin->start,
                                     origin->end,
                                     origin->line,
-                                    origin->column };
+                                    origin->column,
+                                    0 };
+            for (int i = 0; i < l->a->document_count; i++) {
+                if (!strcmp(origin->asset_name, l->a->documents[i].path)) {
+                    range.document = i;
+                    break;
+                }
+            }
         }
     }
     error(l, range, message);
@@ -163,9 +176,11 @@ static void value_root(lower *l, behavior_value_bank bank, int index, script_typ
 }
 static int emit(lower *l, behavior_function_instruction i, script_range range)
 {
+    const script_source_document
+        *document = script_analysis_document(l->a, range.document);
     i.source = behavior_function_builder_origin(
         l->builder,
-        (behavior_function_source){ .asset_name = l->a->name,
+        (behavior_function_source){ .asset_name = document ? document->path : l->a->name,
                                     .start = range.start,
                                     .end = range.end,
                                     .line = range.line,
@@ -1731,7 +1746,7 @@ static int task_command(lower *l, const node_command *command, int handle, const
     if (result.storage != PIN_FLOW) {
         apush(results, initial(l, result));
     }
-    uint64_t action = id ^ (uint64_t)range.start;
+    uint64_t action = id ^ (uint64_t)range.start ^ document_id(l->a, range);
     int index = behavior_function_builder_command(
         l->builder,
         command,
@@ -1829,7 +1844,8 @@ static int command(lower *l, const script_expression *e, const script_catalog_ca
                               l->a->symbols[e->symbol].kind == SCRIPT_ACTION &&
                               l->a->symbols[e->symbol].initializer >= 0
                         ? l->a->symbols[e->symbol].id
-                        : e->capability ^ (uint64_t)e->range.start;
+                        : e->capability ^ (uint64_t)e->range.start ^
+                              document_id(l->a, e->range);
     int index = behavior_function_builder_command(
         l->builder,
         host.command,
@@ -2664,7 +2680,7 @@ static uint64_t state_action_id(lower *l, const script_expression *e)
     snprintf(name, size, "%s:%d:%d", l->a->identity, e->range.start, e->range.end);
     uint64_t id = script_catalog_id("state-action", name);
     free(name);
-    return id;
+    return id ^ document_id(l->a, e->range);
 }
 static int state_call(lower *l, const script_expression *source, const script_catalog_capability *cap)
 {
@@ -3016,7 +3032,8 @@ static int call(lower *l, const script_expression *e)
                 .op = BF_DELAY,
                 .left = value,
                 .node_id = e->symbol >= 0 ? l->a->symbols[e->symbol].id
-                                          : e->capability ^ (uint64_t)e->range.start },
+                                          : e->capability ^ (uint64_t)e->range.start ^
+                                                document_id(l->a, e->range) },
             e->range
         );
         return -1;
@@ -5760,7 +5777,7 @@ static uint64_t function_id(const script_analysis *analysis, int index)
     );
     uint64_t id = script_catalog_id("function", identity);
     free(identity);
-    return id;
+    return id ^ document_id(analysis, function->range);
 }
 static void dependency_expressions(lower *l, int index, bool *visited, int **out)
 {
@@ -6565,10 +6582,11 @@ conflict:
     error(l, range, message);
     return false;
 }
-execution_module_plan *script_lower(
+static execution_module_plan *lower_analysis(
     const script_analysis *a,
     const script_catalog *catalog,
-    const script_lower_bindings *bindings
+    const script_lower_bindings *bindings,
+    script_lower_package_result *package
 )
 {
     assert(a && catalog);
@@ -6576,11 +6594,13 @@ execution_module_plan *script_lower(
     if (!a->valid) {
         for (int i = 0; i < a->diagnostic_count; i++) {
             const script_diagnostic *source = &a->diagnostics[i];
-            execution_module_diagnostic diagnostic = { .range = {
-                                                           source->range.start,
-                                                           source->range.end,
-                                                           source->range.line,
-                                                           source->range.column } };
+            execution_module_diagnostic diagnostic = {
+                .range = { source->range.start,
+                           source->range.end,
+                           source->range.line,
+                           source->range.column,
+                           source->range.document }
+            };
             memcpy(diagnostic.message, source->message, sizeof diagnostic.message);
             apush(m->diagnostics, diagnostic);
         }
@@ -6679,6 +6699,30 @@ execution_module_plan *script_lower(
         const script_symbol *symbol = &a->symbols[i];
         if (symbol->kind == SCRIPT_CONSTANT) {
             l.constant_values[i] = evaluate_default(&l, symbol);
+        }
+    }
+    for (int i = 0; package && i < a->function_count && !l.failed; i++) {
+        const script_function *function = &a->functions[i];
+        if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->parent >= 0 ||
+            function->symbol < 0 || a->symbols[function->symbol].disabled ||
+            a->symbols[function->symbol].scope != a->package_scope) {
+            continue;
+        }
+        for (int j = 0;
+             j < function->parameter_count + function->result_count && !l.failed;
+             j++) {
+            int index = j < function->parameter_count
+                          ? function->parameters[j]
+                          : function->results[j - function->parameter_count];
+            const script_symbol *symbol = &a->symbols[index];
+            if (symbol->initializer < 0) {
+                continue;
+            }
+            if (!script_analysis_constant(a, symbol->initializer)) {
+                error(&l, symbol->declaration, "Exported parameter default requires a bounded compile-time value");
+                break;
+            }
+            l.constant_values[index] = evaluate_default(&l, symbol);
         }
     }
     for (int i = 0; i < a->symbol_count; i++) {
@@ -7147,6 +7191,22 @@ execution_module_plan *script_lower(
     free(l.function_addresses);
     free(l.builders);
     free(l.variables);
+    if (package && !l.failed) {
+        script_lower_constant *constants = arena_alloc(
+            &m->storage,
+            (size_t)a->symbol_count * sizeof *constants
+        );
+        for (int i = 0; i < a->symbol_count; i++) {
+            const script_symbol *symbol = &a->symbols[i];
+            if (!symbol->disabled && l.constant_values[i].type != PIN_FLOW) {
+                constants[package->constant_count++] = (script_lower_constant){
+                    symbol->id,
+                    l.constant_values[i]
+                };
+            }
+        }
+        package->constants = constants;
+    }
     free(l.constant_values);
     afree(l.loops);
     m->diagnostic_count = acount(m->diagnostics);
@@ -7156,4 +7216,23 @@ execution_module_plan *script_lower(
     }
     afree(types);
     return m;
+}
+
+execution_module_plan *script_lower(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    return lower_analysis(analysis, catalog, bindings, NULL);
+}
+script_lower_package_result script_lower_package(
+    const script_analysis *analysis,
+    const script_catalog *catalog,
+    const script_lower_bindings *bindings
+)
+{
+    script_lower_package_result result = { 0 };
+    result.plan = lower_analysis(analysis, catalog, bindings, &result);
+    return result;
 }

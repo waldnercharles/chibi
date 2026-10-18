@@ -1,6 +1,6 @@
-#include "authoring/source_catalog_snapshot.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "execution/prepared_internal.h"
 #include "runtime/behaviors/source.h"
 #include "support/array.h"
@@ -23,10 +23,12 @@ static const char
                       " } }";
 static const char
     library_source[] = "CatalogRows :: library { Flags :: struct { " FIELDS
-                       " } Choice :: union { Off | On }; Make :: () -> Flags { "
-                       "return {}; } }";
+                       " } Choice :: union { Off | On }; Make :: () -> "
+                       "(Flags: Flags, Count: int) { flags: Flags = {}; "
+                       "return (flags, flags.count); } }";
 static const char consumer_source[] = "CatalogConsumer :: behavior { "
-                                      "on Pulse { flags := CatalogRows.Make(); "
+                                      "on Pulse { made := CatalogRows.Make(); "
+                                      "flags := made.Flags; "
                                       "flags.count = 8; } }";
 static const script_catalog_capability pulse = { .id = 10,
                                                  .name = "Pulse",
@@ -108,7 +110,7 @@ static bool parse_record()
     analysis = script_analyze_document(syntax, &empty, "libraries/CatalogRows.chibi");
     REQUIRE(analysis->valid && analysis->type_count == 1);
     const script_catalog input = { .types = analysis->types, .type_count = 1 };
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &input, &copied));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
     return true;
 }
 static const authoring_source *find_source(const char *name)
@@ -155,6 +157,17 @@ TEST_CASE(record_project_catalog_publishes_declaring_library_and_importer)
         };
         snapshot = source_catalog_replaced(root, &native, inputs, 2);
         REQUIRE(source_catalog_source_count(snapshot) == 2);
+        for (int i = 0; i < source_catalog_diagnostic_count(snapshot); i++) {
+            const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(snapshot, i);
+            fprintf(
+                stderr,
+                "record catalog %s:%d:%d: %s\n",
+                diagnostic->path,
+                diagnostic->range.line,
+                diagnostic->range.column,
+                diagnostic->message
+            );
+        }
         REQUIRE(!source_catalog_diagnostic_count(snapshot));
         sources = authoring_sources_prepare_catalog(snapshot, &bindings, backends[backend]);
         snapshot = NULL;
@@ -177,8 +190,7 @@ TEST_CASE(record_project_catalog_publishes_declaring_library_and_importer)
         if (!stage) {
             fprintf(stderr, "record publication stage: %s\n", error);
         }
-        /* On the fixture-only baseline this must fail specifically here with
-         * duplicate prepared type requirement, before any commit. */
+        /* Declaring and importing views must publish one type requirement. */
         REQUIRE(stage && !error[0]);
         const execution_module *modules[] = { library->module, consumer->module };
         for (int i = 0; i < 2; i++) {
@@ -216,6 +228,14 @@ static void read_types()
 TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
 {
     REQUIRE(parse_record());
+    script_catalog_type duplicates[] = { copied.types[0], analysis->types[0] };
+    script_catalog views = { .types = duplicates, .type_count = 2 };
+    REQUIRE(script_catalog_find_type(&views, "Flags") == 0);
+    duplicates[1].id ^= UINT64_C(1);
+    duplicates[1].name = "Other.Flags";
+    REQUIRE(script_catalog_find_type(&views, "Flags") == -2);
+    REQUIRE(script_catalog_find_type(&views, "CatalogRows.Flags") == 0);
+    REQUIRE(script_catalog_find_type(&views, "Other.Flags") == 1);
     REQUIRE(copied.types[0].name != analysis->types[0].name);
     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
     REQUIRE(
@@ -321,7 +341,7 @@ TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values)
     REQUIRE(analysis->valid && analysis->type_count == 1);
     REQUIRE(analysis->types[0].field_count == 13);
     const script_catalog input = { .types = analysis->types, .type_count = 1 };
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &input, &copied));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
     plan = script_lower(analysis, &copied, &bindings);
     REQUIRE(plan->valid && plan->type_count == 1);
     execution_module_plan_free(plan);

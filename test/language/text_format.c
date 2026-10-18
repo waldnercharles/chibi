@@ -119,11 +119,56 @@ TEST_CASE(native_text_formats_maps_with_their_entry_counts)
     return true;
 }
 
+TEST_CASE(native_entity_decimal_preserves_all_handle_bits)
+{
+    static const uint64_t values[] = {
+        0,
+        UINT64_C(9007199254740993),
+        UINT64_C(0x8000000100000007),
+        UINT64_C(0x8000000200000007),
+        UINT64_MAX,
+    };
+    static const char *const texts[] = {
+        "0",
+        "9007199254740993",
+        "9223372041149743111",
+        "9223372045444710407",
+        "18446744073709551615",
+    };
+    pin_value output[5] = { 0 };
+    for (int i = 0; i < 5; i++) {
+        pin_value entity = { .type = PIN_HANDLE,
+                             .type_name = "ecs.entity",
+                             .u64 = values[i] };
+        REQUIRE(!NATIVE_ENTITY_DECIMAL_CALL.value(&storage, &entity, 1, &output[i]));
+        REQUIRE(output[i].type == PIN_STR);
+        REQUIRE(output[i].container == PIN_CONTAINER_SINGLE);
+        REQUIRE(arena_contains(&storage, output[i].str));
+        REQUIRE(!strcmp(output[i].str, texts[i]));
+    }
+    pin_value invalid = { .type = PIN_U64, .u64 = UINT64_MAX };
+    pin_value unchanged = output[0];
+    REQUIRE(NATIVE_ENTITY_DECIMAL_CALL.value(&storage, &invalid, 1, &unchanged));
+    REQUIRE(unchanged.str == output[0].str);
+    invalid.type = PIN_HANDLE;
+    invalid.type_name = "unrelated.handle";
+    REQUIRE(NATIVE_ENTITY_DECIMAL_CALL.value(&storage, &invalid, 1, &unchanged));
+    invalid.type_name = "ecs.entity";
+    invalid.container = PIN_CONTAINER_ARRAY;
+    REQUIRE(NATIVE_ENTITY_DECIMAL_CALL.value(&storage, &invalid, 1, &unchanged));
+    REQUIRE(NATIVE_ENTITY_DECIMAL_CALL.value(&storage, NULL, 0, &unchanged));
+    for (int i = 0; i < 5; i++) {
+        REQUIRE(!strcmp(output[i].str, texts[i]));
+    }
+    return true;
+}
+
 void test_language_text_format()
 {
     pu_setup(setup, teardown);
     RUN_TEST_CASE(native_text_formats_scalar_families_and_owns_results);
     RUN_TEST_CASE(native_text_rejects_unsafe_modifiers_and_bounds_placeholder_indices);
     RUN_TEST_CASE(native_text_formats_maps_with_their_entry_counts);
+    RUN_TEST_CASE(native_entity_decimal_preserves_all_handle_bits);
     pu_clear_setup();
 }

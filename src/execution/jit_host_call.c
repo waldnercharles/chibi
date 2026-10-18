@@ -92,14 +92,21 @@ bool behavior_jit_host_call(
             SLJIT_IMM,
             (sljit_sw)spec->call->context
         );
-    } else if (i->right == BF_HOST_BORROW_ARRAY || i->right == BF_HOST_BUILD_ROW || i->right == BF_HOST_RETAIN_ROWS) {
+    } else if (
+        i->right == BF_HOST_BORROW_ARRAY || i->right == BF_HOST_BUILD_ROW ||
+        i->right == BF_HOST_RETAIN_ROWS || i->right == BF_HOST_APPEND_SCALAR ||
+        i->right == BF_HOST_RETAIN_SCALAR
+    ) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
         sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
-        const char *(*callback)(behavior_function_context *, int) = i->right == BF_HOST_BUILD_ROW
-                                                                      ? behavior_function_build_row
-                                                                  : i->right == BF_HOST_RETAIN_ROWS
-                                                                      ? behavior_function_retain_rows
-                                                                      : behavior_function_borrow_snapshot;
+        const char *(*callback)(
+            behavior_function_context *,
+            int
+        ) = i->right == BF_HOST_BUILD_ROW     ? behavior_function_build_row
+          : i->right == BF_HOST_RETAIN_ROWS   ? behavior_function_retain_rows
+          : i->right == BF_HOST_APPEND_SCALAR ? behavior_function_append_scalar
+          : i->right == BF_HOST_RETAIN_SCALAR ? behavior_function_retain_scalar
+                                              : behavior_function_borrow_snapshot;
         sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)callback);
     } else if (spec->call->value) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_R2, 0);

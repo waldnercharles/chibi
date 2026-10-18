@@ -102,7 +102,23 @@ static int payload_cycle(const script_catalog *catalog, script_type type, unsign
     states[index] = 2;
     return 0;
 }
-void script_analyzer_union_declarations(analyzer *a, TSNode body)
+static int declared_union(analyzer *a, TSNode node)
+{
+    TSNode name = script_analyzer_field(node, "name");
+    int symbol = script_analyzer_lookup(a, name);
+    if (symbol < 0) {
+        return -1;
+    }
+    const script_symbol *s = &a->out->symbols[symbol];
+    script_range range = script_analyzer_range(a, name);
+    if (s->kind != SCRIPT_TYPE || s->type.storage != PIN_UNION ||
+        s->declaration.document != range.document ||
+        s->declaration.start != range.start) {
+        return -1;
+    }
+    return symbol;
+}
+void script_analyzer_union_types(analyzer *a, TSNode body)
 {
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
@@ -118,6 +134,12 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
             false
         );
         script_symbol *s = &a->out->symbols[symbol];
+        script_range range = script_analyzer_range(a, name);
+        if (s->kind != SCRIPT_TYPE || s->type.storage != PIN_UNION ||
+            s->declaration.document != range.document ||
+            s->declaration.start != range.start) {
+            continue;
+        }
         s->type.nominal = s->id;
         script_analyzer_publish_type(
             a,
@@ -128,12 +150,18 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
                                    .size = sizeof(void *) }
         );
     }
+}
+void script_analyzer_union_fields(analyzer *a, TSNode body)
+{
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        int symbol = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
+        int symbol = declared_union(a, node);
+        if (symbol < 0) {
+            continue;
+        }
         script_type type = a->out->symbols[symbol].type;
         script_catalog_type definition = *script_catalog_type_by_id(a->catalog, type.nominal);
         script_catalog_variant *variants = NULL;
@@ -219,7 +247,10 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "union_declaration")) {
             continue;
         }
-        int symbol = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
+        int symbol = declared_union(a, node);
+        if (symbol < 0) {
+            continue;
+        }
         int error = payload_cycle(a->catalog, a->out->symbols[symbol].type, states, 0);
         if (error) {
             script_analyzer_diagnostic(
@@ -232,6 +263,11 @@ void script_analyzer_union_declarations(analyzer *a, TSNode body)
         }
     }
     free(states);
+}
+void script_analyzer_union_declarations(analyzer *a, TSNode body)
+{
+    script_analyzer_union_types(a, body);
+    script_analyzer_union_fields(a, body);
 }
 script_type script_analyzer_union_type(analyzer *a, TSNode node, const script_type *members, int count)
 {
@@ -426,7 +462,7 @@ static const script_catalog_variant *qualified_variant(analyzer *a, TSNode node,
     }
     char *owner = script_analyzer_qualified_name(a, script_analyzer_field(node, "object"));
     int symbol = script_analyzer_lookup_name(a, owner);
-    int named = script_catalog_find_type(a->catalog, owner);
+    int named = script_analyzer_find_type(a, node, owner);
     free(owner);
     const script_catalog_type *definition = NULL;
     if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_TYPE) {
@@ -458,7 +494,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
     script_catalog_variant v = *found;
     script_expression result = { .kind = SCRIPT_EXPR_UNION,
                                  .type = type,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
@@ -500,7 +536,7 @@ int script_analyzer_union_constructor(analyzer *a, TSNode node)
             result.arguments,
             ((script_argument){ .value = expression,
                                 .parameter = field,
-                                .range = script_analyzer_range(argument) })
+                                .range = script_analyzer_range(a, argument) })
         );
         result.effects |= script_analyzer_expr_effects(a, expression);
     }
@@ -555,7 +591,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
     owner = owner ? &owner_copy : NULL;
     script_expression result = { .kind = SCRIPT_EXPR_IS,
                                  .type = { .storage = PIN_BOOL },
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .left = subject,
                                  .right = -1,
                                  .entry = -1,
@@ -582,7 +618,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
         char *dot = strrchr(name, '.');
         if (dot) {
             *dot = 0;
-            int index = script_catalog_find_type(a->catalog, name);
+            int index = script_analyzer_find_type(a, node, name);
             if (index >= 0) {
                 variant = variant_name(&a->catalog->types[index], dot + 1);
             }
@@ -628,7 +664,7 @@ int script_analyzer_pattern(analyzer *a, TSNode node, int subject)
                 ((script_argument){ .value = subject,
                                     .parameter = symbol,
                                     .member = (uint64_t)ordinal,
-                                    .range = script_analyzer_range(binding) })
+                                    .range = script_analyzer_range(a, binding) })
             );
             ordinal++;
         }
@@ -678,7 +714,7 @@ int script_analyzer_pattern_expression(analyzer *a, TSNode node)
     int index = script_analyzer_pattern(a, script_analyzer_field(node, "type"), subject);
     bool extract = script_analyzer_is(node, "as_expression");
     script_expression *e = &a->out->expressions[index];
-    e->range = script_analyzer_range(node);
+    e->range = script_analyzer_range(a, node);
     e->negated = !ts_node_is_null(script_analyzer_field(node, "negated"));
     if (extract) {
         e->kind = SCRIPT_EXPR_AS;

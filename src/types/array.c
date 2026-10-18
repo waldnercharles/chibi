@@ -669,6 +669,68 @@ int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out,
     return snapshot_items(a, record, out, items, count);
 }
 
+pin_value pin_array_get_result(const pin_value *inputs, int count, arena *a)
+{
+    (void)count;
+    const pin_array *array = inputs && inputs[0].container == PIN_CONTAINER_ARRAY
+                               ? inputs[0].ptr
+                               : NULL;
+    int index = inputs[1].i;
+    if (!array || index < 0 || index >= array->count) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    pin_value value, item = pin_array_get(array, index);
+    if (pin_value_snapshot_to_arena(a, &value, &item)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    return value;
+}
+pin_value pin_array_length(const pin_value *inputs, int count, arena *a)
+{
+    (void)count;
+    (void)a;
+    const pin_array *array = inputs && inputs[0].container == PIN_CONTAINER_ARRAY
+                               ? inputs[0].ptr
+                               : NULL;
+    return (pin_value){ .type = PIN_I32, .i = array ? array->count : 0 };
+}
+const char *pin_array_get_owned_call(arena *a, const pin_value *inputs, int count, pin_value *out)
+{
+    pin_value value = pin_array_get_result(inputs, count, a);
+    if (value.type == PIN_FLOW) {
+        return "data function produced an invalid result";
+    }
+    if ((value.container >= PIN_CONTAINER_ARRAY || value.type == PIN_STRUCT) &&
+        !value.ptr) {
+        return "arena allocation failed";
+    }
+    *out = value;
+    return NULL;
+}
+const char *pin_array_get_call(arena *a, const pin_value *inputs, int count, pin_value *out)
+{
+    pin_value value;
+    const char *error = pin_array_get_owned_call(a, inputs, count, &value);
+    if (error) {
+        return error;
+    }
+    return pin_value_snapshot_to_arena(a, out, &value)
+             ? "Cannot retain native value result"
+             : NULL;
+}
+const char *pin_array_length_owned_call(arena *a, const pin_value *inputs, int count, pin_value *out)
+{
+    *out = pin_array_length(inputs, count, a);
+    return NULL;
+}
+const char *pin_array_length_call(arena *a, const pin_value *inputs, int count, pin_value *out)
+{
+    pin_value value = pin_array_length(inputs, count, a);
+    return pin_value_snapshot_to_arena(a, out, &value)
+             ? "Cannot retain native value result"
+             : NULL;
+}
+
 pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
@@ -699,6 +761,74 @@ const char *pin_array_add_call(arena *a, const pin_value *inputs, int count, pin
         return "arena allocation failed";
     }
     *out = value;
+    return NULL;
+}
+const char *pin_array_build_i32(arena *a, pin_array_builder *builder, const pin_value *inputs, pin_value *out)
+{
+    const pin_array *source = inputs[0].container == PIN_CONTAINER_ARRAY
+                                ? inputs[0].ptr
+                                : NULL;
+    if (source && (source->count == INT_MAX ||
+                   (source->count >= 0 &&
+                    (size_t)source->count + 1 > SIZE_MAX / sizeof(int32_t)))) {
+        return "arena allocation failed";
+    }
+    if (inputs[0].type != PIN_I32 || inputs[0].container != PIN_CONTAINER_ARRAY ||
+        inputs[0].type_name || inputs[0].record || !source ||
+        source->element_type != PIN_I32 || source->type_name || source->record ||
+        !pin_array_valid(source) || inputs[1].type != PIN_I32 ||
+        inputs[1].container != PIN_CONTAINER_SINGLE || inputs[1].type_name ||
+        inputs[1].record) {
+        *builder = (pin_array_builder){ 0 };
+        return pin_array_add_call(a, inputs, 2, out);
+    }
+    bool tail = builder->owner == a && builder->latest == source &&
+                builder->count == source->count &&
+                builder->capacity == source->capacity &&
+                builder->data == source->data &&
+                source->stride == sizeof(int32_t) && !source->items;
+    int count = source->count + 1, capacity = tail ? builder->capacity : 0;
+    void *data = tail ? builder->data : NULL;
+    if (count > capacity) {
+        capacity = capacity > 0 ? capacity : 8;
+        while (capacity < count) {
+            if (capacity > INT_MAX / 2 ||
+                (size_t)capacity > SIZE_MAX / (2 * sizeof(int32_t))) {
+                capacity = count;
+                break;
+            }
+            capacity *= 2;
+        }
+        if ((size_t)capacity > SIZE_MAX / sizeof(int32_t)) {
+            return "arena allocation failed";
+        }
+        data = arena_alloc(a, (size_t)capacity * sizeof(int32_t));
+        pin_array destination = { .element_type = PIN_I32,
+                                  .count = count,
+                                  .capacity = capacity,
+                                  .data = data,
+                                  .stride = sizeof(int32_t) };
+        if (pin_array_snapshot_copy(a, &destination, 0, source, 0, source->count)) {
+            return "arena allocation failed";
+        }
+    }
+    /* Only the new suffix is written. A retained earlier logical header still
+     * observes exactly its original count and initialized prefix. */
+    ((int32_t *)data)[source->count] = inputs[1].i;
+    pin_copy_record(PIN_COPY_VALUE_BUFFER, sizeof(int32_t));
+    pin_array *array = arena_alloc(a, sizeof *array);
+    *array = (pin_array){ .element_type = PIN_I32,
+                          .count = count,
+                          .capacity = capacity,
+                          .data = data,
+                          .stride = sizeof(int32_t) };
+    pin_arena_trace_array(a, array);
+    *builder = (pin_array_builder){ .owner = a,
+                                    .latest = array,
+                                    .data = data,
+                                    .count = count,
+                                    .capacity = capacity };
+    *out = (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = array };
     return NULL;
 }
 int pin_array_build_row(arena *a, const pin_value *prefix, const pin_value *row, int capacity, pin_value *out)

@@ -11,6 +11,99 @@ existing C conformance cases and unresolved migration semantics separately at it
 recorded revision, before the version-25 retained-binding migration. Its source
 audit is not fresh runtime or cross-backend validation.
 
+## Package analysis
+
+The SDK's `script_analyze_package` and `script_declarations_package` accept a
+`script_package_options` describing sibling snapshots, native declarations and
+resolved imports. Siblings have one matching `package` header.
+Functions, constants, records and unions share a package scope. Declarations are
+collected before function bodies, so siblings can refer to one another and
+functions with declared results can recurse across files.
+
+```code
+// arithmetic.chibi
+package sample
+Add :: (value: int) -> int { return value + 2; }
+```
+
+```code
+// main.chibi
+package sample
+Main :: (value: int) -> int { return Add(value); }
+```
+
+Each input supplies a display path, a stable document key and parsed syntax; the
+caller supplies a stable package identity. The returned analysis owns its source
+texts, paths and keys. `script_range.document` selects the input document, while
+byte offsets and line/column values stay local to that document. Lowered execution
+origins retain its display path after the analysis is freed. Exported identities
+depend on package identity and declaration, not input order or unrelated sibling
+files. Debug record ordinals and byte offsets are not durable identities.
+
+`source_package_snapshot_new` in `Chibi::source_catalog` separately resolves a
+complete set of source buffers against explicit project and collection roots.
+It owns parsed documents, groups sibling files, resolves relative and
+`collection:path` imports, and retains file-local aliases and blank import edges.
+Its graph reports missing packages, duplicate bindings and cycles with source
+locations. Package and document keys use collection-relative paths so relocating
+an installation preserves their identities. Graph ordering is deterministic for
+the supplied canonical paths.
+
+Resolution is lexical and does not read the filesystem or follow symlinks. A disk
+adapter must provide physically canonical roots and paths when containment is
+required. Relative imports cannot leave the declaring file's longest matching
+collection root. Inputs are bounded to 256 files, 512 KiB each and 8 MiB total;
+the public header records path, nesting and import limits.
+
+`authoring_packages_prepare` consumes an owned snapshot and prepares dependencies
+before their importers. A file's named aliases expose only the imported package's
+functions, types and constants; sibling files do not inherit those aliases.
+Blank imports retain dependencies without adding names. A self import refers to
+the current package. Exported signatures, layouts and constant values are owned,
+and lowered calls link to dependency modules by stable ID. Parameter defaults
+must be bounded compile-time values; preparation does not execute host calls to
+evaluate defaults. Existing generic execution limits still apply.
+
+Preparation returns a separate valid or invalid candidate, with source-local
+diagnostics. Passing a previous candidate permits exact reuse when source
+membership/text, native declarations/defaults, backend, nonzero binding
+generation and direct dependency generations match. Any changed dependency
+invalidates its transitive importers, including blank import edges. Reused
+generations and executable modules retain their dependencies independently of
+previous owners; a failed candidate never changes the previous one.
+
+Direct semantic callers supply one immutable exports view per imported identity,
+reusing that view across aliases. Metadata is available by ID for type checking,
+while only explicit export members are visible through an alias. The shared
+`script_catalog_snapshot` helper in `Chibi::capabilities` owns metadata names and
+defaults, including union payload defaults.
+
+`source_package_snapshot_load` supplies a complete explicit package-source
+forest from disk on Linux and macOS. It canonicalizes root directories, reads
+bounded regular `.chibi` files through directory descriptors, and rejects
+non-hidden descendant symlinks. Hidden descendants are skipped, while explicitly
+supplied roots are still scanned. Overlapping roots share no collected files;
+longest-root ownership remains the resolver's rule. Loader failures return a
+value-owned path/message; source and graph errors retain an invalid snapshot.
+The loader does not consult the environment or change cwd. Windows filesystem
+loading remains unsupported; callers can still supply owned buffer snapshots.
+
+The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
+as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
+pure `ByteLength`, `ByteAt`, `Slice`, `Compare`, `IsIdentifier` and `BaseName`
+functions use the text capability pack. Byte access returns unsigned 0..255 or
+-1 outside the string. Slice clamps its start/count and owns its result; byte
+ranges can split UTF-8 sequences. Compare orders unsigned bytes, IsIdentifier
+checks ASCII identifiers, and BaseName uses slash separators. Compiler packages
+also use the existing pure generic array capability pack. Package template exports remain unsupported; single-source libraries retain
+the authored specialization contract described below. Core does not provide
+an imported generic array-wrapper API.
+
+These are M3 increments in [the toolchain plan](../PLAN.md). Package globals and
+embedded game roots remain unsupported. Project loading, formatting and editor
+navigation use their existing single-source entry points. The package APIs do
+not change the public build command.
+
 ## Declarative documents
 
 Project manifests are `project.kdl`, version 26. Scenes, KDL prototypes, event

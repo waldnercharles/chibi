@@ -114,6 +114,28 @@ def product_targets(cache, system=None):
     return products
 
 
+def private_tool_targets(cache, system=None):
+    system = system or cache.get('CMAKE_SYSTEM_NAME')
+    if cache.get('CHIBI_SDK_BUILD_COMPILER') == 'ON' and system in ('Darwin', 'Linux'):
+        return {'chibi-build-host': 'libexec/chibi/chibi-build-host'}
+    return {}
+
+
+def installed_private_tools(compiled, files, stage):
+    installed = {}
+    for name, evidence in compiled.get('private_executables', {}).items():
+        destination = evidence['install_path']
+        if (destination not in files or files[destination]['sha256'] != evidence['sha256']
+                or not os.access(stage / destination, os.X_OK)):
+            raise ValueError(f'Installed private executable differs from compiled evidence: {destination}')
+        installed[name] = destination
+    actual = {path.relative_to(stage).as_posix() for path in (stage / 'libexec').rglob('*')
+              if path.is_file()}
+    if actual != set(installed.values()):
+        raise ValueError('Installed private executables differ from the configured tool contract')
+    return installed
+
+
 def executable_identity(build, cache, target, target_directory, output=None, *, source_root=None):
     candidates = ([output] if output is not None else
                   [target_directory.parent.parent / (target + suffix)
@@ -399,7 +421,10 @@ def build_identity(build, cache):
     archives = {}
     archive_targets = {}
     executables = {}
-    allowed_products = product_targets(cache, cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME'))
+    private_executables = {}
+    system = cmake_metadata(build, 'CMakeSystem.cmake').get('CMAKE_SYSTEM_NAME')
+    allowed_products = product_targets(cache, system)
+    allowed_tools = private_tool_targets(cache, system)
     for entry in commands:
         directory = Path(entry['directory'])
         arguments = entry.get('arguments') or shlex.split(entry['command'])
@@ -421,14 +446,19 @@ def build_identity(build, cache):
             raise ValueError(f'Cannot identify archive owner for {object_path.name}')
         target = target_directory.name.removesuffix('.dir')
         if cache.get('CMAKE_GENERATOR') != 'Ninja':
-            if target in ('chibi', 'chibi-player', 'chibi-compile'):
-                if target not in allowed_products:
+            if target in ('chibi', 'chibi-player', 'chibi-compile', 'chibi-build-host'):
+                if target not in allowed_products and target not in allowed_tools:
                     raise ValueError(f'Executable {target} is outside the configured product contract')
-                if target not in executables:
-                    executables[target] = executable_identity(build, cache, target, target_directory, source_root=ROOT)
-                executable = build / executables[target]['path']
+                identities = private_executables if target in allowed_tools else executables
+                if target not in identities:
+                    identities[target] = executable_identity(build, cache, target, target_directory, source_root=ROOT)
+                executable = build / identities[target]['path']
                 if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
                     raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
+            elif target == 'chibi_build_host' and 'chibi-build-host' in allowed_tools:
+                # Private host objects link directly into its installed tool.
+                # It deliberately has no separately installed static archive.
+                pass
             else:
                 candidates = [target_directory.parent.parent / name
                               for name in (f'lib{target}.a', f'{target}.lib', f'lib{target}.lib')]
@@ -505,10 +535,22 @@ def build_identity(build, cache):
         archives = artifact_records['archives']
         archive_targets = artifact_records['archive_targets']
         executables = artifact_records['executables']
+        auxiliary = artifact_records['auxiliary_executables']
+        private_executables = {name: auxiliary.pop(name) for name in allowed_tools if name in auxiliary}
     if set(executables) != allowed_products:
         raise ValueError(f'Built executables differ from product contract: {sorted(executables)}')
+    if set(private_executables) != set(allowed_tools):
+        raise ValueError(f'Built private executables differ from tool contract: {sorted(private_executables)}')
+    for name, evidence in private_executables.items():
+        evidence['install_path'] = allowed_tools[name]
+    if cache.get('CMAKE_GENERATOR') != 'Ninja' and private_executables:
+        linked = private_executables['chibi-build-host']['link_inputs']
+        for name, evidence in objects.items():
+            if evidence['target'] == 'chibi_build_host' and linked.get(name) != evidence['sha256']:
+                raise ValueError(f'Private host object has no installed executable owner: {name}')
     return {'configured_engine': configured,
             'object_count': len(objects), 'objects': objects, 'archives': archives,
+            'private_executables': private_executables,
             'executables': executables, 'archive_targets': archive_targets,
             'inputs_sha256': canonical_digest(inputs), 'inputs': inputs, **artifact_records}
 
@@ -673,6 +715,7 @@ def assemble(build, output, kind):
         expected_products = {Path(value['path']).name for value in compiled['executables'].values()}
         if installed_products != expected_products:
             raise ValueError('Installed executables differ from the configured product contract')
+        private_tools = installed_private_tools(compiled, files, stage)
         if canonical_digest(build_identity(build, cache)) != canonical_digest(compiled):
             raise ValueError('Build inputs or outputs changed during packaging')
         headers = {name: value['sha256'] for name, value in files.items() if name.startswith('include/')}
@@ -687,6 +730,7 @@ def assemble(build, output, kind):
             'source': source_identity(), 'files': files, 'targets': targets,
             'products': {name: 'bin/' + Path(evidence['path']).name
                          for name, evidence in compiled['executables'].items()},
+            'private_tools': private_tools,
             'requirements': {
                 'c_standard': 23, 'prepared_format': prepared, 'artifact_formats': formats,
                 'project_format': engine['project_version'],

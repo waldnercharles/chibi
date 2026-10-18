@@ -57,19 +57,24 @@ bool script_analyzer_synchronous_await(const analyzer *a, TSNode node)
     char *name = script_analyzer_text_copy(a, target);
     /* Task hints precede body declarations. Check authored syntax, rather
      * than the growing symbol table, so this proof is identical in both phases. */
-    if (authored_callable_named(a, ts_tree_root_node(a->syntax->tree), name)) {
-        free(name);
-        return false;
+    int count = a->document_count ? a->document_count : 1;
+    for (int i = 0; i < count; i++) {
+        const script_syntax *syntax = script_analyzer_document_syntax(a, i);
+        if (authored_callable_named(a, ts_tree_root_node(syntax->tree), name)) {
+            free(name);
+            return false;
+        }
     }
-    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    const script_catalog *visible = a->native ? a->native : a->catalog;
+    int index = script_catalog_find_capability(visible, name, SCRIPT_CAPABILITY_FUNCTION);
     if (index == -1) {
-        index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION);
+        index = script_catalog_find_capability(visible, name, SCRIPT_CAPABILITY_ACTION);
     }
     free(name);
     if (index < 0) {
         return false;
     }
-    const script_catalog_capability *cap = &a->catalog->capabilities[index];
+    const script_catalog_capability *cap = &visible->capabilities[index];
     return cap->component_access != SCRIPT_COMPONENT_ACCESS_NONE &&
            !(cap->effects & SCRIPT_EFFECT_SUSPEND) && cap->completion_outcome >= 0;
 }
@@ -133,8 +138,9 @@ static bool readonly_syntax(const analyzer *a, TSNode node, bool *active)
         TSNode op = script_analyzer_field(node, "operator");
         const unsigned changes = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                                  SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND;
-        for (int i = 0; i < a->catalog->capability_count; i++) {
-            const script_catalog_capability *cap = &a->catalog->capabilities[i];
+        const script_catalog *visible = a->native ? a->native : a->catalog;
+        for (int i = 0; i < visible->capability_count; i++) {
+            const script_catalog_capability *cap = &visible->capabilities[i];
             if (cap->operator_name &&
                 script_analyzer_text_is(a, op, cap->operator_name) &&
                 (cap->effects & changes)) {
@@ -159,11 +165,12 @@ static bool readonly_syntax(const analyzer *a, TSNode node, bool *active)
         if (function >= 0) {
             safe = readonly_function(a, function, active);
         } else {
-            int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+            const script_catalog *visible = a->native ? a->native : a->catalog;
+            int index = script_catalog_find_capability(visible, name, SCRIPT_CAPABILITY_FUNCTION);
             const unsigned changes = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                                      SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND;
-            safe = index >= 0 && a->catalog->capabilities[index].pure &&
-                   !(a->catalog->capabilities[index].effects & changes);
+            safe = index >= 0 && visible->capabilities[index].pure &&
+                   !(visible->capabilities[index].effects & changes);
         }
         free(name);
         if (!safe) {
@@ -671,7 +678,7 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     }
     script_statement block = { .kind = SCRIPT_STMT_BLOCK,
                                .scope = a->scope,
-                               .range = script_analyzer_range(body),
+                               .range = script_analyzer_range(a, body),
                                .symbol = -1,
                                .expression = -1,
                                .second = -1,
@@ -700,7 +707,10 @@ static bool calls(analyzer *a, TSNode node, int symbol)
     if (script_analyzer_is(node, "call_expression")) {
         /* Spelled as call analysis resolves it, so `Lib.F` is not `F`. */
         char *target = script_analyzer_qualified_name(a, script_analyzer_field(node, "function"));
-        bool match = script_analyzer_callable_symbol(a, target) == symbol;
+        int resolved = script_analyzer_import_namespace(a, node, target)
+                         ? script_analyzer_package_function(a, node, target)
+                         : script_analyzer_callable_symbol(a, target);
+        bool match = resolved == symbol;
         free(target);
         if (match) {
             return true;
@@ -765,8 +775,9 @@ void script_analyzer_callable_definitions(analyzer *a, bool inferred_only)
 }
 void script_analyzer_host_declarations(analyzer *a, TSNode root)
 {
-    for (int i = 0; i < a->catalog->global_count; i++) {
-        const script_catalog_global *global = &a->catalog->globals[i];
+    const script_catalog *visible = a->native ? a->native : a->catalog;
+    for (int i = 0; i < visible->global_count; i++) {
+        const script_catalog_global *global = &visible->globals[i];
         apush(
             a->out->symbols,
             ((script_symbol){ .id = global->id,
@@ -780,8 +791,8 @@ void script_analyzer_host_declarations(analyzer *a, TSNode root)
                               .declaration = { .start = -1, .end = -1 } })
         );
     }
-    for (int i = 0; i < a->catalog->capability_count; i++) {
-        const script_catalog_capability *capability = &a->catalog->capabilities[i];
+    for (int i = 0; i < visible->capability_count; i++) {
+        const script_catalog_capability *capability = &visible->capabilities[i];
         if (capability->kind == SCRIPT_CAPABILITY_PROTOTYPE) {
             continue;
         }

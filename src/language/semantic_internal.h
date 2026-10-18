@@ -16,12 +16,6 @@ static inline uint32_t script_analyzer_child_count(TSNode node)
 {
     return ts_node_is_null(node) ? 0 : ts_node_child_count(node);
 }
-static inline script_range script_analyzer_range(TSNode node)
-{
-    return ts_node_is_null(node) ? (script_range){ .line = 1, .column = 1 }
-                                 : script_node_range(node);
-}
-
 typedef struct
 {
     int symbol;
@@ -70,9 +64,15 @@ typedef struct
 typedef struct
 {
     const script_syntax *syntax;
-    const script_catalog *catalog;
+    const script_package_document *documents;
+    int document_count, package_scope;
+    const script_catalog *catalog, *native;
+    const script_package_import *imports;
+    int import_count;
+    bool *import_used;
     script_catalog catalog_view;
     script_catalog_type *catalog_types;
+    script_catalog_capability *catalog_capabilities;
     script_analysis *out;
     initializer *initializers;
     function_body *bodies;
@@ -133,6 +133,18 @@ const char *script_analyzer_constant_operation(script_operator, pin_value, pin_v
 bool script_analyzer_synchronous_await(const analyzer *, TSNode);
 bool script_analyzer_readonly_callable(const analyzer *, int);
 
+script_range script_analyzer_range(const analyzer *, TSNode);
+const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);
+const script_syntax *script_analyzer_document_syntax(const analyzer *, int document);
+bool script_analyzer_package_metadata(analyzer *);
+bool script_analyzer_package_import(analyzer *, TSNode);
+void script_analyzer_package_imports_check(analyzer *, bool declarations);
+int script_analyzer_find_type(analyzer *, TSNode, const char *);
+int script_analyzer_find_capability(analyzer *, TSNode, const char *, script_capability_kind);
+bool script_analyzer_native_capability(const analyzer *, uint64_t);
+int script_analyzer_package_function(analyzer *, TSNode, const char *);
+int script_analyzer_package_constant(analyzer *, TSNode);
+bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
 script_syntax *script_analyzer_recovery_syntax(const script_syntax *);
 void script_analyzer_recovery_restore(script_analysis *, const script_syntax *);
 
@@ -206,6 +218,7 @@ int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component
 void script_analyzer_query_intersect(analyzer *a, int term);
 void script_analyzer_system_parameters(analyzer *a, TSNode root);
 void script_analyzer_declaration_pass(analyzer *a, TSNode body);
+void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);
 void script_analyzer_handler(analyzer *a, TSNode node);
 uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
@@ -235,6 +248,8 @@ void script_analyzer_record_fields(analyzer *, TSNode);
 bool script_analyzer_compile_time_value(analyzer *, int, int *steps, bool scalar);
 const char *script_analyzer_scalar_constant(analyzer *, int, pin_type, pin_value *);
 void script_analyzer_union_declarations(analyzer *, TSNode);
+void script_analyzer_union_types(analyzer *, TSNode);
+void script_analyzer_union_fields(analyzer *, TSNode);
 script_type script_analyzer_union_type(analyzer *, TSNode, const script_type *, int);
 script_type script_analyzer_await_type(analyzer *, TSNode, script_type);
 script_type script_analyzer_task_type(analyzer *, script_type, uint64_t);

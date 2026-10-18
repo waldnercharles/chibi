@@ -15,6 +15,12 @@ int test_web_audio_start();
 #endif
 int main(int argc, char **argv)
 {
+    if (argc == 2 && (!strcmp(argv[1], "--studio-outliner-browser") ||
+                      !strcmp(argv[1], "--studio-sdk-identity") ||
+                      !strcmp(argv[1], "--request-work-c"))) {
+        fprintf(stderr, "%s requires the native Unix tooling driver\n", argv[1]);
+        return 2;
+    }
 #ifdef CHIBI_TEST_AUDIO_WEB
     if (argc == 2 && !strcmp(argv[1], "--audio-browser")) {
         return test_web_audio_start();
@@ -39,8 +45,15 @@ void test_tool_execution_policy();
 void test_tool_c_export();
 void test_tool_record_c_export();
 void test_tool_row_builder_c();
+void test_tool_request_work_c();
 #endif
 void test_tool_package();
+void test_tool_studio_sdk_identity();
+void test_tool_chibi_cli(const char *binary);
+#ifdef CHIBI_TEST_BUILD_PROCESS
+void test_tool_build_process(const char *worker, const char *host);
+void test_build_toolchain(const char *worker, const char *host);
+#endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
 void test_tool_collab();
@@ -57,6 +70,9 @@ void test_tool_shader_webgpu();
 #endif
 void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
+#ifdef CHIBI_TEST_STUDIO_OUTLINER_BROWSER
+void test_tool_studio_outliner_browser();
+#endif
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -496,6 +512,56 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--studio-sdk-identity")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_studio_sdk_identity();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--studio-outliner-browser")) {
+#ifdef CHIBI_TEST_STUDIO_OUTLINER_BROWSER
+        tool_init();
+        pu_display_time(true);
+        test_tool_studio_outliner_browser();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the native Unix tooling driver\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--build-toolchain")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_build_toolchain(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--build-process")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_tool_build_process(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();
@@ -637,11 +703,14 @@ int main(int argc, char **argv)
     }
     if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
                       !strcmp(argv[1], "--record-c-export") ||
-                      !strcmp(argv[1], "--row-builder-c"))) {
+                      !strcmp(argv[1], "--row-builder-c") ||
+                      !strcmp(argv[1], "--request-work-c"))) {
 #ifdef CHIBI_TEST_C_EXPORT
         tool_init();
         pu_display_time(true);
-        if (!strcmp(argv[1], "--row-builder-c")) {
+        if (!strcmp(argv[1], "--request-work-c")) {
+            test_tool_request_work_c();
+        } else if (!strcmp(argv[1], "--row-builder-c")) {
             test_tool_row_builder_c();
         } else if (!strcmp(argv[1], "--record-c-export")) {
             test_tool_record_c_export();
@@ -978,9 +1047,10 @@ int main(int argc, char **argv)
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
-            "Usage: %s [--tilemap | --package | "
+            "Usage: %s [--tilemap | --package | --studio-sdk-identity | "
             "--desktop-dependencies | --package-ownership | --unit | "
             "--reflect-ranges | --c-export-alias | --row-builder-c | "
+            "--request-work-c | "
             "--ecs-query | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
@@ -993,7 +1063,7 @@ int main(int argc, char **argv)
             "--unit-fixtures | "
             "--unit-validation <chibi_ctl> | "
             "--web-storage | "
-            "--webgpu-staging | --wasm-browser | "
+            "--webgpu-staging | --wasm-browser | --studio-outliner-browser | "
             "--ecs-query-benchmark | --arena | "
             "--validate-project chibi_ctl | "
             "--fixture-format chibi_ctl | "

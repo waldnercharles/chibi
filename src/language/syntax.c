@@ -17,7 +17,8 @@ script_range script_node_range(TSNode node)
     return (script_range){ (int)ts_node_start_byte(node),
                            (int)ts_node_end_byte(node),
                            (int)point.row + 1,
-                           (int)point.column + 1 };
+                           (int)point.column + 1,
+                           0 };
 }
 
 static bool hidden_error(TSNode node)

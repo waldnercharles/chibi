@@ -12,6 +12,12 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+/* Runtime-owned request balance. Public layout lets generated C charge the
+ * same account without a linked helper; hosts must use the authority API. */
+typedef struct execution_work
+{
+    uintptr_t spent, limit;
+} execution_work;
 /* Actual entries through the interpreter/runner/Wasm path, including outlined
  * calls and resumes. Inspected and fallback fields are subsets, not additional
  * entries. Direct generated-C and batch/system calls are outside this measure. */
@@ -279,6 +285,9 @@ typedef struct behavior_function_context
     double delta_seconds;
     uintptr_t steps;
     uintptr_t budget;
+    /* Optional request-owned checkpoint account. All synchronous frames share
+     * it. Its dispatch owner outlives this borrowed pointer. */
+    execution_work *work;
     uint64_t node_id;
     unsigned call_depth;
     int error_frame;
@@ -331,6 +340,19 @@ typedef struct behavior_function_context
     /* Keep optional state callbacks after the frequently read context fields. */
     int (*select_state)(void *owner, const behavior_state_selection *selection, int start, int flags);
 } behavior_function_context;
+/* Backend/generated-C checkpoint hook. Ordinary contexts are unchanged. */
+static inline bool behavior_function_charge_work(const behavior_function_context *context)
+{
+    execution_work *work = context->work;
+    if (!work) {
+        return true;
+    }
+    if (work->spent >= work->limit) {
+        return false;
+    }
+    work->spent++;
+    return true;
+}
 /* Deepest retained invocation, including a suspended or failed callee. */
 /* Visits the root and retained outlined contexts without changing their frames.
  * The visitor must not release or add call frames. */

@@ -7,7 +7,17 @@
 void test_language_syntax();
 void test_language_inferred_string_arrays(bool repro);
 void test_language_row_builder();
+void test_language_scalar_append();
 void test_language_outliner_projection();
+void test_language_authority();
+void test_language_request_work();
+void test_language_source_guard();
+#ifdef CHIBI_TEST_OUTLINER_WORK
+void test_language_outliner_work();
+#endif
+#ifdef CHIBI_TEST_OUTLINER_CONTRACT
+void test_language_outliner_contract();
+#endif
 void test_language_row_array();
 void test_language_packed();
 void test_language_runtime_attribution();
@@ -44,6 +54,11 @@ void test_numeric_ranges();
 void test_numeric_exact_core();
 void test_language_package_graph();
 void test_language_package_syntax();
+void test_language_package_execution();
+void test_language_package_resolution();
+void test_language_package_imports();
+void test_language_package_files();
+void test_language_package_core();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -96,7 +111,21 @@ int main(int argc, char **argv)
                                  !strcmp(argv[1], "--incremental-benchmark");
     bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
     bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
+    bool authority = argc == 2 && !strcmp(argv[1], "--authority");
+    bool request_work = argc == 2 && !strcmp(argv[1], "--request-work");
+    bool source_guard = argc == 2 && !strcmp(argv[1], "--source-guard");
+#ifdef CHIBI_TEST_OUTLINER_CONTRACT
+    bool outliner_contract = argc == 2 && !strcmp(argv[1], "--outliner-contract");
+#else
+    bool outliner_contract = false;
+#endif
+#ifdef CHIBI_TEST_OUTLINER_WORK
+    bool outliner_work = argc == 2 && !strcmp(argv[1], "--outliner-work");
+#else
+    bool outliner_work = false;
+#endif
     bool row_builder = argc == 2 && !strcmp(argv[1], "--row-builder");
+    bool scalar_append = argc == 2 && !strcmp(argv[1], "--scalar-append");
     bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
     bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
@@ -119,6 +148,11 @@ int main(int argc, char **argv)
     bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
+    bool package_execution = argc == 2 && !strcmp(argv[1], "--package-execution");
+    bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
+    bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+    bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
+    bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
@@ -145,13 +179,16 @@ int main(int argc, char **argv)
          !incremental_benchmark && !record_publication && !record_publication_repro &&
          !record_values && !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_builder && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !program && !query_program && !incremental &&
-         !modules && !ranges && !numeric_exact_core && !package_graph &&
-         !package_syntax && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !outliner_projection && !authority && !request_work && !source_guard &&
+         !outliner_contract && !outliner_work && !row_builder && !scalar_append &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm &&
+         !program && !query_program && !incremental && !modules && !ranges &&
+         !numeric_exact_core && !package_graph && !package_syntax &&
+         !package_execution && !package_resolution && !package_imports &&
+         !package_files && !package_core && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -161,7 +198,8 @@ int main(int argc, char **argv)
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
             "--ranges | --numeric-exact-core | --package-graph | "
-            "--package-syntax | "
+            "--package-syntax | --package-execution | --package-resolution | "
+            "--package-imports | --package-files | --package-core | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -178,7 +216,10 @@ int main(int argc, char **argv)
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | --row-builder | "
-            "--outliner-projection | --record-publication | "
+            "--scalar-append | "
+            "--outliner-projection | --authority | --request-work | "
+            "--source-guard | "
+            "--outliner-contract | --outliner-work | --record-publication | "
             "--record-publication-repro | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
@@ -191,10 +232,26 @@ int main(int argc, char **argv)
         test_language_inferred_string_arrays(inferred_array_repro);
     } else if (record_publication || record_publication_repro) {
         test_language_record_publication(record_publication_repro);
+    } else if (authority) {
+        test_language_authority();
+    } else if (request_work) {
+        test_language_request_work();
+    } else if (source_guard) {
+        test_language_source_guard();
+    } else if (outliner_contract) {
+#ifdef CHIBI_TEST_OUTLINER_CONTRACT
+        test_language_outliner_contract();
+#endif
+    } else if (outliner_work) {
+#ifdef CHIBI_TEST_OUTLINER_WORK
+        test_language_outliner_work();
+#endif
     } else if (outliner_projection) {
         test_language_outliner_projection();
     } else if (row_builder) {
         test_language_row_builder();
+    } else if (scalar_append) {
+        test_language_scalar_append();
     } else if (row_array) {
         test_language_row_array();
         test_language_packed();
@@ -294,6 +351,16 @@ int main(int argc, char **argv)
         test_numeric_exact_core();
     } else if (package_syntax) {
         test_language_package_syntax();
+    } else if (package_execution) {
+        test_language_package_execution();
+    } else if (package_resolution) {
+        test_language_package_resolution();
+    } else if (package_imports) {
+        test_language_package_imports();
+    } else if (package_core) {
+        test_language_package_core();
+    } else if (package_files) {
+        test_language_package_files();
     } else if (package_graph) {
         test_language_package_graph();
     } else if (ranges) {

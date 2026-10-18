@@ -1,5 +1,5 @@
-#include "authoring/source_catalog_snapshot.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/inspection.h"
@@ -124,7 +124,7 @@ static bool compile(int generation, behavior_backend backend, execution_module *
                                       .capabilities = &event,
                                       .capability_count = 1 },
                    catalog;
-    REQUIRE(source_catalog_snapshot(&catalog_storage, &source_catalog, &catalog));
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &source_catalog, &catalog));
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     analysis = NULL;

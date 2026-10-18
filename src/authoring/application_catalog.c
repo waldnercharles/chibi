@@ -7,7 +7,12 @@
 native_capabilities *authoring_application_catalog_new(bool studio, char *error, size_t size)
 {
     if (studio) {
-        return authoring_studio_native_catalog_new(&RENDER_SHADER_PARAMETER_DEFINITION_PACK, 1, error, size);
+        return authoring_studio_outliner_catalog_new(
+            &RENDER_SHADER_PARAMETER_DEFINITION_PACK,
+            1,
+            error,
+            size
+        );
     }
     return authoring_renderer_catalog_new(error, size);
 }

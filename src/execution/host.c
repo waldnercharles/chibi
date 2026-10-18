@@ -51,6 +51,7 @@ void behavior_function_reset_data(behavior_data_storage *data)
             data->values[i].ptr = data->buffers[i];
         }
     }
+    behavior_function_append_reset(data);
 }
 size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
 {
@@ -65,7 +66,7 @@ size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
     for (int i = 0; i < acount(data->function->data_values); i++) {
         bytes += data->function->data_values[i].size;
     }
-    return bytes;
+    return bytes + behavior_function_append_storage_bytes(data->function);
 }
 size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx)
 {
@@ -114,6 +115,12 @@ void behavior_function_prepare_data(
             }
             apush(data->values, v.initial);
             apush(data->buffers, buffer);
+        }
+        if (f->appends) {
+            apush(data->buffers, xcalloc(1, behavior_function_append_storage_bytes(f)));
+            for (int i = 0; i < acount(f->appends); i++) {
+                apush(data->values, ((pin_value){ 0 }));
+            }
         }
         /* Keep zero-argument, zero-result calls on a valid bank base. */
         if (!data->values) {
@@ -229,6 +236,7 @@ void behavior_function_rebind_host(
 {
     ctx->services = services;
     if (ctx->data) {
+        behavior_function_append_reset(ctx->data);
         behavior_function_prepare_data(f, services, &ctx->data);
     }
     for (int i = 0; i < acount(f->queries); i++) {

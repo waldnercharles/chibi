@@ -37,6 +37,9 @@ static void discard(execution_activation *a)
 {
     behavior_function_release_host(&a->context);
     behavior_function_activation_free(&a->activation);
+    a->context.work = NULL;
+    program_dispatch_free(a->dispatch);
+    a->dispatch = NULL;
     arena_free(&a->storage);
     arena_free(&a->payload);
     free(a);
@@ -68,22 +71,25 @@ static void cancel_continuations(behavior_function_context *ctx)
             continue;
         }
         /* A running continuation stops when control returns to it. */
-        if (child->running) {
+        if (child->active) {
+            child->authority_valid = false;
             child->stopping = true;
             continue;
         }
         unlink_continuation(child);
-        behavior_function_visit_contexts(&child->context, cancel_continuations);
-        while (acount(child->requests)) {
-            execution_request_detach(child->requests[0]->request);
-        }
-        child->finished = true;
+        program_activation_cancel(child);
         child->status = FLOW_ERR_STATE;
     }
 }
 void program_activation_cancel(execution_activation *a)
 {
     a->cacheable = false;
+    a->authority_valid = false;
+    if (a->active) {
+        a->stopping = true;
+        return;
+    }
+    program_inspection_release(a);
     behavior_function_visit_contexts(&a->context, cancel_continuations);
     while (acount(a->requests)) {
         execution_request_detach(a->requests[0]->request);
@@ -93,6 +99,7 @@ void program_activation_cancel(execution_activation *a)
 }
 void program_activation_free(execution_activation *activation)
 {
+    assert(!activation->active);
     execution_program *p = activation->instance->program;
     bool keep = activation->cacheable && activation->has_run &&
                 activation->finished && activation->status == FLOW_OK &&
@@ -120,6 +127,9 @@ void program_activation_free(execution_activation *activation)
     } else {
         behavior_function_clear_calls(&activation->activation);
     }
+    activation->context.work = NULL;
+    program_dispatch_free(activation->dispatch);
+    activation->dispatch = NULL;
     if (keep && !p->spare_activation &&
         cache_bytes(activation) <= ACTIVATION_CACHE_BYTES) {
         arena storage = activation->storage;
@@ -273,6 +283,9 @@ void program_continuation_finish(execution_activation *a)
     behavior_function_context *ctx = a->continuation_context;
     execution_activation *owner = a->continuation_owner;
     unlink_continuation(a);
+    if (execution_dispatch_cancelled(a->dispatch) || owner->stopping) {
+        return;
+    }
     if (a->status < 0) {
         owner->status = a->status;
         owner->finished = true;
@@ -290,7 +303,7 @@ void program_continuation_finish(execution_activation *a)
         ctx->exit_requested = a->context.exit_requested;
     }
 }
-int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
+static int run_activation(execution_activation *a, double now, double delta, unsigned budget)
 {
     a->cacheable &= !a->has_run && !a->instance->program->owner_program->inspector;
     if (program_task_due(a, now)) {
@@ -304,6 +317,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         return FLOW_PAUSED_RESULT;
     }
     for (int i = 0; i < acount(a->requests);) {
+        if (execution_dispatch_cancelled(a->dispatch) || a->stopping) {
+            return FLOW_OK;
+        }
         command_wait *wait = a->requests[i];
         if (program_wait_due(wait, now)) {
             bool completed = flow_host_complete(wait->request, -1, (pin_value){ 0 });
@@ -356,6 +372,9 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     if (a->wait && flow_host_status(a->wait->request) == FLOW_HOST_PENDING) {
         return FLOW_SUSPENDED_RESULT;
     }
+    if (execution_dispatch_cancelled(a->dispatch) || a->stopping) {
+        return FLOW_OK;
+    }
     const behavior_function *active = a->function;
     behavior_function_context *current = behavior_function_active_context(&a->context, &active);
     if (current->pending_commands) {
@@ -367,16 +386,21 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     program_bind_instance(a->function, &a->context);
     a->context.now = now;
     a->context.delta_seconds = delta;
-    a->context.budget = budget ? budget : 10000;
+    a->context.work = program_dispatch_work(a->dispatch);
+    /* Keep the legacy JIT countdown base fixed. The live request account is
+     * authoritative and can receive one host grant without resetting work. */
+    a->context.budget = a->context.work ? UINTPTR_MAX : (budget ? budget : 10000);
     execution_program *observed = a->instance->program->owner_program;
     clock_t start = observed->observer ? clock() : (clock_t)-1;
     bool resumed = a->has_run;
+    program_authority_begin(a);
     a->has_run = true;
     a->status = behavior_function_run(
         a->function,
         &a->context,
         a->instance->program->module->backend != BEHAVIOR_BYTECODE
     );
+    program_authority_end(a);
     a->cacheable &= a->status == FLOW_OK && !acount(a->requests);
     if (observed->observer) {
         clock_t end = clock();
@@ -409,9 +433,6 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         }
     }
     program_commit_instance(&a->context);
-    if (a->stopping) {
-        program_activation_cancel(a);
-    }
     a->finished = a->status != FLOW_SUSPENDED_RESULT && a->status != FLOW_PAUSED_RESULT;
     if (a->finished) {
         program_boxes_detach(a, NULL);
@@ -425,4 +446,26 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         program_collect_payloads(a->instance->program, a);
     }
     return a->status;
+}
+
+int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
+{
+    /* The complete dynamic extent includes ready-request delivery, which can
+     * create children before behavior_function_run marks the owner running. */
+    if (a->active) {
+        program_authority_invalidate();
+        return FLOW_SUSPENDED_RESULT;
+    }
+    program_authority_enter(a);
+    int status = execution_dispatch_cancelled(a->dispatch) || a->stopping
+                   ? FLOW_OK
+                   : run_activation(a, now, delta, budget);
+    program_authority_leave(a);
+    if (execution_dispatch_cancelled(a->dispatch) || a->stopping) {
+        program_activation_cancel(a);
+        program_task_finished(a, true);
+        program_continuation_finish(a);
+        return a->status;
+    }
+    return status;
 }

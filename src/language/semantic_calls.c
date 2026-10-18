@@ -52,20 +52,24 @@ static TSNode unparenthesized_parent(TSNode node)
 int script_analyzer_callable_symbol(const analyzer *a, const char *name)
 {
     int symbol = script_analyzer_lookup_name(a, name);
-    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION) {
+    bool action = symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION;
+    if (action && a->out->symbols[symbol].declaration.start >= 0) {
         return symbol;
     }
+    /* Authored callables shadow host actions. Authored shared actions keep
+     * their precedence in the callable namespace. */
     for (int scope = a->scope; scope >= 0; scope = a->out->scopes[scope].parent) {
         for (int i = acount(a->out->symbols) - 1; i >= 0; i--) {
             const script_symbol *candidate = &a->out->symbols[i];
             if (candidate->scope == scope &&
                 (candidate->kind == SCRIPT_FUNCTION || candidate->kind == SCRIPT_MACRO) &&
+                (!action || candidate->declaration.start >= 0) &&
                 !strcmp(candidate->name, name)) {
                 return i;
             }
         }
     }
-    return -1;
+    return action ? symbol : -1;
 }
 int script_analyzer_parameter_index(const script_catalog_parameter *parameters, int count, const char *name)
 {
@@ -135,7 +139,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
         script_analyzer_diagnostic(a, node, "Symbol references use identifiers, not string names");
     }
     if (parameter->reference_kind == SCRIPT_REFERENCE_PROTOTYPE) {
-        index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE);
+        index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_PROTOTYPE);
         if (index >= 0) {
             id = a->catalog->capabilities[index].id;
             canonical = a->catalog->capabilities[index].name;
@@ -155,7 +159,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
             }
         }
     } else {
-        index = script_catalog_find_type(a->catalog, name);
+        index = script_analyzer_find_type(a, node, name);
         if (index >= 0 && a->catalog->types[index].component) {
             id = a->catalog->types[index].id;
             canonical = a->catalog->types[index].key
@@ -189,7 +193,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
     script_expression value = {
         .kind = SCRIPT_EXPR_CONSTANT,
         .type = script_reference_type(parameter->reference_kind),
-        .range = script_analyzer_range(node),
+        .range = script_analyzer_range(a, node),
         .symbol = -1,
         .left = -1,
         .right = -1,
@@ -210,12 +214,12 @@ int script_analyzer_symbol_reference(analyzer *a, TSNode node, script_type expec
     if (kind == SCRIPT_REFERENCE_NONE) {
         char *name = script_analyzer_qualified_name(a, node);
         int found = 0;
-        if (script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_PROTOTYPE) >=
+        if (script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_PROTOTYPE) >=
             0) {
             kind = SCRIPT_REFERENCE_PROTOTYPE;
             found++;
         }
-        int type = script_catalog_find_type(a->catalog, name);
+        int type = script_analyzer_find_type(a, node, name);
         if (type >= 0 && a->catalog->types[type].component) {
             kind = SCRIPT_REFERENCE_COMPONENT;
             found++;
@@ -255,6 +259,25 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         }
     }
     char *name = script_analyzer_name_copy(a, member);
+    int imported_constant = script_analyzer_package_constant(a, node);
+    if (imported_constant >= 0) {
+        script_symbol value = a->out->symbols[imported_constant];
+        script_analyzer_use(a, member, imported_constant, SCRIPT_READ, value.id);
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){
+                .kind = SCRIPT_EXPR_SYMBOL,
+                .type = value.type,
+                .range = script_analyzer_range(a, node),
+                .symbol = imported_constant,
+                .left = -1,
+                .right = -1,
+                .entry = -1,
+                .member = value.id,
+            }
+        );
+    }
     if (script_analyzer_is(object, "builtin_reference") &&
         script_analyzer_text_is(a, object, "entry")) {
         int payload = script_analyzer_lookup(a, object);
@@ -271,7 +294,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                 a,
                 (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
                                      .type = value.type,
-                                     .range = script_analyzer_range(node),
+                                     .range = script_analyzer_range(a, node),
                                      .symbol = symbol,
                                      .left = -1,
                                      .right = -1,
@@ -289,7 +312,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                 a,
                 (script_expression){ .kind = SCRIPT_EXPR_ERROR,
                                      .type = script_analyzer_bad_type(),
-                                     .range = script_analyzer_range(node),
+                                     .range = script_analyzer_range(a, node),
                                      .symbol = -1,
                                      .left = -1,
                                      .right = -1 }
@@ -303,7 +326,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             a,
             (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
                                  .type = value.type,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = symbol,
                                  .left = -1,
                                  .right = -1,
@@ -317,7 +340,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     int left = script_analyzer_expression(a, object, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
     script_expression receiver = a->out->expressions[left];
     script_expression result = { .kind = SCRIPT_EXPR_MEMBER,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = receiver.symbol,
                                  .left = left,
                                  .right = -1,
@@ -440,7 +463,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
     }
     if (receiver.type.storage == PIN_HANDLE &&
         receiver.type.nominal == a->out->owner_type) {
-        int index = script_catalog_find_type(a->catalog, name);
+        int index = script_analyzer_find_type(a, node, name);
         if (index >= 0 && a->catalog->types[index].component) {
             const script_catalog_type *type = &a->catalog->types[index];
             result.kind = SCRIPT_EXPR_COMPONENT;
@@ -547,12 +570,12 @@ static int component_reference(analyzer *a, TSNode node)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .effects = SCRIPT_EFFECT_READ,
                                  .writable = true };
     TSNode argument = ts_node_named_child(arguments, 0);
     char *name = script_analyzer_name_copy(a, argument);
-    int index = script_catalog_find_type(a->catalog, name);
+    int index = script_analyzer_find_type(a, node, name);
     if (index < 0 || !a->catalog->types[index].component ||
         a->out->owner_symbol < 0 || script_analyzer_named_count(arguments) < 1 ||
         script_analyzer_named_count(arguments) > 2) {
@@ -571,7 +594,7 @@ static int component_reference(analyzer *a, TSNode node)
                                  .type = a->out->symbols[owner].type,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) }
+                                 .range = script_analyzer_range(a, node) }
         );
     }
     free(name);
@@ -597,7 +620,7 @@ static int component_reference(analyzer *a, TSNode node)
             reference = script_analyzer_expr_add(
                 a,
                 (script_expression){ .kind = SCRIPT_EXPR_MEMBER,
-                                     .range = script_analyzer_range(node),
+                                     .range = script_analyzer_range(a, node),
                                      .type = member->type,
                                      .symbol = -1,
                                      .left = reference,
@@ -628,7 +651,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
     TSNode arguments = script_analyzer_field(node, "arguments");
     int values[] = { -1, -1, -1 };
     for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
@@ -680,7 +703,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
         }
         apush(
             result.arguments,
-            ((script_argument){ index, ordinal, 0, script_analyzer_range(argument) })
+            ((script_argument){ index, ordinal, 0, script_analyzer_range(a, argument) })
         );
     }
     if (values[1] < 0 && values[2] < 0) {
@@ -705,7 +728,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
     if (script_analyzer_named_count(types) != 1 || symbol < 0 ||
         (a->out->symbols[symbol].kind != SCRIPT_STATE &&
          a->out->symbols[symbol].kind != SCRIPT_SHARED_STATE)) {
@@ -717,7 +740,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                   .symbol = symbol,
                                   .left = -1,
                                   .right = -1,
-                                  .range = script_analyzer_range(node),
+                                  .range = script_analyzer_range(a, node),
                                   .effects = SCRIPT_EFFECT_READ,
                                   .writable = true };
     int target = script_analyzer_expr_add(a, result);
@@ -751,7 +774,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
                                 .symbol = symbol,
                                 .left = target,
                                 .right = right,
-                                .range = script_analyzer_range(node),
+                                .range = script_analyzer_range(a, node),
                                 .effects = SCRIPT_EFFECT_WRITE |
                                            script_analyzer_expr_effects(a, right) };
     apush(store.results, result.type);
@@ -850,14 +873,14 @@ static bool field_argument(
             (script_expression){ .kind = SCRIPT_EXPR_STRUCT,
                                  .partial = true,
                                  .type = type,
-                                 .range = script_analyzer_range(argument),
+                                 .range = script_analyzer_range(a, argument),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 }
         );
         apush(
             call->arguments,
-            ((script_argument){ aggregate, parameter, 0, script_analyzer_range(argument) })
+            ((script_argument){ aggregate, parameter, 0, script_analyzer_range(a, argument) })
         );
     }
     if (a->out->expressions[aggregate].kind != SCRIPT_EXPR_STRUCT) {
@@ -878,7 +901,10 @@ static bool field_argument(
     }
     apush(
         structure->arguments,
-        ((script_argument){ expression, field, record->fields[field].id, script_analyzer_range(argument) })
+        ((script_argument){ expression,
+                            field,
+                            record->fields[field].id,
+                            script_analyzer_range(a, argument) })
     );
     structure->argument_count = acount(structure->arguments);
     structure->effects |= script_analyzer_expr_effects(a, expression);
@@ -899,7 +925,8 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
         const script_catalog_capability *candidate = &a->catalog->capabilities[c];
         const char *full = candidate->qualified_name ? candidate->qualified_name
                                                      : candidate->name;
-        if (candidate->kind != SCRIPT_CAPABILITY_FUNCTION ||
+        if (!script_analyzer_native_capability(a, candidate->id) ||
+            candidate->kind != SCRIPT_CAPABILITY_FUNCTION ||
             (!script_name_matches(full, name) &&
              !script_name_matches(candidate->name, name))) {
             continue;
@@ -1055,7 +1082,9 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
         }
     }
-    int symbol = script_analyzer_callable_symbol(a, name);
+    bool imported = script_analyzer_import_namespace(a, target, name);
+    int symbol = imported ? script_analyzer_package_function(a, target, name)
+                          : script_analyzer_callable_symbol(a, name);
     const script_catalog_capability *capability = NULL;
     int function_index = symbol >= 0 ? a->out->symbols[symbol].function : -1;
     int receiver = -1, entry_index = -1;
@@ -1089,7 +1118,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         if (initializer >= 0 &&
             a->out->expressions[initializer].kind == SCRIPT_EXPR_STORE) {
             script_expression store = a->out->expressions[initializer];
-            store.range = script_analyzer_range(node);
+            store.range = script_analyzer_range(a, node);
             store.instance = a->out->symbols[symbol].id;
             store.arguments = NULL;
             store.argument_count = 0;
@@ -1122,16 +1151,16 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
     }
     if (!capability && function_index < 0) {
-        int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+        int index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_FUNCTION);
         if (index == -2) {
             index = overloaded_capability(a, name, arguments, &resolved_arguments);
         }
         if (index == -1) {
-            index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_ACTION);
+            index = script_analyzer_find_capability(a, node, name, SCRIPT_CAPABILITY_ACTION);
         }
         if (index >= 0) {
             capability = &a->catalog->capabilities[index];
-        } else if (script_analyzer_is(target, "member_expression")) {
+        } else if (!imported && script_analyzer_is(target, "member_expression")) {
             TSNode object = script_analyzer_field(target, "object");
             int action = script_analyzer_lookup(a, object);
             if (action >= 0 && a->out->symbols[action].kind == SCRIPT_ACTION) {
@@ -1174,6 +1203,9 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 uint64_t receiver_type = script_analyzer_expr_type(a, receiver).nominal;
                 for (int i = 0; i < a->catalog->capability_count; i++) {
                     const script_catalog_capability *candidate = &a->catalog->capabilities[i];
+                    if (!script_analyzer_native_capability(a, candidate->id)) {
+                        continue;
+                    }
                     if (script_catalog_canonical_type(
                             a->catalog,
                             (script_type){ .nominal = candidate->receiver }
@@ -1213,7 +1245,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         } else {
             TSNode type = ts_node_named_child(types, 0);
             char *event_name = script_analyzer_name_copy(a, script_analyzer_field(type, "name"));
-            int event = script_catalog_find_capability(a->catalog, event_name, SCRIPT_CAPABILITY_EVENT);
+            int event = script_analyzer_find_capability(a, node, event_name, SCRIPT_CAPABILITY_EVENT);
             free(event_name);
             if (event < 0) {
                 script_analyzer_diagnostic(a, type, "%s event declaration", event == -2 ? "Ambiguous" : "Unknown");
@@ -1260,7 +1292,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     bool *seen = xcalloc((size_t)(parameter_count ? parameter_count : 1), sizeof *seen);
     script_expression result = {
         .kind = SCRIPT_EXPR_CALL,
-        .range = script_analyzer_range(node),
+        .range = script_analyzer_range(a, node),
         .symbol = symbol,
         .left = receiver,
         .right = function_index,
@@ -1285,7 +1317,10 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     }
     int ordinal = 0;
     if (receiver >= 0 && capability && parameter_count) {
-        apush(result.arguments, ((script_argument){ receiver, 0, 0, script_analyzer_range(target) }));
+        apush(
+            result.arguments,
+            ((script_argument){ receiver, 0, 0, script_analyzer_range(a, target) })
+        );
         seen[0] = true;
         ordinal = 1;
     }
@@ -1390,7 +1425,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                          .symbol = owner,
                                          .left = -1,
                                          .right = -1,
-                                         .range = script_analyzer_range(value) }
+                                         .range = script_analyzer_range(a, value) }
                 );
             }
         }
@@ -1414,7 +1449,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                 capability && parameter >= 0 && parameter < parameter_count
                                     ? capability->parameters[parameter].member
                                     : 0,
-                                script_analyzer_range(argument) })
+                                script_analyzer_range(a, argument) })
         );
         result.effects |= script_analyzer_expr_effects(a, expression_index);
         function = function_index >= 0 ? &a->out->functions[function_index] : NULL;
@@ -1442,7 +1477,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             if (authored_default >= 0) {
                 apush(
                     result.arguments,
-                    ((script_argument){ authored_default, i, 0, script_analyzer_range(arguments) })
+                    ((script_argument){ authored_default, i, 0, script_analyzer_range(a, arguments) })
                 );
                 result.effects |= script_analyzer_expr_effects(a, authored_default);
             }
@@ -1470,9 +1505,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                                   : 0,
                                      .left = -1,
                                      .right = -1,
-                                     .range = script_analyzer_range(arguments) }
+                                     .range = script_analyzer_range(a, arguments) }
             );
-            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+            apush(
+                result.arguments,
+                ((script_argument){ index, i, 0, script_analyzer_range(a, arguments) })
+            );
             result.effects |= script_analyzer_expr_effects(a, index);
             seen[i] = true;
         }
@@ -1491,12 +1529,15 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                                      .type = capability->parameters[i].type,
                                      .constant = value,
                                      .constant_snapshot = true,
-                                     .range = script_analyzer_range(arguments),
+                                     .range = script_analyzer_range(a, arguments),
                                      .symbol = -1,
                                      .left = -1,
                                      .right = -1 }
             );
-            apush(result.arguments, ((script_argument){ index, i, 0, script_analyzer_range(arguments) }));
+            apush(
+                result.arguments,
+                ((script_argument){ index, i, 0, script_analyzer_range(a, arguments) })
+            );
         }
     }
     free(seen);

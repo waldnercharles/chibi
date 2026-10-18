@@ -12,6 +12,6 @@ ToneProbe :: behavior {
 
     on Tick(dt) {
         signal := get_audio_analysis()
-        print_string(format_text("Audio {} {}", signal.Bass, signal.Treble))
+        print_string(format_text("Audio {} {} {}", entity_decimal(self), signal.Bass, signal.Treble))
     }
 }

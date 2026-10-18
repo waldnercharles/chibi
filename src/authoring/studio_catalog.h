@@ -9,4 +9,12 @@ native_capabilities *authoring_studio_native_catalog_new(
     char *error,
     size_t size
 );
+/* Explicit raw Outliner capture/publication augmentation. The original Studio
+ * service and its operation/type layouts remain unchanged. */
+native_capabilities *authoring_studio_outliner_catalog_new(
+    const native_definition_pack *extra,
+    int count,
+    char *error,
+    size_t size
+);
 #endif

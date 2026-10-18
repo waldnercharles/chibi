@@ -2,6 +2,7 @@
 #define CHIBI_SOURCE_INTERNAL_H
 
 #include "runtime/behaviors/source.h"
+#include "runtime/behaviors/source_guard.h"
 #include "support/array.h"
 
 #include <string.h>
@@ -41,6 +42,7 @@ struct source_registry
     source_profile *profiles;
     uint64_t profile_dropped;
     source_staging *staging;
+    source_publication_guard guard;
 };
 void source_profile_bind(source_registry *);
 

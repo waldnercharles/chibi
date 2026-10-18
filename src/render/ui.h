@@ -116,6 +116,15 @@ typedef struct ui_mount ui_mount;
  * dropped. */
 #define UI_ACTIVATION_ARGS 4
 
+/* Owned numeric origin, stamped when an activation joins a mount's queue.
+ * The host's binding identifies its controller/world/model generation; the
+ * mount generation changes on detach, root replacement and markup replacement.
+ * Zero is unbound. These stamps are host metadata, never an authored token. */
+typedef struct ui_activation_origin
+{
+    uint64_t mount, generation, binding, request;
+} ui_activation_origin;
+
 /* An activation: the event emitted or bound to a key, the id of the element
  * whose binding sent it ("" when it has none), emit's arguments, and its
  * value: the first argument as a number, or an input's. The DOM event that
@@ -135,6 +144,7 @@ typedef struct ui_activation
     int button;
     float x, y;
     rml_element_ref *anchor;
+    ui_activation_origin origin;
 } ui_activation;
 
 /* Runs activation `a` on `entity`'s behaviors in `live` now, or on every
@@ -158,6 +168,11 @@ const char *ui_mount_name(const ui_mount *mount);
 bool ui_mount_sync(ui_mount *mount, rml_element *root, rml_listener *listener, double time);
 /* Forget a conditional host before its element is removed from the tree. */
 void ui_mount_detach(ui_mount *mount);
+/* Bind before installing markup or applying effects that can enqueue events.
+ * Changing a binding invalidates previous origins without dropping events. */
+void ui_mount_bind_origin(ui_mount *, uint64_t binding);
+ui_activation_origin ui_mount_origin(const ui_mount *);
+bool ui_mount_origin_current(const ui_mount *, const ui_activation_origin *);
 /* The scoped RCSS of the last valid asset, "" before one loads. */
 const char *ui_mount_style(const ui_mount *mount);
 /* The last read error, or what RmlUi rejected in the markup it installed,

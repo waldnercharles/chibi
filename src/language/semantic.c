@@ -24,6 +24,54 @@ static void finish_joins(analyzer *a)
         apush(a->out->diagnostics, d);
     }
 }
+static script_analysis *finish_analysis(analyzer *a, bool declarations, bool complete)
+{
+    script_analysis *out = a->out;
+    if (!declarations) {
+        for (int i = 0; i < acount(a->initializers); i++) {
+            script_analyzer_resolve_initializer(a, a->initializers[i].symbol);
+        }
+        script_analyzer_finish_effects(a);
+        script_analyzer_finish_boxes(a);
+        finish_joins(a);
+        script_analyzer_finish_bindings(a);
+    }
+    for (int i = 0; i < acount(out->functions); i++) {
+        if (out->functions[i].parent >= 0 &&
+            (out->functions[i].kind == SCRIPT_FUNCTION_MACRO_ENTRY ||
+             out->functions[i].kind == SCRIPT_FUNCTION_CONTINUATION)) {
+            out->functions[i]
+                .depth_limit = out->functions[out->functions[i].parent].depth_limit;
+        }
+        out->functions[i].parameter_count = acount(out->functions[i].parameters);
+        out->functions[i].result_count = acount(out->functions[i].results);
+    }
+    out->symbol_count = acount(out->symbols);
+    out->use_count = acount(out->uses);
+    out->scope_count = acount(out->scopes);
+    out->expression_count = acount(out->expressions);
+    out->statement_count = acount(out->statements);
+    out->function_count = acount(out->functions);
+    out->query_count = acount(out->queries);
+    out->binding_count = acount(out->bindings);
+    out->diagnostic_count = acount(out->diagnostics);
+    out->valid = !out->diagnostic_count;
+    if (out->valid && !declarations && complete) {
+        script_analyzer_units(a);
+        out->diagnostic_count = acount(out->diagnostics);
+        out->valid = !out->diagnostic_count;
+    }
+    out->warning_count = acount(out->warnings);
+    afree(a->initializers);
+    afree(a->bodies);
+    afree(a->narrowed);
+    afree(a->catalog_types);
+    afree(a->catalog_capabilities);
+    free(a->import_used);
+    afree(a->constant_proofs);
+    script_analyzer_generic_free(a);
+    return out;
+}
 static script_analysis *analyze(
     const script_syntax *syntax,
     const script_catalog *catalog,
@@ -45,6 +93,7 @@ static script_analysis *analyze(
     }
     script_analysis *out = xcalloc(1, sizeof *out);
     out->text = xstrdup(syntax->text);
+    out->package_scope = -1;
     out->query = -1;
     out->query_filter = -1;
     out->owner_symbol = -1;
@@ -56,6 +105,7 @@ static script_analysis *analyze(
                    .out = out,
                    .scope = -1,
                    .function = -1,
+                   .package_scope = -1,
                    .declarations_only = declarations,
                    .requested = requests,
                    .requested_count = request_count,
@@ -179,49 +229,9 @@ static script_analysis *analyze(
     if (!found) {
         script_analyzer_diagnostic(&a, root, "Source has no executable declaration");
     }
-    if (!declarations) {
-        for (int i = 0; i < acount(a.initializers); i++) {
-            script_analyzer_resolve_initializer(&a, a.initializers[i].symbol);
-        }
-        script_analyzer_finish_effects(&a);
-        script_analyzer_finish_boxes(&a);
-        finish_joins(&a);
-        script_analyzer_finish_bindings(&a);
-    }
-    for (int i = 0; i < acount(out->functions); i++) {
-        if (out->functions[i].parent >= 0 &&
-            (out->functions[i].kind == SCRIPT_FUNCTION_MACRO_ENTRY ||
-             out->functions[i].kind == SCRIPT_FUNCTION_CONTINUATION)) {
-            out->functions[i]
-                .depth_limit = out->functions[out->functions[i].parent].depth_limit;
-        }
-        out->functions[i].parameter_count = acount(out->functions[i].parameters);
-        out->functions[i].result_count = acount(out->functions[i].results);
-    }
-    out->symbol_count = acount(out->symbols);
-    out->use_count = acount(out->uses);
-    out->scope_count = acount(out->scopes);
-    out->expression_count = acount(out->expressions);
-    out->statement_count = acount(out->statements);
-    out->function_count = acount(out->functions);
-    out->query_count = acount(out->queries);
-    out->binding_count = acount(out->bindings);
-    out->diagnostic_count = acount(out->diagnostics);
-    out->valid = !out->diagnostic_count;
-    if (out->valid && !declarations && complete) {
-        script_analyzer_units(&a);
-        out->diagnostic_count = acount(out->diagnostics);
-        out->valid = !out->diagnostic_count;
-    }
-    out->warning_count = acount(out->warnings);
-    afree(a.initializers);
-    afree(a.bodies);
-    afree(a.narrowed);
-    afree(a.catalog_types);
-    afree(a.constant_proofs);
-    script_analyzer_generic_free(&a);
-    return out;
+    return finish_analysis(&a, declarations, complete);
 }
+
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)
 {
     return analyze(syntax, catalog, false, NULL, true, NULL, 0, false);
@@ -271,6 +281,204 @@ script_analysis *script_declarations_document(
     assert(key && key[0]);
     return analyze(syntax, catalog, true, key, true, NULL, 0, false);
 }
+const script_source_document *script_analysis_document(const script_analysis *out, int document)
+{
+    return out && document >= 0 && document < out->document_count
+             ? &out->documents[document]
+             : NULL;
+}
+static bool package_declaration(TSNode node)
+{
+    return script_analyzer_is(node, "function_declaration") ||
+           script_analyzer_is(node, "constant_declaration") ||
+           script_analyzer_is(node, "record_declaration") ||
+           script_analyzer_is(node, "union_declaration");
+}
+static script_analysis *analyze_package(const script_package_options *options, bool declarations)
+{
+    assert(options);
+    const script_package_document *documents = options->documents;
+    int count = options->document_count;
+    const script_catalog *catalog = options->native;
+    const char *identity = options->identity;
+    assert(catalog && identity && identity[0]);
+    script_analysis *out = xcalloc(1, sizeof *out);
+    out->identity = xstrdup(identity);
+    out->name = xstrdup("");
+    out->text = xstrdup("");
+    out->kind = SCRIPT_PROGRAM_LIBRARY;
+    out->package_scope = -1;
+    out->query = -1;
+    out->query_filter = -1;
+    out->owner_symbol = -1;
+    out->owner_type = catalog->entity_type
+                        ? catalog->entity_type
+                        : script_catalog_id("type", "ecs.entity");
+    analyzer a = { .catalog = catalog,
+                   .native = catalog,
+                   .imports = options->imports,
+                   .import_count = options->import_count,
+                   .out = out,
+                   .scope = -1,
+                   .function = -1,
+                   .package_scope = -1,
+                   .declarations_only = declarations };
+    if (count < 1 || count > SCRIPT_PACKAGE_MAX_DOCUMENTS) {
+        script_diagnostic error = { .range = { .line = 1, .column = 1 } };
+        snprintf(error.message, sizeof error.message, "A package needs between 1 and %d documents", SCRIPT_PACKAGE_MAX_DOCUMENTS);
+        apush(out->diagnostics, error);
+        return finish_analysis(&a, true, false);
+    }
+    assert(documents);
+    a.documents = documents;
+    a.document_count = count;
+    out->documents = xcalloc((size_t)count, sizeof *out->documents);
+    out->document_count = count;
+    for (int i = 0; i < count; i++) {
+        const script_package_document *document = &documents[i];
+        assert(
+            document->path && document->path[0] && document->key &&
+            document->key[0] && document->syntax && document->syntax->tree
+        );
+        out->documents[i] = (script_source_document){
+            .path = xstrdup(document->path),
+            .key = xstrdup(document->key),
+            .text = xstrdup(document->syntax->text),
+        };
+    }
+    free(out->text);
+    out->text = xstrdup(documents[0].syntax->text);
+    a.syntax = documents[0].syntax;
+    a.catalog_view = *catalog;
+    for (int i = 0; i < catalog->type_count; i++) {
+        apush(a.catalog_types, catalog->types[i]);
+    }
+    a.catalog_view.types = a.catalog_types;
+    a.catalog = &a.catalog_view;
+    if (!script_analyzer_package_metadata(&a)) {
+        return finish_analysis(&a, true, false);
+    }
+    TSNode first_header = { 0 };
+    for (int i = 0; i < count; i++) {
+        const script_syntax *syntax = documents[i].syntax;
+        TSNode root = ts_tree_root_node(syntax->tree);
+        for (int j = 0; j < syntax->diagnostic_count; j++) {
+            script_diagnostic error = syntax->diagnostics[j];
+            error.range.document = i;
+            apush(out->diagnostics, error);
+        }
+        if (syntax->diagnostic_count) {
+            continue;
+        }
+        TSNode header = script_analyzer_field(root, "package");
+        if (ts_node_is_null(header)) {
+            script_analyzer_diagnostic(&a, root, "Expected package header");
+            continue;
+        }
+        TSNode name_node = script_analyzer_field(header, "name");
+        char *name = script_analyzer_name_copy(&a, name_node);
+        if (!strcmp(name, "_")) {
+            script_analyzer_diagnostic(&a, name_node, "A package needs a non-blank name");
+        }
+        if (ts_node_is_null(first_header)) {
+            free(out->name);
+            out->name = xstrdup(name);
+            first_header = name_node;
+        } else if (strcmp(out->name, name)) {
+            script_analyzer_diagnostic(&a, name_node, "Package header differs from sibling '%s'", out->name);
+            script_analyzer_diagnostic(&a, first_header, "Previous package header is here");
+        }
+        free(name);
+        for (int j = 0; j < i; j++) {
+            if (!strcmp(documents[i].path, documents[j].path) ||
+                !strcmp(documents[i].key, documents[j].key)) {
+                script_analyzer_diagnostic(&a, name_node, "Duplicate package document path or key");
+            }
+        }
+        for (uint32_t j = 0; j < script_analyzer_named_count(root); j++) {
+            TSNode node = ts_node_named_child(root, j);
+            if (ts_node_is_extra(node) || script_analyzer_is(node, "package_header")) {
+                continue;
+            }
+            if (script_analyzer_is(node, "import_declaration")) {
+                script_analyzer_package_import(&a, node);
+            } else if (!package_declaration(node)) {
+                script_analyzer_diagnostic(&a, node, "Package execution currently supports functions, constants, records and unions");
+            }
+        }
+    }
+    script_analyzer_package_imports_check(&a, false);
+    if (acount(out->diagnostics)) {
+        return finish_analysis(&a, true, false);
+    }
+    TSNode root = ts_tree_root_node(documents[0].syntax->tree);
+    a.scope = script_analyzer_scope_new(&a, root);
+    script_analyzer_host_declarations(&a, root);
+    a.scope = script_analyzer_scope_new(&a, root);
+    a.package_scope = a.scope;
+    out->package_scope = a.package_scope;
+    /* Register all nominal identities before fields or callable signatures. */
+    for (int i = 0; i < count; i++) {
+        script_analyzer_record_types(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
+    for (int i = 0; i < acount(a.templates); i++) {
+        if (a.templates[i].scope == a.package_scope) {
+            script_analyzer_diagnostic(&a, a.templates[i].node, "Package template exports are not supported");
+        }
+    }
+    if (acount(out->diagnostics)) {
+        return finish_analysis(&a, true, false);
+    }
+    for (int i = 0; i < count; i++) {
+        script_analyzer_union_types(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
+    for (int i = 0; i < count; i++) {
+        script_analyzer_union_fields(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
+    for (int i = 0; i < count; i++) {
+        script_analyzer_value_declarations(
+            &a,
+            ts_tree_root_node(documents[i].syntax->tree)
+        );
+    }
+    script_analyzer_package_imports_check(&a, true);
+    /* Record defaults can name any sibling constant. Register every value
+     * first, matching the single-document declaration pass. */
+    for (int i = 0; i < count; i++) {
+        script_analyzer_record_fields(&a, ts_tree_root_node(documents[i].syntax->tree));
+    }
+    if (acount(out->diagnostics)) {
+        return finish_analysis(&a, true, false);
+    }
+    if (!declarations) {
+        for (int i = 0; i < count; i++) {
+            script_analyzer_task_hints(
+                &a,
+                ts_tree_root_node(documents[i].syntax->tree)
+            );
+        }
+        script_analyzer_callable_definitions(&a, true);
+    }
+    for (int i = 0; i < acount(a.initializers); i++) {
+        script_analyzer_resolve_initializer(&a, a.initializers[i].symbol);
+    }
+    if (declarations) {
+        int reported = acount(out->diagnostics);
+        script_analyzer_callable_definitions(&a, true);
+        asetlen(out->diagnostics, reported);
+    } else {
+        script_analyzer_callable_definitions(&a, false);
+    }
+    return finish_analysis(&a, declarations, true);
+}
+script_analysis *script_analyze_package(const script_package_options *options)
+{
+    return analyze_package(options, false);
+}
+script_analysis *script_declarations_package(const script_package_options *options)
+{
+    return analyze_package(options, true);
+}
 void script_analysis_free(script_analysis *out)
 {
     if (!out) {
@@ -279,6 +487,12 @@ void script_analysis_free(script_analysis *out)
     free(out->text);
     free(out->name);
     free(out->identity);
+    for (int i = 0; i < out->document_count; i++) {
+        free(out->documents[i].path);
+        free(out->documents[i].key);
+        free(out->documents[i].text);
+    }
+    free(out->documents);
     for (int i = 0; i < acount(out->symbols); i++) {
         free(out->symbols[i].name);
         free(out->symbols[i].unit);
@@ -332,7 +546,8 @@ const script_use *script_use_at(const script_analysis *out, int offset)
     const script_use *best = NULL;
     for (int i = 0; i < out->use_count; i++) {
         const script_use *use = &out->uses[i];
-        if (offset >= use->range.start && offset < use->range.end &&
+        if (!use->range.document && offset >= use->range.start &&
+            offset < use->range.end &&
             (!best || use->range.end - use->range.start <
                           best->range.end - best->range.start)) {
             best = use;
@@ -347,7 +562,8 @@ const script_symbol *script_symbol_at(const script_analysis *out, int offset)
         return &out->symbols[use->symbol];
     }
     for (int i = 0; i < out->symbol_count; i++) {
-        if (offset >= out->symbols[i].declaration.start &&
+        if (!out->symbols[i].declaration.document &&
+            offset >= out->symbols[i].declaration.start &&
             offset < out->symbols[i].declaration.end) {
             return &out->symbols[i];
         }

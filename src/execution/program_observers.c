@@ -220,6 +220,7 @@ int execution_program_field_changed(
     unsigned budget
 )
 {
+    program_authority_invalidate();
     observer_edge edge = { .entity = entity, .component = component, .offset = offset };
     if (pin_value_snapshot_to_arena(&edge.storage, &edge.value, &value)) {
         arena_free(&edge.storage);

@@ -1,5 +1,6 @@
 #include "execution/request.h"
 
+#include "execution/authority_internal.h"
 #include "execution/status.h"
 #include "support/xalloc.h"
 
@@ -14,12 +15,14 @@ struct flow_host_request
     const execution_request_sink *sink;
     void *owner;
     uint64_t entity;
+    execution_dispatch *dispatch;
 };
 
 static void unref(flow_host_request *request)
 {
     assert(request->references > 0);
     if (!--request->references) {
+        execution_dispatch_free(request->dispatch);
         free(request);
     }
 }
@@ -35,6 +38,12 @@ flow_host_request *execution_request_new(const execution_request_sink *sink, voi
                                     .owner = owner,
                                     .entity = entity };
     return request;
+}
+
+void execution_request_set_dispatch(flow_host_request *request, execution_dispatch *dispatch)
+{
+    assert(!request->dispatch);
+    request->dispatch = execution_dispatch_retain(dispatch);
 }
 
 uint64_t execution_request_entity(const flow_host_request *request)
@@ -68,21 +77,22 @@ execution_owner_state execution_request_state(const flow_host_request *request)
 bool execution_request_owner_valid(const flow_host_request *request)
 {
     assert(request);
-    return request->owner && request->sink->valid &&
-           request->sink->valid(request->owner);
+    return !execution_dispatch_cancelled(request->dispatch) && request->owner &&
+           request->sink->valid && request->sink->valid(request->owner);
 }
 
 bool execution_request_ready(const flow_host_request *request, double now)
 {
     assert(request);
-    return request->owner && request->sink->runnable &&
-           request->sink->runnable(request->owner, now);
+    return !execution_dispatch_cancelled(request->dispatch) && request->owner &&
+           request->sink->runnable && request->sink->runnable(request->owner, now);
 }
 
 int execution_request_tick(flow_host_request *request, double now)
 {
     assert(request);
-    return request->owner && request->sink->tick
+    return !execution_dispatch_cancelled(request->dispatch) && request->owner &&
+                   request->sink->tick
              ? request->sink->tick(request->owner, now)
              : FLOW_ERR_STATE;
 }
@@ -133,13 +143,15 @@ void flow_host_release(flow_host_request *request)
 flow_host_state flow_host_status(const flow_host_request *request)
 {
     assert(request);
-    return request->state;
+    return execution_dispatch_cancelled(request->dispatch) ? FLOW_HOST_CANCELLED
+                                                           : request->state;
 }
 
 bool flow_host_complete(flow_host_request *request, int output_pin, pin_value value)
 {
     assert(request);
-    if (request->state != FLOW_HOST_PENDING || !request->owner ||
+    if (execution_dispatch_cancelled(request->dispatch) ||
+        request->state != FLOW_HOST_PENDING || !request->owner ||
         !request->sink->complete(request->owner, output_pin, value)) {
         return false;
     }
@@ -161,6 +173,9 @@ void flow_host_cancel(flow_host_request *request)
 int flow_host_resume(flow_host_request *request)
 {
     assert(request);
+    if (execution_dispatch_cancelled(request->dispatch)) {
+        return FLOW_ERR_STATE;
+    }
     if (request->state == FLOW_HOST_PENDING) {
         return FLOW_SUSPENDED_RESULT;
     }

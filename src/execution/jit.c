@@ -1,6 +1,7 @@
 #include "execution/jit_internal.h"
 #include "execution/random.h"
 #include "execution/status.h"
+#include "execution/work_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -427,6 +428,37 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
     sljit_emit_op1(c, SLJIT_MOV_P, m.variables, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, variables));
     behavior_jit_load_variables(&m);
     sljit_emit_op1(c, SLJIT_MOV, m.steps, 0, SLJIT_MEM1(m.context), offsetof(behavior_function_context, steps));
+    if (f->root_steps) {
+        struct sljit_jump *ordinary = sljit_emit_cmp(
+            c,
+            SLJIT_EQUAL,
+            SLJIT_MEM1(m.context),
+            offsetof(behavior_function_context, work),
+            SLJIT_IMM,
+            0
+        );
+        behavior_function_instruction refusal = {
+            .op = BF_FAIL,
+            .message = EXECUTION_WORK_UNSUPPORTED,
+            .source = -1,
+            .stack = -1,
+            .pin = -1,
+        };
+        /* The prologue has loaded diagnostic steps, before any countdown
+         * conversion or inlined parent frame has been initialized. */
+        behavior_machine refusal_machine = m;
+        refusal_machine.countdown = false;
+        sljit_emit_op1(
+            c,
+            SLJIT_MOV32,
+            SLJIT_MEM1(m.context),
+            offsetof(behavior_function_context, error_status),
+            SLJIT_IMM,
+            FLOW_ERR_STATE
+        );
+        behavior_jit_failure(&refusal_machine, &refusal, BEHAVIOR_FUNCTION_STATE);
+        bind_here(c, ordinary);
+    }
     if (arguments) {
         sljit_emit_op1(
             c,
@@ -701,25 +733,67 @@ static behavior_emission emit_body(behavior_layout *layout, struct sljit_compile
             }
             case BF_INVOKE:
             case BF_SUSPEND: behavior_jit_suspend(&m, pc); break;
-            case BF_CHECK:
+            case BF_CHECK: {
                 if (budget_proven >= 0) {
                     break;
+                }
+                /* Float-only leaf bodies retain variables/steps in R0/R1;
+                 * R3 is free there. Other layouts reserve R0 as scratch.
+                 * Read the live limit after any native grant, then debit only
+                 * after the legacy check succeeds, matching VM/generated C. */
+                int work_register = m.variables == SLJIT_R0 ? SLJIT_R3 : SLJIT_R0;
+                sljit_emit_op1(
+                    c,
+                    SLJIT_MOV_P,
+                    work_register,
+                    0,
+                    SLJIT_MEM1(m.context),
+                    offsetof(behavior_function_context, work)
+                );
+                {
+                    struct sljit_jump *
+                        ordinary = sljit_emit_cmp(c, SLJIT_EQUAL, work_register, 0, SLJIT_IMM, 0);
+                    struct sljit_jump *available = sljit_emit_cmp(
+                        c,
+                        SLJIT_LESS,
+                        SLJIT_MEM1(work_register),
+                        offsetof(execution_work, spent),
+                        SLJIT_MEM1(work_register),
+                        offsetof(execution_work, limit)
+                    );
+                    behavior_jit_failure(&m, i, BEHAVIOR_FUNCTION_BUDGET);
+                    bind_here(c, available);
+                    bind_here(c, ordinary);
                 }
                 if (m.countdown) {
                     sljit_emit_op2(c, SLJIT_SUB | SLJIT_SET_CARRY, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
                     failures[pc] = sljit_emit_jump(c, SLJIT_CARRY);
-                    break;
+                } else {
+                    failures[pc] = sljit_emit_cmp(
+                        c,
+                        SLJIT_GREATER_EQUAL,
+                        m.steps,
+                        0,
+                        SLJIT_MEM1(m.context),
+                        offsetof(behavior_function_context, budget)
+                    );
+                    sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
                 }
-                failures[pc] = sljit_emit_cmp(
+                struct sljit_jump
+                    *ordinary = sljit_emit_cmp(c, SLJIT_EQUAL, work_register, 0, SLJIT_IMM, 0);
+                sljit_emit_op2(
                     c,
-                    SLJIT_GREATER_EQUAL,
-                    m.steps,
-                    0,
-                    SLJIT_MEM1(m.context),
-                    offsetof(behavior_function_context, budget)
+                    SLJIT_ADD,
+                    SLJIT_MEM1(work_register),
+                    offsetof(execution_work, spent),
+                    SLJIT_MEM1(work_register),
+                    offsetof(execution_work, spent),
+                    SLJIT_IMM,
+                    1
                 );
-                sljit_emit_op2(c, SLJIT_ADD, m.steps, 0, m.steps, 0, SLJIT_IMM, 1);
+                bind_here(c, ordinary);
                 break;
+            }
             case BF_CALL_CHECK: {
                 int limit = i->left - f->frames[i->frame].depth;
                 struct sljit_jump *ok = limit > 0
@@ -1084,6 +1158,10 @@ static struct sljit_jump **loop_budget_guard(
 {
     struct sljit_jump **slow = NULL;
     sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_R0, 0);
+    apush(
+        slow,
+        sljit_emit_cmp(c, SLJIT_NOT_EQUAL, SLJIT_MEM1(SLJIT_R3), offsetof(behavior_function_context, work), SLJIT_IMM, 0)
+    );
     loop_input(c, &f->instructions[proof->first], SLJIT_R1);
     loop_input(c, &f->instructions[proof->last], SLJIT_R2);
     sljit_emit_op2(c, SLJIT_SUB, SLJIT_R0, 0, SLJIT_R2, 0, SLJIT_R1, 0);
@@ -1318,8 +1396,16 @@ void *behavior_function_guard(const behavior_function *f)
     sljit_emit_enter(c, 0, SLJIT_ARGS1(32, P_R), 4, 0, 0);
     sljit_emit_op1(c, SLJIT_MOV, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R0), offsetof(behavior_function_context, budget));
     sljit_emit_op1(c, SLJIT_MOV, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_R0), offsetof(behavior_function_context, steps));
-    struct sljit_jump *slow[4];
+    struct sljit_jump *slow[5];
     int count = 0;
+    slow[count++] = sljit_emit_cmp(
+        c,
+        SLJIT_NOT_EQUAL,
+        SLJIT_MEM1(SLJIT_R0),
+        offsetof(behavior_function_context, work),
+        SLJIT_IMM,
+        0
+    );
     slow[count++] = sljit_emit_cmp(c, SLJIT_LESS, SLJIT_R1, 0, SLJIT_R3, 0);
     sljit_emit_op2(c, SLJIT_SUB, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_R3, 0);
     slow[count++] = sljit_emit_cmp(

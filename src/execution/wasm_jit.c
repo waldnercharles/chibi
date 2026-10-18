@@ -5,6 +5,7 @@
 #include "execution/runner.h"
 #include "execution/status.h"
 #include "execution/wasm_emit.h"
+#include "execution/work_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -282,6 +283,9 @@ bool behavior_function_compile_wasm(behavior_function *f)
 int behavior_function_run_wasm(const behavior_function *f, behavior_function_context *ctx)
 {
     assert(f && f->artifact && ctx);
+    if (ctx->work && f->root_steps) {
+        return behavior_function_reject_work(ctx);
+    }
 #ifdef __EMSCRIPTEN__
     if (!f->artifact->wasm_jit) {
         snprintf(last_error, sizeof last_error, "Wasm function was not compiled");
@@ -289,7 +293,7 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
         return FLOW_ERR_COMPILE;
     }
     bool inspected = behavior_function_inspection_required(f, ctx);
-    bool canonical = inspected || !behavior_function_rows_allowed(f, ctx);
+    bool canonical = !behavior_function_rows_allowed(f, ctx) || inspected;
     execution_wasm_jit *jit = canonical ? inspection_for(f) : f->artifact->wasm_jit;
     wasm_entry entry = jit ? entry_for(jit) : NULL;
     if (!entry) {

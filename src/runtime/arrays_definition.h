@@ -125,25 +125,27 @@
 #define NATIVE_ARRAY_SLICE_NAME "Slice"
 #define NATIVE_ARRAY_SLICE_SOURCE "slice"
 
-#define NATIVE_ARRAY_OPERATIONS_WITH_ADD(X, ADD)                               \
+#define NATIVE_ARRAY_OPERATIONS_WITH_READERS(X, ADD, GET, LENGTH)              \
     X(make,                                                                    \
       NATIVE_ARRAY_MAKE_NAME,                                                  \
       NATIVE_ARRAY_MAKE_SOURCE,                                                \
       NATIVE_ARRAY_MAKE_INPUTS,                                                \
       NATIVE_ARRAY_MAKE_OUTPUTS,                                               \
       true)                                                                    \
-    X(get,                                                                     \
-      NATIVE_ARRAY_GET_NAME,                                                   \
-      NATIVE_ARRAY_GET_SOURCE,                                                 \
-      NATIVE_ARRAY_ARRAY_ELEMENT_INPUTS,                                       \
-      NATIVE_ARRAY_ARRAY_ELEMENT_OUTPUTS,                                      \
-      false)                                                                   \
-    X(length,                                                                  \
-      NATIVE_ARRAY_LENGTH_NAME,                                                \
-      NATIVE_ARRAY_LENGTH_SOURCE,                                              \
-      NATIVE_ARRAY_ARRAY_ONLY_INPUTS,                                          \
-      NATIVE_ARRAY_INT_OUTPUT,                                                 \
-      false)                                                                   \
+    GET(get,                                                                   \
+        NATIVE_ARRAY_GET_NAME,                                                 \
+        NATIVE_ARRAY_GET_SOURCE,                                               \
+        NATIVE_ARRAY_ARRAY_ELEMENT_INPUTS,                                     \
+        NATIVE_ARRAY_ARRAY_ELEMENT_OUTPUTS,                                    \
+        false)                                                                 \
+    LENGTH(                                                                    \
+        length,                                                                \
+        NATIVE_ARRAY_LENGTH_NAME,                                              \
+        NATIVE_ARRAY_LENGTH_SOURCE,                                            \
+        NATIVE_ARRAY_ARRAY_ONLY_INPUTS,                                        \
+        NATIVE_ARRAY_INT_OUTPUT,                                               \
+        false                                                                  \
+    )                                                                          \
     X(last_index,                                                              \
       NATIVE_ARRAY_LAST_INDEX_NAME,                                            \
       NATIVE_ARRAY_LAST_INDEX_SOURCE,                                          \
@@ -261,6 +263,8 @@
 
 extern const native_definition_pack NATIVE_ARRAY_DEFINITION_PACK;
 
+#define NATIVE_ARRAY_OPERATIONS_WITH_ADD(X, ADD)                               \
+    NATIVE_ARRAY_OPERATIONS_WITH_READERS(X, ADD, X, X)
 #define NATIVE_ARRAY_OPERATIONS(X) NATIVE_ARRAY_OPERATIONS_WITH_ADD(X, X)
 
 #define NATIVE_ARRAY_make_PRESENTATION                                         \

@@ -163,6 +163,7 @@ static void wait_cancel(void *owner)
     wait->context->pending_commands--;
     wait->pending = false;
     wait->context->error_status = FLOW_ERR_STATE;
+    wait->activation->authority_valid = false;
     wait->activation->status = FLOW_ERR_STATE;
     wait->activation->finished = true;
 }
@@ -260,6 +261,9 @@ static const execution_request_sink wait_sink = { .complete = wait_complete,
 static int begin_command(behavior_function_context *ctx, int command)
 {
     execution_activation *activation = ctx->inspection_user;
+    if (execution_dispatch_cancelled(activation->dispatch) || activation->stopping) {
+        return FLOW_ERR_STATE;
+    }
     command_wait *wait = xcalloc(1, sizeof *wait);
     const behavior_function *function = activation->function;
     behavior_function_active_context(&activation->context, &function);
@@ -271,6 +275,7 @@ static int begin_command(behavior_function_context *ctx, int command)
     ctx->pending_commands++;
     flow_host_request
         *request = execution_request_new(&wait_sink, wait, activation->instance->owner);
+    execution_request_set_dispatch(request, activation->dispatch);
     wait->request = request;
     activation->wait = wait;
     apush(activation->requests, wait);
@@ -327,7 +332,7 @@ static int begin_command(behavior_function_context *ctx, int command)
                    : binding->begin(
                          binding->service,
                          binding->reference,
-                         ctx->command_arguments + binding->first,
+                         binding->count ? ctx->command_arguments + binding->first : NULL,
                          binding->count,
                          request,
                          &error
@@ -339,6 +344,9 @@ static int begin_command(behavior_function_context *ctx, int command)
         return result;
     }
     wait->begun = true;
+    if (execution_dispatch_cancelled(activation->dispatch) || activation->stopping) {
+        return FLOW_ERR_STATE;
+    }
     if (flow_host_status(request) == FLOW_HOST_READY) {
         activation->wait = NULL;
         const behavior_function_command *c = &wait->function->commands[wait->command];
@@ -360,7 +368,8 @@ static int begin_command(behavior_function_context *ctx, int command)
 bool program_request_deliver(flow_host_request *request, const pin_value *values, int count)
 {
     command_wait *wait = execution_request_context(request, &wait_sink);
-    if (!wait) {
+    if (!wait || execution_dispatch_cancelled(wait->activation->dispatch) ||
+        wait->activation->stopping) {
         return false;
     }
     const behavior_function_command *c = &wait->function->commands[wait->command];
@@ -383,6 +392,9 @@ bool program_request_deliver(flow_host_request *request, const pin_value *values
 int program_complete_action(behavior_function_context *ctx, uint64_t action, const pin_value *values, int count)
 {
     execution_activation *owner = ctx->inspection_user;
+    if (execution_dispatch_cancelled(owner->dispatch) || owner->stopping) {
+        return FLOW_ERR_STATE;
+    }
     execution_program *p = owner->instance->program;
     action_values *bank = action_bank(ctx, action);
     const execution_module *scope = ((execution_instance *)ctx->value_owner)
@@ -448,6 +460,7 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
         if (!a) {
             return FLOW_ERR_ARGUMENT;
         }
+        program_authority_inherit(a, owner);
         a->continuation_owner = owner;
         a->continuation_context = ctx;
         a->origin_action = action;
@@ -461,6 +474,9 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
         }
         if (status < 0) {
             return status;
+        }
+        if (execution_dispatch_cancelled(owner->dispatch) || owner->stopping) {
+            return FLOW_ERR_STATE;
         }
     }
     return FLOW_OK;

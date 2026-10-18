@@ -481,6 +481,7 @@ static int pause_point(void *user, behavior_function_context *ctx, const behavio
     if (!stop) {
         return 0;
     }
+    program_authority_invalidate();
     i->requested = i->stepping = false;
     i->paused = a;
     a->debug_paused = true;
@@ -810,6 +811,7 @@ bool execution_inspector_pause(execution_inspector *i, uint64_t owner)
     if (!i->program || i->paused || !execution_program_instance(i->program, owner)) {
         return false;
     }
+    program_authority_invalidate();
     i->requested_owner = owner;
     i->requested = true;
     return true;

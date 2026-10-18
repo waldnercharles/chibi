@@ -167,7 +167,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
         chibi_array_capabilities chibi_selection_capabilities chibi_set_capabilities)
     chibi_sdk_contract(chibi_graph_model "${CHIBI_SDK_ROOT}/src/graph/model" chibi_types chibi_execution_contract chibi_asset_values)
     chibi_sdk_contract(chibi_studio_capabilities "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_native_capabilities chibi_execution)
+        chibi_native_capabilities chibi_execution chibi_array_capabilities chibi_text_capabilities)
     chibi_sdk_contract(chibi_studio_graph "${CHIBI_SDK_ROOT}/src/graph/nodes"
         chibi_graph_compilation chibi_studio_capabilities)
     chibi_sdk_contract(chibi_text_source "${CHIBI_SDK_ROOT}/src/support" chibi_support chibi_text_search)

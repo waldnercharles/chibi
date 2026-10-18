@@ -6,6 +6,7 @@
 #include "execution/definition.h"
 #include "execution/random.h"
 #include "execution/status.h"
+#include "execution/work_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -81,8 +82,8 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool canonical = behavior_function_inspection_required(f, ctx) ||
-                     !behavior_function_rows_allowed(f, ctx);
+    bool canonical = !behavior_function_rows_allowed(f, ctx) ||
+                     behavior_function_inspection_required(f, ctx);
     if (compact && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
@@ -150,6 +151,9 @@ int execution_machine_step(execution_machine *m, int pc)
     const behavior_function_instruction *instructions = m->instructions;
     int next = pc + 1, result = EXECUTION_CONTINUE;
     const behavior_function_instruction *i = &instructions[pc];
+    if (ctx->work && f->root_steps) {
+        return behavior_function_reject_work(ctx);
+    }
     pin_value *out = &slots[i->output];
     pin_value a = i->left_slot ? slots[i->left] : (pin_value){ 0 };
     pin_value b = i->right_slot ? slots[i->right] : (pin_value){ 0 };
@@ -419,6 +423,10 @@ int execution_machine_step(execution_machine *m, int pc)
                                    ? behavior_function_build_row(ctx, i->target)
                                : i->right == BF_HOST_RETAIN_ROWS
                                    ? behavior_function_retain_rows(ctx, i->target)
+                               : i->right == BF_HOST_APPEND_SCALAR
+                                   ? behavior_function_append_scalar(ctx, i->target)
+                               : i->right == BF_HOST_RETAIN_SCALAR
+                                   ? behavior_function_retain_scalar(ctx, i->target)
                                : call->value
                                    ? call->value(
                                          ctx->value_storage,
@@ -778,7 +786,7 @@ int execution_machine_step(execution_machine *m, int pc)
         }
         case BF_CHECK:
             ctx->node_id = i->node_id;
-            if (steps >= ctx->budget) {
+            if (steps >= ctx->budget || !behavior_function_charge_work(ctx)) {
                 result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_BUDGET);
                 goto done;
             }

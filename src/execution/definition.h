@@ -133,6 +133,7 @@ struct behavior_function
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
     behavior_row_plan *rows;
+    behavior_append_plan *appends;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -270,7 +271,7 @@ static inline bool behavior_function_fast_allowed(
     const behavior_function_context *ctx
 )
 {
-    return f->fast && ctx->steps <= ctx->budget &&
+    return !ctx->work && f->fast && ctx->steps <= ctx->budget &&
            ctx->budget - ctx->steps >= f->fast->root_steps &&
            ctx->budget >= f->fast->child_budget &&
            (!f->fast->depth_limit || ctx->call_depth < f->fast->depth_limit);

@@ -1,1610 +1,582 @@
-# Chibi language and typed-runtime redesign
+# Chibi toolchain consolidation and self-hosting
 
-## Exact-head review follow-up, 2026-10-18
+## How to execute this plan
 
-Codex review of checkpoint `1bad2ce0d` found that generic text formatting treated
-Map payloads as arrays. The formatter now handles Maps before the array branch
-and reports their actual entry count. A fixed native callback regression covers
-one populated Map, one allocated empty Map and one null Map; existing array and
-scalar controls are unchanged. It failed before the fix and now passes all three
-formatting cases (45 assertions, 0.098 s). Independent source/workload review
-cleared the minimal fix and unchanged 60-second invocation limits.
+This is the active implementation plan for the `chibi` repository. A request to
+"Implement PLAN.md" means:
 
-The five complete native groups passed again on the corrected implementation:
-language 506 cases / 29.880 s; native 627 / 36.540 s; materials 110 / 39.994 s;
-projects 84 / 35.836 s; tooling 134 / 23.920 s. The only workload addition is the
-single fixed formatting case with four assertions. Production build profiles,
-assertions, sanitizers, deadlines and quarantines are unchanged. Evidence is in
-`/workspace/language420-build-current/map-fix-validation.json`.
+1. Read the repository `AGENTS.md`, this file, and the documents named under
+   [Required context](#required-context).
+2. Inspect the current branch, HEAD, uncommitted changes, `origin/main`, and
+   relevant open pull requests before editing.
+3. Continue the first milestone whose status is **Ready** or **In progress**.
+   Finish one reviewable increment at a time. Do not skip ahead to a milestone
+   whose dependencies are incomplete.
+4. Run that milestone's checks under the repository's current test policy.
+5. Update the milestone ledger and [Current checkpoint](#current-checkpoint) in
+   the same commit. Keep only current evidence here; Git retains old checkpoints.
+6. Continue with the next ready milestone while time and context allow. If work
+   must stop, leave a clean, committed checkpoint with one explicit next action.
 
-The clean `1bad2ce0d` native SDK and paired Studio build, CPU checks and four-frame
-source-edit check passed before this finding; those remain prior-candidate
-results. Refreshing the SDK and paired pin, installed consumers, Studio acceptance,
-Wasm/browser, serial web and final exact-head review remains required before
-landing. The following reconciliation record describes the earlier checkpoint.
+Routine implementation decisions are authorized. Ask before changing the stable
+command meanings, language semantics, public package ownership, publication
+visibility, or another user-visible decision recorded below. Creating or merging
+a pull request, enabling GitHub Pages, publishing a release, and removing a
+recovery path still require the authority normally required for those actions.
 
-## Current-main reconciliation, 2026-10-18
+## Objective
 
-This checkpoint merges PR420 `a699f2804` (including PR437) with main
-`6ea2221c9` (including PR434, PR435, PR436 and PR438), preserving history.
-Package/import syntax, CR formatting, inferred string arrays, owned scene
-snapshots, counted rows, and current field/terrain/radiance capabilities remain
-present. The private exact-number core stays inactive in the frontend; no
-new default precision, exact-cast or promotion policy is selected. PR407 remains
-excluded. Parser outputs use main's recorded Tree-sitter 0.25.10 generator.
+Chibi will be the source language for its compiler, build logic, first-party
+engine modules, documentation generator, and game behavior. Chibi must compile
+Chibi. The normal build must not require project-owned Python, shell, CMake, or C
+implementations once their Chibi replacements have passed the deletion gates.
 
-The paired controller migrated and formatted environment-authoring, Terrain Lab
-and Studio source with their metadata. All manifests are version 26; existing
-stale sidecars remain unchanged. Three existing Environment KDL declarations
-now explicitly serialize the fog bounds their loader already applied; fog stays
-disabled. The thirteen-project canonicality check and both separately selected
-engine project checks passed.
+The shortest path to that goal takes priority over adding commands. The existing
+C compiler and CMake build remain stage-zero recovery tools until a Chibi compiler
+can reproduce itself and a clean-checkout recovery procedure has been proven.
+LLVM, SLJIT, platform SDKs, linkers, SDL, physics libraries, codecs, and similar
+external dependencies may remain behind narrow bindings. Project-owned policy
+and orchestration belong in `.chibi`.
 
-Independent review and focused regressions repaired empty semantic binding
-sorts, generic record display-name versus source-identity conflicts, and packed
-record decoding into collectable arenas. Both codecs now register a struct
-tracer only for a separately allocated payload; the packed array retains its
-rows and owned descriptor. Negative controls reproduced the nullable-sort UBSan
-failures and both packed-row arena assertions before their fixes. Existing strict
-record identity/default checks and standalone/boxed ownership cases remain.
-Current-language unary fixtures and handwritten prepared-field metadata were
-updated to their already approved contracts without weakening assertions.
+Chibi remains worth building only if it delivers its distinct contract: safe,
+opinionated game authoring with language-level entities, components, systems,
+queries, effects, and assets. It should not grow into a second general-purpose
+Odin. Odin is a design and repository-organization reference, not another
+implementation language for Chibi.
 
-The reviewed implementation/asset tree before this documentation update is
-`3449d5a4e90c2d0af4c66d23779e70ad6e2e07d0`. Engine-linked native Debug
-drivers retain assertions and ASan/UBSan; the standalone tooling driver retains
-assertions without sanitizers. Project checks use the paired Release controller.
-Configuration/build time is separate. Each complete group and selected standalone
-used the unchanged production 60-second supervisor through the existing routes
-underlying the Make targets; no quarantined suite was split or reconstructed.
+## Definition of complete
 
-| Current local check | Result |
+The plan is complete when all of these are true:
+
+- A stage-zero compiler builds a stage-one compiler from `.chibi` sources, and
+  stage one builds a semantically equivalent stage-two compiler from the same
+  sources. The normal compiler and build path uses the Chibi implementation.
+- A clean checkout can build the compiler, runtime, SDK, documentation, and a
+  game through Chibi-owned build logic with declared external dependencies.
+- The installed SDK does not require project-owned Python, shell, or CMake to
+  build or export a Chibi game. Required downstream compatibility files may be
+  generated for consumers while those consumers still need them.
+- First-party engine behavior is authored in `.chibi`. Remaining native code is
+  generated glue or a narrow binding to an external ABI, with ownership and
+  lifetime tests at the boundary.
+- The stable commands below are implemented, documented, and covered by bounded
+  process-level tests. Retired aliases and implementations have no callers.
+- One allowlisted GitHub Pages site contains the overview, testing guide, FAQ,
+  grammar, toolchain guide, checked examples, and generated package reference.
+- A documented, checksummed bootstrap artifact can recover the self-hosted
+  compiler from a clean checkout. The old C compiler is no longer on the normal
+  path and can be removed from the active source tree after that recovery proof.
+
+## Decisions that implementation must preserve
+
+### Stable command interface
+
+| Command | Contract |
 | --- | --- |
-| Native group | Pass, 32.493 s |
-| Materials group | Pass, 36.806 s |
-| Projects group | Pass, 36.377 s |
-| Language group | Pass, 505 cases, 28.656 s |
-| Tooling/process group | Pass, 134 cases, 24.252 s |
-| Query/generics, package syntax, build workflow, inferred arrays, root state | Pass |
-| Record publication, values, semantic, runtime, prepared, document, state, compatibility and services | Pass |
-| Generated-C aliases, counted rows and record export | Pass |
-| Historical declaration migration and thirteen-project canonicality | Pass |
-| clang-format 22 and whitespace | Pass, 19.807 s for formatting |
-
-Native/language groups preceded only the three behavior-preserving KDL
-serializations; their production/test sources and language corpus are unchanged.
-Local logs and exact binary/source hashes are retained in
-`/workspace/language420-build-current`; independent source, workload and delta
-reviews are in `/workspace/language420-source/recovery-20261018`.
-
-The clean-commit SDK packages, installed consumers, paired Studio71 engine pin
-and native acceptance, Wasm/browser checks, serial web build and final exact-head
-review remain pending. No current SDK publication, merge or deployment is claimed.
-Studio's migrated source tree is `2423ed3d75a3babd728065da1e3a7f9db44e75f7`
-before updating its engine pin. All 212 extracted consumer hashes match.
-Full native/render/Studio suites remain quarantined and are not passed. Disabled
-engine CI supplies no passing evidence; required server rules still apply.
-
-## Historical implementation records
-
-All results, artifact identities and authorization descriptions below refer to
-their dated earlier checkpoints. They do not substitute for current validation.
-
-Approved to begin on 2026-10-16. Base: `origin/main` at `525f91b5a`.
-All five stages are implemented in isolated engine and Studio worktrees on
-`codex/language-redesign-20261016`. The reviewed implementation is published as
-engine PR #420 and Studio PR #71. The primary checkouts and their existing edits
-are untouched. Neither PR is merged or deployed.
-
-## Current-main integration, approved 2026-10-16
-
-The user approved public Studio publication, resolving engine conflicts with
-main, rerunning relevant checks and pushing the verified fixes. The engine
-candidate merges main `6e26b84be` into reviewed redesign commit `32a001739`
-without rewriting its published history. Studio remains at `0eb068bc` and
-consumes the paired SDK.
-
-The merge preserves main's counted-row construction and owned scene snapshots
-together with the redesign's packed/nullable arrays. SDK and test registrations
-retain both contracts. Incoming source fixtures use canonical name-first syntax
-and representation-neutral reads. A bounded packed-seed, counted-row, canonical
-nullable-add and collection regression covers their interaction. Independent
-review found no remaining issue in the merged execution paths, ownership and
-selected workloads. Native builds also required an explicit direct-entry
-function-pointer cast and the Darwin `mkdtemp` header in incoming tests.
-
-Validation uses the five admitted native/materials/projects/language/tooling
-groups, standalone scene-snapshot reads and generated C, Wasm and bounded Chrome
-drivers, and packaged SDK/Studio compilation. Full native/render/Studio suites
-remain quarantined. Build time remains separate from each 60-second test budget.
-
-| Current integration check | Result |
-| --- | --- |
-| Native group, ASan/UBSan driver | Pass, 21.076 s |
-| Materials group | Pass, 27.743 s |
-| Projects group, Release controller | Pass, 24.007 s |
-| Language group | Pass, 497 cases, 20.315 s |
-| Tooling/process group, Python 3.12 | Pass, 130 cases, 27.004 s |
-| Standalone scene-snapshot reads | Pass, 3 cases/610 assertions, 1.311 s |
-| Generated-C aliases and counted-row fallback | Pass, 1 case each, 1.369 s and 2.227 s |
-| Wasm group | Pass, 299 cases, 2.607 s |
-| Ten-selector Chrome C driver | Pass, including 8 counted-row and 2 Outliner cases, 2.079 s |
-| Native/Wasm builds, packaged SDK and installed Studio consumer | Pass |
-| clang-format 22 and whitespace | Pass |
-
-Evidence is in `.chibi/evidence/language-redesign-merge/`. The tested source tree
-was `246b5eb6ddc6c8ead63e59657d3bb7e8a1399aa9`; subsequent changes only update
-this evidence and point historical Studio language planning to current syntax.
-Desktop SDK build ID:
-`9f6df0dabe329f4046211c971ffcfc8443fe98451431181cd79f1dcdf720eb22`.
-This integration did not repeat rendered Studio acceptance or the Studio web
-build; those earlier results remain scoped to the previous reviewed pair.
-Leak detection is not claimed. Neither PR is merged or deployed.
-
-## Final review and commit, approved 2026-10-16
-
-Review the complete engine and Studio candidates against their pinned bases,
-including new files. Fix verified correctness and consistency issues, add bounded
-regressions, then commit the combined implementation in each owning repository.
-This approval does not include push, merge or deployment.
-
-- [x] Review language semantics, generics, typed storage, execution ownership,
-      prepared modules, source assets, migrations, authoring and Studio together.
-- [x] Fix confirmed findings and validate the combined candidate with the admitted
-      native, materials, project, language and tooling groups. Check relevant
-      Wasm paths, installed SDK consumption, Studio source editing and web build.
-- [x] Verify formatting, fixture canonicality and consumer manifests; record exact
-      source trees and evidence before creating the engine and Studio commits.
-
-The review covers the whole engine candidate against `525f91b5a` and the Studio
-candidate against `07dccf7b5`, including new files. Confirmed fixes include:
-
-- Respect authored callables that share a Map intrinsic name; infer writes through
-  indexed retained/ref bindings; require a Map initializer for inferred Map types.
-- Preserve generic type modifiers, skip comments in compile-time parameter counts,
-  and keep imported compile-time parameters immutable. Treat nested collection
-  descriptors separately from their elements' record layouts in watch metadata,
-  prepared values and document projection.
-- Validate Map result/reference schemas, trace document-array payloads, preserve
-  nested native record identity, and box nullable packed-record updates correctly.
-- Cache transitive retained-task metadata over import DAGs; trace tasks in nested
-  boxed collections and Maps; validate present union/native-record task payloads.
-- Refuse inline/extraction operations that would change retained storage identity;
-  preserve unrelated members during legacy native-name migration and reject unsafe
-  generated accessor names without dereferencing missing identifiers.
-- Enforce symbolic asset references and stable relationship identities; detect
-  source/KDL prototype collisions and resolve controller assets by declaration name.
-- Refresh Studio's clean transitive prototype dependents after source changes,
-  preserve dirty dependents, and invalidate source validation after relationship
-  registration changes.
-
-Regression fixtures were corrected where they used unsupported declaration
-placement or obsolete per-match retention. The extra-declaration review finding
-was narrowed: the grammar already rejected extra roots; the reader now reports
-malformed declarations consistently regardless of parser recovery shape.
-
-Current review evidence is in `.chibi/evidence/language-redesign-review/`.
-Full native/render/Studio verification remains quarantined; bounded admissions
-do not certify those suites. Tooling checks require a modern Python interpreter;
-the reviewed run uses Python 3.12 rather than macOS's system Python 3.9.
-
-Final local validation (configuration/build time excluded from test deadlines):
-
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Native group, ASan/UBSan driver | Pass, 26.606 s | `native-complete.log` |
-| Materials group | Pass, 34.889 s | `materials.log` |
-| Projects group, Release controller | Pass, 25.001 s | `projects-complete.log` |
-| Language group | Pass, 21.404 s | `language-final-tree.log` |
-| Tooling/process group | Pass, 130 cases, 29.227 s | `tools-complete.log` |
-| Query, Maps, iteration and generics | Pass, 56 cases, 1.163 s | `generic-final-iteration1.log` |
-| Packed arrays/numerics and generated C | Pass, 13 and 1 cases | `row-array.log`, `c-export-alias.log` |
-| Wasm group and eight-selector Chrome driver | Pass, 5.382 and 2.184 s | `wasm-complete.log`, `wasm-browser-complete.log` |
-| Native/Wasm builds and installed SDK/Studio consumer | Pass | `build-complete.log`, `wasm-build-complete.log`, `sdk-package-complete.log`, `studio-build-final.log` |
-| Studio source editing, undo/redo and dependency reload | Pass, four hidden frames, 2.952 s | `studio-source-edit-final.log` |
-| Studio web build | Pass; no additional browser UI interaction claim | `web-build-final.log` |
-| All thirteen checked-in fixture projects | Canonical, 1.924 s | `fixture-format-final.log` |
-| clang-format 22, whitespace and extraction hashes | Pass | `format-final-tree.log`; all 23 changed extracted Studio files match their manifest |
-
-The final installed desktop SDK build ID is
-`9115b188f215420bd47dd4fecaeb671a1617feea6f5c21a65d29df0be58954ed`.
-The paired engine/Studio source tree IDs and local commit IDs are recorded in
-the review evidence directory. No push, merge or deployment is part of this
-delivery. Queryable embedded components remain deferred. The prepared-schema
-limitation for erased empty task schemas described below remains explicit.
-
-## Retained ownership simplification, approved 2026-10-16
-
-The user approved this follow-up after the five-stage candidate. Implementation
-and bounded validation are complete in the same isolated candidates.
-
-Summary: `retain` belongs privately to the enclosing behavior attachment or
-system registration. Remove `retain(system)`. Ordinary coroutine locals remain
-independent for each query match and survive suspension until that invocation
-finishes. Longer-lived entity data belongs in components.
-
-Context and system impact: the compiler distinguishes `SCRIPT_STATE`
-from `SCRIPT_SHARED_STATE`, and execution chooses instance or program storage
-from the lowered state descriptor. Keep that internal ownership distinction,
-derive it from the enclosing program rather than an authored suffix, and apply
-the same owner to imported-library retained state. Query-row identity, activation
-frames, suspension, cancellation and ordinary locals remain separate. Shared
-storage is allocated before matches exist and survives row removal. Behavior
-attachments and independent system registrations must remain isolated.
-
-Approach: change the authoritative declaration/owner classification and existing
-storage paths, not coroutine scheduling or an automatic component-generation
-layer. Keep task handles in invocation-local storage when their ownership cannot
-safely span query rows. Preserve retained values on compatible nonrestart reload,
-and reset them on explicit restart. Do not silently reinterpret historical
-per-row data in a migration that claims to preserve behavior.
-
-Changes:
-
-- [x] Update semantic ownership, runtime/import storage and lifecycle handling.
-- [x] Remove the grammar suffix and all current formatter/intelligence producers;
-      retain internal storage metadata needed by compiled execution.
-- [x] Reconcile historical migrations, authored fixtures and prepared provenance;
-      bump project format only if an actual supported project requires rewriting.
-- [x] Document private retention, coroutine-local lifetime and component state.
-- [x] Add ownership and coroutine regressions, update affected old expectations,
-      and review the integrated change.
-
-Verification: build the existing native test drivers with ASan/UBSan; run admitted
-syntax/semantic/format/navigation, source-edit, runtime/query/publication and
-migration selectors under the unchanged production 60-second supervisor. Cover
-two behavior attachments, two system registrations, multiple query matches,
-row removal/reentry and zero rows, helper/import state, independent locals across
-waits, cancellation, and reload/restart. Run relevant Wasm/prepared checks if their
-shared contracts change. No full render or Studio suite, commit, push or merge.
-
-Implemented in `semantic_declaration.c`, `semantic_context.c`, `lower.c`,
-`execution/program.c` and the prepared module schema. Imported libraries inherit
-registration ownership before storage allocation. Grammar, formatting, completion,
-navigation and source-edit paths emit only plain `retain`. Coroutine activation
-and scheduling remain unchanged. Component-backed tests replace old per-entity
-retained counters where that was their intended lifetime.
-
-Project version remains 26 because the affected system declarations occur only
-in tests, not in checked-in projects. Historical migration converts explicit old
-system-owned retention, but refuses implicit or explicit per-match system state
-with a source diagnostic before writing files. Hand-made candidate-version-26
-projects need a manual ownership review. Prepared schema is now 17, up from 16
-in the prior candidate; old artifacts must be rebuilt.
-
-Evidence is in `.chibi/evidence/retained-ownership/`. Native builds use ASan/UBSan.
-Each test command used the unchanged production supervisor's 60-second ceiling.
-
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Syntax and semantics | Pass, 19 and 49 cases | `language.log`, `language-semantic-final.log` |
-| Format, navigation, source editing | Pass, 47, 32 and 17 cases | `language-format.log`, `language-navigation.log`, `source-edit.log` |
-| Runtime, query and publication | Pass, 134, 54 and 4 cases | `language-program-final.log`, `language-query-program-final.log`, `language-publication-final.log` |
-| Imported ownership and task restrictions | Pass, 15 cases | `language-modules-final.log` |
-| Prepared producer/runtime-only handoff | Pass, 8 writer, 13 reader and 1 handoff cases | `language-prepared-final.log` |
-| Source query rows, systems and scheduling | Pass, 6, 11 and 4 cases | `source-query-rows.log`, `source-systems.log`, `system-schedule-final.log` |
-| Wasm runtime, query, publication and modules | Pass, 134, 54, 4 and 15 cases | `wasm-program.log`, `wasm-query-program.log`, `wasm-publication.log`, `wasm-modules.log` |
-| Native/Wasm builds, SDK package and Studio consumer build | Pass | `native-build-final.log`, `wasm-build-final.log`, `sdk-package.log`, `studio-build.log` |
-| Changed C files, clang-format 22; diff whitespace | Pass | `format-check.log`, `diff-check.log` |
-
-The longest selected test command took 7.726 seconds. Wasm checks ran in Node;
-this increment did not repeat browser, rendered UI or GPU acceptance. Full render
-and Studio suites remain quarantined. Independent reviews covered migration and
-authoring, runtime ownership, and prepared task metadata.
-The SDK package for that retained-ownership snapshot was
-`5859cc8862371d54f57ac2da73dcd804346523d0ca7dda391439133ae6eb9b43`.
-
-The compiler checks complete authored types for retained task handles. Prepared
-validation also rejects task schemas visible in runtime values, including empty
-maps. A forged false task flag with deeper schema erased by a null payload or an
-empty outer container is not independently detectable without carrying more
-schema. This is not a claim of complete hostile-artifact schema verification.
-
-## Agreed direction
-
-- Name-first declarations and `name: Type`; use identifiers for language symbols.
-- Consistent `Name :: component`, `Name :: prototype` and `Name :: system(...)`.
-- Remove named `fn`, redundant `foreach`, graph-export-only call spellings and
-  inert `await` where the compiler proves equivalence. Infer effects where safe.
-- Name-first retention: `visits: retain int = 0` or inferred `visits: retain = 0`.
-  Ownership follows the behavior instance or system registration. This qualifies
-  binding storage, not the type of values copied or passed to functions.
-- Real associative `Map<K, V>`, with `Map` or complete inference when the
-  initializer/context supplies the types. Arrays retain `[]` literals.
-- Authored components, prototype composition/default overrides and typed
-  relationship declaration, initial links, mutation and query integration.
-- Jai-style argument-bound polymorphism and general compile-time type/value
-  programming, validated through units rather than only hardcoded unit rules.
-- End-to-end typed arithmetic, packed eligible collections and operation-specific
-  loop optimization for all suitable scalar/vector/plain types. Do not silently
-  enable fast math, reorder reductions or change numeric default precision.
-- Queryable embedded components are a later extension. They require explicit
-  aliasing, membership and conflict rules, without duplicating component data.
-
-## Completed implementation
-
-1. **Complete: retained bindings.** Name-first `retain` replaces explicit `state`
-   and `shared`. The follow-up above makes it private to a behavior attachment or
-   system registration and removes the intermediate `retain(system)` spelling.
-2. **Complete: unified declarations and source cleanup.** Identifier-only symbols,
-   name-first declarations, system parameters, per-invocation system locals,
-   optional function arrows, inferred effects, typed asset references, global
-   runtime depth, source producers/refactorings and versioned migrations.
-3. **Complete: containers and polymorphism.** Associative maps, deterministic
-   iteration, indexed/string/reference loops, `$T` specialization, imported
-   templates and compile-time type/value procedures, including authored units.
-4. **Complete: authored assets and relationships.** Source components, prototype
-   composition and overrides, typed relationships, initial links and staged
-   mutation, query integration, serialization and Studio source editing.
-5. **Complete: typed storage and execution.** Layout-selected packed arrays,
-   typed arithmetic and eligible loop/borrow paths across VM, SLJIT, Wasm and
-   generated C, with bounded correctness and storage/performance measurements.
-
-## Implemented contracts
-
-- Version 26 uses `Name :: kind`, mandatory `system(...)`, and identifier-only
-  symbols. Ordinary system-body declarations are per-invocation locals; migration
-  refuses old per-match system state for an explicit ownership decision. Functions
-  accept an optional `=>` before a brace body. Purity is inferred. Per-source depth limits are deliberately
-  unified under the shared default of 64, including former 0/unlimited and 32.
-- Maps keep full key and value type identities, including nested collections.
-  Lookup of an absent key fails; `map_has` guards it. Assignment upserts, replacement
-  preserves position, and removal/reinsertion appends. Iteration snapshots insertion
-  order; equality compares associations independently of order. Duplicate literal
-  keys fail when provable; dynamic duplicate keys keep the last value at the first
-  position. Empty literals require a concrete contextual type.
-- `$T` binders specialize authored functions from arguments. Generic structs take
-  compile-time type/value parameters; ordinary effect-free procedures may construct
-  types in compile-time contexts. No required `comptime` procedure keyword or
-  compiler-hardcoded units rules. Imported templates preserve source ownership.
-  The documented evaluator supports scalar/type values, helper calls, locals,
-  assignments, `if` and `while`; it does not interpret arbitrary runtime code,
-  arrays, `for`, closures or native calls. Limits are 65,536 steps, 128 calls and
-  256 nested expressions/statements, separate from runtime call depth 64.
-- `Elite :: prototype(Enemy, Armored)` composes bases in existing include order and
-  applies sparse component overrides. `Targets :: relationship { ... }` declares
-  traits. Initial `links: { Targets: child.enemy }` resolve actual instance-local
-  entities. Typed pair mutation uses the existing ECS staging/deletion rules.
-  `has_pair` observes committed state. Remove then re-add requires a commit
-  boundary; the fixture and native regression exercise both sides of that boundary.
-- Packed arrays have one physical representation, selected from their element
-  layout. Boxed compatibility builders may remain at native API boundaries, but
-  runtime snapshots pack eligible elements directly. Maps are separate containers.
-  Shared IR and borrowing proofs support typed payloads without unconditional
-  copy regressions. Default numeric precision and reduction order stay unchanged.
-  Managed or nullable elements retain the boxed fallback; maps have separate
-  storage. [Language documentation](docs/code-language.md) states exact eligibility.
-- Project version is 26; prepared schema is 17. All 13 fixture projects were
-  migrated and pass canonical formatting. Historical migration inputs remain
-  historical. Bundled Studio projects upgrade automatically on opening.
-- Studio uses the installed SDK for static prototype/relationship editing,
-  completion, syntax highlighting, typed validation, save/undo/redo and scene
-  refresh. Invalid drafts preserve last-valid content. New relationship schemas
-  register in both scene and preview worlds; changing/deleting live schemas
-  requires reopening. Static asset navigation is not claimed.
-
-## Earlier five-stage evidence, before the retention follow-up
-
-All test runs use the production supervisor's unchanged 60-second ceiling.
-Configuration and builds are separate. Evidence is retained under
-`.chibi/evidence/language-redesign/` rather than the rolling build-log directory.
-
-| Check | Result | Evidence |
-| --- | --- | --- |
-| Native ASan/UBSan controller, compiler and test drivers | Pass | `native-build.log` |
-| Release controller; Wasm driver | Pass | `release-build.log`, `wasm-build.log` |
-| Language group | Pass, 20.880s; program 134 cases, navigation 32, source assets 23 | `language-group.log` |
-| Native group | Pass, 23.291s, including staged relationship mutation | `native-group.log` |
-| Project group | Pass, 23.900s; all 19 feature scenes, four frames each | `projects-group.log` |
-| Wasm group | Pass, 2.503s | `wasm-group.log` |
-| Actual Chrome Wasm | Pass, 3.114s; execution, program, publication, packed arrays, modules and queries | `wasm-browser.log` |
-| Native query/packed-array selectors | Pass, 54 and 12 cases | `query-program.log`, `row-array.log` |
-| Component writes, including private used-result ABI | Pass, 15 cases each on native and Wasm | `component-write.log`, `wasm-component-write.log` |
-| Generated-C parity | Pass, 6,965 assertions, 1.936s | `c-export-alias.log` |
-| SDK package and Studio build/acceptance build | Pass, installed public SDK boundary | `sdk-build.log`, `studio-build.log`, `studio-acceptance-build.log` |
-| Bounded Studio source edit | Pass, 3.894s; four frames, edit/undo/redo, static validation and live relationship registration | `studio-source-edit.log` |
-| Fixture canonicality and C formatting | Pass, all 13 projects | `fixture-format-check.log`, `check-format.log` |
-
-The SDK package for that earlier snapshot was
-`6504402215fea1305a2753ee5564c7a7b4544b85f734bd8a801bbb9aa3169308`.
-Studio's base is `07dccf7`; both candidates use the branch named above. Source
-and compile-command audits verify the public installed-SDK boundary, and Studio's
-consumer hashes/include inventory matched that snapshot. Independent reviews cover
-grammar/migrations, ownership and prepared provenance, typed component access,
-asset registration, editor persistence and the final staged-mutation fixture.
-
-The packed benchmark compares ten numeric types, 64 elements and 16 trials per
-mode. Packed payloads use 64/128/256/512 bytes by element width versus 2,560 bytes
-for the boxed payload on this native build (40-byte descriptor for either).
-These are bounded measurements, not a claim of universal vector/record speedups,
-SIMD gains, GPU performance or changed numeric precision.
-
-Full rendering and full Studio suites remain quarantined, not passed. The Studio
-check is source-edit acceptance, not comprehensive pointer/tab or rendered-player
-acceptance. Three intentionally incomplete baseline fixture projects still refer
-to absent `HealthBehavior`, undeclared `Repair`, or absent `ArenaEnemyShard`;
-these omissions were verified in base `525f91b5a` and were not filled with invented
-assets. Their formatter checks pass; standalone compilation of all 13 is not claimed.
-
-Queryable embedded components remain the explicitly deferred extension, outside
-these five completed stages. Temporary migration/evidence-generation scratch was
-moved to Trash and is recoverable; review worktrees, build artifacts and durable
-evidence are retained.
-At that earlier checkpoint, no commit, push, merge or deployment had been
-performed. The final-review section above supersedes its delivery status. Earlier
-plans below are historical.
-
-## Main branch historical checkpoint (before redesign integration)
-
-# 3D terrain and screen light, 2026-10-17
-
-The Voidweaver basalt study's reusable engine work is on main: live 3D
-material surfaces ([docs/terrain-surface-geometry.md](docs/terrain-surface-geometry.md)),
-TerrainVolume rock with real-time cuts ([docs/terrain-volume.md](docs/terrain-volume.md)),
-radiance-cascade screen light that lets emissive particles light the scene
-([docs/rendering-3d.md](docs/rendering-3d.md)), sky materials, and every field
-node callable from library source ([docs/material-engine.md](docs/material-engine.md)).
-It builds on the environment-authoring snapshot below. Frame budget (60 fps at
-1080p) and visual acceptance stay with the game; the next scene starts from a
-fresh plan.
-
-# Environment authoring, 2026-10-15
-
-The approved terrain-first program is tracked in
-[docs/environment-authoring.md](docs/environment-authoring.md). Start with shared
-float material-channel baking, a bounded controller operation, and a minimal
-migrated terrain fixture. Studio authoring waits for its applicable migration
-gates. The first game use is 2D sidescrolling destructive MaterialTerrain;
-3D heightfield editing remains deferred. Layout and material generation then
-expand in parallel. Game `.chibi`
-owns biome, cave, stamp and spawning policy; shared services own generation,
-chunks, edits, collision and persistence. Compose generated base, authored
-overrides and runtime edits in that order, preserving recipe/seed identity and
-durable edits. Professional material authoring and complete 2D editing have
-separate acceptance gates. Material simulation and the 3D workflow decision
-remain deferred. E1 native mechanism checks pass on the local candidate. The
-ship-based playable and visual acceptance remains open; Terrain Lab is an SDK
-test fixture. The broader material and Studio gates also remain open.
-
-The first CPU implementation is now available in this branch: the public
-`shader_bake` API, `bake_material` controller operation, and a recovered
-MaterialStudy fixture that verifies authored destructive terrain behavior.
-Focused bake, shader-graph, terrain and installed-SDK controller checks pass.
-E1 now adds shared chunk contours/borders and coherent LOD, real seam collision
-coverage, and explicit durable terrain checkpoints, including cold streamed
-edits. Focused CPU and six-frame Metal checks pass. The roadmap records the
-verified scope. Terrain Lab now proves authored movement, jumping, excavation
-and save/load across fresh processes on both VM and SLJIT. Shared host/controller
-commands and an installed-player Metal capture pass. Studio integration and
-authored override layers remain later milestones. Terrain remains reusable
-engine functionality inside the current
-material runtime SDK target; games own generation/edit policy and hosts own save
-storage. Keep language/compiler package boundaries, and defer repository splitting.
-This candidate is uncommitted and has not been merged or deployed.
-
-Confirmed ownership, 2026-10-16: Voidweaver owns the Cradle ship, free flight,
-basalt composition and visual tuning; Terrain Lab remains the SDK fixture.
-Reusable renderer gaps belong in this engine candidate. The next shared
-checkpoint preserves entity `Material` absorption RGB/coverage on shader-driven
-surfaces and multiplies them by graph opacity, including per-model-part shaders.
-Existing zero-default absorption and scalar HRC optical-depth semantics remain;
-Depth-mode height occlusion is independent. The correction passes one bounded
-Metal frame checking twelve mesh/SDF surfaces and the execution-policy checks;
-numeric evidence and package scope are recorded with the candidate. Directional
-HRC2D emission and live-terrain shallow geometry remain
-separate checkpoints with prerequisites and acceptance in the roadmap. E1's
-Voidweaver playable/reference visual gate remains open.
-
----
-
-# Shared execution interface and web rollout, 2026-10-11
-
-Continue the approved Wasm rollout from engine main `c159b6cd6`. Keep one Chibi
-compile/run interface with sibling SLJIT and Wasm emitters. Move shared execution
-dispatch and host lifetime handling into `src/execution/runner.c`; rename its
-boolean selector from `native` to `compiled`. Keep the VM interpreter explicit.
-This changes module organization, not execution state or ownership contracts.
-
-Stillwater currently depends on engine `e9d23b04e` and game `991ca048`. Its engine
-branch repeats the native-name migration already on main and predates newer
-arena collection and test layout. Port the required functional changes onto
-current main, preserving the newer implementations: measured audio/capture,
-direct scalar component writes, finished-activation collection elision, particle
-fields, responsive camera framing, URL actions and pointer input. Retain the
-helper/macro-aware migration and WebGPU noise fix from the old integration.
-Keep main's project version 23 and existing migrations; migrate the game with
-the matching controller after its source merge.
-
-Preserve the dirty primary engine and Studio checkouts. Use this isolated engine
-checkout and a separate game worktree. Merge the current 3D game's source with
-game main, then record the exact clean engine revision and produced package
-hashes in `toolchain.json`. Publish the tested engine and game source to main.
-Wait for complete engine packages before publishing Studio; publish and verify
-the game through its existing Pages workflow.
-
-Independent reviews cover execution ownership, migration, new runtime/renderer
-capabilities, SDK closure and the merged game. Use admitted C checks under the
-60-second production deadline, native and Emscripten builds, serial/pthread
-Wasm checks and matching game validation. Run only bounded relevant GPU/browser
-checks, including actual music selection, play, Duet and warmed frame timing at
-normal display size. Full GPU/Studio suites remain quarantined. Keep evidence
-under `.chibi/wasm-jit` and game evidence under its existing validation location.
-
----
-
-# WebAssembly JIT backend, 2026-10-11
-
-Implement the approved browser JIT in the isolated `cwaldner/wasm-jit` branch
-from `06e7b1a2b`. Authored source and prepared canonical IR stay authoritative.
-Browser loading emits full Wasm functions, which the browser compiles to machine
-code before publishing a program. Native execution continues to use SLJIT.
-
-The publication API is synchronous. Compile synchronously for this version and
-measure load cost separately from execution; asynchronous publication would need
-an explicit readiness/rollback contract. Failed compilation fails publication,
-with no automatic VM fallback. Explicit BYTECODE remains a diagnostic backend.
-
-Generated functions handle scalar arithmetic and control flow directly. Shared
-C machine helpers own complex runtime effects, managed values, inspection,
-requests and continuations. Extract those semantics from the VM instead of
-maintaining two implementations. The Wasm entry uses the existing activation
-storage and call protocol, including completed-frame reuse and cancellation.
-
-Each immutable execution artifact owns emitted bytes and an identity. Each
-thread retains entries for live artifacts in its own engine function table
-and memory, compiling each worker's entry on first use. Retirement releases only
-those entries on their next use or at thread exit; active calls retain their
-generation, including any constant payloads embedded in generated code.
-Ordinary and pthread builds must both use this contract.
-
-Changes:
-
-- `src/execution/machine.*`, `vm.c`: share instruction effects and activation setup.
-- `src/execution/wasm_emit.*`: emit full functions with direct numeric operations,
-  basic-block control flow, runtime imports and continuation entry dispatch.
-- `src/execution/wasm_jit.*`, `artifact.*`: compile, link, cache and retire code.
-- `backend.*`, `function.c`, `module.c`, `program_activation.c`: select WASM by
-  default on the web and require successful compilation before publication.
-- SDK/test build files and host diagnostics: expose the backend truthfully.
-- Remove the unused numeric-only Wasm implementation and VM hooks.
-- `test/language`: C pico_unit coverage, generated-execution proof and bounded
-  benchmark workloads. Keep one dispatcher and the production 60s supervisor.
-
-Verification:
-
-- Test default selection, actual generated execution, numeric/control parity,
-  calls, arrays, suspension, inspection, failure and generation replacement.
-- Run existing language coverage under Emscripten/Node and native, then a real
-  browser CPU run and pthread coverage where the available environment permits.
-- Measure JIT compile time separately from steady execution and compare VM/JIT
-  with equal outputs. CPU timings do not establish rendered 60 FPS.
-- Independently review ownership, emitter semantics and integration. Run admitted
-  native/language/tooling checks, product builds and formatting. Full GPU/Studio
-  suites remain quarantined. Retain logs in `.chibi/wasm-jit` only.
-
-No authored contract or project version change is planned. Fields remain under
-their existing evaluator; this task changes behavior execution.
-
-Implemented on 2026-10-11. Web publication now requires full-function Wasm
-compilation; native SLJIT remains the default. The previous unused numeric-region
-emitter is removed. Generated arithmetic, loads and branches call shared C
-helpers only for runtime effects. Independent review covered emission, cache
-ownership, worker teardown, shared-machine semantics and host reporting. New
-regression cases failed against the previous backend selection, scratch sizing
-and cache implementation, then passed on this candidate.
-
-Chrome passed 91 cases/5,007 assertions, and pthread Chrome passed 92 cases/5,041
-assertions. Node passed both configurations, including headless coverage.
-ASan/UBSan passed the native language group in 57.116 seconds. Native and web
-player/compiler builds passed. The Chrome benchmark measured 2.19x faster inline
-execution and 1.32x faster helper calls than the original VM at `06e7b1a2b`.
-The shared helper extraction slows the explicit diagnostic VM by 9.9%/17.3% in
-those workloads. Small-module cold publication measured 1.065/0.190 ms; loading
-and first use on each worker remain synchronous. See `docs/testing.md` for the
-workload, evidence and limits. No rendered Tetris FPS claim is made.
-
-Final `make test-native`, `make test-language-all`, `make test-tools` and
-`make test-projects` passed in 2.296s, 1.450s, 35.143s and 13.557s respectively,
-with configuration/build timing excluded. `make check-format` passed. Full
-GPU/Studio suites remain quarantined. Logs and benchmark provenance remain in
-`.chibi/wasm-jit`; temporary baseline binaries and the sanitizer build are removed.
-
----
-
-# Script helper-call optimization, 2026-10-11
-
-Start from `f3ff608c1697f0491ac4d2ae052a864ede1200f7` in the isolated
-`cwaldner/script-call-optimization` worktree. Reduce the measured allocation
-cost of ordinary authored helper calls on VM and SLJIT without changing source
-semantics, project formats, rendering policy, or authored game assets.
-
-The current `BF_INVOKE` path allocates a frame, arena, activation and value banks
-for each helper call. Keep that execution protocol and its existing debugger,
-request, task, error and cancellation handling. Each root invocation will own
-one spare completed frame, bounded to 64 KiB of retained backing storage. Reuse
-function-sized activation and data buffers only for the same callee. Reset all
-logical state/defaults on borrow and rebind services. Copy returned values and
-run the existing leave callback before retiring a frame. Inactive storage must
-never participate in context traversal or payload tracing. Failure frees active
-frames; final teardown also frees cached storage. Callees with an alternate
-optimized body rebuild activation buffers because inspection can select a
-different buffer layout. Source programs remain authoritative.
-
-Implementation:
-- `src/execution/call.c`: own, reset, bound and release reusable completed frames.
-- `src/execution/host.c` / execution declarations if required: restore data bank
-  defaults without changing buffer ownership.
-- `test/language/program.c`: allocation regression and reuse/lifetime cases.
-- `test/language/benchmark.c`, dispatcher, CMake and test policy: finite repeatable
-  default-compiler helper/inline comparison with exact output assertions.
-- `docs/testing.md`: benchmark bounds and measured evidence.
-
-Verification:
-- Run the new allocation regression before the runtime change and see it fail.
-- Compare baseline/candidate Release benchmarks with exact output parity.
-- Exercise changing arguments, different callees, nesting, retained managed
-  results, references, waits, cancellation, debugger and failure paths.
-- Run admitted language/native/tooling groups under their shared 60-second
-  deadlines; keep builds separate, full GPU/Studio coverage quarantined.
-- Review ownership/lifetimes independently and run targeted sanitizer coverage.
-- Reproduce a fixed Tetris CPU profile on baseline and candidate when compatible;
-  do not equate CPU-only timing with end-to-end FPS.
-
-Completed on 2026-10-11: the new allocation regression failed on the baseline
-and passes with reuse on both backends. The Release benchmark passed its 64
-output assertions before and after; SLJIT helper dispatch measured about 2.2x
-faster, VM about 1.4x faster, with approximately 98% fewer allocation calls.
-Timing samples are short and machine dependent; allocation counts are stable.
-See `docs/testing.md` for workload bounds and measurements.
-
-`make test-native`, `make test-language-all` and `make test-tools` passed under
-their shared deadlines (9.649s, 1.362s and 21.210s respectively). ASan/UBSan
-execution, program and publication selectors passed 80 cases/3,801 assertions.
-The normal Release product build and `make check-format` passed. The clean baseline also needed
-`<unistd.h>` in two existing `mkdtemp` test consumers on this macOS SDK.
-Independent review checked call ownership, teardown, service rebinding and
-benchmark comparability; optimized alternate bodies rebuild their activation
-storage to avoid reusing differently sized VM buffers. Full GPU/Studio suites
-remain quarantined. The base engine cannot load Tetris `8cac6a7`'s newer input
-contract, so no rendered FPS or whole-game improvement is claimed. Local logs remain in
-`.chibi/script-optimization`; temporary binaries and the copied game are removed.
-
-Earlier architecture work follows for historical context.
-
----
-
-# Engine SDK and Chibi language implementation
-
-> Historical plan and delivery evidence for the 2026-10-08 SDK extraction.
-> Use [current status](docs/status.md) for today's backlog and owners, and
-> [architecture](docs/architecture.md) for the current package contracts.
-> The extraction is present in engine `main` at the reconciliation baseline
-> `f3ff608c`. Browser publication was added after this delivery. The branch,
-> repository-visibility constraints, local artifact paths and acceptance limits
-> below describe their recorded checkpoints, not current checkout or deployment
-> state. Later work does not retroactively extend these test results.
-
-## Objective and authority
-
-Implement the production architecture agreed in this conversation: an engine SDK
-with independently built compiler, execution and headless authoring modules;
-Studio consumes public SDK interfaces; games consume installed engine artifacts.
-Rename executable source to `.chibi`. Remove the Chibi MCP product entirely. AI
-authoring edits asset files and uses format, validation, inspection and run tools.
-Any repositories published to GitHub must be private.
-
-The user authorized planning followed by implementation. This is the complete
-deliverable, not a prototype-only task. Temporary graph adapters and mixed build
-targets do not satisfy the final separation requirements.
-
-Implementation status, 2026-10-08: the SDK separation, direct source compiler,
-standalone player, external Studio and game/example extraction are implemented.
-The final evidence below distinguishes passed builds and bounded execution from
-unverified browser execution and quarantined coverage. The initial delivery was
-local and uncommitted. The architecture reference is
-[`docs/architecture.md`](docs/architecture.md). The progress entries record
-successive intermediate states; their open issues are superseded only by later
-explicit evidence.
-
-Private source publication was authorized on 2026-10-08. The extracted
-repositories are `waldnercharles/chibi-studio`, `waldnercharles/chibi-arena3d`,
-`waldnercharles/chibi-space-cadet`, `waldnercharles/chibi-voidweaver` and
-`waldnercharles/chibi-examples`. The engine refactor is published on
-`cwaldner/code-language-prototype` in the existing private `chibi`
-repository. Branch publication does not merge the refactor into engine `main`
-or change the acceptance limits below.
-
-## Historical baseline and preservation
-
-- Branch `cwaldner/code-language-prototype`, based on `1e5d6584`. Preserve the
-  conversation's uncommitted prototype and build/test integration while migrating.
-- `prototypes/code-language` contains Tree-sitter syntax and semantic checking,
-  not executable compilation. Systems, ECS paths and bindings are incomplete.
-- `src/assets/code_program*`, `code_statements*`, `code_reactive*` mix syntax,
-  semantic resolution, native graph construction and authoring information.
-- `node_desc` mixes execution contracts and presentation. `behavior_function*`
-  contains useful typed instructions/backends but retains graph-owned origins.
-- `core` contains graph authoring, source intelligence and editor flow visuals.
-  Universal public include roots expose internals. Automation/controller link the
-  editor. The host application loop is implemented by Studio.
-- Current native packages combine player/editor/controller/MCP/Studio assets.
-  Existing package identities and game pins are useful foundations.
-- Project format is 9, with nine tracked manifests and 108 executable `.code`
-  assets plus 105 sidecars in the baseline inventory. Re-enumerate for acceptance.
-- All test commands have a hard 60-second ceiling; quarantined suites stay
-  disabled. Build/configuration timing is separate from execution evidence.
-- The prior plan is preserved in
-  `docs/plans/2026-10-07-authoring-migrations.md` as historical evidence.
-
-## System design
-
-Source text is authoritative. Syntax snapshots preserve text and recovery. The
-resolved program owns typed declarations, symbols, expressions, queries, events,
-state, bindings and effects. The executable module owns verified instructions,
-layouts, imports and origin indices. Neither resolved nor executable programs
-own editor objects or graph nodes. Generated machine code, compiler scratch and
-live instances have separate lifetimes from immutable definitions.
-
-The capability catalog owns stable IDs, explicit script names, reflected types,
-signatures, effects and native execution contracts. Graph presentation refers to
-capabilities. Resolve names once. Persistent modules contain IDs and compatibility
-requirements, never process pointers. The compiler understands typed ECS reads,
-writes, queries and batch operations; SLJIT details stay in its backend.
-
-ECS owns entity generations, component storage, query membership and structural
-mutation. Execution owns state, activations, dispatch, suspension and cancellation.
-Systems own registration and matched-entity lifetimes. Reactive execution owns
-bindings/subscriptions. Scheduling consumes verified effects and explicit order.
-Execution views expire at structural or suspension boundaries. Query exit/entity
-destruction cancel work and subscriptions. Invalid code cannot replace a valid
-generation. Do not reintroduce native hot reload.
-
-Authoring owns source/graph edits, navigation, refactoring and diagnostics; Studio
-owns UI. Graphs project resolved meaning. Graph semantic edits update `.chibi`,
-then reanalyze before adoption. Optional `.chibi.meta` holds identity/layout/debug
-presentation, never executable facts. Owned source-origin records map instructions
-to source and optional graph presentation without depending on graph lifetime.
-
-The direct alternative, renaming folders while preserving graph-mediated
-compilation, would preserve the coupling. Extract existing implementation through
-real interfaces instead. Track temporary bridges and remove them before completion.
-
-## Package and repository boundaries
-
-Each C package has explicit source ownership, scoped public headers and private
-implementation headers. Target packages are types/capabilities, ECS, language,
-compiler, execution/backends, runtime integration, optional native capabilities,
-asset preparation, shared authoring, Studio and CLI tools. Rendering, physics,
-input and game UI remain optional. A prepared-asset player needs no syntax or
-authoring libraries, though native execution can include SLJIT.
-
-Header search paths are owned per target in source and installed builds. Linking
-a target makes only its declared dependency closure visible. Package validation
-rejects exports of a shared include root or undeclared header owners; file include
-spelling stays stable through the target's generated search paths.
-
-Keep SDK/compiler/runtime contracts in the engine repository. Build Studio
-against an installed SDK before extracting it into its own repository. Actual
-games move to independent repositories. Curated labs/examples move to an examples repository;
-minimal regression fixtures remain with their owning module. Verify replacement
-repositories and fixtures before removing old source projects. Preserve provenance.
-No remote is required for local extraction. Inspect remote visibility before any
-push; create new GitHub repositories as private only.
-
-## Implementation stages
-
-### 1. Asset contract and MCP retirement
-
-- Change `src/support/asset_text.h`, hardcoded catalog/editor filters, web MIME and
-  preload lists, examples, tests, source tools and active docs to `.chibi` and
-  `.chibi.meta`. Replace hardcoded suffix lengths with the central constant.
-- Rename the full authored corpus and references directly. Do not modify unrelated
-  C `.code` members, CSS classes or `.codex` paths. No legacy extension aliases.
-- Bump `CHIBI_PROJECT_VERSION` and all project manifests to 10.
-- Remove `tools/mcp`, MCP-only auxiliary servers/configuration, Make/setup/cache
-  hooks, packaging/install payload and obsolete MCP-only tests. Preserve package
-  identity pins and unrelated user configuration.
-- Retain useful native format/validate/inspect/scenario/preview CLI operations.
-  Remove MCP-only AI mutation entry points after checking shared callers. Shared
-  Studio semantic editing stays in the authoring module.
-- Retire or convert authoring scripts that launch MCP to direct asset generation;
-  do not hide the old graph-mutation workflow behind a renamed transport.
-- Rewrite current authoring instructions around asset files and ordinary CLI
-  validation. Historical evidence may describe the former product explicitly.
-
-### 2. Build ownership and headless separation
-
-- Refactor `CMakeLists.txt` and `cmake/sources.cmake` into explicit package source
-  lists. Move flow visuals out of core and pure component document parsing out of
-  editor. Remove automation's editor dependency through shared interfaces.
-- Separate Studio schema/catalog declarations from UI callbacks. Studio-specific
-  capabilities are an optional authoring extension, absent from player linking.
-- Break actual dependency cycles before splitting libraries: shared values/arrays
-  become leaves; low-level serialization must not dispatch back into source
-  formatting; runtime instances must not own compiler publication.
-- Separate configuration of compiler/headless/player/Studio dependencies. Compiler
-  builds must not require SDL, RmlUi, renderer assets or a live world.
-- Export scoped public headers and installed CMake targets. Add executable build
-  dependency checks. Do not merely rename mixed `core`/`runtime_support` libraries.
-
-### 3. Capability and executable model extraction
-
-- Extract value/type layouts and host/query/command contracts from graph model
-  headers. Adapt reflected registrations and native operations without duplicating
-  signatures or using graph display labels as script names.
-- Extract graph-free source origins, typed instructions, state layouts and
-  executable ownership from `behavior_function*`. Move graph traversal and
-  frame-input reconstruction into the graph producer bridge.
-- Separate compiler scratch, immutable modules, linked/backend code and activation
-  storage. Preserve existing optimization and execution implementations.
-- Add a narrow builder/finalization/verifier interface. Both producers use this
-  compiler; persistent modules verify imports, types and layout requirements.
-- Make the VM/native backend independently linkable without graph/editor objects.
-
-### 4. Production Chibi frontend
-
-- Promote the prototype into the language package. Cover the production corpus:
-  concrete types, ECS paths, systems/queries, events, bindings, callable libraries,
-  control flow, locals/state/shared state and suspension. Inspect each current
-  contract; do not quietly reduce supported behavior to the prototype subset.
-- Lower the resolved program directly into the shared executable representation.
-  Remove obsolete handwritten parsing and duplicated catalogs as paths migrate.
-  A remaining required native-graph intermediate is incomplete work.
-- Define and enforce numeric/conversion rules, payload signatures, optional
-  component presence, effects, binding purity/cycles/writers and suspension.
-- Add runnable system, non-Tick event and binding examples. Verify ECS outcomes,
-  query entry/exit, event payloads, cleanup and actual backend selection.
-
-### 5. Runtime, prepared assets and player
-
-- Make runtime definitions immutable program references, with state/activation
-  ownership separate. Remove authored graph lifetime from execution.
-- Preserve behavior/system state lifetimes, cancellation, subscription and binding
-  order. Reacquire component views after suspension/structural boundaries.
-- Split editing/working/applied/unsaved state from `runtime/behaviors/live.*` into
-  authoring integration. Split viewport controls out of runtime engine headers.
-- Add offline executable preparation and explicit asset dependency manifests.
-- Build a standalone player with its own host loop and scene loader, excluding
-  Studio, source intelligence, authoring history and MCP.
-
-### 6. Shared authoring and Studio
-
-- Move shared diagnostics/navigation/refactoring/document transactions into the
-  authoring package. Map graphs and debugging through semantic identities/origins.
-- Preserve drafts/comments, source/graph synchronization and invalid-edit behavior.
-- Build Studio against an installed SDK with private engine source headers absent.
-  Fix needed functionality through the owning public interface.
-
-### 7. Artifacts and project extraction
-
-- Produce distinct runtime/player, SDK/compiler and Studio/tooling packages.
-  Record checksums, build/release identity, project format, executable/runtime ABI
-  and external protocol requirements. Consume copied, pinned installed artifacts.
-- Extract Arena3D, Voidweaver/arena2d and SpaceCadet into game repositories after
-  moving engine regression cases to focused fixtures. Preserve authored source.
-- Extract labs/sampled-model examples with licenses/provenance and requirements.
-- Replace implicit `projects/*` shipping/preload discovery with explicit product
-  choices. Studio assets remain with Studio.
-- Verify an external game against installed artifacts. Any pushed remotes private.
-
-### 8. Review and acceptance
-
-- Independently review ownership, include/link dependencies, lifetimes, migration,
-  source/graph transactions, package contents and extracted repository completeness.
-- Use admitted bounded C/pico_unit checks for syntax/semantics, VM/native agreement,
-  ECS outcomes, events, bindings, suspension and cancellation. Add reviewed bounded
-  cases for missing contracts. Do not reconstruct quarantined suites as chunks.
-- Build native SDK/compiler/runtime/player/Studio and applicable web targets.
-  Verify real Studio source/graph interaction when these paths change.
-- Validate and canonicalize all retained and extracted assets with current binaries;
-  inspect packages and installed external consumers. Record exact evidence.
-- Apply reviewed-validation/publication rules. Missing affected coverage remains
-  open, never silently treated as passed. No broad claim from a narrow check.
-
-## Completion evidence
-
-- [x] Detailed plan precedes implementation; old plan preserved.
-- [x] `.chibi` extension and project version 10 migration verified without aliases;
-  full corpus formatting remains quarantined and unverified.
-- [x] MCP product, setup, dependencies, packaging and active workflows removed.
-- [x] Narrow public headers and package dependency enforcement in place.
-- [x] Independent compiler configuration without world/UI/render dependencies.
-- [x] Resolved/executable programs free of graph/editor ownership.
-- [x] Production corpus uses the new frontend and shared compiler.
-- [x] System, non-Tick event and binding examples execute with checked outcomes.
-- [x] Headless runtime and standalone prepared-asset player verified by focused
-  VM/SLJIT and prepared reader checks; full runtime/render suites quarantined.
-- [x] Shared authoring and installed-SDK Studio build and bounded edit/history
-  interaction verified.
-- [x] Runtime/backend and applicable native UI and web build evidence recorded;
-  browser execution remains unverified.
-- [x] Separate packages and pinned external-game execution verified.
-- [x] Game/example repositories preserve source; regression fixtures migrated;
-  implicit project shipping removed; any published repositories private.
-- [x] Independent final implementation audit recorded, with explicit acceptance
-  limits below. No publication or broad production certification is claimed.
-
-## Final implementation evidence — 2026-10-08
-
-The engine owns types, ECS, capability contracts, syntax/analysis, direct
-compilation, execution/backends, runtime integration, preparation and shared
-authoring. `sdk/contracts.cmake` enforces declared source/link ownership; scoped
-public headers and installed consumers enforce header visibility. Compiler builds
-omit desktop dependencies. Prepared-player builds omit compiler and authoring.
-Studio compiles through `find_package(Chibi)` with no private engine source
-include paths. Source graphs are projections and edits of `.chibi`; they are no
-longer the executable compiler intermediate. MCP is absent from the products.
-
-Five separate Git repositories retain extraction records. These paths describe
-the original local extraction; their private GitHub repositories are listed above:
-
-| Repository | Ownership |
-| --- | --- |
-| `/Users/cwaldner/Personal/chibi-studio` | Studio, shell/starter assets, native and browser hosts |
-| `/Users/cwaldner/Personal/chibi-arena3d` | Arena3D game assets |
-| `/Users/cwaldner/Personal/chibi-space-cadet` | SpaceCadet assets and copied player pin |
-| `/Users/cwaldner/Personal/chibi-voidweaver` | Voidweaver game assets |
-| `/Users/cwaldner/Personal/chibi-examples` | Curated labs and sampled content |
-
-Retirement followed preservation and validation: 109 obsolete unbuilt production
-files, 284 game originals (including a separately preserved historical README),
-and 532 Studio/source/resource/oracle/build-wrapper files were removed. The 344
-example originals were also extracted. Engine regression fixtures remain with
-the engine. Historical Studio oracles are preserved under Studio's
-`tests/held/engine_oracles`; they are held coverage, not passing tests. The separate
-Neon Swarm checkout was outside this migration.
-
-The final product packages are under `build-verify/sdk-migration/`:
-
-| Product | Directory | Package identity |
-| --- | --- | --- |
-| Compiler/authoring SDK | `release-sdk-package` | `f9491e2a267ed8dc34ace0ae162907159e52083aba9d1061bf7fd8e58a31ba35` |
-| Compiler-free runtime SDK | `player-release-runtime-sdk` | `d837f03665894e64941b31949f577e02d0efeda37fba371ba653fa71f8020ec2` |
-| Player deployment | `player-release-package` | `77fda1d78d1a02c53a3ff2a7481948abd27bb9614f861024ffbce6bbb06adebd` |
-| Studio Release distribution | `studio-release-package` | `0d54a83382cbba2a60ef463d29763147905367ab193b9a6e01737a9fa28c0cbb` |
-| Serial Emscripten SDK | `web-sdk-package` | `b78a78611acaaaa234c3e5941cfdc16e7bf8ab5de1ee95b0da973323eb4ffef2` |
-
-Package audits verified complete inventories and installed consumers. The Studio
-distribution pins the compiler SDK above, contains 368 files and has only system
-dynamic dependencies. The player deployment contains 96 inventoried files plus
-its manifest, with no compiler, authoring, SDK headers or libraries. Using the
-installed packager leaves the SDK inventory unchanged.
-
-Passed acceptance is bounded as follows; every test used the production
-60-second supervisor, with configuration/build time recorded separately:
+| `chibi build [PROJECT]` | Compile a project into its cached runnable artifact without starting the player. |
+| `chibi run [PROJECT] [--] [PLAYER OPTIONS]` | Build and run a project. Arguments after `--` belong to the player. |
+| `chibi check [PROJECT]` | Parse, resolve, and validate without migration, formatting, or published build artifacts. |
+| `chibi test [PROJECT]` | Discover and run authored Chibi tests under the shared execution policy. |
+| `chibi fmt [PATH...]` | Apply canonical Chibi and authored-asset formatting; `--check` writes nothing. |
+| `chibi doc [PROJECT]` | Generate the documentation site; previewing is an explicit option, not the default. |
+| `chibi web [PROJECT]` | Build a browser target and serve it on loopback for local development. |
+| `chibi export [PROJECT]` | Assemble a distributable native game or static browser site without serving it. |
+| `chibi version` | Print compiler, SDK, build, and artifact-format identity. |
+| `chibi doctor` | Diagnose installation and target capabilities without mutating the project. |
+
+There is no project-facing `package` command. `export` is the game-distribution
+operation. SDK, player, Studio, and release packaging are maintainer build tasks
+until the Chibi build program owns them. There is no `serve` command; browser
+development is `web`. Asset import and schema migration stay with the owning
+asset or project workflow instead of becoming permanent top-level commands.
+
+The unnamed `chibi [PROJECT] [PLAYER OPTIONS]` run form is a temporary migration
+alias. Named commands take precedence, so a project directory named `build` or
+`run` must be passed as `./build` or `./run`. Remove the alias after checked-in
+callers and onboarding use `chibi run`.
+
+### Language and package ownership
+
+ECS declarations, entity identity, component and system syntax, queries,
+presence proofs, effects, borrowing, and reduction rules are language contracts.
+Games do not import an ECS package to use them. A future `core:ecs` package may
+expose explicit world construction, inspection, and serialization, but it must
+not redefine language semantics or introduce a second entity type.
+
+The intended public collections are:
+
+```text
+core:       portable language and explicit runtime support
+game:       first-party rendering, input, audio, physics, assets, and UI
+vendor:     optional low-level bindings to external native libraries
+```
+
+The SDK can analyze and execute explicitly supplied multi-file packages and their
+imports. An owned resolver snapshot resolves imports against explicit collection
+roots; prepared generations own exported declarations and linked dependencies.
+A bounded disk adapter supplies explicit package roots on Linux and macOS. The
+installed `core:strings` collection and pure native arrays support the first
+compiler component; Windows disk loading remains unsupported.
+
+### Bootstrap terms
+
+- **Stage zero** is the existing C compiler and native build used to create the
+  first Chibi-authored compiler. It remains a recovery path during migration.
+- **Stage one** is the compiler program whose source is `.chibi` and whose
+  executable artifact was produced by stage zero.
+- **Stage two** is produced by running stage one on the same compiler sources.
+- Self-hosting requires stage one to compile the complete compiler sources and
+  produce a stage-two compiler that passes the same semantic fixture set. A
+  Chibi script that invokes the C compiler is useful build orchestration, but it
+  is not self-hosting.
+- Binary equality is required only after inputs and outputs are deterministic.
+  Semantic, diagnostic, ABI, and artifact-format equivalence are always required.
+
+## Required context
+
+- Read [`docs/self-hosting-build.md`](docs/self-hosting-build.md) before changing
+  the build host, bootstrap stages, compiler port, or backend policy. Its process
+  contract covers argv, cwd, environment, ownership, deadlines, output bounds,
+  cancellation, and process-group cleanup.
+- Read [`docs/toolchain-inventory.md`](docs/toolchain-inventory.md) before
+  changing or deleting Python, shell, Make, CMake, packaging, reflection, test
+  supervision, browser, or release code. Every deletion must satisfy the caller
+  and equivalence gate recorded there.
+- Read [`docs/testing.md`](docs/testing.md) before adding or running checks. Full
+  native, render, Studio, and other quarantined suites are disabled, not passed.
+- Read the current language architecture and contracts before compiler work:
+  [`docs/code-language.md`](docs/code-language.md),
+  [`docs/language-contracts/v1.md`](docs/language-contracts/v1.md), and the live
+  sources under `src/language/`.
+
+These documents explain existing contracts. This file alone owns milestone
+order, current status, and the next action.
+
+## Integration rules
+
+Before each milestone, fetch `origin`, compare the branch with `origin/main`, and
+inspect live pull-request heads that touch the milestone. If main advanced,
+preserve current work in reviewable commits, then use a normal merge or a safe
+rebase of unpublished commits. Never import an open branch merely to pre-resolve
+a possible conflict.
+
+Before publication, repeat that check, reconcile any landed overlap, review the
+complete combined diff, and run affected admitted checks on the exact candidate.
+Attribute old results to the tree that produced them. Rerun a passing check only
+when integration or later edits changed the contract it covers.
+
+Current integration constraints:
+
+- Engine PR #436 landed on main at `7e900d956`. This branch integrates its
+  retired-selector removals, Terrain Lab admission, documentation changes, and
+  empty-mesh fix. Preserve those changes when editing test policy or fixtures.
+- Engine PR #438 landed on main at `6ea2221c9`. This branch integrates its
+  release-build correction for terrain-volume assertions.
+- Engine PR #420 is an open language and typed-runtime redesign. Recheck its
+  authoring commands, SDK manifests, language docs, plan, and test-policy
+  contracts before modifying those areas.
+- Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
+  contracts, commits, or dependencies as part of this work.
+
+## Milestone ledger
+
+| ID | Status | Depends on | Deliverable |
+| --- | --- | --- | --- |
+| M0 | **Complete** | current main | Explicit `build` and `run` commands over existing preparation and player behavior. |
+| M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
+| M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
+| M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
+| M4 | **Ready** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
+| M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
+| M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
+| M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
+| M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
+| M10 | Blocked | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
+
+M5 is the primary product goal. M7 through M9 may proceed in parallel only when
+they do not delay or destabilize the active bootstrap path.
+
+When a milestone completes, mark each direct dependent **Ready** if all of its
+listed dependencies are complete. Leave it **Blocked** if another dependency or
+an explicit decision gate remains, and name that gate in its milestone section.
+
+## Milestones
+
+### M0. Name existing project behavior
+
+Status: complete on this branch.
+
+The launcher implements these forms while preserving existing artifact paths,
+project discovery, compiler selection, freshness checks, and player arguments:
+
+```text
+chibi build [PROJECT]
+chibi run [PROJECT] [--] [PLAYER OPTIONS]
+chibi [PROJECT] [PLAYER OPTIONS]
+chibi export [PROJECT] --output DIR [--web PLAYER] [--archive]
+```
+
+Named commands win over implicit project paths. `build` never starts the player.
+`run` starts it only after successful preparation. Compiler exit status reaches
+the caller unchanged, and a failed preparation never starts the player. A cache
+hit reuses the artifact; a missing artifact or newer project/compiler input
+rebuilds it through the existing `prepare` path.
+
+Owning changes:
+
+- `src/host/chibi_main.c`
+- `test/tools/chibi_cli.c`
+- `test/tools/main.c`
+- `test/tools/CMakeLists.txt`
+- `tools/test_policy.py`
+
+The focused test uses fake sibling compiler and player programs. It covers
+build-only operation, default project discovery, cache reuse, exact player
+argument forwarding, implicit run, and compiler failure. It is a POSIX-hosted
+process fixture. Do not infer Windows runtime coverage from it.
+
+PR #436 is integrated. Its removed external-example sources and selectors remain
+removed, while the CLI fixture remains registered. It remains a focused admitted
+selector because `make test-tools` builds a runtime-only driver without the
+public launcher. The M1 build-host fixture likewise uses its explicit route.
+
+### M1. Execute authored build steps in a build-only host
+
+Status: complete on this branch for Linux and macOS. Windows retains stage zero.
+
+The private host, capability catalog, bounded process API and focused C fixtures
+are implemented. Both real-process and original recording fixtures pass on
+Linux and macOS; actual counters verify bytecode and SLJIT. The ordinary native
+game catalog rejects both private capability names. See the current checkpoint
+for exact coverage and the remaining platform limits.
+
+Promote the recording-only `test/language/BuildWorkflow.chibi` proof into a
+private tool host. The host executes direct argv without a shell and is never
+added to normal game catalogs. Reuse the native process implementation where it
+already satisfies the contract; keep language-facing policy in the authored
+program.
+
+Expected owning paths:
+
+- `src/host/process.c` and `src/host/process.h`: reusable native spawn and cleanup
+  mechanics, extended only for missing build-host contracts.
+- `src/host/build_host.c` and `src/host/build_host.h`: new build-only capability
+  catalog, retained argument/result ownership, and error mapping.
+- `src/host/build_main.c`: new private executable that reads one ordinary `.chibi`
+  source, prepares it with the private build catalog, and invokes one named
+  zero-argument function returning `int`. Its temporary interface is
+  `chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N`. It
+  does not consume a game project or introduce a prepared-tool artifact format.
+- `test/language/BuildWorkflow.chibi`: authored orchestration source.
+- `test/language/BuildProcessFixture.chibi`: new source that invokes only a
+  controlled test worker supplied through the fixture's private environment.
+- `test/language/build_workflow.c` and a focused `test/tools` process fixture:
+  preserve recording parity and exercise real-child behavior in a disposable
+  root. Tests never configure or build the engine repository.
+- `sdk/CMakeLists.txt` or the narrow owning manifest: build the temporary host
+  during stage zero. Do not expose it as a public game command.
+
+Required behavior:
+
+- Preserve every argv element, including empty strings and shell metacharacters.
+- Set an explicit working directory and an allowlisted environment without
+  mutating the parent process. Preserve supervision metadata such as
+  `CHIBI_TEST_DEADLINE` when present.
+- Bound captured stdout/stderr and report truncation.
+- Return normal child exits as `0..255` and signal termination as a negative
+  signal number. Spawn failure, timeout, cancellation, invalid input, and host
+  failure are capability errors with stable diagnostics, not invented exit codes.
+- Apply one inherited deadline, then cancel and reap the complete process group.
+  The test host uses the inherited shared deadline. An unsupervised invocation
+  requires the finite `--timeout-ms` budget.
+- Retain all borrowed Chibi values for the full child lifetime and release them
+  on success, failure, timeout, and cancellation.
+- Reject the build capabilities when an ordinary game program requests them.
+
+Completion criteria:
+
+- The same authored program executes through bytecode and SLJIT against the real
+  build host with equivalent results.
+- Bounded C cases cover cwd, environment, empty and special argv, output caps,
+  spawn failure, nonzero exit, timeout, cancellation, and descendant cleanup.
+- Existing recording-host cases still pass. The normal game catalog has no
+  process capability.
+- Linux and macOS implement and run the real-process cases. Windows keeps the
+  stage-zero path until equivalent start, poll, stop, timeout, and process-tree
+  behavior exists; record that gap and do not select the new host on Windows.
+- Build the exact candidate separately. Each admitted execution command shares
+  its inherited 60-second deadline. Changed C is formatted with clang-format 22,
+  and an independent review finds no unresolved correctness or lifetime issue.
+
+### M2. Drive the existing build from Chibi
+
+Status: complete on this branch for native Linux and macOS orchestration.
+Windows retains stage zero.
+
+The installed driver, private host primitives, cache probes and focused C
+fixtures are implemented. The relocated SDK configures and builds compiler/host
+products from a clean source snapshot and assembles a standalone SDK with verified
+private-tool provenance. Python dependency/input helpers and the CMake graph remain
+transitional dependencies. See the current checkpoint for exact coverage.
+
+Write one installed `.chibi` build program that invokes the existing CMake and C
+compiler steps through M1. It owns argument construction, profile selection,
+sequencing, and failure reporting. At this milestone CMake still owns its current
+build graph, so this is authored orchestration, not self-hosting and not authority
+to remove CMake.
+
+Start with native compiler and tool-host configuration. Add web, SDK, Studio, and
+release profiles only after their existing contracts have focused equivalence
+tests. Preserve explicit compiler and cache precedence from `tools/configure.sh`
+and `tools/configure_native.sh`.
+
+Done means the build program works from an installed SDK, can configure and build
+stage-zero products in a clean temporary checkout, and reproduces cache-hit,
+configuration-change, compiler-change, and failure behavior without shell command
+strings. Keep Make targets as thin transition entry points until current callers
+move to the internal Chibi build program. The public `chibi build` command keeps
+its authored-game meaning.
+
+### M3. Make packages executable
+
+Status: complete on this branch for native Linux and macOS. Owned multi-file
+packages and file-local imports execute functions, constants, records and unions
+on bytecode and SLJIT. Canonical disk loading supplies complete explicit roots;
+prepared generations retain owned exports and dependency modules, reuse exact
+inputs, and invalidate transitive importers. Installed consumers import the
+shipped portable `core:strings` collection and use pure generic native arrays.
+Both relocated SDKs pass the package fixtures. Windows filesystem loading and
+package template exports remain separate gaps; buffer-based
+package APIs are portable. M4 is the next bootstrap milestone.
+
+Extend the current package syntax and private graph into the smallest public,
+multi-file package system needed by the compiler. This milestone owns import
+resolution, cycle and duplicate diagnostics, stable identities, deterministic
+ordering, incremental invalidation, and package-level lowering. It does not add
+remote dependency management.
+
+Add only the portable `core:` modules needed by compiler sources. Preserve ECS as
+a language contract. Complete this milestone when ordinary authored package roots
+compile and run on bytecode and SLJIT, installed SDK consumers can import them,
+and the package graph and syntax fixtures remain bounded and deterministic.
+
+### M4. Port the first compiler component
+
+Port package graph construction and dependency ordering from the current C
+implementation to ordinary `.chibi`. It is the selected first component because
+it is deterministic, already has bounded adversarial fixtures, and is required by
+the rest of the self-hosted compiler.
+
+Run the C and Chibi implementations against the same fixture corpus. Compare
+accepted graphs, stable identities, order, cycle diagnostics, duplicate handling,
+and limits. Keep C authoritative until differential parity passes on bytecode and
+SLJIT. Record each language gap exposed by the port as a separate, tested language
+change instead of adding component-specific host behavior.
+
+### M5. Bootstrap the complete compiler
+
+Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
+the platform linker, and other external systems behind C ABIs where useful. The
+`.chibi` sources own package loading, semantic analysis, diagnostics, lowering,
+artifact construction, and compiler control flow.
+
+Each ported component uses shared fixtures against the remaining C implementation.
+Once the complete stage-one compiler works, run this sequence in a clean tree:
+
+1. Use stage zero to build stage one from the Chibi compiler sources.
+2. Use stage one to build stage two from the same sources.
+3. Run the semantic, diagnostic, artifact, VM, and SLJIT fixture set with both.
+4. Rebuild one checked game and compare observable behavior and declared formats.
+5. Record all external inputs and produce a checksummed bootstrap artifact.
+
+Make stage one the normal compiler only after this sequence passes on every
+supported host configuration. Keep an explicit stage-zero recovery invocation
+until the clean-checkout artifact recovery test passes.
+
+### M6. Replace the internal build graph
+
+Move product profiles, generated prerequisites, native/cross compilation,
+include/link ownership, install layouts, dependency cache policy, and artifact
+assembly into Chibi modules. Preserve installed CMake package files while Studio
+or another supported consumer needs them; generate those files rather than using
+them as the internal source of truth.
+
+Native reflection remains a host tool during browser builds until its Chibi
+replacement reproduces generated identities, layouts, bindings, and transactional
+failure behavior. Complete M6 only after native, runtime-only, browser, installed
+SDK, relocated SDK, and source-free consumer cases pass from the Chibi build.
+
+### M7. Finish the stable command interface
+
+Implement commands through shared modules, not separate scripts:
+
+- `version` reads one generated build-identity document used by installed and
+  build-tree products. Human output is stable; add `--json` only for a concrete
+  machine caller.
+- `doctor` performs non-mutating compiler, player, SDK, browser-target, backend,
+  and platform checks. Report supported, unavailable, or broken and return nonzero
+  only for a broken requested capability.
+- `check` uses the same parser, package resolver, semantic analyzer, and native
+  catalog as `build`, but writes no project files or published artifact.
+- `fmt` reuses canonical source and KDL formatters. `--check` writes nothing and
+  returns nonzero for noncanonical or invalid input.
+- `test` runs a documented authored-test contract through the shared supervisor.
+  Approve discovery and assertion semantics before adding language syntax.
+- `export` moves current native/browser assembly behind Chibi modules.
+- `web` exports to a host-owned temporary directory, binds to loopback by default,
+  prints the URL, serves until interruption, and removes only its owned temporary
+  files. `export --web` remains non-serving.
+
+Remove the unnamed run alias only after repository, Studio, and supported project
+callers use `chibi run`. Every command needs help, exit-status, installed-SDK, build-tree,
+missing-capability, and failure-path coverage.
+
+### M8. Generate and publish one documentation site
+
+Use one source of truth for prose and package comments. Create an explicit public
+manifest under `docs/` that names every Markdown page, generated grammar page,
+package reference, checked example, and static asset. Generate into `build/docs`.
+Never scan all of `docs/`: it contains historical evidence, research, local paths,
+and internal implementation records.
+
+The public navigation is Overview, Learn, Testing, Packages, Examples, FAQ,
+Grammar, and Toolchain. `chibi doc` builds it through a Chibi generator and
+`chibi doc --serve` may preview it on loopback. A Pages workflow may publish only
+the generated allowlist artifact. Review that artifact for private paths and
+internal material before enabling deployment from this private repository.
+
+### M9. Move first-party engine modules to Chibi
+
+Expose narrow bindings for platform, graphics, audio, physics, codecs, filesystem,
+and other external libraries. Implement first-party game-facing systems and
+packages in `.chibi`, starting with modules whose current C boundary and behavior
+already have deterministic fixtures. Keep desktop and browser behavior aligned.
+
+The target is Chibi-owned engine policy, not reimplementation of every external
+library. Replace Cute only when Chibi packages over lower-level dependencies cover
+its current rendering, audio, resource, input, UI, and browser responsibilities.
+Keep Box2D for 2D and Box3D for 3D unless actual game requirements and measurements
+justify a separate physics migration.
+
+### M10. Remove replaced implementations
+
+Delete one responsibility at a time. Before deletion, name the replacement,
+enumerate every repository, installed-SDK, CI, release, and application caller,
+and run the equivalence checks in `docs/toolchain-inventory.md`. Remove obsolete
+wrappers and docs in the same change. A repository-local `.chibi` script does not
+replace an installed tool until the installed SDK works without engine source.
+
+Python may remain only where an external application requires its Python API,
+such as Blender integration. Hosted workflow YAML, external compilers, linkers,
+backends, and operating-system libraries are dependencies rather than failed
+self-hosting. All Chibi project policy called by them belongs in `.chibi`.
+
+## PR #420 integration candidate
+
+This isolated merge combines the M3 checkpoint at `26e0821419e753f42041383bbe4f25db77b62121`
+with the language and Outliner prerequisite checkpoint at
+`ff6d06c888fe660894776255ec7f9fc507db6393`. The latter's completed language plan
+remains available in that commit's `PLAN.md`. Preserve its name-first declarations,
+retained ownership, authored generics, relationship references, and source assets
+alongside M3 package ownership and document-local imports. Package fixtures and
+installed build programs use the current language syntax.
+
+This merge candidate has not been built or executed. The historical validation
+below applies to the individual M3 branch, not to this combined tree. M4 remains
+owned by the separate toolchain thread and is not implemented here.
+
+## Current checkpoint
+
+Last verified: 2026-10-17.
+
+- Repository: `chibi`
+- Branch: `codex/toolchain-cleanup-20261017`
+- Starting checkpoint: `19ec9e44bd5c780cdadad4c4baa476db28983efe`, executable imports
+- Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
+- Latest fetch and merge check: upstream unchanged; already an ancestor
+- Completed milestones: M0 through M3; M4 and M7 are ready
+- Next action: port package graph construction and ordering to ordinary Chibi
+  for M4, comparing it with the existing C fixture corpus on both backends
+
+The final M3 increment adds `source_package_snapshot_load` to the owning SDK.
+It reads a complete explicit source forest through POSIX directory descriptors,
+canonicalizes root symlinks, rejects other non-hidden symlinks and nonregular
+sources, and enforces source/path/depth/entry limits. Explicit nested roots are
+scanned independently, including roots below hidden directories; ancestor scans
+prune their subtrees. Sorted owned buffers feed the existing resolver. Read-time
+metadata checks detect changed files/directories; this does not claim an atomic
+snapshot of the entire filesystem. Windows reports unsupported disk loading.
+
+The SDK ships `core:strings` with pure byte access, owned slicing, lexical
+comparison, ASCII identifier checking and slash-basename extraction. Three
+service-free native primitives extend the existing text pack. Existing pure
+native arrays work with typed integer, string and authored-record values.
+Package template exports remain unsupported in this integration. Single-source
+authored specialization follows the PR #420 contract. Numeric
+literals supplied to generic native parameters currently infer as double;
+compiler callers use explicit typed values where integer storage is required.
+
+Final macOS source-tree evidence:
 
 | Check | Result |
 | --- | --- |
-| Final root products and C consumers after source retirement | Build passed |
-| Final tooling/process aggregate | 36 cases, 960 assertions; 19.869s |
-| Execution-policy checks | 6 cases, 61 assertions; 0.539s |
-| Six unique external catalogs, 87 sources / 138,371 bytes | Semantic 6/471, VM preparation 6/483, SLJIT preparation 6/483; each under 2s |
-| Source systems / execution programs | 8/314 and 18/2,011 cases/assertions; VM and SLJIT |
-| Service ownership and incremental attachment | 2 cases, 104 assertions; VM and SLJIT |
-| Source scheduling | 4 cases; parallel cohorts and serial barriers checked |
-| Source presentation/layout | 3 cases, 7,696 assertions; 0.842s |
-| External native Studio | Four hidden rendered frames, one graph edit, one undo, one redo; 1.607s |
-| Copied SpaceCadet player, VM | Four frames, three simulation steps; 4.200s |
-| Copied SpaceCadet player, SLJIT | Four frames, three simulation steps; 1.411s |
-| Final installed SpaceCadet compilation | 1.155s; 3,256,763 bytes, eight embedded resources |
-| External serial browser Studio | Installed SDK configure/build/link passed; browser not launched |
-
-The Studio interaction checks actual production editing/history handlers, source,
-typed semantics, graph values and dirty state. Undo restores the clean original;
-redo restores the edit. Automatic graph coordinates do not become authored
-metadata, and programmatic widget echoes do not create duplicate history entries.
-The fixture and its preferences/cache are disposable and removed after the run.
-This checks hidden rendering and handler integration, not pointer hit testing.
-The native acceptance uses a Debug installed SDK consumer; the Release Studio
-distribution has separate build/package evidence, not a launch result.
-
-SpaceCadet consumes its copied player, pinned by `.chibi-engine.json`. The final
-compiler SDK emitted the exact bytes already executed on both backends:
-SHA-256 `c8826370473e3dbf86e7bc7c53db721da2e9de9aee7c2b329950c402462ce1ff`.
-The compiler and runtime package IDs differ; their checked runtime headers,
-formats, schemas and platform contracts agree. Recompilation did not imply a new
-GPU run. Logs, inventories, preservation records and JSON acceptance reports are
-retained in `.chibi/architecture/`; product/build outputs are retained in
-`build-verify/sdk-migration/` for inspection and continued development.
-
-Browser execution, threaded browser behavior, full corpus canonical formatting,
-full native/render suites and the held historical Studio oracles remain
-unverified. The temporary test policy keeps the full suites quarantined. These
-limits prevent a full verification or release-readiness claim; they do not change
-the implemented repository and package ownership. The initial implementation
-delivery performed no commit, push, PR, merge or deployment. Subsequent private
-source publication preserves these acceptance limits.
-
-## Historical progress — superseded by final evidence above
-
-2026-10-07: current tree, previous plan and owning contracts inspected. Inventories
-completed for extension migration, MCP retirement and compiler/runtime extraction.
-The first extraction and compatibility checks completed:
-
-- Renamed 108 tracked executable assets, 105 sidecars and five prototype examples
-  to `.chibi`; all nine project manifests and `CHIBI_PROJECT_VERSION` are 10.
-  The 213 tracked asset/sidecar payloads were byte-identical after renaming.
-- Removed the MCP servers, setup/cache hooks, package payload and active authoring
-  instructions. Native mutation operations and their uncalled helpers are now
-  removed; retained inspect/analyze test setups are being converted to file edits.
-- Installed SDK exports support, types and execution contract headers. The same
-  public-header contract tests build against an installed SDK without private
-  engine includes. Before the next ECS expansion, native tooling passed 27 cases,
-  317 assertions in 20.340 seconds; installed consumption passed in 22.067 seconds.
-- Controller no longer links editor/RmlUi Studio/Zep targets. Native editor,
-  controller and test-suite builds passed Debug, warnings enabled, sanitizers off.
-- A bounded hidden Metal preview rendered one SpaceCadet frame at 320x180.
-  Inspection verified nonblank, correctly oriented scene compositing. This does
-  not establish web or full Studio coverage.
-- The admitted compiled-behaviors selector passed in 10.387 seconds after six
-  generation fixtures adopted identity-preserving clones instead of source-only
-  save/load. All state, cancellation, ownership and update assertions remain.
-- Prototype checking passed 13 cases and 137 assertions in 0.421 seconds. It is
-  still only frontend checking, not proof of executable source compilation.
-- Full corpus formatting hit its 60-second process ceiling without completion
-  evidence. Canonicality remains unverified. Full suites remain quarantined.
-
-Evidence from this stage is in `.chibi/architecture/`. Source changes remain
-uncommitted and later implementation changes require new affected checks.
-
-Current work extracts ECS into `Chibi::ecs`, graph-specific readers into the graph
-adapter, backend artifacts and graph-free origins from executable definitions,
-production Tree-sitter syntax/semantics, and authoring documents from live runtime
-registrations. Games and labs are preserved in four local repositories under
-`/Users/cwaldner/Personal/chibi-*`, with source-file checksums and no remotes.
-Original assets remain until test fixtures and explicit packaging roots replace
-their dependencies. None of the incomplete acceptance items is claimed complete.
-
-The next extraction produced independently configured `Chibi::ecs`,
-`Chibi::language_syntax`, `Chibi::language`, `Chibi::execution` and
-`Chibi::compiler` targets. Scoped header copies and explicit package dependency
-contracts reject accidental graph/editor includes and cross-package links.
-Direct execution links initially exposed two graph-owned helpers, now moved to
-the execution package. Public builder tests also found and fixed comparison
-result typing in both VM writes and native register allocation.
-
-Snapshot evidence from this stage, before subsequent source/module work:
-
-- Native tooling including ECS contracts passed 32 cases and 641 assertions in
-  19.879 seconds.
-- Production syntax passed 8 cases and 702 assertions over 158 files totaling
-  218,889 bytes, through an installed SDK consumer, in 0.328 seconds. The exact
-  manifest is `.chibi/architecture/installed-language-corpus.txt`.
-- Semantic analysis passed 7 cases and 36 assertions with ASan/UBSan in 0.468
-  seconds; the installed consumer passed in 0.285 seconds.
-- Public builder execution passed 7 cases and 104 assertions, using the actual
-  VM and SLJIT, with ASan/UBSan in 0.641 seconds. The installed consumer passed
-  in 0.325 seconds without private source includes.
-- Optional runtime construction and authoring publication lifetimes passed the
-  admitted lifecycle selector in 1.180 seconds. Neutral host requests, including
-  native Spawn's initializer ownership adapter, passed in 0.281 seconds.
-- Read-only authoring navigation/code checks passed in 1.004 seconds after
-  preserving synthetic event symbol initialization. Search passed in 52.728
-  seconds after correcting invalid-source metadata ownership and the expected
-  host-event set. Compiled behaviors passed in 13.549 seconds after repairing
-  publication fixtures and integrating the source registry. These remain
-  focused checks rather than full parity evidence.
-
-The neutral source module runner and realistic system/event/binding execution
-cases are being integrated. Production corpus semantics, source publication,
-managed component ownership, prepared asset serialization, installed Studio,
-external-game execution and full canonical formatting remain open. Four local
-repositories preserve game/example source and historical acceptance assertions;
-their installed-player acceptance has not run. Static optional runtime flags do
-not yet prove a renderer-free runtime link target. These are required remaining
-work, not deferred acceptance exceptions.
-
-The next source-runtime stage produced these additional snapshot results:
-
-- Managed ECS row ownership passed 34 tooling cases and 935 assertions in
-  19.166 seconds, including replacement and component/entity/world cleanup.
-- Three actual `.chibi` example files passed compilation and execution on VM
-  and SLJIT: a typed event, query membership with cancellation, and a component
-  binding. The initial three-case check passed 59 assertions in 0.526 seconds.
-- `Chibi::behavior_runtime` owns the real program registry used by the game.
-  Its dependencies exclude language, compiler, graph, Studio and graphics. A
-  separately compiled public consumer passed 50 assertions in 0.441 seconds
-  with ASan/UBSan, and in 0.454 seconds against installed SDK artifacts.
-- Native prototype/source integration passed 68 additional assertions on both
-  backends inside the lifecycle selector (1.628 seconds). It covers deferred
-  Begin, typed events, state-preserving replacement, cancellation and system
-  updates preceding bindings, including reversed registration order.
-- Public execution tests now cover all integer bitwise widths and neutral
-  logging context. Ten cases and 726 assertions passed in 0.577 seconds with
-  ASan/UBSan. The source-level logging call also passed in the headless consumer.
-- Grammar regressions for generic calls, `await`, named values and explicit
-  typed arguments are fixed. Retained syntax passed 145 files/213,858 bytes,
-  eight cases and 665 assertions in 0.869 seconds with ASan/UBSan.
-
-An independently reviewed semantic aggregate now covers nine production project
-catalogs and 148 sources, including extracted games/examples. It is not passing:
-it exposed missing source contracts and a null outcome descriptor during error
-recovery. The descriptor bug is fixed. A renewed normal-build aggregate completed
-without crashing in 4.188 seconds, with two projects passing and seven still
-reporting diagnostics across 148 sources and 255,417 bytes. Imported-library/managed-state
-regressions, cross-module binding ordering and full source preparation still
-require verification. No production loader switch or prepared-player acceptance
-is inferred from the smaller passing examples.
-
-Source preparation and import resolution now build as `Chibi::authoring`, separate
-from the adapter that applies a generation to a live world. The SDK can configure
-with `CHIBI_SDK_BUILD_COMPILER=OFF`; that configuration creates no parser, compiler,
-language or authoring targets. The prepared behavior package loader uses only
-execution/ECS/types and validates every module before returning a registry.
-Prepared serialization and owned decoding have independent review, including
-malformed cleanup, compatibility requirements, import fingerprints and bounded
-allocation. Separate-process and installed-package validation is in progress.
-
-The frozen prepared-artifact process check passed in 0.701 seconds: the compiler
-process wrote three modules and retired all compiler products before a separate
-runtime-only process loaded and executed them. It covered deterministic bytes,
-state, typed events, imports, bindings, malformed input, ABI rejection and atomic
-package loading on VM and SLJIT. The producer passed 31 assertions, runtime 184,
-and process coordinator five. The SDK was configured without compiler packages.
-The source-preparation/headless roundtrip also passed two cases and 106 assertions
-with ASan/UBSan in 0.635 seconds. These prove the behavior runtime seam; they do
-not establish a complete scene player. The expanded program suite currently
-aborts on an anonymous aggregate in the imported-library fixture; repair and
-renewed execution evidence remain required.
-
-The imported result-bank representation and root timer continuation defects are
-fixed. The expanded program suite now passes nine cases and 342 assertions on VM
-and SLJIT with ASan/UBSan in 0.746 seconds. Its checks include imported component
-reads after replacement, independent shared system storage, retained strings over
-two resumes, sibling timers, cancellation and copied source diagnostics. A bounded
-full collection preparation selector is independently admitted; it prepares every
-source in the production manifests using the same collection API as authoring.
-
-Host event declarations now live in `Chibi::events`, with neutral payload fields
-and a types-only dependency; graph pin construction remains in the graph adapter.
-The production semantic aggregate passed all nine projects and 148 sources with
-794 assertions in 4.321 seconds. Full executable preparation completed its first
-admitted run in 3.644 seconds, with one project passing and eight failing. Native
-capability linkage, component selectors, continuation control flow and a few typed
-lowering operations are being repaired; the loader switch remains held.
-
-The standalone runtime SDK was packaged with explicit content and compiled-input
-checksums, configured header copies, object/archive freshness evidence, exported
-target closure, and project/prepared format requirements. A fresh consumer built
-against its installed headers and archives then passed the separate-process
-prepared check in 0.728 seconds. The tested package build ID is
-`66d69baf99ce9fbd5cd2f3ef17aa7417ac84c40131be7b9e4536efbceb217024`.
-It exports eight runtime targets and no compiler/parser/authoring package. This
-snapshot uses prepared format 1; referenced event declaration metadata now being
-added changes the wire format to version 2 and requires renewed package evidence.
-
-The next verified language snapshot passes ten program cases and 384 assertions
-in 0.759 seconds with ASan/UBSan. Eager multi-result locals retain independent
-scalar and managed-string copies through reassignment, loops and suspension on
-both VM and SLJIT. The whitespace-only source formatter passes six cases and 612
-assertions in 5.655 seconds, including unchanged syntax and idempotence for all
-145 retained files (215,022 bytes). CLI formatting still uses its previous path
-until optional sidecar identities can be remapped without graph construction.
-
-Prepared format 2 now retains named event declarations and defaults. The renewed
-process check passes producer/runtime/coordinator assertions of 31/184/5 in
-0.627 seconds, and the headless source roundtrip passes two cases and 126
-assertions in 0.705 seconds. The earlier installed package is still a format-1
-snapshot and must be rebuilt before it can establish current installed coverage.
-
-The latest normal native semantic run passes all nine projects and 148 files in
-4.198 seconds. Preparation completes in 4.379 seconds with two projects passing
-and seven failing. Native adapters, explicit component argument roles and event
-payload retention are being repaired against those diagnostics. Activation
-payload reclamation and grouped lazy tuple initialization remain open lifetime
-contracts. Source collection publication, the scene player and installed Studio
-are not yet complete.
-
-Document values now have their own `Chibi::asset_values` package; the reflected
-value writer is `Chibi::value_document`. Execution, ECS and types do not link
-either document package. Native UI and asset callers share this writer through
-the package boundary instead of reaching into graph serialization.
-
-The next standalone snapshot builds successfully with scoped SDK headers. Its
-expanded prepared check passes two producer cases (147 assertions), six runtime
-cases (334 assertions), and the process coordinator (five assertions) in 0.751
-seconds. It verifies transitive external imports, duplicate compatible
-generations, incompatible generations/event schemas, and optional or required
-event linkage. The source/headless roundtrip passes 126 assertions in 0.657
-seconds; execution contracts pass 726 assertions in 0.744 seconds.
-
-Pure source formatting and optional metadata remapping pass eight cases and 627
-assertions in 5.767 seconds, including the full retained 145-file corpus. The CLI
-now uses this syntax path for executable source; the updated native CLI has not
-yet been built and run for all-project canonicalization. Sidecar hashes bind
-presentation to exact source bytes; format remaps only unchanged syntax and
-token boundaries without constructing executable graphs.
-
-Managed payload collection now separates durable activation control from value
-storage and bounds unused storage to 4 KiB per root activation. Review corrected
-collection during imported execution, dead-slot growth, and fresh arena
-initialization. The new varied-size suspension test exposes a remaining outlined
-tuple lowering failure (`slot 2: invalid scalar type`); ten existing program cases
-pass, but the eleven-case program selector is not passing. Physical address
-temporaries still share the integer storage tag, so exact pointer provenance
-remains a distinct open executable contract.
-
-The next standalone snapshot resolves the outlined call and grouped tuple defects.
-Program execution passes 12 cases and 1,638 assertions with ASan/UBSan in 0.881
-seconds. Lazy tuple groups initialize once, preserve sibling fields on writes,
-suppress their producer after whole replacement and survive continuation capture.
-The zero-argument outlined invocation now allocates its owning data bank. Exact
-physical-address provenance remains open; numeric slots are still conservatively
-considered by parts of value retention.
-
-Canonical navigation/refactoring/intelligence passes 11 cases and 99 assertions
-in 0.678 seconds. Implicit event payloads no longer hide alias references; type
-annotations come from semantic facts. Scene lifecycle passes two cases and 59
-assertions in 0.656 seconds after applying entity creation before component adds.
-Transactional publication passed three cases and 160 assertions in 1.025 seconds,
-including root and imported shared state with every owner detached. Prepared
-format 3 passed the separate-process closure check in 1.008 seconds; the older
-installed format-1 package remains stale.
-
-Scheduling now has a compiler-free SDK target with an injected worker executor.
-Prepared scalar fields have a separate validated runtime/codec; their three public
-cases pass 254 assertions in 0.828 seconds with ASan/UBSan. The field graph compiler
-and native physics nodes are explicit graph adapters. Named field parameter text,
-physics event/retirement services and the complete prepared player still need
-extraction. Native scheduler tests are admitted but not yet run.
-
-Studio source sessions, graph presentation ownership, canonical navigation and
-refactoring are being migrated. Current source files pass focused syntax checks;
-editor tests and source-system document consumers are still being converted. The
-last native preparation snapshot passes seven of nine projects, with only Field
-Add/Subtract linkage failures; those ports are implemented but await the next
-native capture. The production loader has not switched, and no Studio/web or
-complete player acceptance is claimed.
-
-The SDK now owns public and private include roots per target, including installed
-consumers. Configuration and the isolated types/fields/named-field catalog build
-pass with these roots. Named field execution takes typed parameters; KDL parsing
-is an asset-preparation adapter. Exact value provenance and prepared format 4 are
-in flight, so no full SDK or installed-package acceptance is claimed yet.
-
-Editor source sessions now preserve sidecar conflict detection and recover from
-a source write that succeeds before a sidecar write fails. Four finite source
-session cases have independent admission and await native execution. A reviewed
-Studio edit defect is fixed: graph edits reject a stale displayed generation
-instead of overwriting a newer invalid or unapplied source draft.
-
-Explicit VALUE/ADDRESS/REFERENCE provenance now passes the expanded execution
-selector: 11 cases and 758 assertions on VM/SLJIT with ASan/UBSan in 0.991 seconds.
-Program execution passes 12 cases and 1,638 assertions in 0.484 seconds. Prepared
-format 4 passes the separate-process checks in 0.474 seconds. Named field catalog
-execution now passes all four cases and 267 assertions in 0.650 seconds.
-
-The compiler-free runtime SDK is rebuilt with isolated installed include roots
-and prepared format 4. Its package build ID is
-`05d564d5e47104b14410a4406200866a7dfbc06ad2b5abb756ab991daca64acd`.
-A consumer built against only that installed package passes the prepared process
-check in 0.404 seconds and the two scene lifecycle cases in 0.100 seconds. This
-supersedes the earlier format-1 runtime package evidence. It still does not prove
-the complete player or native capability pack. The compiler-enabled package,
-native corpus and Studio source integrations await their current captures.
-
-The compiler-enabled SDK package now has build ID
-`5b2782adc10496a12a9f165738060930b5b0911281b6807be65cafd37f42db78`.
-Its shared runtime header identity matches the installed runtime package. Both
-producer and consumer built against their installed packages pass prepared-file
-handoff; the installed compiler also passes all 12 program cases and 13 navigation
-cases. These are normal Debug package consumers. The separate in-tree language
-checks retain ASan/UBSan coverage. External event declarations and local event
-aliases now remain distinct during rename, and source intelligence accepts KDL
-documents without syntax/analysis records. Native integration capture is pending.
-
-The next native capture builds the CLI, Studio and test dispatcher successfully.
-Canonical preparation passes eight of nine project corpora in 4.676 seconds;
-semantic analysis passes the same eight in 5.368 seconds. The remaining SDF lab
-failure comes from duplicate declaration/reference traversal exhausting the scan
-budget. The reviewed single-pass correction awaits execution. A shared unary
-instruction description fix removed the other seven preparation failures. Its
-standalone VM/SLJIT regression passes 12 cases and 773 assertions with ASan/UBSan
-in 0.571 seconds; program execution passes 12 cases and 1,638 assertions.
-
-Native presentation passes two cases and 39 assertions. Source sessions complete
-without their former crash but retain two failures; source editing retains two
-failures. Scheduler diagnosis found invalid source reaching lowering with no
-program identity. The production loader cutover remains gated on the nine-project
-preparation and corrected lifecycle checks.
-
-Capability declarations now own a parser-independent SDK target. A separate
-native binding target validates callback descriptors and their declaration ABI;
-real reflected/manual native producer extraction remains in progress. Document
-value reading is now a public arena-owned adapter used by graph and editor
-consumers. The tooling aggregate passes all 36 cases and 955 assertions in 19.311
-seconds, including two new ownership/malformed-value cases. Installed package IDs
-above predate these module changes and must be renewed for final acceptance.
-
-The corrected native capture passes all nine semantic project corpora with 794
-assertions in 4.922 seconds and all nine prepared corpora with 812 assertions in
-4.334 seconds. Source sessions pass four cases and 71 assertions in 1.483 seconds;
-canonical lifecycle passes 104 assertions in 0.781 seconds alongside the existing
-graph lifecycle checks. Canonical EngineSystem phase/removal passes before a
-separate graph scheduler fixture fails its movement expectation. Production
-loader cutover is now implemented and source-reviewed, pending capture.
-
-The seven isolated source-system scenarios have their own reviewed CPU selector.
-The first capture passes two and fails five. Owners identified missing source host
-service bindings, optional-component condition lowering and event receiver metadata
-as production gaps, plus incomplete scene/query composition in two fixtures.
-Expected observable effects remain unchanged. The first source-edit capture also
-found builtin scalar types incorrectly marked unresolved when a catalog has no
-nominal types. That owning catalog fix awaits the next source-edit capture.
-
-RML reference renaming now passes 14 canonical navigation cases and 144 assertions
-in 0.743 seconds with ASan/UBSan. Component lookup and presentation metadata have
-public owning packages; project manifest ownership is separate as well. Native
-reflection output separation and checked graph gesture coverage remain active work.
-
-Exact scalar parsing and nominal enum literals now pass the expanded 13-case
-program selector with 1,689 assertions in 0.884 seconds on VM/SLJIT with ASan/UBSan.
-The current SDK navigation capture passes all 14 cases and 144 assertions in 0.777
-seconds. Component presentation, project manifests and the reference index compile
-as independent targets against scoped public headers. Generic prototype documents
-and their explicit native creation policy are extracted; the new ownership/default
-case passes all 21 assertions in 0.928 seconds under ASan/UBSan after the
-reviewed reflected-bounds correction.
-
-Reflection now generates separate type metadata, capability callbacks and graph
-adapters. The generated GAME type object imports only ECS storage/access commands;
-the capability object imports native C functions, type metadata and owned-value
-snapshot support, with no graph/eval/flow symbols. These objects compile. The first
-whole native build stopped at consumer includes after the reference-index split;
-this is not yet a linked player/package result. Native capability producer
-composition and entity services remain in progress.
-
-The next native capture builds the CLI, Studio and test dispatcher after the
-component/entity/audio SDK split. The isolated native runtime SDK also compiles
-and packages with compiler/parser packages disabled. Its build ID is
-`a8293c6f767c5351bdedfe7398f639545dd9d9c9f51c7cb6dcbacc5e9b572400`;
-it exports actual component layouts, entity execution/source host and audio
-capabilities. Installed native consumer execution and a complete player remain
-unverified. Generic scene serialization and UI source authoring also compile as
-independent scoped packages. The first UI cases expose a pinned scanner callback
-type mismatch under UBSan; a targeted configured-source correction awaits rerun.
-
-The compiler-free native SDK consumer now executes both VM and SLJIT rather than
-skipping the backend loop. Its installed entity/prototype case passes 84 assertions
-in 0.442 seconds, including retained generations, initialization before Begin and
-cancellation. The corrected pinned UI scanner callbacks pass both UI cases and 24
-assertions with ASan/UBSan. These results belong to the captured packages and builds;
-the package IDs above predate later capability extractions.
-
-Optional Studio declarations and calls now compile behind their own SDK target.
-Math, vector and CPU particle packages compile with scoped native SDK headers.
-Set and selection kernels and the explicit host catalog builder also compile in
-isolation. Runtime profiling passes four publication cases and 226 assertions in
-0.964 seconds with ASan/UBSan. Canonical navigation now passes 16 cases and 195
-assertions in 0.614 seconds. The new synchronous action outcome contract passes
-13 execution cases and 792 assertions in 0.479 seconds on VM and SLJIT.
-
-The latest completed native capture passes all nine SLJIT corpora, 148 files and
-812 assertions in 5.246 seconds. Source editing passes all nine cases and 141
-assertions in 0.374 seconds, including extraction, inline edits and metadata
-preservation. Six of seven source-system scenarios pass; typed reactive field
-notification remains under implementation. Later package and prepared-format
-changes require a new capture before final runtime or Studio acceptance.
-
-The next scoped SDK extraction builds comparison/conversion/text, Save, UI, input
-and graph model archives using only their declared headers. Two text cases pass
-41 assertions under ASan/UBSan; one native value case passes 43 assertions; two
-graph model consumer cases link and pass 25 assertions under ASan/UBSan. Generated
-native declarations now omit unused plain-struct value signatures, allowing strict
-compilation as a native SDK owner. Prepared format v5 state records cross the
-separate compiler/runtime process boundary: 161 writer, 396 reader and five
-supervisor assertions pass. The complete native and desktop package captures are
-still pending ongoing physics/material and renderer/authoring extraction.
-
-2026-10-08 integration checkpoint: the complete desktop runtime archive set and
-then the desktop compiler/authoring archive set built through scoped SDK headers.
-The runtime configuration disables the compiler and includes real rendering, UI,
-physics and simulation ownership. Installed consumer linking remains outstanding.
-The first public consumer captures passed native catalog 1 case/11 assertions,
-prepared scene codec 2/33, typed fields 5/285, graph authoring 1/13 and model runtime
-3/47. Native prepared-player handoff passed 3/164 on VM and SLJIT after correcting
-world construction to reuse exactly matching component descriptors. The model
-proof's retained shader sample was corrected to its translated object-space
-center; runtime behavior did not change for that correction. Logs are in
-`.chibi/architecture/`.
-
-The new field-observer persistence case initially rejected an anonymous entity
-payload header. Its narrow builtin `ecs.entity` repair is independently reviewed;
-a complete dynamic rerun remains outstanding while neutral debugger version 6
-is integrated. Prepared player version 2 adds standalone event schemas; the first
-player proof covers its empty event section only. Full source corpora, native
-products, installed Studio, visual resource persistence, external project runtime
-and applicable web/UI acceptance remain incomplete.
-
-The next persistence capture passes five model/shader/mesh cases with 132
-assertions in 0.664 seconds, including detached resource tables and failed-read
-preservation. Five field cases pass 292 assertions in 0.820 seconds after adding
-shared retained-storage budget checks. These are CPU checks with ASan/UBSan.
-
-Prepared execution version 6 now passes the debugger and typed observer cases.
-The program selector passes 18 cases/2,011 assertions in 1.022 seconds on VM and
-SLJIT. The separate-process handoff passes five writer cases/187 assertions,
-nine compiler-free reader cases/514 assertions and five supervisor assertions in
-0.532 seconds. Fixes preserve declared nominal type identity for constant state
-initializers and distinguish accepted event dispatch from a paused activation.
-Pause, step, no-replay effects and retained watch ownership remain asserted.
-
-External Studio configures against the installed desktop SDK. Compilation is
-still exposing undeclared consumer dependencies; the directory watcher and app
-diagnostics are now Studio-owned, while shared camera, call hierarchy, expression
-presentation and Studio descriptors have explicit SDK owners. Complete linking,
-runtime UI, prepared visual/UI resource staging, aggregate player budgets and
-final packages remain under implementation. No final product acceptance or
-landing is claimed by these intermediate captures.
-
-The installed desktop SDK now links the actual external `chibi-studio` executable
-from its extracted repository. Studio has no engine checkout/private include
-paths. This proves the compile-time consumer contract only; UI and web execution
-remain pending. `chibi-compile` and compiler-disabled `chibi-player` also link.
-The first actual SpaceCadet offline invocation exposed a source-watch payload
-validation failure; diagnostic ownership and the lowering contract are under
-repair, so external project playback is not yet accepted.
-
-The installed public consumer now passes primitive math 2 cases/32,241 assertions,
-integer 4/111,636, scalar conversion 1/2,820 and Select 1/164 on VM and SLJIT.
-Owned Tick snapshots pass 2/2,916; service rebinding/incremental attachment passes
-2/62; native reaction/rhythm/particle source cases pass 3/122. Typed material writes
-after suspension pass 1/116. These normal-Debug CPU captures each used the 60-second
-production supervisor and took under one second. Initial migrated fixture errors
-were repaired against actual API ownership/count/source identity contracts. The
-numeric/query source cases still fail and remain open.
-
-Renderer resource transactions additionally passed the installed consumer's
-1 case/70 assertions, and installed native player/world checks passed 3/188.
-Those captures predate the next UI/image ownership extraction and aggregate
-execution budget repair. No final candidate validation is claimed. The prepared
-UI codec passed 4/53 with ASan/UBSan; that validates its neutral envelope, not the
-font backend or rendered UI.
-
-Remaining product extraction is removing authored UI loading from the player,
-compiling native assets without a live preview world or desktop dependencies,
-and giving prepared decoders explicit allocation accounting. Source system
-parallelism remains held until serial membership/Begin preparation and verified
-module effects are integrated. Package manifests now distinguish SDK, player and
-Studio ownership and are being tied to compiled format/version/hash evidence.
-
-The offline compiler now builds with compiler/native packages enabled and desktop
-packages disabled. Its linked dynamic dependencies are only libc++ and libSystem
-on this host. CPU visual catalogs, image decoding, mesh loading, fonts and UI
-preparation have explicit owners; prepared publication and cache ownership are
-separate from renderer/authoring consumers. The desktop compiler/player also link
-with these targets. A fresh empty SDK install replaced the earlier raw install so
-moved headers cannot survive accidentally in consumer include paths.
-
-New installed consumer captures pass nominal aliases 1/144 in 0.529s and source
-numeric/nested-query semantics 2/568 in 0.512s on VM and SLJIT. The inner query
-ordinal now resets on outer-loop reentry. The four package/installer cases pass
-4/70 in 7.019s; subsequent reviewed backup-recovery changes await recapture.
-The latest actual SpaceCadet compilation remains open on nominal-versus-ECS
-component identity resolution after exposing and fixing field watch typing.
-The shared palette composition case exposed the same ID distinction. A public
-persistent-state test exposed unwanted zero materialization of explicit NULL
-struct assignments; its preserved NULL oracle is being restored in the owner.
-
-Standalone controller compilation against the installed SDK is in progress.
-Its target owns CLI/automation implementation only, consumes renderer and source
-services through installed public targets, and removes the dead graph executor
-inspection helper. Final root build/test retirement, packaged products, external
-project playback and applicable Studio/web acceptance remain incomplete. Source
-parallel execution is still held pending independent review of mixed native/source
-phase ordering, the verified access proof and final bounded dynamic capture.
-
-The root build now composes SDK targets, the controller, reflection and the
-admitted C consumers. Its first full compilation reached 700 of 731 actions;
-the remaining inherited pedantic warning in a tooling fixture is under repair.
-The standalone controller already links with installed public SDK headers only.
-Offline compilation has progressed to prepared capture schema validation; a
-producer count mismatch is being repaired in the prepared writer.
-
-Installed consumers now pass persistent state 1/48, full source/native palette
-composition 3/7,667, source edits 9/141 and shader parameter persistence 1/31.
-The package/installer recapture passes 4/70 in 6.375s. Prepared handoff with shared
-decode budgets passes five writer cases/187 assertions, ten compiler-free reader
-cases/554 assertions and five supervisor assertions in 1.180s. These captures
-precede the next prepared capture-format revision and are not final acceptance.
-
-The installed nine-project semantic pass read 148 sources/255,417 bytes and
-passed five projects. Four expose missing component metadata, query capability
-or value-method support; full authored semantics remain required. Input observer
-ordering and copied host descriptor identity in effect analysis are being fixed
-against the existing failing assertions. Separate Studio native packaging and
-its browser SDK consumer remain in progress. No prepared game GPU run has occurred.
-
-Root composition now builds all selected products and C consumers successfully.
-The input boundary repair passes all eight source-system cases/314 assertions
-on VM and SLJIT in 0.704s. The complete semantic corpus passes nine projects,
-148 sources/255,417 bytes and 794 assertions in 1.994s. BYTECODE preparation
-passes eight of nine projects; two Studio event handlers expose invalid debugger
-watch metadata and remain under repair.
-
-Prepared execution wire version 7 fixes lexical capture serialization. A coherent
-producer/runtime consumer recapture passes 5/187 writer, 10/554 reader and 1/5
-supervisor cases/assertions in 0.799s. The earlier version mismatch run was an
-outdated consumer binary and is not acceptance evidence. Six execution-policy
-unit cases pass 61 assertions in 0.548s.
-
-An independent ownership audit removed 109 unbuilt obsolete production files,
-including the old graph behavioral compiler/executor and runtime facades. Public
-source/package includes have no dangling references to that closure. Existing
-unported test oracles stay documented. Studio source retirement remains held
-until its extracted application has functional acceptance. Browser dependency
-packages configure/build, and the installed browser SDK build is in progress.
-Release validation also found and repaired two host-completion calls hidden
-inside assertions; actual Release runtime recapture remains required.
-
-All nine authored project corpora now pass semantic analysis (9/794), VM
-preparation (9/812) and SLJIT preparation (9/812). Offline SpaceCadet compilation
-produces a 3,256,763-byte prepared project with eight embedded resource records.
-The compiler-free reader process passes its wire-version-7 handoff; the installed
-scene consumer passes three cases/51 assertions including canonical markers and
-rejection of unknown empty structs in 0.962s. The full admitted tooling process
-aggregate passes 36 cases/960 assertions in 19.745s after restoring environment
-validation on the retired test-fast entry point.
-
-The Emscripten Release SDK compiles and packages with SLJIT explicitly disabled.
-Extracted native Studio builds against installed headers (148 actions), with no
-private engine source include paths. These are build/package proofs; browser and
-Studio runtime acceptance remain open. First prepared player execution exposed
-duplicate shader-directory initialization, now repaired. The next bounded run
-loaded fonts but rejected an unregistered prepared component; no frame pass is
-claimed. Source scheduling also remains open after the newly enabled native
-effect proof exposed a mixed-phase outcome failure. These failures are being
-fixed against the preserved assertions, not removed from acceptance.
-
-Prepared SpaceCadet playback now passes both VM and SLJIT through the standalone
-installed player, each reporting exactly four frames and three simulation steps
-(1.567s and 1.270s). Dynamic prototype tags are reconstructed only from their
-validated canonical marker schema. The source registry retains service defaults
-and supplies them to prepared-module publication. The expanded scene codec cases pass 3/63
-in 0.754s; source systems pass 8/314 and execution programs 18/2,011 after the
-activation ownership repair. Scheduling still requires its final parallel proof.
-
-The serial external Studio browser consumer builds against the packaged web SDK.
-Its native startup exposed a legacy executable placeholder and repeated component
-registration; both are being replaced through the existing source presentation
-and world ownership APIs. Historical Studio oracles are preserved as 321 files
-with checksums under the extracted repository's tests/held/engine_oracles.
-Corpus manifests now reference six distinct external catalogs and 87 sources;
-61 byte-identical duplicate entries from the earlier nine-checkout comparison
-were removed without dropping any unique authored source.
-
-The deduplicated six-catalog corpus passes semantic analysis (6/471), VM
-preparation (6/483) and SLJIT preparation (6/483), over 87 sources/138,371 bytes
-in 1.720s, 1.748s and 1.728s. All four admitted scheduling cases pass in 0.520s,
-including actual parallel source cohorts, conflicting writes, explicit order,
-profiling/inspection barriers, generation replacement and native/source phase
-membership. The parallel fixture now gives its independent systems equal order;
-the scheduler continues enforcing distinct explicit orders as serial barriers.
-
-Studio startup now reaches the authored UI. It still fails to prepare that UI's
-editor_state capability, so UI acceptance and old Studio source removal remain
-held. The default scene and source collection initialize; the obsolete scratch
-presentation apply has been removed. Global source publication on save/reload
-remains independent of the active document.
-
-Corpus input discovery now defaults to curated engine examples/fixtures and
-accepts explicit external project lists or exact source manifests. The current
-semantic/preparation manifest has six unique extracted catalogs and 87 sources;
-prior nine-checkout/148-entry captures included 61 byte-identical game duplicates.
-Every migrated source was compared byte-for-byte before deduplication. No unique
-source was removed; the six-catalog captures reported above use this exact manifest.
-
-The source registry now owns copied service names and borrowed host values.
-New publications inherit defaults; replacements preserve existing overrides,
-then apply explicit replacements. Rebinding preflights every program before
-mutation. The expanded two-case service/attachment check passes 104 assertions
-on VM and SLJIT in 0.737s. Current source systems pass 8/314, scheduling 4/4
-cases, and language programs 18/2,011 after this ownership change.
-
-External native Studio startup passes its exact two-frame hidden-window check
-in 1.616s against the installed SDK. Source/graph interaction remains pending.
-The current prepared player recapture passes four frames and three simulation
-steps on both VM and SLJIT. These are bounded execution results, not full render
-or browser acceptance. Game extraction retired 283 byte-identical originals
-after checking their replacement repositories; the differing SpaceCadet README,
-Studio originals and held historical test oracles remain preserved.
+| Authored `make build`, language/tooling/private-host targets | Passed, 1.2s final incremental build; build separate from execution. |
+| `python3 tools/test_policy.py tool language-package-files` | 8 cases, 149 assertions, 0.721s. |
+| `python3 tools/test_policy.py tool language-package-core` | 4 cases, 802 assertions, 0.890s. |
+| `make test-native` | Passed, 25.611s execution. |
+| `make test-materials` | Passed, 29.425s execution. |
+| `make test-projects` | Passed, 31.449s execution. |
+| `make test-language-all` | Passed, 19.018s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.884s execution. |
+| Eight changed C files, clang-format 22; `git diff --check` | Passed. |
+
+Relocated installed SDK execution:
+
+| Route | macOS | Linux |
+| --- | --- | --- |
+| Package imports | 11 cases / 808 assertions, 1.045s | 11 / 808, 0.065s |
+| Package files | 8 / 149, 0.192s | 8 / 149, 0.055s |
+| Package core | 4 / 802, 0.335s | 4 / 802, 0.088s |
+| Package graph | Previous M3 source-tree evidence | 23 / 457, 0.042s |
+| Package syntax | Previous M3 source-tree evidence | 11 / 292, 0.044s |
+| Package resolution | Previous M3 source-tree evidence | 8 / 140, 0.039s |
+| Sibling execution | Previous M3 source-tree evidence | 7 / 559, 0.045s |
+
+The macOS SDK and consumers use Debug assertions and ASan/UBSan; Linux uses
+Debug assertions without sanitizers. All authored calls verify bytecode or real
+SLJIT entries. Each route and required group uses one production 60-second
+execution ceiling; build/configuration/install work is separate. Python 3.12.14
+is selected through the Homebrew PATH on macOS; the existing Alpine guest uses
+Python 3.12.15, Clang 21.1.2 and CMake 4.1.3. No new VM or guest dependency was
+installed. The existing VM was restored from Running to its initial Stopped state.
+
+The installed proof checks ten public headers, five owning archives and the
+shipped core source against their exact source/build inputs. Package fixtures
+compile against installed public headers and link relocated archives. The core
+fixture embeds the installed source through relocatable `Chibi_CORE_SOURCE_DIR`.
+The existing dispatcher also contains private unrelated fixtures and `numeric.c`;
+this is public package-API provenance, not an entirely source-free dispatcher.
+Stable artifact/source hashes, preserved compiler commands, imported targets and
+logs are under ignored `.chibi/evidence/toolchain-m3/{installed,linux}`. All 3,136
+source hashes matched across the installed proof before the coverage-manifest
+comment correction and this ledger update.
+
+Independent review admitted both finite workloads and found no unresolved
+correctness, ownership or portability issue in the supported adapter. The disk
+route uses 22 loads, 12 preparations and ten budget-2,000 calls; it creates only
+fixed disposable trees, including one sparse oversized source and a FIFO that
+is never opened. Core uses 12 preparations and 66 budget-10,000 calls, without
+filesystem, process or service work. Exact limits are recorded in `docs/testing.md`.
+Builds caught a Darwin feature-macro issue and a nonpublic fixture include, both
+fixed. Core's first run caught the generic numeric-literal inference limitation;
+its final fixture uses the existing typed contract. The project group caught
+invalid feature-coverage exclusions; these pure uncategorized capabilities now
+have an explanatory comment rather than names absent from the scene catalog.
+
+M3 generated SDK and consumer directories were removed after provenance capture;
+logs, manifests and reconstruction commands remain. The four previously pending M2 SDK/source/build copies were also removed after
+checking their ownership markers and retained reconstruction evidence. Shared dependency caches remain. Full native/render/Studio/
+browser/device and other quarantined suites were not run and are not passed.
+Only changed C files were format-checked. The branch has not been pushed or
+merged. The compiler still uses stage zero; M3 completion is not self-hosting.

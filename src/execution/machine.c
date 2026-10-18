@@ -113,7 +113,7 @@ void execution_machine_begin(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[begin - 1].target];
         assert(s->pc + 1 == begin);
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             int v = s->values[k];
             pin_value *to = v < slot_count ? &slots[v] : &locals[v - slot_count];
             to->type = v < slot_count ? f->slots[v]
@@ -250,7 +250,7 @@ int execution_machine_step(execution_machine *m, int pc)
             assert(activation && activation->values);
             int slot_count = acount(f->slots), base = slot_count + acount(f->locals);
             const behavior_function_suspension *s = &f->suspensions[i->target];
-            for (int k = 0; k < acount(s->values); k++) {
+            for (int k = 0; k < s->value_count; k++) {
                 int v = s->values[k];
                 const pin_value *from = v < slot_count ? &slots[v]
                                                        : &locals[v - slot_count];

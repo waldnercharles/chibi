@@ -781,6 +781,29 @@ bool execution_prepared_write(
     }
     return success;
 }
+bool execution_prepared_measure(
+    const execution_module *m,
+    size_t *length,
+    uint64_t *fingerprint,
+    char *error,
+    size_t size
+)
+{
+    *length = 0;
+    const char *reason = NULL;
+    prepared_dependency *cache = NULL;
+    size_t bytes = 0;
+    size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
+    execution_wire budget = { .storage_budget = &remaining };
+    uint64_t hash = UINT64_C(14695981039346656037);
+    bool success = write_depth(m, NULL, length, &reason, 0, &cache, &bytes, &hash, &budget, &record_work);
+    afree(cache);
+    *fingerprint = success ? hash : 0;
+    if (size) {
+        snprintf(error, size, "%s", reason ? reason : "");
+    }
+    return success;
+}
 static bool preparation_budget(prepared_context *c)
 {
     execution_wire *w = &c->wire;

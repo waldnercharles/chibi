@@ -56,8 +56,9 @@ follow-up. New syntax still requires the owner's review before implementation.
 ## Verified before the pause
 
 All test invocations retain the production 60-second supervisor. Configuration,
-build and package times are separate. Native correctness and Studio checks below
-used Debug ASan/UBSan with default leak checking; Wasm used actual generated
+build and package times are separate. Native runtime and Studio behavioral
+drivers used Debug ASan/UBSan with default leak checking; package-ownership child
+probes use their recorded profiles, including Release. Wasm used actual generated
 entries plus bytecode. Software Vulkan was Mesa llvmpipe, not hardware timing.
 
 | Check | Result |

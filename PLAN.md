@@ -418,6 +418,28 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
+A source-only private syntax-retention increment appends raw Tree-sitter named
+and extra flags to the existing parser bridge and snapshot forest, and retains
+`Document.syntax_root` separately from routing `root`. It leaves the eight-package
+closure and syntax-diagnostic node schema unchanged; the signature reader is not
+imported. The snapshot differential adds one missing-token input (46 requests,
+92 calls, 72 offered files); the actual-closure producer checks raw facts and
+rejects the preceding native result ABI without invocation. Snapshot.chibi is
+15,704 bytes under the unchanged strict 16 KiB cap. Source changes, finite
+workload deltas and enforced caps are documented in `docs/testing.md`.
+The same source-only candidate adds a bounded owned `byte[]` return to the private
+runtime host and an atomic `--output-artifact` handoff. Its transport fixture
+still echoes stage-zero-prepared bytes. The integrated artifact selector has
+15 tooling cases and two producer cases, 13 supervised children and 18 source
+preparations; the raw-ABI decode adds no preparation or invocation. The Linux
+GNU/Clang production execution target enables function/data sections so the
+host's existing GC link can discard the unused public prepared writer. Shared
+canonical encoding remains reachable for reader dependency fingerprints.
+Independent exact-candidate source/resource admission, actual link/symbol review,
+applicable builds and bounded execution remain pending. These source increments
+do not establish authored semantic analysis or serialization, a complete package
+compiler, stage one or stage two.
+
 The authored unit-analysis repair is merged in
 [PR #440](https://github.com/waldnercharles/chibi/pull/440) at
 `a5edefd3b79db958e444adc624df7ca8fa493e02`, tree
@@ -545,14 +567,25 @@ wrappers and docs in the same change. A repository-local `.chibi` script does no
 replace an installed tool until the installed SDK works without engine source.
 
 Python may remain only where an external application requires its Python API,
-such as Blender integration. Hosted workflow YAML, external compilers, linkers,
-backends, and operating-system libraries are dependencies rather than failed
-self-hosting. All Chibi project policy called by them belongs in `.chibi`.
+such as Blender integration. Hosted workflow YAML, native backends, explicit
+platform assemblers/linkers, SDKs and runtime/operating-system libraries may
+remain dependencies behind narrow bindings. This does not exempt `cmake`,
+`clang`, `gcc` or hidden/renamed equivalents from the final normal-workflow ban
+in the Objective. External C compilers remain stage-zero construction/recovery
+tools during migration, not normal installed build dependencies. All Chibi
+project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
 
 Last verified toolchain checkpoint: 2026-10-18 at
 `a5edefd3b79db958e444adc624df7ca8fa493e02` (PR #440).
+
+A separate source-only transport candidate based on `ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`
+combines raw syntax retention, owned binary output and the production link-layout
+correction described in M5. It has no configure/build/runtime or actual linked-
+symbol evidence yet and does not update the verified checkpoint above. Its next
+gate is independent exact-source/workload review before separately timed builds,
+link inspection and the two bounded selectors in `docs/testing.md`.
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed

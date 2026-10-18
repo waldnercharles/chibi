@@ -196,7 +196,7 @@ target_sources(test_language PRIVATE compiler_artifact_chibi.c
 set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
-target_link_libraries(test_language PRIVATE Chibi::asset_json)
+target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prepared)
 target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c)
 set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

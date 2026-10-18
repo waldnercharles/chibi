@@ -19,6 +19,15 @@ typedef struct
     char diagnostic[256];
 } compiler_host_result;
 
+typedef struct
+{
+    unsigned char *bytes; /* malloc-owned; release with free(). */
+    size_t length;
+    int flow_status;
+    behavior_run_counts counts;
+    char diagnostic[256];
+} compiler_host_bytes;
+
 /* Private runtime-only host. Loads a closed target-compatible prepared closure;
  * no source compilation/discovery occurs. Artifact bytes may retire on return.
  * Only text, arrays and the external JSON/raw-syntax bridges are admitted. */
@@ -38,6 +47,21 @@ bool compiler_host_invoke(
     size_t length,
     uintptr_t budget,
     compiler_host_result *
+);
+
+/* Exactly one owned primitive byte[] result, copied before runtime teardown.
+ * Input and instruction-budget rules match invoke. max_bytes must be in
+ * [1, COMPILER_HOST_MAX_VALUES]. Empty success is {NULL, 0}; every failure also
+ * has null/zero output, with a diagnostic and actual execution counts/status.
+ * This bounds represented output storage, not all runtime arena allocations. */
+bool compiler_host_invoke_bytes(
+    compiler_host *,
+    uint64_t entry,
+    const char *json,
+    size_t length,
+    uintptr_t budget,
+    size_t max_bytes,
+    compiler_host_bytes *
 );
 
 /* Outer argument array, one same-entry invocation per item; atomic output on

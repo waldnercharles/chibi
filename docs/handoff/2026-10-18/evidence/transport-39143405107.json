@@ -1,0 +1,89 @@
+{
+  "schema": 1,
+  "identity": {
+    "source_sha": "e165059d1c17ec7605d909ae3bbf727d9e267a80",
+    "source_tree": "8e5ea89dfe428ca7804b68af0c85ba35e5e74b5e",
+    "control_sha": "088d9e37f8f4c5f88cb5ec23e2599618c5f71bb2",
+    "control_tree": "7755426eb19449a7326204d5395ffdef73ed49be"
+  },
+  "phases": [
+    {
+      "phase": "prepare",
+      "exit": 0,
+      "elapsed_seconds": 0
+    },
+    {
+      "phase": "dependencies",
+      "exit": 0,
+      "elapsed_seconds": 13
+    },
+    {
+      "phase": "configure",
+      "exit": 0,
+      "elapsed_seconds": 3
+    },
+    {
+      "phase": "build",
+      "exit": 0,
+      "elapsed_seconds": 35
+    },
+    {
+      "phase": "audit",
+      "exit": 1,
+      "elapsed_seconds": 2
+    }
+  ],
+  "results": [
+    {
+      "selector": "language-package-snapshot-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "compiler-artifact",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "language-union-members-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "language-effect-analysis-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "language-record-members-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "language-unit-analysis-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    },
+    {
+      "selector": "language-type-relations-chibi",
+      "outcome": "identity_unverified",
+      "execution_identity_verified": false,
+      "expected_pico_summary_verified": false,
+      "production_supervisor_60s_report_verified": false
+    }
+  ],
+  "raw_logs": "runner_local_discarded",
+  "test_ceiling_seconds": 60
+}

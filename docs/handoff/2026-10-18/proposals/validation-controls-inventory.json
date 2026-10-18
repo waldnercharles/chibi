@@ -1,0 +1,92 @@
+[
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/transport/check-controls.py",
+    "sha256": "c701465830a7dd7c34b35f270e26196898c3616beabb1065f93fe1b9167cabe8",
+    "bytes": 13680
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/transport/check-workflow.py",
+    "sha256": "87980254866a51095b991a25bc49d69291e4bcb1476e536708ba9da7a105a35d",
+    "bytes": 16147
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/transport/check-integration.py",
+    "sha256": "c847155f8b82b20f9f285d9e00dbe4b70dfd93ff452b0059d6697fbde4121a9f",
+    "bytes": 13751
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/transport/audit/selftest_product_link.py",
+    "sha256": "800d7bf9fb3dce0eb682de6afe103884c8370460ebc833f9caa0d00b52a53c81",
+    "bytes": 20095
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/native/check-build-status.sh",
+    "sha256": "93d944d65c4b621a31f0f3572b053872ad24957cf7f80a780048c0f425b3e73e",
+    "bytes": 6616
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/native/check-collection.sh",
+    "sha256": "866cc4cc2d902e913eb6277179c5f56cbc45aec96b2ad976899a351336c3c63c",
+    "bytes": 3819
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/build.sh",
+    "sha256": "538e2bf7e26fce79c295d8d6ac3a161b5b8bb57ec605159d8bedfa3c6a0e9254",
+    "bytes": 938
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/run.sh",
+    "sha256": "59caa7c971b0e7bb68f2114136b01c4adf6f5d60e4036fb85053c8f488309119",
+    "bytes": 680
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/test/language/main.c",
+    "sha256": "d872367b22beb68191a2da72f83d2ca943fe99dc963ebde147e87853966ac949",
+    "bytes": 2839
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/test/language/sources.h",
+    "sha256": "1aadd9b62d280d3d7de6e35228c9c7ec1e4fe39d1f4afc4473c03e8503cb79a7",
+    "bytes": 103499
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/source-inputs.json",
+    "sha256": "aaed83f8bccd67b622ba9f300155a7e18f4eb93a4717745f888099640738f77a",
+    "bytes": 19748
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/frozen.sha256",
+    "sha256": "1a641c31498248fccba2533f68f98e608d4b7a2363a0950f65280956aa88a1af",
+    "bytes": 6530
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/scalar/inspection/evidence/frozen-original.sha256",
+    "sha256": "7c6f59aca31b5689f733a7398a67ff909a85fa18ce5449b120a9642d936d1c28",
+    "bytes": 6239
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/semantic/check-controls.py",
+    "sha256": "f4fae74d0db4b3fe1156ba80cee60272490e18d7139ab0a6be96eb0df7ae895f",
+    "bytes": 10711
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/semantic/check-diagnostics.py",
+    "sha256": "3e909bbc56677132f92ac9dd3cc0e802bc871f85b0a2bbd9b4f5591f020dac21",
+    "bytes": 4318
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/native/check-native-diagnostic.sh",
+    "sha256": "f84678ba641760392f72f913cc413b651c3a7e90b3776df90e1983f64119d7be",
+    "bytes": 4332
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/package-cache/check-controls.py",
+    "sha256": "e533496585539dc0b459aacad9f6753755a5b702446fb34374e87b6505f28d05",
+    "bytes": 17082
+  },
+  {
+    "path": "docs/handoff/2026-10-18/validation-controls/package-cache/check-workflow.py",
+    "sha256": "a5dbe0aad55c860f5e07914ce89e10f0cf18760c67e723ada795f651685001af",
+    "bytes": 12156
+  }
+]

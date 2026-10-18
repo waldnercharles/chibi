@@ -1,0 +1,233 @@
+diff --git a/PLAN.md b/PLAN.md
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -446,6 +446,14 @@
+ record fields remain unsupported; these components use flat fields and tagged
+ payloads.
+ 
++The [self-host acceptance gate](docs/self-hosting-build.md#self-host-acceptance-gate)
++now has a standalone private dispatcher route that explicitly returns unsupported
++before product execution. The complete authored source-to-artifact entry,
++stage-chain fixture equivalence and clean installed/relocated compiler-free
++build/link proof are absent. This is an executable availability refusal, not a
++new compiler interface or a passing test. First supervised execution still needs
++exact-source/resource review. M5 remains in progress and M6 remains blocked.
++
+ Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
+ the platform linker, and other external systems behind C ABIs where useful. The
+ `.chibi` sources own package loading, semantic analysis, diagnostics, lowering,
+@@ -593,6 +601,13 @@
+ repair alone does not move normal compiler dispatch, complete a milestone, or
+ establish stage-one/stage-two or installed tool-free build/link acceptance.
+ 
++The self-host acceptance increment adds only the explicit unsupported dispatcher
++route and its acceptance/dependency contract. Static checks are recorded
++separately from runtime; no product runtime or bootstrap was executed for it.
++The next acceptance action is to review the refusal/source contract, then wire
++the real complete compiler entry when available; component transport results
++cannot clear this gate.
++
+ The following evidence belongs to the unchanged prior compiler checkpoint:
+ 
+ - Repository: `chibi`
+diff --git a/docs/self-hosting-build.md b/docs/self-hosting-build.md
+--- a/docs/self-hosting-build.md
++++ b/docs/self-hosting-build.md
+@@ -152,6 +152,102 @@
+    cost, steady-state/tail latency, memory, artifact size, diagnostics and ABI.
+    Require matching semantics, not assumed speedups.
+ 
++## Self-host acceptance gate
++
++The standalone private test-driver route
++`python3 tools/test_policy.py tool self-host-acceptance` is an availability
++gate, not a new public `chibi` command. It currently prints `UNSUPPORTED` and
++returns 2 before test initialization. No compiler runs, no fixture passes, and
++no stage-one or stage-two artifact is produced. This deliberate nonzero result
++must remain visible; do not convert it to a successful expected-failure check,
++or replace it with success when a component differential passes.
++[Resource admission](testing.md#self-host-acceptance-availability) is separate.
++
++### Missing executable contracts
++
++The current product interfaces cannot perform the complete acceptance sequence:
++
++- `compiler_fixture_prepare_packs` calls the native
++  `authoring_packages_prepare`, which owns `script_analyze_package`,
++  `script_lower_package` and module finalization. The existing
++  `compiler-artifact` case uses that path to prepare eight packages, then
++  serializes the source-snapshot closure. Its exported `Build` entry returns
++  package snapshot results. It does not compile its own implementation.
++- `chibi-compiler-host` accepts an already prepared artifact, entry ID and JSON
++  arguments. Its runtime-only link closure excludes native source analysis and
++  lowering. Text, arrays, JSON and raw syntax capabilities do not supply a
++  complete authored compiler entry or authored executable-artifact construction.
++  The host transports execution; it is not itself a Chibi-authored compiler.
++- `chibi build PROJECT` still invokes the native project compiler. The installed
++  `Build.chibi` still invokes CMake and three Python helpers. Neither is an
++  installed Chibi-owned compiler/build/link replacement.
++
++The missing implementation is a complete authored compiler program and its
++explicit source-input, diagnostic and artifact-output contract over the existing
++package/runtime boundaries. Its reviewed entry identity and complete dependency
++closure must be known before a harness can invoke it. This document does not
++invent a `Compile` export, source manifest format, shipping command or new syntax.
++Component, transport, retained-reader and scalar-lowering increments retain their
++own tests; do not duplicate them in this availability gate.
++
++### Required replacement of the unsupported gate
++
++Once the complete compiler exists, replace the early refusal with C/pico_unit
++cases in the existing `test_tools` dispatcher. Independently review the actual
++entry/output contract and exact bounded workload before running it. The complete
++sequence must establish all of the following:
++
++1. Freeze the clean candidate and the entire compiler source closure, including
++   all imported compiler/core sources, generated inputs, binding identities and
++   target/format identities. Record paths and content hashes. A selected subset
++   of compiler components is not a complete source closure.
++2. Stage zero compiles that closure into the stage-one compiler artifact. Record
++   bootstrap compiler identity and minimum compatible version. A fresh
++   runtime-only process loads stage one; it cannot call native source analysis,
++   native lowering, another compiler process, or a stage-zero compile service.
++   Narrow raw-parser/backend/runtime ABIs remain declared dependencies.
++3. Stage one receives the same source bytes and target inputs and emits a fresh
++   stage-two compiler artifact through authored compiler policy. Record artifact
++   provenance and reject missing, stale, partial or copied outputs. Independently
++   load and exercise stage two in a fresh runtime-only process.
++4. Compile the same checked semantic, invalid-source diagnostic, ABI and artifact
++   fixtures using stages one and two. Compare acceptance, diagnostic category,
++   ranges/order, declarations/layouts, artifact-format identities and decoded
++   observable behavior. Execute resulting fixtures on BYTECODE and SLJIT with
++   actual backend-entry counters and no fallback. Reuse the existing fixtures
++   and production codecs. Do not substitute an oracle's compiled output. Require
++   byte equality only where determinism has separately been established.
++5. Exercise the normal installed workflow and repeat after relocation, with
++   original installation/source/build/cache paths inaccessible. Supply the
++   pinned compiler sources from a clean checkout and build/link a checked game
++   through the stable commands. Verify declared formats and bounded observable
++   game behavior. A prebuilt game's successful launch proves neither building
++   nor linking; a game cache hit is not a clean-build proof.
++6. Separate allowed bootstrap inputs from final required inputs. In the final
++   installed/relocated environment, make `cmake`, `clang` and `gcc` unavailable,
++   including renamed binaries, absolute paths, wrappers, remote compiler
++   services and populated caches that conceal those requirements. Emptying PATH
++   or installing fake successful commands is insufficient. Use a reviewed
++   minimal filesystem/process boundary with an explicit executable/library/input
++   allowlist and provenance. Record the actual final linker, assembler, backend,
++   platform SDK, runtime libraries and version/license identities; do not infer
++   that they are absent merely because the three tool names were absent.
++
++Stage-zero setup may still use CMake, native C/C++ compilers, Python helpers and
++native build tools. A library API such as SLJIT or a future LLVM binding is
++distinct from invoking a compiler executable. Final dependency claims follow
++the actual link/load closure and process provenance; this gate does not decide
++which currently permitted native dependencies the completed implementation needs.
++
++The runtime acceptance sequence remains subject to one shared production
++60-second ceiling. Stage-zero configuration and test-driver compilation are
++separate, but the stage-chain and game operations under test cannot be hidden
++there as setup. If the complete sequence cannot fit a reviewed admitted
++workload, it stays blocked; do not split it into passing chunks, extend the
++deadline, omit sources or substitute prepared outputs. Windows process support
++and supported-host coverage remain separate unfinished requirements. No
++stage-zero recovery path or native implementation is deleted by this increment.
++
+ ## Testing and library replacement
+ 
+ Make tests easy to keep near code, with useful assertions, deterministic ECS
+diff --git a/docs/testing.md b/docs/testing.md
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -2278,3 +2278,29 @@
+ It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
+ numeric-foundation or full-suite coverage. Wider affected-contract checks remain
+ an integration-review decision. Source-only registration records no measured pass.
++
++## Self-host acceptance availability
++
++`tool self-host-acceptance` selects a fixed unsupported branch in the existing
++native `test_tools` dispatcher. It writes one fixed diagnostic (less than 512
++bytes) and exits 2 before `tool_init`, pico_unit initialization or product calls.
++It has zero test cases, assertions, compiler preparations, authored calls, module
++finalizations, workload children, frames, GPU or network work. Its only workload
++I/O is the diagnostic on stderr. The production supervisor launches the driver
++and owns the shared
++60-second deadline and process cleanup.
++
++This standalone route is outside all aggregates. Registration records neither
++first-run admission nor a measured result. Independent exact-source/resource
++review is required before its first supervised invocation, with driver
++configuration/build timing separate. Its expected nonzero result is
++`UNSUPPORTED`, never a self-hosting pass or measured compiler coverage. Do not
++wrap the selector in failure suppression to obtain a green acceptance result.
++Static patch/syntax checks do not establish that the driver built or ran.
++
++Replace the refusal only after the
++[complete stage-chain and installed/relocated contract](self-hosting-build.md#self-host-acceptance-gate)
++has real product entrypoints and a finite reviewed C/pico_unit workload.
++Component parity, process orchestration and the existing `compiler-artifact`
++roundtrip remain distinct evidence. They do not admit or complete that future
++workload.
+diff --git a/docs/toolchain-inventory.md b/docs/toolchain-inventory.md
+--- a/docs/toolchain-inventory.md
++++ b/docs/toolchain-inventory.md
+@@ -17,10 +17,17 @@
+ not a second authoring tool. A checksummed bootstrap compiler artifact may remain
+ for recovery, but it is not a competing implementation.
+ 
+-Repository build programs may call external compilers, linkers, LLVM, SLJIT,
+-Emscripten, platform SDKs, Git, and hosting APIs. Those dependencies do not own
+-Chibi policy. Python remains acceptable only inside an external application that
+-requires its Python API, such as Blender.
++Stage-zero recovery and still-supported external consumers may use external
++compilers and CMake during migration. The final normal installed workflow must
++build/link without `cmake`, `clang` or `gcc` executables, including hidden or
++renamed copies. Linkers, assemblers, LLVM/SLJIT library bindings, platform SDKs
++and runtime libraries may remain explicit dependencies. Existing browser and
++external-consumer tooling is not an exemption for a normal workflow covered by
++this requirement. Record actual dependencies separately for bootstrap
++construction and the final installed runtime/build path. See
++[self-host acceptance](self-hosting-build.md#self-host-acceptance-gate).
++External dependencies do not own Chibi policy. Python remains acceptable only
++inside an external application that requires its Python API, such as Blender.
+ 
+ ## Universal deletion gate
+ 
+diff --git a/test/tools/main.c b/test/tools/main.c
+--- a/test/tools/main.c
++++ b/test/tools/main.c
+@@ -503,6 +503,18 @@
+ 
+ int main(int argc, char **argv)
+ {
++    if (argc == 2 && !strcmp(argv[1], "--self-host-acceptance")) {
++        fprintf(
++            stderr,
++            "UNSUPPORTED: complete Chibi compiler bootstrap is not implemented.\n"
++            "Missing: authored source-to-artifact compiler entry, stage-one/stage-two\n"
++            "fixture parity, and installed/relocated clean game build/link without\n"
++            "cmake, clang, gcc or hidden/renamed copies.\n"
++            "Component and process-host checks do not satisfy this gate.\n"
++            "See docs/self-hosting-build.md#self-host-acceptance-gate.\n"
++        );
++        return 2;
++    }
+     if (argc == 4 && !strcmp(argv[1], "--build-toolchain")) {
+ #ifdef CHIBI_TEST_BUILD_PROCESS
+         tool_init();
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -222,6 +222,11 @@
+                       '--build-process',
+                       str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
++    # Unsupported availability gate only: one fixed diagnostic, exit 2 before
++    # tool_init; zero product calls/fixtures/children. No aggregate membership.
++    # Exact-source/resource review is required before first supervised execution.
++    'self-host-acceptance': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
++                             '--self-host-acceptance'],
+     # Six tooling cases plus one producer case, four supervised children <=10s
+     # each under shared60s: producer, two five-request batches, bad-magic CLI.
+     # Actual eight-package closure:16preparation parses,4C+12raw parser calls,

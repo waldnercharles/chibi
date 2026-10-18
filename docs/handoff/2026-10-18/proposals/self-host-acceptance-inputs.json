@@ -1,0 +1,167 @@
+[
+  {
+    "path": "AGENTS.md",
+    "blob_sha": "8ada0dce2353a4954732f2ecd5126981aab27306",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "PLAN.md",
+    "blob_sha": "86cd6eb5e4e9f76f98e13bb9b9dc4ce464b21179",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "docs/self-hosting-build.md",
+    "blob_sha": "9dab2bec406ffb29b13a181d94a2b95f51fb9733",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "docs/testing.md",
+    "blob_sha": "f103448635bfc7fbc088e46d0998297249b998d6",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "docs/toolchain-inventory.md",
+    "blob_sha": "6292c3e0d4a48299ef1888b8c1725363a9baebfa",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/tools/main.c",
+    "blob_sha": "39f3fbf658e117bed71e9a8506b8b93da454eee8",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/language/main.c",
+    "blob_sha": "f80d61f947f32d814e56bf4bd4b6d4dd83107ef4",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "tools/test_policy.py",
+    "blob_sha": "fdfb5861fce38c341e875783eab3508313f7c113",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_host.h",
+    "blob_sha": "0fcf54d6e7237a0a69f4e8ecf450c650991c79a9",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_host.c",
+    "blob_sha": "6580aed8f8a181510dbdc03e9cc175cb039eb7b5",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_main.c",
+    "blob_sha": "bdf6b17b9e2c77a7fbdc151805cf5019cc0399fa",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_artifact.h",
+    "blob_sha": "0e5e1136b303a4ef5a40c1c87d53583fd8abc110",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/host/chibi_main.c",
+    "blob_sha": "ba971abbe22685dd8759c6099c98ffa183e67e8c",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/host/compile_main.c",
+    "blob_sha": "2095a9cb92c36298edb43b56283b0a1205d69564",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/host/build_host.h",
+    "blob_sha": "db870bd3d877886cce343411465f3d3124c1d5d4",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/tools/compiler_artifact.c",
+    "blob_sha": "a80b1aad1d1600ff4ffc8dcbb5ab75836492fb4e",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/tools/build_toolchain.c",
+    "blob_sha": "d26096e943253f78091a1550d7fb28e0df7dd9df",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/tools/CMakeLists.txt",
+    "blob_sha": "a83d5e0a763240ddc1b9be2ad7b9cd4d8957ae19",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "sdk/CMakeLists.txt",
+    "blob_sha": "05d35c5b2dc4d32d5cc4a57e2b60f24d3398c135",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "docs/code-language.md",
+    "blob_sha": "1a89bd5dce704c49d0fcc8c121f58512fb823ad2",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "docs/language-contracts/v1.md",
+    "blob_sha": "9c67790fcaf1f5ffc7a0b824e54ed489eab955b6",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/language/compiler_artifact_chibi.c",
+    "blob_sha": "e6b00df8dc5e506bcc6174a31c5708c1044f8d76",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/language/CMakeLists.txt",
+    "blob_sha": "6d5abf3f9acbe36859049498f3be87ec135cdcd1",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_syntax.h",
+    "blob_sha": "f4ab7a46bcfde967126598c53e9bfbe38508552d",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/toolchain/compiler_json.h",
+    "blob_sha": "1540511316ab4d3b6964bba137dcdaabef9fb089",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "tools/toolchain/Build.chibi",
+    "blob_sha": "8927ecbcebc521abc335a54486eb55fdbf8ed14b",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/authoring/project_compile.c",
+    "blob_sha": "1e3c19fc75fc0929f5c7a8c96e0c08e0c7d746f3",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/language/compiler_fixture.c",
+    "blob_sha": "58cbbe816411c6607f7eb8881d719677ca0da67e",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "test/language/compiler_fixture.h",
+    "blob_sha": "93c4ef3b1aaa09bdcd406462fe35f5d2d36af2c2",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/host/build_host.c",
+    "blob_sha": "3ae8d5c968d49cff35b4bca4091e3f9567a0ea22",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/authoring/source_package_prepare.c",
+    "blob_sha": "bd77698ebd2026165cd3a023f3b2765c133579d4",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/language/lower.h",
+    "blob_sha": "e184dcb9eba9088ae77bac0564f159753bb48816",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  },
+  {
+    "path": "src/language/semantic.h",
+    "blob_sha": "65a5d8d821beb82c1ca0af3e5ba7d76a890e79d6",
+    "ref": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c"
+  }
+]

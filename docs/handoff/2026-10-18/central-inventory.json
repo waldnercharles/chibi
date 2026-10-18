@@ -1,0 +1,127 @@
+{
+  "repository": "waldnercharles/chibi",
+  "branch": "codex/self-host-handoff-20261018",
+  "parent": "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb",
+  "status": "documentation_proposals_only_no_new_execution",
+  "files": [
+    {
+      "path": "HANDOFF.md",
+      "mode": "100644",
+      "bytes": 18179,
+      "sha256": "26d230e479c2150be5b183b402b081f957bddf67a0b8fdbac3da214d1dcd2a62",
+      "git_blob": "bf8107312fb0cb67dde5e89afd4b00db0341c35d"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/WORK-INVENTORY.md",
+      "mode": "100644",
+      "bytes": 3805,
+      "sha256": "3213449d9da4ece754de4327300b20f7c982f637d528de4ee8cec6f46a215606",
+      "git_blob": "5d60759ee6973abd4388cd63bca409f8d7b3eaa8"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/native-39139386112.json",
+      "mode": "100644",
+      "bytes": 1943,
+      "sha256": "68e2f90aad4d1e97ae5f7f8617e3a00dec77dfbbdd1e23b51cceb497ca22a0e6",
+      "git_blob": "79dd36aeb858371aa8e1c2325095d0b443ad9003"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/review-records.json",
+      "mode": "100644",
+      "bytes": 3410,
+      "sha256": "542dea447d80fb8838053d862da7e2bbc7d4644141b45452bb879f12ccc767a6",
+      "git_blob": "849c4957f186929020e14bb65d7dcc1c279209a8"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/scalar-syntax-input.json",
+      "mode": "100644",
+      "bytes": 563,
+      "sha256": "760d00ff37bed823db6264e359ca4342711c54d64954aec6bb8281b3d06434b8",
+      "git_blob": "d61014c18ab420f512f03b747a2b584fa9b3bd48"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/scalar-syntax-result.json",
+      "mode": "100644",
+      "bytes": 1297,
+      "sha256": "c833ff75b98b524b49fa75149a5b455049d28410b017bcf840742f5c4666492e",
+      "git_blob": "74f43957adfc4ea4d566aebe173ce3db71da32b7"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/scalar-syntax.patch",
+      "mode": "100644",
+      "bytes": 2775,
+      "sha256": "3d99cbd479bc7a7cd834455d2508978bcf792bca498697b59d225ff939c31920",
+      "git_blob": "94f0d1b7960b0971d795a10dbb14ef002ab30062"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/semantic-39140946564.json",
+      "mode": "100644",
+      "bytes": 2619,
+      "sha256": "7d85449277f819cf77949ad6fb2fec52c49923473bbea8aef069f1ff86dea84a",
+      "git_blob": "62c9fddd48bb1d6d20b1d33bb283f4dbeedb95a9"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/evidence/transport-39143405107.json",
+      "mode": "100644",
+      "bytes": 2570,
+      "sha256": "87139c7537378989bc691433dbfdba338546d9fa463ef71f55cdc7518251fd4e",
+      "git_blob": "7e5b669ef518976c789932981fe7e51211cddf32"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/README.md",
+      "mode": "100644",
+      "bytes": 1567,
+      "sha256": "742023837cb44b5ad114e8746a2d49338a06913f93c6c6387371bf3c5a07a9d1",
+      "git_blob": "a01401023d1d852d28ebba3863b5fe918e56c54a"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/native-control-unarmed.yml",
+      "mode": "100644",
+      "bytes": 7281,
+      "sha256": "509623688fe136b71724304b23cf69fcb7f1a6c11e36c6a4a93b44a042eea790",
+      "git_blob": "b2122d4f39106e291ca9374685aa08f95f2f0868"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/self-host-acceptance-admission.json",
+      "mode": "100644",
+      "bytes": 3378,
+      "sha256": "aa9d93272ceff0b61062f0e5db30fca54f3839fd8b54f519ade55a6a054a4806",
+      "git_blob": "b0e76f9673335d58fc9e361f8d90449b60f77b22"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/self-host-acceptance-inputs.json",
+      "mode": "100644",
+      "bytes": 5418,
+      "sha256": "5453ae04b81793f4f525c141b2d168607e8bfe4554d9fcbdf679abc165260c7a",
+      "git_blob": "a1466b8cb343b0390d2394b4fa392a3675ec6713"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/self-host-acceptance.patch",
+      "mode": "100644",
+      "bytes": 13760,
+      "sha256": "383e09e9ebd83d1a90de2649c6d977b13a98808614d9343f59895080908a0b41",
+      "git_blob": "97aab1bc194ed3fbf26063849dc8d44fdc97553d"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/validation-controls-inventory.json",
+      "mode": "100644",
+      "bytes": 3615,
+      "sha256": "4fd08e73d7ae966ea2f9c268007db2a451b90914a8b062689520120c48591dc6",
+      "git_blob": "14a2c708dbda114b0f6e77a4315708b9d6701f1a"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/proposals/validation-controls.patch",
+      "mode": "100644",
+      "bytes": 268316,
+      "sha256": "45eec389971667032537f59f83d5bb6235b0d84682ddee1dbb0da32e2340a13a",
+      "git_blob": "34ee1b94fa99d28f6c66883d3e057cc4a97b911e"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/refs.json",
+      "mode": "100644",
+      "bytes": 4460,
+      "sha256": "a21c1790b3450e36ed33ae2d93979735e7e4d0b6483ccaeaf0e3ebe427c9139c",
+      "git_blob": "68e1b38dcf54b74b6521dfeca57cd2defc7e1c5a"
+    }
+  ]
+}

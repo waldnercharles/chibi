@@ -1,0 +1,83 @@
+{
+  "identity": {
+    "source_sha": "06a5ae206b4daf2a5f58d66969faa008bf9c57f3",
+    "source_tree": "da159481fb0d25c9deacd9e87525ac4a82846dff",
+    "control_sha": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+    "control_tree": "ee674c048a629cc1d8fc72f19b7fa4809f44d40c",
+    "verified": true
+  },
+  "phases": [
+    {
+      "phase": "prepare",
+      "exit": 0,
+      "elapsed_seconds": 0,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    },
+    {
+      "phase": "dependencies",
+      "exit": 0,
+      "elapsed_seconds": 51,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    },
+    {
+      "phase": "configure_reflect",
+      "exit": 0,
+      "elapsed_seconds": 5,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    },
+    {
+      "phase": "build_reflect",
+      "exit": 0,
+      "elapsed_seconds": 2,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    },
+    {
+      "phase": "configure_tools",
+      "exit": 0,
+      "elapsed_seconds": 41,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    },
+    {
+      "phase": "build_tools",
+      "exit": 1,
+      "elapsed_seconds": 170,
+      "diagnostic": "none",
+      "diagnostic_stage": "none",
+      "diagnostic_owner": "none"
+    }
+  ],
+  "results": [
+    {
+      "selector": "language-semantic",
+      "outcome": "not_started"
+    },
+    {
+      "selector": "language-incremental",
+      "outcome": "not_started"
+    },
+    {
+      "selector": "unit-fixtures",
+      "outcome": "not_started"
+    },
+    {
+      "selector": "language-unit-analysis-chibi",
+      "outcome": "not_started"
+    },
+    {
+      "selector": "desktop-dependencies",
+      "outcome": "not_started"
+    }
+  ],
+  "test_ceiling_seconds": 60,
+  "raw_logs": "runner_local_discarded"
+}

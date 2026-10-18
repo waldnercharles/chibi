@@ -1,0 +1,52 @@
+[
+  {
+    "scope": "Landed semantic components",
+    "source": "b57ac78c53c170139d8f807158c076f971a2202b",
+    "tree": "09d520fe2a5723226126b0879faaee390e87b7b9",
+    "review_sha256": "cda3607a662ee1f1eb307756f8670a96ec424d88043922b7e2dee0ad981dee33",
+    "outcome": "Independent source/lifetime/workload and actual five-selector pass verified; merge c828177e has identical tested tree."
+  },
+  {
+    "scope": "Transport integrated source and hosted control",
+    "source": "e165059d1c17ec7605d909ae3bbf727d9e267a80",
+    "tree": "8e5ea89dfe428ca7804b68af0c85ba35e5e74b5e",
+    "control": "088d9e37f8f4c5f88cb5ec23e2599618c5f71bb2",
+    "review_sha256": "14a0bbd907ac06c389a8ed45c288df24fddb41a314ad8d78c6c5f95d9c5e8e31",
+    "outcome": "Source, ownership/publication failure paths, actual product-link audit design, seven complete bounded selectors, complete public workflow scope and exact pins independently approved. Subsequent audit FAILED; no merge approval."
+  },
+  {
+    "scope": "Native adapter integration",
+    "source": "494691255b9ed22d3e7da02e20aa30e716226107",
+    "tree": "7f56b35bb34ed0254b7950309f7f591de418f386",
+    "review_sha256": "394e1a68fdce824f79c8d6e3be9989b1853c9ea7aac6e79b27dac136f870ef75",
+    "outcome": "Exact tree/source preservation, ownership/diagnostic copying/sort, CXX generation change, safe helper classifier and unchanged five complete workloads approved. No extra selector required. Actual current-tree build/runtime unrun."
+  },
+  {
+    "scope": "Native build classifier",
+    "blob": "23f87364a243606cb3cbf76f7686c7d8797dfc9c",
+    "review_sha256": "2bec7a9c5c014803b331d934eb46ad790a4066469083bc113c7fa5504ac199be",
+    "outcome": "Compiler/linker/generation envelope selected before finite category mapping; source excerpts cannot override phase. No unrestricted paths/symbols/raw messages exported. Diagnostic update unrun on product."
+  },
+  {
+    "scope": "Scalar source grammar correction",
+    "source_blob": "bbe9d91f569caf137e8326db8a86ccdf6d8e8b3c",
+    "review_sha256": "da0dcd189bc51b525ff51530f4bed8a181606aefb11c4da01fccb5633615d1f7",
+    "outcome": "Missing required union separator and reserved branch field confirmed; exact minimal correction preserves field order/types/control flow. Complete corrected-source parse subsequently passed; no semantic/backend result."
+  },
+  {
+    "scope": "Authored compiler parser precheck",
+    "manifest_sha256": "a2d920d9d4f3745f2071499aa038216d1ab9f6b45694fee04f94948399957149",
+    "review_sha256": "2d6e1fe96d8d9ff960ada608782bdb3cdfaf4aea5ba63837d90a66d6c771edfa",
+    "outcome": "18 complete sources,179267bytes, one parse/case each, unchanged parser/runtime and60s supervisor admitted. NOT RUN. Substantive compiler/native bridge/test review unfinished."
+  },
+  {
+    "scope": "Cache source and hosted route",
+    "source_review_sha256": "fca56408a1ecf8326aa5cdf6c1afe6f23fcdea7ae89241c63642eab9cc6bd86d",
+    "route_review_sha256": "d213aaa6b600a482b6c50c8344111e7912410aefa45a66fa5c0e3dce1a5c447c",
+    "outcome": "Source and private sanitizer helper/unarmed control approved, conditional on exact combined source/pins and pending docs/count refresh. No runtime."
+  },
+  {
+    "scope": "Reader validation proposal",
+    "outcome": "Source checkpoint exists; helper/control has local synthetic checks only. Independent final source/control admission and all four product selectors remain pending."
+  }
+]

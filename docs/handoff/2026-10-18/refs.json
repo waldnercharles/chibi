@@ -1,0 +1,135 @@
+[
+  {
+    "role": "target",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/toolchain-cleanup-20261017",
+    "head": "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb",
+    "tree": "09d520fe2a5723226126b0879faaee390e87b7b9",
+    "parents": [
+      "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c",
+      "b57ac78c53c170139d8f807158c076f971a2202b"
+    ],
+    "pr": 444,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/444",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "native",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-unit-native-adapter-20261018",
+    "head": "494691255b9ed22d3e7da02e20aa30e716226107",
+    "tree": "7f56b35bb34ed0254b7950309f7f591de418f386",
+    "parents": [
+      "06a5ae206b4daf2a5f58d66969faa008bf9c57f3",
+      "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb"
+    ],
+    "pr": 443,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/443",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "transport",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-compiler-transport-20261018",
+    "head": "e165059d1c17ec7605d909ae3bbf727d9e267a80",
+    "tree": "8e5ea89dfe428ca7804b68af0c85ba35e5e74b5e",
+    "parents": [
+      "2f1fecfd104052d7707c21954db405321d6e3aaa",
+      "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb"
+    ],
+    "pr": 445,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/445",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "scalar",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-scalar-lowering-20261018",
+    "head": "5c27f2b00b4cd4c7385b06d118217c6b8abe8ff8",
+    "tree": "66cb94362a50fc3d4af5913a8941b9982d187580",
+    "parents": [
+      "bdbb896c48aadd271ee63a6562447ccb95d7ffa1"
+    ],
+    "pr": 447,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/447",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "driver",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-authored-compiler-handoff-20261018",
+    "head": "0fba697e169e9484fbf33b349d2c49f9cd28cbb1",
+    "tree": "400ff80aafce376526ce17cabc0a074eec610450",
+    "parents": [
+      "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb"
+    ],
+    "pr": 449,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/449",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "reader",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-snapshot-reader-state-20261018",
+    "head": "25be310766829b135097542f737cc56c617f59da",
+    "tree": "061957d9fe8902af94897ae80ef4ff01a0616954",
+    "parents": [
+      "70ff5bf54a1125a110be6a26a7e226a4b5d542ba"
+    ],
+    "pr": 446,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/446",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "outliner_engine",
+    "repository": "waldnercharles/chibi",
+    "branch": "integration/outliner-m3-20261018",
+    "head": "e6d4c6dde6551d97bc9348220ff431d9a3b5186f",
+    "tree": "a05cb43548108087bcc836d765dbc1f72465f5f7",
+    "parents": [
+      "38de536213ca8b85221b860eb5fbaca898da7b42"
+    ],
+    "pr": null,
+    "pr_url": null,
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "cache",
+    "repository": "waldnercharles/chibi",
+    "branch": "codex/m5-package-cache-closure-20261018",
+    "head": "a461927a646f470a8a0cc94abe9d4fb147530f95",
+    "tree": "7ca06d504c86ea902297898c46159ad1a21cfff6",
+    "parents": [
+      "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb"
+    ],
+    "pr": 448,
+    "pr_url": "https://github.com/waldnercharles/chibi/pull/448",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "control",
+    "repository": "waldnercharles/chibi-studio",
+    "branch": "codex/host-m5-unit-validation-20261018",
+    "head": "088d9e37f8f4c5f88cb5ec23e2599618c5f71bb2",
+    "tree": "7755426eb19449a7326204d5395ffdef73ed49be",
+    "parents": [
+      "15e3875cc1b341a762301ebb1ca26956dea226f4"
+    ],
+    "pr": 81,
+    "pr_url": "https://github.com/waldnercharles/chibi-studio/pull/81",
+    "verified_utc": "2026-10-18T16:17:00Z"
+  },
+  {
+    "role": "outliner_studio",
+    "repository": "waldnercharles/chibi-studio",
+    "branch": "codex/live-outliner-20261018",
+    "head": "4805c446ca8215431ffa726f5b2a2dc102a547ce",
+    "tree": "9f346d7cbe4475686f0de254390460a5148a62a6",
+    "parents": [
+      "95ca95bc3ca2da5b899ec06596982ade26d2d94f"
+    ],
+    "pr": null,
+    "pr_url": null,
+    "verified_utc": "2026-10-18T16:17:00Z"
+  }
+]

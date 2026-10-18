@@ -1,0 +1,78 @@
+{
+  "base_commit": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c",
+  "state": "proposed_not_admitted",
+  "scope": "Availability refusal only; no compiler acceptance coverage",
+  "test_owner": "existing native test_tools dispatcher",
+  "route": [
+    "python3",
+    "tools/test_policy.py",
+    "tool",
+    "self-host-acceptance"
+  ],
+  "build_separate": true,
+  "required_before_run": [
+    "Independent exact-source and resource review",
+    "Reconcile touched shared dispatcher/policy/docs with current admitted integration candidate without importing held code",
+    "Verify exact clean source and built artifact identities",
+    "Use only the coordinator's already authorized Studio validation route",
+    "Retain the unmodified production 60-second supervisor"
+  ],
+  "workload": {
+    "test_cases": 0,
+    "assertions": 0,
+    "product_initializations": 0,
+    "source_parses": 0,
+    "compilation_preparations": 0,
+    "module_finalizations": 0,
+    "authored_calls": 0,
+    "backend_entries": 0,
+    "workload_children": 0,
+    "product_file_io": 0,
+    "diagnostic_write_calls": 1,
+    "diagnostic_utf8_bytes": 372,
+    "frames": 0,
+    "gpu_operations": 0,
+    "network_requests": 0,
+    "explicit_heap_allocations": 0,
+    "unbounded_loops": 0
+  },
+  "accounting_scope": "Inserted selected dispatcher branch only. Process loader, libc stdio, linked sanitizer startup and production supervisor still have normal startup/memory/process costs.",
+  "supervisor": {
+    "deadline_seconds": 60,
+    "shared": true,
+    "child_cleanup": "unchanged",
+    "workload_processes": 1
+  },
+  "expected_result": {
+    "exit_code": 2,
+    "stdout": "",
+    "stderr_prefix": "UNSUPPORTED: complete Chibi compiler bootstrap is not implemented.",
+    "semantic_status": "unsupported",
+    "failure_suppression": false
+  },
+  "aggregate_membership": [],
+  "publication": "No source/build metadata/raw logs exported; only existing coordinator-approved sanitized status if runtime later occurs.",
+  "not_admitted": [
+    "Stage-zero compiler build",
+    "Stage-one compiler execution",
+    "Stage-two compiler generation",
+    "Semantic/diagnostic/artifact/VM/SLJIT acceptance set",
+    "Installed or relocated clean game build/link",
+    "Any fallback, aggregate, public workflow or new product interface"
+  ],
+  "full_harness_blockers": [
+    "Complete Chibi-authored source-to-artifact compiler entry and closure",
+    "Exact typed source-input/diagnostic/artifact-output and dependency contract",
+    "Stage-chain and fixture workload measurement/admission under one shared 60-second ceiling",
+    "Reviewed final tool-free filesystem/process environment, dependency allowlist and artifact provenance"
+  ],
+  "patch_sha256": "383e09e9ebd83d1a90de2649c6d977b13a98808614d9343f59895080908a0b41",
+  "candidate_sha256": {
+    "PLAN.md": "d962a9c0e8f397dcc38e4ea684af8e8b4abed0c29da4388a5436df1025af3b85",
+    "docs/self-hosting-build.md": "a549e475424a9551a008a2b12177ee3d6f36dee0c43f8b7ec819bfe22016678c",
+    "docs/testing.md": "57886f8dbb16a5f9b0f903f23b047befee8a70bf77c11cc3642f485d02ef99f0",
+    "docs/toolchain-inventory.md": "54ae31dd5305e2b817b928288d48806ca09ea1009fd0aec6d920101b7706e6bd",
+    "test/tools/main.c": "97caf9d2186b30a956415d6f55786311e75bfd70cefe306196304aa1b40be44f",
+    "tools/test_policy.py": "cf2653d6ba24fb135b1066fe6ad1856360ff276ffe91521edaa86c5364df663e"
+  }
+}

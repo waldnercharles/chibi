@@ -1,0 +1,43 @@
+{
+  "source_commit": "5c27f2b00b4cd4c7385b06d118217c6b8abe8ff8",
+  "candidate_blob": "bbe9d91f569caf137e8326db8a86ccdf6d8e8b3c",
+  "candidate_sha256": "1778dd60224e4edb46e87d4563e20e0625b170da933976c317f00340eecfd4fd",
+  "original_result": {
+    "cases": 1,
+    "assertions": 3,
+    "failed": 1,
+    "errors": 2,
+    "seconds": 0.067,
+    "build_seconds": 0.78,
+    "locations": [
+      {
+        "row": 27,
+        "column": 5,
+        "start": 1597,
+        "end": 1632
+      },
+      {
+        "row": 32,
+        "column": 64,
+        "start": 1991,
+        "end": 2004
+      }
+    ]
+  },
+  "corrected_result": {
+    "cases": 1,
+    "assertions": 3,
+    "passed": 1,
+    "errors": 0,
+    "seconds": 0.067,
+    "build_seconds": 0.801,
+    "binary_sha256": "238bd71f111ef47884afda9bba8dfedf5cddb5885244d8eb34a60bbe9dcd8eae"
+  },
+  "compiler_sha256": "a23ecab8ff08f09ad8c80602c2c5df7f49e09c25905cb8975902e101bf72635f",
+  "supervisor_seconds": 60,
+  "source_only_parse": true,
+  "generated_binary_deleted": true,
+  "original_manifest_sha256": "7c6f59aca31b5689f733a7398a67ff909a85fa18ce5449b120a9642d936d1c28",
+  "corrected_manifest_sha256": "1a641c31498248fccba2533f68f98e608d4b7a2363a0950f65280956aa88a1af",
+  "review_sha256": "da0dcd189bc51b525ff51530f4bed8a181606aefb11c4da01fccb5633615d1f7"
+}

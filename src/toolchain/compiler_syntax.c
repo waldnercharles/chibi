@@ -25,6 +25,8 @@ enum
     MISSING,
     HAS_ERRORS,
     FIELDS,
+    IS_NAMED,
+    IS_EXTRA,
     RESULT_COUNT,
 };
 static const native_parameter_definition INPUTS[] = {
@@ -50,6 +52,8 @@ static const native_parameter_definition OUTPUTS[] = {
     ARRAY_OUTPUT("missing", PIN_BOOL, "bool"),
     ARRAY_OUTPUT("has_errors", PIN_BOOL, "bool"),
     ARRAY_OUTPUT("fields", PIN_STR, "const char *"),
+    ARRAY_OUTPUT("is_named", PIN_BOOL, "bool"),
+    ARRAY_OUTPUT("is_extra", PIN_BOOL, "bool"),
 };
 #undef ARRAY_OUTPUT
 _Static_assert(NATIVE_COUNT(OUTPUTS) == RESULT_COUNT, "syntax result schema");
@@ -129,6 +133,10 @@ static const char *snapshot(arena *storage, TSTree *tree, pin_value *results)
             .type = PIN_STR,
             .str = own(storage, ts_tree_cursor_current_field_name(&cursor))
         };
+        outputs[IS_NAMED]->items[current] = (pin_value){ .type = PIN_BOOL,
+                                                         .b = ts_node_is_named(node) };
+        outputs[IS_EXTRA]->items[current] = (pin_value){ .type = PIN_BOOL,
+                                                         .b = ts_node_is_extra(node) };
         for (int i = KINDS; i < RESULT_COUNT; i++) {
             outputs[i]->count = count;
         }

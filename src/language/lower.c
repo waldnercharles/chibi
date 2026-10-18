@@ -7,6 +7,7 @@
 #include "execution/state.h"
 #include "execution/task.h"
 #include "language/identity.h"
+#include "scalar_lowering_reference.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -5484,7 +5485,7 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
         binding_fields(l, binding, e->arguments[i].value, visited);
     }
 }
-static behavior_function *value_evaluator(
+static void emit_value_evaluator(
     lower *l,
     const int *expressions,
     const script_type *types,
@@ -5551,6 +5552,22 @@ static behavior_function *value_evaluator(
     }
     emit(l, (behavior_function_instruction){ .op = BF_RETURN }, range);
     emit(l, (behavior_function_instruction){ .op = BF_END }, range);
+    free(l->captured);
+    l->captured = NULL;
+    free(l->locals);
+    free(l->addresses);
+    free(l->parameters);
+    free(l->results);
+}
+static behavior_function *value_evaluator(
+    lower *l,
+    const int *expressions,
+    const script_type *types,
+    int count,
+    script_range range
+)
+{
+    emit_value_evaluator(l, expressions, types, count, range);
     behavior_function *function = NULL;
     char message[192];
     if (!l->failed) {
@@ -5560,13 +5577,49 @@ static behavior_function *value_evaluator(
         }
     }
     behavior_function_builder_free(l->builder);
-    free(l->captured);
-    l->captured = NULL;
-    free(l->locals);
-    free(l->addresses);
-    free(l->parameters);
-    free(l->results);
     return function;
+}
+behavior_function_builder *script_lower_evaluator_reference(
+    const script_analysis *a,
+    const script_catalog *catalog,
+    const execution_module_state *states,
+    int state_count,
+    const int *expressions,
+    const script_type *types,
+    int count,
+    script_range range,
+    char *message,
+    size_t size
+)
+{
+    execution_module_plan module = { .states = (execution_module_state *)states,
+                                     .state_count = state_count };
+    lower l = { .a = a,
+                .catalog = catalog,
+                .module = &module,
+                .variables = indices(a->symbol_count) };
+    for (int i = 0; i < a->symbol_count; i++) {
+        for (int j = 0; j < state_count; j++) {
+            if (a->symbols[i].id == states[j].id) {
+                l.variables[i] = j;
+                break;
+            }
+        }
+    }
+    emit_value_evaluator(&l, expressions, types, count, range);
+    free(l.variables);
+    if (l.failed) {
+        snprintf(
+            message,
+            size,
+            "%s",
+            acount(module.diagnostics) ? module.diagnostics[0].message : "reference scalar lowering failed"
+        );
+        behavior_function_builder_free(l.builder);
+        l.builder = NULL;
+    }
+    afree(module.diagnostics);
+    return l.builder;
 }
 static int storage_root(const script_analysis *a, int index)
 {

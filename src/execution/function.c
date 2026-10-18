@@ -181,7 +181,7 @@ bool behavior_function_own(behavior_function *f)
         }
     }
     for (int i = 0; i < acount(f->suspensions); i++) {
-        for (int j = 0; j < acount(f->suspensions[i].roots); j++) {
+        for (int j = 0; j < f->suspensions[i].root_count; j++) {
             if (!own_value(&owner, &f->suspensions[i].roots[j].shape)) {
                 goto invalid;
             }
@@ -421,10 +421,6 @@ void behavior_function_free(behavior_function *f)
     afree(f->source_watches);
     afree(f->edges);
     behavior_function_free(f->fast);
-    for (int i = 0; i < acount(f->suspensions); i++) {
-        afree(f->suspensions[i].values);
-        afree(f->suspensions[i].roots);
-    }
     afree(f->suspensions);
     afree(f->value_roots);
     afree(f->instructions);

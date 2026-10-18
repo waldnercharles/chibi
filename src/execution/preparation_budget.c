@@ -65,11 +65,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     if (values > INT_MAX) {
         return SIZE_MAX;
     }
+    /* Live value and root sets are counted after liveness and allocated
+     * exactly from the bounded owned arena, so only the table is reserved. */
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
-    retained = sum(retained, product(pauses, bank(values, sizeof(int))));
-    /* Every live aggregate can contribute one logical shape per suspension.
-     * Shapes borrow decoded metadata; only the derived vectors grow here. */
-    retained = sum(retained, product(pauses, bank(acount(f->value_roots), sizeof(behavior_value_root))));
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));

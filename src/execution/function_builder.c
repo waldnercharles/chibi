@@ -2179,7 +2179,10 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
     if (!b->decoded) {
         behavior_function_optimize(f);
     }
-    behavior_function_finalize(f);
+    if (!behavior_function_finalize(f, b->decoded ? b->arena_budget : SIZE_MAX)) {
+        snprintf(error, size, "suspension live sets exceed preparation budget");
+        return NULL;
+    }
     behavior_function_parallel_proof(f);
     if (b->decoded) {
         if (!behavior_function_own_decoded(f, b->arena_budget)) {

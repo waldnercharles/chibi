@@ -20,7 +20,7 @@
 #include <string.h>
 
 /* Twenty-four shared constructions, four precedence inputs and seventeen
- * validation requests: 90 Build calls,
+ * validation requests and one missing-token input: 92 Build calls,
  * three million instructions each, eight actual source files per backend.
  * Inputs have at most five files below 1 KiB and four imports. The SIZE_MAX
  * precedence input is never read at its declared size. Native parsing receives
@@ -48,7 +48,8 @@ static source_package_collection expected_roots[3];
 static int expected_root_count;
 static const char *expected_root_error;
 static source_package_routed_file expected_routes[MAX_FILES];
-static int constructions, offered_files, parsed_documents, raw_nodes;
+static int constructions, offered_files, parsed_documents, raw_nodes, missing_nodes;
+static bool named_seen[2], extra_seen[2], error_seen;
 
 static void finish_comparison()
 {
@@ -652,7 +653,10 @@ static bool compare_result(
             REQUIRE(
                 compiler_fixture_nodes(ts_tree_root_node(expected[f].syntax->tree), raw, MAX_NODES, 128, &local_count)
             );
-            REQUIRE(number(document, "node_start", node_offset));
+            REQUIRE(
+                number(document, "node_start", node_offset) &&
+                number(document, "syntax_root", node_offset)
+            );
             for (int n = 0; n < local_count; n++) {
                 REQUIRE(node_offset + n < forest->count);
                 const pin_value *node = &forest->items[node_offset + n];
@@ -688,12 +692,18 @@ static bool compare_result(
                 REQUIRE(
                     flag(node, "error", ts_node_is_error(original)) &&
                     flag(node, "missing", ts_node_is_missing(original)) &&
-                    flag(node, "has_error", ts_node_has_error(original))
+                    flag(node, "has_error", ts_node_has_error(original)) &&
+                    flag(node, "is_named", ts_node_is_named(original)) &&
+                    flag(node, "is_extra", ts_node_is_extra(original))
                 );
+                named_seen[ts_node_is_named(original)] = true;
+                extra_seen[ts_node_is_extra(original)] = true;
+                error_seen |= ts_node_is_error(original);
+                missing_nodes += ts_node_is_missing(original);
             }
             node_offset += local_count;
         } else {
-            REQUIRE(number(document, "node_start", 0));
+            REQUIRE(number(document, "node_start", 0) && number(document, "syntax_root", -1));
         }
         REQUIRE(number(document, "node_count", local_count));
         bool visited = file_phase_complete &&
@@ -920,10 +930,26 @@ TEST_CASE(package_snapshot_all_parse_before_import)
     };
     return precedence_case(files, 2, NULL, 1);
 }
+TEST_CASE(package_snapshot_missing_syntax_token)
+{
+    /* Tree-sitter inserts MISSING ")" for the first body and recovers the
+     * unterminated second declaration as ERROR; both reach the snapshot. */
+    static const char text[] = "package app\n"
+                               "Value :: pure fn() -> int { return (1; }\n"
+                               "Other :: pure fn() -> int { return 1;\n";
+    const source_package_input file = { "app/a.chibi", text, sizeof text - 1 };
+    int before = missing_nodes;
+    error_seen = false;
+    REQUIRE(precedence_case(&file, 1, NULL, 0));
+    REQUIRE(missing_nodes > before && error_seen);
+    return true;
+}
 static bool retained_results()
 {
     compiler_fixture_free(&fixture);
-    REQUIRE(constructions == 45 && offered_files == 71 && saved_kind[0] && saved_kind[1]);
+    REQUIRE(constructions == 46 && offered_files == 72 && saved_kind[0] && saved_kind[1]);
+    REQUIRE(named_seen[0] && named_seen[1] && extra_seen[0] && extra_seen[1]);
+    REQUIRE(error_seen && missing_nodes > 0);
     for (int b = 0; b < 2; b++) {
         for (int kind = 0; kind < 2; kind++) {
             REQUIRE(saved[b][kind].type == PIN_UNION && saved[b][kind].ptr);
@@ -1031,6 +1057,7 @@ void test_language_package_snapshot_chibi()
     RUN_TEST_CASE(package_snapshot_early_parse_before_later_route);
     RUN_TEST_CASE(package_snapshot_all_parse_before_import);
     RUN_TEST_CASE(package_snapshot_route_before_byte_validation);
+    RUN_TEST_CASE(package_snapshot_missing_syntax_token);
     RUN_TEST_CASE(package_snapshot_utf8_validation);
     RUN_TEST_CASE(package_snapshot_source_budget_validation);
     RUN_TEST_CASE(package_snapshot_options_validation);
@@ -1054,5 +1081,6 @@ void test_language_package_snapshot_chibi()
     }
     saved_kind[0] = saved_kind[1] = false;
     attempted = false;
-    constructions = offered_files = parsed_documents = raw_nodes = 0;
+    constructions = offered_files = parsed_documents = raw_nodes = missing_nodes = 0;
+    named_seen[0] = named_seen[1] = extra_seen[0] = extra_seen[1] = error_seen = false;
 }

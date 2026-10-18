@@ -7,7 +7,7 @@
 #include "execution/state.h"
 #include "execution/task.h"
 #include "language/identity.h"
-#include "language/scalar_lowering_reference.h"
+#include "scalar_lowering_reference.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"

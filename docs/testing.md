@@ -1340,6 +1340,52 @@ scalar values. Local append, reassignment and element writes preserve caller
 snapshots; a returned array retained in behavior state survives the first
 activation. The existing array capability pack supplies the append operation.
 
+## Compiler artifact runtime checks
+
+`python3 tools/test_policy.py tool compiler-artifact` selects six tooling cases
+and one child producer case. Build `test_language`, `test_tools` and
+`chibi-compiler-host` separately. The producer prepares the actual eight-package
+source-snapshot compiler closure on both backends (16 source parses), serializes
+its executable modules and checks that reversed record order yields identical
+container bytes. It writes five requests and expected results, then exits.
+
+Two fresh product processes load only that artifact and run the five requests
+on bytecode and SLJIT. Actual entry counters must confirm the requested backend
+without inspection fallback. The cases include a three-file import graph, syntax
+failure, invalid UTF-8, embedded-NUL source length and an exact uint64 maximum
+declared size. Five source calls plus ten product calls each permit three million
+instructions. Four C oracle parses and twelve raw bridge parses, including the
+source calls, make at most 32 parses with preparation. Each request contains at
+most three input files. The artifact is capped at 16 MiB, request JSON at 8 KiB,
+expected/captured output at 256 KiB and stderr at 4 KiB.
+
+Three direct malformed-container cases reject truncation, duplicate IDs and
+trailing data before executable decoding. One additional child checks CLI
+bad-magic rejection. A separate tiny runtime-built reference-argument module,
+capped at 64 KiB, must reject a numeric pointer input before decoding or
+execution; it adds no source parse. Four children total each have at most ten
+seconds within the single shared 60-second supervisor deadline. The fixture
+removes its disposable directory and artifacts. No network, renderer or GPU
+work is admitted. This route is outside the tooling aggregate.
+
+The private transport preserves invalid UTF-8 bytes and uint64 values for
+compiler input diagnostics; it is not a change to ordinary JSON adapters.
+Artifacts contain target-compatible prepared executables and debug origins.
+This check does not establish cross-architecture portability, a full compiler
+bootstrap or source-free SDK installation. Inspect the product's actual symbols
+and link inputs separately to verify that source preparation, semantic analysis
+and lowering are absent.
+
+The existing two-case `package-ownership` route also verifies both private host
+executables and their directly linked implementation objects under Ninja and
+Makefiles. The compiler host adds four tiny C compilations, two executable links
+and one wrong-owner inspection. The route has 22 supervised child invocations
+(six configure/build/install commands and sixteen inspections), each bounded to
+ten seconds within the shared 60-second ceiling. It compiles thirteen tiny C
+units and one precompiled header; none of those fixture executables runs. Missing
+or changed installed compiler-host bytes and linking its implementation only
+into an unrelated executable must fail provenance checks.
+
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects eighteen C cases in the

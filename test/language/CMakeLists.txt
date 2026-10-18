@@ -128,6 +128,12 @@ set_source_files_properties(package_syntax.c package_syntax_chibi.c package_path
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_syntax.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::json Chibi::language_syntax)
+target_sources(test_language PRIVATE compiler_artifact_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c")
+set_source_files_properties(compiler_artifact_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+target_link_libraries(test_language PRIVATE Chibi::asset_json)
 target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c)
 set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

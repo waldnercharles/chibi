@@ -222,6 +222,16 @@ TOOLS = {
                       '--build-process',
                       str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Six tooling cases plus one producer case, four supervised children <=10s
+    # each under shared60s: producer, two five-request batches, bad-magic CLI.
+    # Actual eight-package closure:16preparation parses,4C+12raw parser calls,
+    # 15Build calls@3m. Three malformed reads stop before decode; one tiny
+    # reference-entry artifact rejects beforeexecution. Artifacts<=16MiB,
+    # inputs<=8KiB,output<=256KiB. No renderer/GPU/network; separate build.
+    'compiler-artifact': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                         '--compiler-artifact',
+                         str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                         str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
     # Six fixed orchestration cases: 38 API invocations on both backends, one CLI,
     # ten tiny Git roots, controlled CMake workers and Make routing; no engine builds.
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
@@ -230,7 +240,7 @@ TOOLS = {
                         str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # Two configured-ownership cases: 21 children, 13 rejects, nine tiny C units and one PCH.
+    # Two configured-ownership cases:22children,14rejects,13tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],

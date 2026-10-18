@@ -30,6 +30,18 @@ NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'scene_
 DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
 
 
+# Private product tools own their directly linked implementation objects; neither
+# implementation headers nor an independently installed archive enter the SDK.
+PRIVATE_TOOL_PATHS = {
+    'chibi-build-host': 'libexec/chibi/chibi-build-host',
+    'chibi-compiler-host': 'libexec/chibi/chibi-compiler-host',
+}
+PRIVATE_OBJECT_OWNERS = {
+    'chibi_build_host': 'chibi-build-host',
+    'chibi_compiler_host': 'chibi-compiler-host',
+}
+
+
 def digest(path):
     result = hashlib.sha256()
     with path.open('rb') as source:
@@ -117,7 +129,7 @@ def product_targets(cache, system=None):
 def private_tool_targets(cache, system=None):
     system = system or cache.get('CMAKE_SYSTEM_NAME')
     if cache.get('CHIBI_SDK_BUILD_COMPILER') == 'ON' and system in ('Darwin', 'Linux'):
-        return {'chibi-build-host': 'libexec/chibi/chibi-build-host'}
+        return dict(PRIVATE_TOOL_PATHS)
     return {}
 
 
@@ -446,7 +458,7 @@ def build_identity(build, cache):
             raise ValueError(f'Cannot identify archive owner for {object_path.name}')
         target = target_directory.name.removesuffix('.dir')
         if cache.get('CMAKE_GENERATOR') != 'Ninja':
-            if target in ('chibi', 'chibi-player', 'chibi-compile', 'chibi-build-host'):
+            if target in ('chibi', 'chibi-player', 'chibi-compile') or target in PRIVATE_TOOL_PATHS:
                 if target not in allowed_products and target not in allowed_tools:
                     raise ValueError(f'Executable {target} is outside the configured product contract')
                 identities = private_executables if target in allowed_tools else executables
@@ -455,7 +467,7 @@ def build_identity(build, cache):
                 executable = build / identities[target]['path']
                 if executable.stat().st_mtime_ns < object_path.stat().st_mtime_ns:
                     raise ValueError(f'Executable {target} predates a rebuilt object; relink first')
-            elif target == 'chibi_build_host' and 'chibi-build-host' in allowed_tools:
+            elif PRIVATE_OBJECT_OWNERS.get(target) in allowed_tools:
                 # Private host objects link directly into its installed tool.
                 # It deliberately has no separately installed static archive.
                 pass
@@ -543,10 +555,11 @@ def build_identity(build, cache):
         raise ValueError(f'Built private executables differ from tool contract: {sorted(private_executables)}')
     for name, evidence in private_executables.items():
         evidence['install_path'] = allowed_tools[name]
-    if cache.get('CMAKE_GENERATOR') != 'Ninja' and private_executables:
-        linked = private_executables['chibi-build-host']['link_inputs']
-        for name, evidence in objects.items():
-            if evidence['target'] == 'chibi_build_host' and linked.get(name) != evidence['sha256']:
+    for name, evidence in objects.items():
+        owner = PRIVATE_OBJECT_OWNERS.get(evidence['target'])
+        if owner in allowed_tools:
+            linked = private_executables[owner]['link_inputs']
+            if linked.get(name) != evidence['sha256']:
                 raise ValueError(f'Private host object has no installed executable owner: {name}')
     return {'configured_engine': configured,
             'object_count': len(objects), 'objects': objects, 'archives': archives,

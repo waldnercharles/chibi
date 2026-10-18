@@ -157,7 +157,7 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     yyjson_val *objects = yyjson_obj_get(compiled, "objects");
     yyjson_val *archives = yyjson_obj_get(compiled, "archives");
 #if defined(__linux__) || defined(__APPLE__)
-    REQUIRE(yyjson_obj_size(objects) == 8);
+    REQUIRE(yyjson_obj_size(objects) == 10);
 #else
     REQUIRE(yyjson_obj_size(objects) == 7);
 #endif
@@ -204,10 +204,17 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     REQUIRE(text_is(yyjson_obj_get(auxiliary, "auxiliary"), "path", "auxiliary"));
     yyjson_val *private_tools = yyjson_obj_get(compiled, "private_executables");
 #if defined(__linux__) || defined(__APPLE__)
-    REQUIRE(yyjson_obj_size(private_tools) == 1);
+    REQUIRE(yyjson_obj_size(private_tools) == 2);
     REQUIRE(
         text_is(yyjson_obj_get(private_tools, "chibi-build-host"), "install_path", "libexec/chibi/chibi-build-host")
     );
+    REQUIRE(
+        text_is(yyjson_obj_get(private_tools, "chibi-compiler-host"), "install_path", "libexec/chibi/chibi-compiler-host")
+    );
+    object = yyjson_obj_get(objects, "CMakeFiles/chibi_compiler_host.dir/src/debug.c.o");
+    REQUIRE(object);
+    REQUIRE(contains(yyjson_obj_get(object, "artifacts"), "chibi-compiler-host"));
+    REQUIRE(yyjson_obj_get(archives, "libchibi_compiler_host.a") == NULL);
 #else
     REQUIRE(yyjson_obj_size(private_tools) == 0);
 #endif
@@ -223,7 +230,7 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     );
     yyjson_doc_free(doc);
 
-    /* Nine fixed compiled-evidence rejects, restoring each fixture mutation. */
+    /* Fixed compiled-evidence rejects, restoring each fixture mutation. */
     char filename[1024], saved[1024];
     path(filename, build, "CMakeFiles/folded_object.dir/src/object.c.o");
     path(saved, directory, "saved-object");
@@ -245,6 +252,16 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     path(graph_path, build, "build.ninja");
     char *graph = tool_read(graph_path);
     REQUIRE(graph);
+#if defined(__linux__) || defined(__APPLE__)
+    /* Keeping this object in auxiliary must not substitute for its installed
+     * compiler-host owner. The ordinary artifact membership stays complete. */
+    REQUIRE(
+        schedule_input(graph_path, "chibi-compiler-host", "CMakeFiles/chibi_compiler_host.dir/src/debug.c.o", true)
+    );
+    status = inspect();
+    tool_write(graph_path, graph);
+    REQUIRE(diagnostic(status, "Private host object has no installed executable owner:"));
+#endif
     REQUIRE(
         schedule_input(graph_path, "relocated/librenamed.a", "CMakeFiles/folded_object.dir/src/object.c.o", true)
     );
@@ -325,7 +342,7 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
 
 #if defined(__linux__) || defined(__APPLE__)
     /* Private installed tools retain their own compiled identity. */
-    path(filename, stage, "libexec/chibi/chibi-build-host");
+    path(filename, stage, "libexec/chibi/chibi-compiler-host");
     path(saved, directory, "saved-private-tool");
     REQUIRE(rename(filename, saved) == 0);
     status = inspect();
@@ -368,7 +385,12 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
         "add_library(chibi_build_host OBJECT src/host.c)\n"
         "add_executable(chibi-build-host src/main.c)\n"
         "target_link_libraries(chibi-build-host PRIVATE chibi_build_host)\n"
-        "install(TARGETS chibi-build-host RUNTIME DESTINATION libexec/chibi)\n"
+        "add_library(chibi_compiler_host OBJECT src/host.c)\n"
+        "add_executable(chibi-compiler-host src/main.c)\n"
+        "target_link_libraries(chibi-compiler-host PRIVATE "
+        "chibi_compiler_host)\n"
+        "install(TARGETS chibi-build-host chibi-compiler-host RUNTIME "
+        "DESTINATION libexec/chibi)\n"
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.c\" source_hash)\n"
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.h\" header_hash)\n"
         "file(WRITE \"${CMAKE_BINARY_DIR}/chibi_engine_metadata.json\" "
@@ -395,7 +417,7 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
     yyjson_doc *doc = yyjson_read_file(log_path, 0, NULL, NULL);
     REQUIRE(doc);
     yyjson_val *compiled = yyjson_obj_get(yyjson_doc_get_root(doc), "compiled");
-    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "objects")) == 2);
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "objects")) == 4);
     REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "archives")) == 0);
     REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "executables")) == 0);
     REQUIRE(text_is(
@@ -403,6 +425,15 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
         "install_path",
         "libexec/chibi/chibi-build-host"
     ));
+    REQUIRE(yyjson_obj_size(yyjson_obj_get(compiled, "private_executables")) == 2);
+    yyjson_val *compiler = yyjson_obj_get(yyjson_obj_get(compiled, "private_executables"), "chibi-compiler-host");
+    REQUIRE(text_is(compiler, "install_path", "libexec/chibi/chibi-compiler-host"));
+    yyjson_val *objects = yyjson_obj_get(compiled, "objects");
+    const char *owned = "CMakeFiles/chibi_compiler_host.dir/src/host.c.o";
+    const char *checksum = yyjson_get_str(
+        yyjson_obj_get(yyjson_obj_get(objects, owned), "sha256")
+    );
+    REQUIRE(checksum && text_is(yyjson_obj_get(compiler, "link_inputs"), owned, checksum));
     yyjson_doc_free(doc);
     return true;
 }

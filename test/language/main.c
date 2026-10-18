@@ -78,6 +78,7 @@ void test_graph_authoring();
 void test_model_runtime();
 void test_language_format_corpus(const char *manifest);
 void test_language_prepared_write(const char *directory);
+void test_language_compiler_artifact_write(const char *directory);
 void test_language_record_producer(const char *directory);
 
 int main(int argc, char **argv)
@@ -85,6 +86,8 @@ int main(int argc, char **argv)
     bool format = (argc == 2 || argc == 4) && !strcmp(argv[1], "--format");
     bool record_producer = argc == 3 && !strcmp(argv[1], "--record-produce");
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
+    bool compiler_artifact = argc == 3 &&
+                             !strcmp(argv[1], "--compiler-artifact-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
     bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
@@ -162,23 +165,24 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !record_producer && !execution && !semantic &&
-         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
-         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
-         !incremental_benchmark && !record_publication && !record_publication_repro &&
-         !record_values && !record_document && !record_state && !record_services &&
-         !record_compatibility && !record_semantic && !record_prepared_runtime &&
-         !outliner_projection && !row_builder && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !numeric_exact_core &&
-         !package_graph && !package_graph_chibi && !syntax_chibi &&
-         !package_syntax && !package_syntax_chibi && !package_paths_chibi &&
-         !package_routes_chibi && !package_snapshot_chibi && !constant_proof_chibi &&
-         !constant_scalar_chibi && !package_execution && !package_resolution &&
-         !package_imports && !package_files && !package_core && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+        (!format && !prepared && !compiler_artifact && !record_producer &&
+         !execution && !semantic && !inferred_arrays && !inferred_array_repro &&
+         !root_state && !benchmark && !activation_benchmark && !binding_benchmark &&
+         !borrow_benchmark && !incremental_benchmark && !record_publication &&
+         !record_publication_repro && !record_values && !record_document &&
+         !record_state && !record_services && !record_compatibility &&
+         !record_semantic && !record_prepared_runtime && !outliner_projection &&
+         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
+         !wasm && !program && !query_program && !incremental && !modules &&
+         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
+         !syntax_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !constant_proof_chibi && !constant_scalar_chibi && !package_execution &&
+         !package_resolution && !package_imports && !package_files &&
+         !package_core && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -212,7 +216,8 @@ int main(int argc, char **argv)
             "--record-compatibility | --row-array | --row-builder | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
-            "--format [--corpus manifest] | --prepared-write "
+            "--format [--corpus manifest] | --compiler-artifact-write "
+            "directory | --prepared-write "
             "directory\n",
             argv[0]
         );
@@ -304,6 +309,8 @@ int main(int argc, char **argv)
         }
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
+    } else if (compiler_artifact) {
+        test_language_compiler_artifact_write(argv[2]);
     } else if (build_workflow) {
         test_language_build_workflow();
     } else if (headless) {

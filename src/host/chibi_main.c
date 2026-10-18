@@ -19,8 +19,10 @@
 #include <sys/utime.h>
 #endif
 
-/* chibi [PROJECT] [PLAYER OPTIONS]: prepares the project when its sources or
- * the compiler changed since the last preparation, then plays it.
+/* chibi build [PROJECT]: prepares the project when its sources or the compiler
+ * changed since the last preparation.
+ * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
+ * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
  * folder, or a static site for browsers. */
 
@@ -133,9 +135,13 @@ static int usage(const char *program)
 {
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
+        "       %s build [PROJECT]\n"
+        "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
+        "build prepares .chibi/build/game.chibip without starting the player.\n"
+        "run prepares and starts the player; the unnamed form is equivalent.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
         "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
@@ -143,6 +149,8 @@ static int usage(const char *program)
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
         "--archive also writes DIR.tar.gz.\n",
+        program,
+        program,
         program,
         program
     );
@@ -308,6 +316,74 @@ static int export_game(int argc, char **argv)
     return exported ? 0 : 1;
 }
 
+static int project_command(const char *requested, int player_argc, char **player_argv, bool play)
+{
+    chibi_project project = { 0 };
+    if (!open_project(&project, requested)) {
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    char *artifact = join(project.root, CHIBI_ARTIFACT);
+    int result = prepare(bin, &project, artifact);
+    if (result || !play) {
+        free(artifact);
+        free(bin);
+        chibi_project_free(&project);
+        return result;
+    }
+    char **player = xmalloc((size_t)(player_argc + 5) * sizeof *player);
+    player[0] = join(bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
+    player[1] = artifact;
+    player[2] = "--resource-root";
+    player[3] = project.root;
+    memcpy(player + 4, player_argv, (size_t)player_argc * sizeof *player);
+    player[player_argc + 4] = NULL;
+#ifdef _WIN32
+    /* Windows has no exec that keeps the process; wait for the player, which
+     * handles Ctrl+C itself. */
+    signal(SIGINT, SIG_IGN);
+    result = chibi_process_run(player);
+#else
+    execv(player[0], player);
+    fprintf(stderr, "Cannot run %s: %s\n", player[0], strerror(errno));
+    result = 1;
+#endif
+    free(player[0]);
+    free(player);
+    free(artifact);
+    free(bin);
+    chibi_project_free(&project);
+    return result;
+}
+
+static int build_game(int argc, char **argv)
+{
+    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
+        return usage(argv[0]);
+    }
+    if (argc > 3 || (argc == 3 && argv[2][0] == '-')) {
+        fprintf(stderr, "Invalid build option; use --help.\n");
+        return 2;
+    }
+    return project_command(argc == 3 ? argv[2] : NULL, 0, NULL, false);
+}
+
+static int run_game(int argc, char **argv)
+{
+    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
+        return usage(argv[0]);
+    }
+    int first = 2;
+    const char *requested = NULL;
+    if (first < argc && strcmp(argv[first], "--") && argv[first][0] != '-') {
+        requested = argv[first++];
+    }
+    if (first < argc && !strcmp(argv[first], "--")) {
+        first++;
+    }
+    return project_command(requested, argc - first, argv + first, true);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
@@ -316,34 +392,12 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "export")) {
         return export_game(argc, argv);
     }
+    if (argc > 1 && !strcmp(argv[1], "build")) {
+        return build_game(argc, argv);
+    }
+    if (argc > 1 && !strcmp(argv[1], "run")) {
+        return run_game(argc, argv);
+    }
     int first = argc > 1 && argv[1][0] != '-' ? 2 : 1;
-    chibi_project project = { 0 };
-    if (!open_project(&project, first == 2 ? argv[1] : NULL)) {
-        return 2;
-    }
-    char *root = project.root;
-    char *bin = file_executable_dir();
-    char *artifact = join(root, CHIBI_ARTIFACT);
-    int prepared = prepare(bin, &project, artifact);
-    if (prepared) {
-        return prepared;
-    }
-    int count = argc - first;
-    char **player = xmalloc((size_t)(count + 5) * sizeof *player);
-    player[0] = join(bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
-    player[1] = artifact;
-    player[2] = "--resource-root";
-    player[3] = root;
-    memcpy(player + 4, argv + first, (size_t)count * sizeof *player);
-    player[count + 4] = NULL;
-#ifdef _WIN32
-    /* Windows has no exec that keeps the process; wait for the player, which
-     * handles Ctrl+C itself. */
-    signal(SIGINT, SIG_IGN);
-    return chibi_process_run(player);
-#else
-    execv(player[0], player);
-    fprintf(stderr, "Cannot run %s: %s\n", player[0], strerror(errno));
-    return 1;
-#endif
+    return project_command(first == 2 ? argv[1] : NULL, argc - first, argv + first, true);
 }

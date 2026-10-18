@@ -41,6 +41,7 @@ void test_tool_record_c_export();
 void test_tool_row_builder_c();
 #endif
 void test_tool_package();
+void test_tool_chibi_cli(const char *binary);
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
 void test_tool_collab();
@@ -495,6 +496,13 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();

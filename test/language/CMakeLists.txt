@@ -99,6 +99,13 @@ set(CHIBI_SCALAR_PROOF_BYTES "${CHIBI_CONSTANT_PROOF_BYTES}")
 configure_file(constant_scalar_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/constant_scalar_chibi_source.h" @ONLY)
 
+set(scalar_lowering_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/scalar_lowering/Lower.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${scalar_lowering_source}")
+file(READ "${scalar_lowering_source}" CHIBI_SCALAR_LOWERING_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SCALAR_LOWERING_BYTES "${CHIBI_SCALAR_LOWERING_HEX}")
+configure_file(scalar_lowering_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/scalar_lowering_chibi_source.h" @ONLY)
+
 set(lexical_binding_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/lexical_binding/Binding.chibi")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${lexical_binding_source}")
 file(READ "${lexical_binding_source}" CHIBI_LEXICAL_BINDING_HEX HEX)
@@ -203,7 +210,7 @@ target_link_libraries(test_behavior_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 # The backend-specific fixtures inspect private activation storage. Other tests
 # continue to compile solely against their public SDK dependencies.
-set_source_files_properties(inferred_string_arrays.c record_publication.c outliner_projection.c row_builder.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_builder.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_builder.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_graph_chibi.c)
@@ -222,6 +229,9 @@ set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json Chibi::native_prepared)
+target_sources(test_language PRIVATE scalar_lowering_chibi.c)
+set_source_files_properties(scalar_lowering_chibi.c
+    PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
 set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")

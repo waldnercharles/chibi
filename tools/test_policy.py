@@ -605,6 +605,18 @@ TOOLS = {
     # separate build/shared60s, outside the language aggregate.
     'language-constant-scalar-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--constant-scalar-chibi'],
+    # One C/pico case: eight fixed raw typed-IR requests on BYTECODE/SLJIT.
+    # Two Lower.chibi preparations (<32 KiB each), including 62 bootstrap
+    # initializer VM entries at budget 100k; 16 Lower calls at budget 500k.
+    # Context budgets reset in child activations, not aggregate work ceilings.
+    # 24 canonical plans/prepared round trips, 48 target runs at budget128,
+    # eight decoder-only rejections. Maxima: 24 expressions/types/literals,
+    # two symbols/variables/results, 256 visits/instructions, 257 frame rows.
+    # No workload IO, children, services, GPU or Wasm fallback. Independent
+    # exact-source/workload admission before first run; separate build, one
+    # unchanged shared60s deadline including preparation/cleanup; no aggregate.
+    'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--scalar-lowering-chibi'],
     # Three cases:40 requests,80 authored calls capped at2m instructions each.
     # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
     # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,

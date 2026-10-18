@@ -1,9 +1,8 @@
 # Chibi build tooling and self-hosting
 
-Status: the first recording-host proof builds and passes on native bytecode and
-SLJIT. It uses existing Chibi syntax and adds no compiler grammar, process
-permission, game host capability or replacement build system. The long-term goal
-is a Chibi-authored compiler and tooling, reached through bounded, tested steps.
+The recording proof and private real-process host use existing Chibi syntax on
+bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
+`PLAN.md` owns milestone status and current validation evidence.
 
 ## First increment
 
@@ -33,15 +32,55 @@ The exact standalone language target was built separately. Broader native,
 materials, projects, language and tooling groups were not run for this proof;
 unmeasured and quarantined checks are not passed.
 
-## Next build-host increment
+## Private process host
 
-A separately reviewed, explicit build-only host may execute direct argv without
-a shell. It must define cwd/environment, own retained arguments, bound time and
-output, propagate spawn/exit errors, and cancel and reap its process group. Normal
-game hosts must not acquire process execution. The existing C process helper is
-an implementation starting point, not proof of these Chibi-facing contracts.
-Initially Chibi would orchestrate existing CMake/C compiler steps. This is useful
-language-native build logic, but it is not a compiler written in Chibi.
+Stage zero builds `chibi-build-host` on Linux and macOS. It is private, absent
+from installed SDK exports and ordinary game catalogs. Windows retains the
+existing stage-zero path; its equivalent process-tree implementation is pending.
+
+```text
+chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N
+```
+
+The host reads one regular `.chibi` source file, at most 1 MiB, and invokes one
+named zero-argument function returning `int`. Relative source paths resolve from
+the explicit root. The CLI uses bytecode; the private C invocation API also
+supports SLJIT. Tests verify backend entry counters. Source preparation and
+execution share the invocation budget. A supervised invocation may omit
+`--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
+
+The private catalog contains `RunBuildStep(arguments: string[]) -> int` and
+`BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
+directory. PATH lookup selects the executable separately from the authored
+`argv[0]`, preserving every argument, including empty strings and shell syntax.
+No shell interprets the arguments. The host copies the root, arguments and
+allowlisted environment for the child lifetime and never changes parent cwd or
+environment.
+
+The environment allowlist is `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SDKROOT`,
+`DEVELOPER_DIR`, `CHIBI_TEST_DEADLINE` and the controlled fixture's
+`CHIBI_BUILD_WORKER`. Missing allowed names read as empty strings; other names
+are capability errors. Each invocation permits 64 steps and each step permits
+256 arguments totaling 64 KiB. Captured stdout and stderr each retain at most
+4,095 bytes across all steps; truncation remains visible in the result and CLI.
+
+Child exits return `0..255`; signal termination returns the negative signal
+number. Invalid input, spawn failure, timeout, cancellation and host failure
+are capability errors with stable diagnostics. The CLI maps a returned negative
+signal number to the conventional `128 + signal` exit status.
+
+One absolute deadline bounds every child, including the inherited production
+test deadline. The native clock matches Python's supervisor on each platform:
+macOS uptime excludes sleep, while Linux uses `CLOCK_MONOTONIC`. The host kills
+the complete child process group and reaps its direct child on termination,
+including when a leader exits before its descendants. This is process-group
+cleanup, not containment of children that deliberately create detached sessions.
+
+`BuildProcessFixture.chibi` runs only the controlled C worker supplied through
+its private environment. The original `BuildWorkflow.chibi` also runs unchanged
+against a disposable worker named `cmake`, testing sequence and failure behavior
+without configuring or building the engine. Real CMake orchestration belongs to
+M2; compiler self-hosting belongs to later milestones.
 
 ## Bootstrap and backend milestones
 

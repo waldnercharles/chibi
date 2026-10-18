@@ -216,6 +216,12 @@ TOOLS = {
     # compiler/player, one tiny authored project, no renderer/network; shared 60s.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
+    # Fixed POSIX process/VM/SLJIT cases over one controlled worker and disposable
+    # root. Bounded capture, short cancellation/timeout cases; no engine builds.
+    'build-process': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                      '--build-process',
+                      str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                      str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
     # One configured-ownership case: 15 children, 11 rejects, six tiny C units and one PCH.

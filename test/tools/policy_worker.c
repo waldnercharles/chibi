@@ -92,6 +92,44 @@ static int cleanup_probe(const char *directory)
 int main(int argc, char **argv)
 {
     assert(argc >= 3);
+    if (!strcmp(argv[1], "-S")) {
+        assert(argc == 6 && !strcmp(argv[0], "cmake"));
+        assert(!strcmp(argv[2], ".") && !strcmp(argv[3], "-B"));
+        assert(!strcmp(argv[4], "build self-hosting"));
+        assert(!strcmp(argv[5], "-DCHIBI_NOTE=space \"quote\";$literal*"));
+        puts("configure");
+        return !access("fail-configure", F_OK) ? 37 : 0;
+    }
+    if (!strcmp(argv[1], "--build")) {
+        assert(argc == 3 && !strcmp(argv[0], "cmake"));
+        assert(!strcmp(argv[2], "build self-hosting"));
+        puts("build");
+        return !access("fail-build", F_OK) ? 38 : 0;
+    }
+    if (!strcmp(argv[1], "build-argv")) {
+        char cwd[4096];
+        assert(getcwd(cwd, sizeof cwd));
+        printf("cwd=%s\n", cwd);
+        printf("allowed=%s\n", getenv("CHIBI_BUILD_ALLOWED") ? getenv("CHIBI_BUILD_ALLOWED") : "");
+        printf("secret=%s\n", getenv("CHIBI_BUILD_SECRET") ? getenv("CHIBI_BUILD_SECRET") : "");
+        printf("deadline=%s\n", getenv("CHIBI_TEST_DEADLINE") ? getenv("CHIBI_TEST_DEADLINE") : "");
+        for (int i = 2; i < argc; i++) {
+            printf("arg=%zu:%s\n", strlen(argv[i]), argv[i]);
+        }
+        fputs("worker-stderr\n", stderr);
+        return 23;
+    }
+    if (!strcmp(argv[1], "build-output")) {
+        for (int i = 0; i < 16384; i++) {
+            fputc('o', stdout);
+            fputc('e', stderr);
+        }
+        return 0;
+    }
+    if (!strcmp(argv[1], "build-signal")) {
+        raise(SIGTERM);
+        return 99;
+    }
     if (!strcmp(argv[1], "cleanup-probe")) {
         return cleanup_probe(argv[2]);
     }

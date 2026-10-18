@@ -179,8 +179,8 @@ Current integration constraints:
 | ID | Status | Depends on | Deliverable |
 | --- | --- | --- | --- |
 | M0 | **Complete** | current main | Explicit `build` and `run` commands over existing preparation and player behavior. |
-| M1 | **Ready** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
-| M2 | Blocked | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
+| M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
+| M2 | **Ready** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | Blocked | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | Blocked | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
@@ -233,13 +233,19 @@ argument forwarding, implicit run, and compiler failure. It is a POSIX-hosted
 process fixture. Do not infer Windows runtime coverage from it.
 
 PR #436 is integrated. Its removed external-example sources and selectors remain
-removed, while the CLI fixture remains registered. Before publication, decide
-whether the fixture belongs in the complete `make test-tools` group. Until then,
-its focused admitted selector is the recorded gate.
+removed, while the CLI fixture remains registered. It remains a focused admitted
+selector because `make test-tools` builds a runtime-only driver without the
+public launcher. The M1 build-host fixture likewise uses its explicit route.
 
 ### M1. Execute authored build steps in a build-only host
 
-Status: ready. This is the next action.
+Status: complete on this branch for Linux and macOS. Windows retains stage zero.
+
+The private host, capability catalog, bounded process API and focused C fixtures
+are implemented. Both real-process and original recording fixtures pass on
+Linux and macOS; actual counters verify bytecode and SLJIT. The ordinary native
+game catalog rejects both private capability names. See the current checkpoint
+for exact coverage and the remaining platform limits.
 
 Promote the recording-only `test/language/BuildWorkflow.chibi` proof into a
 private tool host. The host executes direct argv without a shell and is never
@@ -300,6 +306,8 @@ Completion criteria:
   and an independent review finds no unresolved correctness or lifetime issue.
 
 ### M2. Drive the existing build from Chibi
+
+Status: ready. This is the next action.
 
 Write one installed `.chibi` build program that invokes the existing CMake and C
 compiler steps through M1. It owns argument construction, profile selection,
@@ -449,58 +457,59 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting base: `origin/main` at `92cb7ca4869d0f13eadffaaf22e81f218180eb2e`
+- Starting checkpoint: `9ea13c24bce7c470ac1cde30b2ec8f714e6f33fd`, M0
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
-- Completed milestone: M0
-- Next action: M1, implement and test the private real-process build host
-- Current product changes: `src/host/chibi_main.c`, `test/tools/chibi_cli.c`,
-  `test/tools/main.c`, `test/tools/CMakeLists.txt`, and `tools/test_policy.py`
-- Documentation changes: this plan and `docs/toolchain-inventory.md`
+- Latest fetch and merge check: upstream unchanged; already up to date
+- Completed milestones: M0 and M1
+- Next action: M2, implement the installed Chibi program for native stage-zero
+  configuration/build, preserving compiler and cache precedence
 
-Recorded evidence for M0:
+M1 adds `src/host/build_host.c`, `build_host.h`, `build_main.c`, the bounded
+capture API in `process.c`/`.h`, and the private stage-zero CMake targets.
+`test/tools/build_process.c` and `BuildProcessFixture.chibi` cover the real host;
+the original recording source and cases remain unchanged. No public package,
+game catalog, project format, normal command meaning or recovery path changed.
+The host is not installed into the SDK yet; installed orchestration belongs to M2.
 
-```text
-make build BUILD_TARGET='chibi test_tools'
-  passed
+Current candidate evidence:
 
-CHIBI_CLI=build/sdk/chibi \
-CHIBI_TOOLS_BUILD_DIR=build/test/tools \
-/opt/homebrew/Cellar/splash/1.3.1/libexec/python/bin/python3 \
-  tools/test_policy.py tool chibi-cli
-  passed: 1 case, 22 assertions, 2.695s
+| Check | Result |
+| --- | --- |
+| `make build BUILD_TARGET='chibi chibi-build-host test_tools'` | Passed; final configure 3.3s, build 1.6s, separate from execution. |
+| `python3 tools/test_policy.py tool build-process`, macOS | 10 cases, 2,155 assertions, 5.054s. |
+| `python3 tools/test_policy.py tool build-process`, Linux | 10 cases, 2,154 assertions, 1.673s. |
+| `python3 tools/test_policy.py tool language-build-workflow`, macOS | 8 cases, 90 assertions, 1.228s. |
+| `python3 tools/test_policy.py tool language-build-workflow`, Linux | 8 cases, 90 assertions, 0.051s. |
+| `python3 tools/test_policy.py tool chibi-cli` | 1 case, 22 assertions, 1.381s. |
+| `make test-native` | Passed, 24.803s execution. |
+| `make test-materials` | Passed, 28.982s execution. |
+| `make test-projects` | Passed, 31.079s execution. |
+| `make test-language-all` | Passed, 18.265s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.426s execution. |
+| Changed C files, clang-format 22; `git diff --check` | Passed. |
 
-make test-native
-  passed: 24.322s execution wall time
+Every execution route uses the production inherited deadline, with a 60-second
+ceiling per admitted command. macOS uses the native Debug build with assertions,
+ASan/UBSan and the installed LLVM compiler. The standalone complete tooling group
+uses its own Debug configuration. Python 3.12.14 was selected through
+`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`.
+Linux uses Clang 21.1.2, Debug assertions and Python 3.12.15 on the existing
+Rancher aarch64 VM, without sanitizers or native/desktop SDK packages. The macOS
+case checks the full ordinary game catalog; Linux's minimal catalog rejects the
+private names. Both execute real bytecode and SLJIT and verify backend counters.
 
-make test-materials
-  passed: 28.425s execution wall time
+Independent review found and resolved argv-zero rewriting and an invalid test
+binding. Execution exposed two macOS differences, now covered by the real-child
+cases: Python's uptime clock differs from `CLOCK_MONOTONIC`, and Darwin can return
+`EPERM` for a group containing only a completed, unreaped leader. Final review
+found no unresolved correctness or lifetime issue. Process supervision covers
+ordinary same-credential child groups; it is not containment of children that
+escape their group or change credentials.
 
-make test-projects
-  passed: 30.553s execution wall time
-
-make test-language-all
-  passed: 17.963s execution wall time
-
-PATH=/opt/homebrew/Cellar/splash/1.3.1/libexec/python/bin:$PATH make test-tools
-  passed with Python 3.13.15: 125 cases, 27,270 assertions, 22.801s execution wall time
-
-build/sdk/chibi --help
-  showed build, run, implicit run, and export forms
-
-git diff --check
-  passed
-
-changed C files with clang-format 22
-  passed
-```
-
-An independent review found no actionable launcher, lifetime, argument, or test
-wiring defects. All recorded results above are from the candidate integrated with
-`origin/main` at `6ea2221c9`. The default Apple Python 3.9.6 cannot run the
-existing web-publisher cases because `hashlib.file_digest` is unavailable; use
-Python 3.11 or newer until that project-owned Python is replaced. The complete
-native, render, Studio, browser/device, and other quarantined suites were not run
-and are not passed. Repository-wide
-`make check-format` remains red on unchanged `src/language/lower.c` and
-`test/language/record_publication.c`; changed C files are formatted. The focused
-CLI selector is not yet part of `make test-tools`, as recorded under M0.
+Logs, configuration commands, review notes and checksums are retained under
+ignored `.chibi/evidence/toolchain-m1/`. Linux used only cached dependency source
+and disposable build directories. No engine project was configured or built by
+an authored test. Windows process-tree equivalence remains unimplemented, so its
+stage-zero path stays selected. Full native/render/Studio/browser/device and
+other quarantined suites were not run and are not passed. Repository-wide format
+was not rerun; only changed C files were checked.

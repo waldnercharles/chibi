@@ -1,0 +1,8 @@
+library BuildProcessFixture {
+    BuildFixture :: fn() -> int {
+        return RunBuildStep([
+            BuildEnvironment("CHIBI_BUILD_WORKER"), "build-argv", "",
+            "space \"quote\";$literal*"
+        ]);
+    }
+}

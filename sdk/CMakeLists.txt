@@ -543,6 +543,21 @@ if(CHIBI_SDK_BUILD_COMPILER)
         endif()
     endif()
 endif()
+# Stage-zero private build host: deliberately absent from SDK export/install.
+if(TARGET chibi_authoring AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    add_library(chibi_build_host STATIC "${CHIBI_SDK_ROOT}/src/host/build_host.c"
+        "${CHIBI_SDK_ROOT}/src/host/process.c")
+    foreach(header build_host process)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
+    endforeach()
+    target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
+    target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
+    target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
+    add_executable(chibi-build-host "${CHIBI_SDK_ROOT}/src/host/build_main.c")
+    target_link_libraries(chibi-build-host PRIVATE chibi_build_host chibi_support)
+    target_compile_options(chibi-build-host PRIVATE -Wall -Wextra -Werror)
+endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)
     add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"

@@ -1084,6 +1084,34 @@ CI remains partial coverage. Report the checks that actually ran. Applicable
 server-required checks, independent review, explicit holds and approval rules
 remain binding.
 
+## Private build-host process checks
+
+`python3 tools/test_policy.py tool build-process` selects ten C cases in the
+existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
+`policy_worker` dependency separately. The route uses one disposable directory,
+two fixed authored sources, at most 40 controlled process launches or failed
+spawn attempts, and one shared 60-second production deadline. It performs no
+engine configure/build, network, renderer or GPU work. Case deadlines are at
+most two seconds, with shorter deliberate timeout/cancellation budgets; every
+native case clamps its budget to the inherited deadline.
+
+Cases cover exact argv and cwd, explicit environment and parent isolation,
+separate output bounds, exits/signals, spawn errors, timeout, active cancellation,
+and descendants whose leader exits first. The private host executes both the
+controlled source and unchanged recording workflow on bytecode and SLJIT, with
+actual backend counters and failure-path assertions. Compiler-enabled full
+native builds also verify absence from the ordinary game catalog; minimal
+compiler-only builds verify rejection by a catalog without build capabilities.
+Two CLI invocations cover source loading, a nonzero authored result and a missing
+entry. The original eight `language-build-workflow` recording cases remain an
+independent admitted route.
+
+Both `build-process` and M0's `chibi-cli` remain focused routes. The complete
+`make test-tools` group builds a runtime-only tooling driver and does not build
+the private host or public launcher. Route registration does not add either
+fixture to that aggregate. Current platform results belong in `PLAN.md`;
+Windows does not build or select the private host.
+
 ## Batch validation (CUT62)
 
 Publication uses independently reviewed validation for the affected contracts.

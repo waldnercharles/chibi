@@ -42,6 +42,9 @@ void test_tool_row_builder_c();
 #endif
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
+#ifdef CHIBI_TEST_BUILD_PROCESS
+void test_tool_build_process(const char *worker, const char *host);
+#endif
 void test_tool_desktop_dependencies();
 void test_tool_package_ownership();
 void test_tool_collab();
@@ -496,6 +499,18 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 4 && !strcmp(argv[1], "--build-process")) {
+#ifdef CHIBI_TEST_BUILD_PROCESS
+        tool_init();
+        pu_display_time(true);
+        test_tool_build_process(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 3 && !strcmp(argv[1], "--chibi-cli")) {
         tool_init();
         pu_display_time(true);

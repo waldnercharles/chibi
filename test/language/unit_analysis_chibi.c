@@ -1351,6 +1351,8 @@ void test_language_unit_analysis_chibi(int regression)
     calls = 0;
     selected_case = regression == 1 ? 7 : regression == 2 ? 24 : -1;
     selected_backend = -1;
+    /* Only the deep diagnostic needs capture before nested frames retire. */
+    fixture.observe_failures = selected_case == 24;
     pu_setup(NULL, cleanup);
     if (regression) {
         RUN_TEST_CASE(unit_analysis_regression_bytecode);

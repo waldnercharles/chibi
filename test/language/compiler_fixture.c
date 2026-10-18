@@ -227,8 +227,8 @@ static bool run(
         .argument_count = count,
         .results = &state->result,
         .budget = (uintptr_t)budget,
-        .inspection_user = &state->failure,
-        .failure_observer = observe_failure
+        .inspection_user = fixture->observe_failures ? &state->failure : NULL,
+        .failure_observer = fixture->observe_failures ? observe_failure : NULL
     };
     behavior_function_bind_storage(&state->context, &state->producer);
     REQUIRE(behavior_function_bind(function, &state->context, NULL, 0));

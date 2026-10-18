@@ -11,6 +11,8 @@
  * Start zero-initialized; free also releases partial failed preparation. */
 typedef struct
 {
+    /* Diagnostic opt-in: disables readonly argument borrowing for this fixture. */
+    bool observe_failures;
     native_capabilities *native;
     authoring_packages *owners[2];
 } compiler_fixture;

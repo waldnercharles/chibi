@@ -546,10 +546,13 @@ Verified status evidence SHA256:
 `3d94c9543589fee4ccf5725e172fefba7bc2f7be9591fa8c0e3bf92c93400593`.
 Configuration took 1s and build 20s; each focused execution took about 1s.
 
-The fixture now records the first failure through the existing runtime observer
-before child frames retire, retaining only the category, step count and an owned
-bounded diagnostic message. Successful call behavior and backend selection are
-unchanged; no runtime failure propagation or evaluator policy is modified.
+The deep-chain diagnostic opts into recording the first failure through the
+existing runtime observer before child frames retire, retaining only the
+category, step count and an owned bounded diagnostic message. This observer
+disables readonly argument borrowing, so this focused diagnostic uses snapshots.
+The zero-ID selector and ordinary/full-green fixture calls keep the original
+no-observer path. Backend selection is unchanged; production runtime failure
+propagation and evaluator policy are not modified.
 Raw diagnostics remain runner-local. The original zero-ID guard and recursive
 evaluator remain intact until the intended deep failure is observed accurately.
 
@@ -559,8 +562,9 @@ That instruction budget is inherited/reset per activation, not an aggregate
 whole-call work ceiling; the finite fixed graphs and wall-clock supervisor bound
 this corpus. No budget or deadline is increased. Successful intended-deep
 classification on this observer candidate remains pending. Then apply the
-reviewed iterative/zero-ID repair and active adapter, and validate the exact
-combined differential and affected contracts. No milestone is newly complete.
+reviewed iterative/zero-ID repair and validate the full authored differential.
+The active adapter additionally requires the real native unit-fixture route and
+affected semantic/incremental contracts before integration. No milestone is newly complete.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

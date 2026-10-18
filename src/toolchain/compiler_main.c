@@ -91,6 +91,58 @@ static unsigned char *read_binary(const char *path, size_t *length, size_t limit
     free(bytes);
     return NULL;
 }
+/* Linux/Darwin: same-directory rename is the sole commit point. This is
+ * atomic visibility, not fsync-backed durability. A hard kill may leave staging. */
+static bool write_binary(const char *path, const unsigned char *bytes, size_t length, double deadline)
+{
+    if (!ready(deadline)) {
+        return false;
+    }
+    size_t path_length = strlen(path);
+    if (path_length > SIZE_MAX - sizeof ".XXXXXX") {
+        return false;
+    }
+    char *temporary = xmalloc(path_length + sizeof ".XXXXXX");
+    memcpy(temporary, path, path_length);
+    memcpy(temporary + path_length, ".XXXXXX", sizeof ".XXXXXX");
+    int fd = mkstemp(temporary);
+    if (fd < 0) {
+        free(temporary);
+        return false;
+    }
+    bool ok = fcntl(fd, F_SETFD, FD_CLOEXEC) == 0;
+    size_t used = 0;
+    while (ok && used < length) {
+        if (!ready(deadline)) {
+            ok = false;
+            break;
+        }
+        size_t chunk = length - used;
+        if (chunk > 4096) {
+            chunk = 4096;
+        }
+        ssize_t count = write(fd, bytes + used, chunk);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        if (count <= 0) {
+            ok = false;
+            break;
+        }
+        used += (size_t)count;
+    }
+    /* Do not retry close after EINTR: the descriptor may already be closed. */
+    if (close(fd)) {
+        ok = false;
+    }
+    if (ok && ready(deadline) && rename(temporary, path) == 0) {
+        free(temporary);
+        return true; /* No postcommit I/O, deadline or cancellation checks. */
+    }
+    unlink(temporary);
+    free(temporary);
+    return false;
+}
 static bool number(const char *text, int base, uint64_t *out)
 {
     if (!text || !*text ||
@@ -110,12 +162,12 @@ static bool number(const char *text, int base, uint64_t *out)
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N [--timeout-ms N] [--batch]\n");
+    fprintf(stderr, "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N [--timeout-ms N] [--batch | --output-artifact FILE]\n");
     return 1;
 }
 int main(int argc, char **argv)
 {
-    const char *artifact = NULL, *input = NULL;
+    const char *artifact = NULL, *input = NULL, *output_artifact = NULL;
     uint64_t entry = 0, budget = 0, timeout = 0;
     behavior_backend backend = BEHAVIOR_UNAVAILABLE;
     bool batch = false;
@@ -132,6 +184,8 @@ int main(int argc, char **argv)
             artifact = value;
         } else if (!strcmp(key, "--input") && !input) {
             input = value;
+        } else if (!strcmp(key, "--output-artifact") && !output_artifact && *value) {
+            output_artifact = value;
         } else if (!strcmp(key, "--entry") && !entry) {
             if (!number(value, 16, &entry)) {
                 return usage();
@@ -156,7 +210,8 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (!artifact || !input || !entry || !budget || backend == BEHAVIOR_UNAVAILABLE) {
+    if (!artifact || !input || !entry || !budget ||
+        backend == BEHAVIOR_UNAVAILABLE || (batch && output_artifact)) {
         return usage();
     }
     double deadline = timeout ? now() + (double)timeout / 1000 : INFINITY;
@@ -181,6 +236,14 @@ int main(int argc, char **argv)
     if (sigaction(SIGINT, &action, NULL) || sigaction(SIGTERM, &action, NULL)) {
         return 1;
     }
+    if (output_artifact) {
+        struct sigaction ignore = { .sa_handler = SIG_IGN };
+        sigemptyset(&ignore.sa_mask);
+        if (sigaction(SIGPIPE, &ignore, NULL)) {
+            return 1;
+        }
+        /* Keep SIGPIPE ignored through normal stdio cleanup at exit. */
+    }
     size_t artifact_size, input_size;
     unsigned char *artifact_bytes = read_binary(artifact, &artifact_size, COMPILER_HOST_MAX_BYTES, deadline);
     if (!artifact_bytes) {
@@ -198,6 +261,75 @@ int main(int argc, char **argv)
                             ? compiler_host_load(artifact_bytes, artifact_size, backend, error, sizeof error)
                             : NULL;
     free(artifact_bytes);
+    if (output_artifact) {
+        compiler_host_bytes result = { 0 };
+        bool ok = host && ready(deadline) &&
+                  compiler_host_invoke_bytes(
+                      host,
+                      entry,
+                      (const char *)input_bytes,
+                      input_size,
+                      (uintptr_t)budget,
+                      COMPILER_HOST_MAX_VALUES,
+                      &result
+                  );
+        free(input_bytes);
+        compiler_host_free(host);
+        if (!ready(deadline)) {
+            ok = false;
+            snprintf(error, sizeof error, "compiler invocation cancelled or timed out");
+        }
+        if (ok) {
+            /* Runtime-only validation, never source compilation or serialization.
+             * Bytecode avoids preparing a second selected-backend JIT. */
+            compiler_host *validation = compiler_host_load(
+                result.bytes,
+                result.length,
+                BEHAVIOR_BYTECODE,
+                error,
+                sizeof error
+            );
+            ok = validation != NULL;
+            compiler_host_free(validation);
+        }
+        if (ok) {
+            /* All fallible reporting precedes the publication commit. A closed
+             * stderr pipe is an ordinary precommit failure with SIGPIPE ignored. */
+            ok = fprintf(
+                     stderr,
+                     "compiler-host bytecode=%" PRIu64 " sljit=%" PRIu64
+                     " wasm=%" PRIu64 " fallback=%" PRIu64 " overflow=%d\n",
+                     result.counts.bytecode_entries,
+                     result.counts.sljit_entries,
+                     result.counts.wasm_entries,
+                     result.counts.inspection_bytecode_fallbacks,
+                     result.counts.overflow
+                 ) >= 0;
+            if (fflush(stderr)) {
+                ok = false;
+            }
+            if (!ok) {
+                snprintf(error, sizeof error, "compiler counters could not be written");
+            }
+        }
+        if (ok) {
+            ok = write_binary(output_artifact, result.bytes, result.length, deadline);
+            if (!ok) {
+                snprintf(error, sizeof error, "compiler output could not be published");
+            }
+        }
+        if (!ok) {
+            fprintf(
+                stderr,
+                "%s\n",
+                error[0]               ? error
+                : result.diagnostic[0] ? result.diagnostic
+                                       : "compiler artifact load failed"
+            );
+        }
+        free(result.bytes);
+        return ok ? 0 : 1;
+    }
     compiler_host_result result = { 0 };
     bool ok = host && ready(deadline) &&
               (batch ? compiler_host_invoke_batch(

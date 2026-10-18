@@ -32,6 +32,8 @@ SnapshotNode :: struct {
     missing: bool;
     has_error: bool;
     field: string;
+    is_named: bool;
+    is_extra: bool;
 }
 Document :: struct {
     original_path: string;
@@ -41,6 +43,7 @@ Document :: struct {
     identity: string;
     text: string;
     root: int;
+    syntax_root: int;
     header_start: int;
     header_end: int;
     header_line: int;
@@ -157,7 +160,7 @@ ValidUTF8 :: pure fn(text: string) -> bool {
 }
 Retained :: pure fn(input: Input) -> Document {
     return {original_path: input.path, path: input.path, directory: "", key: "", identity: "",
-            text: input.text, root: 0, header_start: 0, header_end: 0,
+            text: input.text, root: 0, syntax_root: -1, header_start: 0, header_end: 0,
             header_line: 0, header_column: 0, header_document: 0,
             node_start: 0, node_count: 0, first_import: 0, import_count: 0,
             has_key: false, has_syntax: false, has_header: false};
@@ -166,11 +169,12 @@ Rebase :: pure fn(link: int, offset: int) -> int {
     if (link < 0) { return link; }
     return link + offset;
 }
-Node :: pure fn(node: syntax.Node, field: string, offset: int) -> SnapshotNode {
+Node :: pure fn(node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
     return {kind: node.kind, start: node.start, end: node.end, row: node.row, column: node.column,
             parent: Rebase(node.parent, offset), first_child: Rebase(node.first_child, offset),
             next_sibling: Rebase(node.next_sibling, offset), error: node.error,
-            missing: node.missing, has_error: node.has_error, field: field};
+            missing: node.missing, has_error: node.has_error, field: field,
+            is_named: is_named, is_extra: is_extra};
 }
 Resolved :: pure fn(imported: extract.Import, directory: string) -> ResolvedImport {
     return {file: imported.file, alias: imported.alias, explicit_alias: imported.explicit_alias,
@@ -272,13 +276,14 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
         }
         tree := raw.Parse(input.text);
         switch tree {
-            case .Parsed(localNodes, fields, root):
+            case .Parsed(localNodes, fields, is_named, is_extra, root):
                 document.node_start = length(nodes);
                 document.node_count = length(localNodes);
+                document.syntax_root = Rebase(root, document.node_start);
                 document.has_syntax = true;
                 index: int = 0;
                 while (index < length(localNodes)) {
-                    nodes = array_add(nodes, Node(localNodes[index], fields[index], document.node_start));
+                    nodes = array_add(nodes, Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
                     index += 1;
                 }
                 documents[file] = document;

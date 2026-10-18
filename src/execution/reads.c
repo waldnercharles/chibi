@@ -75,7 +75,7 @@ void behavior_function_reuse_reads(behavior_function *f, bool *keep)
         if (code[s->pc].op == BF_POINT) {
             continue;
         }
-        for (int k = 0; k < acount(s->values); k++) {
+        for (int k = 0; k < s->value_count; k++) {
             if (s->values[k] < values) {
                 pinned[s->values[k]] = true;
             }

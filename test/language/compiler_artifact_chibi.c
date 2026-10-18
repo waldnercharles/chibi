@@ -10,12 +10,17 @@
 #include "package_routes_chibi_source.h"
 #include "package_snapshot_chibi_source.h"
 #include "package_syntax_chibi_source.h"
+#include "runtime/arrays_definition.h"
+#include "runtime/native_prepared.h"
+#include "runtime/text_definition.h"
 #include "support/asset_json.h"
 #include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
+#include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
+#include "types/array.h"
 #include "types/union.h"
 #include "types/value_document.h"
 
@@ -24,14 +29,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* One bounded source producer: eight packages, sixteen preparation parses,
- * five C snapshots and five authored calls at three million instructions each.
- * The ordinary product host receives only serialized executables and requests. */
+/* One bounded producer process, two cases: the original eight-package closure
+ * and one tiny binary fixture, eighteen preparation parses total. The original
+ * five C snapshots and five authored calls retain three million instructions;
+ * the binary fixture has no source calls. Four retained trees add raw flag/root
+ * comparisons. One bounded decode rejects the previous syntax ABI without an
+ * invocation, preparation or process. Product hosts receive only prepared
+ * compiler artifacts and requests. */
 enum
 {
     ARTIFACT_CAP = 16 * 1024 * 1024,
     INPUT_CAP = 8 * 1024,
-    OUTPUT_CAP = 256 * 1024
+    OUTPUT_CAP = 256 * 1024,
+    BINARY_CAP = 32 * 1024
 };
 static compiler_fixture fixture;
 static const char *directory;
@@ -39,6 +49,10 @@ static arena storage, result_storage;
 static av_doc *requests, *expected;
 static yyjson_mut_doc *encoded;
 static source_package_snapshot *oracle;
+static native_capabilities *previous_syntax;
+static package_collection *incompatible;
+static compiler_fixture_node raw[1024];
+static bool named_seen[2], extra_seen[2];
 static unsigned char *blobs[8], *artifact, *reordered;
 static size_t blob_sizes[8];
 static FILE *file;
@@ -59,6 +73,13 @@ static void cleanup()
     expected = NULL;
     source_package_snapshot_free(oracle);
     oracle = NULL;
+    if (incompatible) {
+        package_collection_free(incompatible);
+        incompatible = NULL;
+    }
+    native_capabilities_free(previous_syntax);
+    previous_syntax = NULL;
+    named_seen[0] = named_seen[1] = extra_seen[0] = extra_seen[1] = false;
     for (int i = 0; i < 8; i++) {
         free(blobs[i]);
         blobs[i] = NULL;
@@ -140,14 +161,145 @@ static av_value *request(av_doc *doc, const source_package_input *files, int cou
     av_arr_append(arguments, sizes);
     return arguments;
 }
-static bool field_string(const pin_value *value, const char *name, const char *text)
+static bool field_value(const pin_value *value, const char *name, pin_value *out)
 {
     REQUIRE(value->type == PIN_STRUCT && value->ptr);
     const type_field *field = pin_type_field_path(pin_value_type(value), name);
-    pin_value result;
     REQUIRE(field);
-    pin_read_field(value->ptr, field, &result);
+    pin_read_field(value->ptr, field, out);
+    return true;
+}
+static bool field_string(const pin_value *value, const char *name, const char *text)
+{
+    pin_value result;
+    REQUIRE(field_value(value, name, &result));
     REQUIRE(result.type == PIN_STR && result.str && !strcmp(result.str, text));
+    return true;
+}
+static bool field_integer(const pin_value *value, const char *name, int expected)
+{
+    pin_value result;
+    REQUIRE(field_value(value, name, &result));
+    REQUIRE(result.type == PIN_I32 && result.i == expected);
+    return true;
+}
+static bool field_flag(const pin_value *value, const char *name, bool expected)
+{
+    pin_value result;
+    REQUIRE(field_value(value, name, &result));
+    REQUIRE(result.type == PIN_BOOL && result.b == expected);
+    return true;
+}
+static bool payload_array(
+    const pin_union *data,
+    const script_catalog_variant *variant,
+    const char *name,
+    const pin_array **out
+)
+{
+    REQUIRE(data->count == variant->field_count);
+    for (int i = 0; i < data->count; i++) {
+        if (strcmp(variant->fields[i].name, name)) {
+            continue;
+        }
+        const pin_value *value = &data->values[i];
+        REQUIRE(value->type == PIN_STRUCT && value->container == PIN_CONTAINER_ARRAY);
+        static const pin_array empty = { .element_type = PIN_STRUCT };
+        *out = value->ptr ? value->ptr : &empty;
+        REQUIRE((*out)->element_type == PIN_STRUCT && (*out)->count >= 0);
+        REQUIRE(!(*out)->count || (*out)->items);
+        return true;
+    }
+    REQUIRE(false);
+    return false;
+}
+static bool source_facts(const pin_union *data, const script_catalog_variant *variant)
+{
+    const pin_array *documents, *forest;
+    REQUIRE(payload_array(data, variant, "documents", &documents));
+    REQUIRE(payload_array(data, variant, "nodes", &forest));
+    int count, offset = 0;
+    const script_package_document *expected = source_package_snapshot_documents(oracle, &count);
+    REQUIRE(documents->count == count && count <= 3 && forest->count <= 3 * 1024);
+    for (int i = 0; i < count; i++) {
+        const pin_value *document = &documents->items[i];
+        int nodes = 0;
+        if (expected[i].syntax) {
+            REQUIRE(
+                compiler_fixture_nodes(ts_tree_root_node(expected[i].syntax->tree), raw, 1024, 128, &nodes)
+            );
+        }
+        REQUIRE(field_flag(document, "has_syntax", expected[i].syntax != NULL));
+        REQUIRE(field_integer(document, "syntax_root", expected[i].syntax ? offset : -1));
+        REQUIRE(field_integer(document, "node_start", expected[i].syntax ? offset : 0));
+        REQUIRE(field_integer(document, "node_count", nodes));
+        for (int n = 0; n < nodes; n++) {
+            REQUIRE(offset + n < forest->count);
+            const pin_value *node = &forest->items[offset + n];
+            bool named = ts_node_is_named(raw[n].node),
+                 extra = ts_node_is_extra(raw[n].node);
+            REQUIRE(field_flag(node, "is_named", named) && field_flag(node, "is_extra", extra));
+            named_seen[named] = true;
+            extra_seen[extra] = true;
+        }
+        offset += nodes;
+    }
+    REQUIRE(offset == forest->count);
+    return true;
+}
+static bool reject_previous_syntax_abi(size_t length)
+{
+    /* Decode the real closure against the exact previous thirteen-result
+     * descriptor. The callback is never invoked with this incompatible ABI. */
+    native_definition_pack syntax = COMPILER_SYNTAX_DEFINITION_PACK;
+    REQUIRE(syntax.definition_count == 1 && syntax.definitions[0].output_count == 15);
+    native_capability_definition definition = syntax.definitions[0];
+    definition.output_count = 13;
+    syntax.definitions = &definition;
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             syntax };
+    char error[256] = { 0 };
+    previous_syntax = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    REQUIRE(previous_syntax);
+    const script_catalog *current = native_capabilities_catalog(fixture.native),
+                         *previous = native_capabilities_catalog(previous_syntax);
+    int index = script_catalog_find_capability(current, "compiler_syntax_parse", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(index >= 0);
+    const script_catalog_capability
+        *capability = &current->capabilities[index],
+        *old = script_catalog_capability_by_id(previous, capability->id);
+    REQUIRE(old && old->result_count == 13 && capability->result_count == 15);
+    REQUIRE(
+        script_catalog_capability_abi(current, capability) !=
+        script_catalog_capability_abi(previous, old)
+    );
+    for (int i = 13; i < 15; i++) {
+        REQUIRE(capability->results[i].type.storage == PIN_BOOL);
+        REQUIRE(capability->results[i].type.container == PIN_CONTAINER_ARRAY);
+        REQUIRE(!strcmp(capability->results[i].name, i == 13 ? "is_named" : "is_extra"));
+    }
+    native_prepared_context context = { .native = previous_syntax };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    size_t remaining = COMPILER_HOST_MAX_BYTES;
+    uint64_t root = UINT64_MAX;
+    incompatible = compiler_artifact_read(
+        artifact,
+        length,
+        &linker,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    REQUIRE(!incompatible && remaining == COMPILER_HOST_MAX_BYTES && root == 0);
+    REQUIRE(
+        !strcmp(error, "Prepared module project:compiler_syntax: missing or incompatible host capability")
+    );
+    native_capabilities_free(previous_syntax);
+    previous_syntax = NULL;
     return true;
 }
 static bool source_call(const behavior_function *function, const av_value *arguments, av_value *batch)
@@ -200,6 +352,7 @@ static bool source_call(const behavior_function *function, const av_value *argum
             data->count == 5
         );
     }
+    REQUIRE(source_facts(data, variant));
     av_value *values = av_arr(expected),
              *projected = pin_value_to_document(expected, &result);
     REQUIRE(projected);
@@ -269,6 +422,7 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
         length && length <= ARTIFACT_CAP && second == length &&
         !memcmp(artifact, reordered, length)
     );
+    REQUIRE(reject_previous_syntax_abi(length));
     REQUIRE(write_bytes("compiler.artifact", artifact, length));
     uint64_t entry = compiler_fixture_export(&fixture, 0, "project:source_snapshot", "Build");
     const behavior_function *function = NULL;
@@ -285,9 +439,10 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
         id_length > 0 && id_length < (int)sizeof id &&
         write_bytes("entry.txt", id, (size_t)id_length)
     );
-    static const char app[] = "package app\nimport lib \"../math\"\nimport _ "
-                              "\"core:scalar\"\n",
-                      math[] = "package numbers\n", scalar[] = "package scalar\n";
+    static const char
+        app[] = "package app\n// raw extra\nimport lib \"../math\"\nimport _ "
+                "\"core:scalar\"\n",
+        math[] = "package numbers\n", scalar[] = "package scalar\n";
     static const char syntax[] = "package app\nbroken ::\n",
                       invalid[] = "package app\n// \x80",
                       nul[] = "package app\n\0tail";
@@ -324,6 +479,7 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
         REQUIRE(source_call(function, arguments, golden));
     }
     REQUIRE(av_arr_size(batch) == 5 && av_arr_size(golden) == 5);
+    REQUIRE(named_seen[0] && named_seen[1] && extra_seen[0] && extra_seen[1]);
     REQUIRE(
         write_document("requests.json", batch, INPUT_CAP) &&
         write_document("expected.json", golden, OUTPUT_CAP)
@@ -331,10 +487,86 @@ TEST_CASE(compiler_actual_closure_produces_deterministic_artifact)
     printf("Compiler artifact producer: 8 modules, %zu bytes, 5 source calls\n", length);
     return true;
 }
+/* Tiny transport fixture only. Stage zero still authors/serializes it; echoing
+ * these bytes is not authored artifact encoding or compiler self-compilation. */
+static bool write_byte_input(const char *name, const unsigned char *bytes, size_t length)
+{
+    requests = av_doc_new();
+    REQUIRE(requests);
+    av_value *arguments = av_arr(requests), *values = av_arr(requests);
+    av_doc_set_root(requests, arguments);
+    av_arr_append(arguments, values);
+    for (size_t i = 0; i < length; i++) {
+        av_arr_append(values, av_uint(requests, bytes[i]));
+    }
+    REQUIRE(write_document(name, arguments, OUTPUT_CAP));
+    av_doc_free(requests);
+    requests = NULL;
+    return true;
+}
+TEST_CASE(binary_transport_fixture_produces_bounded_artifact)
+{
+    static const char source
+        [] = "package binary_fixture\n"
+             "Echo :: pure fn(values: byte[]) -> byte[] { return values; }\n"
+             "Scalar :: pure fn() -> byte { return cast<byte>(7); }\n"
+             "Integers :: pure fn() -> int[] { values: int[] = []; return "
+             "values; }\n"
+             "Loop :: pure fn(spin: bool) -> byte[] {\n"
+             "  while (spin) {}\n"
+             "  values: byte[] = []; return values;\n"
+             "}\n";
+    REQUIRE(sizeof source - 1 <= 4096);
+    source_package_input input = { "binary_fixture/Fixture.chibi",
+                                   source,
+                                   sizeof source - 1 };
+    REQUIRE(compiler_fixture_prepare(&fixture, &input, 1));
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(authoring_packages_count(fixture.owners[b]) == 1);
+    }
+    const authoring_package *root = compiler_fixture_package(&fixture, 0, "project:binary_fixture");
+    REQUIRE(root && root->module && execution_module_function_count(root->module) == 4);
+    char error[256];
+    REQUIRE(execution_prepared_write(root->module, &blobs[0], &blob_sizes[0], error, sizeof error));
+    package_module row = { root->identity,
+                           execution_module_id(root->module),
+                           blobs[0],
+                           blob_sizes[0] };
+    size_t length;
+    REQUIRE(compiler_artifact_write(&row, 1, row.id, &artifact, &length, error, sizeof error));
+    REQUIRE(length && length <= BINARY_CAP);
+    REQUIRE(write_bytes("binary.artifact", artifact, length));
+    const char *names[] = { "Echo", "Scalar", "Integers", "Loop" };
+    const char *files[] = { "binary-echo.txt",
+                            "binary-scalar.txt",
+                            "binary-integers.txt",
+                            "binary-loop.txt" };
+    for (int i = 0; i < 4; i++) {
+        uint64_t entry = compiler_fixture_export(&fixture, 0, "project:binary_fixture", names[i]);
+        REQUIRE(
+            entry &&
+            entry == compiler_fixture_export(&fixture, 1, "project:binary_fixture", names[i])
+        );
+        char id[32];
+        int count = snprintf(id, sizeof id, "%" PRIx64, entry);
+        REQUIRE(count > 0 && (size_t)count < sizeof id);
+        REQUIRE(write_bytes(files[i], id, (size_t)count));
+    }
+    REQUIRE(write_byte_input("binary-input.json", artifact, length));
+    unsigned char octets[256];
+    for (int i = 0; i < 256; i++) {
+        octets[i] = (unsigned char)i;
+    }
+    REQUIRE(write_byte_input("octets.json", octets, sizeof octets));
+    REQUIRE(write_bytes("empty.json", "[[]]", 4));
+    printf("Binary transport producer: 1 module, %zu bytes, 0 source calls\n", length);
+    return true;
+}
 void test_language_compiler_artifact_write(const char *path)
 {
     directory = path;
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(compiler_actual_closure_produces_deterministic_artifact);
+    RUN_TEST_CASE(binary_transport_fixture_produces_bounded_artifact);
     pu_clear_setup();
 }

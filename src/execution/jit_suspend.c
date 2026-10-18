@@ -136,7 +136,7 @@ static void values(const behavior_machine *m, const behavior_function_suspension
         SLJIT_MEM1(SLJIT_R3),
         offsetof(behavior_function_activation, values)
     );
-    for (int j = 0; j < acount(s->values); j++) {
+    for (int j = 0; j < s->value_count; j++) {
         scalar(m, s->values[j], restore);
     }
     int base = acount(f->slots) + acount(f->locals);

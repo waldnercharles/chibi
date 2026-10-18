@@ -315,19 +315,68 @@ static const behavior_function *entry_function(compiler_host *host, uint64_t ent
     }
     return function;
 }
-bool compiler_host_invoke(
+typedef struct
+{
+    void *data;
+    size_t length;
+    int flow_status;
+    behavior_run_counts counts;
+    char diagnostic[256];
+} invocation_result;
+static bool byte_type(const pin_value *value, pin_container container)
+{
+    return value->type == PIN_U8 && value->container == container &&
+           !value->record && !value->type_name;
+}
+/* pin_array stores full pin_values, not packed octets. Copy while the runtime
+ * arena is alive, and expose nothing until every item has been checked. */
+static bool extract_bytes(const pin_value *value, size_t limit, invocation_result *out)
+{
+    if (!byte_type(value, PIN_CONTAINER_ARRAY)) {
+        return false;
+    }
+    const pin_array *array = value->ptr;
+    if (!array) {
+        return true; /* Existing typed empty-array representation. */
+    }
+    if (array->element_type != PIN_U8 || array->record || array->type_name ||
+        array->count < 0 || array->capacity < array->count ||
+        (array->count && !array->items) || (size_t)array->count > limit ||
+        (size_t)array->capacity >
+            (COMPILER_HOST_MAX_BYTES - sizeof *array) / sizeof *array->items) {
+        return false;
+    }
+    size_t length = (size_t)array->count;
+    size_t represented = sizeof *array + (size_t)array->capacity * sizeof *array->items;
+    if (length > COMPILER_HOST_MAX_BYTES - represented) {
+        return false;
+    }
+    unsigned char *bytes = length ? xmalloc(length) : NULL;
+    for (size_t i = 0; i < length; i++) {
+        if (!byte_type(&array->items[i], PIN_CONTAINER_SINGLE)) {
+            free(bytes);
+            return false;
+        }
+        bytes[i] = array->items[i].u8;
+    }
+    out->data = bytes;
+    out->length = length;
+    return true;
+}
+static bool invoke(
     compiler_host *host,
     uint64_t entry,
     const char *json,
     size_t length,
     uintptr_t budget,
-    compiler_host_result *out
+    size_t max_bytes,
+    invocation_result *out
 )
 {
     if (!out) {
         return false;
     }
-    *out = (compiler_host_result){ 0 };
+    *out = (invocation_result){ 0 };
     const char *failure = NULL;
     yyjson_doc *parsed = NULL;
     av_doc *input = NULL, *output = NULL;
@@ -350,6 +399,12 @@ bool compiler_host_invoke(
     int argument_count, result_count;
     const pin_value *declarations = behavior_function_arguments(function, &argument_count);
     const pin_value *returns = behavior_function_results(function, &result_count);
+    if (max_bytes &&
+        (result_count != 1 || !byte_type(&returns[0], PIN_CONTAINER_ARRAY))) {
+        failure = "compiler byte entry must return exactly one primitive "
+                  "byte[]";
+        goto done;
+    }
     parsed = yyjson_read(json, length, YYJSON_READ_ALLOW_INVALID_UNICODE);
     quota q = { 0 };
     if (!parsed || !json_quota(yyjson_doc_get_root(parsed), 0, &q) ||
@@ -451,6 +506,13 @@ bool compiler_host_invoke(
                                         : "compiler execution did not return";
         goto done;
     }
+    if (max_bytes) {
+        if (!extract_bytes(&results[0], max_bytes, out)) {
+            failure = "compiler byte result exceeds type, shape or storage "
+                      "limits";
+        }
+        goto done;
+    }
     q = (quota){ 0 };
     for (int i = 0; i < result_count; i++) {
         if (!value_quota(&results[i], 0, &q)) {
@@ -471,10 +533,10 @@ bool compiler_host_invoke(
     }
     encoded = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(encoded, av_to_json(encoded, projected));
-    out->json = yyjson_mut_write(encoded, YYJSON_WRITE_ALLOW_INVALID_UNICODE, &out->length);
-    if (!out->json || out->length > COMPILER_HOST_MAX_BYTES) {
-        free(out->json);
-        out->json = NULL;
+    out->data = yyjson_mut_write(encoded, YYJSON_WRITE_ALLOW_INVALID_UNICODE, &out->length);
+    if (!out->data || out->length > COMPILER_HOST_MAX_BYTES) {
+        free(out->data);
+        out->data = NULL;
         out->length = 0;
         failure = "compiler result cannot be encoded within byte limit";
     }
@@ -492,6 +554,56 @@ done:
     free(arguments);
     free(results);
     return failure == NULL;
+}
+
+bool compiler_host_invoke(
+    compiler_host *host,
+    uint64_t entry,
+    const char *json,
+    size_t length,
+    uintptr_t budget,
+    compiler_host_result *out
+)
+{
+    if (!out) {
+        return false;
+    }
+    *out = (compiler_host_result){ 0 };
+    invocation_result result;
+    bool ok = invoke(host, entry, json, length, budget, 0, &result);
+    out->json = result.data;
+    out->length = result.length;
+    out->flow_status = result.flow_status;
+    out->counts = result.counts;
+    memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
+    return ok;
+}
+bool compiler_host_invoke_bytes(
+    compiler_host *host,
+    uint64_t entry,
+    const char *json,
+    size_t length,
+    uintptr_t budget,
+    size_t max_bytes,
+    compiler_host_bytes *out
+)
+{
+    if (!out) {
+        return false;
+    }
+    *out = (compiler_host_bytes){ 0 };
+    if (!max_bytes || max_bytes > COMPILER_HOST_MAX_VALUES) {
+        message(out->diagnostic, sizeof out->diagnostic, "invalid compiler byte output limit");
+        return false;
+    }
+    invocation_result result;
+    bool ok = invoke(host, entry, json, length, budget, max_bytes, &result);
+    out->bytes = result.data;
+    out->length = result.length;
+    out->flow_status = result.flow_status;
+    out->counts = result.counts;
+    memcpy(out->diagnostic, result.diagnostic, sizeof out->diagnostic);
+    return ok;
 }
 
 static void sum_counter(uint64_t *total, uint64_t value, bool *overflow)

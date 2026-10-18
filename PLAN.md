@@ -418,6 +418,22 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
+The private syntax-retention and byte-transport increment (PR #445) appends raw
+Tree-sitter named and extra flags to the parser bridge and snapshot forest,
+retains `Document.syntax_root` separately from routing `root`, and adds a bounded
+owned `byte[]` return with an atomic `--output-artifact` handoff to the runtime-only
+host. Its first local runs exposed three defects, each now covered by a case that
+failed first. Preparation reserved a full live-value and root vector per
+suspension, about 38 MB for `Snapshot.Build`, whose 943 pauses retain 978 values,
+so the eight-package closure exceeded the host's 64 MiB aggregate. Live sets are
+now counted after liveness and allocated exactly from each definition's bounded
+owned arena. Module-set validation serialized dependencies through the public
+prepared writer only to measure them; `execution_prepared_measure` now supplies
+length and fingerprint, so the writer no longer links into `chibi-compiler-host`.
+Two fixtures assumed MISSING-brace recovery and fixed-width prepared headers.
+The transport fixture still echoes stage-zero-prepared bytes; it does not
+establish authored serialization, a complete compiler, stage one or stage two.
+
 The authored unit-analysis repair is merged in
 [PR #440](https://github.com/waldnercharles/chibi/pull/440) at
 `a5edefd3b79db958e444adc624df7ca8fa493e02`, tree
@@ -446,8 +462,7 @@ not an invocation or global instruction ceiling. The tested source was
 `06053425ed3d257bb9d201194895f4e643c80bf0efa43edcf797bc150c617752`.
 No native type-relation adapter or language syntax change is introduced.
 
-The additive union-members, effects and record-members work merged in PR #444
-at `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb`. It wires
+The merged additive union-members, effects and record-members work wires
 three separate full differential routes into the existing language driver,
 with private C reference helpers and authored sources only. Normal production
 analyzers and binding finalizers remain unchanged. Union members retains
@@ -466,19 +481,36 @@ Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
 cleanly. The local and its sole use are now named `isUnordered`, preserving
 reduction logic and all fixtures. Corrected-source syntax passed all three
 complete-source cases and nine assertions in 0.072 seconds under the unchanged
-production 60-second supervisor. The earlier failed-run status artifact SHA-256 is
+production 60-second supervisor. That earlier run's sanitized status SHA-256 is
 `6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
-The corrected source `b57ac78c53c170139d8f807158c076f971a2202b` then passed all
-five complete semantic selectors in
+The corrected source `b57ac78c53c170139d8f807158c076f971a2202b` subsequently
+passed all five complete semantic selectors in
 [run 39140946564](https://github.com/waldnercharles/chibi-studio/actions/runs/39140946564):
-union members, effects, record members, unit analysis and type relations.
-The landed merge tree equals the tested tree
-`09d520fe2a5723226126b0879faaee390e87b7b9`. Sanitized status JSON SHA-256:
+union 3 cases, effects 4, records 5, unit analysis 3 and type relations 4.
+Execution identity, exact pico summaries and each separate production 60-second
+deadline passed. Configuration took 3s and build 15s; integer-second execution
+times were 7s, 1s, 1s, 3s and 0s respectively. PR #444 merged at
+`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb`; its tree exactly matches tested tree
+`09d520fe2a5723226126b0879faaee390e87b7b9`. The sanitized status SHA-256 is
 `7d85449277f819cf77949ad6fb2fec52c49923473bbea8aef069f1ff86dea84a`.
+This evidence belongs to that semantic tree. The transport integration rebuilds
+shared frontend and language-driver archives and still needs its own strict
+product-link audit, both full transport selectors and all five complete semantic
+selectors, independently admitted with separate unchanged 60-second deadlines.
 No raw hosted diagnostics or source contents are exported.
 Those compiler-only results do not replace the native adapter build or tests.
 Complete authored semantic analysis, lowering, artifact production, stage one
 and stage two remain incomplete; these components do not establish self-hosting.
+
+The Bool/I32 evaluator-lowering component adds the focused
+`language-scalar-lowering-chibi` differential. Chibi owns the admitted
+typed-expression traversal and plan emission. The native adapter decodes that
+plan and retains builder verification, optimization, finalization, liveness,
+borrowing, runtime rewriting, parallel proof, definition snapshots, module
+publication, serialization and backend emission. Its private reference oracle
+shares the production value-evaluator emitter. The differential passes 1 case /
+33,382 assertions; binding-schedule (5 cases) and binding-benchmark pass on native
+and Wasm, as does the complete Wasm group.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -583,16 +615,35 @@ wrappers and docs in the same change. A repository-local `.chibi` script does no
 replace an installed tool until the installed SDK works without engine source.
 
 Python may remain only where an external application requires its Python API,
-such as Blender integration. Hosted workflow YAML, external compilers, linkers,
-backends, and operating-system libraries are dependencies rather than failed
-self-hosting. All Chibi project policy called by them belongs in `.chibi`.
+such as Blender integration. Hosted workflow YAML, native backends, explicit
+platform assemblers/linkers, SDKs and runtime/operating-system libraries may
+remain dependencies behind narrow bindings. This does not exempt `cmake`,
+`clang`, `gcc` or hidden/renamed equivalents from the final normal-workflow ban
+in the Objective. External C compilers remain stage-zero construction/recovery
+tools during migration, not normal installed build dependencies. All Chibi
+project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified toolchain checkpoint: 2026-10-18 at
-`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), tree
-`09d520fe2a5723226126b0879faaee390e87b7b9`. The native adapter integration
-described below is a separate unrun candidate.
+Last verified toolchain checkpoint: 2026-10-18, PR #445 transport integration
+over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
+
+| Check on the macOS arm64 candidate (Homebrew Clang 23, Debug, ASan/UBSan) | Result |
+| --- | --- |
+| `make build` of `chibi_ctl`, both drivers and `chibi-compiler-host` | Passed; build timing is separate. |
+| `language-package-snapshot-chibi` | 16 cases / 248,742 assertions, 2.7s. |
+| `compiler-artifact` | 15 cases / 29,562 assertions, 4.2s. |
+| Union, effects, record, unit-analysis and type-relations differentials | 3, 4, 5, 3 and 4 cases; 17.0s, 3.2s, 2.2s, 4.6s and 0.7s. |
+| `language-execution` | 23 cases, including the wide-suspension budget case. |
+| `make test-native`, `test-materials`, `test-projects`, `test-language-all`, `test-tools` | Passed; 23.9s, 28.8s, 31.2s, 18.4s and 27.1s execution. |
+| Host symbols (`nm -a`) | No `execution_prepared_write`, `semantic_*`, `lower_*` or `authoring_packages_prepare`. |
+| Changed C, clang-format 22; `git diff --check` | Passed. |
+
+Each selector ran once under its own unchanged production 60-second deadline.
+The hosted Linux ELF audit (`.github/scripts/transport-boundary-audit.py`) was not
+run; its archive closure and all 19 pinned source inventories match this build's
+File API/compile database, and the writer exclusion holds on Darwin's dead-strip
+link. Linux remains unmeasured for this checkpoint.
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
@@ -632,14 +683,12 @@ completed below the one-second timing resolution. This standalone Debug build
 was not sanitizer-instrumented. Exact source, merge tree and sanitized evidence
 are recorded in the milestone above.
 
-PR #444's additive union/effects/record work passed all five complete semantic
-routes on exact source `b57ac78c53c170139d8f807158c076f971a2202b` in hosted
-run `39140946564`. Configuration took 3s and build 15s; union, effects, record,
-unit and type-relation execution took 7s, 1s, 1s, 3s and below 1s respectively,
-each within its unchanged production 60-second deadline. Source/tree and
-sanitized evidence are recorded above. Its normal production analyzers remain
-unchanged. This integration preserves every semantic source, generated-header
-template and dispatcher registration byte-for-byte from the landed target.
+Union members, effects and record members are merged additive fixture components.
+The record preparation fix and Effects local-name correction passed the complete
+five-selector semantic run recorded above. That pass does not validate this new
+transport integration: it must rebuild, audit and run all seven complete selectors.
+Existing backend/lifetime assertions, instruction arguments and individual
+deadlines remain unchanged. No active adapters or native-unit results are imported.
 
 The current candidate wires `semantic_units.c` to the extracted C reference
 helper. It supplies raw analyzer facts, copies returned diagnostics into the
@@ -784,20 +833,18 @@ copy remains.
 
 The earlier checkpoint saved three unintegrated drafts: `unit_analysis`,
 `union_members` and `effect_analysis`, each with C helpers, authored source and
-pico fixtures. Unit analysis has since passed as recorded above. The current
-additive candidate wires union members and effects together with record members.
-Union and record members passed their full hosted routes in run 39138442670;
-effects reached a snapshot syntax failure. The `unordered` local-name correction
-passed all three complete-source syntax cases and nine assertions; full hosted
-effects differential evidence remains pending. Their
-active production adapters remain excluded. The workload records below retain
-the reviewed bounds and do not imply a corrected effects execution pass.
+pico fixtures. Unit analysis has since passed as recorded above. Union members,
+effects and record members are now wired and merged after all five full semantic
+selectors passed run 39140946564 on the exact merged tree. The earlier snapshot
+syntax failure and its `unordered` local-name correction remain recorded above.
+Active production adapters remain excluded. The workload records below retain
+the reviewed bounds; none claims execution of the new transport integration.
 
 - Unit analysis: 29 requests, 58 calls at 500,000 instructions and 14 parses.
-  The old recursive evaluator and incorrect zero-capability guard intentionally
-  remain for the prepared failing baseline. One fixed 81-expression chain and
-  an existing capability-zero case need to fail before their fixes. Iterative
-  evaluation must preserve cache visits and dependency decisions; diagnostics
+  The prepared failing baseline retained the old recursive evaluator and incorrect
+  zero-capability guard; its 81-expression chain and capability-zero witnesses
+  failed before the merged repair. The iterative evaluator preserves cache visits
+  and dependency decisions; diagnostics
   retain the existing positional sort and unspecified equal-position ordering.
 - Union members: 24 requests, 48 calls and 32 parses. Source calls allow two
   million instructions; raw cycle validation allows sixteen million. The raw
@@ -833,3 +880,15 @@ M3's installed Linux/macOS evidence remains in its committed checkpoint. This
 checkpoint does not establish a new installed-SDK or Linux claim.
 Full native/render/Studio, browser/device and other quarantined suites
 remain disabled, not passed.
+
+### M5 snapshot-to-reader composition
+
+`tools/compiler/analysis_state/State.chibi` adapts retained snapshot documents
+to the existing signature-reader tree with `TreeForDocument` and exposes
+package-local/global document maps in graph-member order, which is sorted by
+path. It consumes the snapshot's raw flags and syntax root without reparsing or
+resolving names. `language-snapshot-reader-chibi` passes 3 cases / 61,885
+assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
+assertions in 6.6s on macOS, each under its own production 60-second deadline.
+It does not implement header composition, semantic phases, exports, lowering,
+artifact output or `Checked`, and makes no M5/self-hosting completion claim.

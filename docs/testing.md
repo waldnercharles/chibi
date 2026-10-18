@@ -2612,17 +2612,11 @@ The whole existing selector now has eight C cases and twenty direct children
 (previously seven/sixteen). Its existing ten-second child limits and one shared
 production 60-second route deadline remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
-This is source-counted workload, not a measured pass; independent exact-source
-and expanded-workload admission is required before first execution. Parent
-C++ activation follows actual scheduler/render targets, leaving pure C SDK
-consumers alone. Hosted native compiler validation still separately requires
-all four previously selected full selectors. The private helper proposal adds
-the complete eight-case desktop selector to its required verdict with the same
-summary, sanitizer, timing and identity gates. This five-selector hosted workload
-is unrun and needs independent source/workload admission before final immutable
-control pins can replace the unarmed public proposal. No subsets or extra attempts
-are introduced; the 60-second ceiling covers the entire desktop selector, not
-each case separately.
+Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
+consumers alone. The OpenGL case relocates discovered roles on Linux and asserts
+that other hosts reject the same absolute paths as unowned. The complete selector
+passes 8 cases in 6.8s on macOS. The 60-second ceiling covers the entire desktop
+selector, not each case separately.
 ### Snapshot-to-reader composition
 
 The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`

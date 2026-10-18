@@ -443,10 +443,10 @@ were reproduced on bytecode and SLJIT. The full authored unit differential is
 green in [run 39112565011](https://github.com/waldnercharles/chibi-studio/actions/runs/39112565011);
 its sanitized status JSON SHA-256 is
 `3f290081324f0a89d1aae1fdd013ba7649ea4a5eac4e2046ffddf1a765218cfb`.
-The fixture observer remains off by default. The native candidate connects the
-production analyzer to the extracted C reference helper; its build and native
-validation remain incomplete. It does not move the normal compiler off stage zero
-or dispatch authored analysis in production.
+The fixture observer remains off by default. PR #443 connects the production
+analyzer to the extracted C reference helper and passes its native selectors. It
+does not move the normal compiler off stage zero or dispatch authored analysis
+in production.
 
 The authored type-relations component and its dedicated differential route,
 `language-type-relations-chibi`, are merged in
@@ -690,85 +690,20 @@ transport integration: it must rebuild, audit and run all seven complete selecto
 Existing backend/lifetime assertions, instruction arguments and individual
 deadlines remain unchanged. No active adapters or native-unit results are imported.
 
-The current candidate wires `semantic_units.c` to the extracted C reference
-helper. It supplies raw analyzer facts, copies returned diagnostics into the
-analyzer's ownership before freeing temporary storage, and retains the existing
-position sort. The authored source and evaluator are unchanged. This is the
-production C extraction boundary, not production dispatch of Chibi analysis.
-
-The candidate also carries a private temporary hosted-validation helper and
-pinned dependency input. Its separate public control only checks exact source
-identity and invokes fixed phases; exports contain fixed status/timing and
-commit/tree identities, never source, history, build metadata or raw logs.
-Three earlier native validation attempts stopped during configuration before
-tests. The last of those diagnostic runs, [39136813764](https://github.com/waldnercharles/chibi-studio/actions/runs/39136813764),
-used source `c505ec08ca674b0f18562e63911ab55c6a5fdafb`, tree
-`2005b39d236edc18529483fdb485498eedd0a9b0`, and control
-`0c2ca8b6678003e1ab32f776a2834fe0a6f97724`, tree
-`24eacb8feb83f9881a09cb15f859206686e9680e`. Reflection configured in 3s and built
-in 2s. Tooling configuration failed after 31s with fixed status
-`configuration_failure_unclassified`, stage `generate`, owner `unknown`.
-All four selected native tests were `not_started`. Sanitized status JSON SHA-256:
-`6e5ce2af34a0a9269550b2dd2533933c35408475ad87ffa838c51ba1ab97f34a`.
-No raw diagnostics were exported or read, so this evidence does not identify
-the actual failure's root cause.
-
-Source review found a separate CMake directory-scope contract defect: a C-only
-standalone tooling parent consumes scheduler/render C++ targets after the SDK
-child enables CXX. The candidate activates CXX in that parent when those actual
-targets exist, using a narrow production include. It leaves genuine pure C
-consumers alone and preserves the existing C++ shim exception. Its owning
-C/pico_unit regression exercises real parent generation rules, including a pure
-C case with an invalid CXX compiler, through the complete existing
-`desktop-dependencies` route. The route now contains eight cases and twenty
-direct children. All children retain their existing ten-second limits within
-one shared production 60-second deadline; nested compiler probes count within
-those bounds. Independent source and finite-workload review admitted the complete
-route; its actual execution is still pending. No cause is assigned to the earlier
-unclassified generation failure from source inspection alone.
-
-The private helper requires that complete eight-case route while retaining
-mandatory `language-semantic` (42 cases), `language-incremental` (13),
-`unit-fixtures` (2), and the full authored unit differential (3). Each complete
-selector has its own unchanged production 60-second deadline. There are no
-subsets or retries. The exact five selectors and their successful full summaries
-are required by the verdict. Configuration/build timing remains separate;
-ASan/UBSan instrumentation checks, pinned dependencies, two build workers,
-source/control identity and minimal-output privacy gates remain intact.
-
-After the CXX correction, native run
-[39139386112](https://github.com/waldnercharles/chibi-studio/actions/runs/39139386112)
-used source `06a5ae206b4daf2a5f58d66969faa008bf9c57f3`, tree
-`da159481fb0d25c9deacd9e87525ac4a82846dff`, and control
-`02894277346e9c3d8dafdf56b48497b93c9a0052`, tree
-`ee674c048a629cc1d8fc72f19b7fa4809f44d40c`. Actual standalone tooling generation
-passed in 41s. Tooling build then failed exit 1 after 170s. No successful binary
-instrumentation verification or selector result was established. All five
-selectors were `not_started`. Sanitized status JSON SHA-256:
-`68e2f90aad4d1e97ae5f7f8617e3a00dec77dfbbdd1e23b51cceb497ca22a0e6`.
-The helper did not yet classify build failures, so the cause remains unknown.
-No raw hosted log retrieval or source/build-metadata export is used to infer it.
-
-The current local integration combines that native candidate with landed PR #444
-through their exact common base `ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`.
-It retains both deltas and adds the independently reviewed diagnostic-only helper:
-failed tooling builds emit closed compile/link/generate/driver hints in the
-existing fixed status fields. Build commands, dependencies, five selectors,
-counts, deadlines, privacy, identity and verdict gates remain unchanged.
-The integration itself has not been configured, built or executed. Prior semantic
-passes and native generation success are evidence for their recorded parents,
-not a pass for this combined candidate. The unarmed public control proposal keeps
-invalid source pins and review=false; the transport integration has the next
-hosted slot. Final control publication must wait for release and immutable review.
-
-Next action: independently review this normal integration and its actual shared
-file resolutions, then prepare immutable source/control identities for final
-admission. Run the same five complete native selectors after a successful build;
-any additional affected-contract gate needs independent admission. Do not land
-unless required native and affected-contract checks pass on the exact candidate.
-M5 remains in progress; these component proofs do not establish complete semantic
-analysis, stage-one/stage-two self-compilation or installed build/link with CMake,
-Clang and GCC unavailable.
+`semantic_units.c` now uses the extracted C reference helper (PR #443). It
+supplies raw analyzer facts, copies returned diagnostics into the analyzer's
+ownership before freeing temporary storage, and retains the existing position
+sort. The authored source and evaluator are unchanged; this is the production C
+extraction boundary, not production dispatch of Chibi analysis. A C-only
+standalone tooling parent that consumes scheduler/render C++ targets now
+activates CXX through a narrow production include, leaving pure C consumers
+alone. On macOS, `language-semantic` (42 cases), `language-incremental` (13),
+`unit-fixtures` (2), `language-unit-analysis-chibi` (3) and the eight-case
+`desktop-dependencies` route pass, each under its own production 60-second
+deadline, as do the five CI aggregates. The desktop OpenGL case previously
+expected Linux relocation on every host; it now asserts that other hosts reject
+the same absolute paths as unowned. The earlier hosted Linux build failure was
+never classified and Linux remains unmeasured for this adapter.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

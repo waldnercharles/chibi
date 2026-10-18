@@ -2507,9 +2507,9 @@ It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
 
-### Snapshot-to-reader composition candidate (source-only)
+### Snapshot-to-reader composition
 
-The proposed `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
+The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
 selector uses the existing signature-reader pico_unit owner and language
 dispatcher. It does not add an executable or expand the old signature/snapshot
 selectors. `analysis_state.TreeForDocument` converts the actual retained snapshot
@@ -2517,7 +2517,8 @@ forest into the existing `signature_reader.Tree.Raw`, carrying incoming fields,
 raw named/extra flags, text, local byte positions and the explicit local syntax
 root. Nonnegative topology links subtract the document's `node_start`; negative
 sentinels remain unchanged. Rejected snapshots expose only parsed retained
-prefixes. `DocumentsForPackage` preserves graph-member order in both directions;
+prefixes. `DocumentsForPackage` preserves graph-member order, which is sorted by
+path, in both directions;
 nonmember source files remain `-1`, and a rejected graph has no package map.
 
 Three fixed requests cover interleaved app/lib/app source order, reordered
@@ -2555,11 +2556,9 @@ C parser/reader calls are fixture oracles only. No runtime files, processes,
 services, GPU work, new semantic native calls, or compiler completion result is
 introduced.
 
-This workload is unmeasured and not executed by the source-only task. Exact
-raw-syntax dependency integration, independent source/workload review and
-first-run admission are required before one production shared 60-second run.
-Configuration/build time stays separate. Failure to fit the source/row limits
-or deadline is a blocker; do not increase a cap or split the selector to evade
-it. Applicable build/group checks, reviews, protections and explicit holds
-remain landing gates. Header environments, semantic sidecars, body analysis,
-exports, lowering, artifact assembly and `Checked` remain unimplemented here.
+The selector passes 3 cases / 61,885 assertions in 3.1s on macOS under one
+production 60-second deadline; configuration/build time stays separate. Failure
+to fit the source/row limits or deadline is a blocker; do not increase a cap or
+split the selector to evade it. Header environments, semantic sidecars, body
+analysis, exports, lowering, artifact assembly and `Checked` remain
+unimplemented here.

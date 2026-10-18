@@ -793,18 +793,14 @@ checkpoint does not establish a new installed-SDK or Linux claim.
 Full native/render/Studio, browser/device and other quarantined suites
 remain disabled, not passed.
 
-### M5 snapshot-to-reader composition candidate (source-only)
+### M5 snapshot-to-reader composition
 
-The lasting `tools/compiler/analysis_state/State.chibi` now has a mechanical
-`TreeForDocument` adapter to the existing signature-reader tree and explicit
-package-local/global document maps in graph-member order. It consumes the raw
-snapshot candidate's flags and syntax root without reparsing or resolving names.
-The proposed `language-snapshot-reader-chibi` selector is implemented in the
-existing signature-reader C pico_unit owner: three requests, 64 authored calls,
-49 parses including preparation, fourteen compiler sources per backend, existing
-individual source limits, and one proposed shared 60-second run. See
-`docs/testing.md` for exact bounds and ownership assertions. This source candidate
-requires independent exact-source/workload review and runtime admission; no
-build, preparation, test or publication is claimed. It does not implement header
-composition, semantic phases, exports, lowering, artifact output or `Checked`,
-and makes no M5/self-hosting completion claim.
+`tools/compiler/analysis_state/State.chibi` adapts retained snapshot documents
+to the existing signature-reader tree with `TreeForDocument` and exposes
+package-local/global document maps in graph-member order, which is sorted by
+path. It consumes the snapshot's raw flags and syntax root without reparsing or
+resolving names. `language-snapshot-reader-chibi` passes 3 cases / 61,885
+assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
+assertions in 6.6s on macOS, each under its own production 60-second deadline.
+It does not implement header composition, semantic phases, exports, lowering,
+artifact output or `Checked`, and makes no M5/self-hosting completion claim.

@@ -389,7 +389,7 @@ Order :: pure fn(environment: Environment) -> Ordering {
  foreach(row in bindings) { emitted = array_add(emitted,false); }
  pass: int = 0;
  while(pass < length(bindings)) {
-  found := -1;
+  found: int = -1;
   i: int = 0;
   while(i < length(bindings) && found < 0) {
    if(!emitted[i]) {

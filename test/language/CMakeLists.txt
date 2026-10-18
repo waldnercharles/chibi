@@ -57,6 +57,13 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_PACKAGE_PATHS_BYTES "${CHIBI_PACKAGE_
 configure_file(package_paths_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_paths_chibi_source.h" @ONLY)
 
+set(package_routes_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_routes/Routes.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${package_routes_source}")
+file(READ "${package_routes_source}" CHIBI_PACKAGE_ROUTES_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_PACKAGE_ROUTES_BYTES "${CHIBI_PACKAGE_ROUTES_HEX}")
+configure_file(package_routes_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_routes_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -78,8 +85,12 @@ add_executable(test_language main.c inferred_string_arrays.c build_workflow.c re
 # Package tests consume the owning SDK implementation; extraction stays private.
 target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_graph_chibi.c)
 target_sources(test_language PRIVATE syntax_corpus.c syntax_chibi.c compiler_fixture.c package_syntax_chibi.c package_paths_chibi.c)
-set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c
+target_sources(test_language PRIVATE package_routes_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c")
+set_source_files_properties(package_syntax.c package_syntax_chibi.c package_paths_chibi.c package_routes_chibi.c
+    "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_json.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+target_link_libraries(test_language PRIVATE Chibi::json)
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/language/numeric.c")

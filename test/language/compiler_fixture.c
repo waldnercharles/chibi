@@ -51,10 +51,29 @@ void compiler_fixture_free(compiler_fixture *fixture)
 }
 bool compiler_fixture_prepare(compiler_fixture *fixture, const source_package_input *files, int count)
 {
-    native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
-                                       NATIVE_ARRAY_DEFINITION_PACK };
+    return compiler_fixture_prepare_pack(fixture, files, count, NULL);
+}
+bool compiler_fixture_prepare_pack(
+    compiler_fixture *fixture,
+    const source_package_input *files,
+    int count,
+    const native_definition_pack *additional
+)
+{
+    native_definition_pack packs[3] = { NATIVE_TEXT_DEFINITION_PACK,
+                                        NATIVE_ARRAY_DEFINITION_PACK };
+    if (additional) {
+        packs[2] = *additional;
+    }
     char message[192];
-    fixture->native = native_capabilities_from_definition_packs(NULL, 0, packs, 2, message, sizeof message);
+    fixture->native = native_capabilities_from_definition_packs(
+        NULL,
+        0,
+        packs,
+        additional ? 3 : 2,
+        message,
+        sizeof message
+    );
     REQUIRE(fixture->native);
     source_package_collection collections[] = { { "core", "/sdk/core" } };
     source_package_snapshot_options options = { .project_root = "/compiler",

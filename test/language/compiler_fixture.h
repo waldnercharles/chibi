@@ -3,6 +3,7 @@
 
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_prepare.h"
+#include "runtime/native_definitions.h"
 #include "types/record.h"
 
 /* Test-only mechanics shared by authored compiler differentials. Inputs use
@@ -21,6 +22,13 @@ typedef struct
 } compiler_fixture_node;
 
 bool compiler_fixture_prepare(compiler_fixture *, const source_package_input *, int count);
+/* Additional private primitives are opt-in; ordinary fixtures keep their catalog. */
+bool compiler_fixture_prepare_pack(
+    compiler_fixture *,
+    const source_package_input *,
+    int count,
+    const native_definition_pack *additional
+);
 void compiler_fixture_free(compiler_fixture *);
 const authoring_package *compiler_fixture_package(
     const compiler_fixture *,

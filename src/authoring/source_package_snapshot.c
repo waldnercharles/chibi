@@ -1,20 +1,18 @@
 #include "authoring/source_package_snapshot.h"
 
 #include "authoring/source_package_paths.h"
+#include "authoring/source_package_routes.h"
 #include "authoring/source_package_syntax.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <yyjson.h>
 
 enum
 {
-    MAX_DEPTH = 16,
     MAX_FILE_BYTES = 512 * 1024,
     MAX_TOTAL_BYTES = 8 * 1024 * 1024,
     MAX_IMPORTS = 4096,
@@ -53,71 +51,6 @@ static bool reject(source_package_snapshot *s, script_range range, const char *m
 static script_range file_range(int file)
 {
     return (script_range){ .line = 1, .column = 1, .document = file };
-}
-static bool identifier(const char *name)
-{
-    if (!source_package_path_bounded(name) || !*name) {
-        return false;
-    }
-    for (int i = 0; name[i]; i++) {
-        unsigned char c = (unsigned char)name[i];
-        if (c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') &&
-            !(i && c >= '0' && c <= '9')) {
-            return false;
-        }
-    }
-    return true;
-}
-static const char *relative(const char *root, const char *path)
-{
-    assert(source_package_path_within(root, path));
-    const char *result = path + strlen(root);
-    if (!strcmp(root, "/")) {
-        return result;
-    }
-    return *result == '/' ? result + 1 : result;
-}
-static const char *key(source_package_snapshot *s, int root, const char *path)
-{
-    const char *tail = relative(s->roots[root].root, path);
-    size_t size = strlen(s->roots[root].name) + strlen(tail) + 2;
-    char *result = arena_alloc(&s->storage, size);
-    snprintf(result, size, "%s:%s", s->roots[root].name, tail);
-    return result;
-}
-static bool add_root(source_package_snapshot *s, const char *name, const char *path)
-{
-    script_range range = file_range(-1);
-    if (!identifier(name)) {
-        return reject(s, range, "Invalid collection name");
-    }
-    const char *root = source_package_path_normalize(&s->storage, NULL, path, NULL);
-    if (!root) {
-        return reject(s, range, "Invalid absolute collection root");
-    }
-    for (int i = 0; i < s->root_count; i++) {
-        if (!strcmp(s->roots[i].name, name)) {
-            return reject(s, range, "Duplicate collection name");
-        }
-        if (!strcmp(s->roots[i].root, root)) {
-            return reject(s, range, "Duplicate collection root");
-        }
-    }
-    s->roots[s->root_count++] = (source_package_collection){ copy(s, name, strlen(name)),
-                                                             root };
-    return true;
-}
-static int owning_root(const source_package_snapshot *s, const char *directory)
-{
-    int selected = -1;
-    for (int i = 0; i < s->root_count; i++) {
-        if (source_package_path_within(s->roots[i].root, directory) &&
-            (selected < 0 ||
-             strlen(s->roots[i].root) > strlen(s->roots[selected].root))) {
-            selected = i;
-        }
-    }
-    return selected;
 }
 static bool valid_utf8(const char *text, size_t size)
 {
@@ -165,33 +98,22 @@ static bool retain_file(source_package_snapshot *s, const source_package_input *
                                               copy(s, input->text, input->size),
                                               input->size };
     s->documents[file].path = s->inputs[file].path;
-    const char *path = source_package_path_normalize(
+    source_package_routed_file routed;
+    const char *route_error = source_package_routes_file(
         &s->storage,
-        s->roots[0].root,
+        s->roots,
+        s->root_count,
         input->path,
-        input->path[0] == '/' ? NULL : s->roots[0].root
+        &routed
     );
-    if (!path || !strcmp(path, "/")) {
-        return reject(s, range, "Invalid package file path or root escape");
+    if (route_error) {
+        return reject(s, range, route_error);
     }
-    const char *slash = strrchr(path, '/');
-    const char *directory = slash == path ? "/"
-                                          : copy(s, path, (size_t)(slash - path));
-    int root = owning_root(s, directory);
-    if (root < 0) {
-        return reject(s, range, "Package file is outside the configured roots");
-    }
-    int depth = 0;
-    for (const char *part = relative(s->roots[root].root, directory); *part; part++) {
-        depth += *part == '/';
-    }
-    if (depth >= MAX_DEPTH) {
-        return reject(s, range, "Package path nesting exceeds the supported depth");
-    }
+    const char *path = routed.path, *directory = routed.directory;
     s->documents[file].path = path;
-    s->documents[file].key = key(s, root, path);
-    s->identities[file] = key(s, root, directory);
-    s->file_roots[file] = root;
+    s->documents[file].key = routed.key;
+    s->identities[file] = routed.identity;
+    s->file_roots[file] = routed.root;
     if (memchr(input->text, 0, input->size)) {
         return reject(s, range, "Package source contains NUL bytes");
     }
@@ -218,45 +140,19 @@ static bool resolve_import(source_package_snapshot *s, int file, int index)
     script_range range = source->locations[index].path;
     range.document = file;
     const char *text = s->documents[file].syntax->text + range.start;
-    yyjson_doc *json = yyjson_read(text, (size_t)(range.end - range.start), 0);
-    yyjson_val *value = json ? yyjson_doc_get_root(json) : NULL;
-    if (!yyjson_is_str(value) ||
-        yyjson_get_len(value) != strlen(yyjson_get_str(value))) {
-        yyjson_doc_free(json);
-        return reject(s, range, "Invalid import string or embedded NUL");
-    }
-    const char *path = yyjson_get_str(value), *base = s->files[file].directory;
-    int root = s->file_roots[file];
-    const char *colon = strchr(path, ':');
-    if (colon) {
-        root = -1;
-        for (int i = 0; i < s->root_count; i++) {
-            if (strlen(s->roots[i].name) == (size_t)(colon - path) &&
-                !memcmp(s->roots[i].name, path, (size_t)(colon - path))) {
-                root = i;
-                break;
-            }
-        }
-        if (root < 0) {
-            yyjson_doc_free(json);
-            return reject(s, range, "Unknown import collection");
-        }
-        path = colon + 1;
-        base = s->roots[root].root;
-    }
-    if ((!colon && !*path) || *path == '/' || !source_package_path_bounded(path)) {
-        yyjson_doc_free(json);
-        return reject(s, range, "Invalid import path");
-    }
-    const char *directory = source_package_path_normalize(
+    char *directory;
+    const char *route_error = source_package_routes_import(
         &s->storage,
-        base,
-        path,
-        s->roots[root].root
+        s->roots,
+        s->root_count,
+        s->files[file].directory,
+        s->file_roots[file],
+        text,
+        (size_t)(range.end - range.start),
+        &directory
     );
-    yyjson_doc_free(json);
-    if (!directory) {
-        return reject(s, range, "Import path escapes its collection root or exceeds the path limit");
+    if (route_error) {
+        return reject(s, range, route_error);
     }
     source_package_import import = source->imports[index];
     import.directory = directory;
@@ -328,13 +224,17 @@ source_package_snapshot *source_package_snapshot_new(const source_package_snapsh
         return s;
     }
     s->roots = xcalloc((size_t)options->collection_count + 1, sizeof *s->roots);
-    if (!add_root(s, "project", options->project_root)) {
+    const char *route_error = source_package_routes_roots(
+        &s->storage,
+        options->project_root,
+        options->collections,
+        options->collection_count,
+        s->roots,
+        &s->root_count
+    );
+    if (route_error) {
+        reject(s, file_range(-1), route_error);
         return s;
-    }
-    for (int i = 0; i < options->collection_count; i++) {
-        if (!add_root(s, options->collections[i].name, options->collections[i].root)) {
-            return s;
-        }
     }
     size_t count = (size_t)options->file_count;
     s->inputs = xcalloc(count + 1, sizeof *s->inputs);

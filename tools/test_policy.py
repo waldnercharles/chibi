@@ -568,6 +568,13 @@ TOOLS = {
     # Independent review before first run; separate build/shared60s, no aggregate.
     'language-package-paths-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--package-paths-chibi'],
+    # Forty fixed requests (13roots,11files,16imports) plus27root setups:
+    # 67 C oracle calls,134 authored calls capped at1m instructions each.
+    # Two retained owners prepare4sources each; inputs<=128bytes/3roots/17dirs.
+    # No runtime files/children/services/GPU; private external JSON decoding only.
+    # Independent first-run review, separate build/shared60s, outside aggregate.
+    'language-package-routes-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--package-routes-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

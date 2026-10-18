@@ -1225,6 +1225,24 @@ performance at the maximum segment count. The route has no runtime files,
 children, services or GPU work. Independently review before first execution,
 build separately and use one shared 60-second ceiling outside the aggregate.
 
+`python3 tools/test_policy.py tool language-package-routes-chibi` compares
+thirteen collection-root requests, eleven file routes and sixteen import routes.
+Each file/import request also builds its roots independently in Chibi. The
+workload totals 67 C oracle calls and 134 authored calls across bytecode and
+SLJIT, capped at one million instructions per call. Two retained owners prepare
+four actual sources each (eight source parses). Inputs are at most 128 bytes,
+with at most three roots and seventeen directory segments. Fixed cases cover
+root validation and both duplicate errors, longest-root selection, relocated
+keys, depth boundaries, collection routing, Unicode and invalid/NUL JSON strings.
+A private yyjson binding supplies decoded values and byte lengths; Chibi owns
+all routing and diagnostic decisions. Success results and exact first errors
+are compared; the C helper's partial root prefix on rejection is not part of
+the authored rejection payload. Results outlive producer and input storage,
+and retained root/file/import outputs also survive owner teardown. There are
+no runtime files, children, services or GPU operations. Independently review
+the fixed workload before first execution, build separately and use one shared
+60-second ceiling. This route remains outside the language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

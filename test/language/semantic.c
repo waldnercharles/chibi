@@ -672,6 +672,48 @@ TEST_CASE(language_pure_call_chain_rejects_effects)
     REQUIRE(analysis->valid);
     return true;
 }
+TEST_CASE(language_pure_owned_record_and_index_writes)
+{
+    parse(
+        "library Effects { Row :: struct { value: int; }; "
+        "Run :: pure fn() -> int { row: Row = {value: 1}; "
+        "row.value = 2; row.value += 3; rows: Row[] = [row]; "
+        "rows[0].value += 4; values: int[] = [1]; values[0] = 2; "
+        "return rows[0].value + values[0]; } }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    for (int i = 0; i < analysis->function_count; i++) {
+        REQUIRE(!(analysis->functions[i].effects & SCRIPT_EFFECT_WRITE));
+    }
+    return true;
+}
+TEST_CASE(language_pure_external_record_and_index_writes_rejected)
+{
+    const char *sources[] = {
+        "library Effects { Run :: pure fn(value: ref int) { value = 2; } }",
+        "library Effects { Row :: struct { value: int; }; "
+        "Run :: pure fn(row: ref Row) { row.value = 2; } }",
+        "library Effects { Row :: struct { value: int; }; "
+        "Run :: pure fn(rows: ref Row[]) { rows[0].value += 2; } }",
+        "library Effects { Run :: pure fn(values: ref int[]) { values[0] = 2; "
+        "} }",
+        "behavior Effects { state value: int = 1; "
+        "Run :: pure fn() { value = 2; } }",
+        "behavior Effects { state values: int[] = [1]; "
+        "Run :: pure fn() { values[0] = 2; } }",
+        "behavior Effects { shared values: int[] = [1]; "
+        "Run :: pure fn() { values[0] += 2; } }",
+        "behavior Effects { Run :: pure fn() { self.Position.x = 2; } }",
+    };
+    for (size_t i = 0; i < sizeof sources / sizeof *sources; i++) {
+        parse(sources[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid);
+        REQUIRE(diagnostic("Pure function performs execution effects"));
+    }
+    return true;
+}
 TEST_CASE(language_discarded_pure_result_rejected)
 {
     parse("system Motion(position: Position) { VectorAdd(position, position); mutate(); }");
@@ -1654,6 +1696,8 @@ void test_language_semantic()
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
+    RUN_TEST_CASE(language_pure_owned_record_and_index_writes);
+    RUN_TEST_CASE(language_pure_external_record_and_index_writes_rejected);
     RUN_TEST_CASE(language_discarded_pure_result_rejected);
     RUN_TEST_CASE(language_binding_cycle_rejected);
     RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);

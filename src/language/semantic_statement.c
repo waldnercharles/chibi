@@ -526,6 +526,32 @@ uint64_t script_analyzer_component_target(const script_analysis *out, int index)
     }
     return 0;
 }
+/* Member/index stores replace owned local values. A path through a reference,
+ * component or reflected setter writes storage outside that value instead. */
+static bool writes_external_storage(const script_analysis *out, int index)
+{
+    while (index >= 0) {
+        const script_expression *e = &out->expressions[index];
+        if ((e->type.flags & SCRIPT_TYPE_REFERENCE) || e->write ||
+            e->kind == SCRIPT_EXPR_COMPONENT) {
+            return true;
+        }
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX) {
+            index = e->left;
+            continue;
+        }
+        if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+            return true;
+        }
+        const script_symbol *symbol = &out->symbols[e->symbol];
+        if (symbol->type.flags & SCRIPT_TYPE_REFERENCE) {
+            return true;
+        }
+        return symbol->kind != SCRIPT_LOCAL &&
+               symbol->kind != SCRIPT_PARAMETER && symbol->kind != SCRIPT_RESULT;
+    }
+    return true;
+}
 static bool reduction_bounded(const analyzer *a, int index)
 {
     while (index >= 0 && a->out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
@@ -704,11 +730,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         result.effects = address.effects |
                          script_analyzer_expr_effects(a, result.second);
-        if (address.kind == SCRIPT_EXPR_MEMBER || address.kind == SCRIPT_EXPR_COMPONENT ||
-            (address.symbol >= 0 &&
-             (a->out->symbols[address.symbol].kind == SCRIPT_STATE ||
-              a->out->symbols[address.symbol].kind == SCRIPT_SHARED_STATE ||
-              (a->out->symbols[address.symbol].type.flags & SCRIPT_TYPE_REFERENCE)))) {
+        if (writes_external_storage(a->out, result.expression)) {
             result.effects |= SCRIPT_EFFECT_WRITE;
         }
         if (address.symbol >= 0) {

@@ -1295,6 +1295,12 @@ static bool concrete_function(const script_analysis *a, const script_function *f
     }
     return true;
 }
+static const script_function *input_signature(const script_analysis *a, const script_function *f)
+{
+    return f->kind == SCRIPT_FUNCTION_MACRO_ENTRY && f->parent >= 0 && !f->parameter_count
+             ? &a->functions[f->parent]
+             : f;
+}
 static int authored_call(lower *l, const script_expression *e)
 {
     int index = e->entry >= 0 ? e->entry : e->right;
@@ -1307,6 +1313,7 @@ static int authored_call(lower *l, const script_expression *e)
         return -1;
     }
     const script_function *f = &l->a->functions[index];
+    const script_function *inputs = input_signature(l->a, f);
     const script_function *output = f->kind == SCRIPT_FUNCTION_MACRO_ENTRY &&
                                             f->parent >= 0
                                       ? &l->a->functions[f->parent]
@@ -1316,8 +1323,8 @@ static int authored_call(lower *l, const script_expression *e)
         return -1;
     }
     pin_value *args = NULL, *results = NULL;
-    for (int i = 0; i < f->parameter_count; i++) {
-        apush(args, signature_initial(l, l->a->symbols[f->parameters[i]].type));
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        apush(args, signature_initial(l, l->a->symbols[inputs->parameters[i]].type));
     }
     for (int i = 0; !e->task && i < output->result_count; i++) {
         apush(results, initial(l, l->a->symbols[output->results[i]].type));
@@ -1338,8 +1345,8 @@ static int authored_call(lower *l, const script_expression *e)
                              acount(results)
                          );
     int argument_first = behavior_function_builder_call_first(l->builder, invocation);
-    for (int i = 0; i < f->parameter_count; i++) {
-        if (l->a->symbols[f->parameters[i]].type.flags & SCRIPT_TYPE_REFERENCE) {
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        if (l->a->symbols[inputs->parameters[i]].type.flags & SCRIPT_TYPE_REFERENCE) {
             set_kind(l, BEHAVIOR_BANK_DATA, argument_first + i, BEHAVIOR_REFERENCE);
         }
     }
@@ -1348,11 +1355,11 @@ static int authored_call(lower *l, const script_expression *e)
     int first = behavior_function_builder_call_first(l->builder, invocation);
     for (int i = 0; i < e->argument_count; i++) {
         const script_argument *a = &e->arguments[i];
-        if (a->parameter < 0 || a->parameter >= f->parameter_count) {
+        if (a->parameter < 0 || a->parameter >= inputs->parameter_count) {
             error(l, a->range, "Authored call argument does not match its signature");
             continue;
         }
-        script_type expected = l->a->symbols[f->parameters[a->parameter]].type;
+        script_type expected = l->a->symbols[inputs->parameters[a->parameter]].type;
         int value;
         if (expected.flags & SCRIPT_TYPE_REFERENCE) {
             value = reference(l, a->value);
@@ -1366,8 +1373,8 @@ static int authored_call(lower *l, const script_expression *e)
         }
     }
     emit(l, (behavior_function_instruction){ .op = BF_INVOKE, .left = invocation }, e->range);
-    for (int i = 0; i < f->parameter_count; i++) {
-        clear_value(l, first + i, l->a->symbols[f->parameters[i]].type, e->range);
+    for (int i = 0; i < inputs->parameter_count; i++) {
+        clear_value(l, first + i, l->a->symbols[inputs->parameters[i]].type, e->range);
     }
     int result_first = behavior_function_builder_call_results(l->builder, invocation);
     if (e->task) {
@@ -5561,6 +5568,79 @@ static behavior_function *value_evaluator(
     free(l->results);
     return function;
 }
+static int storage_root(const script_analysis *a, int index)
+{
+    while (index >= 0) {
+        const script_expression *e = &a->expressions[index];
+        if (e->kind != SCRIPT_EXPR_MEMBER && e->kind != SCRIPT_EXPR_INDEX) {
+            return e->kind == SCRIPT_EXPR_SYMBOL ? e->symbol : -1;
+        }
+        index = e->left;
+    }
+    return -1;
+}
+static bool parameter_needs_storage(const lower *l, int symbol)
+{
+    for (int i = 0; i < l->a->statement_count; i++) {
+        const script_statement *s = &l->a->statements[i];
+        if (s->kind == SCRIPT_STMT_ASSIGN && storage_root(l->a, s->expression) == symbol) {
+            return true;
+        }
+    }
+    for (int i = 0; i < l->a->expression_count; i++) {
+        const script_expression *e = &l->a->expressions[i];
+        if (e->kind != SCRIPT_EXPR_CALL) {
+            continue;
+        }
+        int function_index = e->right >= 0 ? (e->entry >= 0 ? e->entry : e->right)
+                                           : -1;
+        const script_function *function = function_index >= 0
+                                            ? input_signature(l->a, &l->a->functions[function_index])
+                                            : NULL;
+        const script_catalog_capability
+            *cap = function
+                     ? NULL
+                     : script_catalog_capability_by_id(l->catalog, e->capability);
+        for (int j = 0; j < e->argument_count; j++) {
+            const script_argument *arg = &e->arguments[j];
+            int parameter = arg->parameter;
+            if (parameter < 0 || storage_root(l->a, arg->value) != symbol) {
+                continue;
+            }
+            script_type type = function && parameter < function->parameter_count
+                                 ? l->a->symbols[function->parameters[parameter]]
+                                       .type
+                             : cap && parameter < cap->parameter_count
+                                 ? cap->parameters[parameter].type
+                                 : (script_type){ 0 };
+            if (type.flags & SCRIPT_TYPE_REFERENCE) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+/* Argument headers belong to the caller. Only writable/exposed parameters need
+ * private headers; read-only arguments retain their lowering proof shape.
+ * References and captured descriptors intentionally keep their owner. */
+static void isolate_parameters(lower *l, script_range range)
+{
+    for (int i = 0; i < l->a->symbol_count; i++) {
+        const script_symbol *symbol = &l->a->symbols[i];
+        if (symbol->kind != SCRIPT_PARAMETER || l->parameters[i] < 0 ||
+            l->captured[i] >= 0 || (symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
+            !parameter_needs_storage(l, i)) {
+            continue;
+        }
+        script_expression input = { .kind = SCRIPT_EXPR_SYMBOL,
+                                    .symbol = i,
+                                    .type = symbol->type,
+                                    .range = range };
+        int value = symbol_value(l, &input);
+        host_argument(l, local_address(l, i), value, symbol->type, range);
+        l->parameters[i] = -1;
+    }
+}
 static void lower_function(lower *l, int index)
 {
     const script_function *f = &l->a->functions[index];
@@ -5588,7 +5668,7 @@ static void lower_function(lower *l, int index)
                           : NULL;
     bool continuation = f->kind == SCRIPT_FUNCTION_CONTINUATION;
     l->captured = indices(l->a->symbol_count);
-    if (closure && f->parent >= 0) {
+    if (child_callable && (closure || !f->parameter_count)) {
         for (int i = 0; i < owner->parameter_count; i++) {
             int symbol = owner->parameters[i];
             l->parameters[symbol] = acount(args);
@@ -5727,6 +5807,7 @@ static void lower_function(lower *l, int index)
     afree(args);
     afree(results);
     afree(variables);
+    isolate_parameters(l, f->range);
     for (int i = 0; i < output->result_count; i++) {
         int symbol = output->results[i];
         const script_symbol *result_symbol = &l->a->symbols[symbol];
@@ -5769,6 +5850,7 @@ static void lower_function(lower *l, int index)
             for (int j = 0; j < entry->parameter_count; j++) {
                 l->parameters[entry->parameters[j]] = j;
             }
+            isolate_parameters(l, entry->range);
             statement(l, entry->body);
         }
     }

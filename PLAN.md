@@ -365,8 +365,8 @@ and the package graph and syntax fixtures remain bounded and deterministic.
 
 ### M4. Port the first compiler component
 
-Status: in progress. The approved parser correction is recorded first; the
-owned-value correction and authored graph follow as separate reviewed changes.
+Status: in progress. Parser and owned-value corrections are recorded separately;
+the reviewed authored graph is the remaining milestone commit.
 
 Port package graph construction and dependency ordering from the current C
 implementation to ordinary `.chibi`. It is the selected first component because
@@ -487,8 +487,8 @@ Last verified: 2026-10-17.
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M3; M4 is in progress
-- Recorded M4 change: approved typed-declaration precedence
-- Next action: record the reviewed owned-value correction, then the authored graph
+- Recorded M4 changes: approved declaration precedence and owned-value correction
+- Next action: record the reviewed authored graph, then push the completed milestone
 
 The owner approved declaration precedence on 2026-10-17: `name: Type = value`
 is a declaration when its type begins on the colon's line. A label before a

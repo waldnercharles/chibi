@@ -792,3 +792,15 @@ M3's installed Linux/macOS evidence remains in its committed checkpoint. This
 checkpoint does not establish a new installed-SDK or Linux claim.
 Full native/render/Studio, browser/device and other quarantined suites
 remain disabled, not passed.
+
+### M5 snapshot-to-reader composition
+
+`tools/compiler/analysis_state/State.chibi` adapts retained snapshot documents
+to the existing signature-reader tree with `TreeForDocument` and exposes
+package-local/global document maps in graph-member order, which is sorted by
+path. It consumes the snapshot's raw flags and syntax root without reparsing or
+resolving names. `language-snapshot-reader-chibi` passes 3 cases / 61,885
+assertions in 3.1s and `language-signature-reader-chibi` 4 cases / 128,443
+assertions in 6.6s on macOS, each under its own production 60-second deadline.
+It does not implement header composition, semantic phases, exports, lowering,
+artifact output or `Checked`, and makes no M5/self-hosting completion claim.

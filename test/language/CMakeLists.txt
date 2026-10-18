@@ -142,9 +142,13 @@ configure_file(unit_algebra_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/unit_algebra_chibi_source.h" @ONLY)
 
 set(signature_reader_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/signature_reader/Reader.chibi")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${signature_reader_source}")
+set(analysis_state_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/analysis_state/State.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${signature_reader_source}" "${analysis_state_source}")
 file(READ "${signature_reader_source}" CHIBI_SIGNATURE_READER_HEX HEX)
 string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SIGNATURE_READER_BYTES "${CHIBI_SIGNATURE_READER_HEX}")
+file(READ "${analysis_state_source}" CHIBI_ANALYSIS_STATE_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_ANALYSIS_STATE_BYTES "${CHIBI_ANALYSIS_STATE_HEX}")
 configure_file(signature_reader_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/signature_reader_chibi_source.h" @ONLY)
 

@@ -2506,3 +2506,59 @@ This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
 It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
+
+### Snapshot-to-reader composition
+
+The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`
+selector uses the existing signature-reader pico_unit owner and language
+dispatcher. It does not add an executable or expand the old signature/snapshot
+selectors. `analysis_state.TreeForDocument` converts the actual retained snapshot
+forest into the existing `signature_reader.Tree.Raw`, carrying incoming fields,
+raw named/extra flags, text, local byte positions and the explicit local syntax
+root. Nonnegative topology links subtract the document's `node_start`; negative
+sentinels remain unchanged. Rejected snapshots expose only parsed retained
+prefixes. `DocumentsForPackage` preserves graph-member order, which is sorted by
+path, in both directions;
+nonmember source files remain `-1`, and a rejected graph has no package map.
+
+Three fixed requests cover interleaved app/lib/app source order, reordered
+lib/app/app source order, and a two-file rejected routing prefix. They prepare
+one fourteen-source closure per backend (28 preparation parses); seven C oracle
+trees and fourteen private raw parses make 49 total parses. Four private JSON
+string decodes resolve the fixed import literals. The 64 top-level
+calls are six snapshot builds, fourteen document-map calls, twenty tree-view
+calls and twenty-four reader calls. Builds retain the existing supplied
+three-million budget; adapters and readers use 500,000. Child activations inherit
+and reset these arguments; they are not aggregate instruction limits.
+
+Each request offers at most three files below 256 bytes, two packages and one
+import. Trees stay within 128 nodes/document, 384 forest nodes and depth 32.
+There are two package-local documents at most; map arrays have at most three
+entries; rejected snapshots retain the existing fixed 256-entry cycle bank.
+Reader fixture tables keep the existing 64-type/128-ID envelope,
+two scopes/two symbols/one function, two definitions/two variants and zero
+semantic import entries. A reading has at most four publications/new types,
+uses and diagnostics. Eight retained-result projections stay below 128 KiB each.
+All existing source bounds remain: reader sources below 32 KiB, snapshot/shared
+sources below 16 KiB; the new State source is below 8 KiB and the combined closure
+is below 128 KiB. The exact source manifest records measured source bytes.
+
+Each adapted full tree is compared with the current Tree-sitter-derived reader
+input. For the six accepted document instances, direct and adapted inputs
+produce the same complete authored reading, additionally checked against the
+existing C reader oracle. The rejected parsed prefix checks full tree parity
+without a reader call. Named/unnamed and extra/nonextra witnesses,
+nonzero forest offsets, explicit package-local diagnostic document numbers,
+unit text and constructor publication are included. Input snapshots retire
+before the views are consumed, views retire before readings are compared, and
+retained readings survive all compiler owners. No reparse occurs in the adapter;
+C parser/reader calls are fixture oracles only. No runtime files, processes,
+services, GPU work, new semantic native calls, or compiler completion result is
+introduced.
+
+The selector passes 3 cases / 61,885 assertions in 3.1s on macOS under one
+production 60-second deadline; configuration/build time stays separate. Failure
+to fit the source/row limits or deadline is a blocker; do not increase a cap or
+split the selector to evade it. Header environments, semantic sidecars, body
+analysis, exports, lowering, artifact assembly and `Checked` remain
+unimplemented here.

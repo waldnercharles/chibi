@@ -664,6 +664,19 @@ TOOLS = {
     # first-run review, separate build, shared 60s; outside language aggregate.
     'language-signature-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--signature-reader-chibi'],
+    # Proposed source-only composition: three snapshot requests (3/3/2 files),
+    # 64 top-level calls: 6 Build at3m,14maps/20views/24reads at500k supplied.
+    # Child activations inherit/reset budgets; no aggregate instruction claim.
+    # 14 sources/backend,28 preparation+7 C oracle+14 private raw parses=49.
+    # Existing reader<32KiB and snapshot/shared<16KiB source caps unchanged;
+    # State<8KiB, combined<128KiB. Inputs<256B,128nodes/depth32,file forest384.
+    # Maps3/2 rows,2packages/1import,256rejected cycle cells;4JSON decodes.
+    # Reader64types/128IDs and4outputs.
+    # Eight retained-result projections<128KiB each. No runtime IO, services,
+    # children, GPU or semantic callbacks. Unmeasured: exact-source/workload
+    # review before first execution; separate build, shared60s, no aggregate.
+    'language-snapshot-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--snapshot-reader-chibi'],
     # Two cases: 15 raw declarations/30 Register calls at 2m instructions each.
     # Eight sources/backend (Headers<64KiB, others<32KiB) + 15 raw trees:
     # 31 parses, 4 private JSON callbacks. Sources<512 bytes,256 nodes/depth32.

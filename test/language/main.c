@@ -54,6 +54,7 @@ void test_language_named_binding_chibi();
 void test_language_type_constructors_chibi();
 void test_language_unit_algebra_chibi();
 void test_language_signature_reader_chibi();
+void test_language_snapshot_reader_chibi();
 void test_language_callable_headers_chibi();
 void test_language_unit_analysis_chibi(int regression);
 void test_language_package_execution();
@@ -160,6 +161,8 @@ int main(int argc, char **argv)
     bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
     bool signature_reader_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--signature-reader-chibi");
+    bool snapshot_reader_chibi = argc == 2 &&
+                                 !strcmp(argv[1], "--snapshot-reader-chibi");
     bool callable_headers_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--callable-headers-chibi");
     bool unit_analysis_chibi = argc == 2 && !strcmp(argv[1], "--unit-analysis-chibi");
@@ -215,13 +218,14 @@ int main(int argc, char **argv)
          !constant_proof_chibi && !constant_scalar_chibi && !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
-         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
-         !record_members_chibi && !package_execution && !package_resolution &&
-         !package_imports && !package_files && !package_core && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
+         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
+         !package_resolution && !package_imports && !package_files &&
+         !package_core && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -238,7 +242,7 @@ int main(int argc, char **argv)
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
             "--unit-algebra-chibi | "
-            "--signature-reader-chibi | "
+            "--signature-reader-chibi | --snapshot-reader-chibi | "
             "--callable-headers-chibi | --unit-analysis-chibi | "
             "--unit-analysis-zero-id | --unit-analysis-deep | "
             "--union-members-chibi | --effect-analysis-chibi | "
@@ -400,6 +404,8 @@ int main(int argc, char **argv)
         test_language_unit_algebra_chibi();
     } else if (signature_reader_chibi) {
         test_language_signature_reader_chibi();
+    } else if (snapshot_reader_chibi) {
+        test_language_snapshot_reader_chibi();
     } else if (callable_headers_chibi) {
         test_language_callable_headers_chibi();
     } else if (unit_analysis_chibi || unit_analysis_zero_id || unit_analysis_deep) {

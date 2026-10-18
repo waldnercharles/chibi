@@ -553,6 +553,22 @@ TOOLS = {
     # and one shared60s production execution deadline.
     'language-package-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                  '--package-imports'],
+    # Eight fixed POSIX filesystem package cases: 22 loader calls, 12 package
+    # preparations, <=63 parses/30 imports, <=36 package visits before reuse,
+    # and ten VM/SLJIT calls with budget2000. Four files/20 entries per forest;
+    # eight disposable roots, <=19 recorded cleanup paths per case, five links,
+    # one 512KiB+1 sparse oversized file and one non-opened FIFO. No children,
+    # network, engine frames or GPU. Native Linux/macOS only; focused route,
+    # separate build and independent exact-source review before first execution.
+    'language-package-files': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-files'],
+    # Four fixed pure core package cases, both backends: 12 preparations,
+    # 24 files/12 imports, <=24 package visits, 66 calls with budget10000.
+    # Actual core source<16KiB, app<2KiB, arrays<=3 elements, three owners.
+    # No filesystem/process/services/GPU; independent first-run review,
+    # separate build and one shared60s execution deadline.
+    'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                              '--package-core'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

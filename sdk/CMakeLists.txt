@@ -278,6 +278,9 @@ add_library(Chibi::text_capabilities ALIAS chibi_text_capabilities)
 set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabilities)
 chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
 target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
+# Authored core collection sources are explicit snapshot inputs for SDK users.
+install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
+    DESTINATION share/chibi/core/strings)
 add_library(chibi_fmt STATIC "${CHIBI_SDK_ROOT}/third_party/fmt/fmt.c")
 set_target_properties(chibi_fmt PROPERTIES EXPORT_NAME fmt)
 target_include_directories(chibi_fmt PRIVATE "${CHIBI_SDK_ROOT}/third_party/fmt")

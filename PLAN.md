@@ -114,7 +114,9 @@ vendor:     optional low-level bindings to external native libraries
 The SDK can analyze and execute explicitly supplied multi-file packages and their
 imports. An owned resolver snapshot resolves imports against explicit collection
 roots; prepared generations own exported declarations and linked dependencies.
-Filesystem package discovery and portable core modules remain unimplemented.
+A bounded disk adapter supplies explicit package roots on Linux and macOS. The
+installed `core:strings` collection and pure native arrays support the first
+compiler component; Windows disk loading remains unsupported.
 
 ### Bootstrap terms
 
@@ -183,11 +185,11 @@ Current integration constraints:
 | M0 | **Complete** | current main | Explicit `build` and `run` commands over existing preparation and player behavior. |
 | M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
-| M3 | **In progress** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
-| M4 | Blocked | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
+| M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
+| M4 | **Ready** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
-| M7 | Blocked | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
+| M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | Blocked | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
@@ -338,13 +340,15 @@ its authored-game meaning.
 
 ### M3. Make packages executable
 
-Status: in progress. Owned multi-document packages and file-local imports execute
-functions, constants, records and unions on bytecode and SLJIT. Prepared package
-generations own exported metadata and values, lower dependencies first, and reuse
-unchanged generations while invalidating transitive importers. Sources retain
-individual paths, text and local diagnostic ranges; exported identities exclude
-sibling input order and physical installation paths. Next: canonical filesystem
-package loading, the portable core needed by M4, and installed SDK/Linux proof.
+Status: complete on this branch for native Linux and macOS. Owned multi-file
+packages and file-local imports execute functions, constants, records and unions
+on bytecode and SLJIT. Canonical disk loading supplies complete explicit roots;
+prepared generations retain owned exports and dependency modules, reuse exact
+inputs, and invalidate transitive importers. Installed consumers import the
+shipped portable `core:strings` collection and use pure generic native arrays.
+Both relocated SDKs pass the package fixtures. Windows filesystem loading and
+general authored generic specialization remain separate gaps; buffer-based
+package APIs are portable. M4 is the next bootstrap milestone.
 
 Extend the current package syntax and private graph into the smallest public,
 multi-file package system needed by the compiler. This milestone owns import
@@ -474,75 +478,90 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `65cb392a0933d8f86f40929ca313324a418c43a8`, owned package resolution
+- Starting checkpoint: `19ec9e44bd5c780cdadad4c4baa476db28983efe`, executable imports
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch and merge check: upstream unchanged; already an ancestor
-- Completed milestones: M0, M1 and M2; M3 is in progress
-- Next action: load canonical disk package roots, add the portable core needed
-  by M4, and prove package imports with the relocated SDK and Linux backend
+- Completed milestones: M0 through M3; M4 and M7 are ready
+- Next action: port package graph construction and ordering to ordinary Chibi
+  for M4, comparing it with the existing C fixture corpus on both backends
 
-The third M3 increment connects resolved imports to semantic analysis and
-execution. `authoring_packages_prepare` consumes an owned resolver snapshot,
-prepares dependencies first, and publishes independently owned exports and linked
-modules. Named imports are local to their declaring file; blank imports retain
-only the dependency edge; self imports refer to the current package. Exported
-functions, records, unions and constants retain stable IDs and metadata closure.
-Qualified constant values and parameter defaults remain owned after source
-owners retire. Exported defaults must be bounded compile-time values; preparing
-a package does not execute native calls to evaluate them.
+The final M3 increment adds `source_package_snapshot_load` to the owning SDK.
+It reads a complete explicit source forest through POSIX directory descriptors,
+canonicalizes root symlinks, rejects other non-hidden symlinks and nonregular
+sources, and enforces source/path/depth/entry limits. Explicit nested roots are
+scanned independently, including roots below hidden directories; ancestor scans
+prune their subtrees. Sorted owned buffers feed the existing resolver. Read-time
+metadata checks detect changed files/directories; this does not claim an atomic
+snapshot of the entire filesystem. Windows reports unsupported disk loading.
 
-Each candidate owns immutable, reference-counted package generations. Exact
-source membership/text, native metadata/defaults, backend, binding generation
-and direct dependency generations determine reuse. Changed dependencies
-invalidate transitive importers, including blank edges. Failed candidates leave
-previous valid modules usable. The shared `script_catalog_snapshot` helper now
-owns union payload defaults as well as record/callable defaults, and the reuse
-key includes those payload defaults.
+The SDK ships `core:strings` with pure byte access, owned slicing, lexical
+comparison, ASCII identifier checking and slash-basename extraction. Three
+service-free native primitives extend the existing text pack. Existing pure
+native arrays work with typed integer, string and authored-record values.
+Unrestricted authored generic specialization remains unimplemented. Numeric
+literals supplied to generic native parameters currently infer as double;
+compiler callers use explicit typed values where integer storage is required.
 
-Final macOS candidate evidence:
+Final macOS source-tree evidence:
 
 | Check | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed, 1.7s final incremental build; build separate from execution. |
-| `python3 tools/test_policy.py tool language-package-imports` | 11 cases, 808 assertions, 0.759s; bytecode and SLJIT verified by backend counters. |
-| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.150s. |
-| `python3 tools/test_policy.py tool language-package-resolution` | 8 cases, 140 assertions, 0.139s. |
-| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.139s. |
-| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.139s. |
-| `make test-native` | Passed, 24.569s execution. |
-| `make test-materials` | Passed, 29.216s execution. |
-| `make test-projects` | Passed, 30.313s execution. |
-| `make test-language-all` | Passed, 17.986s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 25.548s execution. |
-| 31 changed C files, clang-format 22; `git diff --check` | Passed. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 1.2s final incremental build; build separate from execution. |
+| `python3 tools/test_policy.py tool language-package-files` | 8 cases, 149 assertions, 0.721s. |
+| `python3 tools/test_policy.py tool language-package-core` | 4 cases, 802 assertions, 0.890s. |
+| `make test-native` | Passed, 25.611s execution. |
+| `make test-materials` | Passed, 29.425s execution. |
+| `make test-projects` | Passed, 31.449s execution. |
+| `make test-language-all` | Passed, 19.018s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.884s execution. |
+| Eight changed C files, clang-format 22; `git diff --check` | Passed. |
 
-Each admitted execution command used one production 60-second deadline. Native
-macOS drivers use Debug assertions and ASan/UBSan; the standalone tooling group
-uses its separate Debug configuration. Python 3.12.14 was selected through
-`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. Focused package routes
-remain separate from the required language aggregate. The imports route has
-45 preparations, 145 offered files, 80 import declarations and at most 129
-package visits before reuse. It makes 34 direct calls with instruction budgets
-of 2,000, one additional catalog snapshot, and one additional parse/nine direct
-semantic-only analyses. At most five files per snapshot and four owners are
-live; each source is below 1 KiB. It performs no filesystem, process or GPU work.
+Relocated installed SDK execution:
 
-Independent review admitted the workload and found no unresolved correctness or
-ownership issue after fixes for malformed exports and union-default reuse.
-Regression runs failed with the old union payload ownership and default-key
-behavior before the final candidate passed. Evidence is retained under ignored
-`.chibi/evidence/toolchain-m3/imports-*.log`; earlier M3 and M2 evidence remains
-in their respective directories.
+| Route | macOS | Linux |
+| --- | --- | --- |
+| Package imports | 11 cases / 808 assertions, 1.045s | 11 / 808, 0.065s |
+| Package files | 8 / 149, 0.192s | 8 / 149, 0.055s |
+| Package core | 4 / 802, 0.335s | 4 / 802, 0.088s |
+| Package graph | Previous M3 source-tree evidence | 23 / 457, 0.042s |
+| Package syntax | Previous M3 source-tree evidence | 11 / 292, 0.044s |
+| Package resolution | Previous M3 source-tree evidence | 8 / 140, 0.039s |
+| Sibling execution | Previous M3 source-tree evidence | 7 / 559, 0.045s |
 
-M2 scratch cleanup is pending: `relocated-sdk`, `clean-source`, `clean-build` and
-`packaged-sdk` still exist inside its evidence directory. Exact removal attempts
-did not complete; no approval-review reason was returned. Their manifests and
-reconstruction patch are preserved separately. Shared dependency caches remain.
+The macOS SDK and consumers use Debug assertions and ASan/UBSan; Linux uses
+Debug assertions without sanitizers. All authored calls verify bytecode or real
+SLJIT entries. Each route and required group uses one production 60-second
+execution ceiling; build/configuration/install work is separate. Python 3.12.14
+is selected through the Homebrew PATH on macOS; the existing Alpine guest uses
+Python 3.12.15, Clang 21.1.2 and CMake 4.1.3. No new VM or guest dependency was
+installed. The existing VM was restored from Running to its initial Stopped state.
 
-This M3 increment has macOS execution evidence only. Canonical filesystem
-loading, portable `core:` modules, Linux and relocated installed SDK package
-imports remain pending. The M2 Linux and installed-build results belong to their
-recorded earlier trees. This is not M3 completion or a self-hosted compiler.
-Full native/render/Studio/browser/device and other quarantined suites were not
-run and are not passed. Only changed C files were format-checked. The branch has
-not been pushed or merged.
+The installed proof checks ten public headers, five owning archives and the
+shipped core source against their exact source/build inputs. Package fixtures
+compile against installed public headers and link relocated archives. The core
+fixture embeds the installed source through relocatable `Chibi_CORE_SOURCE_DIR`.
+The existing dispatcher also contains private unrelated fixtures and `numeric.c`;
+this is public package-API provenance, not an entirely source-free dispatcher.
+Stable artifact/source hashes, preserved compiler commands, imported targets and
+logs are under ignored `.chibi/evidence/toolchain-m3/{installed,linux}`. All 3,136
+source hashes matched across the installed proof before the coverage-manifest
+comment correction and this ledger update.
+
+Independent review admitted both finite workloads and found no unresolved
+correctness, ownership or portability issue in the supported adapter. The disk
+route uses 22 loads, 12 preparations and ten budget-2,000 calls; it creates only
+fixed disposable trees, including one sparse oversized source and a FIFO that
+is never opened. Core uses 12 preparations and 66 budget-10,000 calls, without
+filesystem, process or service work. Exact limits are recorded in `docs/testing.md`.
+Builds caught a Darwin feature-macro issue and a nonpublic fixture include, both
+fixed. Core's first run caught the generic numeric-literal inference limitation;
+its final fixture uses the existing typed contract. The project group caught
+invalid feature-coverage exclusions; these pure uncategorized capabilities now
+have an explanatory comment rather than names absent from the scene catalog.
+
+M3 generated SDK and consumer directories were removed after provenance capture;
+logs, manifests and reconstruction commands remain. The four previously pending M2 SDK/source/build copies were also removed after
+checking their ownership markers and retained reconstruction evidence. Shared dependency caches remain. Full native/render/Studio/
+browser/device and other quarantined suites were not run and are not passed.
+Only changed C files were format-checked. The branch has not been pushed or
+merged. The compiler still uses stage zero; M3 completion is not self-hosting.

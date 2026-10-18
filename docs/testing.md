@@ -1119,6 +1119,46 @@ live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
 Build separately and run under one shared 60-second deadline. This focused
 route is outside the language aggregate.
 
+## Disk package-source checks
+
+`python3 tools/test_policy.py tool language-package-files` selects eight fixed
+C cases on native Linux and macOS. It reads disposable source forests through
+`source_package_snapshot_load`, then prepares siblings, relative dependencies
+and an explicit `core:` collection on bytecode and SLJIT. Cases check relocation
+identities, unchanged reuse and dependent invalidation, missing-import source
+ranges, descendant symlink rejection, explicit root symlink canonicalization,
+duplicate physical roots and scanning overlapping roots once. An explicit root
+under a hidden ancestor remains visible. NUL, an oversized regular file and a
+`.chibi` FIFO are rejected; the FIFO has no writer.
+
+The finite workload has 22 loader calls, 12 preparations, at most 63 parses and
+30 imports, at most 36 package visits before reuse, and ten direct calls with
+instruction budget 2,000. Each loaded forest has four source files and at most
+20 visited directory entries, including dot entries. Eight disposable temporary directories contain
+at most 19 recorded cleanup paths per case; cleanup uses only those known paths
+and never follows links. Ordinary sources are below 1 KiB. One sparse oversized
+file is exactly 512 KiB plus one byte; one FIFO and five symlinks are created.
+There are no subprocesses, network operations, engine frames or GPU work.
+
+Build separately and execute once under the production supervisor's shared
+60-second deadline after independent source and workload admission. This route
+is outside the language aggregate. Windows retains the explicit unsupported
+filesystem adapter; buffer-based package APIs are unaffected. Source registration
+records no execution result.
+
+`python3 tools/test_policy.py tool language-package-core` selects four fixed
+C cases using the actual shipped `core:strings` source and pure text/array packs.
+It covers unsigned bytes, slice bounds and ownership, lexical ordering, ASCII
+identifiers, basename extraction, generic native arrays, binding-generation
+invalidation and retained modules on bytecode and SLJIT. Twelve preparations
+supply 24 files and 12 imports, with at most 24 package visits before reuse and
+66 direct calls, each with a 10,000-instruction budget. At most three owners
+and three-element arrays are live; core source is below 16 KiB and the app below
+2 KiB. There is no filesystem, process, service or GPU work. Installed consumers
+embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
+independently review before the first run under one shared 60-second deadline.
+This focused route is outside the language aggregate.
+
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects eighteen C cases in the

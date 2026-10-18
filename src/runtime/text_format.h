@@ -11,5 +11,10 @@ pin_value native_format_text(const pin_value *, int, arena *);
 pin_value native_text_equal(const pin_value *, int, arena *);
 extern const node_host_call NATIVE_FORMAT_TEXT_HOST, NATIVE_FORMAT_TEXT_CALL;
 extern const node_host_call NATIVE_TEXT_EQUAL_HOST, NATIVE_TEXT_EQUAL_CALL;
+/* Byte operations: length rejects text beyond INT_MAX; byte access returns -1
+ * outside the string. Slice clamps start/count and owns its NUL-terminated
+ * result in the supplied arena. Byte ranges may split UTF-8 sequences. */
+extern const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL,
+    NATIVE_TEXT_BYTE_AT_CALL, NATIVE_TEXT_SLICE_CALL;
 extern const node_access NATIVE_TEXT_ACCESS;
 #endif

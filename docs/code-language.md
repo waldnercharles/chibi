@@ -76,10 +76,31 @@ while only explicit export members are visible through an alias. The shared
 `script_catalog_snapshot` helper in `Chibi::capabilities` owns metadata names and
 defaults, including union payload defaults.
 
+`source_package_snapshot_load` supplies a complete explicit package-source
+forest from disk on Linux and macOS. It canonicalizes root directories, reads
+bounded regular `.chibi` files through directory descriptors, and rejects
+non-hidden descendant symlinks. Hidden descendants are skipped, while explicitly
+supplied roots are still scanned. Overlapping roots share no collected files;
+longest-root ownership remains the resolver's rule. Loader failures return a
+value-owned path/message; source and graph errors retain an invalid snapshot.
+The loader does not consult the environment or change cwd. Windows filesystem
+loading remains unsupported; callers can still supply owned buffer snapshots.
+
+The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
+as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
+pure `ByteLength`, `ByteAt`, `Slice`, `Compare`, `IsIdentifier` and `BaseName`
+functions use the text capability pack. Byte access returns unsigned 0..255 or
+-1 outside the string. Slice clamps its start/count and owns its result; byte
+ranges can split UTF-8 sequences. Compare orders unsigned bytes, IsIdentifier
+checks ASCII identifiers, and BaseName uses slash separators. Compiler packages
+also use the existing pure generic array capability pack. General authored
+generic specialization remains a separate language gap; core does not provide
+an imported generic array-wrapper API.
+
 These are M3 increments in [the toolchain plan](../PLAN.md). Package globals and
 embedded game roots remain unsupported. Project loading, formatting and editor
 navigation use their existing single-source entry points. The package APIs do
-not discover files or change the public build command.
+not change the public build command.
 
 ## Declarative documents
 

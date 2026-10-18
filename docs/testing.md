@@ -1453,6 +1453,40 @@ input, syntax and module retirement. No runtime files, children, services or GPU
 work occur. Independently review before the first run, build separately and use
 one shared 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-unit-analysis-chibi` selects three
+C/pico_unit cases for unit analysis. Twenty-five fixed raw typed-IR/catalog
+requests and four actual analyzed sources make 58 authored call attempts across
+bytecode and SLJIT, with 500,000 instructions per call. Five compiler sources
+below 48 KiB per backend plus four fact sources below 256 bytes total fourteen
+preparation/analysis parses. The raw maximum is sixteen expressions, except one
+fixed 81-expression forward cast chain; actual source has at most 64 expressions.
+Other maxima are 32 symbols, four functions, 64 statements, eight bindings, three
+capabilities, two catalog types, two fields, six ports, four arguments, two
+globals, 128 IDs, 256 ranges and 32 symbol indices. Outputs contain at most
+81 cache rows, 512 terms and 32 diagnostics. Detached results and retained
+outputs are checked after producer and module retirement. There are no workload
+files, child processes, host services, engine frames or GPU operations.
+
+The focused `language-unit-analysis-zero-id` and `language-unit-analysis-deep`
+commands each select one existing raw request in two independent pico cases,
+one per backend. Each command makes two call attempts and ten preparation parses
+within one unchanged production 60-second deadline. A failure in the first
+backend does not suppress the second. These are negative-baseline witnesses;
+they do not replace the complete differential corpus or evade its deadline.
+C witnesses are asserted before the authored comparison. The zero-ID witness
+requires the exact argument-unit diagnostic and known `s` result. The deep
+witness requires 81 known `u` values and no diagnostics. Failure-only fixture
+logging distinguishes runtime depth exhaustion from budget, preparation and
+other failures. A nonzero command exit alone is not the intended red proof.
+
+The baseline wires the extracted C oracle and unchanged authored draft into the
+language driver. The production analyzer remains unchanged. The known zero-ID
+lookup guard and recursive evaluator are intentionally preserved until both red
+witnesses execute. Independently review the exact source and workload before
+first execution; configuration/build timing is separate. All three routes are
+standalone and outside the aggregate. Registration and source review do not
+claim a measured pass or a complete compiler bootstrap.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

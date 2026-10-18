@@ -43,8 +43,9 @@ static script_unit_analysis_result saved_expected[2];
 static uint64_t saved_tag[2];
 static script_syntax *syntax;
 static script_analysis *analysis;
-static bool prepared;
+static bool prepared, preparation_attempted;
 static int calls;
+static int selected_case = -1, selected_backend = -1;
 static uint64_t ids[MAX_IDS];
 static int id_count;
 static script_range ranges[MAX_RANGES];
@@ -473,6 +474,25 @@ static bool result_value(const pin_value *value, uint64_t tag, const script_unit
     const pin_union *payload = value->ptr;
     REQUIRE(payload->tag == tag && payload->count == 3);
     const pin_array *cache, *terms, *diagnostics;
+    if (selected_case == 7) {
+        REQUIRE(array(&payload->values[0], 3, &cache));
+        REQUIRE(
+            payload->values[2].type == PIN_STRUCT && payload->values[2].container == PIN_CONTAINER_ARRAY
+        );
+        const pin_array *observed = payload->values[2].ptr;
+        int count = observed ? observed->count : 0, kind;
+        REQUIRE(count >= 0 && count <= 32 && int_field(&cache->items[2], "kind", &kind));
+        fprintf(
+            stderr,
+            "unit analysis zero-ID observation: backend=%s diagnostics=%d "
+            "result=%s\n",
+            selected_backend == 0 ? "bytecode" : "SLJIT",
+            count,
+            kind == SCRIPT_UNIT_UNKNOWN ? "unknown"
+            : kind == SCRIPT_UNIT_KNOWN ? "known"
+                                        : "other"
+        );
+    }
     REQUIRE(
         array(&payload->values[0], expected->unit_count, &cache) &&
         array(&payload->values[2], expected->diagnostic_count, &diagnostics)
@@ -587,7 +607,32 @@ static bool compare(const script_unit_analysis_facts *facts, int retain, script_
             REQUIRE(arena_contains(&oracle, expected.units[i].terms[j].name));
         }
     }
-    for (int b = 0; b < 2; b++) {
+    /* Establish the independent C witness before the authored red assertion. */
+    if (selected_case == 7) {
+        REQUIRE(expected.unit_count == 3 && expected.diagnostic_count == 1);
+        REQUIRE(!strcmp(expected.diagnostics[0].message, "Units differ: u argument s"));
+        const script_range *range = &expected.diagnostics[0].range;
+        REQUIRE(
+            range->start == 300 && range->end == 303 && range->line == 43 &&
+            range->column == 42 && range->document == 1
+        );
+        REQUIRE(expected.units[2].kind == SCRIPT_UNIT_KNOWN && expected.units[2].count == 1);
+        const script_unit_term *term = &expected.units[2].terms[0];
+        REQUIRE(term->length == 1 && term->name[0] == 's' && term->power == 1);
+    }
+    if (selected_case == 24) {
+        REQUIRE(expected.unit_count == 81 && expected.diagnostic_count == 0);
+        for (int i = 0; i < expected.unit_count; i++) {
+            REQUIRE(
+                expected.units[i].kind == SCRIPT_UNIT_KNOWN && expected.units[i].count == 1
+            );
+            const script_unit_term *term = &expected.units[i].terms[0];
+            REQUIRE(term->length == 1 && term->name[0] == 'u' && term->power == 1);
+        }
+    }
+    int first = selected_backend < 0 ? 0 : selected_backend;
+    int last = selected_backend < 0 ? 2 : selected_backend + 1;
+    for (int b = first; b < last; b++) {
         arena_free(&input);
         arena_free(&detached);
         pin_value argument, result;
@@ -595,10 +640,19 @@ static bool compare(const script_unit_analysis_facts *facts, int retain, script_
         const script_catalog_variant *v = variant(b);
         REQUIRE(v);
         uint64_t tag = v->tag;
+        if (selected_case >= 0) {
+            fprintf(
+                stderr,
+                "unit analysis regression case %d backend %s: C witness "
+                "passed\n",
+                selected_case,
+                b == 0 ? "bytecode" : "SLJIT"
+            );
+        }
+        calls++;
         REQUIRE(
             compiler_fixture_call(&fixture, b, PACKAGE, "Analyze", &argument, 1, 500000, &detached, &result)
         );
-        calls++;
         arena_free(&input);
         REQUIRE(owned(&detached, &result, 0) && result_value(&result, tag, &expected));
         if (retain >= 0) {
@@ -771,13 +825,19 @@ static void raw_init(raw_facts *r)
 }
 TEST_CASE(unit_analysis_raw_ir_and_catalog_match)
 {
-    REQUIRE(prepare());
+    if (!preparation_attempted) {
+        preparation_attempted = true;
+        REQUIRE(prepare());
+    }
+    REQUIRE(prepared);
     char invalid[241];
     memset(invalid, 'x', 240);
     invalid[176] = (char)0xc3;
     invalid[177] = (char)0xa9;
     invalid[240] = 0;
-    for (int c = 0; c < 25; c++) {
+    int first = selected_case < 0 ? 0 : selected_case;
+    int last = selected_case < 0 ? 25 : selected_case + 1;
+    for (int c = first; c < last; c++) {
         raw_facts r;
         raw_init(&r);
         switch (c) {
@@ -1125,7 +1185,9 @@ TEST_CASE(unit_analysis_raw_ir_and_catalog_match)
         }
     }
     memset(invalid, 'z', 240);
-    REQUIRE(calls == 50);
+    if (selected_case < 0) {
+        REQUIRE(calls == 50);
+    }
     return true;
 }
 TEST_CASE(unit_analysis_actual_analyzer_facts_match)
@@ -1270,14 +1332,36 @@ TEST_CASE(unit_analysis_cache_and_diagnostics_outlive_all_inputs)
     }
     return true;
 }
-void test_language_unit_analysis_chibi()
+/* Each regression backend is a separate case: an expected baseline failure
+ * cannot suppress the other backend or the other regression command. */
+TEST_CASE(unit_analysis_regression_bytecode)
+{
+    selected_backend = 0;
+    return unit_analysis_raw_ir_and_catalog_match();
+}
+TEST_CASE(unit_analysis_regression_sljit)
+{
+    selected_backend = 1;
+    return unit_analysis_raw_ir_and_catalog_match();
+}
+void test_language_unit_analysis_chibi(int regression)
 {
     prepared = false;
+    preparation_attempted = false;
     calls = 0;
+    selected_case = regression == 1 ? 7 : regression == 2 ? 24 : -1;
+    selected_backend = -1;
+    /* Only the deep diagnostic needs capture before nested frames retire. */
+    fixture.observe_failures = selected_case == 24;
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(unit_analysis_raw_ir_and_catalog_match);
-    RUN_TEST_CASE(unit_analysis_actual_analyzer_facts_match);
-    RUN_TEST_CASE(unit_analysis_cache_and_diagnostics_outlive_all_inputs);
+    if (regression) {
+        RUN_TEST_CASE(unit_analysis_regression_bytecode);
+        RUN_TEST_CASE(unit_analysis_regression_sljit);
+    } else {
+        RUN_TEST_CASE(unit_analysis_raw_ir_and_catalog_match);
+        RUN_TEST_CASE(unit_analysis_actual_analyzer_facts_match);
+        RUN_TEST_CASE(unit_analysis_cache_and_diagnostics_outlive_all_inputs);
+    }
     pu_clear_setup();
     compiler_fixture_free(&fixture);
     for (int i = 0; i < 2; i++) {

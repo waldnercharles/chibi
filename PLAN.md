@@ -33,6 +33,18 @@ engine modules, documentation generator, and game behavior. Chibi must compile
 Chibi. The normal build must not require project-owned Python, shell, CMake, or C
 implementations once their Chibi replacements have passed the deletion gates.
 
+The owner's 2026-10-18 acceptance requirement further constrains the final
+normal installed workflow: Chibi must compile Chibi and drive build/link without
+requiring `cmake`, `clang`, or `gcc` executables. Calling hidden or renamed copies
+of those tools does not meet this requirement. Native backends, platform SDKs,
+assemblers/linkers and runtime libraries may remain explicit external inputs
+behind narrow bindings; record exactly which are still needed. Stage-zero
+construction and recovery may use the current native tools during migration.
+The final installed/relocated clean-checkout proof must run with those three
+executables unavailable, exercise the complete compiler sources through stage
+one and stage two, and build/link a checked game. No ported component or build
+wrapper alone establishes that acceptance condition.
+
 The shortest path to that goal takes priority over adding commands. The existing
 C compiler and CMake build remain stage-zero recovery tools until a Chibi compiler
 can reproduce itself and a clean-checkout recovery procedure has been proven.
@@ -406,10 +418,12 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: run the prepared unit-analysis regressions, fix its deep
-evaluation and capability-zero lookup gaps, then integrate the pass. Union
-members and effects also have reviewed, unlinked drafts; none of those three
-drafts has been compiled or executed yet.
+The unit-analysis differential is wired and its zero-capability and deep
+recursion defects have been reproduced on both backends. The current candidate
+replaces recursive evaluation with explicit work/operand stacks and fixes the
+zero-capability lookup; its full differential remains pending. The production C
+extraction adapter is deferred until the real native fixture route is validated.
+Union members and effects remain reviewed, unlinked and unexecuted drafts.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -520,7 +534,42 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified: 2026-10-18.
+Last verified upstream checkpoint: 2026-10-18 at
+`9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
+
+The unit-analysis differential and its two independent regression selectors are
+wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
+preparation and built in Studio run `39112128113` (configure 3s, build 17s).
+For both bytecode and SLJIT attempts, the independent C witnesses passed before
+the authored calls exposed the intended zero-ID mismatch and recursive
+callable-depth failure. Each focused
+selector completed in about 1s under its own unchanged 60-second production
+supervisor. Verified sanitized status evidence SHA256:
+`d4ec88911f4523f3231d0332fb12cb03e97c1e9386c5cb411fc58dc15c647313`.
+The expected-red job remains failed; this records the regression, not a pass.
+
+The focused deep diagnostic alone captures the first failure before child frames
+retire. That opt-in disables readonly argument borrowing and uses snapshots.
+Zero-ID and ordinary/full differential calls retain the original no-observer
+path. No production runtime propagation, evaluator policy or backend selection
+was changed to collect the evidence. Raw diagnostics stay runner-local.
+
+The current authored-only repair removes the invalid zero-capability guard and
+replaces recursive Eval calls with explicit work/operand stacks. It preserves
+cache visits, selective dependency evaluation, diagnostic order and unknown-unit
+behavior. The normal production analyzer is unchanged. Full validation of this
+exact repair remains pending: the existing three-case differential covers 25 raw
+and four analyzed requests, 58 authored attempts across both backends, and owned
+results surviving input/package teardown. Existing budget arguments and the
+single production 60-second supervisor remain unchanged. The supplied instruction
+budget is inherited/reset per activation, not a whole-call work ceiling.
+
+The active C extraction adapter remains deferred until its real native
+unit-fixtures and affected semantic/incremental contracts can run. The authored
+repair alone does not move normal compiler dispatch, complete a milestone, or
+establish stage-one/stage-two or installed tool-free build/link acceptance.
+
+The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`

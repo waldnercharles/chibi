@@ -177,7 +177,6 @@ Numeric :: pure fn(type: Type, environment: Environment) -> bool {
            type.storage >= 2 && type.storage <= 11 && (type.flags & NumericExcludedFlags) == 0;
 }
 CapabilityAt :: pure fn(environment: Environment, id: uint64) -> int {
-    if (id == cast<uint64>(0)) { return -1; }
     rows := Capabilities(environment);
     index: int = 0;
     while (index < length(rows)) {
@@ -276,29 +275,48 @@ ResultUnit :: pure fn(environment: Environment, current: State, expression: Expr
     }
     return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-SymbolUnit :: pure fn(environment: Environment, current: State, index: int, range: Range) -> Evaluation {
-    depth_limit 0;
+// Separate the symbol's dependency decision from evaluation. The iterative
+// evaluator follows only the selected initializer or narrowing source.
+SymbolSource :: struct { expression: int; known_only: bool; has_unit: bool; unit: string; }
+SymbolInput :: pure fn(environment: Environment, index: int) -> SymbolSource {
     symbol := Symbols(environment)[index];
-    if (symbol.has_unit) { return Annotated(current, range, true, symbol.unit); }
+    source: SymbolSource = {expression: -1, known_only: false, has_unit: false, unit: ""};
+    if (symbol.has_unit) {
+        source.has_unit = true;
+        source.unit = symbol.unit;
+        return source;
+    }
     if (symbol.kind == GlobalSymbol) {
         foreach (row in Globals(environment)) {
             if (IDAt(environment, row.id_slot) == IDAt(environment, symbol.id_slot)) {
-                return Annotated(current, range, row.has_unit, row.unit);
+                source.has_unit = row.has_unit;
+                source.unit = row.unit;
+                return source;
             }
         }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
+        return source;
     }
     if (symbol.kind == LocalSymbol && symbol.initializer < 0) {
         foreach (condition in Expressions(environment)) {
-            if (condition.kind == IsExpression && condition.symbol == index) { return Eval(environment, current, condition.left); }
+            if (condition.kind == IsExpression && condition.symbol == index) {
+                source.expression = condition.left;
+                return source;
+            }
         }
     }
     if ((symbol.kind != LocalSymbol && symbol.kind != ConstantSymbol && symbol.kind != StateSymbol && symbol.kind != SharedStateSymbol) || symbol.initializer < 0) {
-        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
+        return source;
     }
-    switch Eval(environment, current, symbol.initializer) {
+    source.expression = symbol.initializer;
+    source.known_only = true;
+    return source;
+}
+SymbolUnit :: pure fn(environment: Environment, current: State, index: int, range: Range) -> Evaluation {
+    source := SymbolInput(environment, index);
+    if (source.expression < 0) { return Annotated(current, range, source.has_unit, source.unit); }
+    switch Eval(environment, current, source.expression) {
         case .Evaluated(value, next):
-            if (Kind(value) == units.Known) { return Evaluation.Evaluated(value, next); }
+            if (!source.known_only || Kind(value) == units.Known) { return Evaluation.Evaluated(value, next); }
             return Evaluation.Evaluated(units.Empty(units.Unknown), next);
     }
 }
@@ -349,65 +367,43 @@ MemberUnit :: pure fn(environment: Environment, current: State, expression: Expr
     return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
 
-CallUnit :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
-    depth_limit 0;
+// Parameter metadata is read immediately before its argument is visited.
+// In particular, malformed annotations precede that argument's diagnostics.
+CallTarget :: pure fn(environment: Environment, current: State, expression: Expression, argument: Argument) -> Evaluation {
     capability := -1;
     if (expression.right < 0) { capability = CallCapability(environment, expression); }
-    index: int = 0;
-    while (index < expression.arg_count) {
-        argument := Arguments(environment)[expression.arg_start + index];
-        parameter := argument.parameter;
-        present := false;
-        annotation := "";
-        if (expression.right >= 0 && parameter >= 0 && parameter < Functions(environment)[expression.right].param_count) {
-            function := Functions(environment)[expression.right];
-            symbol := Symbols(environment)[SymbolIndices(environment)[function.param_start + parameter]];
-            present = symbol.has_unit;
-            annotation = symbol.unit;
-        } else if (capability >= 0) {
-            row := Capabilities(environment)[capability];
-            if (parameter >= 0 && parameter < row.param_count) {
-                port := Ports(environment)[row.param_start + parameter];
-                present = port.has_unit;
-                annotation = port.unit;
-            } else if (row.event_sender && parameter >= row.param_count) {
-                eventIndex := CapabilityAt(environment, IDAt(environment, expression.member_slot));
-                parameter -= row.param_count;
-                if (eventIndex >= 0 && parameter < Capabilities(environment)[eventIndex].param_count) {
-                    port := Ports(environment)[Capabilities(environment)[eventIndex].param_start + parameter];
-                    present = port.has_unit;
-                    annotation = port.unit;
-                }
-            } else if (row.variadic && row.param_count != 0 && parameter >= row.param_count) {
-                port := Ports(environment)[row.param_start + row.param_count - 1];
+    parameter := argument.parameter;
+    present := false;
+    annotation := "";
+    if (expression.right >= 0 && parameter >= 0 && parameter < Functions(environment)[expression.right].param_count) {
+        function := Functions(environment)[expression.right];
+        symbol := Symbols(environment)[SymbolIndices(environment)[function.param_start + parameter]];
+        present = symbol.has_unit;
+        annotation = symbol.unit;
+    } else if (capability >= 0) {
+        row := Capabilities(environment)[capability];
+        if (parameter >= 0 && parameter < row.param_count) {
+            port := Ports(environment)[row.param_start + parameter];
+            present = port.has_unit;
+            annotation = port.unit;
+        } else if (row.event_sender && parameter >= row.param_count) {
+            eventIndex := CapabilityAt(environment, IDAt(environment, expression.member_slot));
+            parameter -= row.param_count;
+            if (eventIndex >= 0 && parameter < Capabilities(environment)[eventIndex].param_count) {
+                port := Ports(environment)[Capabilities(environment)[eventIndex].param_start + parameter];
                 present = port.has_unit;
                 annotation = port.unit;
             }
+        } else if (row.variadic && row.param_count != 0 && parameter >= row.param_count) {
+            port := Ports(environment)[row.param_start + row.param_count - 1];
+            present = port.has_unit;
+            annotation = port.unit;
         }
-        target := units.Empty(units.Unknown);
-        range := Ranges(environment)[argument.range];
-        switch Annotated(current, range, present, annotation) {
-            case .Evaluated(value, next): target = value; current = next;
-        }
-        switch Eval(environment, current, argument.value) {
-            case .Evaluated(value, next):
-                switch Match(next, range, target, "argument", value) {
-                    case .Evaluated(ignored, final): current = final;
-                }
-        }
-        index += 1;
     }
-    if (!expression.task && expression.result_count == 1) { return ResultUnit(environment, current, expression, 0); }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
+    return Annotated(current, Ranges(environment)[argument.range], present, annotation);
 }
-Operation :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
-    depth_limit 0;
-    left := units.Empty(units.Unknown);
-    right := units.Empty(units.Unknown);
-    switch Eval(environment, current, expression.left) { case .Evaluated(value, next): left = value; current = next; }
-    if (expression.right >= 0) {
-        switch Eval(environment, current, expression.right) { case .Evaluated(value, next): right = value; current = next; }
-    } else {
+Operation :: pure fn(environment: Environment, current: State, expression: Expression, left: units.Unit, right: units.Unit) -> Evaluation {
+    if (expression.right < 0) {
         if (expression.op == OpNegate || expression.op == OpNone) { return Evaluation.Evaluated(left, current); }
         return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
@@ -424,97 +420,195 @@ Operation :: pure fn(environment: Environment, current: State, expression: Expre
     }
     return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-Compute :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
-    depth_limit 0;
-    range := Ranges(environment)[expression.range];
-    if (expression.kind == ConstantExpression) {
-        if (Numeric(Types(environment)[expression.type], environment)) { return Evaluation.Evaluated(units.Empty(units.Literal), current); }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
-    }
-    if (expression.kind == SymbolExpression) { return SymbolUnit(environment, current, expression.symbol, range); }
-    if (expression.kind == UnaryExpression || expression.kind == BinaryExpression) { return Operation(environment, current, expression); }
-    if (expression.kind == CastExpression || expression.kind == AsExpression || expression.kind == UnwrapExpression) { return Eval(environment, current, expression.left); }
-    if (expression.kind == CallExpression) { return CallUnit(environment, current, expression); }
-    if (expression.kind == JoinExpression) {
-        if (expression.result_count == 1) { return ResultUnit(environment, current, expression, 0); }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
-    }
-    if (expression.kind == FallbackExpression) {
-        result := units.Empty(units.Unknown);
-        switch Eval(environment, current, expression.left) { case .Evaluated(value, next): result = value; current = next; }
-        index: int = 0;
-        while (index < expression.arg_count) {
-            argument := Arguments(environment)[expression.arg_start + index];
-            if (argument.value != expression.left) {
-                switch Eval(environment, current, argument.value) {
-                    case .Evaluated(value, next):
-                        switch Match(next, Ranges(environment)[argument.range], result, "fallback", value) {
-                            case .Evaluated(combined, final): result = combined; current = final;
+
+// One pending expression owns one continuation and one saved operand. Child
+// results flow through value; only selected dependencies are pushed. Keeping
+// source depth in arrays leaves every callable's ordinary depth limit intact.
+Work :: struct { expression: int; phase: int; argument: int; catalog: int; }
+Enter :: cast<int>(0);
+Finish :: cast<int>(1);
+KnownOnly :: cast<int>(2);
+Left :: cast<int>(3);
+Right :: cast<int>(4);
+ArgumentsPhase :: cast<int>(5);
+ArgumentPhase :: cast<int>(6);
+WorkValue :: pure fn(expression: int) -> Work {
+    row: Work = {expression: expression, phase: Enter, argument: 0, catalog: -1};
+    return row;
+}
+Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluation {
+    frames: Work[] = [];
+    saved: units.Unit[] = [];
+    frames = array_add(frames, WorkValue(index));
+    saved = array_add(saved, units.Empty(units.Unknown));
+    value := units.Empty(units.Unknown);
+    while (length(frames) > 0) {
+        top := length(frames) - 1;
+        work := frames[top];
+        if (work.phase == Enter) {
+            value = units.Empty(units.Unknown);
+            visited := work.expression < 0;
+            if (!visited) {
+                switch current {
+                    case .Cached(cache, terms, visits, diagnostics):
+                        visited = visits[work.expression] != 0;
+                        if (visits[work.expression] == 2) {
+                            row := cache[work.expression];
+                            value = units.Unit.Value(row.kind, slice(terms, row.term_start, row.term_count));
+                        }
+                        if (!visited) {
+                            current = State.Cached(cache, terms, set_array_elem(visits, work.expression, cast<int>(1)), diagnostics);
                         }
                 }
             }
-            index += 1;
-        }
-        return Evaluation.Evaluated(result, current);
-    }
-    if (expression.kind == StoreExpression) {
-        left := units.Empty(units.Unknown);
-        switch Eval(environment, current, expression.left) { case .Evaluated(value, next): left = value; current = next; }
-        switch Eval(environment, current, expression.right) {
-            case .Evaluated(value, next): return Match(next, range, left, "=", value);
-        }
-    }
-    if (expression.kind == StructExpression) {
-        if (expression.arg_count == 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
-        nominal := IDAt(environment, Types(environment)[expression.type].nominal_slot);
-        foreach (type in CatalogTypes(environment)) {
-            if (IDAt(environment, type.id_slot) == nominal) {
-                index: int = 0;
-                while (index < expression.arg_count) {
-                    argument := Arguments(environment)[expression.arg_start + index];
-                    field := Fields(environment)[type.field_start + argument.parameter];
-                    range = Ranges(environment)[argument.range];
-                    target := units.Empty(units.Unknown);
-                    switch Annotated(current, range, field.has_unit, field.unit) { case .Evaluated(value, next): target = value; current = next; }
-                    switch Eval(environment, current, argument.value) {
-                        case .Evaluated(value, next):
-                            switch Match(next, range, target, "=", value) { case .Evaluated(ignored, final): current = final; }
-                    }
-                    index += 1;
-                }
-                return Evaluation.Evaluated(units.Empty(units.Unknown), current);
+            // A VISITING backedge yields unknown without writing the cache.
+            // DONE reads likewise create no new terms or diagnostics.
+            if (visited) {
+                frames = slice(frames, 0, top);
+                saved = slice(saved, 0, top);
+                continue;
             }
         }
-    }
-    if (expression.kind == MemberExpression) { return MemberUnit(environment, current, expression); }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
-}
-Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluation {
-    // The C pass uses VISITING backedges rather than a language recursion cap.
-    // Callers still provide finite resolved graphs and instruction budgets.
-    depth_limit 0;
-    if (index < 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
-    switch current {
-        case .Cached(cache, terms, visits, diagnostics):
-            if (visits[index] == 1) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
-            if (visits[index] == 2) {
-                row := cache[index];
-                return Evaluation.Evaluated(units.Unit.Value(row.kind, slice(terms, row.term_start, row.term_count)), current);
-            }
-            current = State.Cached(cache, terms, set_array_elem(visits, index, cast<int>(1)), diagnostics);
-    }
-    switch Compute(environment, current, Expressions(environment)[index]) {
-        case .Evaluated(value, next):
+        if (work.phase == Finish) {
             switch value {
                 case .Value(kind, added):
-                    switch next {
+                    switch current {
                         case .Cached(cache, terms, visits, diagnostics):
                             row: Cache = {kind: kind, term_start: length(terms), term_count: length(added)};
-                            current = State.Cached(set_array_elem(cache, index, row), append(terms, added), set_array_elem(visits, index, cast<int>(2)), diagnostics);
+                            current = State.Cached(set_array_elem(cache, work.expression, row), append(terms, added), set_array_elem(visits, work.expression, cast<int>(2)), diagnostics);
                     }
             }
-            return Evaluation.Evaluated(value, current);
+            frames = slice(frames, 0, top);
+            saved = slice(saved, 0, top);
+            continue;
+        }
+        expression := Expressions(environment)[work.expression];
+        range := Ranges(environment)[expression.range];
+        descend := false;
+        child: int = -1;
+        if (work.phase == Enter) {
+            work.phase = Finish;
+            if (expression.kind == ConstantExpression) {
+                if (Numeric(Types(environment)[expression.type], environment)) { value = units.Empty(units.Literal); }
+            } else if (expression.kind == SymbolExpression) {
+                source := SymbolInput(environment, expression.symbol);
+                if (source.expression < 0) {
+                    switch Annotated(current, range, source.has_unit, source.unit) {
+                        case .Evaluated(unit, next): value = unit; current = next;
+                    }
+                } else {
+                    if (source.known_only) { work.phase = KnownOnly; }
+                    child = source.expression;
+                    descend = true;
+                }
+            } else if (expression.kind == UnaryExpression || expression.kind == BinaryExpression || expression.kind == FallbackExpression || expression.kind == StoreExpression) {
+                work.phase = Left;
+                child = expression.left;
+                descend = true;
+            } else if (expression.kind == CastExpression || expression.kind == AsExpression || expression.kind == UnwrapExpression) {
+                child = expression.left;
+                descend = true;
+            } else if (expression.kind == CallExpression) {
+                work.phase = ArgumentsPhase;
+            } else if (expression.kind == JoinExpression) {
+                if (expression.result_count == 1) {
+                    switch ResultUnit(environment, current, expression, 0) {
+                        case .Evaluated(unit, next): value = unit; current = next;
+                    }
+                }
+            } else if (expression.kind == StructExpression && expression.arg_count > 0) {
+                nominal := IDAt(environment, Types(environment)[expression.type].nominal_slot);
+                rows := CatalogTypes(environment);
+                catalog: int = 0;
+                while (catalog < length(rows) && work.catalog < 0) {
+                    if (IDAt(environment, rows[catalog].id_slot) == nominal) { work.catalog = catalog; }
+                    catalog += 1;
+                }
+                if (work.catalog >= 0) { work.phase = ArgumentsPhase; }
+            } else if (expression.kind == MemberExpression) {
+                switch MemberUnit(environment, current, expression) {
+                    case .Evaluated(unit, next): value = unit; current = next;
+                }
+            }
+        } else if (work.phase == KnownOnly) {
+            if (Kind(value) != units.Known) { value = units.Empty(units.Unknown); }
+            work.phase = Finish;
+        } else if (work.phase == Left) {
+            saved = set_array_elem(saved, top, value);
+            if (expression.kind == FallbackExpression) {
+                work.phase = ArgumentsPhase;
+            } else if (expression.kind != StoreExpression && expression.right < 0) {
+                switch Operation(environment, current, expression, value, units.Empty(units.Unknown)) {
+                    case .Evaluated(unit, next): value = unit; current = next;
+                }
+                work.phase = Finish;
+            } else {
+                work.phase = Right;
+                child = expression.right;
+                descend = true;
+            }
+        } else if (work.phase == Right) {
+            if (expression.kind == StoreExpression) {
+                switch Match(current, range, saved[top], "=", value) {
+                    case .Evaluated(unit, next): value = unit; current = next;
+                }
+            } else {
+                switch Operation(environment, current, expression, saved[top], value) {
+                    case .Evaluated(unit, next): value = unit; current = next;
+                }
+            }
+            work.phase = Finish;
+        } else if (work.phase == ArgumentsPhase) {
+            if (work.argument >= expression.arg_count) {
+                value = units.Empty(units.Unknown);
+                if (expression.kind == FallbackExpression) { value = saved[top]; }
+                if (expression.kind == CallExpression && !expression.task && expression.result_count == 1) {
+                    switch ResultUnit(environment, current, expression, 0) {
+                        case .Evaluated(unit, next): value = unit; current = next;
+                    }
+                }
+                work.phase = Finish;
+            } else {
+                argument := Arguments(environment)[expression.arg_start + work.argument];
+                if (expression.kind == FallbackExpression && argument.value == expression.left) {
+                    work.argument += 1;
+                } else {
+                    if (expression.kind == CallExpression) {
+                        switch CallTarget(environment, current, expression, argument) {
+                            case .Evaluated(unit, next): saved = set_array_elem(saved, top, unit); current = next;
+                        }
+                    } else if (expression.kind == StructExpression) {
+                        type := CatalogTypes(environment)[work.catalog];
+                        field := Fields(environment)[type.field_start + argument.parameter];
+                        switch Annotated(current, Ranges(environment)[argument.range], field.has_unit, field.unit) {
+                            case .Evaluated(unit, next): saved = set_array_elem(saved, top, unit); current = next;
+                        }
+                    }
+                    work.phase = ArgumentPhase;
+                    child = argument.value;
+                    descend = true;
+                }
+            }
+        } else if (work.phase == ArgumentPhase) {
+            argument := Arguments(environment)[expression.arg_start + work.argument];
+            op := "=";
+            if (expression.kind == CallExpression) { op = "argument"; }
+            if (expression.kind == FallbackExpression) { op = "fallback"; }
+            switch Match(current, Ranges(environment)[argument.range], saved[top], op, value) {
+                case .Evaluated(unit, next):
+                    if (expression.kind == FallbackExpression) { saved = set_array_elem(saved, top, unit); }
+                    current = next;
+            }
+            work.argument += 1;
+            work.phase = ArgumentsPhase;
+        }
+        frames = set_array_elem(frames, top, work);
+        if (descend) {
+            frames = array_add(frames, WorkValue(child));
+            saved = array_add(saved, units.Empty(units.Unknown));
+        }
     }
+    return Evaluation.Evaluated(value, current);
 }
 Assignment :: pure fn(environment: Environment, current: State, statement: Statement) -> State {
     target := units.Empty(units.Unknown);

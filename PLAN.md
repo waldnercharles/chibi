@@ -418,10 +418,12 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: run the prepared unit-analysis regressions, fix its deep
-evaluation and capability-zero lookup gaps, then integrate the pass. Union
-members and effects also have reviewed, unlinked drafts; none of those three
-drafts has been compiled or executed yet.
+The unit-analysis differential is wired and its zero-capability and deep
+recursion defects have been reproduced on both backends. The current candidate
+replaces recursive evaluation with explicit work/operand stacks and fixes the
+zero-capability lookup; its full differential remains pending. The production C
+extraction adapter is deferred until the real native fixture route is validated.
+Union members and effects remain reviewed, unlinked and unexecuted drafts.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -535,36 +537,37 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 Last verified upstream checkpoint: 2026-10-18 at
 `9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
 
-The current increment wires the saved unit-analysis differential and independent
-zero-ID/deep-chain selectors. Source `587c3d2dc3985fec4226ec15fc7ff141e3b309d9`
-prepares successfully after private reserved-name renames and explicit integer
-array-item typing. Studio run `39110782016` built that exact source and proved the
-zero-ID mismatch on both bytecode and SLJIT against independent C witnesses.
-Its deep-chain case reached both C witnesses and produced two runtime failures,
-but root-context metadata did not establish the intended failure category.
-Verified status evidence SHA256:
-`3d94c9543589fee4ccf5725e172fefba7bc2f7be9591fa8c0e3bf92c93400593`.
-Configuration took 1s and build 20s; each focused execution took about 1s.
+The unit-analysis differential and its two independent regression selectors are
+wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
+preparation and built in Studio run `39112128113` (configure 3s, build 17s).
+For both bytecode and SLJIT attempts, the independent C witnesses passed before
+the authored calls exposed the intended zero-ID mismatch and recursive
+callable-depth failure. Each focused
+selector completed in about 1s under its own unchanged 60-second production
+supervisor. Verified sanitized status evidence SHA256:
+`d4ec88911f4523f3231d0332fb12cb03e97c1e9386c5cb411fc58dc15c647313`.
+The expected-red job remains failed; this records the regression, not a pass.
 
-The deep-chain diagnostic opts into recording the first failure through the
-existing runtime observer before child frames retire, retaining only the
-category, step count and an owned bounded diagnostic message. This observer
-disables readonly argument borrowing, so this focused diagnostic uses snapshots.
-The zero-ID selector and ordinary/full-green fixture calls keep the original
-no-observer path. Backend selection is unchanged; production runtime failure
-propagation and evaluator policy are not modified.
-Raw diagnostics remain runner-local. The original zero-ID guard and recursive
-evaluator remain intact until the intended deep failure is observed accurately.
+The focused deep diagnostic alone captures the first failure before child frames
+retire. That opt-in disables readonly argument borrowing and uses snapshots.
+Zero-ID and ordinary/full differential calls retain the original no-observer
+path. No production runtime propagation, evaluator policy or backend selection
+was changed to collect the evidence. Raw diagnostics stay runner-local.
 
-Both fixed selectors retain two backend calls, ten preparation parses, the
-existing budget argument and one actual 60-second production deadline each.
-That instruction budget is inherited/reset per activation, not an aggregate
-whole-call work ceiling; the finite fixed graphs and wall-clock supervisor bound
-this corpus. No budget or deadline is increased. Successful intended-deep
-classification on this observer candidate remains pending. Then apply the
-reviewed iterative/zero-ID repair and validate the full authored differential.
-The active adapter additionally requires the real native unit-fixture route and
-affected semantic/incremental contracts before integration. No milestone is newly complete.
+The current authored-only repair removes the invalid zero-capability guard and
+replaces recursive Eval calls with explicit work/operand stacks. It preserves
+cache visits, selective dependency evaluation, diagnostic order and unknown-unit
+behavior. The normal production analyzer is unchanged. Full validation of this
+exact repair remains pending: the existing three-case differential covers 25 raw
+and four analyzed requests, 58 authored attempts across both backends, and owned
+results surviving input/package teardown. Existing budget arguments and the
+single production 60-second supervisor remain unchanged. The supplied instruction
+budget is inherited/reset per activation, not a whole-call work ceiling.
+
+The active C extraction adapter remains deferred until its real native
+unit-fixtures and affected semantic/incremental contracts can run. The authored
+repair alone does not move normal compiler dispatch, complete a milestone, or
+establish stage-one/stage-two or installed tool-free build/link acceptance.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

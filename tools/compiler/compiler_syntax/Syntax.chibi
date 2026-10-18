@@ -2,7 +2,7 @@ package compiler_syntax
 
 import syntax "project:syntax_diagnostics"
 
-Tree :: union { Parsed(nodes: syntax.Node[], fields: string[], root: int) }
+Tree :: union { Parsed(nodes: syntax.Node[], fields: string[], is_named: bool[], is_extra: bool[], root: int) }
 
 // The private parser returns aligned columns of public tree facts. An explicit
 // read-only count keeps the ordinary record-array builder's loop-bound proof.
@@ -30,5 +30,5 @@ Parse :: pure fn(text: string) -> Tree {
     nodes := Assemble(length(raw.kinds), raw.kinds, raw.starts, raw.ends,
                       raw.rows, raw.columns, raw.parents, raw.first_children,
                       raw.next_siblings, raw.errors, raw.missing, raw.has_errors);
-    return Tree.Parsed(nodes, raw.fields, raw.root);
+    return Tree.Parsed(nodes, raw.fields, raw.is_named, raw.is_extra, raw.root);
 }

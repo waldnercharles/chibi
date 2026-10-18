@@ -183,3 +183,87 @@ in Rust while its formatter is written in Jai. Language-native tools and build
 orchestration can therefore advance separately from compiler self-hosting.
 This proof copies no Jacket code; its compiler/tool licensing needs separate
 review before any reuse.
+
+## Private compiler binary handoff
+
+The raw-syntax/binary transport increment passes its selectors on macOS (see
+`PLAN.md`). The contracts below are not a self-hosting completion claim.
+
+The existing raw parser bridge now retains aligned Tree-sitter named/extra flags
+and a syntax root separate from the document's routing root. Its private native
+result ABI changes from thirteen to fifteen results; prepared closures must be
+regenerated. The actual eight-package snapshot closure is unchanged in scope,
+and incompatible native signatures must reject before invocation.
+
+The existing Linux/Darwin `chibi-compiler-host` has an optional private
+`--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
+`--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
+finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
+`--batch` are mutually exclusive. Without the new switch, JSON stdout and JSON
+batch behavior are unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
+selection, cache and installed-format contracts do not change.
+
+`compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
+requires exactly one primitive `byte[]` return declaration. Address/reference
+argument or result provenance rejects before JSON decoding. The caller chooses
+an output limit from 1 through 1,000,000 octets; the CLI uses the upper bound.
+After successful return, the host validates the runtime array shape and item
+types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
+before releasing runtime storage. Empty success is a null pointer and zero
+length; failure is also null/zero with a false result and diagnostic. Returned
+bytes survive input, prepared-artifact and host teardown. The API is format-
+agnostic and preserves all 256 octets without text encoding or JSON projection.
+The 64 MiB represented-output ceiling includes header, declared item capacity
+and packed bytes. These are transport/storage checks, not a whole-compilation
+allocator sandbox; supervised hard deadlines still cover decode/JIT/execution.
+
+The CLI validates the exact returned bytes through the existing runtime-only
+`compiler_host_load` on bytecode before publication. Its output must therefore
+be a target-compatible closed `CHIBICLO` compiler artifact admitted by the
+text/array/JSON/raw-syntax catalog. It is not a generic game-artifact output
+route. The validator neither authors nor serializes an executable and does not
+link source authoring, semantic analysis or lowering into the product host.
+
+Module-set validation measures dependency length and fingerprint through
+`execution_prepared_measure`, so nothing on the runtime read path references the
+public `execution_prepared_write` entry point. The Linux GNU/Clang production
+execution target's private function/data sections and Darwin's dead-strip link
+therefore drop it from the host. Shared canonical encoding used by reader
+dependency fingerprints remains reachable. The writer remains available in the
+static archive and must remain present in real producer/tooling binaries that
+call it. No validation-only flags may supply this boundary; actual unstripped
+binary/link-input evidence is required on each platform.
+
+Publication uses a private 0600 `mkstemp` file beside the destination, `FD_CLOEXEC`,
+bounded writes with partial-write/EINTR handling, checked close and a final
+readiness check before POSIX rename. Rename is the sole commit point. Handled
+precommit failure or cancellation leaves the existing destination unchanged
+and removes the operation's staging file. The final symlink entry is replaced,
+not followed for truncation; parent-directory symlinks keep normal POSIX path
+resolution. Missing parent directories are not created. No crash-durability or
+fsync guarantee is made, and an uncatchable kill can leave staging behind.
+
+Binary mode ignores SIGPIPE before invoking the compiler, emits and explicitly
+flushes checked execution counters before starting publication, and leaves
+stdout empty. After successful rename there is no further diagnostic I/O or
+deadline/cancellation/status reclassification. SIGPIPE stays ignored through
+normal process exit. Atomic visibility is not an instantaneous cancellation
+fence around the rename syscall. This mechanism is scoped to Linux and Darwin;
+Windows publication needs separate implementation and validation.
+
+The finite compiler-artifact fixture described in `docs/testing.md` is a
+transport/publication check. Stage zero still prepares and serializes its tiny
+echo artifact. It cannot establish authored serialization or compiler
+self-compilation. Remaining work includes the complete authored package driver,
+semantic/lowering ownership, canonical prepared/container encoding, target and
+native ABI facts, recovery metadata, source-free installed build/link wiring,
+and real stage-one/stage-two compilation from the full compiler source manifest.
+No self-hosting or serializer completion is claimed by this handoff.
+
+The final normal installed workflow remains subject to `PLAN.md`: it must
+compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables
+unavailable, including hidden or renamed equivalents. Explicit platform
+assemblers/linkers, SDKs, native backends and runtime libraries may remain behind
+narrow bindings. Current native tools are stage-zero construction/recovery
+inputs during migration; this transport increment does not satisfy that final
+clean-checkout stage-one/stage-two and checked-game proof.

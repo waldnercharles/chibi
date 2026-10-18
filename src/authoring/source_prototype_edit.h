@@ -15,6 +15,7 @@ typedef enum
     AUTHORING_PROTOTYPE_ADD_COMPONENT,
     AUTHORING_PROTOTYPE_REMOVE_COMPONENT,
     AUTHORING_PROTOTYPE_ATTACH_BEHAVIOR,
+    /* Remove every occurrence of the requested behavior symbol. */
     AUTHORING_PROTOTYPE_DETACH_BEHAVIOR
 } authoring_prototype_edit_kind;
 

@@ -13,6 +13,11 @@ contextual defaults. They must not be replaced by an empty record. Runtime
 entity IDs are rejected; a zero entity slot is emitted as `null`. Existing
 symbolic links are preserved, and explicitly setting a link to null clears it.
 Prototype reference values use the script catalog's symbol resolution.
+Behavior attachment rejects an already-present symbol. Detachment removes all
+occurrences of that symbol, including duplicates inherited from bases or authored
+locally. Surgical deletion keeps surviving order and comments; inherited
+composition may be materialized as described below. This is the source-operation
+contract; the legacy `prototype_remove_graph` helper is unchanged.
 
 Count zero prepares an owned source/model without changing text and permits a
 null script catalog. Editing needs a script catalog. The caller must verify its
@@ -65,8 +70,8 @@ than silently passing when `CHIBI_TEST_SOURCE_ASSETS` is absent. The installed
 SDK build of `test/language` already links `Chibi::source_catalog` and compiles
 that file when `Chibi::project_compilation` is available.
 
-The cases contain 25 public API calls: 16 accepted and nine rejected; accepted
-calls total 17 operations, with at most four operations in a valid batch. Two
+The cases contain 26 public API calls: 17 accepted and nine rejected; accepted
+calls total 18 operations, with at most four operations in a valid batch. Two
 rejected bound checks pass counts of 1,025 and -1 and are rejected before reading
 the operation array. There are eight fixed tiny in-memory fixture cases, two native
 components, one nested record, one enum, one prototype-reference capability and
@@ -80,7 +85,7 @@ fields following a later base edit; nested-axis current-value retention;
 explicit creation defaults, escaped strings, enum, prototype symbol, nullable
 string and integer extrema; local removal; inherited structural materialization
 with child/retained component, relationship, symbolic handle, identity and ordered behaviors;
-behavior array punctuation/comments; a four-operation batch; explicit symbolic
+behavior array punctuation/comments, adjacent/tail/all-local duplicates and inherited-plus-local duplicates; a four-operation batch; explicit symbolic
 link clearing; invalid source, nonfinite value, nominal mismatch, runtime handle,
 missing reference/catalog, overlapping batch and operation-limit rejection.
 
@@ -96,18 +101,22 @@ is not added to an aggregate. Freeze engine head, installed SDK identity, fixtur
 blob and executable hash. Configuration/build timing is separate from execution.
 A first run is a supervised measurement, not prior proof of runtime.
 
-For meaningful red evidence, keep the final SDK/header/fixtures and change only
-the `AUTHORING_PROTOTYPE_SET_FIELD` branch: keep the normal `set_field` call,
-and when it returns a nonnull candidate, free that candidate and substitute
-`xstrdup(s->source)`. This retains normal validation and helper references while
-discarding only the proposed edit.
-Compile that same-API no-op mutant and run the same admitted selector; the first
-case must fail its changed/source-value assertion. Restore the product branch,
-rebuild/install, verify hashes, and rerun. An old SDK's missing-symbol compile
-failure is not behavioral red evidence. An optional diagnostic materialization mutant that uses `prototype_clone`
-for the comparison baseline should fail the unsorted behavior-order preservation
-fixture; this is not an additional required gate. Do not change `prototype_clone`
-semantics.
+For meaningful failed-before evidence, keep the final header and fixtures but
+replace only the writer with its published
+`c4a8b09a837a737126b8b560b3ff67af9b7af9c2` version (blob
+`1586d46923a741f1ccbf9f60d3f9323b2079d2f8`). Build and run the same selector.
+The behavior case must fail `!prototype_has_graph(bridge_result.value, "First")`
+after its local duplicate detach; compile failure is not behavioral red. Restore
+the final writer, rebuild and require all eight cases to pass. This exact prior
+writer replaces the artificial SET_FIELD no-op as the required engine negative
+control, without adding another runtime invocation.
+
+A same-API SET_FIELD no-op (discard the normally validated candidate and return
+`xstrdup(s->source)`) remains an optional diagnostic, not a required gate. It
+cannot prove the duplicate-detachment correction. Likewise an optional
+materialization mutant using `prototype_clone` as comparison baseline would
+exercise unsorted graph order; do not change that legacy helper's semantics.
+Neither control changes the loader or legacy `prototype_remove_graph` helper.
 
 One additional root ASan/UBSan invocation of only these eight cases is admitted
 for the source/model/text ownership and rejection paths, under the same unchanged

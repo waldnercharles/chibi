@@ -671,33 +671,42 @@ static char *remove_component(context *c, const snapshot *s, av_value *component
     }
     return replace(c, s, (int)ts_node_start_byte(node), (int)ts_node_end_byte(node), "");
 }
-static char *remove_array_item(context *c, const snapshot *s, av_value *array, size_t index)
+static char *remove_behavior(context *c, const snapshot *s, av_value *array, const char *name)
 {
     TSNode node = value_node(s, array);
-    av_source at = av_get_source(av_arr_get(array, index));
-    int start = (int)at.start, end = (int)at.end;
-    TSNode comma_before = { 0 }, comma_after = { 0 };
+    text_edit *edits = NULL;
+    size_t index = 0;
+    bool removed = false;
     for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
         TSNode child = ts_node_child(node, i);
-        if (is(child, ",") && ts_node_end_byte(child) <= at.start) {
-            comma_before = child;
+        if (is(child, "comment")) {
+            continue;
         }
-        if (is(child, ",") && ts_node_start_byte(child) >= at.end) {
-            comma_after = child;
-            break;
+        if (ts_node_is_named(child)) {
+            if (index >= av_arr_size(array)) {
+                afree(edits);
+                fail(c, "Behavior array has inconsistent source items");
+                return NULL;
+            }
+            removed = !strcmp(av_get_str(av_arr_get(array, index++)), name);
+        } else if (!is(child, ",")) {
+            continue;
+        }
+        if (removed) {
+            apush(edits, ((text_edit){ (int)ts_node_start_byte(child), (int)ts_node_end_byte(child), "" }));
         }
     }
-    /* Delete punctuation separately so comments between values survive. */
-    text_edit edits[2] = { { start, end, "" } };
-    TSNode comma = !ts_node_is_null(comma_after) ? comma_after : comma_before;
-    int count = 1;
-    if (!ts_node_is_null(comma)) {
-        edits[count++] = (text_edit){ (int)ts_node_start_byte(comma),
-                                      (int)ts_node_end_byte(comma),
-                                      "" };
+    /* A comma belongs to its preceding value, so each deleted value/comma is
+     * visited once. A surviving last value may retain a legal trailing comma.
+     * Comments and surviving values stay byte-for-byte in their original order. */
+    if (index != av_arr_size(array) || !acount(edits)) {
+        afree(edits);
+        fail(c, "Behavior array has no matching source items");
+        return NULL;
     }
-    (void)c;
-    return text_edits_apply(s->source, edits, count);
+    char *source = text_edits_apply(s->source, edits, acount(edits));
+    afree(edits);
+    return source;
 }
 static bool write_path(void *data, const type_desc *type, const char *path, pin_value value)
 {
@@ -955,12 +964,7 @@ static bool apply(context *c, snapshot *s, const authoring_prototype_edit *op, b
                 *materialized = true;
             }
             av_value *behaviors = av_obj_get(av_doc_root(s->doc), "behaviors");
-            for (size_t i = 0; i < av_arr_size(behaviors); i++) {
-                if (!strcmp(av_get_str(av_arr_get(behaviors, i)), op->behavior)) {
-                    source = remove_array_item(c, s, behaviors, i);
-                    break;
-                }
-            }
+            source = remove_behavior(c, s, behaviors, op->behavior);
             break;
         }
     }

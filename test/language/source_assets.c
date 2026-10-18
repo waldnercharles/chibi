@@ -1100,23 +1100,46 @@ TEST_CASE(source_edit_behavior_splices_and_inherited_detach)
     prototype_registry registry = bridge_registry();
     authoring_prototype_edit detach = { .kind = AUTHORING_PROTOTYPE_DETACH_BEHAVIOR,
                                         .behavior = "First" };
+    REQUIRE(bridge_edit(
+        "Elite :: prototype { behaviors:[First, /* retain */ Second, First, /* "
+        "adjacent */ First, Third, First /* tail */]; }",
+        &registry,
+        &detach,
+        1
+    ));
+    REQUIRE(!prototype_has_graph(bridge_result.value, "First"));
     REQUIRE(
-        bridge_edit("Elite :: prototype { behaviors:[First, /* retain */ Second,]; }", &registry, &detach, 1)
+        !strcmp(bridge_result.source, "Elite :: prototype { behaviors:[ /* retain */ Second,  /* adjacent */  Third,  /* tail */]; }")
+    );
+    REQUIRE(bridge_result.changed && !bridge_result.materialized);
+    REQUIRE(
+        acount(bridge_result.value->graphs) == 2 &&
+        !strcmp(bridge_result.value->graphs[0], "Second") &&
+        !strcmp(bridge_result.value->graphs[1], "Third")
     );
     REQUIRE(
-        strstr(bridge_result.source, "/* retain */ Second,") &&
-        !prototype_has_graph(bridge_result.value, "First")
+        bridge_edit("Elite :: prototype { behaviors:[First, /* between */ First, First /* end */]; }", &registry, &detach, 1)
+    );
+    REQUIRE(
+        !acount(bridge_result.value->graphs) &&
+        !strcmp(bridge_result.source, "Elite :: prototype { behaviors:[ /* between */   /* end */]; }")
     );
     authoring_prototype_edit attach = { .kind = AUTHORING_PROTOTYPE_ATTACH_BEHAVIOR,
                                         .behavior = "Second" };
     REQUIRE(bridge_edit("Elite :: prototype {}", &registry, &attach, 1));
     REQUIRE(prototype_has_graph(bridge_result.value, "Second"));
-    base_text = strdup("Enemy :: prototype { behaviors:[First,Second]; }");
-    REQUIRE(bridge_edit("Elite :: prototype(Enemy) {}", &registry, &detach, 1));
+    base_text = strdup("Enemy :: prototype { behaviors:[First,Second,First,Third,First]; }");
+    REQUIRE(
+        bridge_edit("Elite :: prototype(Enemy) { /* keep metadata */ behaviors:[First,Local,First]; }", &registry, &detach, 1)
+    );
     REQUIRE(
         bridge_result.materialized &&
         !prototype_has_graph(bridge_result.value, "First") &&
-        prototype_has_graph(bridge_result.value, "Second")
+        acount(bridge_result.value->graphs) == 3 &&
+        !strcmp(bridge_result.value->graphs[0], "Second") &&
+        !strcmp(bridge_result.value->graphs[1], "Third") &&
+        !strcmp(bridge_result.value->graphs[2], "Local") &&
+        strstr(bridge_result.source, "/* keep metadata */")
     );
     return true;
 }

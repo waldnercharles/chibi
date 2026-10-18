@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Three fixed C document cases. No compiler, authored backend, I/O or workers. */
+/* Four fixed C document cases. No compiler, authored backend, I/O or workers. */
 static arena source, owned;
 static av_doc *doc;
 static const type_field fields[] = {
@@ -278,11 +278,56 @@ TEST_CASE(record_document_raw_roots)
     REQUIRE(bytes == 0);
     return true;
 }
+TEST_CASE(record_document_packed_rows_survive_collection)
+{
+    const type_field field = { .name = "count", .type = PIN_I32 };
+    const pin_record *record = pin_record_create(&source, "Rows.Plain", 92, &field, 1);
+    REQUIRE(record);
+    const int32_t values[] = { 11, 29 };
+    REQUIRE(record->type.size == sizeof values[0]);
+    doc = av_doc_new();
+    av_value *input = av_arr(doc);
+    for (int i = 0; i < 2; i++) {
+        av_value *row = av_obj(doc);
+        av_obj_set(doc, row, "count", av_sint(doc, values[i]));
+        av_arr_append(input, row);
+    }
+    pin_value type = { .type = PIN_STRUCT,
+                       .container = PIN_CONTAINER_ARRAY,
+                       .type_name = record->type.name,
+                       .record = record },
+              value;
+    arena_init_collectable(&owned);
+    char error[128];
+    REQUIRE(!pin_value_read_document(&owned, type, input, &value, error, sizeof error));
+    arena_free(&source);
+    av_doc_free(doc);
+    doc = NULL;
+    const pin_array *rows = value.ptr;
+    collect(rows);
+    REQUIRE(rows && pin_array_valid(rows) && rows->count == 2);
+    REQUIRE(rows->stride == sizeof values[0] && !rows->items);
+    REQUIRE(rows->record == value.record && pin_record_valid(rows->record));
+    REQUIRE(arena_contains(&owned, rows->record));
+    REQUIRE(arena_contains(&owned, rows->data));
+    for (int i = 0; i < 2; i++) {
+        pin_value row = pin_array_get(rows, i), field_value;
+        REQUIRE(row.record == rows->record);
+        pin_read_field(row.ptr, &row.record->type.fields[0], &field_value);
+        REQUIRE(field_value.type == PIN_I32 && field_value.i == values[i]);
+    }
+    collect(NULL);
+    size_t bytes, capacity;
+    arena_usage(&owned, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    return true;
+}
 void test_language_record_document()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(record_document_roundtrip);
     RUN_TEST_CASE(record_document_rejections);
     RUN_TEST_CASE(record_document_raw_roots);
+    RUN_TEST_CASE(record_document_packed_rows_survive_collection);
     pu_setup(NULL, NULL);
 }

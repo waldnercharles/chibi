@@ -13,6 +13,7 @@ static node_desc NODE_CONSTANT = {
     .category = "Procedural Field",
     .description = "Returns Value at every sample.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_CONSTANT_CALL,
     .input_count = 1,
     .inputs = IN_CONSTANT,
     .output_count = 1,
@@ -23,6 +24,7 @@ static node_desc NODE_X = { .name = FIELD_NODE_X_NAME,
                             .description = "Returns the X coordinate at the "
                                            "center of the sampled cell.",
                             .access = &FIELD_ACCESS,
+                            .host_call = &FIELD_X_CALL,
                             .input_count = 0,
                             .output_count = 1,
                             .outputs = VALUE_OUT };
@@ -31,6 +33,17 @@ static node_desc NODE_Y = { .name = FIELD_NODE_Y_NAME,
                             .description = "Returns the Y coordinate at the "
                                            "center of the sampled cell.",
                             .access = &FIELD_ACCESS,
+                            .host_call = &FIELD_Y_CALL,
+                            .input_count = 0,
+                            .output_count = 1,
+                            .outputs = VALUE_OUT };
+static node_desc NODE_Z = { .name = FIELD_NODE_Z_NAME,
+                            .category = "Procedural Field",
+                            .description = "Returns the depth behind the play "
+                                           "plane, positive away from the "
+                                           "camera; 2D bakes sample at zero.",
+                            .access = &FIELD_ACCESS,
+                            .host_call = &FIELD_Z_CALL,
                             .input_count = 0,
                             .output_count = 1,
                             .outputs = VALUE_OUT };
@@ -41,6 +54,7 @@ static node_desc NODE_PARAMETER = {
     .description = "Returns the named field parameter; Name must be a literal "
                    "naming a declared parameter.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_PARAMETER_CALL,
     .input_count = 1,
     .inputs = IN_PARAMETER,
     .output_count = 1,
@@ -71,6 +85,7 @@ static node_desc NODE_MULTIPLY = { .name = FIELD_NODE_MULTIPLY_NAME,
                                    .category = "Procedural Field",
                                    .description = "Returns A times B.",
                                    .access = &FIELD_ACCESS,
+                                   .host_call = &FIELD_MULTIPLY_CALL,
                                    .input_count = 2,
                                    .inputs = IN_MULTIPLY,
                                    .output_count = 1,
@@ -81,6 +96,7 @@ static node_desc NODE_DIVIDE = {
     .category = "Procedural Field",
     .description = "Returns A divided by B; a B of 0 fails evaluation.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_DIVIDE_CALL,
     .input_count = 2,
     .inputs = IN_DIVIDE,
     .output_count = 1,
@@ -106,6 +122,7 @@ static node_desc NODE_MAX = {
     .description = "Returns the larger of A and B; on distances, the "
                    "intersection of two shapes.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_MAX_CALL,
     .input_count = 2,
     .inputs = IN_MAX,
     .output_count = 1,
@@ -117,6 +134,7 @@ static node_desc NODE_ABS = {
     .category = "Procedural Field",
     .description = "Returns the absolute value of Value.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_ABS_CALL,
     .input_count = 1,
     .inputs = IN_ABS,
     .output_count = 1,
@@ -129,6 +147,7 @@ static node_desc NODE_NEGATE = {
     .description = "Returns Value with its sign flipped; on a distance, swaps "
                    "inside and outside.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_NEGATE_CALL,
     .input_count = 1,
     .inputs = IN_NEGATE,
     .output_count = 1,
@@ -140,6 +159,7 @@ static node_desc NODE_SIN = {
     .category = "Procedural Field",
     .description = "Returns the sine of Value, in radians.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_SIN_CALL,
     .input_count = 1,
     .inputs = IN_SIN,
     .output_count = 1,
@@ -151,6 +171,7 @@ static node_desc NODE_COS = {
     .category = "Procedural Field",
     .description = "Returns the cosine of Value, in radians.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_COS_CALL,
     .input_count = 1,
     .inputs = IN_COS,
     .output_count = 1,
@@ -162,6 +183,7 @@ static node_desc NODE_FLOOR = {
     .category = "Procedural Field",
     .description = "Rounds Value down to the nearest whole number.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_FLOOR_CALL,
     .input_count = 1,
     .inputs = IN_FLOOR,
     .output_count = 1,
@@ -174,6 +196,7 @@ static node_desc NODE_CLAMP = {
     .description = "Limits Value to between Min and Max; Min above Max fails "
                    "evaluation.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_CLAMP_CALL,
     .input_count = 3,
     .inputs = IN_CLAMP,
     .output_count = 1,
@@ -186,6 +209,7 @@ static node_desc NODE_REMAP = {
     .description = "Maps Value linearly from [In Min, In Max] to [Out Min, Out "
                    "Max] without clamping; equal In Min and In Max fail.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_REMAP_CALL,
     .input_count = 5,
     .inputs = IN_REMAP,
     .output_count = 1,
@@ -198,6 +222,7 @@ static node_desc NODE_NOISE = {
     .description = "Returns smooth value noise from -1 to 1 at (X, Y), one "
                    "lattice cell per unit; Seed Offset shifts the seed.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_NOISE_CALL,
     .input_count = 3,
     .inputs = IN_NOISE,
     .output_count = 1,
@@ -211,6 +236,7 @@ static node_desc NODE_FRACTAL = {
                    "coordinates by Lacunarity and weight by Gain (0-1) per "
                    "layer; -1 to 1.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_FRACTAL_CALL,
     .input_count = 6,
     .inputs = IN_FRACTAL,
     .output_count = 1,
@@ -223,6 +249,7 @@ static node_desc NODE_HASH = {
     .description = "Returns a random value from -1 to 1, constant across each "
                    "unit cell of (X, Y); Seed Offset shifts the seed.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_HASH_CALL,
     .input_count = 3,
     .inputs = IN_HASH,
     .output_count = 1,
@@ -276,6 +303,7 @@ static node_desc NODE_ROTATE_X = {
     .description = "Returns X of the point (X, Y) rotated by -Angle radians; "
                    "shapes sampled there turn by Angle.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_ROTATE_X_CALL,
     .input_count = 3,
     .inputs = IN_ROTATE_X,
     .output_count = 1,
@@ -288,6 +316,7 @@ static node_desc NODE_ROTATE_Y = {
     .description = "Returns Y of the point (X, Y) rotated by -Angle radians; "
                    "shapes sampled there turn by Angle.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_ROTATE_Y_CALL,
     .input_count = 3,
     .inputs = IN_ROTATE_Y,
     .output_count = 1,
@@ -313,6 +342,7 @@ static node_desc NODE_SMOOTH_SUBTRACT = {
     .description = "Cuts distance B out of A with a rounded blend Radius wide; "
                    "Radius 0 gives a sharp cut.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_SMOOTH_SUBTRACT_CALL,
     .input_count = 3,
     .inputs = IN_SMOOTH_SUBTRACT,
     .output_count = 1,
@@ -325,6 +355,7 @@ static node_desc NODE_SELECT = {
     .description = "Returns Positive when Condition is above 0, otherwise "
                    "Negative.",
     .access = &FIELD_ACCESS,
+    .host_call = &FIELD_SELECT_CALL,
     .input_count = 3,
     .inputs = IN_SELECT,
     .output_count = 1,
@@ -339,6 +370,48 @@ static node_desc NODE_OUTPUT = {
     .access = &FIELD_ACCESS,
     .input_count = 1,
     .inputs = IN_OUTPUT,
+    .output_count = 1,
+    .outputs = VALUE_OUT
+};
+/* Cells are the Voronoi diagram of sites one unit apart on a triangular
+ * lattice, each moved at most Jitter (0 to 0.25): hexagons at zero. */
+static pin_spec IN_CELL[] = { FIELD_IN_CELL_PORTS(GRAPH_NATIVE_PORT) };
+static node_desc NODE_CELL_X = {
+    .name = FIELD_NODE_CELL_X_NAME,
+    .category = "Procedural Field",
+    .description = "Returns the X of the site of the cell holding (X, Y), on a "
+                   "triangular lattice of unit spacing whose sites move up to "
+                   "Jitter (0-0.25); Seed Offset shifts the seed.",
+    .access = &FIELD_ACCESS,
+    .host_call = &FIELD_CELL_X_CALL,
+    .input_count = 4,
+    .inputs = IN_CELL,
+    .output_count = 1,
+    .outputs = VALUE_OUT
+};
+static node_desc NODE_CELL_Y = {
+    .name = FIELD_NODE_CELL_Y_NAME,
+    .category = "Procedural Field",
+    .description = "Returns the Y of the site of the cell holding (X, Y), on a "
+                   "triangular lattice of unit spacing whose sites move up to "
+                   "Jitter (0-0.25); Seed Offset shifts the seed.",
+    .access = &FIELD_ACCESS,
+    .host_call = &FIELD_CELL_Y_CALL,
+    .input_count = 4,
+    .inputs = IN_CELL,
+    .output_count = 1,
+    .outputs = VALUE_OUT
+};
+static node_desc NODE_CELL_EDGE = {
+    .name = FIELD_NODE_CELL_EDGE_NAME,
+    .category = "Procedural Field",
+    .description = "Returns the distance from (X, Y) to the boundary of its "
+                   "cell, on a triangular lattice of unit spacing whose sites "
+                   "move up to Jitter (0-0.25); Seed Offset shifts the seed.",
+    .access = &FIELD_ACCESS,
+    .host_call = &FIELD_CELL_EDGE_CALL,
+    .input_count = 4,
+    .inputs = IN_CELL,
     .output_count = 1,
     .outputs = VALUE_OUT
 };
@@ -370,7 +443,11 @@ static node_desc *const FIELD_NODES[] = { &NODE_CONSTANT,
                                           &NODE_SMOOTH_UNION,
                                           &NODE_SMOOTH_SUBTRACT,
                                           &NODE_SELECT,
-                                          &NODE_OUTPUT };
+                                          &NODE_OUTPUT,
+                                          &NODE_Z,
+                                          &NODE_CELL_X,
+                                          &NODE_CELL_Y,
+                                          &NODE_CELL_EDGE };
 const registry_pack FIELD_NODE_PACK = { .name = "core.fields",
                                         .nodes = FIELD_NODES,
                                         .node_count = FIELD_OP_COUNT };

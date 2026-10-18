@@ -44,6 +44,7 @@
 #include "authoring/visual_prepare.h"
 #include "automation/content_hash.h"
 #include "automation/field_preview.h"
+#include "automation/material_bake.h"
 #include "automation/navigation.h"
 #include "automation/ui_inspect.h"
 #include "ecs/ecs.h"
@@ -73,6 +74,8 @@
 #include "runtime/behaviors/source.h"
 #include "runtime/component_catalog.h"
 #include "runtime/models/model_inspection.h"
+#include "runtime/terrain_storage.h"
+#include "runtime/transform_propagation.h"
 #include "runtime/ui.h"
 #include "support/array.h"
 #include "support/asset_json.h"
@@ -411,6 +414,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are PadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing zero-based frame order; each frame is below frames; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
+    { "save_path", "string", false, "Absolute host save namespace; explicitly enables authored durable saves. Omit saved_state." },
 };
 static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "kind", "string", false, "Target family; defaults to prototype." },
@@ -425,6 +429,18 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are PadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
+    { "save_path", "string", false, "Absolute host save namespace; explicitly enables authored durable saves. Omit saved_state." },
+};
+static const contract_field CONTRACT_TERRAIN_STORAGE[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "name", "string", true, "Scene asset name." },
+    { "entity", "string", true, "Authored terrain entity path within the scene." },
+    { "identity", "string", true, "Stable terrain identity and attachment key; 1-64 bytes." },
+    { "save_path", "string", true, "Absolute host save namespace; binary terrain attachments commit independently of text saves." },
+    { "frames", "uint64", false, "Fixed steps before storage; defaults to zero, maximum 120." },
+    { "fixed_dt", "number", false, "Engine fixed timestep; must equal 1/60." },
+    { "inputs", "array", false, "Bounded per-frame scenario inputs before storage; alternative to input_timeline." },
+    { "input_timeline", "array", false, "Sparse scenario inputs before storage; alternative to inputs." },
 };
 static const contract_field CONTRACT_RECORD_SCENARIO[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -490,6 +506,22 @@ static const contract_field CONTRACT_PREVIEW_FIELD[] = {
     { "cell_size", "number", false, "Positive grid spacing, default 2, maximum 1024." },
     { "seed", "uint32", false, "Deterministic noise seed." },
     { "parameters", "object", false, "Typed field parameter overrides." },
+};
+static const contract_field CONTRACT_BAKE_MATERIAL[] = {
+    { "project_root", "string", false, "Saved project directory." },
+    { "path", "string", false, "Saved material path, or use kind/name." },
+    { "kind", "string", false, "material" },
+    { "name", "string", false, "Saved material name." },
+    { "width", "integer", false, "Width 1..128, default 32." },
+    { "height", "integer", false, "Height 1..128, default 32." },
+    { "channel", "string", false, "One channel name; omitted selects all channels." },
+    { "uv_min", "array", false, "Two finite UV minimum coordinates, default [0,0]." },
+    { "uv_max", "array", false, "Two increasing UV maximum coordinates, default [1,1]." },
+    { "origin", "array", false, "Three finite plane-origin coordinates, default [0,0,0]." },
+    { "axis_u", "array", false, "Full plane U edge, default [1,0,0]." },
+    { "axis_v", "array", false, "Full plane V edge, default [0,1,0]." },
+    { "time", "number", false, "Fixed finite sample time, default zero." },
+    { "overrides", "array", false, "Material-root parameters keyed by asset, empty scope and parameter_id; unsupported scopes are rejected." },
 };
 static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "project_root", "string", false, "Project directory." },
@@ -581,6 +613,15 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
       1,
       true,
       true,
+      false },
+    { "bake_material",
+      "Bake bounded raw linear material channels on the CPU without GPU "
+      "initialization or file writes.",
+      CONTRACT_BAKE_MATERIAL,
+      CONTRACT_FIELD_COUNT(CONTRACT_BAKE_MATERIAL),
+      1,
+      false,
+      false,
       false },
     { "preview_shader",
       "Compile a material or shape on the GPU and return a bounded PNG "
@@ -809,8 +850,30 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         CONTRACT_RUN_SCENARIO,
         CONTRACT_FIELD_COUNT(CONTRACT_RUN_SCENARIO),
         1,
-        true,
-        true,
+        false,
+        false,
+        false,
+    },
+    {
+        "save_terrain",
+        "Save one authored terrain through the world's storage module and "
+        "return completion and canonical snapshot evidence.",
+        CONTRACT_TERRAIN_STORAGE,
+        CONTRACT_FIELD_COUNT(CONTRACT_TERRAIN_STORAGE),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "load_terrain",
+        "Restore one authored terrain through the world's storage module and "
+        "synchronize physics before returning evidence.",
+        CONTRACT_TERRAIN_STORAGE,
+        CONTRACT_FIELD_COUNT(CONTRACT_TERRAIN_STORAGE),
+        1,
+        false,
+        false,
         false,
     },
     {
@@ -820,8 +883,8 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         CONTRACT_RUNTIME_SNAPSHOT,
         CONTRACT_FIELD_COUNT(CONTRACT_RUNTIME_SNAPSHOT),
         1,
-        true,
-        true,
+        false,
+        false,
         false,
     },
     {
@@ -1304,6 +1367,7 @@ static bool open_content(const char *root, char *error, size_t error_size)
 const char *chibi_automation_content(const char *root)
 {
     assert(PROJECT.root && !strcmp(PROJECT.root, root));
+    (void)root;
     return PROJECT.content;
 }
 
@@ -7827,11 +7891,27 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
 static int scenario_saved_state(scenario_context *context, yyjson_val *request, char *error, size_t size)
 {
     yyjson_val *state = yyjson_obj_get(request, "saved_state");
+    yyjson_val *path_value = yyjson_obj_get(request, "save_path");
+    save *save = prototype_preview_live(context->preview)->runtime->save;
+    if (path_value) {
+        const char *path = yyjson_get_str(path_value);
+        if (!path || path[0] != '/' || strlen(path) != yyjson_get_len(path_value) ||
+            state || context->scenario_saved_state) {
+            set_error(error, size, "save_path must be an absolute path and cannot accompany saved_state");
+            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        }
+        if (!save_open(save, path)) {
+            set_error(error, size, save_error(save));
+            return CHIBI_AUTOMATION_IO_ERROR;
+        }
+        free(context->initial_saved_state);
+        context->initial_saved_state = save_export(save);
+        return CHIBI_AUTOMATION_OK;
+    }
     char *json = state ? yyjson_val_write(state, 0, NULL)
                : context->scenario_saved_state
                    ? av_json_write(context->scenario_saved_state)
                    : xstrdup("{}");
-    save *save = prototype_preview_live(context->preview)->runtime->save;
     bool valid = save_import(save, json);
     free(json);
     if (!valid) {
@@ -8395,6 +8475,7 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
     );
     add_scenario_timing(result->doc, value, frames, fixed_dt);
     add_saved_state(result->doc, value, &context);
+    add_presentation_state(result->doc, value, &context);
     add_behavior_failures(result->doc, value, &context);
     scenario_context_free(&context);
     return 0;
@@ -10960,6 +11041,134 @@ static bool parse_scenario_timing(
     return true;
 }
 
+static int handle_terrain_storage(
+    const char *root,
+    yyjson_val *request,
+    bool load,
+    response *result,
+    int *exit_code
+)
+{
+    const char *name = request_string(request, "name");
+    const char *entity_name = request_string(request, "entity");
+    const char *identity = request_string(request, "identity");
+    const char *path = request_string(request, "save_path");
+    yyjson_val *identity_value = yyjson_obj_get(request, "identity");
+    if (!name || !name[0] || !entity_name || !entity_name[0] || !identity ||
+        !identity[0] || strlen(identity) > SAVE_BLOB_KEY_MAX ||
+        strlen(identity) != yyjson_get_len(identity_value) || !path ||
+        path[0] != '/' || yyjson_obj_get(request, "saved_state") ||
+        yyjson_obj_get(request, "scenario") || yyjson_obj_get(request, "kind")) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "terrain storage requires scene name, entity, 1-64 byte identity and absolute save_path; omit kind, scenario and saved_state");
+        return -1;
+    }
+    char error[256] = { 0 };
+    uint64_t frames;
+    double fixed_dt;
+    if (!parse_scenario_timing(request, &frames, &fixed_dt, error, sizeof error)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+        return -1;
+    }
+    frames = yyjson_obj_get(request, "frames") ? frames : 0;
+    if (frames > 120) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "terrain storage frames must be no greater than 120");
+        return -1;
+    }
+    scenario_context context = { 0 };
+    int status = prepare_scene_scenario(root, name, &context, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = advance_request_scenario(&context, request, frames, fixed_dt, error, sizeof error);
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    ecs_entity entity = scenario_entity(&context, entity_name);
+    const engine_modules *modules = world_modules(
+        prototype_preview_live(context.preview)->runtime->owner
+    );
+    int token = terrain_storage_request(modules->terrain_storage, entity, identity, load, error, sizeof error);
+    if (!token) {
+        scenario_context_free(&context);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+        return -1;
+    }
+    terrain_storage_flush(modules->terrain_storage);
+    terrain_storage_state completion = terrain_storage_result(modules->terrain_storage, token);
+    if (transform_propagate(prototype_preview_world(context.preview)) != ECS_OK) {
+        set_error(error, sizeof error, "could not propagate restored terrain transforms");
+    }
+    bool physics_ready = false;
+    if (modules->physics) {
+        physics_ready = physics_tick(modules->physics, 0) == 0;
+        if (!physics_ready) {
+            set_error(error, sizeof error, physics_error(modules->physics));
+        }
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_val *finished = yyjson_mut_obj_add_obj(result->doc, value, "completion");
+    yyjson_mut_obj_add_int(result->doc, finished, "token", token);
+    yyjson_mut_obj_add_bool(result->doc, finished, "pending", completion.pending);
+    yyjson_mut_obj_add_bool(result->doc, finished, "succeeded", completion.succeeded);
+    yyjson_mut_obj_add_str(
+        result->doc,
+        finished,
+        "status",
+        completion.pending     ? "pending"
+        : completion.succeeded ? "succeeded"
+                               : "failed"
+    );
+    if (completion.error && completion.error[0]) {
+        yyjson_mut_obj_add_strcpy(result->doc, finished, "error", completion.error);
+    }
+    yyjson_mut_obj_add_bool(result->doc, value, "physics_ready", physics_ready);
+    yyjson_mut_obj_add_uint(result->doc, value, "frames", frames);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "save_path", path);
+    add_presentation_state(result->doc, value, &context);
+    add_behavior_failures(result->doc, value, &context);
+    yyjson_mut_val *terrain = yyjson_mut_obj_add_obj(result->doc, value, "terrain");
+    yyjson_mut_obj_add_strcpy(result->doc, terrain, "entity", entity_name);
+    yyjson_mut_obj_add_strcpy(result->doc, terrain, "identity", identity);
+    /* The shared codec excludes fragments, actors and transient ECS identities.
+     * Its exact bytes are stable evidence of this terrain's canonical samples. */
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    char snapshot_error[256] = { 0 };
+    if (materials_terrain_checkpoint_write(
+            modules->materials,
+            entity,
+            identity,
+            &bytes,
+            &length,
+            snapshot_error,
+            sizeof snapshot_error
+        )) {
+        add_hash_named(
+            result->doc,
+            terrain,
+            "snapshot_hash",
+            scenario_hash_bytes(UINT64_C(14695981039346656037), bytes, length)
+        );
+        yyjson_mut_obj_add_uint(result->doc, terrain, "snapshot_bytes", length);
+    } else {
+        yyjson_mut_obj_add_strcpy(result->doc, terrain, "snapshot_error", snapshot_error);
+    }
+    free(bytes);
+    if (!completion.succeeded || completion.pending) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_EXECUTION_ERROR,
+            completion.error && completion.error[0] ? completion.error : "terrain storage did not complete"
+        );
+    } else if (error[0]) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_EXECUTION_ERROR, error);
+    }
+    scenario_context_free(&context);
+    return completion.succeeded && !error[0] ? 0 : -1;
+}
+
 static int handle_record_scenario(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *kind = request_string(request, "kind");
@@ -11081,6 +11290,11 @@ static int handle_replay_scenario(const char *root, yyjson_val *request, respons
     if (!recording_valid) {
         yyjson_doc_free(recording_doc);
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "recording exceeds the supported size");
+        return -1;
+    }
+    if (yyjson_obj_get(recording, "save_path")) {
+        yyjson_doc_free(recording_doc);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "scenario recordings cannot access save_path");
         return -1;
     }
     const char *format = request_string(recording, "format");
@@ -12472,6 +12686,45 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
     return 0;
 }
 
+static int handle_bake_material(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    asset_ref ref = { 0 };
+    char *text = NULL;
+    size_t bytes;
+    uint64_t hash;
+    char error[256] = { 0 };
+    int status = load_asset(root, request, &ref, &text, &bytes, &hash, error, sizeof error);
+    if (status != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, status, error);
+        return -1;
+    }
+    behavior_asset *authored = load_project_behavior(root, text);
+    free(text);
+    if (!authored || authored->domain != BEHAVIOR_DOMAIN_MATERIAL) {
+        const char *message = authored
+                                ? "bake_material requires a material asset"
+                                : graph_last_error();
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, message);
+        behavior_asset_free(authored);
+        return -1;
+    }
+    behavior_asset *asset = link_project_libraries(root, authored, error, sizeof error);
+    behavior_asset_free(authored);
+    if (!asset) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    add_asset_identity(result->doc, value, &ref, bytes, hash);
+    bool valid = automation_material_bake(asset, request, result->doc, value, error, sizeof error);
+    behavior_asset_free(asset);
+    if (!valid) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    return 0;
+}
+
 static int validate_shader_binding(const char *root, const Shader *binding, char *error, size_t error_size)
 {
     if (!binding) {
@@ -12899,6 +13152,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "validate_asset") ||
            !strcmp(operation, "validate_project") ||
            !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
+           !strcmp(operation, "bake_material") ||
            !strcmp(operation, "preview_field") ||
            !strcmp(operation, "import_sky") || !strcmp(operation, "import_model") ||
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
@@ -12909,6 +13163,7 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "inspect_graph") ||
            !strcmp(operation, "inspect_system") ||
            !strcmp(operation, "run_scenario") ||
+           !strcmp(operation, "save_terrain") || !strcmp(operation, "load_terrain") ||
            !strcmp(operation, "runtime_snapshot") ||
            !strcmp(operation, "record_scenario") ||
            !strcmp(operation, "replay_scenario") || !strcmp(operation, "inspect_ui");
@@ -12948,6 +13203,13 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         yyjson_doc_free(document);
         return response_finish(&result);
     }
+    if (yyjson_obj_get(root_value, "save_path") &&
+        strcmp(operation, "save_terrain") && strcmp(operation, "load_terrain") &&
+        strcmp(operation, "run_scenario") && strcmp(operation, "runtime_snapshot")) {
+        response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "save_path is supported only by terrain storage and runtime scenario operations");
+        yyjson_doc_free(document);
+        return response_finish(&result);
+    }
     char *root = NULL;
     /* Unsaved source analysis needs no project, but sees its components. */
     bool optional_root = !strcmp(operation, "analyze_code");
@@ -12977,7 +13239,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     bool needs_images = root && (!strcmp(operation, "validate_asset") ||
                                  !strcmp(operation, "validate_project") ||
                                  !strcmp(operation, "inspect_graph") ||
-                                 !strcmp(operation, "bake_model"));
+                                 !strcmp(operation, "bake_model") ||
+                                 !strcmp(operation, "bake_material"));
     if (needs_images) {
         char error[256] = { 0 };
         int status = scenario_mount_content(root, &image_context, error, sizeof error);
@@ -13000,6 +13263,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_describe_components(root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_field")) {
         handle_preview_field(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "bake_material")) {
+        handle_bake_material(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "preview_shader")) {
         response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
     } else if (!strcmp(operation, "describe_contract")) {
@@ -13064,6 +13329,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_inspect_system(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "run_scenario")) {
         handle_run_scenario(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "save_terrain") || !strcmp(operation, "load_terrain")) {
+        handle_terrain_storage(root, root_value, !strcmp(operation, "load_terrain"), &result, exit_code);
     } else if (!strcmp(operation, "runtime_snapshot")) {
         handle_runtime_snapshot(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "record_scenario")) {

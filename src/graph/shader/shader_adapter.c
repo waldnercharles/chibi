@@ -95,7 +95,8 @@ int shader_node_input_context(const node *n, int pin, const char **label)
         if (!strcmp(name, "Shader Mapping3D")) {
             context = SHADER_OBJECT_POSITION;
         }
-        if (!strcmp(name, "Shader Surface Influence")) {
+        if (!strcmp(name, "Shader Surface Influence") ||
+            !strcmp(name, "Shader Star Field")) {
             context = SHADER_WORLD_POSITION;
         }
         if (!strcmp(name, "Shader Fractal Noise") || !strcmp(name, "Shader Voronoi")) {

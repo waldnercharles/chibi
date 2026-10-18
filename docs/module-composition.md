@@ -122,6 +122,12 @@ scheduling proof. A pure imported helper still does not establish parallel safet
 
 ## Fixed workload and validation
 
+This section records the historical seven-case workload. The redesigned suite
+now has seventeen cases; its current source-derived bounds are in
+[testing.md](testing.md#qualified-module-prerequisite-admitted-fixed-workload).
+The table, concurrency limits and execution observations below apply only to
+the original seven-case suite.
+
 The single existing C dispatcher gains `--modules`, containing seven pico_unit
 cases. Numerical execution uses bytecode plus the platform compiled backend
 (SLJIT natively; Wasm in the Emscripten build). It checks backend availability and

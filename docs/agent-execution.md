@@ -269,28 +269,7 @@ CLI. Native execution metadata distinguishes offscreen, hidden-window,
 visible-window, and unreported window state. Hardware validation remains
 separate from CPU policy evidence.
 
-### Installed SpaceCadet acceptance routes
-
-The installed routes require explicit absolute `CHIBI_SPACE_CADET_ROOT` and
-`CHIBI_COMPILER_SDK` paths. They verify package file checksums, the game's exact
-`.chibi-engine.json` pin against `.chibi/runtime/share/chibi/package.json`, and the
-reviewed project/content fingerprint before invocation. No development binary
-substitution is permitted.
-
-`make agent-test AGENT_SELECTOR=--compile-installed-space-cadet` uses that SDK's
-`bin/chibi-compile` and writes the game's `.chibi/prepared/project.chibip`. Its
-resource manifest must contain exactly HUD, PauseMenu, four Inter faces, and the
-reviewed empty parts/shader-values catalogs, with no external resources.
-
-`make agent-gpu-test AGENT_SELECTOR=--player-installed-space-cadet-vm` and the
-corresponding `--player-installed-space-cadet-sljit` route run the game's installed
-`.chibi/runtime/bin/chibi-player` against that artifact. Each requires exactly four
-hidden 1280×720 frames and exactly three simulation steps at fixed dt 0.0166667
-under the shared 60-second deadline.
-These are GPU checks. Configuration and packaging are separate from execution.
-The existing development SpaceCadet routes remain available. New installed-route
-execution evidence is pending independent admission and a supervised run.
-
+### Installed Studio acceptance routes
 
 The `--studio-source-edit` GPU route accepts explicit absolute
 `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and

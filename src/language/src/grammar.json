@@ -29,6 +29,125 @@
         {
           "type": "SYMBOL",
           "name": "relationship_declaration"
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "package",
+              "content": {
+                "type": "SYMBOL",
+                "name": "package_header"
+              }
+            },
+            {
+              "type": "REPEAT",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "import_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "behavior"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "system"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "component"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "function_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "constant_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "state_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "record_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "union_declaration"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "macro_declaration"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "package_header": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "package"
+        },
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "identifier"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_end"
+        }
+      ]
+    },
+    "import_declaration": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "import"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "alias",
+              "content": {
+                "type": "SYMBOL",
+                "name": "identifier"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "FIELD",
+          "name": "path",
+          "content": {
+            "type": "SYMBOL",
+            "name": "string"
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_end"
         }
       ]
     },
@@ -5125,6 +5244,24 @@
         {
           "type": "SYMBOL",
           "name": "identifier"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "package"
+          },
+          "named": true,
+          "value": "identifier"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "STRING",
+            "value": "import"
+          },
+          "named": true,
+          "value": "identifier"
         },
         {
           "type": "ALIAS",

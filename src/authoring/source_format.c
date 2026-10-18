@@ -370,6 +370,10 @@ char *authoring_source_format_with_options(
     if (config.preferred_width) {
         measure_groups(list);
     }
+    /* Count package CR separators without changing legacy root layout. */
+    bool package = !ts_node_is_null(
+        ts_node_child_by_field_name(ts_tree_root_node(source->tree), "package", 7)
+    );
     int indent = 0, column = 0;
     for (int i = 0; i < acount(list); i++) {
         token current = list[i];
@@ -385,7 +389,9 @@ char *authoring_source_format_with_options(
             token previous = list[i - 1];
             int lines = 0;
             for (int p = previous.end; p < current.start; p++) {
-                lines += source->text[p] == '\n';
+                lines += source->text[p] == '\n' ||
+                         (package && source->text[p] == '\r' &&
+                          source->text[p + 1] != '\n');
             }
             bool comment = kind(current.node, "comment");
             bool inline_comment = comment && !lines;
@@ -443,7 +449,9 @@ char *authoring_source_format_with_options(
             goto limit;
         }
         for (int p = current.start; p < current.end; p++) {
-            column = source->text[p] == '\n' ? 0 : column + 1;
+            column = source->text[p] == '\n' || (package && source->text[p] == '\r')
+                       ? 0
+                       : column + 1;
         }
         if (current.open || current.case_open) {
             indent++;
@@ -461,7 +469,8 @@ char *authoring_source_format_with_options(
                 for (int p = current.end;
                      i + 1 < acount(list) && p < list[i + 1].start;
                      p++) {
-                    wraps |= source->text[p] == '\n';
+                    wraps |= source->text[p] == '\n' ||
+                             (package && source->text[p] == '\r');
                 }
             }
             apush(nested, wraps);

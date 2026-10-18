@@ -9,10 +9,10 @@ The copied player deployment lives in the game's ignored `.chibi/runtime` direct
 The compiler, Studio, and controller are separate authoring tools; they do not
 ship inside the game runtime.
 
-Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
-`chibi-voidweaver`; labs and sampled models live in `chibi-examples`. Studio owns
-its starter and shell assets in `chibi-studio`. Pass the project root to an
-installed authoring tool rather than mounting a game under the engine checkout.
+Each game lives in its own repository. Studio owns its starter and shell assets
+in `chibi-studio`; [examples](examples.md) lists the checked-in projects to learn
+from. Pass the project root to an installed authoring tool rather than mounting a
+game under the engine checkout.
 
 ## Start a project
 
@@ -29,8 +29,8 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
   chibi_ctl --project-root tetris
 ```
 
-[`projects/tetris` in chibi-examples](https://github.com/waldnercharles/chibi-examples/tree/main/projects/tetris)
-is a complete game made this way.
+[`test/fixtures/terrain-lab`](../test/fixtures/terrain-lab/README.md) is a small
+playable game made this way.
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,

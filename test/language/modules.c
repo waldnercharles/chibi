@@ -421,6 +421,46 @@ TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_
     return true;
 }
 
+TEST_CASE(modules_empty_compile_bindings_materialize)
+{
+    static const input inputs[] = {
+        { "libraries/Flags.chibi",
+          "Flags :: library { Enabled :: () -> bool { return true } }" },
+        { "behaviors/Caller.chibi",
+          "Caller :: behavior { Value :: Flags.Enabled(); offset:number=0; "
+          "on Tick(cells) { if Value { offset=cells } } }" },
+    };
+    static const double amounts[] = { 2 }, expected[] = { 2 };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 2, false, backends[backend]);
+        REQUIRE(valid(0));
+        const authoring_source *caller = source(0, "Caller");
+        REQUIRE(caller);
+        const script_analysis *a = caller->analysis;
+        REQUIRE(a->request_count == 1);
+        const script_specialization_request *request = &a->requests[0];
+        REQUIRE(request->evaluate);
+        REQUIRE(!request->binding_count && !request->bindings);
+        const script_catalog *view = authoring_sources_catalog(collections[0]);
+        bool found = false;
+        for (int i = 0; i < view->specialization_count; i++) {
+            const script_catalog_specialization *s = &view->specializations[i];
+            if (s->id != request->id) {
+                continue;
+            }
+            REQUIRE(s->template_id == request->template_id);
+            REQUIRE(!s->binding_count);
+            REQUIRE(!s->executable && !s->result.is_type);
+            REQUIRE(s->result.value.type == PIN_BOOL && s->result.value.b);
+            found = true;
+        }
+        REQUIRE(found);
+        REQUIRE(run(0, "Caller", backends[backend], amounts, expected, 1));
+        clear();
+    }
+    return true;
+}
+
 TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse)
 {
     static const input inputs[] = {
@@ -530,12 +570,24 @@ TEST_CASE(modules_imported_templates_keep_owner_types_bodies_and_nested_requests
             REQUIRE(run(0, "Caller", backends[backend], amounts, expected, 1));
             const script_catalog *view = authoring_sources_catalog(collections[0]);
             REQUIRE(view->template_count >= 6 && view->specialization_count >= 6);
+            const authoring_source *units = source(0, "Units");
+            REQUIRE(units && strcmp(units->analysis->identity, units->analysis->name));
             bool record = false, factorial = false;
             for (int i = 0; i < view->type_count; i++) {
                 const script_catalog_type *type = &view->types[i];
                 if (type->authored_record) {
                     REQUIRE(type->field_count == 1 && type->size == sizeof(double));
                     REQUIRE(!strcmp(type->fields[0].name, "amount"));
+                    const script_catalog_type *declared = NULL;
+                    for (int j = 0; j < units->analysis->type_count; j++) {
+                        if (units->analysis->types[j].id == type->id) {
+                            declared = &units->analysis->types[j];
+                            break;
+                        }
+                    }
+                    REQUIRE(declared);
+                    REQUIRE(!strcmp(declared->name, type->name));
+                    REQUIRE(!strcmp(declared->source_name, type->source_name));
                     record = true;
                 }
             }
@@ -787,6 +839,7 @@ void test_language_modules()
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
     RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);
     RUN_TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_types);
+    RUN_TEST_CASE(modules_empty_compile_bindings_materialize);
     RUN_TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse);
     RUN_TEST_CASE(modules_float_specialization_metadata_compares_exact_ieee_bits);
     RUN_TEST_CASE(modules_imported_templates_keep_owner_types_bodies_and_nested_requests);

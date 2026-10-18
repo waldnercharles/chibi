@@ -41,8 +41,8 @@ Projects use `CHIBI_PROJECT_VERSION` 24, as created and loaded by
 After hand-editing assets, canonicalize and check:
 
 ```sh
-build/chibi_ctl --project-root projects/modeling_lab --format
-build/chibi_ctl --project-root projects/modeling_lab --format --check
+build/chibi_ctl --project-root <root> --format
+build/chibi_ctl --project-root <root> --format --check
 ```
 
 The check verifies canonical serialization. Use native `validate_asset` to compile and
@@ -195,12 +195,12 @@ them. Its presence is not a claim that Web export acceptance has passed.
 
 ## Scenes, inspection, and evidence
 
-Saved studies under `projects/modeling_lab/content/scenes` cover primitives,
-Boolean operations, transforms, reuse, bounds, profiles, ships, materials and
-construction costs. The former `author*.mjs` recipes and their `--preview` flags
-are retired. Their generated assets remain editable, but reconstruction from an
-empty project is no longer supplied by a script. See the lab README and retained
-`build/model-evidence` results for historical evidence. The local HRC relief
+The Modeling Lab studies of primitives, Boolean operations, transforms, reuse,
+bounds, profiles, ships, materials and construction costs were retired with the
+example projects on 2026-10-17 ([examples](examples.md)); no checked-in project
+saves a model now, and `--model-graphs` and `--model-catalog` cover models in
+memory. The former `author*.mjs` recipes and their `--preview` flags are retired.
+Retained `build/model-evidence` results are historical evidence. The local HRC relief
 approximation still shows aliasing at sharp creases; the relief-disabled control
 isolates that from model geometry.
 
@@ -341,7 +341,8 @@ public callers can pass `overrides` keyed by `asset`, `scope`, `parameter_id`
 and a component `value` array from `inspect_graph`.
 
 For example, send this native request as one JSON line to
-`build/chibi_ctl --project-root projects/modeling_lab`:
+`build/chibi_ctl --project-root <root>` for a project with a `PolaroidOneStep`
+model:
 
 ```json
 {

@@ -345,7 +345,7 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
             return;
         }
         memset(v->ptr, 0, type->size);
-        if (v->record) {
+        if (v->record && !destination) {
             pin_arena_trace_struct(w->storage, v->ptr, type);
         }
     }

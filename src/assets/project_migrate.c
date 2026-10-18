@@ -3908,14 +3908,12 @@ static char *drop_lab_settings(const char *asset)
 static void declaration_edits(const char *text, TSNode node, replacement **edits)
 {
     if (is(node, "call_expression")) {
-        TSNode target = ts_node_named_child(node, 0);
+        TSNode target = ts_node_child_by_field_name(node, "function", 8);
         /* Version 23 treated not as an ordinary callable name. Version 24
          * added its unary spelling: quote the target for that historical
          * parser, without assuming a native call rather than authored shadow.
          * The catalog-aware final migration chooses unary ! only for natives. */
-        if (is(target, "identifier") &&
-            ts_node_end_byte(target) - ts_node_start_byte(target) == 3 &&
-            !memcmp(text + ts_node_start_byte(target), "not", 3)) {
+        if (is(target, "identifier") && names(text, target, "not")) {
             apush(
                 *edits,
                 ((replacement){ .start = (int)ts_node_start_byte(target),
@@ -4028,10 +4026,10 @@ int chibi_migrate_declarations(const char *source, char **migrated, char *error,
         snprintf(
             error,
             size,
-            "Declaration migration produced invalid source at %d:%d: %.48s",
+            "Declaration migration produced invalid source at %d:%d: %s",
             diagnostic.range.line,
             diagnostic.range.column,
-            (result ? result : source) + diagnostic.range.start
+            diagnostic.message
         );
         script_syntax_free(check);
         free(result);
@@ -4131,12 +4129,21 @@ int chibi_migrate_retention(const char *source, char **migrated, char *error, si
     script_syntax_free(syntax);
     script_syntax *check = parse25(result ? result : source);
     bool valid = !check->diagnostic_count;
-    script_syntax_free(check);
     if (!valid) {
-        snprintf(error, size, "Retention migration produced invalid source");
+        const script_diagnostic *diagnostic = &check->diagnostics[0];
+        snprintf(
+            error,
+            size,
+            "Retention migration produced invalid source at %d:%d: %s",
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->message
+        );
+        script_syntax_free(check);
         free(result);
         return -1;
     }
+    script_syntax_free(check);
     *migrated = result;
     return 0;
 }

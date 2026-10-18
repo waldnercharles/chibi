@@ -347,8 +347,10 @@ Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
 59 assertions in 0.656 seconds. `field-runtime` originally ran three public cases for owned
 scalar artifacts, a 3-by-3 whole/sliced bake, geometry/parameter results, invalid
 IR and every prefix of a prepared record smaller than 512 bytes. It passed 254
-assertions in 0.828 seconds with ASan/UBSan. Neither selector loads a renderer or
-runs engine frames.
+assertions in 0.828 seconds with ASan/UBSan. Two of its cases check every field
+node's library host call against the field evaluator, sampled and baked, over
+2,000 operand sets each, and that a call's Seed Offset is its whole seed.
+Neither selector loads a renderer or runs engine frames.
 `prototype-document` selects one independently reviewed case with two small
 reflected types and fixed creation-default, detached-component, value snapshot,
 partial KDL and malformed-size operations. It has no files, worlds, processes or
@@ -544,6 +546,65 @@ with an empty start scene and is never written over, and the language and
 material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
+`--project-declarations` is one standalone pico compatibility case under the
+shared 60-second ceiling. Its four exact
+fixtures in `test/fixtures/studio-declarations` are `OutlinerRows.chibi`,
+`VirtualList.chibi` and their sidecars from Studio
+`07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f` (36,450 bytes total). Each source must
+migrate from version 23 to 24 and repeat that step unchanged. Explicit retention
+and syntax migrations then produce current-grammar source for parsing. One
+successful content transaction must produce exactly the version-24 direct migrated
+source.
+Both original sidecars are already stale: the public source-binding check must
+fail before migration, and afterward their full bytes, historical source hashes
+and 104/41 anchors must remain unchanged and valid JSON. This does not claim
+valid-bound anchor remapping; the existing
+`program_version_23_declarations_and_switch_migrate` case covers that contract.
+A second transaction adds one 32-byte malformed source and must reject it with
+its actual path, leaving all five input files byte-identical and no `.migrating`
+files. The fixture prints each source name before its migration assertion so a
+rejected rewrite identifies the original source and current-parser diagnostic.
+
+The original diagnostic at `66448ee5` rejected the OutlinerRows rewrite at
+26:75, inside `not(Value: state.Collapsed)`: one failed case, three assertions,
+0.062 supervised seconds. Later controls were not reached. The migration now
+quotes only historical bare `not` call targets using existing quoted-name
+syntax; the current unary grammar is unchanged. Assertions preserve all four
+real call arguments. Two fixed in-memory snippets under 1 KiB additionally
+check exact rewrite exclusions for comments, strings, member and already-quoted
+call targets, plus unchanged current `not(value)` syntax with a unary CST node
+and no call node.
+
+The redesigned success-path ceiling is six declaration migration calls, four
+retention/syntax migration calls, three explicit current parses, four metadata
+checks and two content transactions over four then five input files. Including
+the migration implementation, there are at most 63 current/historical syntax
+parses (twenty declaration, twelve retention/syntax, three explicit, twelve
+successful content and sixteen rejected content) and six simultaneous
+content/staging files. This updated workload requires independent exact-source
+admission before execution under the unchanged production 60-second ceiling.
+There is no authored execution, backend, renderer, child process, network or
+additional corpus. The test object consumes only explicitly linked public
+`Chibi::project_document`, `Chibi::language_syntax`, `Chibi::authoring` and
+`Chibi::json` owners plus the copied pico/fixture headers. The route stays outside
+all default aggregates. At `c4a9ed52`, this fixed route passed one case and
+60 assertions, exit 0 in 0.082 supervised seconds. That historical run predates
+the redesigned migration chain. The current 63-parse bound is source-derived,
+not an instrumented count. Already-current `not(value)` keeps the existing
+unchanged early return; this is not general version-aware
+call/unary disambiguation.
+
+A fresh full compiler/native/desktop SDK from that same source passed independent
+package/relocation and current controller/Studio consumer-link verification.
+With Studio `d79bb24c`, its separate fail-fast case passed one case/50 assertions
+in 0.057 seconds. A separately supervised empty-scene startup requested two
+frames at fixed 1/60-second steps and produced a visually checked opaque
+1920x1080 capture, exit 0 in 4.529 seconds, using the retained offscreen/software
+Mesa configuration. No prohibited syntax/initialization/frame-failure markers
+appeared and all 21,668 immutable paths were unchanged. These results do not
+cover interaction, hardware-GPU behavior, sanitizers or leak detection. The SDK
+uses Clang 19 Release/NDEBUG; the focused pico assertions remain enabled.
+
 `--prototype-documents` runs eight cases on prototypes and scene documents in
 memory: a rebase keeps local values over evolving defaults, retained strings
 survive clones and renames, detached components spawn absent and reattach,
@@ -602,7 +663,7 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs eighteen cases on field graphs compiled to field programs:
+`--fields` runs twenty cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
@@ -611,8 +672,13 @@ tiles that restore and retry failed slices, plus linked-library publication
 and rollback, source-library linking and constant parameter defaults, and library
 updates that preserve valid and invalid field drafts, and source calls that retain
 the named function and authored inputs after functions and parameters reorder.
+Two more lower a library calling every field node, each baked bit-identical to
+that node alone with the field's seed, sample and parameters, and functions
+calling functions before and after them, in another library, and recursively.
 The original thirteen cases passed 3,308 assertions in 0.36 seconds with
-ASan/UBSan; these historical measurements do not cover the five added cases.
+ASan/UBSan; these historical measurements do not cover the seven added cases.
+All twenty passed 3,648 assertions in 2.4 seconds with ASan/UBSan on
+2026-10-16.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -686,23 +752,6 @@ grid has at most four cells and no rendering or engine frames run. A decorative
 prototype also checks, without gameplay, that its atlas and its normal and height
 maps are prepared and that it owns its prepared data, and a map of another size
 must fail preparation.
-
-`python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
-cases when the tooling build includes asset authoring. It reads only the sibling
-`chibi-celeste` checkout. A bounded local `git show` supplies the former Level
-scene from commit `56ca9d486b93c15a504bf293dc722c6202cd2bf5`; the production KDL
-parser compares all 1,472 cells and 230 former tile centres/frame indices, then
-checks the four retained actors and one Room layer. Inputs are capped at 64 KiB
-for the baseline, 16 KiB for Room and 4 KiB for Level. Three owned controller
-children validate, prepare and run exactly two headless simulation frames with
-five authored and fifteen live entities and no behavior failures. Each child
-has the existing ten-second deadline inside the shared sixty-second supervisor.
-No GPU or network is used. Logs and the baseline revision are retained under
-`/tmp/chibi-publish-validation/evidence`; generated baseline, requests and prepared
-artifacts are removed. This fixed workload is independently admitted for its
-first supervised measurement; it does not admit arbitrary projects or frames.
-The first supervised run passed both cases and 3,818 assertions in 8.270 seconds,
-including controller startup, source preparation and the two simulation frames.
 
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
@@ -1502,30 +1551,25 @@ called function is refused while the field keeps its revision, value and draft. 
 `validate_project` and `preview_field` link a field against a `.chibi` library.
 
 
-## External authored examples acceptance
+## Terrain Lab save and restart
 
-The Examples repository owns `projects/atrium` and `projects/tetris`. Engine
-unit and default CPU groups do not depend on that checkout. Run their explicit
-CPU acceptance with an absolute Examples root and a matching Release controller:
+`python3 tools/test_policy.py tool terrain-playable`, also part of `make
+test-projects`, drives the authored controls of `test/fixtures/terrain-lab` on
+the VM and SLJIT. For each backend a writer process digs across a 128-cell chunk
+seam and saves; a fresh reader process checks pristine terrain, then loads and
+checks the restored cells, their collision holes and an unchanged reference
+patch. No GPU is used. `--terrain-playable-render` runs an installed player on an
+artifact the installed compiler prepared from the same fixture
+(`CHIBI_TERRAIN_ARTIFACT` and `CHIBI_TERRAIN_RESOURCES`) for four hidden 640x360
+frames and checks the saved PNG.
 
-```sh
-CHIBI_EXAMPLES_ROOT=/absolute/path/to/chibi-examples \
-CHIBI_CTL=build-release/bin/chibi_ctl \
-python3 tools/test_policy.py tool examples-projects
-```
-
-`--examples-projects chibi_ctl` is the C tooling dispatcher route; `make
-agent-test AGENT_SELECTOR=--examples-projects` uses the same supervisor. Missing
-external roots or either project fail the cases; they never skip. Three cases
-validate Atrium without warnings, validate and exercise Tetris rotation/drop and
-restart, and verify blocked Hold ends its tick without changing the score. The
-Tetris cases clone their project with copy-on-write and remove the copies after
-each case. They run two 170-frame snapshots and one 22-frame snapshot, reporting
-at most three entities and one behavior per snapshot, without rendering. One
-shared production 60-second deadline covers both validations, all snapshots and
-fixture setup; each child also has the existing 10-second tooling limit.
-The inline language event, system cancellation and binding cases retain both
-VM and compiled-backend coverage without reading the Examples checkout.
+The CPU `scene3d-terrain` route also checks an empty volume before and after
+cache reuse and an origin change. One constant field bakes a 3x3x3 lattice;
+three surface queries must retain zero drawn meshes, caster meshes and boxes,
+while the rebuild counter distinguishes reuse from reconstruction. This adds
+one case and seven assertions to the existing six-case route, with no frames,
+rendering, files or child processes. ASan/UBSan validation keeps the zero-length
+mesh-copy regression observable under the same shared 60-second supervisor.
 
 ### Configurable source layout and whitespace maps
 
@@ -1554,19 +1598,47 @@ The initial expanded run exposed a test-oracle mistake: empty documents are
 syntax errors in the current grammar. The corrected case preserves that
 rejection and tests insertion affinity on a valid empty behavior instead.
 
+### Package-source separator compatibility
+
+The existing C `--format` dispatcher adds one case with sixteen fixed
+input/output pairs plus five preferred-width variants. It covers CR, LF, CRLF,
+mixed and blank lines, explicit semicolons, alias/blank imports, header-only
+input, inline/standalone/multiline block comments, line comments, contextual
+legacy names with internal CR blank lines, default/reflow indentation of a nested
+array, and package CR/LF/CRLF comment-column tracking with a legacy width
+control. CR remains
+part of a `//` comment until LF, matching the existing grammar. Comment and
+other token bytes remain exact; package whitespace gaps canonicalize to LF.
+
+The successful fixed path makes 42 formatter calls and 84 canonical parses
+across twenty-one configured formatting pairs. Each
+input and expected output is at most 58 bytes. Existing helpers check exact
+output, immutable input, idempotence and whitespace edit-map reconstruction.
+No source generation, files, processes, authored/backend execution, worlds,
+frames, network or GPU are added. The redesigned native/Wasm finite suite has
+47 cases, plus one bounded corpus case on native. The generated corpus manifest
+retains its 256-file and 8 MiB limits; record its exact migrated file/byte totals
+and assertion counts with the current run. These case counts are source-derived,
+not an execution result. Use the existing production 60-second supervisor after
+independent exact-source/workload admission; configuration and build timing
+remain separate.
+
 ## Qualified module prerequisite: admitted fixed workload
 
-`tool language-modules` and `tool wasm-modules` route the same seven pico_unit
-cases through the existing `test_language --modules` dispatcher. The exact
-[workload and coverage boundary](module-composition.md#fixed-workload-and-validation)
-limits each selector to 22 catalogs, 60 source preparations, at most 48 lowering
-requests and 42 finalization attempts, 20 programs and 56 budgeted dispatches.
-There are at most five sources, two libraries and six bodies per collection,
-with four bodies in one source. The arithmetic comes from Studio's horizontal
-scroll clamp, compared inline, locally and through an existing qualified library
-on bytecode and the platform compiled backend. Other cases check ambiguity,
-duplicate top-level qualified names, cycles, nonexported state, catalog isolation,
-and distinct same-named nested lexical helpers that never become catalog exports.
+`tool language-modules` and `tool wasm-modules` route seventeen fixed pico_unit
+cases through the existing `test_language --modules` dispatcher. The complete
+workload constructs 112 catalogs with 196 source input entries, at most 196 source
+lowering/finalization requests, 40 programs, 74 explicit event dispatches and ten
+program steps. Catalog discovery, specialization and effect analyses are
+additional bounded passes. Each preparation has at most five sources and two
+libraries; at most three collections and two programs coexist. Event and step
+calls retain their 1000-step arguments. Cases cover the original scroll and
+ownership scenarios, imported generic and constant ownership, the 32-pair float
+metadata matrix, incremental reuse and invalidation, retained library state,
+task-state rejection and empty compile bindings. These source-derived counts
+are not a current execution result. Each selected route or aggregate retains one
+production 60-second deadline. The earlier seven-case workload and results below
+are historical; see the [original coverage boundary](module-composition.md#fixed-workload-and-validation).
 
 The original six-case checks at `072be745a8f5c73e14c1e07b0a1704c4de8555a8`
 passed native/Wasm 6/348 (0.168/0.227 s), navigation 29/329 (0.183 s), and
@@ -1670,11 +1742,95 @@ formatter token preservation and invalid-source refusal. The full successful
 path makes six explicit semantic analyses, seven minimizer calls and two
 formatter calls. The minimizer's existing internal oracle rounds are unchanged.
 
-The same two cases are included in the existing format dispatcher: 39 finite
-cases, plus the existing bounded corpus case on native. Wasm has no corpus file
-dependency. No catalog, generated source, runtime frame, world, subprocess,
-network or GPU workload is added. Use the unchanged production 60-second
-supervisor; independent exact-head source and artifact admission is required
-before a runtime slot. Configuration and compilation are separate from test
-execution. These SDK checks do not establish CLI/Studio integration or a caret
-map across semantic rewriting.
+The format dispatcher includes these two cases and the package separator case:
+47 finite cases, plus the existing bounded corpus case on native. Wasm has no
+corpus file dependency. No catalog, generated source, runtime frame, world,
+subprocess, network or GPU workload is added. Use the unchanged production
+60-second supervisor; independent exact-head source and artifact admission is
+required before a runtime slot. Configuration and compilation are separate from
+test execution. These SDK checks do not establish CLI/Studio integration or a
+caret map across semantic rewriting.
+
+### Authored record project publication
+
+`python3 tools/test_policy.py tool language-record-publication` is a standalone
+seven-case CPU route. It prepares a two-source project catalog with a declaring
+record library and an importing behavior, then stages and commits both sources.
+The BYTECODE and SLJIT variants cover preparation/code generation and canonical
+publication, not authored-function execution. The fixture has zero authored
+calls, attachments, event dispatches, frames, child processes or network work.
+It also checks independent ownership, 31 fixed catalog/analysis conflicts,
+qualified foreign-name separation, and three duplicate prepared tables through
+both writer and reader. Two additional source-only cases cover deduplication of
+all thirteen scalar default kinds, rejection after changing each default
+(including signed floating-point zero), and preservation of a native nested
+field's nominal layout. Prepared ID/name uniqueness stays strict.
+
+The redesigned fixed green path has nine parses, sixteen declaration analyses,
+at most twenty-five full analyses, 52 lower calls, four module finalizations, two source
+stages/commits, and eight direct prepared-table codec entries. The two stages
+serialize two unique modules and one import edge each. These are source-derived
+bounds, not a measured pass. The route remains outside aggregates and requires
+updated independent exact-source admission for the redesigned workload before
+execution.
+
+`language-record-publication-repro` runs only the first case's BYTECODE half
+with the same success expectation. On the fixture-only baseline it must fail
+at source staging with `duplicate prepared type requirement`, before commit.
+That red invocation has two parses, eight declaration analyses, at most ten full
+analyses, two lower calls, two module finalizations, one stage and no authored
+calls. Red and green runs each use one production 60-second deadline with
+build/configuration kept separate. This focused evidence does not establish
+full Studio startup, rendering or native-catalog-only helper coverage.
+
+## CUT-79 inferred string arrays: fixed standalone regression
+
+`tool language-inferred-string-arrays` selects two C/pico_unit cases in the
+existing language driver. This new source-only workload requires independent
+exact-source and resource admission before its first supervised invocation.
+Registration is not admission. It is not included in a native or Wasm aggregate.
+
+The first case parses/analyzes 22 inline documents once each. It covers direct
+and parenthesized literals, a named-constant alias chain, local/state/return
+inference, name storage, contextual/empty arrays, unchanged numeric defaults,
+explicit literal-union acceptance/rejection and indexed ordinary strings.
+Literal expressions and named scalar constants retain their per-value facts;
+explicit array/union constraints remain strict. Negative controls check the
+diagnostic category and a range overlapping the offending source token.
+
+The second case prepares two fixed twelve-glyph sources, inferred and explicitly
+contextual, once each for BYTECODE and SLJIT. Each preparation has one named
+constant initializer evaluated by the existing lower.c BYTECODE path with its
+unchanged 100,000 budget. A separate run-counter scope requires exactly one
+BYTECODE entry for that initializer. There are four such initialization entries,
+distinct from the 48 direct Lookup calls (12 indices per module). Each direct
+call has budget 2,000 and must record exactly one selected backend entry, no
+other backend entry, no inspection entry/fallback and no counter overflow.
+Module backend identity is checked separately; SLJIT is never replaced silently.
+A Wasm build rejects this native runtime case before preparation.
+
+On full success the source-counted totals are 26 parses/analyses, four lowers,
+four finalizations, four initializer BYTECODE entries, 24 direct BYTECODE entries,
+24 direct SLJIT entries and 445 assertions (156 semantic plus 289 runtime).
+The fixture reports attempted work on failure too. Only one module, activation
+and result is live at a time. Teardown is registered with pico_unit and releases
+all fixture-owned objects after REQUIRE returns, before the next case/module.
+
+Every inline source is at most 1 KiB and semantic source text totals less than
+16 KiB. There are no files, workload children, engine frames, GPU operations,
+network requests, sleeps, benchmarks or environment-sized loops. Run once under
+the unchanged production supervisor's shared 60-second deadline including
+setup, all preparation, calls and cleanup. Configuration/build timing is separate.
+A timeout does not authorize splitting the workload or repeating until fast.
+
+`tool language-inferred-string-array-repro` is an optional semantic-only route
+for the first specimen, using the same expected-success assertions. A successful
+patched run has one parse/analysis and eight assertions, with no lower,
+finalization or direct call. An unpatched baseline should fail analysis with
+eleven compatibility diagnostics. A separate baseline run is not mandatory;
+any invocation needs its own admission and cannot mutate a preserved donor.
+
+This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
+It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
+numeric-foundation or full-suite coverage. Wider affected-contract checks remain
+an integration-review decision. Source-only registration records no measured pass.

@@ -1,5 +1,72 @@
 # Chibi language and typed-runtime redesign
 
+## Current-main reconciliation, 2026-10-18
+
+This checkpoint merges PR420 `a699f2804` (including PR437) with main
+`6ea2221c9` (including PR434, PR435, PR436 and PR438), preserving history.
+Package/import syntax, CR formatting, inferred string arrays, owned scene
+snapshots, counted rows, and current field/terrain/radiance capabilities remain
+present. The private exact-number core stays inactive in the frontend; no
+new default precision, exact-cast or promotion policy is selected. PR407 remains
+excluded. Parser outputs use main's recorded Tree-sitter 0.25.10 generator.
+
+The paired controller migrated and formatted environment-authoring, Terrain Lab
+and Studio source with their metadata. All manifests are version 26; existing
+stale sidecars remain unchanged. Three existing Environment KDL declarations
+now explicitly serialize the fog bounds their loader already applied; fog stays
+disabled. The thirteen-project canonicality check and both separately selected
+engine project checks passed.
+
+Independent review and focused regressions repaired empty semantic binding
+sorts, generic record display-name versus source-identity conflicts, and packed
+record decoding into collectable arenas. Both codecs now register a struct
+tracer only for a separately allocated payload; the packed array retains its
+rows and owned descriptor. Negative controls reproduced the nullable-sort UBSan
+failures and both packed-row arena assertions before their fixes. Existing strict
+record identity/default checks and standalone/boxed ownership cases remain.
+Current-language unary fixtures and handwritten prepared-field metadata were
+updated to their already approved contracts without weakening assertions.
+
+The reviewed implementation/asset tree before this documentation update is
+`3449d5a4e90c2d0af4c66d23779e70ad6e2e07d0`. Engine-linked native Debug
+drivers retain assertions and ASan/UBSan; the standalone tooling driver retains
+assertions without sanitizers. Project checks use the paired Release controller.
+Configuration/build time is separate. Each complete group and selected standalone
+used the unchanged production 60-second supervisor through the existing routes
+underlying the Make targets; no quarantined suite was split or reconstructed.
+
+| Current local check | Result |
+| --- | --- |
+| Native group | Pass, 32.493 s |
+| Materials group | Pass, 36.806 s |
+| Projects group | Pass, 36.377 s |
+| Language group | Pass, 505 cases, 28.656 s |
+| Tooling/process group | Pass, 134 cases, 24.252 s |
+| Query/generics, package syntax, build workflow, inferred arrays, root state | Pass |
+| Record publication, values, semantic, runtime, prepared, document, state, compatibility and services | Pass |
+| Generated-C aliases, counted rows and record export | Pass |
+| Historical declaration migration and thirteen-project canonicality | Pass |
+| clang-format 22 and whitespace | Pass, 19.807 s for formatting |
+
+Native/language groups preceded only the three behavior-preserving KDL
+serializations; their production/test sources and language corpus are unchanged.
+Local logs and exact binary/source hashes are retained in
+`/workspace/language420-build-current`; independent source, workload and delta
+reviews are in `/workspace/language420-source/recovery-20261018`.
+
+The clean-commit SDK packages, installed consumers, paired Studio71 engine pin
+and native acceptance, Wasm/browser checks, serial web build and final exact-head
+review remain pending. No current SDK publication, merge or deployment is claimed.
+Studio's migrated source tree is `2423ed3d75a3babd728065da1e3a7f9db44e75f7`
+before updating its engine pin. All 212 extracted consumer hashes match.
+Full native/render/Studio suites remain quarantined and are not passed. Disabled
+engine CI supplies no passing evidence; required server rules still apply.
+
+## Historical implementation records
+
+All results, artifact identities and authorization descriptions below refer to
+their dated earlier checkpoints. They do not substitute for current validation.
+
 Approved to begin on 2026-10-16. Base: `origin/main` at `525f91b5a`.
 All five stages are implemented in isolated engine and Studio worktrees on
 `codex/language-redesign-20261016`. The reviewed implementation is published as
@@ -343,6 +410,67 @@ evidence are retained.
 At that earlier checkpoint, no commit, push, merge or deployment had been
 performed. The final-review section above supersedes its delivery status. Earlier
 plans below are historical.
+
+## Main branch historical checkpoint (before redesign integration)
+
+# 3D terrain and screen light, 2026-10-17
+
+The Voidweaver basalt study's reusable engine work is on main: live 3D
+material surfaces ([docs/terrain-surface-geometry.md](docs/terrain-surface-geometry.md)),
+TerrainVolume rock with real-time cuts ([docs/terrain-volume.md](docs/terrain-volume.md)),
+radiance-cascade screen light that lets emissive particles light the scene
+([docs/rendering-3d.md](docs/rendering-3d.md)), sky materials, and every field
+node callable from library source ([docs/material-engine.md](docs/material-engine.md)).
+It builds on the environment-authoring snapshot below. Frame budget (60 fps at
+1080p) and visual acceptance stay with the game; the next scene starts from a
+fresh plan.
+
+# Environment authoring, 2026-10-15
+
+The approved terrain-first program is tracked in
+[docs/environment-authoring.md](docs/environment-authoring.md). Start with shared
+float material-channel baking, a bounded controller operation, and a minimal
+migrated terrain fixture. Studio authoring waits for its applicable migration
+gates. The first game use is 2D sidescrolling destructive MaterialTerrain;
+3D heightfield editing remains deferred. Layout and material generation then
+expand in parallel. Game `.chibi`
+owns biome, cave, stamp and spawning policy; shared services own generation,
+chunks, edits, collision and persistence. Compose generated base, authored
+overrides and runtime edits in that order, preserving recipe/seed identity and
+durable edits. Professional material authoring and complete 2D editing have
+separate acceptance gates. Material simulation and the 3D workflow decision
+remain deferred. E1 native mechanism checks pass on the local candidate. The
+ship-based playable and visual acceptance remains open; Terrain Lab is an SDK
+test fixture. The broader material and Studio gates also remain open.
+
+The first CPU implementation is now available in this branch: the public
+`shader_bake` API, `bake_material` controller operation, and a recovered
+MaterialStudy fixture that verifies authored destructive terrain behavior.
+Focused bake, shader-graph, terrain and installed-SDK controller checks pass.
+E1 now adds shared chunk contours/borders and coherent LOD, real seam collision
+coverage, and explicit durable terrain checkpoints, including cold streamed
+edits. Focused CPU and six-frame Metal checks pass. The roadmap records the
+verified scope. Terrain Lab now proves authored movement, jumping, excavation
+and save/load across fresh processes on both VM and SLJIT. Shared host/controller
+commands and an installed-player Metal capture pass. Studio integration and
+authored override layers remain later milestones. Terrain remains reusable
+engine functionality inside the current
+material runtime SDK target; games own generation/edit policy and hosts own save
+storage. Keep language/compiler package boundaries, and defer repository splitting.
+This candidate is uncommitted and has not been merged or deployed.
+
+Confirmed ownership, 2026-10-16: Voidweaver owns the Cradle ship, free flight,
+basalt composition and visual tuning; Terrain Lab remains the SDK fixture.
+Reusable renderer gaps belong in this engine candidate. The next shared
+checkpoint preserves entity `Material` absorption RGB/coverage on shader-driven
+surfaces and multiplies them by graph opacity, including per-model-part shaders.
+Existing zero-default absorption and scalar HRC optical-depth semantics remain;
+Depth-mode height occlusion is independent. The correction passes one bounded
+Metal frame checking twelve mesh/SDF surfaces and the execution-policy checks;
+numeric evidence and package scope are recorded with the candidate. Directional
+HRC2D emission and live-terrain shallow geometry remain
+separate checkpoints with prerequisites and acceptance in the roadmap. E1's
+Voidweaver playable/reference visual gate remains open.
 
 ---
 

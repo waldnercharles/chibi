@@ -10,9 +10,9 @@ artifacts and their declared resources.
 The engine repository owns the language, compiler, execution, runtime, shared
 authoring services and native tools. Studio owns its application loop, editor
 UI, starter project and authored shell assets in the separate `chibi-studio`
-repository. Arena3D, SpaceCadet and Voidweaver have separate game repositories;
-the labs and sampled-model content live in `chibi-examples`. Engine tests retain
-focused fixtures. Product packaging does not discover or ship `projects/*`.
+repository. Games have their own repositories. Engine tests retain focused
+fixtures, listed in [examples](examples.md). Product packaging does not discover
+or ship `projects/*`.
 
 Project format 10 uses `.chibi` as complete executable source for behaviors,
 callable libraries and systems. Declarative assets use KDL. The compiler resolves

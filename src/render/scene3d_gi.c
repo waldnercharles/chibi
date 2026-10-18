@@ -2,6 +2,7 @@
 
 #include "platform/cute.h"
 #include "render/fullscreen.h"
+#include "render/scene3d_terrain.h"
 #include "render/shader_program.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -17,7 +18,8 @@ enum
     /* A solid's row: world-to-shape rows, albedo, emission, sphere and the
      * drawn box's edges. */
     SOLID_TEXELS = 9,
-    SOLID_LIMIT = 4096,
+    /* Terrain proxies are counted against the same limit. */
+    SOLID_LIMIT = RENDER_TERRAIN_GI_PROXY_LIMIT,
     /* The BVH over the solids: the most solids in a leaf, each node's texels
      * and the nodes in a row of their texture, as scene3d_gi_trace.frag
      * reads them, and the deepest tree its stack holds. */

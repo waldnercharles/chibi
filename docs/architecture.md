@@ -3,8 +3,8 @@
 Chibi separates executable source, prepared definitions, live execution and
 authoring views. The engine repository owns their shared C implementations and
 SDK contracts. Studio is a separate application built against an installed SDK.
-Game repositories own composition, rules and tuning; `chibi-examples` owns labs
-and sampled content. Engine regression tests use focused fixtures.
+Game repositories own composition, rules and tuning. Engine regression tests use
+focused fixtures, which double as the [examples](examples.md).
 
 ## Source and execution authority
 

@@ -8,9 +8,11 @@
 #include <stddef.h>
 
 /* The sky an Environment draws behind the 3D scene and lights it with: an
- * RGBA16F cube map built from its resident equirectangular sky, drawn wherever
- * no surface is, plus its irradiance and a GGX-prefiltered copy for surfaces'
- * diffuse and specular light. */
+ * RGBA16F cube map built from its resident equirectangular sky, or rendered
+ * from its sky material, drawn wherever no surface is, plus its irradiance and
+ * a GGX-prefiltered copy for surfaces' diffuse and specular light. A sky
+ * material draws live; its light is its look at time zero, rebuilt when the
+ * material, its parameters or the shader catalog change. */
 typedef struct render_scene3d_sky render_scene3d_sky;
 render_scene3d_sky *render_scene3d_sky_new();
 void render_scene3d_sky_free(render_scene3d_sky *sky);

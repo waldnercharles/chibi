@@ -1,0 +1,5 @@
+SeamShapes :: library {
+    Slab :: (X: float = 0.0, Y: float = 0.0) -> (Value: float = 0.0) {
+        return field_box(entry.X, entry.Y, 128.0, 8.0)
+    }
+}

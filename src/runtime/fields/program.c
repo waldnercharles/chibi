@@ -35,6 +35,47 @@ static bool scalar(pin_value v, float *out)
     }
     return v.container == PIN_CONTAINER_SINGLE && isfinite(*out);
 }
+static const unsigned char ARITY[] = {
+    [FIELD_CONSTANT] = 0,
+    [FIELD_X] = 0,
+    [FIELD_Y] = 0,
+    [FIELD_PARAMETER] = 0,
+    [FIELD_ADD] = 2,
+    [FIELD_SUBTRACT] = 2,
+    [FIELD_MULTIPLY] = 2,
+    [FIELD_DIVIDE] = 2,
+    [FIELD_MIN] = 2,
+    [FIELD_MAX] = 2,
+    [FIELD_ABS] = 1,
+    [FIELD_NEGATE] = 1,
+    [FIELD_SIN] = 1,
+    [FIELD_COS] = 1,
+    [FIELD_FLOOR] = 1,
+    [FIELD_CLAMP] = 3,
+    [FIELD_REMAP] = 5,
+    [FIELD_NOISE] = 3,
+    [FIELD_FRACTAL] = 6,
+    [FIELD_HASH] = 3,
+    [FIELD_CIRCLE] = 3,
+    [FIELD_BOX] = 4,
+    [FIELD_CAPSULE] = 7,
+    [FIELD_ROTATE_X] = 3,
+    [FIELD_ROTATE_Y] = 3,
+    [FIELD_SMOOTH_UNION] = 3,
+    [FIELD_SMOOTH_SUBTRACT] = 3,
+    [FIELD_SELECT] = 3,
+    [FIELD_OUTPUT] = 1,
+    [FIELD_Z] = 0,
+    [FIELD_CELL_X] = 4,
+    [FIELD_CELL_Y] = 4,
+    [FIELD_CELL_EDGE] = 4,
+};
+_Static_assert(sizeof ARITY == FIELD_OP_COUNT, "every field op has an arity");
+int field_op_arity(field_op op)
+{
+    assert(op >= 0 && op < FIELD_OP_COUNT);
+    return ARITY[op];
+}
 static field_program *new_program(
     const field_ir *code,
     int count,
@@ -56,13 +97,9 @@ static field_program *new_program(
         fail(error, size, "Invalid prepared field bounds");
         return NULL;
     }
-    static const unsigned char arity[FIELD_OP_COUNT] = { 0, 0, 0, 0, 2, 2, 2, 2,
-                                                         2, 2, 1, 1, 1, 1, 1, 3,
-                                                         5, 3, 6, 3, 3, 4, 7, 3,
-                                                         3, 3, 3, 3, 1 };
     for (int i = 0; i < count; i++) {
         field_ir ir = code[i];
-        if (ir.op < 0 || ir.op >= FIELD_OP_COUNT || ir.count != arity[ir.op] ||
+        if (ir.op < 0 || ir.op >= FIELD_OP_COUNT || ir.count != ARITY[ir.op] ||
             (ir.op == FIELD_CONSTANT && !isfinite(ir.value)) ||
             (ir.op == FIELD_PARAMETER &&
              (ir.parameter < 0 || ir.parameter >= parameter_count))) {
@@ -257,6 +294,93 @@ static float noise(unsigned seed, float x, float y)
         ty
     );
 }
+/* Columnar cells: the Voronoi diagram of a unit triangular lattice whose
+ * sites each move at most CELL_JITTER_MAX. Then the nearest site is the
+ * nearest lattice point's or one of its six neighbors', and every cell
+ * borders only sites within two lattice rings of its own, so both searches
+ * stay local and exact. */
+#define CELL_JITTER_MAX .25f
+#define CELL_LIMIT 1e6f
+static const int CELL_RING[18][2] = {
+    { 1, 0 }, { -1, 0 },  { 0, 1 },  { 0, -1 }, { 1, -1 }, { -1, 1 },
+    { 1, 1 }, { -1, -1 }, { 2, -1 }, { -2, 1 }, { 1, -2 }, { -1, 2 },
+    { 2, 0 }, { -2, 0 },  { 0, 2 },  { 0, -2 }, { 2, -2 }, { -2, 2 },
+};
+static const float CELL_ROW = .8660254f; /* sqrt(3) / 2 */
+
+static void cell_site(unsigned seed, int i, int j, float jitter, float out[2])
+{
+    /* Square jitter scaled so no site moves farther than jitter. */
+    float reach = jitter * .70710678f;
+    out[0] = i + .5f * j + reach * hash_sample(seed, i, j);
+    out[1] = j * CELL_ROW + reach * hash_sample(seed ^ 0x68e31da4u, i, j);
+}
+
+/* The site of the cell holding (x, y) and its lattice point, or false for
+ * an invalid jitter or out-of-range position. */
+static bool nearest_cell(unsigned seed, float x, float y, float jitter, int lattice[2], float site[2])
+{
+    if (!(jitter >= 0 && jitter <= CELL_JITTER_MAX) ||
+        !(fabsf(x) < CELL_LIMIT) || !(fabsf(y) < CELL_LIMIT)) {
+        return false;
+    }
+    /* Round the axial lattice coordinates through cube coordinates. */
+    float r = y / CELL_ROW, q = x - .5f * r, s = -q - r;
+    float rq = roundf(q), rr = roundf(r), rs = roundf(s);
+    float dq = fabsf(rq - q), dr = fabsf(rr - r), ds = fabsf(rs - s);
+    if (dq > dr && dq > ds) {
+        rq = -rr - rs;
+    } else if (dr > ds) {
+        rr = -rq - rs;
+    }
+    float best = INFINITY;
+    for (int n = -1; n < 6; n++) {
+        int i = (int)rq + (n < 0 ? 0 : CELL_RING[n][0]),
+            j = (int)rr + (n < 0 ? 0 : CELL_RING[n][1]);
+        float at[2];
+        cell_site(seed, i, j, jitter, at);
+        float dx = at[0] - x, dy = at[1] - y, d = dx * dx + dy * dy;
+        if (d < best) {
+            best = d;
+            lattice[0] = i;
+            lattice[1] = j;
+            site[0] = at[0];
+            site[1] = at[1];
+        }
+    }
+    return true;
+}
+
+/* Cell X and Y return the site; Cell Edge the distance from (x, y) to its
+ * cell's boundary, the nearest bisector with a neighboring site [Quilez]. */
+static float cell(field_op op, unsigned seed, float x, float y, float jitter, float offset)
+{
+    int lattice[2];
+    float site[2];
+    if (fabsf(offset) >= 2147483520.f ||
+        !nearest_cell(seed + (unsigned)(int)offset, x, y, jitter, lattice, site)) {
+        return NAN;
+    }
+    if (op != FIELD_CELL_EDGE) {
+        return site[op == FIELD_CELL_Y];
+    }
+    float edge = INFINITY;
+    for (int n = 0; n < 18; n++) {
+        float other[2];
+        cell_site(
+            seed + (unsigned)(int)offset,
+            lattice[0] + CELL_RING[n][0],
+            lattice[1] + CELL_RING[n][1],
+            jitter,
+            other
+        );
+        float dx = other[0] - site[0], dy = other[1] - site[1];
+        float mx = .5f * (other[0] + site[0]) - x,
+              my = .5f * (other[1] + site[1]) - y;
+        edge = fminf(edge, (mx * dx + my * dy) / distance(dx, dy));
+    }
+    return edge;
+}
 static float clamp(float x, float lo, float hi)
 {
     return lo <= hi ? fminf(hi, fmaxf(lo, x)) : NAN;
@@ -271,17 +395,15 @@ static float smooth_min(float a, float b, float radius)
 }
 
 /* The one-point API keeps a scalar interpreter. Besides fitting small
- * previews, it gives row baking an independent semantic reference in tests. */
-static float evaluate(field_ir ir, const float *v, float x, float y, unsigned seed, const float *parameters)
+ * previews, it gives row baking an independent semantic reference in tests,
+ * and library host calls evaluate through it. */
+float field_op_value(field_op op, const float *operands, unsigned seed)
 {
-    float a = v[ir.inputs[0]], b = v[ir.inputs[1]], c = v[ir.inputs[2]],
-          d = v[ir.inputs[3]];
-    float e = v[ir.inputs[4]], f = v[ir.inputs[5]], g = v[ir.inputs[6]];
-    switch (ir.op) {
-        case FIELD_CONSTANT: return ir.value;
-        case FIELD_X: return x;
-        case FIELD_Y: return y;
-        case FIELD_PARAMETER: return parameters[ir.parameter];
+    assert(field_op_arity(op) > 0);
+    float v[FIELD_INPUT_MAX] = { 0 };
+    memcpy(v, operands, (size_t)field_op_arity(op) * sizeof *v);
+    float a = v[0], b = v[1], c = v[2], d = v[3], e = v[4], f = v[5], g = v[6];
+    switch (op) {
         case FIELD_ADD: return a + b;
         case FIELD_SUBTRACT: return a - b;
         case FIELD_MULTIPLY: return a * b;
@@ -303,10 +425,10 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
                 return NAN;
             }
             unsigned offset = seed + (unsigned)(int)c;
-            if (ir.op == FIELD_HASH) {
+            if (op == FIELD_HASH) {
                 return hash_sample(offset, (int)floorf(a), (int)floorf(b));
             }
-            if (ir.op == FIELD_NOISE) {
+            if (op == FIELD_NOISE) {
                 return noise(offset, a, b);
             }
             if (d < 1 || d > 16 || floorf(d) != d || e <= 0 || f < 0 || f > 1) {
@@ -349,9 +471,33 @@ static float evaluate(field_ir ir, const float *v, float x, float y, unsigned se
         case FIELD_SMOOTH_SUBTRACT: return c >= 0 ? -smooth_min(-a, b, c) : NAN;
         case FIELD_SELECT: return a > 0 ? b : c;
         case FIELD_OUTPUT: return a;
+        case FIELD_CELL_X:
+        case FIELD_CELL_Y:
+        case FIELD_CELL_EDGE: return cell(op, seed, a, b, c, d);
+        case FIELD_CONSTANT:
+        case FIELD_X:
+        case FIELD_Y:
+        case FIELD_Z:
+        case FIELD_PARAMETER:
         case FIELD_OP_COUNT: break;
     }
     return NAN;
+}
+static float evaluate(field_ir ir, const float *v, float x, float y, float z, unsigned seed, const float *parameters)
+{
+    switch (ir.op) {
+        case FIELD_CONSTANT: return ir.value;
+        case FIELD_X: return x;
+        case FIELD_Y: return y;
+        case FIELD_Z: return z;
+        case FIELD_PARAMETER: return parameters[ir.parameter];
+        default: break;
+    }
+    float operands[FIELD_INPUT_MAX];
+    for (int i = 0; i < ir.count; i++) {
+        operands[i] = v[ir.inputs[i]];
+    }
+    return field_op_value(ir.op, operands, seed);
 }
 
 /* Dispatch once per instruction, then walk contiguous row values. The old
@@ -534,6 +680,21 @@ static void evaluate_row(
             break;
             ROW_3(FIELD_SELECT, a > 0 ? b : c);
             ROW_1(FIELD_OUTPUT, a);
+        case FIELD_Z: out[0] = grid.depth; break;
+        case FIELD_CELL_X:
+        case FIELD_CELL_Y:
+        case FIELD_CELL_EDGE:
+            for (int column = 0; column < count; column++) {
+                out[column] = cell(
+                    ir.op,
+                    seed,
+                    inputs[0][column],
+                    inputs[1][column],
+                    inputs[2][column],
+                    inputs[3][column]
+                );
+            }
+            break;
         case FIELD_OP_COUNT: out[0] = NAN; break;
     }
 #undef ROW_1
@@ -720,11 +881,139 @@ void field_program_baker_free(field_program_baker *baker)
     free(baker);
 }
 
+enum
+{
+    /* Points evaluated together, sharing one instruction dispatch. */
+    POINT_BATCH = 256
+};
+typedef struct
+{
+    field_program_baker *baker;
+    const float *x, *y, *z;
+    int count;
+    float *out;
+    atomic_bool invalid;
+} point_job;
+
+/* Evaluates points [first, first + count) of a job. Every instruction runs
+ * across the batch, so arbitrary positions need no row structure. */
+static bool bake_point_batch(
+    const field_program_baker *baker,
+    float *slots,
+    const point_job *job,
+    int first,
+    int count
+)
+{
+    const field_program *p = baker->program;
+    for (int i = 0; i < acount(p->code); i++) {
+        field_ir ir = p->code[i];
+        float *out = slots + (size_t)i * POINT_BATCH;
+        switch (ir.op) {
+            case FIELD_X:
+                memcpy(out, job->x + first, (size_t)count * sizeof *out);
+                break;
+            case FIELD_Y:
+                memcpy(out, job->y + first, (size_t)count * sizeof *out);
+                break;
+            case FIELD_Z:
+                memcpy(out, job->z + first, (size_t)count * sizeof *out);
+                break;
+            case FIELD_CONSTANT:
+            case FIELD_PARAMETER: {
+                float value = ir.op == FIELD_CONSTANT
+                                ? ir.value
+                                : baker->parameters[ir.parameter];
+                for (int c = 0; c < count; c++) {
+                    out[c] = value;
+                }
+                break;
+            }
+            default: {
+                const float *inputs[FIELD_INPUT_MAX];
+                for (int k = 0; k < ir.count; k++) {
+                    inputs[k] = slots + (size_t)ir.inputs[k] * POINT_BATCH;
+                }
+                evaluate_row(
+                    ir,
+                    inputs,
+                    out,
+                    count,
+                    (field_grid){ 0 },
+                    0,
+                    baker->seed,
+                    baker->parameters
+                );
+            }
+        }
+        for (int c = 0; c < count; c++) {
+            if (!isfinite(out[c])) {
+                return false;
+            }
+        }
+    }
+    memcpy(
+        job->out + first,
+        slots + (size_t)p->output * POINT_BATCH,
+        (size_t)count * sizeof *job->out
+    );
+    return true;
+}
+
+static void bake_point_bands(int start, int end, uint32_t worker, void *context)
+{
+    point_job *job = context;
+    float *slots = workspace_for_worker(job->baker, worker, POINT_BATCH);
+    for (int batch = start; batch < end; batch++) {
+        int first = batch * POINT_BATCH;
+        int count = job->count - first < POINT_BATCH ? job->count - first : POINT_BATCH;
+        if (!bake_point_batch(job->baker, slots, job, first, count)) {
+            atomic_store_explicit(&job->invalid, true, memory_order_relaxed);
+            return;
+        }
+    }
+}
+
+bool field_program_baker_bake_points(
+    field_program_baker *baker,
+    const float *x,
+    const float *y,
+    const float *z,
+    int count,
+    float *out,
+    const task_system *tasks,
+    char *error,
+    size_t size
+)
+{
+    if (!baker || count < 0 || (count && (!x || !y || !z || !out)) ||
+        (tasks && tasks->workers != baker->worker_count)) {
+        return fail(error, size, "Invalid field points");
+    }
+    point_job job = { baker, x, y, z, count, out, false };
+    int batches = (count + POINT_BATCH - 1) / POINT_BATCH;
+    if (tasks && tasks->workers > 1 && batches > 1) {
+        void *task = tasks->enqueue(bake_point_bands, batches, 1, &job, tasks->user);
+        if (task) {
+            tasks->finish(task, tasks->user);
+        }
+        /* A NULL handle means enqueue already completed the range inline. */
+    } else {
+        bake_point_bands(0, batches, 0, &job);
+    }
+    bool invalid = atomic_load_explicit(&job.invalid, memory_order_relaxed);
+    if (invalid) {
+        fail(error, size, "Field evaluation produced an invalid scalar");
+    }
+    return !invalid;
+}
+
 static bool valid_grid(field_grid grid)
 {
     return grid.width >= 1 && grid.height >= 1 && grid.width <= 4096 &&
-           grid.height <= 4096 && isfinite(grid.cell_size) && grid.cell_size > 0 &&
-           isfinite(grid.center_x) && isfinite(grid.center_y);
+           grid.height <= 4096 && isfinite(grid.cell_size) &&
+           grid.cell_size > 0 && isfinite(grid.center_x) &&
+           isfinite(grid.center_y) && isfinite(grid.depth);
 }
 
 bool field_program_baker_bake_rows(
@@ -825,7 +1114,7 @@ bool field_program_sample(
     int stride = acount(p->code);
     float *values = xcalloc((size_t)stride, sizeof(float));
     for (int i = 0; i < stride; i++) {
-        values[i] = evaluate(p->code[i], values, x, y, ctx.seed, parameters);
+        values[i] = evaluate(p->code[i], values, x, y, 0, ctx.seed, parameters);
         if (!isfinite(values[i])) {
             fail(error, size, "Field evaluation produced an invalid scalar");
             free(values);

@@ -286,7 +286,7 @@ static int read_struct(
                         .type_name = out->type_name,
                         .record = reader->record,
                         .ptr = block };
-    if (reader->record) {
+    if (reader->record && !destination) {
         pin_arena_trace_struct(reader->storage, block, type);
     }
     return 0;

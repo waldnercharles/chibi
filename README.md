@@ -6,6 +6,8 @@ The [architecture reference](docs/architecture.md) describes package boundaries,
 source authority, runtime lifetimes and deployment contracts.
 For implemented capabilities, remaining work, task ownership and the limits of
 the available validation, start at [current status](docs/status.md).
+To see a feature working, open one of the projects listed in
+[examples](docs/examples.md) in Studio.
 
 [Native product packages](docs/native-package.md) provide an installed compiler
 SDK, a separate Studio application, and a deployed player. Game repositories own
@@ -95,8 +97,8 @@ The site holds `index.html`, titled with the project's title, the player's
 `chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
 `files.json` lists. The page fetches those files before the game starts,
 so it needs a web server rather than a `file://` URL. Any static host works.
-`chibi-celeste/.github/workflows/web.yml` builds and publishes a game repository
-on GitHub Pages; copy it to publish another game.
+[`docs/game-web-workflow.yml`](docs/game-web-workflow.yml) builds and publishes a
+game repository on GitHub Pages; copy it to the game's `.github/workflows/web.yml`.
 
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
@@ -188,8 +190,8 @@ isolation headers. It serves the installed browser bundle without mounting game
 source from disk. Browser publication is implemented: the engine's
 [release workflow](.github/workflows/publish.yml) supplies versioned packages,
 [Studio](https://github.com/waldnercharles/chibi-studio#automatic-browser-distribution)
-publishes the serial editor archive, and
-[Celeste](https://github.com/waldnercharles/chibi-celeste) hosts its player and
+publishes the serial editor archive, and the
+[game web workflow](docs/game-web-workflow.yml) hosts a game's player and
 revision-specific `/dev/` workspace. Successful publication does not establish
 edit/save/reload, input or export acceptance in a browser. The
 [serial browser report](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md)

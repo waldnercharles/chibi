@@ -446,7 +446,7 @@ int script_analyzer_generic_call(analyzer *a, TSNode call, int symbol, int **res
         }
         free(name);
     }
-    qsort(bindings, (size_t)acount(bindings), sizeof *bindings, by_name);
+    asort(bindings, by_name);
     if (!valid) {
         free(values);
         free_bindings(bindings);
@@ -683,7 +683,7 @@ bool script_analyzer_generic_apply(
         free_bindings(bindings);
         return false;
     }
-    qsort(bindings, (size_t)acount(bindings), sizeof *bindings, by_name);
+    asort(bindings, by_name);
     for (int i = 0; i < acount(a->instances); i++) {
         if (a->instances[i].template == template &&
             same_bindings(a->instances[i].bindings, bindings)) {
@@ -714,9 +714,9 @@ static bool construct_record(
     TSNode call = definition.node;
     bool valid = true;
     char *signature = specialization_name(a, definition, bindings);
-    size_t size = strlen(a->out->identity) + strlen(signature) + 2;
+    size_t size = strlen(a->out->name) + strlen(signature) + 2;
     char *identity = xmalloc(size);
-    snprintf(identity, size, "%s.%s", a->out->identity, signature);
+    snprintf(identity, size, "%s.%s", a->out->name, signature);
     uint64_t id = mix(
         binding_id(a->out->symbols[definition.symbol].id, bindings, false),
         script_catalog_id("constructed-type", "")
@@ -996,7 +996,7 @@ static compile_binding *copy_bindings(analyzer *a, const script_compile_binding 
         }
         apush(bindings, copy);
     }
-    qsort(bindings, (size_t)acount(bindings), sizeof *bindings, by_name);
+    asort(bindings, by_name);
     return bindings;
 }
 static const script_compile_binding *own_bindings(analyzer *a, compile_binding *source)
@@ -1169,7 +1169,7 @@ static const script_catalog_specialization *import_request(
         }
     }
     free(seen);
-    qsort(bindings, (size_t)acount(bindings), sizeof *bindings, by_name);
+    asort(bindings, by_name);
     if (resolved) {
         *resolved = values;
     }

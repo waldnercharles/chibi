@@ -26,5 +26,24 @@ int render_scene3d_mesh_cache_count(const render_scene3d_mesh_cache *cache);
 /* Frees the copies of meshes the catalog no longer holds, such as ones a
  * reload replaced. Does nothing while the catalog is unchanged. */
 void render_scene3d_mesh_cache_prune(render_scene3d_mesh_cache *cache);
+/* Revision-owned live geometry uses a namespace separate from catalog IDs. */
+void render_scene3d_mesh_cache_dynamic_begin(render_scene3d_mesh_cache *);
+void render_scene3d_mesh_cache_dynamic_end(render_scene3d_mesh_cache *);
+void render_scene3d_mesh_cache_dynamic_clear(render_scene3d_mesh_cache *);
+bool render_scene3d_mesh_cache_dynamic_upload(
+    render_scene3d_mesh_cache *,
+    uint64_t identity,
+    uint64_t revision,
+    const render_mesh_asset *
+);
+void render_scene3d_mesh_cache_dynamic_draw(
+    const render_scene3d_mesh_cache *,
+    uint64_t identity,
+    const render_mesh_asset *,
+    int first,
+    int count
+);
+int render_scene3d_mesh_cache_dynamic_count(const render_scene3d_mesh_cache *);
+int render_scene3d_mesh_cache_dynamic_uploads(const render_scene3d_mesh_cache *);
 
 #endif

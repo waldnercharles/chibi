@@ -75,6 +75,16 @@ const char *render_shader_name(int id)
     return shader_catalog_assets[id - 1].name;
 }
 
+const shader_graph *render_shader_material_graph(int index)
+{
+    if (index <= 0 || index > acount(shader_catalog_assets) ||
+        shader_catalog_assets[index - 1].shape ||
+        shader_catalog_assets[index - 1].is_model) {
+        return NULL;
+    }
+    return &shader_catalog_assets[index - 1].graph;
+}
+
 const char *render_shader_parameter_name(int index, int slot)
 {
     return index > 0 && index <= acount(shader_catalog_assets) && slot >= 0 && slot < 32
@@ -628,13 +638,22 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
                                             SHADER_IMAGE_REPEAT
                                       ? "uv-floor(uv)"
                                       : "clamp(uv,vec2(0),vec2(1))";
+            /* Gradients come from the unwrapped UV, continuous across repeat
+             * seams; programs without them sample the base level. */
             append(
                 &text,
                 "vec4 sg_asset_%d_image_%d(vec2 uv) { "
-                "if(any(isnan(uv))||any(isinf(uv))) return vec4(0); uv=%s; "
-                "return textureLod(sg_image_%d,uv,0.0); }\n",
+                "if(any(isnan(uv))||any(isinf(uv))) return vec4(0);\n"
+                "#ifdef SG_IMAGE_GRADIENTS\n"
+                " vec2 sg_dx=dFdx(uv),sg_dy=dFdy(uv); uv=%s; "
+                "return textureGrad(sg_image_%d,uv,sg_dx,sg_dy);\n"
+                "#else\n"
+                " uv=%s; return textureLod(sg_image_%d,uv,0.0);\n"
+                "#endif\n}\n",
                 i + 1,
                 j,
+                normalize,
+                set_slot(set, shader_catalog_assets[i].images[j]),
                 normalize,
                 set_slot(set, shader_catalog_assets[i].images[j])
             );

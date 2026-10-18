@@ -364,13 +364,16 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         ":: () -> Box(int) { return {value: 1} } }",
         "Bad :: behavior { Forever :: (n: int) -> int { return Forever(n) } "
         "Value :: Forever(1) }",
+        "Bad :: behavior { Identity :: (value:$T)->T{return value} "
+        "on Run { x:=Identity(missing:true) } }",
     };
     const char *messages[] = { "Conflicting polymorphic argument",
                                "only constant values and types are available",
                                "bounded execution budget exceeded",
                                "each constant parameter exactly once",
-                               "call depth exceeded" };
-    for (int i = 0; i < 5; i++) {
+                               "call depth exceeded",
+                               "Unknown polymorphic argument" };
+    for (int i = 0; i < 6; i++) {
         REQUIRE(!analyze(invalid[i]));
         REQUIRE(!syntax->diagnostic_count);
         bool expected = false;
@@ -379,6 +382,24 @@ TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
         }
         REQUIRE(expected);
     }
+    return true;
+}
+TEST_CASE(generic_empty_record_bindings_specialize_once)
+{
+    REQUIRE(analyze(
+        "Empty :: library { Box :: struct() { value:bool } "
+        "Make :: () -> Box() { item:Box()={value:true}; return item } }"
+    ));
+    REQUIRE(!syntax->diagnostic_count);
+    REQUIRE(analysis->type_count == 1);
+    REQUIRE(analysis->specialization_count == 1);
+    const script_catalog_specialization *s = &analysis->specializations[0];
+    REQUIRE(!s->binding_count && !s->bindings);
+    REQUIRE(s->result.is_type);
+    REQUIRE(s->result.type.storage == PIN_STRUCT);
+    REQUIRE(s->result.type.nominal == analysis->types[0].type.nominal);
+    REQUIRE(analysis->types[0].field_count == 1);
+    REQUIRE(analysis->types[0].fields[0].type.storage == PIN_BOOL);
     return true;
 }
 TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings)
@@ -680,6 +701,7 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);
     RUN_TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions);
     RUN_TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded);
+    RUN_TEST_CASE(generic_empty_record_bindings_specialize_once);
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);
     RUN_TEST_CASE(generic_constructed_types_preserve_array_optional_and_reference_modifiers);
     RUN_TEST_CASE(compile_time_string_alias_survives_analysis_destruction);

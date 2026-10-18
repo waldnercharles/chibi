@@ -57,7 +57,7 @@ chibi_sdk_contract(chibi_native_capabilities "${CHIBI_SDK_ROOT}/src/runtime"
 chibi_sdk_contract(chibi_core_capabilities "${CHIBI_SDK_ROOT}/src/runtime"
     chibi_native_capabilities chibi_execution)
 chibi_sdk_contract(chibi_array_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
-chibi_sdk_contract(chibi_field_capabilities "${CHIBI_SDK_ROOT}/src/runtime/fields" chibi_native_capabilities)
+chibi_sdk_contract(chibi_field_capabilities "${CHIBI_SDK_ROOT}/src/runtime/fields" chibi_native_capabilities chibi_fields)
 chibi_sdk_contract(chibi_state_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
 chibi_sdk_contract(chibi_selection_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
 chibi_sdk_contract(chibi_set_capabilities "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
@@ -118,7 +118,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_material_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_ecs chibi_tasks chibi_field_catalog chibi_native_capabilities chibi_native_types
         chibi_entity_runtime chibi_particle_runtime chibi_spatial_runtime chibi_task_pool_runtime
-        chibi_execution chibi_support)
+        chibi_execution chibi_support chibi_save_runtime chibi_mesh_runtime chibi_shader_runtime)
     chibi_sdk_contract(chibi_physics_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_entity_runtime chibi_material_runtime chibi_task_pool_runtime
         chibi_native_capabilities chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)

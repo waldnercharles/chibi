@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Five fixed prepared cases. Bounds are recorded beside the dispatcher before
+/* Six fixed prepared cases. Bounds are recorded beside the dispatcher before
  * independent admission. No files, frames, worker pools or benchmark loops. */
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -319,10 +319,10 @@ static const type_field fields[] = { { .name = "key", .type = PIN_STR },
                                      { .name = "hidden", .type = PIN_BOOL },
                                      { .name = "locked", .type = PIN_BOOL },
                                      { .name = "renaming", .type = PIN_BOOL } };
-static bool table()
+static bool table_fields(const type_field *shape, int count)
 {
     write_plan = execution_module_plan_new();
-    const pin_record *r = pin_record_create(&write_plan->storage, "Rows.Row", 91, fields, 12);
+    const pin_record *r = pin_record_create(&write_plan->storage, "Rows.Row", 91, shape, count);
     REQUIRE(r);
     apush(
         write_plan->types,
@@ -339,6 +339,10 @@ static bool table()
     prepared_types(&writer);
     REQUIRE(!writer.wire.error);
     return true;
+}
+static bool table()
+{
+    return table_fields(fields, 12);
 }
 static bool read_table()
 {
@@ -435,6 +439,58 @@ TEST_CASE(record_prepared_recursive_codec)
     REQUIRE(bytes == 0);
     return true;
 }
+TEST_CASE(record_prepared_packed_rows_survive_collection)
+{
+    const type_field field = { .name = "count", .type = PIN_I32 };
+    REQUIRE(table_fields(&field, 1));
+    const pin_record *r = write_plan->types[0].record;
+    const int32_t values[] = { 11, 29 };
+    REQUIRE(r->type.size == sizeof values[0]);
+    void *data = arena_alloc(&producer, sizeof values);
+    memcpy(data, values, sizeof values);
+    pin_array array = { .element_type = PIN_STRUCT,
+                        .type_name = r->type.name,
+                        .record = r,
+                        .count = 2,
+                        .capacity = 2,
+                        .data = data,
+                        .stride = r->type.size };
+    pin_value value = { .type = PIN_STRUCT,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = r->type.name,
+                        .record = r,
+                        .ptr = &array };
+    prepared_value(&writer, &value);
+    REQUIRE(!writer.wire.error);
+    REQUIRE(read_table());
+    pin_value decoded = { 0 };
+    prepared_value(&reader, &decoded);
+    REQUIRE(!reader.wire.error && reader.wire.offset == reader.wire.size);
+    arena_free(&producer);
+    execution_module_plan_free(write_plan);
+    write_plan = NULL;
+    free(writer.records);
+    writer.records = NULL;
+    afree(writer.wire.data);
+    pin_array *rows = decoded.ptr;
+    collect(&read_plan->storage, rows);
+    REQUIRE(rows && pin_array_valid(rows) && rows->count == 2);
+    REQUIRE(rows->stride == sizeof values[0] && !rows->items);
+    REQUIRE(rows->record == decoded.record && pin_record_valid(rows->record));
+    REQUIRE(arena_contains(&read_plan->storage, rows->record));
+    REQUIRE(arena_contains(&read_plan->storage, rows->data));
+    for (int i = 0; i < 2; i++) {
+        pin_value row = pin_array_get(rows, i), field_value;
+        REQUIRE(row.record == rows->record);
+        pin_read_field(row.ptr, &row.record->type.fields[0], &field_value);
+        REQUIRE(field_value.type == PIN_I32 && field_value.i == values[i]);
+    }
+    collect(&read_plan->storage, NULL);
+    size_t bytes, capacity;
+    arena_usage(&read_plan->storage, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    return true;
+}
 static bool table_image(int mode)
 {
     execution_wire *w = &writer.wire;
@@ -472,6 +528,10 @@ static bool table_image(int mode)
             kind = mode == 4 && i == 0 ? PIN_STRUCT : fields[i].type;
             execution_wire_string(w, &name);
             execution_wire_int(w, &kind);
+            const char *type_name = r->type.fields[i].type_name;
+            const char *unit = r->type.fields[i].unit;
+            execution_wire_string(w, &type_name);
+            execution_wire_string(w, &unit);
         }
     }
     return true;
@@ -761,6 +821,7 @@ void test_language_record_prepared_runtime()
     RUN_TEST_CASE(record_prepared_scalar_owners);
     RUN_TEST_CASE(record_prepared_array_owners);
     RUN_TEST_CASE(record_prepared_recursive_codec);
+    RUN_TEST_CASE(record_prepared_packed_rows_survive_collection);
     RUN_TEST_CASE(record_prepared_table_rejections);
     RUN_TEST_CASE(record_prepared_legacy_and_failure_atomicity);
     pu_clear_setup();

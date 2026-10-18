@@ -55,6 +55,29 @@ static void texel(const render_sky *sky, int x, int y, float rgb[3])
     }
 }
 
+/* The brightest radiance a half-float texture holds, as the GPU keeps it. */
+static const float RADIANCE_MAX = 65504;
+
+void render_sky_encode(const float rgb[3], unsigned char texel[4])
+{
+    float c[3];
+    for (int i = 0; i < 3; i++) {
+        c[i] = fminf(fmaxf(rgb[i], 0), RADIANCE_MAX);
+    }
+    float most = fmaxf(c[0], fmaxf(c[1], c[2]));
+    if (!(most > 1e-32f)) {
+        texel[0] = texel[1] = texel[2] = texel[3] = 0;
+        return;
+    }
+    int exponent;
+    frexpf(most, &exponent);
+    for (int i = 0; i < 3; i++) {
+        float mantissa = ldexpf(c[i], 8 - exponent);
+        texel[i] = (unsigned char)fminf(mantissa, 255);
+    }
+    texel[3] = (unsigned char)(exponent + 128);
+}
+
 /* Bilinear radiance at equirectangular position (u, v) in texels, wrapping
  * around the horizon and clamping at the poles. */
 static void sample(const render_sky *sky, float u, float v, float rgb[3])

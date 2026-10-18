@@ -4,8 +4,8 @@ Tracked in [the game and editor milestone](https://github.com/waldnercharles/c-b
 
 > This is the historical Arena3D game plan. Its checkboxes record the acceptance
 > claims and unfinished game work of that iteration, not today's engine feature
-> inventory. Arena3D content now belongs to
-> [chibi-arena3d](https://github.com/waldnercharles/chibi-arena3d).
+> inventory. Arena3D content lived in the archived
+> [chibi-arena3d](https://github.com/waldnercharles/chibi-arena3d) repository.
 > Start at [current status](status.md) for engine gaps and active owners.
 > Test commands and measurements below are historical; use the current
 > [admission policy](testing.md#temporary-60-second-policy).

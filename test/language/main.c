@@ -5,12 +5,14 @@
 #include <string.h>
 
 void test_language_syntax();
+void test_language_inferred_string_arrays(bool repro);
 void test_language_row_builder();
 void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_packed();
 void test_language_runtime_attribution();
 void test_language_record_values();
+void test_language_record_publication(bool repro);
 void test_language_record_document();
 void test_language_record_state();
 void test_language_record_compatibility();
@@ -39,6 +41,9 @@ void test_language_query_boundary();
 void test_language_incremental();
 void test_language_modules();
 void test_numeric_ranges();
+void test_numeric_exact_core();
+void test_language_package_graph();
+void test_language_package_syntax();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -54,6 +59,7 @@ void test_language_reductions();
 void test_language_binding_schedule();
 void test_language_activation_cache();
 void test_language_headless();
+void test_language_build_workflow();
 void test_language_format();
 void test_language_root_state();
 void test_language_navigation();
@@ -76,6 +82,9 @@ int main(int argc, char **argv)
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared-write");
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
+    bool inferred_arrays = argc == 2 && !strcmp(argv[1], "--inferred-string-arrays");
+    bool inferred_array_repro = argc == 2 &&
+                                !strcmp(argv[1], "--inferred-string-array-repro");
     bool root_state = argc == 2 && !strcmp(argv[1], "--root-state");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
@@ -97,6 +106,9 @@ int main(int argc, char **argv)
     bool record_document = argc == 2 && !strcmp(argv[1], "--record-document");
     bool record_services = argc == 2 && !strcmp(argv[1], "--record-services");
     bool record_values = argc == 2 && !strcmp(argv[1], "--record-values");
+    bool record_publication = argc == 2 && !strcmp(argv[1], "--record-publication");
+    bool record_publication_repro = argc == 2 &&
+                                    !strcmp(argv[1], "--record-publication-repro");
     bool runtime_attribution = argc == 2 && !strcmp(argv[1], "--runtime-attribution");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
@@ -104,6 +116,9 @@ int main(int argc, char **argv)
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool modules = argc == 2 && !strcmp(argv[1], "--modules");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
+    bool numeric_exact_core = argc == 2 && !strcmp(argv[1], "--numeric-exact-core");
+    bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
+    bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
                                   !strcmp(argv[1], "--component-write-layout");
@@ -112,6 +127,7 @@ int main(int argc, char **argv)
     bool borrow = argc == 2 && !strcmp(argv[1], "--borrow");
     bool binding_schedule = argc == 2 && !strcmp(argv[1], "--binding-schedule");
     bool activation_cache = argc == 2 && !strcmp(argv[1], "--activation-cache");
+    bool build_workflow = argc == 2 && !strcmp(argv[1], "--build-workflow");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
@@ -124,24 +140,28 @@ int main(int argc, char **argv)
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
         (!format && !prepared && !record_producer && !execution && !semantic &&
-         !root_state && !benchmark && !activation_benchmark &&
-         !binding_benchmark && !borrow_benchmark && !incremental_benchmark &&
+         !inferred_arrays && !inferred_array_repro && !root_state && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !record_publication && !record_publication_repro &&
          !record_values && !record_document && !record_state && !record_services &&
          !record_compatibility && !record_semantic && !record_prepared_runtime &&
          !outliner_projection && !row_builder && !row_array && !record_runtime &&
-         !runtime_attribution && !wasm && !program && !query_program &&
-         !incremental && !modules && !ranges && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !navigation &&
+         !runtime_attribution && !wasm && !program && !query_program && !incremental &&
+         !modules && !ranges && !numeric_exact_core && !package_graph &&
+         !package_syntax && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
+            "| --inferred-string-arrays | --inferred-string-array-repro "
             "| --root-state | --program | --query-program | --incremental | "
             "--modules | "
-            "--ranges | "
+            "--ranges | --numeric-exact-core | --package-graph | "
+            "--package-syntax | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -150,7 +170,7 @@ int main(int argc, char **argv)
             "--script-benchmark | --activation-benchmark | --binding-benchmark "
             "| "
             "--borrow-benchmark | --incremental-benchmark | --wasm | "
-            "--headless | "
+            "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
@@ -158,7 +178,8 @@ int main(int argc, char **argv)
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
             "--record-compatibility | --row-array | --row-builder | "
-            "--outliner-projection | "
+            "--outliner-projection | --record-publication | "
+            "--record-publication-repro | "
             "--format [--corpus manifest] | --prepared-write "
             "directory\n",
             argv[0]
@@ -166,7 +187,11 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (outliner_projection) {
+    if (inferred_arrays || inferred_array_repro) {
+        test_language_inferred_string_arrays(inferred_array_repro);
+    } else if (record_publication || record_publication_repro) {
+        test_language_record_publication(record_publication_repro);
+    } else if (outliner_projection) {
         test_language_outliner_projection();
     } else if (row_builder) {
         test_language_row_builder();
@@ -251,6 +276,8 @@ int main(int argc, char **argv)
         }
     } else if (prepared) {
         test_language_prepared_write(argv[2]);
+    } else if (build_workflow) {
+        test_language_build_workflow();
     } else if (headless) {
         test_language_headless();
     } else if (query_program) {
@@ -263,6 +290,12 @@ int main(int argc, char **argv)
         test_language_modules();
     } else if (incremental) {
         test_language_incremental();
+    } else if (numeric_exact_core) {
+        test_numeric_exact_core();
+    } else if (package_syntax) {
+        test_language_package_syntax();
+    } else if (package_graph) {
+        test_language_package_graph();
     } else if (ranges) {
         test_numeric_ranges();
     } else if (component_write_layout) {

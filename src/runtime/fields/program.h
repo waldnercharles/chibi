@@ -23,6 +23,9 @@ typedef struct
     int width, height;
     float cell_size;
     float center_x, center_y;
+    /* Field Z for every sample: depth behind the play plane. 2D bakes leave
+     * it zero, so a 3D field's play-plane slice is its ordinary 2D bake. */
+    float depth;
 } field_grid;
 
 /* Validates scalar op arity/topology and snapshots code, parameter names and
@@ -100,6 +103,20 @@ bool field_program_baker_bake_rows(
     char *error,
     size_t size
 );
+/* Evaluates arbitrary positions: x, y and depth z per point, matching what a
+ * grid bake yields at the same coordinates. Points are batched and spread over
+ * the baker's workers. */
+bool field_program_baker_bake_points(
+    field_program_baker *baker,
+    const float *x,
+    const float *y,
+    const float *z,
+    int count,
+    float *out,
+    const task_system *tasks,
+    char *error,
+    size_t size
+);
 bool field_program_sample(
     const field_program *program,
     field_context context,
@@ -110,3 +127,9 @@ bool field_program_sample(
     size_t size
 );
 int field_program_instruction_count(const field_program *program);
+/* Operands an instruction of op reads. */
+int field_op_arity(field_op op);
+/* op over its field_op_arity operands, as field_program_sample computes it;
+ * NAN where op is undefined. Seeded ops add seed, a field context's, to their
+ * Seed Offset. Ops without operands read the sample and are not valued here. */
+float field_op_value(field_op op, const float *operands, unsigned seed);

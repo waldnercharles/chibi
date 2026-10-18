@@ -608,11 +608,260 @@ TEST_CASE(terrain_preparation_scratch)
     return true;
 }
 
+/* A 512-unit cave terrain with a terrain volume behind it, prepared. */
+static ecs_entity volume_terrain(ecs_world *world, materials *runtime)
+{
+    char error[256];
+    bool compiled = compile_cave(materials_fields(runtime), error, sizeof error) &&
+                    material_field_prepare_arguments(
+                        materials_fields(runtime),
+                        "CaveField",
+                        "Radius 72\nRoughness 30\n",
+                        error,
+                        sizeof error
+                    );
+    assert(compiled);
+    (void)compiled;
+    ecs_entity settings = ecs_world_create_entity(world);
+    material_test_component(
+        world,
+        settings,
+        &COMPONENT_MaterialDestructionWorld,
+        &(MaterialDestructionWorld){ 8 }
+    );
+    material_test_component(
+        world,
+        settings,
+        &COMPONENT_MaterialFluidWorld,
+        &(MaterialFluidWorld){ .chunk_size = 128, .buffer = 32, .kernel = 10, .particle_limit = 10 }
+    );
+    ecs_entity source = ecs_world_create_entity(world);
+    material_test_component(world, source, &COMPONENT_Transform, &(Transform){ 0 });
+    material_test_component(
+        world,
+        source,
+        &COMPONENT_MaterialTerrain,
+        &(MaterialTerrain){ .seed = 1729,
+                            .width = 512,
+                            .height = 512,
+                            .cell_size = 2,
+                            .field = "CaveField",
+                            .parameters = "Radius 72\n"
+                                          "Roughness 30\n",
+                            .connectivity = MATERIAL_CONNECTIVITY_FIRST_AIR,
+                            .border_cells = 8,
+                            .category = 8,
+                            .mask = 1,
+                            .min_fragment_cells = 4 }
+    );
+    material_test_component(
+        world,
+        source,
+        &COMPONENT_TerrainVolume,
+        &(
+            TerrainVolume
+        ){ .enabled = true, .voxel = 4, .depth = 64, .elevation = 8, .refine = 2, .slab = 32 }
+    );
+    material_test_component(
+        world,
+        source,
+        &COMPONENT_MaterialSurface3D,
+        &(MaterialSurface3D){ .enabled = true, .elevation = 8, .depth = 6, .spacing = 2 }
+    );
+    int result = ecs_world_apply_commands(world);
+    assert(result == ECS_OK);
+    (void)result;
+    const char *prepared = materials_prepare(runtime);
+    assert(!prepared);
+    (void)prepared;
+    return source;
+}
+
+static TerrainVolume *volume_style(ecs_world *world, ecs_entity source)
+{
+    return ecs_component_data(world, source, COMPONENT_TerrainVolume.id);
+}
+
+/* The terrain tile left of the middle and below it. */
+static ecs_entity lower_left_tile(ecs_world *world)
+{
+    ecs_entity target = { 0 }, entity;
+    ecs_query query;
+    ecs_component_id id = COMPONENT_Destructible.id;
+    int result = ecs_query_begin(world, &query, &id, 1);
+    assert(result == ECS_OK);
+    (void)result;
+    while (ecs_query_next(&query, &entity)) {
+        const Transform *p = Transform_get_const(world, entity);
+        if (p->x < 0 && p->y > 0) {
+            target = entity;
+        }
+    }
+    ecs_query_end(&query);
+    return target;
+}
+
+/* Every fragment's surface straddles the plane at elevation 8; pieces counts
+ * them. */
+static bool fragments_centered(ecs_world *world, materials *runtime, int *pieces)
+{
+    bool centered = true;
+    *pieces = 0;
+    ecs_entity entity;
+    ecs_query query;
+    ecs_component_id id = COMPONENT_Destructible.id;
+    int result = ecs_query_begin(world, &query, &id, 1);
+    assert(result == ECS_OK);
+    (void)result;
+    while (ecs_query_next(&query, &entity)) {
+        if (!materials_is_fragment(runtime, entity)) {
+            continue;
+        }
+        const MaterialSurface3D *chunk = MaterialSurface3D_get_const(world, entity);
+        centered &= fabsf(chunk->elevation - chunk->depth / 2 - 8) < 1e-3f;
+        ++*pieces;
+    }
+    ecs_query_end(&query);
+    return centered;
+}
+
+/* A piece cut free of rock with a terrain volume behind it is about as deep
+ * as it is wide and straddles the play plane, as do the pieces it splits
+ * into, and the volume's carve follows the cut. */
+TEST_CASE(terrain_volume_fragments_are_chunks)
+{
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    preview_world *live = preview_world_new(world);
+    materials *runtime = live->runtime->materials;
+    ecs_entity source = volume_terrain(world, runtime);
+    materials_depth_volume view;
+    REQUIRE(materials_terrain_volume(runtime, source, &view));
+    uint64_t revision = view.revision;
+    ecs_entity target = lower_left_tile(world);
+    REQUIRE(ecs_entity_to_u64(target));
+    /* Overlapping disks around solid rock leave its middle loose. */
+    for (int k = 0; k < 12; k++) {
+        float angle = k * 6.2831853f / 12;
+        fluid_vec at = { -60 + 16 * cosf(angle), 200 + 16 * sinf(angle) };
+        materials_damage(runtime, target, at, 6, 1, 0, (material_impact){ 0 });
+    }
+    REQUIRE(!materials_prepare(runtime));
+    ecs_entity piece = { 0 }, entity;
+    ecs_query query;
+    ecs_component_id id = COMPONENT_Destructible.id;
+    REQUIRE(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
+    while (ecs_query_next(&query, &entity)) {
+        if (materials_is_fragment(runtime, entity)) {
+            piece = entity;
+        }
+    }
+    ecs_query_end(&query);
+    REQUIRE(ecs_entity_to_u64(piece));
+    const material_mask *mask = materials_mask(runtime, piece);
+    float side = sqrtf((float)mask->count) * mask->cell_size;
+    const MaterialSurface3D *chunk = MaterialSurface3D_get_const(world, piece);
+    REQUIRE(side > 6 && fabsf(chunk->depth - side) < 1e-3f);
+    REQUIRE(fabsf(chunk->elevation - (8 + side / 2)) < 1e-3f);
+    REQUIRE(materials_terrain_volume(runtime, source, &view) && view.revision > revision);
+    /* A strip of disks through the piece's middle splits it in two. */
+    float cx = 0, cy = 0, area = 0;
+    for (int i = 0; i < acount(mask->rects); i++) {
+        material_rect r = mask->rects[i];
+        cx += r.x * r.width * r.height;
+        cy += r.y * r.width * r.height;
+        area += r.width * r.height;
+    }
+    const Transform *at = Transform_get_const(world, piece);
+    fluid_vec middle = { at->x + cx / area, at->y + cy / area };
+    for (int k = -4; k <= 4; k++) {
+        fluid_vec hit = { middle.x, middle.y + k * 3.f };
+        materials_damage(runtime, piece, hit, 2.5f, 1, 0, (material_impact){ 0 });
+    }
+    REQUIRE(!materials_prepare(runtime));
+    int pieces;
+    REQUIRE(fragments_centered(world, runtime, &pieces) && pieces >= 2);
+    preview_world_free(live);
+    ecs_world_free(world);
+    return true;
+}
+
+/* A restored save keeps the terrain volume and carves it to the restored
+ * mask. Elevation only places the drawn volume, so editing it keeps cuts;
+ * slab edits rebake a volume that reports nothing until carved; invalid
+ * settings fail before the terrain is replaced. */
+TEST_CASE(terrain_volume_restore_and_settings)
+{
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    preview_world *live = preview_world_new(world);
+    materials *runtime = live->runtime->materials;
+    ecs_entity source = volume_terrain(world, runtime);
+    ecs_entity target = lower_left_tile(world);
+    REQUIRE(ecs_entity_to_u64(target));
+    materials_damage(runtime, target, (fluid_vec){ -60, 200 }, 12, 1, 0, (material_impact){ 0 });
+    REQUIRE(!materials_prepare(runtime));
+    materials_depth_volume cut, view;
+    REQUIRE(materials_terrain_volume(runtime, source, &cut));
+    size_t samples = (size_t)cut.volume->plane.width * cut.volume->plane.height;
+    float *removed = xmalloc(samples * sizeof *removed);
+    memcpy(removed, cut.removed, samples * sizeof *removed);
+    bool opened = false;
+    for (size_t i = 0; i < samples; i++) {
+        opened |= removed[i] > 0;
+    }
+    REQUIRE(opened);
+    volume_style(world, source)->elevation = 12;
+    REQUIRE(!materials_prepare(runtime));
+    REQUIRE(materials_terrain_volume(runtime, source, &view));
+    REQUIRE(view.identity == cut.identity && ecs_entity_is_alive(world, target));
+    volume_style(world, source)->voxel = -1;
+    REQUIRE(materials_prepare(runtime));
+    REQUIRE(ecs_entity_is_alive(world, target));
+    volume_style(world, source)->voxel = 4;
+    REQUIRE(!materials_prepare(runtime));
+    REQUIRE(materials_terrain_volume(runtime, source, &view) && view.identity == cut.identity);
+    char error[256];
+    unsigned char *bytes;
+    size_t length;
+    REQUIRE(
+        materials_terrain_checkpoint_write(runtime, source, "rock", &bytes, &length, error, sizeof error)
+    );
+    REQUIRE(
+        materials_terrain_checkpoint_read(runtime, source, "rock", bytes, length, error, sizeof error)
+    );
+    free(bytes);
+    REQUIRE(!ecs_entity_is_alive(world, target));
+    REQUIRE(materials_terrain_volume(runtime, source, &view));
+    REQUIRE(view.identity == cut.identity && view.revision > cut.revision);
+    REQUIRE(!memcmp(view.removed, removed, samples * sizeof *removed));
+    REQUIRE(!materials_prepare(runtime));
+    free(removed);
+    materials_reset(runtime);
+    REQUIRE(!materials_prepare(runtime));
+    REQUIRE(materials_terrain_volume(runtime, source, &cut));
+    volume_style(world, source)->slab = 16;
+    REQUIRE(!material_ecs_generate_terrains(runtime));
+    REQUIRE(!materials_terrain_volume(runtime, source, &view));
+    REQUIRE(!materials_prepare(runtime));
+    REQUIRE(materials_terrain_volume(runtime, source, &view));
+    REQUIRE(view.identity != cut.identity && view.volume->slab == 16);
+    preview_world_free(live);
+    ecs_world_free(world);
+    return true;
+}
+
 void test_material_cave_terrain()
 {
     RUN_TEST_CASE(cave_generation);
     RUN_TEST_CASE(shipping_cave_parity);
     RUN_TEST_CASE(terrain_boundary_cut);
+    RUN_TEST_CASE(terrain_volume_fragments_are_chunks);
+    RUN_TEST_CASE(terrain_volume_restore_and_settings);
     RUN_TEST_CASE(terrain_stream_restore);
     RUN_TEST_CASE(terrain_host_views);
     RUN_TEST_CASE(terrain_preparation_scratch);

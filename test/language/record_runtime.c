@@ -347,7 +347,8 @@ TEST_CASE(record_runtime_fieldwise_equality)
                                  "{key: \"a\", label: \"A\"}; "
                                  "b: Row = {key: \"a\", label: \"A\"}; if "
                                  "change { b.label = \"B\"; } "
-                                 "return (a == b) and not (a != b); } }";
+                                 "different: bool = a != b; "
+                                 "return (a == b) and not different; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(source, backends[b], false));

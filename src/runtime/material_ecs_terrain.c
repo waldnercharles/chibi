@@ -1,4 +1,5 @@
 #include "runtime/behaviors/entities.h"
+#include "runtime/material_checkpoint.h"
 #include "runtime/material_ecs.h"
 #include "runtime/material_terrain.h"
 #include "runtime/task_pool.h"
@@ -8,6 +9,8 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,6 +21,44 @@ static uint64_t hash_bytes(uint64_t hash, const void *data, size_t count)
         hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
     }
     return hash;
+}
+
+static bool terrain_recipe(
+    materials *materials,
+    MaterialTerrain terrain,
+    uint64_t *fingerprint,
+    char *error,
+    size_t size
+)
+{
+    field_context context;
+    if (!material_field_context(
+            materials->fields,
+            terrain.field,
+            terrain.parameters,
+            terrain.seed,
+            &context,
+            error,
+            size
+        )) {
+        return false;
+    }
+    return material_checkpoint_fingerprint(
+        (material_checkpoint_recipe){
+            .fields = materials->fields,
+            .field = terrain.field,
+            .context = context,
+            .grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                      .height = (int)ceilf(terrain.height / terrain.cell_size),
+                      .cell_size = terrain.cell_size },
+            .connectivity = terrain.connectivity,
+            .border_cells = terrain.border_cells,
+            .island_cells = terrain.island_cells,
+            .streamed = terrain.stream_radius > 0 },
+        fingerprint,
+        error,
+        size
+    );
 }
 
 static void spawn_tile(
@@ -40,6 +81,15 @@ static void spawn_tile(
     const Shader *binding = Shader_get_const(world, source);
     bool has_shader = binding != NULL;
     Shader shader = binding ? *binding : (Shader){ 0 };
+    const MaterialSurface3D *mesh_ptr = MaterialSurface3D_get_const(world, source);
+    bool has_mesh = mesh_ptr != NULL;
+    MaterialSurface3D mesh = mesh_ptr ? *mesh_ptr : (MaterialSurface3D){ 0 };
+    const MaterialFrame *frame_ptr = MaterialFrame_get_const(world, source);
+    MaterialFrame mesh_frame = frame_ptr ? *frame_ptr
+                                         : (MaterialFrame){ origin.x, origin.y, 0 };
+    float frame_c = cosf(mesh_frame.radians), frame_s = sinf(mesh_frame.radians);
+    mesh_frame.x += frame_c * grid.center_x - frame_s * grid.center_y;
+    mesh_frame.y += frame_s * grid.center_x + frame_c * grid.center_y;
     const Substance *sub = Substance_get_const(world, source);
     Substance substance = sub ? *sub : (Substance){ 0 };
     const Reflection *ref = Reflection_get_const(world, source);
@@ -61,6 +111,10 @@ static void spawn_tile(
     material_ecs_add_component(world, entity, &COMPONENT_Destructible, &destructible);
     material_ecs_add_component(world, entity, &COMPONENT_Appearance, &appearance);
     material_ecs_add_component(world, entity, &COMPONENT_Material, &material);
+    if (has_mesh) {
+        material_ecs_add_component(world, entity, &COMPONENT_MaterialSurface3D, &mesh);
+        material_ecs_add_component(world, entity, &COMPONENT_MaterialFrame, &mesh_frame);
+    }
     material_ecs_add_component(world, entity, &COMPONENT_MaterialBreakProfile, &profile);
     if (substance.hardness > 0) {
         material_ecs_add_component(world, entity, &COMPONENT_Substance, &substance);
@@ -82,6 +136,98 @@ static void spawn_tile(
     record->initial_cells = record->mask->count;
 }
 
+/* Distinguishes successive depth volumes across resets and address reuse. */
+static _Atomic uint64_t next_depth_identity = 1;
+
+/* Why an enabled TerrainVolume cannot bake, or NULL. */
+static const char *depth_volume_error(const TerrainVolume *style)
+{
+    float coarse = style->voxel * style->refine;
+    if (!(isfinite(style->voxel) && style->voxel > 0 && style->refine >= 1 &&
+          style->refine <= TERRAIN_VOLUME_REFINE_MAX &&
+          isfinite(style->depth) && style->depth >= 2 * coarse &&
+          isfinite(style->elevation) && isfinite(style->front) &&
+          style->front >= 0 && isfinite(style->slab) && style->slab > 0)) {
+        return "TerrainVolume requires a positive voxel, refine from 1 to 8, "
+               "depth of at least two coarse voxels, a nonnegative front, a "
+               "positive slab and a finite elevation";
+    }
+    return NULL;
+}
+
+/* The next surface sync carves the whole plane again from the live mask. */
+static void recarve_depth_volume(material_record *record)
+{
+    free(record->depth_open);
+    record->depth_open = NULL;
+    record->depth_hash = 0;
+}
+
+/* Samples the terrain's own field in depth on its plane into *out, which
+ * stays NULL without an enabled TerrainVolume. The mask stays the gameplay
+ * slice; the carve follows it in material_ecs_sync_terrain_surfaces. */
+static const char *bake_depth_volume(
+    materials *materials,
+    ecs_entity source,
+    const MaterialTerrain *terrain,
+    field_context context,
+    terrain_volume **out
+)
+{
+    *out = NULL;
+    const TerrainVolume *style = TerrainVolume_get_const(materials->world, source);
+    if (!style || !style->enabled) {
+        return NULL;
+    }
+    assert(!depth_volume_error(style));
+    float coarse = style->voxel * style->refine;
+    int front = (int)ceilf(style->front / coarse);
+    field_grid plane = { .width = (int)ceilf(terrain->width / coarse) + 1,
+                         .height = (int)ceilf(terrain->height / coarse) + 1,
+                         .cell_size = coarse };
+    terrain_volume volume;
+    terrain_volume_shape shape = { plane,
+                                   front,
+                                   front + (int)ceilf(style->depth / coarse) + 1,
+                                   style->refine,
+                                   style->open_back,
+                                   style->slab };
+    task_pool_begin(materials->pool, true);
+    bool baked = terrain_volume_bake(
+        material_field_program(materials->fields, terrain->field),
+        context,
+        shape,
+        task_pool_tasks(materials->pool),
+        &volume,
+        materials->error,
+        sizeof materials->error
+    );
+    task_pool_end(materials->pool);
+    if (!baked) {
+        return materials->error;
+    }
+    *out = xmalloc(sizeof volume);
+    **out = volume;
+    return NULL;
+}
+
+/* Gives the source a freshly baked volume, carved before it is reported. */
+static void attach_depth_volume(material_record *record, terrain_volume *volume)
+{
+    material_ecs_discard_depth_volume(record);
+    if (!volume) {
+        return;
+    }
+    record->depth_volume = volume;
+    record->depth_removed = xcalloc(
+        (size_t)volume->plane.width * volume->plane.height,
+        sizeof *record->depth_removed
+    );
+    record->depth_identity = atomic_fetch_add_explicit(&next_depth_identity, 1, memory_order_relaxed);
+}
+
+/* Releases the source's tiles, fragments and stream; its depth volume stays
+ * for the caller to keep or replace. */
 static void discard_terrain(materials *materials, ecs_entity source)
 {
     for (int i = 0; i < acount(materials->records); i++) {
@@ -128,6 +274,7 @@ static const char *stream_terrain(
         }
         discard_terrain(materials, source);
         record = material_ecs_record(materials, source);
+        material_ecs_discard_depth_volume(record);
         record->stream = material_stream_new((material_stream_desc){
             .grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
                       .height = (int)ceilf(terrain.height / terrain.cell_size),
@@ -324,9 +471,79 @@ static const char *generate_terrain(materials *materials, ecs_entity source)
     if (terrain.parameters) {
         hash = hash_bytes(hash, terrain.parameters, strlen(terrain.parameters));
     }
+    const TerrainVolume *depth = TerrainVolume_get_const(world, source);
+    if (depth && depth->enabled) {
+        if (terrain.stream_radius > 0) {
+            return "TerrainVolume requires an unstreamed MaterialTerrain";
+        }
+        const char *error = depth_volume_error(depth);
+        if (error) {
+            return error;
+        }
+        /* Elevation only places the drawn volume, so it needs no rebake. */
+        float volume[] = { depth->voxel, depth->depth, depth->front, depth->slab };
+        hash = hash_bytes(hash, volume, sizeof volume);
+        hash = hash_bytes(hash, &depth->refine, sizeof depth->refine);
+        hash = hash_bytes(hash, &depth->open_back, sizeof depth->open_back);
+    }
+    /* Replacing a named argument record does not advance the field revision.
+     * Include its typed values in the cheap live-generation change detector. */
+    field_context arguments;
+    if (!material_field_context(
+            materials->fields,
+            terrain.field,
+            terrain.parameters,
+            terrain.seed,
+            &arguments,
+            materials->error,
+            sizeof materials->error
+        )) {
+        return materials->error;
+    }
+    for (int i = 0; i < arguments.parameter_count; i++) {
+        field_parameter p = arguments.parameters[i];
+        hash = hash_bytes(hash, p.name, strlen(p.name));
+        hash = hash_bytes(hash, &p.value.type, sizeof p.value.type);
+        switch (p.value.type) {
+            case PIN_F32:
+                hash = hash_bytes(hash, &p.value.f, sizeof p.value.f);
+                break;
+            case PIN_I32:
+                hash = hash_bytes(hash, &p.value.i, sizeof p.value.i);
+                break;
+            case PIN_U32:
+                hash = hash_bytes(hash, &p.value.u, sizeof p.value.u);
+                break;
+            default: assert(false);
+        }
+    }
+    material_record *source_record = material_ecs_record(materials, source);
+    uint64_t recipe = source_record->terrain_recipe;
+    if (source_record->terrain_hash != hash) {
+        if (!terrain_recipe(
+                materials,
+                terrain,
+                &recipe,
+                materials->error,
+                sizeof materials->error
+            )) {
+            return materials->error;
+        }
+        if (source_record->terrain_checkpoint) {
+            return recipe != source_record->terrain_recipe
+                     ? "Imported terrain recipe changed; explicitly reset "
+                       "before regeneration"
+                     : "Imported terrain configuration changed; explicitly "
+                       "reset before regeneration";
+        }
+    }
     Transform origin = { position.x, position.y };
     if (terrain.stream_radius > 0) {
-        return stream_terrain(materials, source, terrain, origin, hash);
+        const char *error = stream_terrain(materials, source, terrain, origin, hash);
+        if (material_ecs_record(materials, source)->terrain_hash == hash) {
+            material_ecs_record(materials, source)->terrain_recipe = recipe;
+        }
+        return error;
     }
     if (material_ecs_record(materials, source)->terrain_hash == hash) {
         return NULL;
@@ -364,6 +581,13 @@ static const char *generate_terrain(materials *materials, ecs_entity source)
         free(field);
         return materials->error;
     }
+    /* Every fallible step precedes replacing the terrain. */
+    terrain_volume *volume;
+    const char *error = bake_depth_volume(materials, source, &terrain, context, &volume);
+    if (error) {
+        free(field);
+        return error;
+    }
     material_terrain_connect(field, grid, terrain.connectivity, terrain.border_cells);
     material_terrain_tidy(field, grid, terrain.island_cells);
     material_terrain_chunk *chunks = material_terrain_chunks(field, grid);
@@ -381,16 +605,24 @@ static const char *generate_terrain(materials *materials, ecs_entity source)
             origin,
             (
                 field_grid
-            ){ mask->width, mask->height, terrain.cell_size, chunk->x, chunk->y },
+            ){ mask->width, mask->height, terrain.cell_size, chunk->x, chunk->y, 0 },
             mask,
-            i,
+            (uint64_t)lroundf(
+                (chunk->y / terrain.cell_size + grid.height * .5f - mask->height * .5f) / MATERIAL_TERRAIN_CHUNK_CELLS
+            ) * ((grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                 MATERIAL_TERRAIN_CHUNK_CELLS) +
+                (uint64_t)lroundf(
+                    (chunk->x / terrain.cell_size + grid.width * .5f - mask->width * .5f) / MATERIAL_TERRAIN_CHUNK_CELLS
+                ),
             false
         );
     }
     material_terrain_chunks_free(chunks);
     material_record *record = material_ecs_record(materials, source);
+    attach_depth_volume(record, volume);
     record->terrain = true;
     record->terrain_hash = hash;
+    record->terrain_recipe = recipe;
     return NULL;
 }
 
@@ -417,4 +649,216 @@ const char *material_ecs_generate_terrains(materials *materials)
     }
     afree(sources);
     return error;
+}
+
+static bool checkpoint_source(
+    materials *materials,
+    ecs_entity source,
+    MaterialTerrain *terrain,
+    uint64_t *recipe,
+    char *error,
+    size_t size
+)
+{
+    const MaterialTerrain *component = MaterialTerrain_get_const(materials->world, source);
+    if (!component || source.slot >= (unsigned)acount(materials->records) ||
+        ecs_entity_to_u64(materials->records[source.slot].entity) !=
+            ecs_entity_to_u64(source) ||
+        !materials->records[source.slot].terrain) {
+        snprintf(error, size, "Terrain checkpoint requires a prepared source");
+        return false;
+    }
+    if (!Transform_get_const(materials->world, source)) {
+        snprintf(error, size, "Terrain checkpoint requires a placed source");
+        return false;
+    }
+    GlobalTransform2D pose = transform_world_2d(materials->world, source);
+    if (pose.radians != 0 || !isfinite(pose.position.x) ||
+        !isfinite(pose.position.y)) {
+        snprintf(error, size, "Terrain checkpoint requires a finite unrotated source");
+        return false;
+    }
+    *terrain = *component;
+    /* Validate before float-to-int grid conversion, including changed authored inputs. */
+    float width = terrain->width / terrain->cell_size,
+          height = terrain->height / terrain->cell_size;
+    if (!isfinite(width) || !isfinite(height) || width < 0 || height < 0 ||
+        width > 65536 || height > 65536 || !isfinite(terrain->cell_size) ||
+        terrain->cell_size <= 0 ||
+        !terrain_recipe(materials, *terrain, recipe, error, size) ||
+        *recipe != materials->records[source.slot].terrain_recipe) {
+        snprintf(error, size, "Terrain recipe changed since preparation");
+        return false;
+    }
+    return true;
+}
+bool materials_terrain_checkpoint_write(
+    materials *materials,
+    ecs_entity source,
+    const char *identity,
+    unsigned char **bytes,
+    size_t *length,
+    char *error,
+    size_t size
+)
+{
+    *bytes = NULL;
+    *length = 0;
+    MaterialTerrain terrain;
+    uint64_t recipe;
+    if (!checkpoint_source(materials, source, &terrain, &recipe, error, size)) {
+        return false;
+    }
+    material_checkpoint checkpoint = { 0 };
+    material_record *record = &materials->records[source.slot];
+    if (record->stream) {
+        if (!material_stream_checkpoint(record->stream, &checkpoint, error, size)) {
+            return false;
+        }
+    } else {
+        field_grid grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                            .height = (int)ceilf(terrain.height / terrain.cell_size),
+                            .cell_size = terrain.cell_size };
+        int columns = (grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                      MATERIAL_TERRAIN_CHUNK_CELLS;
+        int rows = (grid.height + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                   MATERIAL_TERRAIN_CHUNK_CELLS;
+        if (columns * rows > MATERIAL_CHECKPOINT_MAX_TILES) {
+            snprintf(error, size, "Terrain snapshot exceeds tile limit");
+            return false;
+        }
+        for (int i = 0; i < columns * rows; i++) {
+            field_grid tile;
+            bool valid = material_stream_tile_grid(grid, (uint64_t)i, &tile);
+            assert(valid);
+            (void)valid;
+            material_mask *mask = NULL;
+            for (int j = 0; j < acount(materials->records); j++) {
+                material_record *r = &materials->records[j];
+                if (!r->fragment && r->terrain_key == (uint64_t)i &&
+                    ecs_entity_to_u64(r->terrain_source) == ecs_entity_to_u64(source) &&
+                    ecs_entity_is_alive(materials->world, r->entity)) {
+                    mask = r->mask;
+                }
+            }
+            apush(
+                checkpoint.tiles,
+                ((material_stream_tile){ (uint64_t)i,
+                                         tile,
+                                         material_checkpoint_copy_mask(mask, tile) })
+            );
+        }
+    }
+    bool ok = material_checkpoint_write(&checkpoint, identity, recipe, bytes, length, error, size);
+    material_checkpoint_free(&checkpoint);
+    return ok;
+}
+bool materials_terrain_checkpoint_read(
+    materials *materials,
+    ecs_entity source,
+    const char *identity,
+    const void *bytes,
+    size_t length,
+    char *error,
+    size_t size
+)
+{
+    MaterialTerrain terrain;
+    uint64_t recipe;
+    if (!checkpoint_source(materials, source, &terrain, &recipe, error, size)) {
+        return false;
+    }
+    material_checkpoint checkpoint = { 0 };
+    if (!material_checkpoint_read(bytes, length, identity, recipe, &checkpoint, error, size)) {
+        return false;
+    }
+    field_grid grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                        .height = (int)ceilf(terrain.height / terrain.cell_size),
+                        .cell_size = terrain.cell_size };
+    material_stream *stream = NULL;
+    if (terrain.stream_radius > 0) {
+        field_context context;
+        if (!material_field_context(
+                materials->fields,
+                terrain.field,
+                terrain.parameters,
+                terrain.seed,
+                &context,
+                error,
+                size
+            )) {
+            goto fail;
+        }
+        stream = material_stream_new((material_stream_desc){
+            .grid = grid,
+            .field = terrain.field,
+            .context = context,
+            .island_cells = terrain.island_cells,
+            .tasks = task_pool_tasks(materials->pool) });
+        if (!material_stream_restore_checkpoint(stream, &checkpoint, error, size)) {
+            goto fail;
+        }
+    } else {
+        int columns = (grid.width + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                      MATERIAL_TERRAIN_CHUNK_CELLS;
+        int rows = (grid.height + MATERIAL_TERRAIN_CHUNK_CELLS - 1) /
+                   MATERIAL_TERRAIN_CHUNK_CELLS;
+        if (acount(checkpoint.tiles) != columns * rows) {
+            goto fail;
+        }
+        for (int i = 0; i < acount(checkpoint.tiles); i++) {
+            material_stream_tile tile = checkpoint.tiles[i];
+            field_grid expected;
+            if (!material_stream_tile_grid(grid, tile.key, &expected) ||
+                expected.width != tile.grid.width ||
+                expected.height != tile.grid.height ||
+                expected.cell_size != tile.grid.cell_size ||
+                expected.center_x != tile.grid.center_x ||
+                expected.center_y != tile.grid.center_y) {
+                goto fail;
+            }
+            material_mask_rebuild(tile.mask);
+        }
+    }
+    /* All validation and fallible temporary-file IO precedes publication. ECS
+     * allocation follows the runtime's fail-fast allocation contract. */
+    discard_terrain(materials, source);
+    material_record *record = material_ecs_record(materials, source);
+    recarve_depth_volume(record);
+    record->stream = stream;
+    record->terrain_checkpoint = true;
+    if (!stream) {
+        CF_V2 position = transform_world_2d(materials->world, source).position;
+        for (int i = 0; i < acount(checkpoint.tiles); i++) {
+            material_stream_tile *tile = &checkpoint.tiles[i];
+            spawn_tile(
+                materials,
+                source,
+                terrain,
+                (Transform){ position.x, position.y },
+                tile->grid,
+                tile->mask,
+                tile->key,
+                false
+            );
+            tile->mask = NULL;
+        }
+    }
+    /* Streamed tiles become resident at the next prepare boundary. */
+    for (int i = 0; i < acount(checkpoint.tiles); i++) {
+        if (checkpoint.tiles[i].mask) {
+            material_mask_free(checkpoint.tiles[i].mask);
+            free(checkpoint.tiles[i].mask);
+        }
+    }
+    afree(checkpoint.tiles);
+    material_ecs_sync_terrain_surfaces(materials);
+    return true;
+fail:
+    if (stream) {
+        material_stream_free(stream);
+    }
+    material_checkpoint_free(&checkpoint);
+    snprintf(error, size, "Terrain checkpoint does not match the source grid or cannot be staged");
+    return false;
 }

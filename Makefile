@@ -80,7 +80,7 @@ help:
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
 		'make agent-test AGENT_SELECTOR=--source-edit' \
-		'make agent-gpu-test AGENT_SELECTOR=--player-installed-space-cadet-vm' \
+		'make agent-gpu-test AGENT_SELECTOR=--scene3d' \
 		'make test / test-short  Six C execution-policy checks, one 60s deadline' \
 		'make test-tools     C tooling integrations, one shared 60s deadline' \
 		'make test-build     Build chibi_ctl and the full test drivers in BUILD_DIR' \

@@ -57,6 +57,7 @@ static execution_program *program;
 static unsigned char *bytes;
 static char *base_text, *child_text;
 static char error[256];
+static char catalog_root[256];
 static behavior_backend query_backend = BEHAVIOR_BYTECODE;
 #ifdef CHIBI_TEST_RECORD_SERVICES
 static entities *service;
@@ -97,6 +98,15 @@ static void cleanup()
     document = NULL;
     bytes = NULL;
     base_text = child_text = NULL;
+    if (catalog_root[0]) {
+        char path[512];
+        snprintf(path, sizeof path, "%s/libraries/Plain.chibi", catalog_root);
+        unlink(path);
+        snprintf(path, sizeof path, "%s/libraries", catalog_root);
+        rmdir(path);
+        rmdir(catalog_root);
+        catalog_root[0] = 0;
+    }
     if (health_catalog_installed) {
         type_catalog_set_project(NULL);
         health_catalog_installed = false;
@@ -349,6 +359,45 @@ TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_cont
     REQUIRE(!ecs_entity_is_alive(world, owner));
     return true;
 }
+TEST_CASE(source_catalog_analyzes_libraries_without_specialization_requests)
+{
+    char directory[] = "/tmp/chibi-source-no-requests.XXXXXX";
+    REQUIRE(mkdtemp(directory));
+    snprintf(catalog_root, sizeof catalog_root, "%s", directory);
+    char path[512];
+    snprintf(path, sizeof path, "%s/libraries", catalog_root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/libraries/Plain.chibi", catalog_root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    bool written = fputs("Plain :: library { Identity :: (value: int) -> int { return value } }\n", file) >=
+                   0;
+    int closed = fclose(file);
+    REQUIRE(written && !closed);
+
+    const script_catalog empty = { 0 };
+    for (int migration = 0; migration < 2; migration++) {
+        project = migration ? source_catalog_new_for_migration(catalog_root, &empty)
+                            : source_catalog_new(catalog_root, &empty);
+        REQUIRE(project);
+        REQUIRE(!source_catalog_diagnostic_count(project));
+        REQUIRE(source_catalog_source_count(project) == 1);
+        int requests = -1;
+        REQUIRE(!source_catalog_requests(project, &requests));
+        REQUIRE(requests == 0);
+        const script_catalog *view = source_catalog_view(project);
+        REQUIRE(view->capability_count == 1);
+        REQUIRE(!strcmp(view->capabilities[0].qualified_name, "Plain.Identity"));
+        REQUIRE(view->capabilities[0].result_count == 1);
+        REQUIRE(view->capabilities[0].results[0].type.storage == PIN_I32);
+        REQUIRE(view->capabilities[0].pure);
+        REQUIRE(!view->capabilities[0].effects);
+        source_catalog_free(project);
+        project = NULL;
+    }
+    return true;
+}
+
 TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols)
 {
     const char *root = "/__chibi_source_asset_test__";
@@ -565,7 +614,7 @@ TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
     REQUIRE(document);
     authored = prototype_load_value(av_doc_root(document), &registry, error, sizeof error);
     REQUIRE(authored);
-    apush(authored->graphs, strdup("Fail"));
+    REQUIRE(!prototype_add_graph(authored, "Fail"));
     world = ecs_world_new();
     bool saw_pair = false;
     const prototype_spawn_hooks hooks = { .attach = refuse_panic_graph,
@@ -682,6 +731,7 @@ void test_language_source_assets()
     RUN_TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults);
     RUN_TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup);
     RUN_TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_contracts);
+    RUN_TEST_CASE(source_catalog_analyzes_libraries_without_specialization_requests);
     RUN_TEST_CASE(source_asset_catalog_tracks_prototype_bases_and_relationship_symbols);
     RUN_TEST_CASE(source_authored_relationship_rows_retire_and_restart_on_membership_change);
     RUN_TEST_CASE(source_authored_relationship_compiled_rows_retire_and_restart);

@@ -1656,7 +1656,7 @@ static script_analysis *analyze_requested(source_catalog *c, const source_catalo
             apush(requests, c->requests[i]);
         }
     }
-    qsort(requests, (size_t)acount(requests), sizeof *requests, compare_requests);
+    asort(requests, compare_requests);
     script_analysis *analysis = c->migration ? script_analyze_migration_document(
                                                    source->syntax,
                                                    &c->view,

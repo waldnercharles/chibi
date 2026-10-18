@@ -617,6 +617,15 @@ TOOLS = {
     # unchanged shared60s deadline including preparation/cleanup; no aggregate.
     'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--scalar-lowering-chibi'],
+    # One pico_unit case over the separate 18-source/16-package compiler fixture:
+    # 39 fixed source requests x2 compiler backends=78 calls; 14 accepted x2=28
+    # payload callbacks, 14x4=56 bytecode/SLJIT target entries. Seven direct
+    # malformed bridge inputs add no target execution. Sources<=1KiB (one
+    # over-limit specimen=1025), <=4 offered files, <=24 lowered rows. Compiler
+    # closure<256KiB, each<32KiB. No source reaches native semantic preparation
+    # after bootstrap. One shared60s including bootstrap and cleanup; no aggregate.
+    'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--bounded-compiler-chibi'],
     # Three cases:40 requests,80 authored calls capped at2m instructions each.
     # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
     # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,

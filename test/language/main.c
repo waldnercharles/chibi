@@ -3,6 +3,7 @@
 #include "record_members_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
+#include "bounded_compiler_chibi.h"
 #include "union_members_chibi.h"
 
 #include <stdio.h>
@@ -150,6 +151,8 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--constant-proof-chibi");
     bool constant_scalar_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--constant-scalar-chibi");
+    bool bounded_compiler_chibi = argc == 2 &&
+                                  !strcmp(argv[1], "--bounded-compiler-chibi");
     bool scalar_lowering_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--scalar-lowering-chibi");
     bool lexical_binding_chibi = argc == 2 &&
@@ -219,6 +222,7 @@ int main(int argc, char **argv)
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
+         !bounded_compiler_chibi &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
          !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
          !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
@@ -242,7 +246,7 @@ int main(int argc, char **argv)
             "--package-graph-chibi | --syntax-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
-            "--scalar-lowering-chibi | "
+            "--scalar-lowering-chibi | --bounded-compiler-chibi | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -395,6 +399,8 @@ int main(int argc, char **argv)
         test_language_constant_proof_chibi();
     } else if (constant_scalar_chibi) {
         test_language_constant_scalar_chibi();
+    } else if (bounded_compiler_chibi) {
+        test_language_bounded_compiler_chibi();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

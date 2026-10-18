@@ -21,7 +21,7 @@
  * workload is deliberately absent. No IO, services, workers or timing loops. */
 enum
 {
-    CASE_COUNT = 70,
+    CASE_COUNT = 78,
     MAX_EXPRESSIONS = 7
 };
 typedef enum
@@ -30,6 +30,8 @@ typedef enum
     UNARY,
     BINARY,
     CAST,
+    CAST_WRAP,
+    CAST_CLAMP,
     SYMBOL,
     SHORT_CALL,
     SHORT_DIV,
@@ -108,9 +110,14 @@ static const scalar_case cases[] = {
       PIN_U64,
       PIN_U64 },
     { "int-to-uint64", CAST, 0, I32(-1), I32(0), PIN_U64, PIN_U64 },
+    { "int-to-uint64-wrap", CAST_WRAP, 0, I32(-1), I32(0), PIN_U64, PIN_U64 },
+    { "int-to-uint64-clamp", CAST_CLAMP, 0, I32(-1), I32(0), PIN_U64, PIN_U64 },
+    { "int64-to-byte-wrap", CAST_WRAP, 0, I64(300), I32(0), PIN_U8, PIN_U8 },
+    { "int64-to-byte-clamp", CAST_CLAMP, 0, I64(300), I32(0), PIN_U8, PIN_U8 },
+    { "uint64-to-int-exact", CAST, 0, U64(42), I32(0), PIN_I32, PIN_I32 },
     { "int-to-int64", CAST, 0, I32(INT32_MIN), I32(0), PIN_I64, PIN_I64 },
     { "int64-double-rounding", CAST, 0, I64(INT64_C(9007199254740993)), I32(0), PIN_F64, PIN_F64 },
-    { "uint64-double-unsupported", CAST, 0, U64(UINT64_MAX), I32(0), PIN_F64, PIN_F64 },
+    { "uint64-double-rounding", CAST, 0, U64(UINT64_MAX), I32(0), PIN_F64, PIN_F64 },
     { "nan-int-zero", CAST, 0, F64(NAN), I32(0), PIN_I32, PIN_I32 },
     { "infinity-int-max", CAST, 0, F64(INFINITY), I32(0), PIN_I32, PIN_I32 },
     { "negative-infinity-int64-min", CAST, 0, F64(-INFINITY), I32(0), PIN_I64, PIN_I64 },
@@ -124,6 +131,15 @@ static const scalar_case cases[] = {
     { "double-div-zero", BINARY, SCRIPT_OP_DIV, F64(1.0), F64(0.0), PIN_F64, PIN_F64 },
     { "symbol-negative-zero", SYMBOL, 0, F64(-0.0), I32(0), PIN_F64, PIN_F64 },
     { "mixed-int-float", MIXED, SCRIPT_OP_ADD, I32(3), F32(0.5f), PIN_F32, PIN_F32 },
+    { "byte-int8-add",
+      BINARY,
+      SCRIPT_OP_ADD,
+      { .type = PIN_U8, .u8 = 200 },
+      { .type = PIN_I8, .i8 = -100 },
+      PIN_I32,
+      PIN_I32 },
+    { "int-uint-add", BINARY, SCRIPT_OP_ADD, I32(-1), U32(1), PIN_I64, PIN_I64 },
+    { "literal-unfit-result", LITERAL, 0, I64(300), I32(0), PIN_I64, PIN_U8 },
     { "short-circuit-does-not-skip-proof",
       SHORT_CALL,
       SCRIPT_OP_AND,
@@ -289,7 +305,15 @@ static void build(const scalar_case *item)
         case LITERAL: break;
         case UNARY: expressions[0].kind = SCRIPT_EXPR_UNARY; break;
         case BINARY: expressions[0].kind = SCRIPT_EXPR_BINARY; break;
-        case CAST: expressions[0].kind = SCRIPT_EXPR_CAST; break;
+        case CAST:
+        case CAST_WRAP:
+        case CAST_CLAMP:
+            expressions[0].kind = SCRIPT_EXPR_CAST;
+            expressions[0].conversion = item->form == CAST_WRAP ? BEHAVIOR_CAST_WRAP
+                                      : item->form == CAST_CLAMP
+                                          ? BEHAVIOR_CAST_CLAMP
+                                          : BEHAVIOR_CAST_EXACT;
+            break;
         case SYMBOL:
             expressions[0].kind = SCRIPT_EXPR_SYMBOL;
             expressions[0].symbol = 0;
@@ -353,7 +377,8 @@ static bool pack(int backend, pin_type expected, pin_value args[7])
             put(row, "left", integer(e->left)) &&
             put(row, "right", integer(e->right)) &&
             put(row, "arg_start", integer(0)) && put(row, "arg_count", integer(0)) &&
-            put(row, "effects", integer((int)e->effects))
+            put(row, "effects", integer((int)e->effects)) &&
+            put(row, "conversion", integer((int)e->conversion))
         );
         REQUIRE(
             put(type, "storage", integer(e->type.storage)) &&

@@ -455,10 +455,11 @@ if(CHIBI_SDK_BUILD_COMPILER)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
-        PROPERTIES COMPILE_OPTIONS "-w")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c" PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)

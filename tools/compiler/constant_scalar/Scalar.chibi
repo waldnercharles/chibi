@@ -18,30 +18,30 @@ Value :: union {
     | Text(value: string, has_value: bool)
 }
 Result :: union { Folded(value: Value) | Failed(message: string) }
-Conversion :: union { Accepted(value: Value) | Rejected }
+Conversion :: union { Accepted(value: Value) | Rejected | Unfit }
 
-OpNone :: cast<int>(0);
-OpAdd :: cast<int>(1);
-OpSub :: cast<int>(2);
-OpMul :: cast<int>(3);
-OpDiv :: cast<int>(4);
-OpMod :: cast<int>(5);
-OpNeg :: cast<int>(6);
-OpNot :: cast<int>(7);
-OpAnd :: cast<int>(8);
-OpOr :: cast<int>(9);
-OpEq :: cast<int>(10);
-OpNe :: cast<int>(11);
-OpLt :: cast<int>(12);
-OpLe :: cast<int>(13);
-OpGt :: cast<int>(14);
-OpGe :: cast<int>(15);
-OpBitAnd :: cast<int>(16);
-OpBitOr :: cast<int>(17);
-OpBitXor :: cast<int>(18);
-OpShiftLeft :: cast<int>(19);
-OpShiftRight :: cast<int>(20);
-OpBitNot :: cast<int>(21);
+OpNone: int : 0;
+OpAdd: int : 1;
+OpSub: int : 2;
+OpMul: int : 3;
+OpDiv: int : 4;
+OpMod: int : 5;
+OpNeg: int : 6;
+OpNot: int : 7;
+OpAnd: int : 8;
+OpOr: int : 9;
+OpEq: int : 10;
+OpNe: int : 11;
+OpLt: int : 12;
+OpLe: int : 13;
+OpGt: int : 14;
+OpGe: int : 15;
+OpBitAnd: int : 16;
+OpBitOr: int : 17;
+OpBitXor: int : 18;
+OpShiftLeft: int : 19;
+OpShiftRight: int : 20;
+OpBitNot: int : 21;
 
 Storage :: pure fn(value: Value) -> int {
     switch value {
@@ -67,25 +67,25 @@ ToDouble :: pure fn(value: Value) -> Conversion {
             if (item) { return Conversion.Accepted(Value.F64(1.0)); }
             return Conversion.Accepted(Value.F64(0.0));
         case .I8(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .U8(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .I16(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .U16(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .I32(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .U32(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .I64(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .U64(item):
-            return Conversion.Rejected;
+            return Conversion.Accepted(Value.F64(double(item)));
         case .F32(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .F64(item):
-            return Conversion.Accepted(Value.F64(cast<double>(item)));
+            return Conversion.Accepted(Value.F64(double(item)));
         case .Name(item, present):
             return Conversion.Rejected;
         case .Text(item, present):
@@ -93,57 +93,93 @@ ToDouble :: pure fn(value: Value) -> Conversion {
     }
 }
 
-Convert :: pure fn(value: Value, target: int) -> Conversion {
+// Integer storage bounds, matching the runtime cast range checks. Unsigned
+// values compare as int64 bit patterns, so High stops at int64's maximum.
+Low :: pure fn(storage: int) -> int64 {
+    if (storage == 2) { return -128; }
+    if (storage == 4) { return -32768; }
+    if (storage == 6) { return -2147483648; }
+    if (storage == 8) { return -9223372036854775808; }
+    return 0;
+}
+High :: pure fn(storage: int) -> int64 {
+    if (storage == 2) { return 127; }
+    if (storage == 3) { return 255; }
+    if (storage == 4) { return 32767; }
+    if (storage == 5) { return 65535; }
+    if (storage == 6) { return 2147483647; }
+    if (storage == 7) { return 4294967295; }
+    return 9223372036854775807;
+}
+IntegerStorage :: pure fn(storage: int) -> bool { return storage >= 2 && storage <= 9; }
+// Every value of `from` fits `to`.
+Widens :: pure fn(from: int, to: int) -> bool {
+    if (Signed(from) == Signed(to)) { return Width(to) >= Width(from); }
+    return !Signed(from) && Width(to) > Width(from);
+}
+// The operand storage holding both integers exactly: the wider one, or int or
+// int64 for a signed/unsigned pair. 0 for int64 with uint64.
+CommonInteger :: pure fn(x: int, y: int) -> int {
+    if (Widens(x, y)) { return y; }
+    if (Widens(y, x)) { return x; }
+    if (Widens(x, 6) && Widens(y, 6)) { return 6; }
+    if (Widens(x, 8) && Widens(y, 8)) { return 8; }
+    return 0;
+}
+Published :: pure fn(bits: uint64, target: int) -> Conversion {
+    published := Publish(bits, target);
+    switch published {
+        case .Folded(item): return Conversion.Accepted(item);
+        case .Failed(message): return Conversion.Rejected;
+    }
+}
+// Modes match the runtime: 0 exact, 1 wrap (low bits), 2 clamp (saturate).
+IntegerConvert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
+    bits := Bits(value);
+    signed := int64(wrap: bits);
+    negative := Signed(Storage(value)) && signed < 0;
+    below := negative && signed < Low(target);
+    // A nonnegative value with the sign bit set is an unsigned value >= 2^63.
+    above := !negative && target != 9 && (signed < 0 || signed > High(target));
+    if (mode == 1 || (!below && !above)) { return Published(bits, target); }
+    if (mode == 0) { return Conversion.Unfit; }
+    if (below) { return Published(uint64(wrap: Low(target)), target); }
+    return Published(uint64(wrap: High(target)), target);
+}
+// Floating sources round toward zero, saturate and map NaN to zero.
+FloatConvert :: pure fn(item: double, target: int) -> Conversion {
+    if (target == 2) { return Conversion.Accepted(Value.I8(int8(item))); }
+    if (target == 3) { return Conversion.Accepted(Value.U8(byte(item))); }
+    if (target == 4) { return Conversion.Accepted(Value.I16(int16(item))); }
+    if (target == 5) { return Conversion.Accepted(Value.U16(uint16(item))); }
+    if (target == 6) { return Conversion.Accepted(Value.I32(int(item))); }
+    if (target == 7) { return Conversion.Accepted(Value.U32(uint(item))); }
+    if (target == 8) { return Conversion.Accepted(Value.I64(int64(item))); }
+    if (target == 9) { return Conversion.Accepted(Value.U64(uint64(item))); }
+    return Conversion.Rejected;
+}
+Convert :: pure fn(value: Value, target: int, mode: int) -> Conversion {
     if (Storage(value) == target) { return Conversion.Accepted(value); }
     if (target == 11) { return ToDouble(value); }
     if (target == 10) {
         converted := ToDouble(value);
-        switch converted {
-            case .Rejected: return Conversion.Rejected;
-            case .Accepted(wide):
-                if (wide is .F64(item)) { return Conversion.Accepted(Value.F32(cast<float>(item))); }
-                return Conversion.Rejected;
+        if (converted is .Accepted(wide) && wide is .F64(item)) {
+            return Conversion.Accepted(Value.F32(float(item)));
         }
+        return Conversion.Rejected;
     }
-    switch value {
-        case .Bool(item):
-            return Conversion.Rejected;
-        case .I8(item):
-            return Conversion.Rejected;
-        case .U8(item):
-            return Conversion.Rejected;
-        case .I16(item):
-            return Conversion.Rejected;
-        case .U16(item):
-            return Conversion.Rejected;
-        case .I32(item):
-            if (target == 7) { return Conversion.Accepted(Value.U32(cast<uint>(item))); }
-            if (target == 9) { return Conversion.Accepted(Value.U64(cast<uint64>(item))); }
-            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
-            return Conversion.Rejected;
-        case .U32(item):
-            return Conversion.Rejected;
-        case .I64(item):
-            return Conversion.Rejected;
-        case .U64(item):
-            return Conversion.Rejected;
-        case .F32(item):
-            if (target == 3) { return Conversion.Accepted(Value.U8(cast<byte>(item))); }
-            if (target == 6) { return Conversion.Accepted(Value.I32(cast<int>(item))); }
-            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
-            return Conversion.Rejected;
-        case .F64(item):
-            if (target == 3) { return Conversion.Accepted(Value.U8(cast<byte>(item))); }
-            if (target == 6) { return Conversion.Accepted(Value.I32(cast<int>(item))); }
-            if (target == 8) { return Conversion.Accepted(Value.I64(cast<int64>(item))); }
-            return Conversion.Rejected;
-        case .Name(item, present):
-            if (target == 13) { return Conversion.Accepted(Value.Text(item, present)); }
-            return Conversion.Rejected;
-        case .Text(item, present):
-            if (target == 12) { return Conversion.Accepted(Value.Name(item, present)); }
-            return Conversion.Rejected;
+    if (IntegerStorage(target) && IntegerStorage(Storage(value))) {
+        return IntegerConvert(value, target, mode);
     }
+    if (value is .F32(item)) { return FloatConvert(item, target); }
+    if (value is .F64(item)) { return FloatConvert(item, target); }
+    if (value is .Name(item, present) && target == 13) {
+        return Conversion.Accepted(Value.Text(item, present));
+    }
+    if (value is .Text(item, present) && target == 12) {
+        return Conversion.Accepted(Value.Name(item, present));
+    }
+    return Conversion.Rejected;
 }
 
 StringValue :: pure fn(value: string, present: bool) -> string {
@@ -192,7 +228,7 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             if (right is .I32(y)) {
                 if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
                 if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
-                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == cast<int>(-2147483648) && y == -1))) {
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == int(-2147483648) && y == -1))) {
                     return Result.Failed("invalid integer division or remainder");
                 }
                 if (op == OpAdd) { return Result.Folded(Value.I32(x + y)); }
@@ -219,7 +255,7 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             if (right is .I64(y)) {
                 if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
                 if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
-                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == cast<int64>(-9223372036854775808) && y == -1))) {
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == int64(-9223372036854775808) && y == -1))) {
                     return Result.Failed("invalid integer division or remainder");
                 }
                 if (op == OpAdd) { return Result.Folded(Value.I64(x + y)); }
@@ -295,139 +331,34 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
 }
 
 // Integer storage publication retains the complete C intermediate word before
-// truncating to the destination width. Typed bit loops avoid lossy float casts
-// and do not require additional integer conversion primitives.
+// truncating to the destination width: signed values sign-extend into it and
+// publication keeps its low bits.
 Bits :: pure fn(value: Value) -> uint64 {
     switch value {
-        case .I8(item):
-            return cast<uint64>(cast<int>(cast<double>(item)));
-        case .U8(item):
-            return cast<uint64>(cast<int>(cast<double>(item)));
-        case .I16(item):
-            return cast<uint64>(cast<int>(cast<double>(item)));
-        case .U16(item):
-            return cast<uint64>(cast<int>(cast<double>(item)));
-        case .I32(item):
-            return cast<uint64>(item);
-        case .U32(item):
-            bits: uint64 = cast<uint64>(0);
-            weight: uint = cast<uint>(1);
-            bit: uint64 = cast<uint64>(1);
-            index: int = 0;
-            while (index < 32) {
-                if ((item & weight) != 0) { bits = bits | bit; }
-                weight = weight << cast<uint>(1);
-                bit = bit << cast<uint64>(1);
-                index += 1;
-            }
-            return bits;
-        case .I64(item):
-            bits: uint64 = cast<uint64>(0);
-            weight: int64 = cast<int64>(1);
-            bit: uint64 = cast<uint64>(1);
-            index: int = 0;
-            while (index < 64) {
-                if ((item & weight) != 0) { bits = bits | bit; }
-                weight = weight << cast<int64>(1);
-                bit = bit << cast<uint64>(1);
-                index += 1;
-            }
-            return bits;
-        case .U64(item):
-            return item;
-        case .Bool(item): return cast<uint64>(0);
-        case .F32(item): return cast<uint64>(0);
-        case .F64(item): return cast<uint64>(0);
-        case .Name(item, present): return cast<uint64>(0);
-        case .Text(item, present): return cast<uint64>(0);
+        case .I8(item): return uint64(wrap: item);
+        case .U8(item): return item;
+        case .I16(item): return uint64(wrap: item);
+        case .U16(item): return item;
+        case .I32(item): return uint64(wrap: item);
+        case .U32(item): return item;
+        case .I64(item): return uint64(wrap: item);
+        case .U64(item): return item;
+        case .Bool(item): return 0;
+        case .F32(item): return 0;
+        case .F64(item): return 0;
+        case .Name(item, present): return 0;
+        case .Text(item, present): return 0;
     }
 }
 
 Publish :: pure fn(bits: uint64, storage: int) -> Result {
-    if (storage == 2) {
-        value: int8 = cast<int8>(0);
-        weight: int8 = cast<int8>(1);
-        index: int = 0;
-        while (index < 8) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<int8>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.I8(value));
-    }
-    if (storage == 3) {
-        value: byte = cast<byte>(0);
-        weight: byte = cast<byte>(1);
-        index: int = 0;
-        while (index < 8) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<byte>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.U8(value));
-    }
-    if (storage == 4) {
-        value: int16 = cast<int16>(0);
-        weight: int16 = cast<int16>(1);
-        index: int = 0;
-        while (index < 16) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<int16>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.I16(value));
-    }
-    if (storage == 5) {
-        value: uint16 = cast<uint16>(0);
-        weight: uint16 = cast<uint16>(1);
-        index: int = 0;
-        while (index < 16) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<uint16>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.U16(value));
-    }
-    if (storage == 6) {
-        value: int = cast<int>(0);
-        weight: int = cast<int>(1);
-        index: int = 0;
-        while (index < 32) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<int>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.I32(value));
-    }
-    if (storage == 7) {
-        value: uint = cast<uint>(0);
-        weight: uint = cast<uint>(1);
-        index: int = 0;
-        while (index < 32) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<uint>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.U32(value));
-    }
-    if (storage == 8) {
-        value: int64 = cast<int64>(0);
-        weight: int64 = cast<int64>(1);
-        index: int = 0;
-        while (index < 64) {
-            if ((bits & cast<uint64>(1)) != cast<uint64>(0)) { value = value | weight; }
-            bits = bits >> cast<uint64>(1);
-            weight = weight << cast<int64>(1);
-            index += 1;
-        }
-        return Result.Folded(Value.I64(value));
-    }
+    if (storage == 2) { return Result.Folded(Value.I8(int8(wrap: bits))); }
+    if (storage == 3) { return Result.Folded(Value.U8(byte(wrap: bits))); }
+    if (storage == 4) { return Result.Folded(Value.I16(int16(wrap: bits))); }
+    if (storage == 5) { return Result.Folded(Value.U16(uint16(wrap: bits))); }
+    if (storage == 6) { return Result.Folded(Value.I32(int(wrap: bits))); }
+    if (storage == 7) { return Result.Folded(Value.U32(uint(wrap: bits))); }
+    if (storage == 8) { return Result.Folded(Value.I64(int64(wrap: bits))); }
     if (storage == 9) { return Result.Folded(Value.U64(bits)); }
     return Result.Failed("unsupported scalar constant operator");
 }
@@ -444,12 +375,12 @@ Signed :: pure fn(storage: int) -> bool {
 BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result {
     source := Storage(left);
     width := Width(source);
-    mask := ~cast<uint64>(0) >> cast<uint64>(64 - width);
+    mask := ~uint64(0) >> uint64(64 - width);
     x := Bits(left) & mask;
-    y: uint64 = cast<uint64>(0);
+    y: uint64 = uint64(0);
     if (op != OpBitNot) { y = Bits(right); }
-    shift := y & cast<uint64>(width - 1);
-    bits: uint64 = cast<uint64>(0);
+    shift := y & uint64(width - 1);
+    bits: uint64 = uint64(0);
     if (op == OpBitAnd) { bits = x & y; }
     if (op == OpBitOr) { bits = x | y; }
     if (op == OpBitXor) { bits = x ^ y; }
@@ -457,8 +388,8 @@ BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Res
     if (op == OpShiftLeft) { bits = x << shift; }
     if (op == OpShiftRight) {
         bits = x >> shift;
-        if (shift != cast<uint64>(0) && Signed(source) &&
-            (x & (cast<uint64>(1) << cast<uint64>(width - 1))) != cast<uint64>(0)) {
+        if (shift != uint64(0) && Signed(source) &&
+            (x & (uint64(1) << uint64(width - 1))) != uint64(0)) {
             bits = bits | (mask ^ (mask >> shift));
         }
     }
@@ -481,10 +412,10 @@ Operation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result
             y: int = 0;
             if (right is .I32(operand)) { y = operand; }
             if ((op == OpDiv || op == OpMod) &&
-                (y == 0 || (x == cast<int>(-2147483648) && y == -1))) {
+                (y == 0 || (x == int(-2147483648) && y == -1))) {
                 return Result.Failed("invalid integer division or remainder");
             }
-            wide := PhysicalOperation(op, Value.I64(cast<int64>(x)), Value.I64(cast<int64>(y)));
+            wide := PhysicalOperation(op, Value.I64(int64(x)), Value.I64(int64(y)));
             switch wide {
                 case .Failed(message): return wide;
                 case .Folded(value): return Publish(Bits(value), storage);
@@ -505,9 +436,10 @@ Operation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result
             resultStorage := Storage(value);
             if (resultStorage >= 2 && resultStorage <= 9) { return Publish(Bits(value), storage); }
             if (resultStorage == 10 || resultStorage == 11) {
-                converted := Convert(value, storage);
+                converted := Convert(value, storage, 0);
                 switch converted {
                     case .Rejected: return Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit: return Result.Failed("constant does not fit its conversion");
                     case .Accepted(item): return Result.Folded(item);
                 }
             }

@@ -60,7 +60,6 @@ const K = Object.fromEntries(
     "nil",
     "null",
     "engine",
-    "cast",
     "plain",
     "ref",
     "service",
@@ -113,8 +112,8 @@ module.exports = grammar({
     [$._name, $._member_name],
     [$._expression, $._name],
     [$.argument_list, $.parenthesized_expression],
-    [$._state_declaration_value, $.local_declaration, $.label_statement],
-    [$.local_declaration, $.label_statement],
+    [$._state_declaration_value, $.constant_declaration, $.local_declaration, $.label_statement],
+    [$.constant_declaration, $.local_declaration, $.label_statement],
     [$._state_declaration_value, $.local_declaration],
     [$._expression, $._member_name],
     [$._expression, $._call_target, $._name],
@@ -301,7 +300,8 @@ module.exports = grammar({
       seq(field("name", $._name), "::", optional(K.pure), optional(K.fn),
         $._callable_signature, optional(";")),
     constant_declaration: ($) =>
-      seq(field("name", $._name), "::", field("value", $._expression), $._end),
+      seq(field("name", $._name), choice("::", seq(":", field("type", $.type), ":")),
+        field("value", $._expression), $._end),
     union_declaration: ($) =>
       seq(field("name", $._name), "::", K.union, "{",
         $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";")),
@@ -528,7 +528,6 @@ module.exports = grammar({
         $.member_expression,
         $.index_expression,
         $.call_expression,
-        $.cast_expression,
         $.is_expression,
         $.as_expression,
         $.parenthesized_expression,
@@ -597,16 +596,6 @@ module.exports = grammar({
         ),
       )),
     argument_name: ($) => seq($._member_name, repeat(seq(".", $._member_name))),
-    cast_expression: ($) =>
-      seq(
-        K.cast,
-        "<",
-        field("type", $.type),
-        ">",
-        "(",
-        field("value", $._expression),
-        ")",
-      ),
     is_expression: ($) => prec.left(P.comparison, seq(
       field("value", $._expression), K.is, optional(field("negated", K.not)),
       field("type", choice($.type, $.variant_pattern)), optional(field("binding", $.identifier)),

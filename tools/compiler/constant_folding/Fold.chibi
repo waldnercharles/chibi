@@ -39,8 +39,7 @@ ArithmeticStorage :: pure fn(left: ir.Type, right: ir.Type) -> int {
     if ((right.flags & ir.Untyped) != 0) { return left.storage; }
     if (left.storage == 11 || right.storage == 11) { return 11; }
     if (left.storage == 10 || right.storage == 10) { return 10; }
-    if (left.storage >= right.storage) { return left.storage; }
-    return right.storage;
+    return scalar.CommonInteger(left.storage, right.storage);
 }
 StringStorage :: pure fn(storage: int) -> bool {
     return storage == 12 || storage == 13;
@@ -67,9 +66,10 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
             }
             if (frame.phase == 1) {
                 if (current.kind == ir.Cast) {
-                    converted := scalar.Convert(value, types[current.type].storage);
+                    converted := scalar.Convert(value, types[current.type].storage, current.conversion);
                     switch converted {
                         case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
+                        case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
                         case .Accepted(item): value = item;
                     }
                     top -= 1;
@@ -113,14 +113,16 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
             rightType := types[expressions[current.right].type];
             if (Numeric(leftType) && Numeric(rightType)) {
                 storage := ArithmeticStorage(leftType, rightType);
-                convertedLeft := scalar.Convert(left, storage);
+                convertedLeft := scalar.Convert(left, storage, 0);
                 switch convertedLeft {
                     case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
                     case .Accepted(item): left = item;
                 }
-                convertedRight := scalar.Convert(right, storage);
+                convertedRight := scalar.Convert(right, storage, 0);
                 switch convertedRight {
                     case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
                     case .Accepted(item): right = item;
                 }
             } else if (scalar.Storage(left) != scalar.Storage(right) &&
@@ -186,10 +188,10 @@ Fold :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symb
     switch evaluated {
         case .Failed(message): return evaluated;
         case .Folded(value):
-            converted := scalar.Convert(value, expected_storage);
+            converted := scalar.Convert(value, expected_storage, 0);
             switch converted {
-                case .Rejected: return scalar.Result.Failed("incompatible scalar constant result");
                 case .Accepted(item): return scalar.Result.Folded(item);
+                case: return scalar.Result.Failed("incompatible scalar constant result");
             }
     }
 }

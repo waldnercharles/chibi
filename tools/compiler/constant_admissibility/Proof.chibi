@@ -48,7 +48,7 @@ Child :: pure fn(expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], 
 // reused at a shallower visit, without consuming another step.
 Check :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
                   arguments: ir.Argument[], request: Request) -> Proof {
-    depths := resize([cast<int>(0)], length(expressions));
+    depths := resize([int(0)], length(expressions));
     index: int = 0;
     while (index < length(depths)) { depths[index] = -1; index += 1; }
     // The extra frame receives depth256, which is rejected before cache/budget.

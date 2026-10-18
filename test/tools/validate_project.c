@@ -364,7 +364,7 @@ TEST_CASE(catalog_errors_are_reported_once)
     }
 
     /* The catalog lists the declaration's unknown type, not the cast's. */
-    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    state a: Foo = 0\n    on Tick {\n        a = cast<Foo>(a)\n    }\n}\n");
+    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    state a: Foo = 0\n    on Tick {\n        a = Foo(a)\n    }\n}\n");
     REQUIRE(validate() != 0 && errors() == 2);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(yyjson_arr_size(diagnostics) == 2);

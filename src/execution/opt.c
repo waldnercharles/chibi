@@ -328,10 +328,13 @@ done:
 
 /* Scalarized snapshots often expose only one field. Drop unused loads and
  * copies after local compaction, while retaining checks and all effects. */
-static bool discardable(behavior_function_op op)
+static bool discardable(const behavior_function *f, const behavior_function_instruction *i)
 {
-    return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ ||
-           op == BF_SELECT || op == BF_CAST || op == BF_CONVERT;
+    if (i->op == BF_CAST) {
+        return !behavior_scalar_cast_checked(f->slots[i->left], i->type, i->target);
+    }
+    return i->op <= BF_ARRAY || i->op == BF_LOAD || i->op == BF_READ ||
+           i->op == BF_SELECT || i->op == BF_CONVERT;
 }
 void behavior_function_runtime_code(behavior_function *f)
 {
@@ -368,7 +371,7 @@ void behavior_function_runtime_code(behavior_function *f)
             const behavior_function_instruction *i = &code[pc];
             if ((pass && !keep[pc]) || behavior_function_observer(i->op) ||
                 i->op == BF_POINT || i->op == BF_SOURCE_POINT ||
-                i->op == BF_SOURCE_WATCH || (discardable(i->op) && !live[i->output])) {
+                i->op == BF_SOURCE_WATCH || (discardable(f, i) && !live[i->output])) {
                 keep[pc] = false;
                 continue;
             }
@@ -408,7 +411,7 @@ void behavior_function_prune_values(behavior_function *f)
     bool *keep = xcalloc((size_t)acount(f->instructions), sizeof *keep);
     for (int pc = acount(f->instructions) - 1; pc >= 0; pc--) {
         const behavior_function_instruction *i = &f->instructions[pc];
-        if (discardable(i->op) && !live[i->output]) {
+        if (discardable(f, i) && !live[i->output]) {
             continue;
         }
         keep[pc] = true;

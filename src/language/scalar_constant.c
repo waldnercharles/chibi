@@ -6,7 +6,7 @@
 #include <math.h>
 #include <string.h>
 
-static bool convert(pin_value *value, pin_type type)
+static bool convert(pin_value *value, pin_type type, behavior_cast_mode mode)
 {
     if (value->type == type) {
         return true;
@@ -24,16 +24,13 @@ static bool convert(pin_value *value, pin_type type)
             if (!behavior_scalar_cast_supported(value->type, PIN_F64)) {
                 return false;
             }
-            *value = behavior_scalar_cast(*value, PIN_F64);
+            behavior_scalar_cast(*value, PIN_F64, BEHAVIOR_CAST_EXACT, value);
         }
         *value = (pin_value){ .type = PIN_F32, .f = (float)value->d };
         return true;
     }
-    if (!behavior_scalar_cast_supported(value->type, type)) {
-        return false;
-    }
-    *value = behavior_scalar_cast(*value, type);
-    return true;
+    return behavior_scalar_cast_supported(value->type, type) &&
+           behavior_scalar_cast(*value, type, mode, value);
 }
 static const char *operation(script_operator op, pin_value left, pin_value right, pin_type type, pin_value *out)
 {
@@ -177,8 +174,10 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
         return error;
     }
     if (e->kind == SCRIPT_EXPR_CAST) {
-        if (!convert(&left, e->type.storage)) {
-            return "unsupported scalar constant conversion";
+        if (!convert(&left, e->type.storage, e->conversion)) {
+            return behavior_scalar_cast_supported(left.type, e->type.storage)
+                     ? "constant does not fit its conversion"
+                     : "unsupported scalar constant conversion";
         }
         *out = left;
         return NULL;
@@ -200,7 +199,8 @@ static const char *evaluate(const script_analysis *analysis, int index, pin_valu
                     y = analysis->expressions[e->right].type;
         if (script_type_numeric(x) && script_type_numeric(y)) {
             pin_type operand = script_analyzer_arithmetic_type(x, y).storage;
-            if (!convert(&left, operand) || !convert(&right, operand)) {
+            if (!convert(&left, operand, BEHAVIOR_CAST_EXACT) ||
+                !convert(&right, operand, BEHAVIOR_CAST_EXACT)) {
                 return "unsupported scalar constant conversion";
             }
         } else if (
@@ -225,7 +225,7 @@ const char *script_scalar_evaluate(
     if (error) {
         return error;
     }
-    if (!convert(&result, expected)) {
+    if (!convert(&result, expected, BEHAVIOR_CAST_EXACT)) {
         return "incompatible scalar constant result";
     }
     *out = result;

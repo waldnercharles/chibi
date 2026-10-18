@@ -52,7 +52,7 @@ behavior "ArenaShardBehavior" {
             self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, state."Pitch Rate", entry.Seconds)
             self.VisualTransform.roll = Roll(self.VisualTransform.roll, state."Roll Rate", entry.Seconds)
             self.VisualTransform.scale = state."Birth Scale" * Fade("Age Phase"(entry.Age, entry.Seconds))
-            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(state."Lift" * entry.Seconds)
+            self.Geometry3D.elevation = self.Geometry3D.elevation + double(state."Lift" * entry.Seconds)
             state."Lift" = state."Lift" - multiply(entry.Seconds, B: plain double = 90.0)
             return
         }

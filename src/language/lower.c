@@ -294,7 +294,34 @@ static void assign(lower *, const script_statement *);
 static void assign_value(lower *, const script_statement *, int);
 static void store_symbol(lower *, int, int, script_range);
 static int union_wrap(lower *, int, script_type, script_type, uint64_t, script_range);
+static const char *fit_message(pin_type type)
+{
+    static const char *const messages[] = {
+        [PIN_I8] = "Value does not fit in int8",
+        [PIN_U8] = "Value does not fit in byte",
+        [PIN_I16] = "Value does not fit in int16",
+        [PIN_U16] = "Value does not fit in uint16",
+        [PIN_I32] = "Value does not fit in int",
+        [PIN_U32] = "Value does not fit in uint",
+        [PIN_I64] = "Value does not fit in int64",
+        [PIN_U64] = "Value does not fit in uint64",
+    };
+    return type >= PIN_I8 && type <= PIN_U64 ? messages[type] : NULL;
+}
+static int convert_mode(
+    lower *l,
+    int slot,
+    script_type from,
+    script_type to,
+    behavior_cast_mode mode,
+    script_range range
+);
 static int convert(lower *l, int slot, script_type from, script_type to, script_range range)
+{
+    return convert_mode(l, slot, from, to, BEHAVIOR_CAST_EXACT, range);
+}
+/* Implicit conversions are lossless; explicit T(value) carries its mode. */
+static int convert_mode(lower *l, int slot, script_type from, script_type to, behavior_cast_mode mode, script_range range)
 {
     if (((to.flags & SCRIPT_TYPE_UNION) && to.container == PIN_CONTAINER_SINGLE &&
          !(to.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
@@ -372,7 +399,8 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         script_type wide = { .storage = PIN_F64 };
         return convert(l, convert(l, slot, from, wide, range), wide, to, range);
     }
-    if (!behavior_scalar_cast_supported(slot_type(from), slot_type(to))) {
+    pin_type source = slot_type(from), target = slot_type(to);
+    if (!behavior_scalar_cast_supported(source, target)) {
         char message[128];
         snprintf(
             message,
@@ -386,7 +414,11 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = BF_CAST, .type = slot_type(to), .left = slot },
+        (behavior_function_instruction){ .op = BF_CAST,
+                                         .type = target,
+                                         .left = slot,
+                                         .target = mode,
+                                         .message = fit_message(target) },
         range
     );
 }
@@ -3918,7 +3950,7 @@ static int expression_value(lower *l, int index)
             return reference_read(l, reference_expression(l, e, false), e->type, e->range);
         case SCRIPT_EXPR_CAST: {
             int left = expression(l, e->left);
-            return convert(l, left, l->a->expressions[e->left].type, e->type, e->range);
+            return convert_mode(l, left, l->a->expressions[e->left].type, e->type, e->conversion, e->range);
         }
         case SCRIPT_EXPR_UNARY: {
             int left = e->op == SCRIPT_OP_NOT ? condition_value(l, e->left)
@@ -3997,9 +4029,17 @@ static int expression_value(lower *l, int index)
                                     ? e->type
                                     : l->a->expressions[e->left].type;
             if (e->type.storage == PIN_BOOL && script_type_numeric(operand)) {
+                /* Integers compare in the type holding both, as arithmetic does. */
                 script_type other = l->a->expressions[e->right].type;
-                if (other.storage > operand.storage) {
+                pin_type common = behavior_scalar_common_integer(
+                    operand.storage,
+                    other.storage
+                );
+                if (common == other.storage ||
+                    (common == PIN_FLOW && other.storage > operand.storage)) {
                     operand = other;
+                } else if (common != PIN_FLOW && common != operand.storage) {
+                    operand = (script_type){ .storage = common };
                 }
             }
             left = convert(l, left, l->a->expressions[e->left].type, operand, e->range);
@@ -6336,8 +6376,9 @@ static execution_module_plan *lower_analysis(
             if (e->kind == SCRIPT_EXPR_CONSTANT &&
                 !(s->type.flags & (SCRIPT_TYPE_UNION | SCRIPT_TYPE_BOXED_OPTIONAL))) {
                 value = e->constant;
-                if (value.type != s->type.storage && script_type_numeric(s->type)) {
-                    value = behavior_scalar_cast(value, s->type.storage);
+                if (value.type != s->type.storage && script_type_numeric(s->type) &&
+                    !behavior_scalar_cast(value, s->type.storage, BEHAVIOR_CAST_EXACT, &value)) {
+                    error(&l, s->declaration, "State constant does not fit its declared storage");
                 }
                 pin_value declared = initial(&l, s->type);
                 if (value.type != declared.type || value.container != declared.container) {

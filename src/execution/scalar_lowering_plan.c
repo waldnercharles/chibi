@@ -24,7 +24,7 @@ static const behavior_function_op operations[] = {
     BF_BIT_AND,  BF_BIT_OR,   BF_BIT_XOR, BF_SHL,     BF_SHR
 };
 _Static_assert(PIN_BOOL == 1 && PIN_I32 == 6 && PIN_U32 == 7 && PIN_U64 == 9, "scalar lowering storage schema changed");
-_Static_assert(EXECUTION_PREPARED_VERSION == 14, "review scalar lowering target schema");
+_Static_assert(EXECUTION_PREPARED_VERSION == 15, "review scalar lowering target schema");
 static bool fail(char *error, size_t size, const char *message)
 {
     snprintf(error, size, "%s", message);

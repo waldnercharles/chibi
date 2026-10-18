@@ -1135,13 +1135,17 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately and use
 one shared 60-second deadline; this focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects eleven fixed
+`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
 C cases for dependency execution, alias isolation, self imports, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
 generations, constrained generics and constant defaults. It also checks owned
-union payload defaults and malformed public export bindings. The workload has
-45 preparations, 145 offered files, 80 import declarations, at most 129 package
-visits before reuse, and 34 direct calls with instruction budgets of 2,000.
+union payload defaults and malformed public export bindings. Cached closures
+track sibling addition, path-only renames and removal across the dependency
+chain while an unrelated package is reused; failed generations publish no module
+or exports, are never cache hits, and repair replaces them while a separately
+retained valid module keeps working. The workload has 59 preparations, 210
+parses, 113 import declarations, at most 189 package visits before reuse, and 48
+direct calls with instruction budgets of 2,000.
 One catalog snapshot and one additional parse/nine semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.
@@ -1504,9 +1508,9 @@ Independently review before the first run, build separately and use one shared
 
 `python3 tools/test_policy.py tool language-type-relations-chibi` selects four
 C/pico_unit cases for the five pure catalog type relations. The finite tables
-contain 18 equality, 15 numeric, 30 assignment, 33 catalog-assignment and nine
-canonicalization requests: 105 requests, each once on bytecode and SLJIT, for
-210 direct authored calls with a supplied budget argument of 50,000. Outlined
+contain 18 equality, 15 numeric, 36 assignment, 33 catalog-assignment and nine
+canonicalization requests: 111 requests, each once on bytecode and SLJIT, for
+222 direct authored calls with a supplied budget argument of 50,000. Outlined
 and inline child activations inherit/reset that budget; it is not a complete
 invocation or aggregate instruction ceiling. Five fixed compiler sources below
 32 KiB per backend produce ten preparation parses. Raw maxima are
@@ -2594,6 +2598,29 @@ It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
 
+
+## Tooling parent C++ language activation
+
+The existing `desktop-dependencies` C/pico_unit selector adds one finite case
+with four configure-only fixtures: a pure C runtime consumer with an invalid
+C++ compiler path, a child-enabled scheduler with a parent C consumer, a
+child-enabled renderer with a parent C++ consumer, and an imported renderer.
+The C++ consumers reuse the existing `test/draw_backend.cpp` pass-through shim;
+no new C++ logic or standalone executable is added. The fixtures generate real
+Ninja rules through the production tooling language include. They do not build
+the fixture targets, fetch dependencies, execute fixture code or use a GPU.
+CMake's compiler identification/try-compile subprocesses remain part of each
+bounded configuration child.
+
+The whole existing selector now has eight C cases and twenty direct children
+(previously seven/sixteen). Its existing ten-second child limits and one shared
+production 60-second route deadline remain unchanged. The added case performs
+four `REQUIRE` checks, one per successful complete configuration/generation.
+Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK
+consumers alone. The OpenGL case relocates discovered roles on Linux and asserts
+that other hosts reject the same absolute paths as unowned. The complete selector
+passes 8 cases in 6.8s on macOS. The 60-second ceiling covers the entire desktop
+selector, not each case separately.
 ### Snapshot-to-reader composition
 
 The `python3 tools/test_policy.py tool language-snapshot-reader-chibi`

@@ -232,6 +232,10 @@ script_type script_catalog_canonical_type(const script_catalog *, script_type);
 bool script_catalog_type_assignable(const script_catalog *, script_type expected, script_type actual);
 bool script_type_equal(script_type a, script_type b);
 bool script_type_numeric(script_type type);
+/* Numeric storages convert implicitly when no integer value is lost: integer
+ * widening and any conversion involving a floating type. Integer narrowing
+ * and sign changes require an explicit T(value). */
+bool script_numeric_implicit(pin_type from, pin_type to);
 bool script_type_assignable(script_type expected, script_type actual);
 uint64_t script_type_tag(script_type);
 script_type script_cancelled_type();

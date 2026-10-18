@@ -25,15 +25,15 @@ Graph :: union {
     | Rejected(error: Error, cycle: int[])
 }
 
-OK :: cast<int>(0);
-DuplicateFile :: cast<int>(1);
-HeaderMismatch :: cast<int>(2);
-DuplicateName :: cast<int>(3);
-Missing :: cast<int>(4);
-ImportName :: cast<int>(5);
-DuplicateImport :: cast<int>(6);
-Cycle :: cast<int>(7);
-MaxFiles :: cast<int>(256);
+OK: int : 0;
+DuplicateFile: int : 1;
+HeaderMismatch: int : 2;
+DuplicateName: int : 3;
+Missing: int : 4;
+ImportName: int : 5;
+DuplicateImport: int : 6;
+Cycle: int : 7;
+MaxFiles: int : 256;
 
 Failure :: pure fn(error: Error, cycle: int[]) -> Graph {
     return Graph.Rejected(error, cycle);
@@ -80,9 +80,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
     packages: Package[] = [];
     bindings: Binding[] = [];
     edges: Edge[] = [];
-    filePackages := resize([cast<int>(0)], fileCount);
-    members := resize([cast<int>(0)], fileCount);
-    cycle := resize([cast<int>(0)], MaxFiles);
+    filePackages := resize([int(0)], fileCount);
+    members := resize([int(0)], fileCount);
+    cycle := resize([int(0)], MaxFiles);
     i: int = 0;
     while (i < fileCount) {
         file := files[i];
@@ -214,9 +214,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
     }
 
     count := length(packages);
-    dependencies := resize([cast<int>(0)], count);
+    dependencies := resize([int(0)], count);
     emitted := resize([false], count);
-    order := resize([cast<int>(0)], count);
+    order := resize([int(0)], count);
     foreach (edge in edges) {
         if (edge.from != edge.to) { dependencies[edge.from] += 1; }
     }
@@ -237,7 +237,7 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
             // lexical outgoing target, then trim the acyclic prefix.
             current: int = 0;
             while (emitted[current]) { current += 1; }
-            seen := resize([cast<int>(0)], count);
+            seen := resize([int(0)], count);
             path: int[] = [];
             while (seen[current] == 0) {
                 seen[current] = length(path) + 1;

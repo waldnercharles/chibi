@@ -69,16 +69,16 @@ static const struct
     /* S08 */
     { "library Arrays { Run :: () { return [\"alpha\", \"beta\"]; } }", NULL, NULL },
     /* S09 */
-    { "library Arrays { Strings :: cast<string[]>([\"alpha\", \"beta\"]); "
-      "Names :: cast<name[]>([\"alpha\", \"beta\"]); Empty :: "
-      "cast<string[]>([]); Run :: () -> string[] { return [\"alpha\", "
+    { "library Arrays { Strings: string[] : [\"alpha\", \"beta\"]; "
+      "Names: name[] : [\"alpha\", \"beta\"]; Empty: "
+      "string[] : []; Run :: () -> string[] { return [\"alpha\", "
       "\"beta\"]; } }",
       NULL,
       NULL },
     /* S10 */
     { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Only :: "
-      "union { \"alpha\" }; Both :: cast<Choice[]>([\"alpha\", \"beta\"]); One "
-      ":: cast<Only[]>([\"alpha\"]); }",
+      "union { \"alpha\" }; Both: Choice[] : [\"alpha\", \"beta\"]; One"
+      ": Only[] : [\"alpha\"]; }",
       NULL,
       NULL },
     /* S11 */
@@ -88,8 +88,8 @@ static const struct
       NULL,
       NULL },
     /* S12 */
-    { "library Arrays { Bools :: [true, false]; Numbers :: [1, 2]; Ints :: "
-      "cast<int[]>([1, 2]); Names :: [cast<name>(\"alpha\"), \"beta\"]; }",
+    { "library Arrays { Bools :: [true, false]; Numbers :: [1, 2]; Ints: "
+      "int[] : [1, 2]; Names :: [name(\"alpha\"), \"beta\"]; }",
       NULL,
       NULL },
     /* S13 */
@@ -99,13 +99,13 @@ static const struct
     /* S15 */
     { "library Arrays { Items :: []; }", "Empty arrays need an explicit element type", "[]" },
     /* S16 */
-    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Bad :: "
-      "cast<Choice[]>([\"alpha\", \"gamma\"]); }",
+    { "library Arrays { Choice :: union { \"alpha\" | \"beta\" }; Bad: "
+      "Choice[] : [\"alpha\", \"gamma\"]; }",
       "Incompatible types",
       "\"gamma\"" },
     /* S17 */
-    { "library Arrays { Only :: union { \"alpha\" }; Bad :: "
-      "cast<Only[]>([\"beta\"]); }",
+    { "library Arrays { Only :: union { \"alpha\" }; Bad: "
+      "Only[] : [\"beta\"]; }",
       "Incompatible types",
       "\"beta\"" },
     /* S18 */
@@ -129,7 +129,7 @@ static const struct
       "Incompatible types",
       "return A" },
     /* S22 */
-    { "library Arrays { Bad :: cast<int[]>([\"alpha\"]); }", "Incompatible types", "\"alpha\"" },
+    { "library Arrays { Bad: int[] : [\"alpha\"]; }", "Incompatible types", "\"alpha\"" },
 };
 _Static_assert(sizeof specimens / sizeof *specimens == 22, "Fixed semantic count");
 _Static_assert(sizeof glyphs / sizeof *glyphs == 12, "Fixed glyph count");
@@ -529,10 +529,11 @@ TEST_CASE(inferred_string_array_runtime)
         "[\"󰵝\", \"\", \"󰌶\", \"󰙴\", \"󰸊\", \"󰖊\", \"󰊗\", "
         "\"󰥻\", "
         "\"󰳚\", \"󰋕\", \"󰮋\", \"󰠲\"]; return glyphs[index]; } }",
-        "library Glyphs { Lookup :: (index: int) -> string { glyphs :: "
-        "cast<string[]>([\"󰵝\", \"\", \"󰌶\", \"󰙴\", \"󰸊\", "
+        "library Glyphs { Lookup :: (index: int) -> string { glyphs: string[] "
+        ": "
+        "[\"󰵝\", \"\", \"󰌶\", \"󰙴\", \"󰸊\", "
         "\"󰖊\", \"󰊗\", "
-        "\"󰥻\", \"󰳚\", \"󰋕\", \"󰮋\", \"󰠲\"]); return "
+        "\"󰥻\", \"󰳚\", \"󰋕\", \"󰮋\", \"󰠲\"]; return "
         "glyphs[index]; } }"
     };
     static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };

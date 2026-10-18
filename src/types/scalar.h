@@ -109,72 +109,131 @@ static inline bool behavior_scalar_signed(pin_type type)
     return type == PIN_I8 || type == PIN_I16 || type == PIN_I32 || type == PIN_I64;
 }
 
-/* The numeric casts every backend implements. Lowering builds any other
- * conversion it needs from these and BF_CONVERT. */
+/* BF_CAST keeps its mode in the instruction target. An integer destination
+ * applies it to a value outside its range: EXACT fails, WRAP keeps the low
+ * bits and CLAMP saturates. Floating sources round toward zero, saturate and
+ * map NaN to zero in every mode. */
+typedef enum
+{
+    BEHAVIOR_CAST_EXACT,
+    BEHAVIOR_CAST_WRAP,
+    BEHAVIOR_CAST_CLAMP,
+} behavior_cast_mode;
+
+static inline bool behavior_scalar_number(pin_type type)
+{
+    return type >= PIN_I8 && type <= PIN_F64;
+}
+static inline int64_t behavior_scalar_integer_low(pin_type type)
+{
+    switch (type) {
+        case PIN_I8: return INT8_MIN;
+        case PIN_I16: return INT16_MIN;
+        case PIN_I32: return INT32_MIN;
+        case PIN_I64: return INT64_MIN;
+        default: return 0;
+    }
+}
+static inline uint64_t behavior_scalar_integer_high(pin_type type)
+{
+    switch (type) {
+        case PIN_I8: return INT8_MAX;
+        case PIN_U8: return UINT8_MAX;
+        case PIN_I16: return INT16_MAX;
+        case PIN_U16: return UINT16_MAX;
+        case PIN_I32: return INT32_MAX;
+        case PIN_U32: return UINT32_MAX;
+        case PIN_I64: return INT64_MAX;
+        default: return UINT64_MAX;
+    }
+}
+/* Every value of an integer `from` fits `to`. */
+static inline bool behavior_scalar_integer_widens(pin_type from, pin_type to)
+{
+    return behavior_scalar_integer_low(to) <= behavior_scalar_integer_low(from) &&
+           behavior_scalar_integer_high(to) >= behavior_scalar_integer_high(from);
+}
+
+/* The operand type that holds both integers exactly: the wider operand, or
+ * int or int64 for a signed/unsigned pair, since no backend computes in
+ * narrower types. Returns PIN_FLOW for int64 with uint64 or a non-integer. */
+static inline pin_type behavior_scalar_common_integer(pin_type x, pin_type y)
+{
+    if (x < PIN_I8 || x > PIN_U64 || y < PIN_I8 || y > PIN_U64) {
+        return PIN_FLOW;
+    }
+    if (behavior_scalar_integer_widens(x, y)) {
+        return y;
+    }
+    if (behavior_scalar_integer_widens(y, x)) {
+        return x;
+    }
+    if (behavior_scalar_integer_widens(x, PIN_I32) &&
+        behavior_scalar_integer_widens(y, PIN_I32)) {
+        return PIN_I32;
+    }
+    if (behavior_scalar_integer_widens(x, PIN_I64) &&
+        behavior_scalar_integer_widens(y, PIN_I64)) {
+        return PIN_I64;
+    }
+    return PIN_FLOW;
+}
+
+/* The numeric casts every backend implements. Lowering composes integer to
+ * F32 through F64 and BF_CONVERT, and F32/F64 changes use BF_CONVERT. */
 static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
 {
-    if (from == to && (to == PIN_F32 || to == PIN_F64)) {
-        return true;
+    if (to == PIN_F32) {
+        return from == PIN_F32;
     }
     if (to == PIN_F64) {
-        return from >= PIN_BOOL && from <= PIN_I64;
+        return from >= PIN_BOOL && from <= PIN_F64 && from != PIN_F32;
     }
-    if (from == PIN_F32 || from == PIN_F64) {
-        return to == PIN_U8 || to == PIN_I32 || to == PIN_I64;
-    }
-    return from == PIN_I32 && (to == PIN_U32 || to == PIN_U64 || to == PIN_I64);
+    return to >= PIN_I8 && to <= PIN_U64 && behavior_scalar_number(from);
 }
-static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
+/* Whether a cast can fail: EXACT into an integer that cannot hold every value. */
+static inline bool behavior_scalar_cast_checked(pin_type from, pin_type to, behavior_cast_mode mode)
+{
+    return mode == BEHAVIOR_CAST_EXACT && from >= PIN_I8 && from <= PIN_U64 &&
+           to >= PIN_I8 && to <= PIN_U64 &&
+           !behavior_scalar_integer_widens(from, to);
+}
+/* False only when EXACT receives an integer outside the destination range. */
+static inline bool behavior_scalar_cast(pin_value a, pin_type type, behavior_cast_mode mode, pin_value *out)
 {
     assert(behavior_scalar_cast_supported(a.type, type));
     if (a.type == type) {
-        return a;
-    }
-    pin_value out = { .type = type };
-    if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
-        if (type == PIN_U32) {
-            out.u = (uint32_t)a.i;
-        } else {
-            out.u64 = (uint64_t)(int64_t)a.i;
-        }
-        return out;
+        *out = a;
+        return true;
     }
     if (type == PIN_F64) {
-        switch (a.type) {
-            case PIN_BOOL: out.d = a.b; break;
-            case PIN_I8: out.d = a.i8; break;
-            case PIN_U8: out.d = a.u8; break;
-            case PIN_I16: out.d = a.i16; break;
-            case PIN_U16: out.d = a.u16; break;
-            case PIN_I32: out.d = a.i; break;
-            case PIN_U32: out.d = a.u; break;
-            case PIN_I64: out.d = (double)a.i64; break;
-            default: assert(false); break;
-        }
-        return out;
+        *out = (pin_value){ .type = PIN_F64 };
+        uint64_t bits = behavior_scalar_bits(a);
+        out->d = behavior_scalar_signed(a.type) ? (double)(int64_t)bits : (double)bits;
+        return true;
     }
-    if (a.type == PIN_I32 && type == PIN_I64) {
-        out.i64 = a.i;
-        return out;
+    int64_t low = behavior_scalar_integer_low(type);
+    uint64_t high = behavior_scalar_integer_high(type);
+    if (a.type == PIN_F32 || a.type == PIN_F64) {
+        double x = a.type == PIN_F32 ? a.f : a.d;
+        uint64_t n = isnan(x)          ? 0
+                   : x <= (double)low  ? (uint64_t)low
+                   : x >= (double)high ? high
+                   : x < 0             ? (uint64_t)(int64_t)x
+                                       : (uint64_t)x;
+        *out = behavior_scalar_from_bits(type, n);
+        return true;
     }
-    double x = a.type == PIN_F32 ? a.f : a.d;
-    int64_t low = type == PIN_U8 ? 0 : type == PIN_I32 ? INT32_MIN : INT64_MIN;
-    int64_t high = type == PIN_U8  ? UINT8_MAX
-                 : type == PIN_I32 ? INT32_MAX
-                                   : INT64_MAX;
-    int64_t n = isnan(x)          ? 0
-              : x <= (double)low  ? low
-              : x >= (double)high ? high
-                                  : (int64_t)x;
-    if (type == PIN_U8) {
-        out.u8 = (uint8_t)n;
+    uint64_t bits = behavior_scalar_bits(a);
+    bool negative = behavior_scalar_signed(a.type) && (int64_t)bits < 0;
+    bool below = negative && (int64_t)bits < low, above = !negative && bits > high;
+    if ((below || above) && mode == BEHAVIOR_CAST_EXACT) {
+        return false;
     }
-    if (type == PIN_I32) {
-        out.i = (int32_t)n;
+    if (mode == BEHAVIOR_CAST_CLAMP) {
+        bits = below ? (uint64_t)low : above ? high : bits;
     }
-    if (type == PIN_I64) {
-        out.i64 = n;
-    }
-    return out;
+    *out = behavior_scalar_from_bits(type, bits);
+    return true;
 }
 #endif

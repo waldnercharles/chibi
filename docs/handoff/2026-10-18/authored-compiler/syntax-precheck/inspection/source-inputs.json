@@ -1,0 +1,479 @@
+[
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "src/language/src/parser.c",
+    "git_blob": "70400bc900fa4d067814e95cfc8f210c1d9809f0",
+    "local_path": "reference/src/language/src/parser.c",
+    "bytes": 1187540,
+    "sha256": "40e28627d8d8401eb2452326bcdec7ee2730743f3cbae5a8579bf3dabda77683"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "src/language/src/scanner.c",
+    "git_blob": "9218d0dcff3b73babbd88f1491a41516cf5d1f10",
+    "local_path": "reference/src/language/src/scanner.c",
+    "bytes": 2803,
+    "sha256": "14576420a65bc97466de4a3e9e24107d4a6d4ab7d8057297cfd53d24a47985bb"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "src/language/src/tree_sitter/parser.h",
+    "git_blob": "4fe1290cae26c4d7f54df0e5974b50d7adaf00d7",
+    "local_path": "reference/src/language/src/tree_sitter/parser.h",
+    "bytes": 11302,
+    "sha256": "2cc2ef2fdb23412dd7230618bc32769e6b586dcf0c976ad9c4c4b71a2c9d24e5"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/include/tree_sitter/api.h",
+    "git_blob": "2bbfe66ffe390dec0cc3aa4dee4ce028b06e8297",
+    "local_path": "reference/tree-sitter/lib/include/tree_sitter/api.h",
+    "bytes": 47452,
+    "sha256": "937c5389713f99318ac7adbdb3a95e9976bbd211e35e37ed5df878f29aa86c30"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/alloc.c",
+    "git_blob": "e5cb1d5eab4b1832b00b09263e14615f944192d0",
+    "local_path": "reference/tree-sitter/lib/src/alloc.c",
+    "bytes": 1542,
+    "sha256": "c7d15b9015568f439af4adf28ead9e2bd14901221819276727c11227a29576da"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/alloc.h",
+    "git_blob": "a27b8a633458eeffe1a6b1f0b122a0c156534e5e",
+    "local_path": "reference/tree-sitter/lib/src/alloc.h",
+    "bytes": 919,
+    "sha256": "2ad7cc5391be8043ffdcc111b9b21b7767f592790fc8389acb6fcee7fd1acb61"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/array.h",
+    "git_blob": "d965c6170ce443d23f118b35cde1ee74c98fa80b",
+    "local_path": "reference/tree-sitter/lib/src/array.h",
+    "bytes": 10445,
+    "sha256": "2ee1350009660a2dd5d116f9e9644d280f1703ef1c7b460d9d46a7f3dee1c816"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/atomic.h",
+    "git_blob": "e680b60e521fe1060eb0b1c8deb6c8598e9c38d9",
+    "local_path": "reference/tree-sitter/lib/src/atomic.h",
+    "bytes": 1384,
+    "sha256": "bbc630cb913ac64274ce4412bc9d504174220323993f306ded74abe502867e74"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/clock.h",
+    "git_blob": "7a13185ec78313e33bb49cc1cb59b14980e13c6b",
+    "local_path": "reference/tree-sitter/lib/src/clock.h",
+    "bytes": 3543,
+    "sha256": "abd8fa83a805900f8e03b8b2b1abd47f9c7b8252f4401485c060348c407f5448"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/error_costs.h",
+    "git_blob": "32d3666a661c97da0a1e95e69f201d2caff5079d",
+    "local_path": "reference/tree-sitter/lib/src/error_costs.h",
+    "bytes": 294,
+    "sha256": "0e8d1a21e0d60981e762989108231df6610d95591892f631c6c78a9ef831a2ab"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/get_changed_ranges.c",
+    "git_blob": "11084c33d7c4866e3c764ef8e7b20f1d35c828e4",
+    "local_path": "reference/tree-sitter/lib/src/get_changed_ranges.c",
+    "bytes": 16548,
+    "sha256": "337fd1af9c62987345d4a2b29bdfe8596ccb21c9a621cac6fc537c8c843ea058"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/get_changed_ranges.h",
+    "git_blob": "a1f1dbb43041c51d1e802f1ce12711b65f2ff9c3",
+    "local_path": "reference/tree-sitter/lib/src/get_changed_ranges.h",
+    "bytes": 836,
+    "sha256": "f394bd0b6fce006be460fd16cbea3cc96e248c810a4d97e8830463c29c85e4a5"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/host.h",
+    "git_blob": "a07e9f8949535189f05a3f93bb8757abdb9e210e",
+    "local_path": "reference/tree-sitter/lib/src/host.h",
+    "bytes": 520,
+    "sha256": "e1982b9795b9c52b5ab564d8b9876189d65a97ca02f78351e1740b0985992fd2"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/language.c",
+    "git_blob": "2dce6998391c8193db1ae35e0c19575bc8268f66",
+    "local_path": "reference/tree-sitter/lib/src/language.c",
+    "bytes": 8526,
+    "sha256": "4d9a84865d12e92364d6b7250e66b850d960e36931b2ab17e9847e5e10be8557"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/language.h",
+    "git_blob": "518c06bfc55a635ba1adc3bf92a3b7548e12adc6",
+    "local_path": "reference/tree-sitter/lib/src/language.h",
+    "bytes": 8339,
+    "sha256": "56e32fb53672609be6e8bfa7e6d0f92ef463fd53d2be910d169a07ee5f03df1b"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/length.h",
+    "git_blob": "ddf156ce098170c85c8d260470e0929168d9fa6d",
+    "local_path": "reference/tree-sitter/lib/src/length.h",
+    "bytes": 1275,
+    "sha256": "7fc186fb4bf50233059e8be9ca68efe95e66d34ced4b8a8f38f14497352faeb1"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/lexer.c",
+    "git_blob": "94124fd1d594651e507c83c352649caf5e4c94c4",
+    "local_path": "reference/tree-sitter/lib/src/lexer.c",
+    "bytes": 15124,
+    "sha256": "56a418eb47351b85d8f73729fa756765e2d9b3c6873d6be8f240a2e7fad22431"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/lexer.h",
+    "git_blob": "7f451e3f93af77ba32ac5e4552daed7d6016d6a9",
+    "local_path": "reference/tree-sitter/lib/src/lexer.h",
+    "bytes": 1263,
+    "sha256": "7d76308f7a2d3246a3e28fb27698be928f848130d1bfacc39f9f623127671b74"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/lib.c",
+    "git_blob": "9bfb69f00b79774ea8396a6b511fd0b8573c9999",
+    "local_path": "reference/tree-sitter/lib/src/lib.c",
+    "bytes": 280,
+    "sha256": "6bca070a6a70740c8e8af244af8a7311dbea09fbb60372376f5260facaf785f0"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/node.c",
+    "git_blob": "d83fa90b8b106622c49126e82c7482b067b8d0f8",
+    "local_path": "reference/tree-sitter/lib/src/node.c",
+    "bytes": 25429,
+    "sha256": "bfe9c7867881142600ad48570ef345dbb2b25319e61e1e08c7a15cc519dcb6a6"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/parser.c",
+    "git_blob": "39e6b89ff37c4ff955041caf1606fa7dfda777bd",
+    "local_path": "reference/tree-sitter/lib/src/parser.c",
+    "bytes": 79051,
+    "sha256": "2323c6ddf34f2b4430dde7492834f13683579278ce509a835c6d6bd90be87515"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/parser.h",
+    "git_blob": "858107deb9e4a1ffcd2ed5e6ffe98a5fcab3e1f6",
+    "local_path": "reference/tree-sitter/lib/src/parser.h",
+    "bytes": 7624,
+    "sha256": "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/point.h",
+    "git_blob": "39581988435f0be05ae8962c6d1f77acbab7baf1",
+    "local_path": "reference/tree-sitter/lib/src/point.h",
+    "bytes": 1307,
+    "sha256": "0929027be2ff54627be560f3bafc1af59e81ac6d5a8d5864455601a0dbee50ff"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/portable/endian.h",
+    "git_blob": "a6560826a4b5c880d0c4fea6a8922a0eca74ce18",
+    "local_path": "reference/tree-sitter/lib/src/portable/endian.h",
+    "bytes": 6856,
+    "sha256": "61f1ea13901973c37e44c3cd2459b13d771546149c1cac2e993451835a65ea30"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/query.c",
+    "git_blob": "6c514887e0b3784d915ee982613f42157ee13458",
+    "local_path": "reference/tree-sitter/lib/src/query.c",
+    "bytes": 149384,
+    "sha256": "b2a0f2204cfa050b072b510a8299f919c2ec38ae1495c76174990ee2cafae707"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/reduce_action.h",
+    "git_blob": "72aff08d73dc36e563d0a18c71c7476441bfdf61",
+    "local_path": "reference/tree-sitter/lib/src/reduce_action.h",
+    "bytes": 772,
+    "sha256": "8f40396e431d7ff558694ca248eed1332b6cf6f7e6255f06cddfde78020bd308"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/reusable_node.h",
+    "git_blob": "63fe3c1a36c7b3780f47c6c9fe951072f168b085",
+    "local_path": "reference/tree-sitter/lib/src/reusable_node.h",
+    "bytes": 2747,
+    "sha256": "10be747ea4c733ca181dc43d55d155ac8e5b8caa247079621cca0ce633347bfb"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/stack.c",
+    "git_blob": "91420074760d787b5d2b9a8845708602e1e36679",
+    "local_path": "reference/tree-sitter/lib/src/stack.c",
+    "bytes": 28636,
+    "sha256": "f70b7e5823e82901801193562908037db4c1a73721e48da0fe54cdb2a6b5856d"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/stack.h",
+    "git_blob": "2619f1e8a54dacfbffa84599a3f6b399e297be6d",
+    "local_path": "reference/tree-sitter/lib/src/stack.h",
+    "bytes": 4872,
+    "sha256": "13a2fb028036cf889fa92d55c3d7c0b57ba368a274f20a1961e695207cf3b91c"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/subtree.c",
+    "git_blob": "97d55c861121b58d83d57b2a7ddc751a4045e37f",
+    "local_path": "reference/tree-sitter/lib/src/subtree.c",
+    "bytes": 34540,
+    "sha256": "ec4c8ca9e9957ab1effcf1ba36d6820b751c2ded0276e2d332c787eabb1265c8"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/subtree.h",
+    "git_blob": "ffc5fb7a3bf31ce07ece2b2c9b6380c1a1f9ab16",
+    "local_path": "reference/tree-sitter/lib/src/subtree.h",
+    "bytes": 12518,
+    "sha256": "9380a9984a3a071d6a32ed05f7fad8b8853afa991f0a36cc29ccb90f1e3a1a0f"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/tree.c",
+    "git_blob": "bb4511800062c6f6753a71135e42462027bd3ef7",
+    "local_path": "reference/tree-sitter/lib/src/tree.c",
+    "bytes": 5272,
+    "sha256": "ef55fd2d34daad7e43605ba0469f6c67a9afb31963077e9c73f2fb0478e254bb"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/tree.h",
+    "git_blob": "9328f55a5bff3fd1b03d0f23f4de2a2aa5b397a2",
+    "local_path": "reference/tree-sitter/lib/src/tree.h",
+    "bytes": 663,
+    "sha256": "60591fb35ca078a8bb323004ece0377ac4f4c6cdbd3c4473af6e2b97186e024b"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/tree_cursor.c",
+    "git_blob": "70ef5e39aac3793ce72c6e09e294573b67027351",
+    "local_path": "reference/tree-sitter/lib/src/tree_cursor.c",
+    "bytes": 22965,
+    "sha256": "8d94832d6d68784252b2ff4c8abf9c37dd1672d2af9c4ab5588f342ed44b106e"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/tree_cursor.h",
+    "git_blob": "7d4e7ef0a673253cab31c678eb756d0f47bbeda9",
+    "local_path": "reference/tree-sitter/lib/src/tree_cursor.h",
+    "bytes": 1285,
+    "sha256": "3e8d9671ab1397bcaeb3e0cbf153a61a99e214782b43c09e5cde5a01e8283a1a"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/ts_assert.h",
+    "git_blob": "4cb8f36a122522b73151dca8e3c6e41e940d6133",
+    "local_path": "reference/tree-sitter/lib/src/ts_assert.h",
+    "bytes": 205,
+    "sha256": "ac1ec4b7ba388a9d8708feeb6c5c766b2927cecfd6db644b939772e1dc086526"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode.h",
+    "git_blob": "0fba3f29614d3688e553bcc9e896341d05e00d66",
+    "local_path": "reference/tree-sitter/lib/src/unicode.h",
+    "bytes": 1634,
+    "sha256": "6cf0ec5a54e72644e506cca20b854dc7c49249cb1cff0d806635a10c8efba340"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/ICU_SHA",
+    "git_blob": "3622283ba3572c9d94c0482fd3dbc5084f2f7841",
+    "local_path": "reference/tree-sitter/lib/src/unicode/ICU_SHA",
+    "bytes": 41,
+    "sha256": "2879b4cf5a2c625c6509c26e341b9c8b0c50fde284113b449e00567bdf4e593c"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/LICENSE",
+    "git_blob": "2e01e368768a4b992e22f98c05ead747134492a6",
+    "local_path": "reference/tree-sitter/lib/src/unicode/LICENSE",
+    "bytes": 21001,
+    "sha256": "6a18c5fac70d7860b57f5b72b4e2c9a1ba6b3d2741eef7ff9767c5379364f10d"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/README.md",
+    "git_blob": "623b8e38430406db87ea955934b1e461af38a5ea",
+    "local_path": "reference/tree-sitter/lib/src/unicode/README.md",
+    "bytes": 1270,
+    "sha256": "73bbccbcf2e6648385d188d914b16ae56b4553a0f1efb033e6b6d6242e41df1d"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/ptypes.h",
+    "git_blob": "ac79ad0f983d054e3d53930b52a7e91ab2f61817",
+    "local_path": "reference/tree-sitter/lib/src/unicode/ptypes.h",
+    "bytes": 72,
+    "sha256": "a87e9710c9cad7b08a945f4fb8b9d4629189897cc535f8ac927640c210a94b69"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/umachine.h",
+    "git_blob": "9195824d5b9959a985779da9081d259b7a6e841c",
+    "local_path": "reference/tree-sitter/lib/src/unicode/umachine.h",
+    "bytes": 14865,
+    "sha256": "2d79c0903d9e73e247b948bc0a12b6a785257ca0273bddab56fb59561f8d7391"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/urename.h",
+    "git_blob": "ac79ad0f983d054e3d53930b52a7e91ab2f61817",
+    "local_path": "reference/tree-sitter/lib/src/unicode/urename.h",
+    "bytes": 72,
+    "sha256": "a87e9710c9cad7b08a945f4fb8b9d4629189897cc535f8ac927640c210a94b69"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/utf.h",
+    "git_blob": "ac79ad0f983d054e3d53930b52a7e91ab2f61817",
+    "local_path": "reference/tree-sitter/lib/src/unicode/utf.h",
+    "bytes": 72,
+    "sha256": "a87e9710c9cad7b08a945f4fb8b9d4629189897cc535f8ac927640c210a94b69"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/utf16.h",
+    "git_blob": "9fd7d5c8a7727979c172dc781a7c6a4ee3fc839a",
+    "local_path": "reference/tree-sitter/lib/src/unicode/utf16.h",
+    "bytes": 23878,
+    "sha256": "c370d9069f37fad2b53981c06dc648bbc21923db1655517a31bb237df4fba041"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/unicode/utf8.h",
+    "git_blob": "bb001303747efec58edf0e60c18561e225467a05",
+    "local_path": "reference/tree-sitter/lib/src/unicode/utf8.h",
+    "bytes": 31698,
+    "sha256": "39651224b2ca2452359c7f3339f3cc0a841fe7db64f8a00c9c5ec19c0389645c"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/wasm_store.c",
+    "git_blob": "e844c2a0d2eb4ed38db45033345c458923422cf9",
+    "local_path": "reference/tree-sitter/lib/src/wasm_store.c",
+    "bytes": 62327,
+    "sha256": "bb3434364fd50960a2c0936e211f66c9fa005a0dcea26de63692ebae3ae33c83"
+  },
+  {
+    "repository": "tree-sitter/tree-sitter",
+    "revision": "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
+    "path": "lib/src/wasm_store.h",
+    "git_blob": "0fd17e0d1736a0a69e428efcad494d74dee3d623",
+    "local_path": "reference/tree-sitter/lib/src/wasm_store.h",
+    "bytes": 1137,
+    "sha256": "4f70d0500b0775e5d862a8e7d191b3853d73378c65e020e01767838a18debe0e"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "AGENTS.md",
+    "git_blob": "8ada0dce2353a4954732f2ecd5126981aab27306",
+    "local_path": "reference/AGENTS.md",
+    "bytes": 10218,
+    "sha256": "149d0cb20269074463b7a2b086410c38c40d4f33b268745708f837181977018a"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "third_party/pico_headers/pico_unit.h",
+    "git_blob": "6b29bdab8e278fe4ae8c4b3c8e03794d95e0dd17",
+    "local_path": "reference/third_party/pico_headers/pico_unit.h",
+    "bytes": 13953,
+    "sha256": "ae1c93c155941afbd914f2c7a1fb2128d72aafcc05bddf3ddb0bb6f72eef22b8"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "src/language/syntax.c",
+    "git_blob": "1e23d03305fdce1178f52e037d8866e4f93e3257",
+    "local_path": "reference/src/language/syntax.c",
+    "bytes": 5051,
+    "sha256": "69627826824da8d05b2a026cef380aafd926fea7395f148305f32035eb9e43b9"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "tools/compiler/scalar_lowering/Lower.chibi",
+    "git_blob": "00d8071592b34c3e1b5765efdf470d9dbd9643a7",
+    "local_path": "reference/tools/compiler/scalar_lowering/Lower.chibi",
+    "bytes": 22435,
+    "sha256": "42d18541b2baef8df63df18399dffdf9537f8eb97fb3a561b8ccaa0146fda847"
+  },
+  {
+    "repository": "waldnercharles/chibi",
+    "revision": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "path": "tools/test_policy.py",
+    "git_blob": "3d941204f5a9022c2df7db1737b2586d3fc5513a",
+    "local_path": "inspection/tools/test_policy.py",
+    "bytes": 114378,
+    "sha256": "d6e9085dff6a6e0771f3bb8ab8afcfc4be64bffc7cbaaf0e51c65740e50055dd"
+  }
+]

@@ -1,0 +1,181 @@
+[
+  {
+    "path": "packages/core/strings/Strings.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "49a29fdcd3856e70b9023a832ca4d402e6548b5f",
+    "bytes": 1843,
+    "sha256": "1c039ac1ef459f23f7ce833920fae5d5258bf0aaab24c33fa48f14047adaad95",
+    "git_blob": "49a29fdcd3856e70b9023a832ca4d402e6548b5f",
+    "local_path": "corpus/packages/core/strings/Strings.chibi",
+    "source_id": 0
+  },
+  {
+    "path": "tools/compiler/analysis_state/State.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "2616909551f5d89b37c548ae0dfd7a40ad337189",
+    "bytes": 4130,
+    "sha256": "a579f83bca0350f36c12e687bb01727df2d2aafceadf8e922f106927f10bd9b8",
+    "git_blob": "2616909551f5d89b37c548ae0dfd7a40ad337189",
+    "local_path": "corpus/tools/compiler/analysis_state/State.chibi",
+    "source_id": 1
+  },
+  {
+    "path": "tools/compiler/signature_reader/Reader.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "aa9fd65642e38a0975bb460a1b50eedf727b6aeb",
+    "bytes": 30602,
+    "sha256": "939ea8d5ea9b379c24a71630d76701c9794ab1c67f605ec2a6e29c02b1975063",
+    "git_blob": "aa9fd65642e38a0975bb460a1b50eedf727b6aeb",
+    "local_path": "corpus/tools/compiler/signature_reader/Reader.chibi",
+    "source_id": 2
+  },
+  {
+    "path": "tools/compiler/named_binding/Binding.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "81c2d153666e232e5075e58f0784300759cd98c1",
+    "bytes": 16990,
+    "sha256": "23113a7415d774f9017104e9c4558bc75b8d2ff162679c751c02e555aa6285eb",
+    "git_blob": "81c2d153666e232e5075e58f0784300759cd98c1",
+    "local_path": "corpus/tools/compiler/named_binding/Binding.chibi",
+    "source_id": 3
+  },
+  {
+    "path": "tools/compiler/type_constructors/Constructors.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "cc40111fa4f83acd54524c9483f009439b3ce3d2",
+    "bytes": 12230,
+    "sha256": "c14e06672ca8bed7faa18f7121830a279e22b18fb9b637c52331ed74f3a1647d",
+    "git_blob": "cc40111fa4f83acd54524c9483f009439b3ce3d2",
+    "local_path": "corpus/tools/compiler/type_constructors/Constructors.chibi",
+    "source_id": 4
+  },
+  {
+    "path": "tools/compiler/unit_algebra/Units.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "7e074b04f1c8446e9b36290e44bfb3c4e492e4c3",
+    "bytes": 8174,
+    "sha256": "898fb20291d90e9bbec4b34cf86a70ae0dc641d55041d52cf628fe73c79a9e66",
+    "git_blob": "7e074b04f1c8446e9b36290e44bfb3c4e492e4c3",
+    "local_path": "corpus/tools/compiler/unit_algebra/Units.chibi",
+    "source_id": 5
+  },
+  {
+    "path": "tools/compiler/lexical_binding/Binding.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "fe41b7713f0e4c550b747fa97baeb99b989467de",
+    "bytes": 8677,
+    "sha256": "e31f774945adb36ef5261a0423350bd2787a55371923b7cc67120bfdad62b905",
+    "git_blob": "fe41b7713f0e4c550b747fa97baeb99b989467de",
+    "local_path": "corpus/tools/compiler/lexical_binding/Binding.chibi",
+    "source_id": 6
+  },
+  {
+    "path": "tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "b53b26e4a8d21d4ce5f50d12cbc8e7c2dc0fb992",
+    "bytes": 2239,
+    "sha256": "c1c392e729cf07932ec9fb3e4f11cf3ca4984ef9247cdc77dead6954dd59325a",
+    "git_blob": "b53b26e4a8d21d4ce5f50d12cbc8e7c2dc0fb992",
+    "local_path": "corpus/tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+    "source_id": 7
+  },
+  {
+    "path": "tools/compiler/source_snapshot/Snapshot.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "e98b5b75ae7afa8ded4c8247ab2197bf600605f9",
+    "bytes": 15704,
+    "sha256": "9f96704a63bfddb766e5a0cd7bd3dc71b4ebb3ec09ccfe006a028214733f724a",
+    "git_blob": "e98b5b75ae7afa8ded4c8247ab2197bf600605f9",
+    "local_path": "corpus/tools/compiler/source_snapshot/Snapshot.chibi",
+    "source_id": 8
+  },
+  {
+    "path": "tools/compiler/compiler_syntax/Syntax.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "262d1f51d281ffb5da110b4cc359a9e25e19ce61",
+    "bytes": 1568,
+    "sha256": "9e0eacc7a03ae1381ac032352985de8015094c669f54487da71c7640b8334b54",
+    "git_blob": "262d1f51d281ffb5da110b4cc359a9e25e19ce61",
+    "local_path": "corpus/tools/compiler/compiler_syntax/Syntax.chibi",
+    "source_id": 9
+  },
+  {
+    "path": "tools/compiler/package_routes/Routes.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "768cb7a8bc4f1e48a9fb4b25ec7cceedf4552e0a",
+    "bytes": 8080,
+    "sha256": "2706eba229c4068364a0216f165b08cc6247d77d3bbe93db781e1cf29b3aca10",
+    "git_blob": "768cb7a8bc4f1e48a9fb4b25ec7cceedf4552e0a",
+    "local_path": "corpus/tools/compiler/package_routes/Routes.chibi",
+    "source_id": 10
+  },
+  {
+    "path": "tools/compiler/package_syntax/Extract.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "984a87f7b0a20c23027bdc012ef64524524b58f2",
+    "bytes": 4262,
+    "sha256": "99e6a9ceb8d9a95ba7daf9ad2a10fa2c01a1f0af81d68e52f0675ed15b22b955",
+    "git_blob": "984a87f7b0a20c23027bdc012ef64524524b58f2",
+    "local_path": "corpus/tools/compiler/package_syntax/Extract.chibi",
+    "source_id": 11
+  },
+  {
+    "path": "tools/compiler/package_graph/Graph.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "b7ceb59f90256460507da08ab5f36203dc23c540",
+    "bytes": 12675,
+    "sha256": "ec2024139d2bfa7991d485b627e971d9177da6bf6fca92e383d97efa27f8eca5",
+    "git_blob": "b7ceb59f90256460507da08ab5f36203dc23c540",
+    "local_path": "corpus/tools/compiler/package_graph/Graph.chibi",
+    "source_id": 12
+  },
+  {
+    "path": "tools/compiler/package_paths/Paths.chibi",
+    "ref": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "blob": "dbfa1d412603875399ea32680fe77b3253d5e40d",
+    "bytes": 2666,
+    "sha256": "f4960311940a3e1c951469fd00f86762b2bf0389a1276bbdd487a30991bdfee9",
+    "git_blob": "dbfa1d412603875399ea32680fe77b3253d5e40d",
+    "local_path": "corpus/tools/compiler/package_paths/Paths.chibi",
+    "source_id": 13
+  },
+  {
+    "path": "tools/compiler/scalar_lowering/Lower.chibi",
+    "bytes": 22452,
+    "sha256": "1778dd60224e4edb46e87d4563e20e0625b170da933976c317f00340eecfd4fd",
+    "base_ref": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+    "base_blob": "00d8071592b34c3e1b5765efdf470d9dbd9643a7",
+    "revision": "local corrected dependency owned by diagnose-scalar",
+    "correction_source": "diagnose-scalar/candidate-input.json",
+    "git_blob": "bbe9d91f569caf137e8326db8a86ccdf6d8e8b3c",
+    "local_path": "corpus/tools/compiler/scalar_lowering/Lower.chibi",
+    "source_id": 14
+  },
+  {
+    "path": "tools/compiler/bounded_compiler/Artifact.chibi",
+    "bytes": 1645,
+    "sha256": "02f4a5ffb05c8ac4d2c95a3bade5c3e1cac06d7ad147210c70910c4350328327",
+    "git_blob": "bdf84d695e21f344693bbef134f7d7857ed754e9",
+    "local_path": "corpus/tools/compiler/bounded_compiler/Artifact.chibi",
+    "revision": "local corrected driver candidate",
+    "source_id": 15
+  },
+  {
+    "path": "tools/compiler/bounded_compiler/Compile.chibi",
+    "bytes": 15050,
+    "sha256": "0f5f5f22bc82cadc00fcb0dcdb772235c2f3b873f3287d3bbedef70e468431ac",
+    "git_blob": "9f0e5e0e49f9e9e5dd35d223e5d81ac9af2d2729",
+    "local_path": "corpus/tools/compiler/bounded_compiler/Compile.chibi",
+    "revision": "local corrected driver candidate",
+    "source_id": 16
+  },
+  {
+    "path": "tools/compiler/bounded_compiler/Expression.chibi",
+    "bytes": 10280,
+    "sha256": "643527360fb41c685ece5bc60e2ba6d78975cde689a0f6e3ca7007ce224bc706",
+    "git_blob": "9677b9d618fc512cb6506dc0d169dd1428010a29",
+    "local_path": "corpus/tools/compiler/bounded_compiler/Expression.chibi",
+    "revision": "local corrected driver candidate",
+    "source_id": 17
+  }
+]

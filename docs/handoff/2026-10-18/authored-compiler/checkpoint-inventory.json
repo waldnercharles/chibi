@@ -1,0 +1,246 @@
+{
+  "checkpoint_type": "source_only_draft_handoff_unregistered_unbuilt_unexecuted",
+  "parent_commit": "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb",
+  "branch": "codex/m5-authored-compiler-handoff-20261018",
+  "current_required_dependency_heads": {
+    "445": "e165059d1c17ec7605d909ae3bbf727d9e267a80",
+    "446": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "447": "5c27f2b00b4cd4c7385b06d118217c6b8abe8ff8"
+  },
+  "original_full_patch_sha256": "1b6db1fa96f49358d4bf05c4e8ed8d3533900142a1782f7c7d460c0dc9e19924",
+  "original_independent_review_sha256": "2d6e1fe96d8d9ff960ada608782bdb3cdfaf4aea5ba63837d90a66d6c771edfa",
+  "note": "Inventory excludes itself. Technical notes are handoff editions; 12 repository source files and original full/registration/PLAN patches preserve exact frozen bytes. No build/test/diagnostic executed.",
+  "files": [
+    {
+      "path": "docs/bounded-authored-compiler.md",
+      "bytes": 8274,
+      "sha256": "6dcb9b7d03fd3ced571ebe1cfe66dfb1cd7a91baa27a431ba32b9918c65802cc",
+      "git_blob": "4d01f4c25a6b1d13a1d3dc4884ed35ee563936c1",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/HANDOFF.md",
+      "bytes": 8793,
+      "sha256": "9cd79cb12bc5370b79724400e4df2d8aa680d9fffe3df0faa0d634134f775ea7",
+      "git_blob": "84c3bbd2d4d1aa38bb07a38b6fda173668ba9341",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/README.md",
+      "bytes": 5713,
+      "sha256": "6ac808febdf2b612ad6e86b371b5bd7c9c0dfe9e315021e6af975d23140f9433",
+      "git_blob": "7c0ffca79aa6ed556152877c8d7c4d9ab69190c0",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/authored-compiler-driver.patch",
+      "bytes": 92630,
+      "sha256": "1b6db1fa96f49358d4bf05c4e8ed8d3533900142a1782f7c7d460c0dc9e19924",
+      "git_blob": "aed451bc7ad823aaf53f8000f1d4c5de7613265e",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/driver-tests/HANDOFF.md",
+      "bytes": 8004,
+      "sha256": "84afbf1a731ebb8cbf7b6331fcb17e4b932072c577befa22d5142df276b240d6",
+      "git_blob": "344d43b997a0d12e3e9137c9f608cd74b7dafb12",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/driver-tests/registration-only.patch",
+      "bytes": 4510,
+      "sha256": "0768298ee0e927578cbce751bc8ee112d931642f2e0879dc55a320dc0116fe09",
+      "git_blob": "011f61df5bc5562f8b2da6eccacab34dd785ae4d",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/driver-tests/source-manifest.json",
+      "bytes": 6470,
+      "sha256": "fa941d8fccfe3349e72a974a76cbc881d11469257bd22f5c8ff6756ea30a80f0",
+      "git_blob": "48433316fd02c075548004749cc89a357638f64d",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/manifest.json",
+      "bytes": 10312,
+      "sha256": "48caca689db72a70d207f65294b33e1e4f4582c461a109046a325d0c19443b9b",
+      "git_blob": "e359b1b3c7796353c7bb5ba0461ce4412fa68eb4",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/native-bridge/HANDOFF.md",
+      "bytes": 6521,
+      "sha256": "f10257d4eb4f22badef177f1d683031591a7419599a3d7332b4d04f303d0dc24",
+      "git_blob": "51ea42a3bdf48d24f98f59d44feb45f75ef22e15",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/plan-checkpoint.patch",
+      "bytes": 1937,
+      "sha256": "137e08853d58dae8bd63216b18c7108d9ac10af5da1a6ff7f0fc73c653754b11",
+      "git_blob": "b11901dd806c224d6b20922b4380ed42dca1fa54",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/review/independent-review-checkpoint.md",
+      "bytes": 3695,
+      "sha256": "965433f80b06a1507c596c1985e2007ea9a2af8940e0630f485e29dab65355ce",
+      "git_blob": "f7bd4a262e580d45771e853e07c72f15b4ca4a38",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/README.md",
+      "bytes": 5987,
+      "sha256": "89c04fd353373de52697e47687267d9e9eb55871d022a290f8d35ce94111280f",
+      "git_blob": "ade88c79524c637ed26ccac1d6a8d4103710aae4",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/RECOVERY.md",
+      "bytes": 3872,
+      "sha256": "6e983074ad5fc226bbe571bd270281030116557f86c4f8f691267eaa23c33e29",
+      "git_blob": "0f7d76e6e185149ba904a756fc4e30fadb7163e5",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/corpus-manifest.json",
+      "bytes": 7760,
+      "sha256": "ed4ffb8b641234d2e67451ebdffa1d732e61bcd08cb4857cd8fec9e8f7aba9e8",
+      "git_blob": "8165b01460bc7198e510adf5852bc04555e66738",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/corrected-lower-input.json",
+      "bytes": 563,
+      "sha256": "760d00ff37bed823db6264e359ca4342711c54d64954aec6bb8281b3d06434b8",
+      "git_blob": "d61014c18ab420f512f03b747a2b584fa9b3bd48",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/diagnostic-manifest.json",
+      "bytes": 1198,
+      "sha256": "dc0c427c58ed88d9e0053ff6e205c6dbed0117f6dce5efaae01e3c30041818de",
+      "git_blob": "109059155906503c0415c42f53e1511ff2d0a0d5",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/frozen.sha256",
+      "bytes": 8706,
+      "sha256": "a2d920d9d4f3745f2071499aa038216d1ab9f6b45694fee04f94948399957149",
+      "git_blob": "8bb3f91dc2f25dc3a4ab0b8a645d1f7c04374ef5",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/inspection/build.sh",
+      "bytes": 981,
+      "sha256": "a1de04709c6f2c8f5f1f371b54ac81730b9ffb4abfe42d9995cbe9c9b686d911",
+      "git_blob": "7e0fe9538ee86ee88e5dae8d44957a4434de80f8",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/inspection/run.sh",
+      "bytes": 802,
+      "sha256": "22e4cb339a58c21fa11318b9173be9e117ef144ae9b3c571dfe968c5556b4520",
+      "git_blob": "4c9251ac80997f222fa15957d8b906a347a0534d",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/inspection/source-inputs.json",
+      "bytes": 19748,
+      "sha256": "aaed83f8bccd67b622ba9f300155a7e18f4eb93a4717745f888099640738f77a",
+      "git_blob": "98fdd28e3b90fc42c741d2fac23cea5ee9c10d3b",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/inspection/test/language/main.c",
+      "bytes": 5586,
+      "sha256": "434c65b3274076072d250ed9f68d9fd23a409f5c388f03824fd108e5b87a332e",
+      "git_blob": "671663b3c8a96c0b275d07b0f2f574530c356ee6",
+      "mode": "100644"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/authored-compiler/syntax-precheck/toolchain.sha256",
+      "bytes": 407,
+      "sha256": "9d39755b05489e382679ee7b7a59a3d5ff9242db03ffe3f47a27cb5644579255",
+      "git_blob": "782b7573757c0b55b7b95197dbbf7a6c431c9ea5",
+      "mode": "100644"
+    },
+    {
+      "path": "src/toolchain/compiler_prepared_scalar.c",
+      "bytes": 3555,
+      "sha256": "a6ac8d33c4f6d19f0c6d30290eeb5bc9ec977057b8eed8977361959ea4cbad7c",
+      "git_blob": "44cdbc00cfcae90766b93fb8c768c0228f2f3afd",
+      "mode": "100644"
+    },
+    {
+      "path": "src/toolchain/compiler_prepared_scalar.h",
+      "bytes": 1569,
+      "sha256": "4c39aae12b5be1605dc6497f87bc362797d83e0825621769621ed07a0b6e9008",
+      "git_blob": "c23f2c035417e9810a308b08a09fb90779ae455f",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/bounded_compiler_chibi.c",
+      "bytes": 31761,
+      "sha256": "e26575804d8f5b84430b30ffed9f63bec280088e0db8c1319a0966458fd48e0c",
+      "git_blob": "486aee94056ed042a69ff3c98fbfb5467d865ca2",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/bounded_compiler_chibi.cmake",
+      "bytes": 1314,
+      "sha256": "756d445e7f80093f7fe12c56878c8246f92ae2ea167f65df7ad2bf8b774d7aa1",
+      "git_blob": "798432aded30787672d5b250ee7503dac42cc2c4",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/bounded_compiler_chibi.h",
+      "bytes": 142,
+      "sha256": "56cbf531aa73cdec908c0690e9afa61e977148bfddfa14d2cd921cebb0c43c86",
+      "git_blob": "acc6812a43505c53dccd30616c141bc3a4c38957",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/bounded_compiler_chibi_source.h.in",
+      "bytes": 2486,
+      "sha256": "2fcdc86e3a5fab2ccaa69570269ada791b26b318b1ea7143683eb5e28a23ca82",
+      "git_blob": "f43620f8fddc66c50530551d29aebda1ca9b0ca2",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/compiler_prepared_fixture.c",
+      "bytes": 4581,
+      "sha256": "6f302c434695890fd7bab0ed9a84141ab8593fd7e1ccc9aedeb8ef5db9d42b7e",
+      "git_blob": "7d2e200ac63ba88b72e72ea57281e7849c6beeb0",
+      "mode": "100644"
+    },
+    {
+      "path": "test/language/compiler_prepared_fixture.h",
+      "bytes": 1300,
+      "sha256": "44f766f3560608f0e98ff0ad15cf48040d55e168a4990398a75c3a8bf73b6890",
+      "git_blob": "b8ffcc0f69650fe4dd5f26f0bc0750a0c4b087eb",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Artifact.chibi",
+      "bytes": 1645,
+      "sha256": "02f4a5ffb05c8ac4d2c95a3bade5c3e1cac06d7ad147210c70910c4350328327",
+      "git_blob": "bdf84d695e21f344693bbef134f7d7857ed754e9",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Compile.chibi",
+      "bytes": 15050,
+      "sha256": "0f5f5f22bc82cadc00fcb0dcdb772235c2f3b873f3287d3bbedef70e468431ac",
+      "git_blob": "9f0e5e0e49f9e9e5dd35d223e5d81ac9af2d2729",
+      "mode": "100644"
+    },
+    {
+      "path": "tools/compiler/bounded_compiler/Expression.chibi",
+      "bytes": 10280,
+      "sha256": "643527360fb41c685ece5bc60e2ba6d78975cde689a0f6e3ca7007ce224bc706",
+      "git_blob": "9677b9d618fc512cb6506dc0d169dd1428010a29",
+      "mode": "100644"
+    }
+  ]
+}

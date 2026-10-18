@@ -1,0 +1,154 @@
+{
+  "status": "source_only_unexecuted_unadmitted",
+  "dependencies": {
+    "PR445": "1338151c084c1a633f881153084bc83773df27fa",
+    "PR446": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+    "PR447": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1"
+  },
+  "registration_reference": "bdbb896c48aadd271ee63a6562447ccb95d7ffa1",
+  "registration_warning": "Minimal additive hunks only. Apply after combining exact PR445, PR446, PR447 and current target changes. Full older files deliberately omitted.",
+  "compiler_sources": [
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/analysis_state/State.chibi",
+      "bytes": 4130,
+      "sha256": "a579f83bca0350f36c12e687bb01727df2d2aafceadf8e922f106927f10bd9b8"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/named_binding/Binding.chibi",
+      "bytes": 16990,
+      "sha256": "23113a7415d774f9017104e9c4558bc75b8d2ff162679c751c02e555aa6285eb"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/package_routes/Routes.chibi",
+      "bytes": 8080,
+      "sha256": "2706eba229c4068364a0216f165b08cc6247d77d3bbe93db781e1cf29b3aca10"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/package_syntax/Extract.chibi",
+      "bytes": 4262,
+      "sha256": "99e6a9ceb8d9a95ba7daf9ad2a10fa2c01a1f0af81d68e52f0675ed15b22b955"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2239,
+      "sha256": "c1c392e729cf07932ec9fb3e4f11cf3ca4984ef9247cdc77dead6954dd59325a"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/unit_algebra/Units.chibi",
+      "bytes": 8174,
+      "sha256": "898fb20291d90e9bbec4b34cf86a70ae0dc641d55041d52cf628fe73c79a9e66"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/package_graph/Graph.chibi",
+      "bytes": 12675,
+      "sha256": "ec2024139d2bfa7991d485b627e971d9177da6bf6fca92e383d97efa27f8eca5"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/compiler_syntax/Syntax.chibi",
+      "bytes": 1568,
+      "sha256": "9e0eacc7a03ae1381ac032352985de8015094c669f54487da71c7640b8334b54"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/package_paths/Paths.chibi",
+      "bytes": 2666,
+      "sha256": "f4960311940a3e1c951469fd00f86762b2bf0389a1276bbdd487a30991bdfee9"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/signature_reader/Reader.chibi",
+      "bytes": 30602,
+      "sha256": "939ea8d5ea9b379c24a71630d76701c9794ab1c67f605ec2a6e29c02b1975063"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/type_constructors/Constructors.chibi",
+      "bytes": 12230,
+      "sha256": "c14e06672ca8bed7faa18f7121830a279e22b18fb9b637c52331ed74f3a1647d"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/lexical_binding/Binding.chibi",
+      "bytes": 8677,
+      "sha256": "e31f774945adb36ef5261a0423350bd2787a55371923b7cc67120bfdad62b905"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/tools/compiler/source_snapshot/Snapshot.chibi",
+      "bytes": 15704,
+      "sha256": "9f96704a63bfddb766e5a0cd7bd3dc71b4ebb3ec09ccfe006a028214733f724a"
+    },
+    {
+      "path": "chibi-selfhost-m5/reader-state-validation/source/packages/core/strings/Strings.chibi",
+      "bytes": 1843,
+      "sha256": "1c039ac1ef459f23f7ce833920fae5d5258bf0aaab24c33fa48f14047adaad95"
+    },
+    {
+      "path": "chibi-selfhost-m5/authored-compiler-driver/reference/tools/compiler/scalar_lowering/Lower.chibi",
+      "bytes": 22436,
+      "sha256": "16fab584d9c4bd9a2e7e9be76c6ffba5d692d7e7106e72c1a7416f33c60bee42"
+    },
+    {
+      "path": "chibi-selfhost-m5/authored-compiler-driver/candidate/tools/compiler/bounded_compiler/Compile.chibi",
+      "bytes": 15014,
+      "sha256": "c476a9ebfd378c9789a03855d34e57d88eae84175e258eb242d1b3bbf4e3feff"
+    },
+    {
+      "path": "chibi-selfhost-m5/authored-compiler-driver/candidate/tools/compiler/bounded_compiler/Artifact.chibi",
+      "bytes": 1645,
+      "sha256": "02f4a5ffb05c8ac4d2c95a3bade5c3e1cac06d7ad147210c70910c4350328327"
+    },
+    {
+      "path": "chibi-selfhost-m5/authored-compiler-driver/candidate/tools/compiler/bounded_compiler/Expression.chibi",
+      "bytes": 10278,
+      "sha256": "e6bde450890008de4744471a9073f4a873538bbe2c3dcece51f9664a287127a9"
+    }
+  ],
+  "compiler_source_bytes": 179213,
+  "compiler_source_files": 18,
+  "compiler_packages": 16,
+  "top_level_constant_initializers_per_backend": 54,
+  "workload": {
+    "cases": 1,
+    "requests_per_backend": 39,
+    "accepted_per_backend": 14,
+    "rejected_per_backend": 25,
+    "compile_calls": 78,
+    "offered_files": 86,
+    "private_raw_parse_calls": 70,
+    "bootstrap_source_parse_calls": 36,
+    "total_source_parses": 106,
+    "payload_callbacks": 28,
+    "direct_bridge_rejections": 7,
+    "target_loads": 56,
+    "target_invocations": 56,
+    "compile_context_budget": 3000000,
+    "target_context_budget": 128,
+    "max_compiler_source_bytes_exclusive": 262144,
+    "max_compiler_file_bytes_exclusive": 32768,
+    "max_user_source_bytes": 1024,
+    "one_rejected_source_bytes": 1025,
+    "max_artifact_bytes": 65832
+  },
+  "files": {
+    "candidate/test/language/bounded_compiler_chibi.c": {
+      "bytes": 31761,
+      "sha256": "e26575804d8f5b84430b30ffed9f63bec280088e0db8c1319a0966458fd48e0c"
+    },
+    "candidate/test/language/bounded_compiler_chibi.cmake": {
+      "bytes": 1314,
+      "sha256": "756d445e7f80093f7fe12c56878c8246f92ae2ea167f65df7ad2bf8b774d7aa1"
+    },
+    "candidate/test/language/bounded_compiler_chibi.h": {
+      "bytes": 142,
+      "sha256": "56cbf531aa73cdec908c0690e9afa61e977148bfddfa14d2cd921cebb0c43c86"
+    },
+    "candidate/test/language/bounded_compiler_chibi_source.h.in": {
+      "bytes": 2486,
+      "sha256": "2fcdc86e3a5fab2ccaa69570269ada791b26b318b1ea7143683eb5e28a23ca82"
+    },
+    "bounded-compiler-tests.patch": {
+      "bytes": 41856,
+      "sha256": "73a30da998b1991b75b2628bc84f15b0427aae0d38649b5d2fa48a2d29297f7e"
+    },
+    "registration-only.patch": {
+      "bytes": 4510,
+      "sha256": "0768298ee0e927578cbce751bc8ee112d931642f2e0879dc55a320dc0116fe09"
+    }
+  }
+}

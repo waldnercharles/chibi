@@ -1441,11 +1441,13 @@ static bool snapshot_read(
 static bool snapshot_request(int request)
 {
     static const int order[2][SNAPSHOT_FILES] = { { 0, 1, 2 }, { 1, 2, 0 } };
+    /* Graph members are sorted by path: app/A.chibi precedes app/B.chibi
+     * even when A is the later input file. */
     static const int members[2][2][2] = { { { 0, 2 }, { 1, -1 } },
-                                          { { 0, -1 }, { 1, 2 } } };
+                                          { { 0, -1 }, { 2, 1 } } };
     static const int counts[2][2] = { { 2, 1 }, { 1, 2 } };
     static const int inverse[2][2][SNAPSHOT_FILES] = { { { 0, -1, 1 }, { -1, 0, -1 } },
-                                                       { { 0, -1, -1 }, { -1, 0, 1 } } };
+                                                       { { 0, -1, -1 }, { -1, 1, 0 } } };
     static const int package_for_file[2][SNAPSHOT_FILES] = { { 0, 1, 0 }, { 0, 1, 1 } };
     source_package_input files[SNAPSHOT_FILES];
     for (int i = 0; i < SNAPSHOT_FILES; i++) {

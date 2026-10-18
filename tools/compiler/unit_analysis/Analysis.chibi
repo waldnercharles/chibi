@@ -23,7 +23,7 @@ Cache :: struct { kind: int; term_start: int; term_count: int;  }
 Port :: struct { name: string; has_unit: bool; unit: string; }
 Environment :: union { Tables(types: Type[], ids: uint64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[]) }
 State :: union { Cached(cache: Cache[], terms: units.Term[], visits: int[], diagnostics: syntax.Diagnostic[]) }
-Evaluation :: union { Evaluated(value: units.Unit, state: State) }
+Evaluation :: union { Evaluated(value: units.Unit, current: State) }
 Analysis :: union { Completed(cache: Cache[], terms: units.Term[], diagnostics: syntax.Diagnostic[]) }
 
 Types :: pure fn(environment: Environment) -> Type[] {
@@ -194,8 +194,8 @@ CallCapability :: pure fn(environment: Environment, expression: Expression) -> i
     }
     return CapabilityAt(environment, id);
 }
-Report :: pure fn(state: State, range: Range, message: string) -> State {
-    switch state {
+Report :: pure fn(current: State, range: Range, message: string) -> State {
+    switch current {
         case .Cached(cache, terms, visits, diagnostics):
             row: syntax.Diagnostic = {
                 start: range.start, end: range.end, line: range.line,
@@ -205,36 +205,36 @@ Report :: pure fn(state: State, range: Range, message: string) -> State {
             return State.Cached(cache, terms, visits, array_add(diagnostics, row));
     }
 }
-Annotated :: pure fn(state: State, range: Range, present: bool, text: string) -> Evaluation {
+Annotated :: pure fn(current: State, range: Range, present: bool, text: string) -> Evaluation {
     value := units.Parse(present, text);
     if (Kind(value) == units.Invalid) {
-        state = Report(state, range, format_text("Invalid unit '{}'", text));
+        current = Report(current, range, format_text("Invalid unit '{}'", text));
         value = units.Empty(units.Unknown);
     }
-    return Evaluation.Evaluated(value, state);
+    return Evaluation.Evaluated(value, current);
 }
 Clash :: pure fn(left: units.Unit, right: units.Unit) -> bool {
     return Kind(left) == units.Known && Kind(right) == units.Known && !units.Same(left, right);
 }
-ReportUnits :: pure fn(state: State, range: Range, left: units.Unit, op: string, right: units.Unit) -> State {
-    return Report(state, range, format_text("Units differ: {} {} {}", units.Format(left, 192), op, units.Format(right, 192)));
+ReportUnits :: pure fn(current: State, range: Range, left: units.Unit, op: string, right: units.Unit) -> State {
+    return Report(current, range, format_text("Units differ: {} {} {}", units.Format(left, 192), op, units.Format(right, 192)));
 }
-Match :: pure fn(state: State, range: Range, left: units.Unit, op: string, right: units.Unit) -> Evaluation {
+Match :: pure fn(current: State, range: Range, left: units.Unit, op: string, right: units.Unit) -> Evaluation {
     if (Clash(left, right)) {
-        return Evaluation.Evaluated(units.Empty(units.Unknown), ReportUnits(state, range, left, op, right));
+        return Evaluation.Evaluated(units.Empty(units.Unknown), ReportUnits(current, range, left, op, right));
     }
-    if (Kind(left) == units.Known) { return Evaluation.Evaluated(left, state); }
-    if (Kind(right) == units.Known) { return Evaluation.Evaluated(right, state); }
+    if (Kind(left) == units.Known) { return Evaluation.Evaluated(left, current); }
+    if (Kind(right) == units.Known) { return Evaluation.Evaluated(right, current); }
     if (Kind(left) == units.Literal && Kind(right) == units.Literal) {
-        return Evaluation.Evaluated(units.Empty(units.Literal), state);
+        return Evaluation.Evaluated(units.Empty(units.Literal), current);
     }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-Product :: pure fn(state: State, range: Range, left: units.Unit, right: units.Unit, sign: int) -> Evaluation {
+Product :: pure fn(current: State, range: Range, left: units.Unit, right: units.Unit, sign: int) -> Evaluation {
     switch units.Product(left, right, sign) {
         case .Product(value, overflow):
-            if (overflow) { state = Report(state, range, "Unit expression exceeds supported dimensional complexity"); }
-            return Evaluation.Evaluated(value, state);
+            if (overflow) { current = Report(current, range, "Unit expression exceeds supported dimensional complexity"); }
+            return Evaluation.Evaluated(value, current);
     }
 }
 OpText :: pure fn(op: int) -> string {
@@ -256,58 +256,58 @@ ResultSource :: pure fn(environment: Environment, index: int) -> int {
     }
     return -1;
 }
-ResultUnit :: pure fn(environment: Environment, state: State, expression: Expression, index: int) -> Evaluation {
+ResultUnit :: pure fn(environment: Environment, current: State, expression: Expression, index: int) -> Evaluation {
     range := Ranges(environment)[expression.range];
     if ((expression.kind == CallExpression || expression.kind == JoinExpression) && expression.right >= 0) {
         function := Functions(environment)[expression.right];
         if (index < function.result_count) {
             symbol := Symbols(environment)[SymbolIndices(environment)[function.result_start + index]];
-            return Annotated(state, range, symbol.has_unit, symbol.unit);
+            return Annotated(current, range, symbol.has_unit, symbol.unit);
         }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
     capability := CallCapability(environment, expression);
     if (capability >= 0) {
         row := Capabilities(environment)[capability];
         if (index < row.result_count) {
             port := Ports(environment)[row.result_start + index];
-            return Annotated(state, range, port.has_unit, port.unit);
+            return Annotated(current, range, port.has_unit, port.unit);
         }
     }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-SymbolUnit :: pure fn(environment: Environment, state: State, index: int, range: Range) -> Evaluation {
+SymbolUnit :: pure fn(environment: Environment, current: State, index: int, range: Range) -> Evaluation {
     depth_limit 0;
     symbol := Symbols(environment)[index];
-    if (symbol.has_unit) { return Annotated(state, range, true, symbol.unit); }
+    if (symbol.has_unit) { return Annotated(current, range, true, symbol.unit); }
     if (symbol.kind == GlobalSymbol) {
         foreach (row in Globals(environment)) {
             if (IDAt(environment, row.id_slot) == IDAt(environment, symbol.id_slot)) {
-                return Annotated(state, range, row.has_unit, row.unit);
+                return Annotated(current, range, row.has_unit, row.unit);
             }
         }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
     if (symbol.kind == LocalSymbol && symbol.initializer < 0) {
         foreach (condition in Expressions(environment)) {
-            if (condition.kind == IsExpression && condition.symbol == index) { return Eval(environment, state, condition.left); }
+            if (condition.kind == IsExpression && condition.symbol == index) { return Eval(environment, current, condition.left); }
         }
     }
     if ((symbol.kind != LocalSymbol && symbol.kind != ConstantSymbol && symbol.kind != StateSymbol && symbol.kind != SharedStateSymbol) || symbol.initializer < 0) {
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
-    switch Eval(environment, state, symbol.initializer) {
+    switch Eval(environment, current, symbol.initializer) {
         case .Evaluated(value, next):
             if (Kind(value) == units.Known) { return Evaluation.Evaluated(value, next); }
             return Evaluation.Evaluated(units.Empty(units.Unknown), next);
     }
 }
-MemberUnit :: pure fn(environment: Environment, state: State, expression: Expression) -> Evaluation {
+MemberUnit :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
     member := IDAt(environment, expression.member_slot);
     range := Ranges(environment)[expression.range];
     foreach (symbol in Symbols(environment)) {
         if (IDAt(environment, symbol.id_slot) == member && (symbol.kind == ParameterSymbol || symbol.kind == ResultSymbol)) {
-            return Annotated(state, range, symbol.has_unit, symbol.unit);
+            return Annotated(current, range, symbol.has_unit, symbol.unit);
         }
     }
     receiver := Expressions(environment)[expression.left];
@@ -321,7 +321,7 @@ MemberUnit :: pure fn(environment: Environment, state: State, expression: Expres
             resultIndex := OffsetIndex(offset, row.result_count);
             if (resultIndex >= 0) {
                 port := Ports(environment)[row.result_start + resultIndex];
-                if (member == binding.ID("port", port.name)) { return ResultUnit(environment, state, original, resultIndex); }
+                if (member == binding.ID("port", port.name)) { return ResultUnit(environment, current, original, resultIndex); }
             }
         }
     }
@@ -332,7 +332,7 @@ MemberUnit :: pure fn(environment: Environment, state: State, expression: Expres
         parameterIndex := OffsetIndex(offset, row.param_count);
         if (row.kind == EventCapability && parameterIndex >= 0) {
             port := Ports(environment)[row.param_start + parameterIndex];
-            return Annotated(state, range, port.has_unit, port.unit);
+            return Annotated(current, range, port.has_unit, port.unit);
         }
     }
     foreach (type in CatalogTypes(environment)) {
@@ -340,16 +340,16 @@ MemberUnit :: pure fn(environment: Environment, state: State, expression: Expres
             index: int = 0;
             while (index < type.field_count) {
                 field := Fields(environment)[type.field_start + index];
-                if (IDAt(environment, field.id_slot) == member) { return Annotated(state, range, field.has_unit, field.unit); }
+                if (IDAt(environment, field.id_slot) == member) { return Annotated(current, range, field.has_unit, field.unit); }
                 index += 1;
             }
-            return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+            return Evaluation.Evaluated(units.Empty(units.Unknown), current);
         }
     }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
 
-CallUnit :: pure fn(environment: Environment, state: State, expression: Expression) -> Evaluation {
+CallUnit :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
     depth_limit 0;
     capability := -1;
     if (expression.right < 0) { capability = CallCapability(environment, expression); }
@@ -371,10 +371,10 @@ CallUnit :: pure fn(environment: Environment, state: State, expression: Expressi
                 present = port.has_unit;
                 annotation = port.unit;
             } else if (row.event_sender && parameter >= row.param_count) {
-                event := CapabilityAt(environment, IDAt(environment, expression.member_slot));
+                eventIndex := CapabilityAt(environment, IDAt(environment, expression.member_slot));
                 parameter -= row.param_count;
-                if (event >= 0 && parameter < Capabilities(environment)[event].param_count) {
-                    port := Ports(environment)[Capabilities(environment)[event].param_start + parameter];
+                if (eventIndex >= 0 && parameter < Capabilities(environment)[eventIndex].param_count) {
+                    port := Ports(environment)[Capabilities(environment)[eventIndex].param_start + parameter];
                     present = port.has_unit;
                     annotation = port.unit;
                 }
@@ -386,86 +386,86 @@ CallUnit :: pure fn(environment: Environment, state: State, expression: Expressi
         }
         target := units.Empty(units.Unknown);
         range := Ranges(environment)[argument.range];
-        switch Annotated(state, range, present, annotation) {
-            case .Evaluated(value, next): target = value; state = next;
+        switch Annotated(current, range, present, annotation) {
+            case .Evaluated(value, next): target = value; current = next;
         }
-        switch Eval(environment, state, argument.value) {
+        switch Eval(environment, current, argument.value) {
             case .Evaluated(value, next):
                 switch Match(next, range, target, "argument", value) {
-                    case .Evaluated(ignored, final): state = final;
+                    case .Evaluated(ignored, final): current = final;
                 }
         }
         index += 1;
     }
-    if (!expression.task && expression.result_count == 1) { return ResultUnit(environment, state, expression, 0); }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    if (!expression.task && expression.result_count == 1) { return ResultUnit(environment, current, expression, 0); }
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-Operation :: pure fn(environment: Environment, state: State, expression: Expression) -> Evaluation {
+Operation :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
     depth_limit 0;
     left := units.Empty(units.Unknown);
     right := units.Empty(units.Unknown);
-    switch Eval(environment, state, expression.left) { case .Evaluated(value, next): left = value; state = next; }
+    switch Eval(environment, current, expression.left) { case .Evaluated(value, next): left = value; current = next; }
     if (expression.right >= 0) {
-        switch Eval(environment, state, expression.right) { case .Evaluated(value, next): right = value; state = next; }
+        switch Eval(environment, current, expression.right) { case .Evaluated(value, next): right = value; current = next; }
     } else {
-        if (expression.op == OpNegate || expression.op == OpNone) { return Evaluation.Evaluated(left, state); }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        if (expression.op == OpNegate || expression.op == OpNone) { return Evaluation.Evaluated(left, current); }
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
     range := Ranges(environment)[expression.range];
-    if (expression.op == OpMultiply) { return Product(state, range, left, right, 1); }
-    if (expression.op == OpDivide) { return Product(state, range, left, right, -1); }
+    if (expression.op == OpMultiply) { return Product(current, range, left, right, 1); }
+    if (expression.op == OpDivide) { return Product(current, range, left, right, -1); }
     if (expression.op == OpAdd || expression.op == OpSubtract || expression.op == OpModulo) {
-        return Match(state, range, left, OpText(expression.op), right);
+        return Match(current, range, left, OpText(expression.op), right);
     }
     if (expression.op >= OpEqual && expression.op <= OpGreaterEqual) {
-        switch Match(state, range, left, OpText(expression.op), right) {
+        switch Match(current, range, left, OpText(expression.op), right) {
             case .Evaluated(ignored, next): return Evaluation.Evaluated(units.Empty(units.Unknown), next);
         }
     }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-Compute :: pure fn(environment: Environment, state: State, expression: Expression) -> Evaluation {
+Compute :: pure fn(environment: Environment, current: State, expression: Expression) -> Evaluation {
     depth_limit 0;
     range := Ranges(environment)[expression.range];
     if (expression.kind == ConstantExpression) {
-        if (Numeric(Types(environment)[expression.type], environment)) { return Evaluation.Evaluated(units.Empty(units.Literal), state); }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        if (Numeric(Types(environment)[expression.type], environment)) { return Evaluation.Evaluated(units.Empty(units.Literal), current); }
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
-    if (expression.kind == SymbolExpression) { return SymbolUnit(environment, state, expression.symbol, range); }
-    if (expression.kind == UnaryExpression || expression.kind == BinaryExpression) { return Operation(environment, state, expression); }
-    if (expression.kind == CastExpression || expression.kind == AsExpression || expression.kind == UnwrapExpression) { return Eval(environment, state, expression.left); }
-    if (expression.kind == CallExpression) { return CallUnit(environment, state, expression); }
+    if (expression.kind == SymbolExpression) { return SymbolUnit(environment, current, expression.symbol, range); }
+    if (expression.kind == UnaryExpression || expression.kind == BinaryExpression) { return Operation(environment, current, expression); }
+    if (expression.kind == CastExpression || expression.kind == AsExpression || expression.kind == UnwrapExpression) { return Eval(environment, current, expression.left); }
+    if (expression.kind == CallExpression) { return CallUnit(environment, current, expression); }
     if (expression.kind == JoinExpression) {
-        if (expression.result_count == 1) { return ResultUnit(environment, state, expression, 0); }
-        return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+        if (expression.result_count == 1) { return ResultUnit(environment, current, expression, 0); }
+        return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
     if (expression.kind == FallbackExpression) {
         result := units.Empty(units.Unknown);
-        switch Eval(environment, state, expression.left) { case .Evaluated(value, next): result = value; state = next; }
+        switch Eval(environment, current, expression.left) { case .Evaluated(value, next): result = value; current = next; }
         index: int = 0;
         while (index < expression.arg_count) {
             argument := Arguments(environment)[expression.arg_start + index];
             if (argument.value != expression.left) {
-                switch Eval(environment, state, argument.value) {
+                switch Eval(environment, current, argument.value) {
                     case .Evaluated(value, next):
                         switch Match(next, Ranges(environment)[argument.range], result, "fallback", value) {
-                            case .Evaluated(combined, final): result = combined; state = final;
+                            case .Evaluated(combined, final): result = combined; current = final;
                         }
                 }
             }
             index += 1;
         }
-        return Evaluation.Evaluated(result, state);
+        return Evaluation.Evaluated(result, current);
     }
     if (expression.kind == StoreExpression) {
         left := units.Empty(units.Unknown);
-        switch Eval(environment, state, expression.left) { case .Evaluated(value, next): left = value; state = next; }
-        switch Eval(environment, state, expression.right) {
+        switch Eval(environment, current, expression.left) { case .Evaluated(value, next): left = value; current = next; }
+        switch Eval(environment, current, expression.right) {
             case .Evaluated(value, next): return Match(next, range, left, "=", value);
         }
     }
     if (expression.kind == StructExpression) {
-        if (expression.arg_count == 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), state); }
+        if (expression.arg_count == 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
         nominal := IDAt(environment, Types(environment)[expression.type].nominal_slot);
         foreach (type in CatalogTypes(environment)) {
             if (IDAt(environment, type.id_slot) == nominal) {
@@ -475,62 +475,62 @@ Compute :: pure fn(environment: Environment, state: State, expression: Expressio
                     field := Fields(environment)[type.field_start + argument.parameter];
                     range = Ranges(environment)[argument.range];
                     target := units.Empty(units.Unknown);
-                    switch Annotated(state, range, field.has_unit, field.unit) { case .Evaluated(value, next): target = value; state = next; }
-                    switch Eval(environment, state, argument.value) {
+                    switch Annotated(current, range, field.has_unit, field.unit) { case .Evaluated(value, next): target = value; current = next; }
+                    switch Eval(environment, current, argument.value) {
                         case .Evaluated(value, next):
-                            switch Match(next, range, target, "=", value) { case .Evaluated(ignored, final): state = final; }
+                            switch Match(next, range, target, "=", value) { case .Evaluated(ignored, final): current = final; }
                     }
                     index += 1;
                 }
-                return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+                return Evaluation.Evaluated(units.Empty(units.Unknown), current);
             }
         }
     }
-    if (expression.kind == MemberExpression) { return MemberUnit(environment, state, expression); }
-    return Evaluation.Evaluated(units.Empty(units.Unknown), state);
+    if (expression.kind == MemberExpression) { return MemberUnit(environment, current, expression); }
+    return Evaluation.Evaluated(units.Empty(units.Unknown), current);
 }
-Eval :: pure fn(environment: Environment, state: State, index: int) -> Evaluation {
+Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluation {
     // The C pass uses VISITING backedges rather than a language recursion cap.
     // Callers still provide finite resolved graphs and instruction budgets.
     depth_limit 0;
-    if (index < 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), state); }
-    switch state {
+    if (index < 0) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
+    switch current {
         case .Cached(cache, terms, visits, diagnostics):
-            if (visits[index] == 1) { return Evaluation.Evaluated(units.Empty(units.Unknown), state); }
+            if (visits[index] == 1) { return Evaluation.Evaluated(units.Empty(units.Unknown), current); }
             if (visits[index] == 2) {
                 row := cache[index];
-                return Evaluation.Evaluated(units.Unit.Value(row.kind, slice(terms, row.term_start, row.term_count)), state);
+                return Evaluation.Evaluated(units.Unit.Value(row.kind, slice(terms, row.term_start, row.term_count)), current);
             }
-            state = State.Cached(cache, terms, set_array_elem(visits, index, 1), diagnostics);
+            current = State.Cached(cache, terms, set_array_elem(visits, index, cast<int>(1)), diagnostics);
     }
-    switch Compute(environment, state, Expressions(environment)[index]) {
+    switch Compute(environment, current, Expressions(environment)[index]) {
         case .Evaluated(value, next):
             switch value {
                 case .Value(kind, added):
                     switch next {
                         case .Cached(cache, terms, visits, diagnostics):
                             row: Cache = {kind: kind, term_start: length(terms), term_count: length(added)};
-                            state = State.Cached(set_array_elem(cache, index, row), append(terms, added), set_array_elem(visits, index, 2), diagnostics);
+                            current = State.Cached(set_array_elem(cache, index, row), append(terms, added), set_array_elem(visits, index, cast<int>(2)), diagnostics);
                     }
             }
-            return Evaluation.Evaluated(value, state);
+            return Evaluation.Evaluated(value, current);
     }
 }
-Assignment :: pure fn(environment: Environment, state: State, statement: Statement) -> State {
+Assignment :: pure fn(environment: Environment, current: State, statement: Statement) -> State {
     target := units.Empty(units.Unknown);
     value := units.Empty(units.Unknown);
     range := Ranges(environment)[statement.range];
     if (statement.expression >= 0) {
-        switch Eval(environment, state, statement.expression) { case .Evaluated(unit, next): target = unit; state = next; }
+        switch Eval(environment, current, statement.expression) { case .Evaluated(unit, next): target = unit; current = next; }
     } else if (statement.symbol >= 0) {
-        switch SymbolUnit(environment, state, statement.symbol, range) { case .Evaluated(unit, next): target = unit; state = next; }
+        switch SymbolUnit(environment, current, statement.symbol, range) { case .Evaluated(unit, next): target = unit; current = next; }
     }
-    switch Eval(environment, state, statement.second) { case .Evaluated(unit, next): value = unit; state = next; }
+    switch Eval(environment, current, statement.second) { case .Evaluated(unit, next): value = unit; current = next; }
     if (statement.op == OpNone || statement.op == OpAdd || statement.op == OpSubtract || statement.op == OpModulo) {
         if (Clash(target, value)) {
             op := "=";
             if (statement.op != OpNone) { op = format_text("{}=", OpText(statement.op)); }
-            return ReportUnits(state, range, target, op, value);
+            return ReportUnits(current, range, target, op, value);
         }
     } else if (statement.op == OpMultiply || statement.op == OpDivide) {
         if (Kind(target) == units.Known && Kind(value) == units.Known) {
@@ -539,15 +539,15 @@ Assignment :: pure fn(environment: Environment, state: State, statement: Stateme
                     if (length(terms) > 0) {
                         sign: int = 1;
                         if (statement.op == OpDivide) { sign = -1; }
-                        switch Product(state, range, target, value, sign) {
-                            case .Evaluated(after, next):
-                                return Report(next, range, format_text("Units differ: {}= would turn {} into {}", OpText(statement.op), units.Format(target, 192), units.Format(after, 192)));
+                        switch Product(current, range, target, value, sign) {
+                            case .Evaluated(productValue, next):
+                                return Report(next, range, format_text("Units differ: {}= would turn {} into {}", OpText(statement.op), units.Format(target, 192), units.Format(productValue, 192)));
                         }
                     }
             }
         }
     }
-    return state;
+    return current;
 }
 Analyze :: pure fn(environment: Environment) -> Analysis {
     cache: Cache[] = [];
@@ -557,38 +557,38 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
     foreach (expression in Expressions(environment)) {
         row: Cache = {kind: units.Unknown, term_start: 0, term_count: 0};
         cache = array_add(cache, row);
-        visits = array_add(visits, 0);
+        visits = array_add(visits, cast<int>(0));
     }
-    state := State.Cached(cache, terms, visits, diagnostics);
+    current := State.Cached(cache, terms, visits, diagnostics);
     foreach (symbol in Symbols(environment)) {
         if (symbol.has_unit) {
             range := Ranges(environment)[symbol.range];
             target := units.Empty(units.Unknown);
-            switch Annotated(state, range, true, symbol.unit) { case .Evaluated(value, next): target = value; state = next; }
+            switch Annotated(current, range, true, symbol.unit) { case .Evaluated(value, next): target = value; current = next; }
             if (symbol.initializer >= 0) {
-                switch Eval(environment, state, symbol.initializer) {
+                switch Eval(environment, current, symbol.initializer) {
                     case .Evaluated(value, next):
-                        switch Match(next, range, target, "default", value) { case .Evaluated(ignored, final): state = final; }
+                        switch Match(next, range, target, "default", value) { case .Evaluated(ignored, final): current = final; }
                 }
             }
         }
     }
     index: int = 0;
     while (index < length(Expressions(environment))) {
-        switch Eval(environment, state, index) { case .Evaluated(ignored, next): state = next; }
+        switch Eval(environment, current, index) { case .Evaluated(ignored, next): current = next; }
         index += 1;
     }
     foreach (statement in Statements(environment)) {
-        if (statement.kind == AssignStatement || statement.kind == ReduceStatement) { state = Assignment(environment, state, statement); }
+        if (statement.kind == AssignStatement || statement.kind == ReduceStatement) { current = Assignment(environment, current, statement); }
     }
     foreach (bindingRow in Bindings(environment)) {
         target := units.Empty(units.Unknown);
-        switch Eval(environment, state, bindingRow.target) { case .Evaluated(value, next): target = value; state = next; }
-        switch Eval(environment, state, bindingRow.value) {
+        switch Eval(environment, current, bindingRow.target) { case .Evaluated(value, next): target = value; current = next; }
+        switch Eval(environment, current, bindingRow.value) {
             case .Evaluated(value, next):
-                state = next;
-                if (Clash(target, value)) { state = ReportUnits(state, Ranges(environment)[bindingRow.range], target, "=", value); }
+                current = next;
+                if (Clash(target, value)) { current = ReportUnits(current, Ranges(environment)[bindingRow.range], target, "=", value); }
         }
     }
-    switch state { case .Cached(rows, names, done, errors): return Analysis.Completed(rows, names, errors); }
+    switch current { case .Cached(rows, names, done, errors): return Analysis.Completed(rows, names, errors); }
 }

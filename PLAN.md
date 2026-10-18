@@ -535,15 +535,28 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 Last verified upstream checkpoint: 2026-10-18 at
 `9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
 
-The current reviewable increment wires the existing unit-analysis draft into
+The current reviewable increment wires the saved unit-analysis draft into
 stage-zero language builds and adds its full differential route plus independent
 zero-ID and deep-chain baseline selectors. The C oracle is extracted but not yet
-used by the active analyzer. The authored evaluator is unchanged. Exact source
-review, hosted compilation and both intended red observations are pending;
-prior results below do not validate this new candidate. After the red evidence,
-apply the independently reviewed iterative evaluator/zero-ID repair, run the
-complete differential and affected admitted checks, then integrate the active
-adapter. No milestone is newly complete and no recovery path is removed.
+used by the active analyzer. Both original focused selectors compiled and ran
+under the unchanged production 60-second supervisor, but failed during source
+snapshot preparation before either C witness or authored Analyze invocation.
+Studio run `39110139847` pins source `f2624cb2963c7327487a3c499f7a725d0ed3252f`
+and control `8ddbb30cbb80331ea77d9ccfbf6efbe0c45f213b`; verified minimal evidence
+SHA256 is `3e3af6c668ba9b2f110e8aef489517663be45869a199c92e6bc37d24d73781b6`.
+Configuration took 5s and build 22s, separately from execution.
+
+Source review identified bare reserved identifiers (`state`, `event`, `after`)
+and three untyped numeric arguments to generic integer-array helpers. This
+preparation correction renames only those private identifiers and makes the
+three item literals explicitly `int`. It changes no grammar, test workload,
+zero-capability guard, recursive evaluator, instruction budget or deadline.
+Successful preparation and both intended red observations on this corrected
+candidate are still pending; the earlier failures do not establish either
+semantic regression. After that red evidence, apply the independently reviewed
+iterative evaluator/zero-ID repair, run the complete differential and affected
+admitted checks, then integrate the active adapter. No milestone is newly
+complete and no recovery path is removed.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

@@ -141,15 +141,58 @@ execute() {
     CHIBI_LANGUAGE_BUILD_DIR="$LANGUAGE_BUILD" CHIBI_TOOLS_BUILD_DIR="$TOOLS_BUILD" \
       python3 tools/test_policy.py tool "$SELECTOR"
 }
+configuration_status() {
+    local errors
+    if ! errors=$(sed -n '/^CMake Error/,/^$/p' "$1" 2>/dev/null | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g'); then
+        printf configuration_failure_unclassified
+        return
+    fi
+    # Classify fatal diagnostics only; optional discovery warnings are not causes.
+    # Only fixed status labels leave the runner; never emit matching text.
+    if grep -Eq 'must be a pinned static archive|Unsupported desktop dependency' <<< "$errors"; then
+        printf desktop_archive_contract
+    elif grep -Eq 'has an unowned absolute link' <<< "$errors"; then
+        printf desktop_absolute_link_contract
+    elif grep -Eq 'has an unresolved link expression' <<< "$errors"; then
+        printf desktop_link_expression_contract
+    elif grep -Eq 'Discovered OpenGL library has no|OpenGL provider .* (is not|has no|does not match)' <<< "$errors"; then
+        printf desktop_system_provider_contract
+    elif grep -Eq 'OpenSSL Crypto discovery failed|OpenSSL metadata does not match' <<< "$errors"; then
+        printf crypto_provider_contract
+    elif grep -Eq 'Native SDK packages require|requires the owning pinned Cute source headers' <<< "$errors"; then
+        printf native_generator_input_missing
+    elif grep -Eq 'Could NOT find|Could not find a package configuration file|required package .* was not found' <<< "$errors"; then
+        printf required_dependency_missing
+    elif grep -Eq 'does not appear to contain CMakeLists.txt|Cannot find source file|The source directory .* does not exist' <<< "$errors"; then
+        printf dependency_source_incomplete
+    elif grep -Eq 'but the target was not found|Unknown CMake command' <<< "$errors"; then
+        printf required_build_target_missing
+    elif grep -Eq 'not able to compile a simple test program' <<< "$errors"; then
+        printf compiler_probe_failed
+    elif grep -Eq 'Compatibility with CMake|CMake [0-9.]+ or higher is required' <<< "$errors"; then
+        printf build_tool_version_incompatible
+    elif grep -Eq 'patch failed|patch does not apply|Failed to apply|Could not apply' <<< "$errors"; then
+        printf dependency_patch_failed
+    elif grep -Eq 'Failed to clone|Failed to download|download.*failed|HTTP response code said error' <<< "$errors"; then
+        printf dependency_fetch_failed
+    else
+        printf configuration_failure_unclassified
+    fi
+}
 collect() {
-    local phase rc seconds selector expected summary outcome
+    local phase rc seconds selector expected summary outcome diagnostic
     : > "$WORK/phases.jsonl"
     for phase in prepare dependencies configure_reflect build_reflect configure_tools build_tools configure_language build_language execute-language-semantic execute-language-incremental execute-unit-fixtures execute-language-unit-analysis-chibi; do
         [[ -f "$WORK/$phase.exit" ]] || continue
         rc=$(cat "$WORK/$phase.exit"); seconds=$(cat "$WORK/$phase.seconds")
         [[ "$rc" =~ ^[0-9]{1,3}$ && "$seconds" =~ ^[0-9]{1,8}$ ]]
+        diagnostic=none
+        if [[ "$phase" == configure_tools && "$rc" != 0 ]]; then
+            diagnostic=$(configuration_status "$WORK/$phase.log")
+        fi
         jq -n --arg phase "$phase" --argjson rc "$rc" --argjson seconds "$seconds" \
-          '{phase:$phase,exit:$rc,elapsed_seconds:$seconds}' >> "$WORK/phases.jsonl"
+          --arg diagnostic "$diagnostic" \
+          '{phase:$phase,exit:$rc,elapsed_seconds:$seconds,diagnostic:$diagnostic}' >> "$WORK/phases.jsonl"
     done
     : > "$WORK/results.jsonl"
     for selector in language-semantic language-incremental unit-fixtures language-unit-analysis-chibi; do

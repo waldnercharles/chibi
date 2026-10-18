@@ -14,9 +14,7 @@
 
 static bool fail(char *error, size_t size, const char *message)
 {
-    if (size) {
-        snprintf(error, size, "%s", message);
-    }
+    snprintf(error, size, "%s", message);
     return false;
 }
 static bool entry_valid(const char *entry)
@@ -41,14 +39,12 @@ bool compiler_prepared_scalar_write(
     size_t size
 )
 {
-    assert(bytes && length && error && size);
+    assert(value && declaration && bytes && length && error && size);
     *bytes = NULL;
     *length = 0;
-    if (size) {
-        error[0] = 0;
-    }
-    if (!value || !ready_tag || !declaration || !declaration->module ||
-        !declaration->function || !entry_valid(declaration->entry) ||
+    error[0] = 0;
+    if (!ready_tag || !declaration->module || !declaration->function ||
+        !entry_valid(declaration->entry) ||
         (declaration->result != PIN_BOOL && declaration->result != PIN_I32)) {
         return fail(error, size, "invalid scalar callable declaration");
     }

@@ -618,7 +618,7 @@ TOOLS = {
     'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--scalar-lowering-chibi'],
     # One pico_unit case over the separate 18-source/16-package compiler fixture:
-    # 39 fixed source requests x2 compiler backends=78 calls; 14 accepted x2=28
+    # 42 fixed source requests x2 compiler backends=84 calls; 14 accepted x2=28
     # payload callbacks, 14x4=56 bytecode/SLJIT target entries. Seven direct
     # malformed bridge inputs add no target execution. Sources<=1KiB (one
     # over-limit specimen=1025), <=4 offered files, <=24 lowered rows. Compiler

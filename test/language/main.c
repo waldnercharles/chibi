@@ -1,9 +1,9 @@
 #define PICO_UNIT_IMPLEMENTATION
+#include "bounded_compiler_chibi.h"
 #include "effect_analysis_chibi.h"
 #include "record_members_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "type_relations_chibi.h"
-#include "bounded_compiler_chibi.h"
 #include "union_members_chibi.h"
 
 #include <stdio.h>
@@ -222,9 +222,8 @@ int main(int argc, char **argv)
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !bounded_compiler_chibi &&
-         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi &&
+         !bounded_compiler_chibi && !lexical_binding_chibi && !nominal_binding_chibi &&
+         !named_binding_chibi && !type_constructors_chibi && !type_relations_chibi &&
          !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
          !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
          !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&

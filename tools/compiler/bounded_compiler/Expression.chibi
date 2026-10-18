@@ -12,29 +12,35 @@ ScalarExpression :: union {
 Decimal :: union { Parsed(value: int) | Invalid }
 ExpressionFrame :: struct { node: int; phase: int; left: int; expected: int; }
 
-// Accumulate before conversion so even signed minimum is exact. Other literal
-// syntax and implicit numeric promotion are outside this first source subset.
+// Accumulate in int64 so even signed minimum is exact. Other literal syntax
+// and implicit numeric promotion are outside this first source subset.
 DecimalValue :: pure fn(text: string, negative: bool) -> Decimal {
     size := strings.ByteLength(text);
     if (size == 0) { return Decimal.Invalid; }
-    magnitude: uint64 = cast<uint64>(0);
+    magnitude: int64 = 0;
     index: int = 0;
     while (index < size) {
         digit := strings.ByteAt(text, index) - 48;
         if (digit < 0 || digit > 9) { return Decimal.Invalid; }
-        if (magnitude > (cast<uint64>(2147483648) - cast<uint64>(digit)) / cast<uint64>(10)) {
-            return Decimal.Invalid;
-        }
-        magnitude = magnitude * cast<uint64>(10) + cast<uint64>(digit);
+        magnitude = magnitude * 10 + digit;
+        if (magnitude > 2147483648) { return Decimal.Invalid; }
         index += 1;
     }
-    if (magnitude == cast<uint64>(2147483648)) {
-        if (negative) { return Decimal.Parsed(cast<int>(-2147483648)); }
-        return Decimal.Invalid;
+    if (negative) { return Decimal.Parsed(int(-magnitude)); }
+    if (magnitude == 2147483648) { return Decimal.Invalid; }
+    return Decimal.Parsed(int(magnitude));
+}
+
+// The one positional argument of a call, or -1.
+SoleArgument :: pure fn(tree: reader.Tree, call: int) -> int {
+    arguments := reader.Field(tree, call, "arguments");
+    if (arguments < 0) { return -1; }
+    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, text):
+        first := reader.NextMember(tree, nodes[arguments].first_child);
+        if (first < 0 || reader.Kind(tree, first, "named_argument") ||
+            reader.NextMember(tree, nodes[first].next_sibling) >= 0) { return -1; }
+        return first;
     }
-    value := cast<int>(magnitude);
-    if (negative) { value = -value; }
-    return Decimal.Parsed(value);
 }
 
 ExpressionRange :: pure fn(tree: reader.Tree, node: int, document: int) -> lower.Range {
@@ -71,8 +77,10 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
     expressions: lower.Expression[] = [];
     literals: lower.Literal[] = [];
     ranges: lower.Range[] = [];
+    // resize cannot grow record arrays, so fill the fixed stack row by row.
     initial: ExpressionFrame = {node: root, phase: 0, left: -1, expected: expected};
-    frames := resize([initial], cast<int>(65));
+    frames: ExpressionFrame[] = [];
+    while (length(frames) < 65) { frames = array_add(frames, initial); }
     top: int = 0;
     visits: int = 0;
     value: int = -1;
@@ -97,7 +105,7 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
             row.left = value;
             row.type = expressions[value].type;
             if (frame.phase == 2) {
-                if (row.type != 1) { return ExpressionFailure(tree, node, document, "bounded compiler supports only identity int casts"); }
+                if (row.type != 1) { return ExpressionFailure(tree, node, document, "bounded compiler supports only identity int conversions"); }
                 row.kind = 5;
             } else if (frame.phase == 3) {
                 row.kind = 3;
@@ -139,13 +147,15 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
                 frames[top] = child;
                 continue;
             }
-            if (reader.Kind(tree, node, "cast_expression")) {
-                if (reader.Text(tree, reader.Field(tree, node, "type")) != "int") {
-                    return ExpressionFailure(tree, node, document, "bounded compiler supports only explicit int casts");
+            if (reader.Kind(tree, node, "call_expression")) {
+                argument := SoleArgument(tree, node);
+                if (reader.Text(tree, reader.Field(tree, node, "function")) != "int" || argument < 0 ||
+                    reader.Field(tree, node, "type_arguments") >= 0) {
+                    return ExpressionFailure(tree, node, document, "bounded compiler supports no call except int(value)");
                 }
                 frame.phase = 2;
                 frames[top] = frame;
-                child: ExpressionFrame = {node: reader.Field(tree, node, "value"), phase: 0, left: -1, expected: 6};
+                child: ExpressionFrame = {node: argument, phase: 0, left: -1, expected: 6};
                 top += 1;
                 frames[top] = child;
                 continue;
@@ -186,8 +196,11 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
             row.kind = 1;
             literal: lower.Literal = {storage: 0, payload: 0};
             if (reader.Kind(tree, literal_node, "number")) {
+                if (frame.expected == 1) {
+                    return ExpressionFailure(tree, node, document, "bounded Boolean context cannot take a number");
+                }
                 if (frame.expected != 6) {
-                    return ExpressionFailure(tree, node, document, "bounded integer operands need explicit cast<int>");
+                    return ExpressionFailure(tree, node, document, "bounded integer operands need explicit int(value)");
                 }
                 switch DecimalValue(reader.Text(tree, literal_node), negative) {
                     case .Invalid: return ExpressionFailure(tree, node, document, "bounded compiler needs a decimal literal in the int range");

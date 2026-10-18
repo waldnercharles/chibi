@@ -27,7 +27,7 @@ typedef struct
  * occurs here. The returned bytes are one INNER prepared module, never a
  * CHIBICLO envelope. Success transfers malloc storage to the caller (free()).
  * Failure clears bytes/length; inputs are borrowed only for this call.
- * bytes, length and a nonempty error buffer are required.
+ * plan, declaration, bytes, length and a nonempty error buffer are required.
  * Do not link this producer into the runtime-only compiler_host. */
 bool compiler_prepared_scalar_write(
     const pin_value *plan,

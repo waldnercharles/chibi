@@ -68,7 +68,7 @@ SignatureEnvironment :: pure fn(lexical: binding.Environment, identity: string, 
     exports: named.Export[] = [];
     uses: named.Use[] = [];
     names := named.Environment.Tables(lexical, types, ids, entries, entries, entries,
-        indices, imports, exports, uses, identity, 0, false, true, cast<uint64>(0));
+        indices, imports, exports, uses, identity, 0, false, true, 0);
     definitions: constructors.Definition[] = [];
     variants: constructors.RawVariant[] = [];
     capabilities: constructors.Capability[] = [];
@@ -91,7 +91,7 @@ ReadSignature :: pure fn(environment: reader.Environment, tree: reader.Tree, nod
             if (length(diagnostics) != 0) { return ScalarSignature.Rejected(diagnostics[0]); }
             switch value { case .Typed(storage, container, flags, nominal, parameter):
                 if ((storage != 1 && storage != 6) || container != 0 || flags != 0 ||
-                    nominal != cast<uint64>(0) || parameter != cast<uint64>(0) || has_unit ||
+                    nominal != 0 || parameter != 0 || has_unit ||
                     length(uses) != 0 || length(publications) != 0) {
                     return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "unsupported bounded result signature"));
                 }
@@ -110,6 +110,10 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
     if (!reader.Kind(tree, name_node, "identifier") || name == "_" || strings.ByteLength(name) > 240) {
         return SourceFailure(tree, name_node, document, "bounded compiler requires an identifier-named function");
     }
+    // int(value) is a conversion here; a function of that name would be a call.
+    if (name == "int" || name == "bool") {
+        return SourceFailure(tree, name_node, document, "bounded compiler reserves int and bool for conversions");
+    }
     parameters := reader.Field(tree, function, "parameters");
     if (parameters < 0 || FirstMember(tree, parameters) >= 0) {
         return SourceFailure(tree, function, document, "bounded compiler supports zero-argument functions only");
@@ -120,7 +124,7 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
     place := reader.Request(tree, name_node, 0, document, name);
     request: binding.Request = {name: name, kind: binding.FunctionKind,
         start: place.start, end: place.end, line: place.line, column: place.column, document: document};
-    function_id: uint64 = cast<uint64>(0);
+    function_id: uint64 = 0;
     switch binding.Declare(lexical, context, request) {
         case .Existing(symbol, diagnostics): return Result.Rejected(diagnostics[0]);
         case .Appended(id, diagnostics):
@@ -132,6 +136,9 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
     environment := SignatureEnvironment(lexical, identity, pointer_size);
     result_storage: int = 0;
     signature := reader.Field(tree, function, "results");
+    if (signature < 0) {
+        return SourceFailure(tree, function, document, "bounded compiler requires one ordinary int or bool result");
+    }
     switch ReadSignature(environment, tree, signature, document) {
         case .Rejected(diagnostic): return Result.Rejected(diagnostic);
         case .Accepted(storage): result_storage = storage;
@@ -240,7 +247,7 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], abi: low
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }
     if (strings.ByteLength(project) == 0 || strings.ByteLength(project) > 240 ||
-        abi.schema != 1 || abi.prepared != 14 || (abi.pointer_storage != 7 && abi.pointer_storage != 9)) {
+        abi.schema != 1 || abi.prepared != 15 || (abi.pointer_storage != 7 && abi.pointer_storage != 9)) {
         return InputFailure(-1, "unsupported bounded compiler root or target");
     }
     inputs: snapshot.Input[] = [];
@@ -253,7 +260,7 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], abi: low
         }
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
         inputs = array_add(inputs, input);
-        sizes = array_add(sizes, cast<uint64>(strings.ByteLength(sources[index])));
+        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,

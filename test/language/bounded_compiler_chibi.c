@@ -24,19 +24,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* SOURCE-ONLY, UNEXECUTED proposal. Bootstrap parses only the 18 shipped
- * compiler/dependency files, never any CASE source below. The authored driver
- * alone chooses semantic/lowering facts from each user source. Its private raw
+/* Bootstrap parses only the 18 shipped compiler/dependency files, never any
+ * CASE source below. The authored driver alone chooses semantic/lowering facts
+ * from each user source. Its private raw
  * parser and prepared-payload callback are interposed only for work counting.
  * One fixed corpus, two compiler backends, four compiler/target combinations;
  * no timing loops, subprocesses, runtime files, network, rendering or GPU.
- * First-run exact-source/resource admission and one production shared 60-second
- * deadline are required. Context budgets reset in child activations and are
- * not an aggregate instruction ceiling. See the source-only workload note. */
+ * One production shared 60-second deadline bounds the run. Context budgets
+ * reset in child activations and are not an aggregate instruction ceiling.
+ * See docs/bounded-authored-compiler.md. */
 enum
 {
     ACCEPTED = 14,
-    REJECTED = 25,
+    REJECTED = 28,
     CASES = ACCEPTED + REJECTED,
     SOURCE_CAP = 1024,
     PATH_CAP = 240,
@@ -58,6 +58,42 @@ typedef struct
     bool wrong_abi;
 } request;
 static request cases[CASES];
+/* Each rejected case's exact diagnostic and 1-based line:column, in order. */
+typedef struct
+{
+    const char *message;
+    int line, column;
+} rejection;
+static const rejection rejections[REJECTED] = {
+    { "Expected }", 2, 36 },
+    { "Package sibling headers differ", 1, 9 },
+    { "unsupported declaration in bounded package", 2, 1 },
+    { "bounded function body needs exactly one ordinary return", 2, 26 },
+    { "Imported package is missing from the snapshot", 2, 12 },
+    { "bounded return expression differs from its declared result type", 2, 35 },
+    { "bounded Boolean context cannot take a number", 2, 36 },
+    { "bounded compiler requires one to three complete source files", 1, 1 },
+    { "bounded source path or text exceeds its limit", 1, 1 },
+    { "bounded compiler requires one to three complete source files", 1, 1 },
+    { "bounded compiler requires one to three complete source files", 1, 1 },
+    { "bounded compiler supports zero-argument functions only", 2, 1 },
+    { "bounded compiler requires a nongeneric pure function", 2, 1 },
+    { "bounded package supports exactly one function", 3, 1 },
+    { "bounded compiler needs a decimal literal in the int range", 2, 35 },
+    { "bounded compiler requires one ordinary int or bool result", 2, 22 },
+    { "bounded integer operands need explicit int(value)", 2, 35 },
+    { "bounded compiler supports no call except int(value)", 2, 35 },
+    { "bounded function body needs exactly one ordinary return", 2, 26 },
+    { "Expected package header", 1, 1 },
+    { "bounded compiler supports no call except int(value)", 2, 36 },
+    { "bounded compiler supports no call except int(value)", 2, 35 },
+    { "bounded compiler reserves int and bool for conversions", 2, 1 },
+    { "bounded compiler requires one ordinary int or bool result", 2, 1 },
+    { "bounded expression exceeds its 24-row limit", 2, 36 },
+    { "unsupported bounded compiler root or target", 1, 1 },
+    { "bounded source path or text exceeds its limit", 1, 1 },
+    { "unsupported bounded compiler root or target", 1, 1 },
+};
 typedef struct
 {
     unsigned char *bytes;
@@ -285,12 +321,22 @@ static bool compile(int b, pin_value *args, pin_value *out)
     int status = behavior_function_run(function, &context, b != 0);
     behavior_run_scope_end(&runs);
     if (status != FLOW_OK || !context.returned) {
+        const behavior_function_source *at = context.error_source >= 0 &&
+                                                     context.error_source <
+                                                         acount(function->sources)
+                                               ? &function->sources[context.error_source]
+                                               : NULL;
         fprintf(
             stderr,
-            "bounded compiler: backend=%d status=%d returned=%d: %s\n",
+            "bounded compiler: backend=%d status=%d returned=%d failure=%d at "
+            "%s:%d:%d: %s\n",
             b,
             status,
             context.returned,
+            (int)context.failure,
+            at && at->asset_name ? at->asset_name : "?",
+            at ? at->line : 0,
+            at ? at->column : 0,
             context.error_message ? context.error_message : ""
         );
     }
@@ -442,37 +488,37 @@ static bool corpus()
         5,
         "wrapping addition",
         "package facts\nAnswer :: pure fn()->int { return "
-        "cast<int>(2147483647) + cast<int>(1); }",
+        "int(2147483647) + int(1); }",
         "[-2147483648]"
     );
     single(
         6,
         "integer arithmetic",
         "package facts\nAnswer :: pure fn()->int { return "
-        "-(cast<int>(3) * cast<int>(4) - cast<int>(5)); }",
+        "-(int(3) * int(4) - int(5)); }",
         "[-7]"
     );
     single(
         7,
         "integer bits",
         "package facts\nAnswer :: pure fn()->int { return "
-        "~(cast<int>(6) & cast<int>(3)) | (cast<int>(8) ^ cast<int>(1)); }",
+        "~(int(6) & int(3)) | (int(8) ^ int(1)); }",
         "[-3]"
     );
     single(
         8,
         "ordered equality",
         "package facts\nAnswer :: pure fn()->bool { return "
-        "(cast<int>(1) < cast<int>(2)) && (cast<int>(2) == cast<int>(2)) && "
-        "(cast<int>(2) != cast<int>(3)); }",
+        "(int(1) < int(2)) && (int(2) == int(2)) && "
+        "(int(2) != int(3)); }",
         "[true]"
     );
     single(
         9,
         "ordered comparison",
         "package facts\nAnswer :: pure fn()->bool { return "
-        "(cast<int>(2) <= cast<int>(2)) && (cast<int>(3) > cast<int>(2)) && "
-        "(cast<int>(3) >= cast<int>(3)); }",
+        "(int(2) <= int(2)) && (int(3) > int(2)) && "
+        "(int(3) >= int(3)); }",
         "[true]"
     );
     cases[10] = (request){
@@ -554,7 +600,10 @@ static bool corpus()
     single(n++, "function call", "package facts\nAnswer :: pure fn()->int { return length(\"hello\"); }", NULL);
     single(n++, "local statement", "package facts\nAnswer :: pure fn()->int { value:int=42; return value; }", NULL);
     single(n++, "library wrapper", "library Facts { Answer :: pure fn()->int { return 42; } }", NULL);
-    single(n++, "unsupported cast", "package facts\nAnswer :: pure fn()->bool { return cast<bool>(true); }", NULL);
+    single(n++, "unsupported conversion", "package facts\nAnswer :: pure fn()->bool { return bool(true); }", NULL);
+    single(n++, "conversion type arguments", "package facts\nAnswer :: pure fn()->int { return int<bool>(5); }", NULL);
+    single(n++, "function named int", "package facts\nint :: pure fn()->int { return int(42); }", NULL);
+    single(n++, "no result", "package facts\nAnswer :: pure fn() { return 42; }", NULL);
     single(n++, "25 expression rows", expression25, NULL);
     single(n, "empty project root", VALID, NULL);
     cases[n++].project = "";
@@ -578,7 +627,12 @@ static bool corpus()
     REQUIRE(offered <= 16 * 1024);
     return true;
 }
-static bool reject_bridge(const pin_value *plan, uint64_t ready, const compiler_prepared_scalar_declaration *declaration)
+static bool reject_bridge(
+    const pin_value *plan,
+    uint64_t ready,
+    const compiler_prepared_scalar_declaration *declaration,
+    const char *message
+)
 {
     char error[192] = { 0 };
     bridge_length = 17;
@@ -592,28 +646,30 @@ static bool reject_bridge(const pin_value *plan, uint64_t ready, const compiler_
         error,
         sizeof error
     );
-    REQUIRE(!valid && !bridge_bytes && !bridge_length && error[0]);
+    REQUIRE(!valid && !bridge_bytes && !bridge_length && !strcmp(error, message));
     return true;
 }
 static bool reject_malformed_bridge_inputs()
 {
     REQUIRE(bridge_ready && bridge_plan.type == PIN_UNION && bridge_plan.ptr);
     REQUIRE(bridge_declaration.result == PIN_I32);
-    REQUIRE(reject_bridge(&bridge_plan, 0, &bridge_declaration));
+    REQUIRE(reject_bridge(&bridge_plan, 0, &bridge_declaration, "invalid scalar callable declaration"));
     compiler_prepared_scalar_declaration wrong = bridge_declaration;
     wrong.result = PIN_BOOL;
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong));
+    REQUIRE(
+        reject_bridge(&bridge_plan, bridge_ready, &wrong, "scalar callable requires no arguments/state and one declared result")
+    );
     wrong = bridge_declaration;
     wrong.module = 0;
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong));
+    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
     wrong = bridge_declaration;
     wrong.function = 0;
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong));
+    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
     wrong = bridge_declaration;
     wrong.entry = "";
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong));
+    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
     pin_value invalid = integer(1);
-    REQUIRE(reject_bridge(&invalid, bridge_ready, &bridge_declaration));
+    REQUIRE(reject_bridge(&invalid, bridge_ready, &bridge_declaration, "scalar plan is not a union"));
     pin_union *plan = bridge_plan.ptr;
     REQUIRE(plan->count == 9);
     pin_value old_ids = plan->values[1], old_defaults = plan->values[2];
@@ -625,7 +681,12 @@ static bool reject_malformed_bridge_inputs()
     /* The existing zero I32 result header is also a valid variable default.
      * Only the bridge's zero-state contract changes; do not fabricate a plan. */
     plan->values[2] = plan->values[3];
-    bool rejected = reject_bridge(&bridge_plan, bridge_ready, &bridge_declaration);
+    bool rejected = reject_bridge(
+        &bridge_plan,
+        bridge_ready,
+        &bridge_declaration,
+        "scalar callable requires no arguments/state and one declared result"
+    );
     plan->values[1] = old_ids;
     plan->values[2] = old_defaults;
     REQUIRE(rejected);
@@ -713,6 +774,12 @@ TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
     REQUIRE(reject_malformed_bridge_inputs());
     for (int i = 0; i < CASES; i++) {
         if (i >= ACCEPTED) {
+            const rejection *expected = &rejections[i - ACCEPTED];
+            REQUIRE(!strcmp(outputs[0][i].diagnostic, expected->message));
+            REQUIRE(
+                outputs[0][i].location[2] == expected->line &&
+                outputs[0][i].location[3] == expected->column
+            );
             REQUIRE(!strcmp(outputs[0][i].diagnostic, outputs[1][i].diagnostic));
             REQUIRE(!memcmp(
                 outputs[0][i].location,
@@ -736,7 +803,7 @@ TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
         memcmp(outputs[0][0].bytes, outputs[0][2].bytes, outputs[0][0].length)
     );
     REQUIRE(compile_calls == 2 * CASES && payload_calls == 2 * ACCEPTED);
-    REQUIRE(offered_files == 86 && raw_parses == 70);
+    REQUIRE(offered_files == 92 && raw_parses == 76);
     REQUIRE(target_runs == 4 * ACCEPTED && bridge_rejections == 7);
     return true;
 }

@@ -5,6 +5,7 @@
 #include "toolchain/compiler_prepared_scalar.h"
 #include "types/array.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -59,10 +60,8 @@ static const char *write_prepared(
 )
 {
     const compiler_prepared_fixture_service *configuration = service;
-    if (!context || !context->value_storage || !configuration ||
-        !configuration->ready_tag || !arguments || !results) {
-        return "Invalid prepared fixture invocation";
-    }
+    assert(context && context->value_storage && configuration && configuration->ready_tag);
+    assert(arguments && results);
     for (int i = MODULE; i < INPUT_COUNT; i++) {
         if (arguments[i].type != INPUTS[i].storage ||
             arguments[i].container != PIN_CONTAINER_SINGLE) {

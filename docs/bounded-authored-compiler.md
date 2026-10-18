@@ -2,17 +2,26 @@
 
 ## Status and dependency order
 
-This is a source-only M5 increment. No configuration, build, authored compiler
-execution or generated-artifact execution has validated this candidate. It does
-not complete M5 and is not stage one, stage two or a self-hosting result.
+This M5 increment runs. On macOS arm64 (Debug, ASan/UBSan, 2026-10-18),
+`tool language-bounded-compiler-chibi` passes its one case with 36,739
+assertions in 15.9 s under the production 60-second supervisor. Stage zero
+prepares the compiler closure with 124 bytecode bootstrap entries. The authored
+compiler then handles 42 sources on each compiler backend (84 calls, 76 raw
+parses, seven bridge rejections), produces 28 accepted payloads, and runs the
+generated artifacts 56 times across the bytecode and SLJIT targets. Linux is
+unmeasured. It does not complete M5 and is not stage one, stage two or a
+self-hosting result.
 
-The source depends on the retained raw-syntax ABI and binary handoff in PR445,
-then the snapshot-to-reader composition in PR446, and the scalar lowering
-component in PR447. Those components require their own exact-tree runtime and
-linked-boundary checks before this compiler receives first-run admission. The
-driver does not extend any existing selector's caps, corpus or aggregate
-membership. Its separate selector requires independent complete-workload
-admission under the unchanged production supervisor.
+It builds on the merged raw-syntax ABI and binary handoff (PR445),
+snapshot-to-reader composition (PR446), scalar lowering (PR447) and `T(value)`
+numeric conversions (PR450). The first run found two source defects:
+- `resize` cannot grow an authored record array, so the expression frame stack
+  is now filled row by row.
+- Decimal parsing compared `uint64` values, which the verifier does not order,
+  so it now accumulates in `int64`.
+
+The driver does not extend any existing selector's caps, corpus or aggregate
+membership.
 
 ## Entry and complete input
 
@@ -33,7 +42,8 @@ The accepted graph contains exactly one import-free package. Every file is
 walked before lowering; package-header/comment-only sibling files are accepted.
 Exactly one declaration may occur across the complete package: an explicitly
 `pure`, nongeneric, identifier-named, zero-argument function returning one
-ordinary `int` or `bool`. Its body contains exactly one ordinary return. Other
+ordinary `int` or `bool`, not itself named `int` or `bool`. Its body contains
+exactly one ordinary return. Other
 declarations, extra statements and unhandled expressions reject. The driver
 does not compile only the selected function while silently dropping other
 source contents.
@@ -42,15 +52,15 @@ source contents.
 
 - Boolean literals, parentheses, Boolean `!`/`not`, `&&`/`and`, `||`/`or`, and
   equal/not-equal comparisons.
-- Exact decimal I32 literals in direct `int` return or explicit `cast<int>`
+- Exact decimal I32 literals in direct `int` return or explicit `int(value)`
   context, including signed minimum. Out-of-range, hexadecimal, fractional and
   exponent literals reject in this increment.
-- Identity `cast<int>`, integer unary plus/minus/inversion, add/subtract/multiply,
+- Identity `int(value)` without type arguments, integer unary plus/minus/inversion, add/subtract/multiply,
   bitwise and/or/xor, and ordinary scalar comparisons. Binary integer operands
   must already have explicit `int` types, such as
-  `cast<int>(19) + cast<int>(23)`. Implicit numeric inference is unsupported;
+  `int(19) + int(23)`. Implicit numeric inference is unsupported;
   even `19 + 23` rejects rather than inventing a second inference policy.
-- No variables, calls, numeric conversions, division, remainder, shifts,
+- No variables, calls, other numeric conversions, division, remainder, shifts,
   aggregates, tasks, effects, ECS declarations or source imports.
 
 ReadExpression uses explicit frames, at most 64 visits and 24 lowered rows.
@@ -78,7 +88,7 @@ width-wrapping runtime semantics.
 6. The private producer primitive receives only that plan, authored IDs, entry
    text and scalar result storage. The native scalar decoder replays it; existing
    builder verification, optimization/finalization and prepared serialization
-   produce one inner CHIBIPRE version-14 module.
+   produce one inner CHIBIPRE version-15 module.
 7. Artifact.chibi constructs the complete one-module CHIBICLO version-1 envelope,
    including magic, root/module identity, counts, lengths, name and payload. All
    envelope words are authored little-endian encoding. The inner payload is

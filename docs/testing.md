@@ -1135,13 +1135,17 @@ three simultaneous owners. Each source is below 1 KiB. The route performs no
 filesystem, process, authored execution or GPU work. Build separately and use
 one shared 60-second deadline; this focused route is also outside the aggregate.
 
-`python3 tools/test_policy.py tool language-package-imports` selects eleven fixed
+`python3 tools/test_policy.py tool language-package-imports` selects twelve fixed
 C cases for dependency execution, alias isolation, self imports, owned exported
 records/unions/constants, stable identities, incremental invalidation, retained
 generations, constrained generics and constant defaults. It also checks owned
-union payload defaults and malformed public export bindings. The workload has
-45 preparations, 145 offered files, 80 import declarations, at most 129 package
-visits before reuse, and 34 direct calls with instruction budgets of 2,000.
+union payload defaults and malformed public export bindings. Cached closures
+track sibling addition, path-only renames and removal across the dependency
+chain while an unrelated package is reused; failed generations publish no module
+or exports, are never cache hits, and repair replaces them while a separately
+retained valid module keeps working. The workload has 59 preparations, 210
+parses, 113 import declarations, at most 189 package visits before reuse, and 48
+direct calls with instruction budgets of 2,000.
 One catalog snapshot and one additional parse/nine semantic-only analyses cover
 the metadata cases. At most four owners and five source files per snapshot are
 live; each source is below 1 KiB. No filesystem, process or GPU work occurs.

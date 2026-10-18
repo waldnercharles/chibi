@@ -453,19 +453,20 @@ million/sixteen million; effects retains 34 requests, 68 calls and ten parses
 at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
 runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
 not whole-call or aggregate instruction ceilings. Each route remains outside
-aggregates under one unchanged production 60-second deadline. Exact combined
-source/workload review passed before hosted run 39137179505. That exact source
-`a1126704c16040dc0d8f6e15e183314e8c60cac4` configured and built successfully;
-full union, unit and type differentials passed. Effects and record members each
-failed below one second under their unchanged 60-second supervisors. The minimal
-status JSON SHA-256 is
-`cc0bca43c01dee1edc54837504239cd3614e4dfb0722bd4153dd805df1699652`.
-The next record fix copies an immutable pattern payload into a writable local
-and uses the existing `format_text` capability instead of unsupported string
-addition. It is source-reviewed but has not passed a target measurement yet.
-Effects has no justified source fix yet; closed status-only classification of
-existing private diagnostics will distinguish preparation and runtime failures.
-No raw diagnostics, source contents or build metadata are exported.
+aggregates under one unchanged production 60-second deadline. Hosted run
+39138442670 at source `ec13962865b093bbeb2693a46ec6dc22fac6e498` passed
+union members, record members, unit analysis and type relations, with execution
+identity, expected pico summaries and production deadlines verified. Effects
+failed during snapshot preparation before authored execution. An independently
+admitted complete three-source C syntax diagnostic reproduced one error in the
+Effects local declaration named `unordered`; Diagnostics and CoreStrings parsed
+cleanly. The local and its sole use are now named `isUnordered`, preserving
+reduction logic and all fixtures. Corrected-source syntax passed all three
+complete-source cases and nine assertions in 0.072 seconds under the unchanged
+production 60-second supervisor. The complete four-case effects differential
+still requires exact-candidate validation before claiming an execution pass. The status artifact SHA-256 is
+`6139c665be643f00f75827871fbb5b93c514f35d2d1888fb75a9fcc2fd56da86`.
+No raw hosted diagnostics or source contents are exported.
 No result is claimed for the separately owned native-unit adapter candidate.
 Complete authored semantic analysis, lowering, artifact production, stage one
 and stage two remain incomplete; these components do not establish self-hosting.
@@ -696,10 +697,13 @@ copy remains.
 The earlier checkpoint saved three unintegrated drafts: `unit_analysis`,
 `union_members` and `effect_analysis`, each with C helpers, authored source and
 pico fixtures. Unit analysis has since passed as recorded above. The current
-additive candidate wires union members and effects together with record members;
-these three full differentials still await their first runtime measurements.
-Their active production adapters remain excluded. The historical workload
-records below remain unchanged; they do not claim current execution evidence.
+additive candidate wires union members and effects together with record members.
+Union and record members passed their full hosted routes in run 39138442670;
+effects reached a snapshot syntax failure. The `unordered` local-name correction
+passed all three complete-source syntax cases and nine assertions; full hosted
+effects differential evidence remains pending. Their
+active production adapters remain excluded. The workload records below retain
+the reviewed bounds and do not imply a corrected effects execution pass.
 
 - Unit analysis: 29 requests, 58 calls at 500,000 instructions and 14 parses.
   The old recursive evaluator and incorrect zero-capability guard intentionally

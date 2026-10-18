@@ -4,7 +4,6 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -247,21 +246,31 @@ void script_analyzer_require_values(analyzer *a, TSNode node, int target, int va
         script_analyzer_require(a, node, left->results[i], right->results[i]);
     }
 }
-static void type_use(analyzer *a, TSNode node, int symbol, uint64_t nominal)
+script_named_facts script_analyzer_named_facts(const analyzer *a)
 {
-    if (symbol < 0 && !nominal) {
-        return;
+    return (script_named_facts){
+        .lexical = script_lexical_view(a->out, acount(a->out->symbols)),
+        .catalog = a->catalog,
+        .native = a->native,
+        .own_types = a->out->types,
+        .own_type_count = acount(a->out->types),
+        .imports = a->imports,
+        .import_count = a->import_count,
+        .document_count = a->document_count,
+        .package_scope = a->package_scope,
+        .uses = a->out->uses,
+        .use_count = acount(a->out->uses)
+    };
+}
+static script_type named_resolution(analyzer *a, script_named_resolution result)
+{
+    if (result.has_diagnostic) {
+        apush(a->out->diagnostics, result.diagnostic);
     }
-    script_range range = script_analyzer_range(a, node);
-    for (int i = 0; i < acount(a->out->uses); i++) {
-        const script_use *use = &a->out->uses[i];
-        if (use->kind == SCRIPT_TYPE_USE && use->symbol == symbol &&
-            use->member == nominal && use->range.document == range.document &&
-            use->range.start == range.start && use->range.end == range.end) {
-            return;
-        }
+    if (result.has_use) {
+        apush(a->out->uses, result.use);
     }
-    script_analyzer_use(a, node, symbol, SCRIPT_TYPE_USE, nominal);
+    return result.type;
 }
 static script_type optional_storage(const analyzer *a, script_type type)
 {
@@ -273,96 +282,11 @@ static script_type optional_storage(const analyzer *a, script_type type)
 }
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source)
 {
-    size_t length = strlen(source);
-    char *name = xmalloc(length + 1);
-    int count = 0;
-    for (size_t i = 0; i < length; i++) {
-        if (!isspace((unsigned char)source[i])) {
-            name[count++] = source[i];
-        }
-    }
-    name[count] = 0;
-    unsigned flags = 0;
-    if (!strncmp(name, "ref", 3) && count > 3) {
-        memmove(name, name + 3, (size_t)count - 2);
-        count -= 3;
-        flags |= SCRIPT_TYPE_REFERENCE;
-    }
-    if (count && name[count - 1] == '?') {
-        name[--count] = 0;
-        flags |= SCRIPT_TYPE_OPTIONAL;
-    }
-    pin_container container = PIN_CONTAINER_SINGLE;
-    if (count >= 2 && !strcmp(name + count - 2, "[]")) {
-        name[count -= 2] = 0;
-        container = PIN_CONTAINER_ARRAY;
-    }
-    const struct
-    {
-        const char *name;
-        pin_container container;
-    } containers[] = { { "set<", PIN_CONTAINER_SET },
-                       { "map<", PIN_CONTAINER_MAP },
-                       { "array<", PIN_CONTAINER_ARRAY } };
-    for (size_t i = 0; i < sizeof containers / sizeof *containers; i++) {
-        size_t prefix = strlen(containers[i].name);
-        if (!strncmp(name, containers[i].name, prefix) && count > (int)prefix &&
-            name[count - 1] == '>') {
-            container = containers[i].container;
-            name[count - 1] = 0;
-            memmove(name, name + prefix, (size_t)count - prefix);
-            count -= (int)prefix + 1;
-            break;
-        }
-    }
-    if ((!strncmp(name, "struct<", 7) || !strncmp(name, "handle<", 7)) &&
-        count > 7 && name[count - 1] == '>') {
-        name[count - 1] = 0;
-        memmove(name, name + 7, (size_t)count - 7);
-    } else if (!strncmp(name, "enum<", 5) && count > 5 && name[count - 1] == '>') {
-        name[count - 1] = 0;
-        memmove(name, name + 5, (size_t)count - 5);
-    }
-    if (*name == '"') {
-        yyjson_doc *d = yyjson_read(name, strlen(name), 0);
-        if (d && yyjson_is_str(yyjson_doc_get_root(d))) {
-            char *decoded = xstrdup(yyjson_get_str(yyjson_doc_get_root(d)));
-            free(name);
-            name = decoded;
-        }
-        yyjson_doc_free(d);
-    }
-    script_type type = script_builtin_type(name);
-    if (type.flags & SCRIPT_TYPE_ERROR) {
-        int symbol = script_analyzer_lookup_name(a, name);
-        if (symbol >= 0 && (a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER ||
-                            a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
-            type = a->out->symbols[symbol].type;
-        } else {
-            int index = script_analyzer_find_type(a, node, name);
-            if (index < 0) {
-                script_analyzer_diagnostic(a, node, "%s type '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
-            } else {
-                type = a->catalog->types[index].type;
-                type.nominal = a->catalog->types[index].id;
-            }
-        }
-    }
-    if (!strcmp(name, "entity") && a->catalog->entity_type) {
-        type.nominal = a->catalog->entity_type;
-    }
-    type.container = container;
-    type.flags |= flags;
-    int symbol = script_analyzer_lookup_name(a, name);
-    if (symbol < 0 || a->out->symbols[symbol].kind != SCRIPT_TYPE_PARAMETER) {
-        symbol = -1;
-    }
-    if (!(type.flags & SCRIPT_TYPE_ERROR)) {
-        type_use(a, node, symbol, symbol < 0 ? type.nominal : 0);
-    }
-    free(name);
-    return optional_storage(a, type);
+    script_named_facts facts = script_analyzer_named_facts(a);
+    script_named_request request = { a->scope, script_analyzer_range(a, node) };
+    return named_resolution(a, script_named_text(&facts, request, source));
 }
+
 script_type script_analyzer_type_node(analyzer *a, TSNode node)
 {
     if (ts_node_is_null(node)) {
@@ -409,34 +333,26 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                 type.storage = PIN_HANDLE;
             }
         } else {
-            type = script_builtin_type(name);
-            int symbol = script_analyzer_lookup_name(a, name);
-            if (symbol >= 0 && (a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER ||
-                                a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
-                type = a->out->symbols[symbol].type;
-            } else if (type.flags & SCRIPT_TYPE_ERROR) {
-                int index = script_analyzer_find_type(a, node, name);
-                if (index >= 0) {
-                    type = a->catalog->types[index].type;
-                    type.nominal = a->catalog->types[index].id;
-                } else {
-                    script_analyzer_diagnostic(
-                        a,
-                        name_node,
-                        "%s type '%s'",
-                        index == -2 ? "Ambiguous" : "Unknown",
-                        name
-                    );
-                }
+            char **tokens = NULL;
+            for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
+                apush(tokens, script_analyzer_text_copy(a, ts_node_child(node, i)));
             }
-            if (!strcmp(name, "entity") && a->catalog->entity_type) {
-                type.nominal = a->catalog->entity_type;
+            script_named_facts facts = script_analyzer_named_facts(a);
+            script_named_request request = { a->scope,
+                                             script_analyzer_range(a, name_node) };
+            script_named_resolution result = script_named_parsed(
+                &facts,
+                request,
+                name,
+                (const char *const *)tokens,
+                acount(tokens)
+            );
+            for (int i = 0; i < acount(tokens); i++) {
+                free(tokens[i]);
             }
-            if (!(type.flags & SCRIPT_TYPE_ERROR)) {
-                bool generic = symbol >= 0 && a->out->symbols[symbol].kind ==
-                                                  SCRIPT_TYPE_PARAMETER;
-                type_use(a, name_node, generic ? symbol : -1, generic ? 0 : type.nominal);
-            }
+            afree(tokens);
+            free(name);
+            return named_resolution(a, result);
         }
         for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
             TSNode child = ts_node_child(node, i);

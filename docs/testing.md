@@ -1356,6 +1356,28 @@ both owner teardowns. There are no runtime files, children, services or GPU
 operations. Independently review before the first run, build separately and use
 one shared 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-named-binding-chibi` compares ordinary
+named annotation binding and catalog/import type lookup. Three pico cases run
+28 fixed requests plus eight requests from four analyzed annotations: 72 authored
+calls across bytecode and SLJIT, each capped at two million instructions. Two
+owners prepare four compiler sources each, all below 32 KiB. The four analyzed
+sources add four parses, for twelve total; three quoted fallback requests invoke
+the existing private JSON codec six times.
+
+Per-request caps are 32 symbols, eight scopes, four functions, two documents,
+eight catalog entries, three imports/exports, four uses, eight raw tokens,
+64 semantic types and 128 exact uint64 IDs. Names are at most 220 bytes, fallback
+text 256 bytes; fact trees contain at most 128 nodes at depth sixteen. The adapter
+copies raw facts, including catalog spellings and export spans. The authored
+implementation decides builtin/lexical precedence, aliases, fuzzy ambiguity,
+exact matches, entity identity, modifiers, optional boxing and type-use records.
+Comparisons cover full IDs and ordered diagnostics; fixed lookup indices and
+191-byte truncation witnesses supplement C parity. Detached results and retained
+generic/diagnostic results survive input and owner retirement. There are no
+runtime files, children, services or GPU operations. Independently review before
+the first run, build separately and use one shared 60-second ceiling outside the
+language aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

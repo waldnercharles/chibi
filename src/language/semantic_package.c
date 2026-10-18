@@ -293,30 +293,15 @@ int script_analyzer_package_function(analyzer *a, TSNode node, const char *name)
 }
 int script_analyzer_find_type(analyzer *a, TSNode node, const char *name)
 {
-    const char *member;
-    const script_package_import *import = namespace(a, node, name, &member);
-    if (import) {
-        if (!strcmp(import->identity, a->out->identity)) {
-            int symbol = own_symbol(a, member, SCRIPT_TYPE);
-            return symbol >= 0 ? type_index(a, a->out->symbols[symbol].id) : -1;
-        }
-        const script_package_export *export = export_member(import, member, SCRIPT_PACKAGE_TYPE);
-        return export ? type_index(a, export->id) : -1;
-    }
-    if (!a->native) {
-        return script_catalog_find_type(a->catalog, name);
-    }
-    script_catalog own = { .types = a->out->types, .type_count = acount(a->out->types) };
-    int found = script_catalog_find_type(&own, name);
-    if (found >= 0) {
-        return type_index(a, own.types[found].id);
-    }
-    if (found == -2) {
-        return found;
-    }
-    found = script_catalog_find_type(a->native, name);
-    return found >= 0 ? type_index(a, a->native->types[found].id) : found;
+    script_named_facts facts = script_analyzer_named_facts(a);
+    return script_named_find_type(
+        &facts,
+        a->scope,
+        script_analyzer_range(a, node).document,
+        name
+    );
 }
+
 int script_analyzer_find_capability(analyzer *a, TSNode node, const char *name, script_capability_kind kind)
 {
     const char *member;

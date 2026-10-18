@@ -113,6 +113,13 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_NOMINAL_BINDING_BYTES "${CHIBI_NOMINA
 configure_file(nominal_binding_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/nominal_binding_chibi_source.h" @ONLY)
 
+set(named_binding_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/named_binding/Binding.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${named_binding_source}")
+file(READ "${named_binding_source}" CHIBI_NAMED_BINDING_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_NAMED_BINDING_BYTES "${CHIBI_NAMED_BINDING_HEX}")
+configure_file(named_binding_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/named_binding_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -148,8 +155,8 @@ set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json)
-target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c)
-set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c
+target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c)
+set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c

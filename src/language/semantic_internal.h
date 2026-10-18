@@ -2,6 +2,7 @@
 #define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 
 #include "language/constant_proof.h"
+#include "language/named_binding.h"
 
 /* Optional grammar fields have a null TSNode; Tree-sitter count/range APIs
  * require a real node even when the language permits the field to be absent. */
@@ -61,6 +62,7 @@ typedef struct
     bool declarations_only;
 } analyzer;
 
+script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);
 const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);
 const script_syntax *script_analyzer_document_syntax(const analyzer *, int document);

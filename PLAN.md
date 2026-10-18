@@ -390,12 +390,15 @@ Authored lexical binding now owns symbol lookup, declaration admission and
 stable identity construction from explicit scope and declaration tables.
 Nominal record/union headers preserve declaration placement, origin checks and
 catalog metadata publication through the same authored lexical binding.
+Named annotations resolve builtin, lexical, catalog and imported types, modifiers
+and type-use records from raw analyzer/catalog facts.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: port named annotation binding, then constructor/signature binding.
+Next component: port structural union/task/await constructors, then shared unit
+algebra and signature binding.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -503,58 +506,60 @@ Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `0282f6c9f17b66a11791d88817cbbc1f59809832`, lexical binding pushed
+- Starting checkpoint: `08bd92d628430b646cdebe71091e4b4996f8d1ca`, nominal headers pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port named annotation binding and catalog/import type lookup
+- Next action: port structural union/task/await type constructors
 
-`nominal_binding.c` extracts the active record and union header decisions:
-placement, lexical declaration admission, origin checks and catalog metadata.
-The analyzer adapters still append symbols, preserve heap name ownership and
-publish catalog entries. A shared placement predicate avoids decoding rejected
-record names, preserving diagnostic order. Existing record and union origin
-checks intentionally differ; the extraction retains that behavior.
+`named_binding.c` extracts ordinary parsed-name and fallback-text annotation
+binding, plus catalog/import type lookup. The analyzer supplies borrowed facts
+with construction-time symbol, own-type and use counts. Adapters retain source
+name/token extraction, append returned diagnostics and uses, and preserve the
+constructor/task/union paths and shared value-import helpers.
 
-`tools/compiler/nominal_binding/Nominal.chibi` implements the same decisions over
-raw lexical tables, symbol type facts and exact uint64 IDs. It calls the authored
-lexical component for admission and identity construction. Record catalog names
-remain qualified, union names remain bare, and reused symbols retain their
-existing type fields until publication. No native compiler-policy callback is
-introduced.
+`tools/compiler/named_binding/Binding.chibi` owns builtin resolution, lexical
+precedence, document-local import aliases, self imports, own/native catalog
+ordering, fuzzy ambiguity and exact matches. It preserves the existing difference
+between parsed-name and fallback-text precedence. Modifiers, entity identity,
+optional component boxing and type-use deduplication also remain exact. Inputs
+contain raw catalog spellings, export spans, type fields and full uint64 IDs;
+there is no native type-selection callback. The private JSON bridge decodes
+quoted fallback names without owning compiler policy.
 
-Three pico cases compare twelve raw requests and four requests from actual
-library, package and behavior headers on bytecode and SLJIT. They check placement
-and reserved-name precedence, origin/storage guards, exact IDs, inherited type
-metadata, catalog names and ordered diagnostic ranges. Inputs retire before
-comparison; retained published names and three diagnostics survive both module
-owner teardowns. The initial build caught enum-sign comparisons in the fixture.
-The first execution caught an invalid behavior-record fixture; a valid behavior
-union replaced it, while raw requests retain record-placement coverage.
+Three pico cases compare 28 raw requests and eight requests from four actual
+annotations on bytecode and SLJIT. They check type fields, full IDs, alias and
+ambiguity results, ordered diagnostics, truncation and type-use facts. Fixed
+lookup indices supplement C comparisons. Inputs retire before comparison;
+retained generic and diagnostic results survive both module owner teardowns.
+The initial build caught signed-enum comparisons in the fixture; explicit casts
+fixed those comparisons without changing the workload.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed after fixture casts, 1.9s; final fixture rebuild 4.2s. Build timing is separate. |
-| Nominal header differential | 3 cases / 5,756 assertions, 1.087s. |
-| `make test-native` | Passed, 24.987s execution. |
-| `make test-materials` | Passed, 28.940s execution. |
-| `make test-projects` | Passed, 30.348s execution. |
-| `make test-language-all` | Passed, 18.263s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 25.941s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed after fixture casts, 1.3s. Build timing is separate. |
+| Named annotation differential | 3 cases / 37,062 assertions, 1.610s. |
+| `make test-native` | Passed, 30.512s execution. |
+| `make test-materials` | Passed, 31.801s execution. |
+| `make test-projects` | Passed, 33.273s execution. |
+| `make test-language-all` | Passed, 18.639s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 28.470s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Every execution route uses one production 60-second ceiling. The independently
-reviewed nominal route has sixteen requests and 32 authored calls, each with a
-100,000-instruction budget. Eight preparation parses and four analyzer inputs
-total twelve parses. Inputs are bounded to one symbol, one function, two scopes,
-two documents and strings below 128 bytes. Each compiler source is below 16 KiB,
-each analyzed source below 256 bytes. Results contain at most three diagnostics.
+reviewed named route has 36 requests and 72 authored calls, each with a
+two-million-instruction budget. Eight preparation parses and four analyzer
+inputs total twelve parses; three quoted requests add six private JSON calls.
+Each compiler source is below 32 KiB. Pools are bounded to 32 symbols, eight
+scopes, four functions, two documents, eight entries, three imports/exports,
+four uses, eight tokens, 64 types and 128 IDs. Names are at most 220 bytes,
+fallback text 256 bytes; fact trees have at most 128 nodes at depth sixteen.
 No runtime files, child processes or GPU work occur.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
-are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `nominal-`
-and `build-nominal` logs. No scratch executable or project copy remains.
+are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses `named-`
+and `build-named` logs. No scratch executable or project copy remains.
 
-This verifies nominal headers, not a complete compiler bootstrap. Prior
+This verifies named annotations, not a complete compiler bootstrap. Prior
 checkpoints prove lexical binding and the snapshot component's executable
 closure in the private runtime host. Remaining semantic analysis, lowering,
 authored artifact construction, scanner ownership and stage-one/stage-two

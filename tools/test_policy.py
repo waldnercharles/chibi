@@ -665,6 +665,22 @@ TOOLS = {
     # Independent first-run review, separate build, shared60s; outside aggregate.
     'language-callable-headers-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                      '--callable-headers-chibi'],
+    # Three C cases: 25 raw + 4 analyzed requests, 58 authored calls at 500k.
+    # Five sources/backend <48 KiB plus four sources <256 B: 14 parses.
+    # Fixed maxima: 81 expressions, 32 symbols, 4 functions, 64 statements,
+    # 8 bindings, 3 capabilities, 128 IDs, 256 ranges; output 512 terms/32 diagnostics.
+    # No workload IO, children, services or GPU. Independent exact-source review
+    # before first run; separate build, one shared 60s ceiling; outside aggregate.
+    'language-unit-analysis-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--unit-analysis-chibi'],
+    # Two cases per focused regression: one existing raw request independently
+    # on bytecode and SLJIT, two calls at 500k and ten preparation parses.
+    # The same success assertions must fail before the authored repair. These
+    # subsets are baseline witnesses, not replacements for the complete corpus.
+    'language-unit-analysis-zero-id': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                       '--unit-analysis-zero-id'],
+    'language-unit-analysis-deep': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                    '--unit-analysis-deep'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

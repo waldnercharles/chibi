@@ -209,6 +209,29 @@ static bool run(
     behavior_run_scope_begin(&runs);
     int status = behavior_function_run(function, &state->context, backend != 0);
     behavior_run_scope_end(&runs);
+    if (status != FLOW_OK || !state->context.returned) {
+        const behavior_function_context *context = &state->context;
+        const char *failure = context->failure == BEHAVIOR_FUNCTION_DEPTH
+                                ? "depth"
+                            : context->failure == BEHAVIOR_FUNCTION_BUDGET
+                                ? "budget"
+                                : "other";
+        fprintf(
+            stderr,
+            "compiler fixture failure: backend=%s package=%s entry=%s "
+            "status=%d "
+            "returned=%d failure=%s category=%d error_steps=%zu message=%s\n",
+            backend == 0 ? "bytecode" : "compiled",
+            identity,
+            name,
+            status,
+            context->returned,
+            failure,
+            context->failure,
+            (size_t)context->error_steps,
+            context->error_message ? context->error_message : ""
+        );
+    }
     REQUIRE(status == FLOW_OK && state->context.returned);
     REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
     REQUIRE(backend == 0 ? runs.counts.bytecode_entries > 0 : !runs.counts.bytecode_entries);

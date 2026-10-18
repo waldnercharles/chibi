@@ -51,6 +51,7 @@ void test_language_type_constructors_chibi();
 void test_language_unit_algebra_chibi();
 void test_language_signature_reader_chibi();
 void test_language_callable_headers_chibi();
+void test_language_unit_analysis_chibi(int regression);
 void test_language_package_execution();
 void test_language_package_resolution();
 void test_language_package_imports();
@@ -155,6 +156,10 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--signature-reader-chibi");
     bool callable_headers_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--callable-headers-chibi");
+    bool unit_analysis_chibi = argc == 2 && !strcmp(argv[1], "--unit-analysis-chibi");
+    bool unit_analysis_zero_id = argc == 2 &&
+                                 !strcmp(argv[1], "--unit-analysis-zero-id");
+    bool unit_analysis_deep = argc == 2 && !strcmp(argv[1], "--unit-analysis-deep");
     bool package_graph = argc == 2 && !strcmp(argv[1], "--package-graph");
     bool package_syntax = argc == 2 && !strcmp(argv[1], "--package-syntax");
     bool package_syntax_chibi = argc == 2 &&
@@ -199,7 +204,8 @@ int main(int argc, char **argv)
          !constant_proof_chibi && !constant_scalar_chibi &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
          !type_constructors_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !callable_headers_chibi && !package_execution && !package_resolution &&
+         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
+         !unit_analysis_deep && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
          !component_write_layout && !scalarize && !borrow && !reductions &&
          !binding_schedule && !activation_cache && !headless && !build_workflow &&
@@ -221,7 +227,8 @@ int main(int argc, char **argv)
             "--type-constructors-chibi | "
             "--unit-algebra-chibi | "
             "--signature-reader-chibi | "
-            "--callable-headers-chibi | "
+            "--callable-headers-chibi | --unit-analysis-chibi | "
+            "--unit-analysis-zero-id | --unit-analysis-deep | "
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
@@ -379,6 +386,12 @@ int main(int argc, char **argv)
         test_language_signature_reader_chibi();
     } else if (callable_headers_chibi) {
         test_language_callable_headers_chibi();
+    } else if (unit_analysis_chibi || unit_analysis_zero_id || unit_analysis_deep) {
+        test_language_unit_analysis_chibi(
+            unit_analysis_zero_id ? 1
+            : unit_analysis_deep  ? 2
+                                  : 0
+        );
     } else if (package_execution) {
         test_language_package_execution();
     } else if (package_resolution) {

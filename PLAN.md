@@ -33,6 +33,18 @@ engine modules, documentation generator, and game behavior. Chibi must compile
 Chibi. The normal build must not require project-owned Python, shell, CMake, or C
 implementations once their Chibi replacements have passed the deletion gates.
 
+The owner's 2026-10-18 acceptance requirement further constrains the final
+normal installed workflow: Chibi must compile Chibi and drive build/link without
+requiring `cmake`, `clang`, or `gcc` executables. Calling hidden or renamed copies
+of those tools does not meet this requirement. Native backends, platform SDKs,
+assemblers/linkers and runtime libraries may remain explicit external inputs
+behind narrow bindings; record exactly which are still needed. Stage-zero
+construction and recovery may use the current native tools during migration.
+The final installed/relocated clean-checkout proof must run with those three
+executables unavailable, exercise the complete compiler sources through stage
+one and stage two, and build/link a checked game. No ported component or build
+wrapper alone establishes that acceptance condition.
+
 The shortest path to that goal takes priority over adding commands. The existing
 C compiler and CMake build remain stage-zero recovery tools until a Chibi compiler
 can reproduce itself and a clean-checkout recovery procedure has been proven.
@@ -520,7 +532,20 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified: 2026-10-18.
+Last verified upstream checkpoint: 2026-10-18 at
+`9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
+
+The current reviewable increment wires the existing unit-analysis draft into
+stage-zero language builds and adds its full differential route plus independent
+zero-ID and deep-chain baseline selectors. The C oracle is extracted but not yet
+used by the active analyzer. The authored evaluator is unchanged. Exact source
+review, hosted compilation and both intended red observations are pending;
+prior results below do not validate this new candidate. After the red evidence,
+apply the independently reviewed iterative evaluator/zero-ID repair, run the
+complete differential and affected admitted checks, then integrate the active
+adapter. No milestone is newly complete and no recovery path is removed.
+
+The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`

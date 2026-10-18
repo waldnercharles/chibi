@@ -1,3 +1,4 @@
+#include "backend.h"
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
@@ -1618,7 +1619,7 @@ TEST_CASE(execution_decoded_suspensions_charge_exact_live_sets)
             prepared_bytes,
             length,
             NULL,
-            backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE,
+            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
             &remaining,
             error,
             sizeof error

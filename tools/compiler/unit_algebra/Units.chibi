@@ -6,12 +6,12 @@ Term :: struct { name: string; power: int; }
 Unit :: union { Value(kind: int, terms: Term[]) }
 ProductResult :: union { Product(value: Unit, overflow: bool) }
 
-Unknown :: cast<int>(0);
-Literal :: cast<int>(1);
-Known :: cast<int>(2);
-Invalid :: cast<int>(3);
-MaxPower :: cast<int>(2147483647);
-MaxTerms :: cast<int>(8);
+Unknown: int : 0;
+Literal: int : 1;
+Known: int : 2;
+Invalid: int : 3;
+MaxPower: int : 2147483647;
+MaxTerms: int : 8;
 
 Empty :: pure fn(kind: int) -> Unit {
     terms: Term[] = [];

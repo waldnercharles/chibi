@@ -302,8 +302,8 @@ TEST_CASE(package_imports_own_record_union_and_aggregate_constant_values)
           0 },
         { "data/a.chibi",
           "package data\nPair :: struct { value: int; tag: string; }\n"
-          "Choice :: union { None | Amount(value: int) };\nBase :: "
-          "cast<int>(4);\n"
+          "Choice :: union { None | Amount(value: int) };\nBase: "
+          "int : 4;\n"
           "Words :: [\"alpha\", \"beta\"];\nSeed :: Choice.Amount(Base);\n",
           0 },
         { "data/b.chibi", "package data\nMake :: fn(value: int) -> Pair { return {value: value + Base, tag: Words[1]}; }\n", 0 },
@@ -665,7 +665,7 @@ TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_exe
     const source_package_input positive[] = {
         { "app/a.chibi", "package app\nimport lib \"../defaults\"\nMain :: fn(value: int) -> int { return value + lib.Binary() + lib.Named() + lib.Aggregate(); }\n", 0 },
         { "defaults/a.chibi",
-          "package defaults\nBase :: cast<int>(7);\nWords :: [\"alpha\", "
+          "package defaults\nBase: int : 7;\nWords :: [\"alpha\", "
           "\"beta\"];\n"
           "Binary :: fn(amount: int = 2 + 3) -> int { return amount; }\n"
           "Named :: fn(amount: int = Base) -> int { return amount; }\n"

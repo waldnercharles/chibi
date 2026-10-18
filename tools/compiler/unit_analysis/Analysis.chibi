@@ -118,52 +118,52 @@ Ranges :: pure fn(environment: Environment) -> Range[] {
 
 
 // Existing typed IR enum values and type flags retain their ABI.
-ConstantExpression :: cast<int>(1);
-SymbolExpression :: cast<int>(2);
-UnaryExpression :: cast<int>(3);
-BinaryExpression :: cast<int>(4);
-CastExpression :: cast<int>(5);
-CallExpression :: cast<int>(6);
-MemberExpression :: cast<int>(7);
-StructExpression :: cast<int>(11);
-FallbackExpression :: cast<int>(13);
-StoreExpression :: cast<int>(14);
-JoinExpression :: cast<int>(16);
-IsExpression :: cast<int>(20);
-AsExpression :: cast<int>(21);
-UnwrapExpression :: cast<int>(22);
-GlobalSymbol :: cast<int>(0);
-StateSymbol :: cast<int>(4);
-SharedStateSymbol :: cast<int>(5);
-ParameterSymbol :: cast<int>(6);
-ResultSymbol :: cast<int>(7);
-LocalSymbol :: cast<int>(8);
-ConstantSymbol :: cast<int>(14);
-OpNone :: cast<int>(0);
-OpAdd :: cast<int>(1);
-OpSubtract :: cast<int>(2);
-OpMultiply :: cast<int>(3);
-OpDivide :: cast<int>(4);
-OpModulo :: cast<int>(5);
-OpNegate :: cast<int>(6);
-OpEqual :: cast<int>(10);
-OpGreaterEqual :: cast<int>(15);
-EventCapability :: cast<int>(2);
-AssignStatement :: cast<int>(2);
-ReduceStatement :: cast<int>(16);
-GenericFlag :: cast<int>(32);
-ResultsFlag :: cast<int>(8);
-NumericExcludedFlags :: cast<int>(75);
+ConstantExpression: int : 1;
+SymbolExpression: int : 2;
+UnaryExpression: int : 3;
+BinaryExpression: int : 4;
+CastExpression: int : 5;
+CallExpression: int : 6;
+MemberExpression: int : 7;
+StructExpression: int : 11;
+FallbackExpression: int : 13;
+StoreExpression: int : 14;
+JoinExpression: int : 16;
+IsExpression: int : 20;
+AsExpression: int : 21;
+UnwrapExpression: int : 22;
+GlobalSymbol: int : 0;
+StateSymbol: int : 4;
+SharedStateSymbol: int : 5;
+ParameterSymbol: int : 6;
+ResultSymbol: int : 7;
+LocalSymbol: int : 8;
+ConstantSymbol: int : 14;
+OpNone: int : 0;
+OpAdd: int : 1;
+OpSubtract: int : 2;
+OpMultiply: int : 3;
+OpDivide: int : 4;
+OpModulo: int : 5;
+OpNegate: int : 6;
+OpEqual: int : 10;
+OpGreaterEqual: int : 15;
+EventCapability: int : 2;
+AssignStatement: int : 2;
+ReduceStatement: int : 16;
+GenericFlag: int : 32;
+ResultsFlag: int : 8;
+NumericExcludedFlags: int : 75;
 
 IDAt :: pure fn(environment: Environment, slot: int) -> uint64 {
-    if (slot < 0) { return cast<uint64>(0); }
+    if (slot < 0) { return uint64(0); }
     return Ids(environment)[slot];
 }
 // Match a full-width offset to a bounded native index without narrowing it.
 OffsetIndex :: pure fn(offset: uint64, count: int) -> int {
     index: int = 0;
     while (index < count) {
-        if (offset == cast<uint64>(index)) { return index; }
+        if (offset == uint64(index)) { return index; }
         index += 1;
     }
     return -1;
@@ -173,7 +173,7 @@ Kind :: pure fn(value: units.Unit) -> int {
 }
 Numeric :: pure fn(type: Type, environment: Environment) -> bool {
     return type.container == 0 &&
-           (IDAt(environment, type.nominal_slot) == cast<uint64>(0) || (type.flags & GenericFlag) != 0) &&
+           (IDAt(environment, type.nominal_slot) == uint64(0) || (type.flags & GenericFlag) != 0) &&
            type.storage >= 2 && type.storage <= 11 && (type.flags & NumericExcludedFlags) == 0;
 }
 CapabilityAt :: pure fn(environment: Environment, id: uint64) -> int {
@@ -425,13 +425,13 @@ Operation :: pure fn(environment: Environment, current: State, expression: Expre
 // results flow through value; only selected dependencies are pushed. Keeping
 // source depth in arrays leaves every callable's ordinary depth limit intact.
 Work :: struct { expression: int; phase: int; argument: int; catalog: int; }
-Enter :: cast<int>(0);
-Finish :: cast<int>(1);
-KnownOnly :: cast<int>(2);
-Left :: cast<int>(3);
-Right :: cast<int>(4);
-ArgumentsPhase :: cast<int>(5);
-ArgumentPhase :: cast<int>(6);
+Enter: int : 0;
+Finish: int : 1;
+KnownOnly: int : 2;
+Left: int : 3;
+Right: int : 4;
+ArgumentsPhase: int : 5;
+ArgumentPhase: int : 6;
 WorkValue :: pure fn(expression: int) -> Work {
     row: Work = {expression: expression, phase: Enter, argument: 0, catalog: -1};
     return row;
@@ -457,7 +457,7 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                             value = units.Unit.Value(row.kind, slice(terms, row.term_start, row.term_count));
                         }
                         if (!visited) {
-                            current = State.Cached(cache, terms, set_array_elem(visits, work.expression, cast<int>(1)), diagnostics);
+                            current = State.Cached(cache, terms, set_array_elem(visits, work.expression, int(1)), diagnostics);
                         }
                 }
             }
@@ -475,7 +475,7 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                     switch current {
                         case .Cached(cache, terms, visits, diagnostics):
                             row: Cache = {kind: kind, term_start: length(terms), term_count: length(added)};
-                            current = State.Cached(set_array_elem(cache, work.expression, row), append(terms, added), set_array_elem(visits, work.expression, cast<int>(2)), diagnostics);
+                            current = State.Cached(set_array_elem(cache, work.expression, row), append(terms, added), set_array_elem(visits, work.expression, int(2)), diagnostics);
                     }
             }
             frames = slice(frames, 0, top);
@@ -651,7 +651,7 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
     foreach (expression in Expressions(environment)) {
         row: Cache = {kind: units.Unknown, term_start: 0, term_count: 0};
         cache = array_add(cache, row);
-        visits = array_add(visits, cast<int>(0));
+        visits = array_add(visits, int(0));
     }
     current := State.Cached(cache, terms, visits, diagnostics);
     foreach (symbol in Symbols(environment)) {

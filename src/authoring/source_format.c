@@ -129,20 +129,26 @@ static bool unit_operator(TSNode node)
     return (kind(node, "/") || kind(node, "^")) && kind(ts_node_parent(node), "unit");
 }
 
+/* `Name: T : value` spaces the colon that follows a constant's type. */
+static bool constant_colon(TSNode n)
+{
+    return kind(n, ":") && kind(ts_node_parent(n), "constant_declaration") &&
+           kind(ts_node_prev_sibling(n), "type");
+}
+
 static bool tight_before(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
-    return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
-           kind(n, "..") || kind(n, ")") || kind(n, "]") ||
-           (kind(n, "(") &&
-            (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
-             kind(p, "cast_expression") || kind(p, "reduce_statement") ||
-             (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
+    return kind(n, ",") || kind(n, ";") || (kind(n, ":") && !constant_colon(n)) ||
+           kind(n, ".") || kind(n, "..") || kind(n, ")") || kind(n, "]") ||
+           (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
+                             kind(p, "reduce_statement") ||
+                             (kind(p, "argument_list") &&
+                              !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression") ||
                              kind(p, "engine_reference"))) ||
            ((kind(n, "<") || kind(n, ">")) &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
-             kind(p, "cast_expression"))) ||
+            (kind(p, "type_argument_list") || kind(p, "type_parameter_list"))) ||
            (kind(n, "?") && kind(p, "type")) || unit_operator(n);
 }
 
@@ -154,8 +160,7 @@ static bool tight_after(token t)
            (kind(p, "unary_expression") && !kind(n, "not") &&
             ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
-            (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
-             kind(p, "cast_expression")));
+            (kind(p, "type_argument_list") || kind(p, "type_parameter_list")));
 }
 
 static bool space_between(token previous, token current)

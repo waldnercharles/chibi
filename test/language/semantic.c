@@ -600,6 +600,73 @@ static const script_expression *constant_of(pin_type storage)
     }
     return NULL;
 }
+static const script_expression *expression_of(script_expression_kind kind, pin_type storage)
+{
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        if (expression->kind == kind && expression->type.storage == storage) {
+            return expression;
+        }
+    }
+    return NULL;
+}
+static bool converts(const char *body, behavior_cast_mode mode)
+{
+    char source[256];
+    snprintf(source, sizeof source, "library L { F :: fn(x: int) -> byte { return %s; } }", body);
+    parse(source);
+    const script_expression *conversion = expression_of(SCRIPT_EXPR_CAST, PIN_U8);
+    return analysis->valid && conversion && conversion->conversion == mode;
+}
+TEST_CASE(language_numeric_conversions_check_modes_and_constants)
+{
+    REQUIRE(converts("byte(x)", BEHAVIOR_CAST_EXACT));
+    REQUIRE(converts("byte(wrap: x)", BEHAVIOR_CAST_WRAP));
+    REQUIRE(converts("byte(clamp: x)", BEHAVIOR_CAST_CLAMP));
+    REQUIRE(converts("byte(wrap: 300)", BEHAVIOR_CAST_WRAP));
+    parse("library L { X: int : 300; F :: fn() -> byte { return byte(X + 1); } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Constant does not fit in byte; use byte(wrap: value) or byte(clamp: value)"));
+    parse("library L { X: int : 200; F :: fn() -> byte { return byte(X); } }");
+    REQUIRE(analysis->valid);
+    parse("library L { F :: fn(x: int) -> byte { return byte(round: x); } }");
+    REQUIRE(diagnostic("A conversion argument may only be named wrap or clamp"));
+    parse("library L { F :: fn(x: float) -> int { return int(wrap: x); } }");
+    REQUIRE(diagnostic("wrap and clamp convert between integer types"));
+    parse("library L { F :: fn() -> int { return int(wrap: 3.5); } }");
+    REQUIRE(
+        analysis->diagnostic_count == 1 &&
+        diagnostic("wrap and clamp convert between integer types")
+    );
+    parse("library L { F :: fn() -> uint64 { return uint64(clamp: 18446744073709551615); } }");
+    REQUIRE(analysis->valid);
+    parse("library L { F :: fn(x: int) -> byte { return byte(x, x); } }");
+    REQUIRE(diagnostic("Conversion takes one value"));
+    parse("library L { F :: fn(x: int) -> int { return cast<int>(x); } }");
+    REQUIRE(diagnostic("cast<T>(value) was removed; write T(value)"));
+    return true;
+}
+TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
+{
+    parse("library L { F :: fn(x: uint16) -> uint { return x; } }");
+    REQUIRE(analysis->valid);
+    parse("library L { F :: fn(x: byte) -> float { return x; } }");
+    REQUIRE(analysis->valid);
+    parse("library L { F :: fn(x: int) -> byte { return x; } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Incompatible types: expected byte, got int; convert with byte(value)"));
+    parse("library L { F :: fn(x: int, y: uint) -> int64 { return x + y; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I64));
+    parse("library L { F :: fn(x: byte, y: int8) -> int { return x + y; } }");
+    REQUIRE(analysis->valid && expression_of(SCRIPT_EXPR_BINARY, PIN_I32));
+    parse("library L { F :: fn(x: int64, y: uint64) -> int64 { return x + y; } }");
+    REQUIRE(diagnostic("int64 and uint64 operands need an explicit conversion, such as int64(value)"));
+    parse("library L { Mask: uint : 0xFF; F :: fn() -> uint { return Mask; } }");
+    REQUIRE(analysis->valid && constant_of(PIN_U32));
+    parse("library L { Small: byte : 300; }");
+    REQUIRE(diagnostic("Numeric literal is outside the range of byte"));
+    return true;
+}
 TEST_CASE(language_hex_literal_fills_integer_storage)
 {
     parse("behavior Colors { color: uint = 0xf7d308ff; }");
@@ -1159,7 +1226,7 @@ TEST_CASE(language_units_follow_constant_and_state_initializers)
     values.types = &measured_value;
     cleanup();
     syntax = script_parse(
-        "library Measured { Run :: () { Origin :: cast<Body>({x: 1}); "
+        "library Measured { Run :: () { Origin: Body : {x: 1}; "
         "Step :: Origin.x; body: Body = {}; body.speed = Step; } }"
     );
     analysis = script_analyze(syntax, &values);
@@ -1634,7 +1701,7 @@ TEST_CASE(language_type_patterns_narrow_and_invalidate)
     REQUIRE(!analysis->valid);
     parse("library Unions { Run :: () -> int? { return 0; } }");
     REQUIRE(analysis->valid);
-    parse("library Unions { Run :: (value: int?) -> number? { if value { return cast<number>(value); } return nil; } }");
+    parse("library Unions { Run :: (value: int?) -> number? { if value { return number(value); } return nil; } }");
     REQUIRE(analysis->valid);
     parse(
         "library Unions { Run :: (pending: task<number>) -> number { "
@@ -1694,6 +1761,8 @@ void test_language_semantic()
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
+    RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
+    RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
     RUN_TEST_CASE(language_pure_owned_record_and_index_writes);

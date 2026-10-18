@@ -115,18 +115,18 @@ Reject :: pure fn(diagnostic: syntax.Diagnostic, documents: Document[],
     error: graph.Error = {code: 0, file: -1, import_index: -1,
                           related_file: -1, related_import: -1, cycle_count: 0};
     return Result.Rejected(diagnostic, FileRange(-1), error,
-                           resize([cast<int>(0)], cast<int>(256)), documents, nodes, imports);
+                           resize([int(0)], int(256)), documents, nodes, imports);
 }
 
 // Byte input is retained as a bounded prefix by the external adapter. Its exact
 // declared size stays separate so NUL detection follows routing, as in stage zero.
 FileSize :: pure fn(size: uint64) -> bool {
-    return (size & cast<uint64>(0xfffffffffff80000)) == cast<uint64>(0) ||
-           size == cast<uint64>(524288);
+    return (size & uint64(0xfffffffffff80000)) == uint64(0) ||
+           size == uint64(524288);
 }
 TotalSize :: pure fn(size: uint64) -> bool {
-    return (size & cast<uint64>(0xffffffffff800000)) == cast<uint64>(0) ||
-           size == cast<uint64>(8388608);
+    return (size & uint64(0xffffffffff800000)) == uint64(0) ||
+           size == uint64(8388608);
 }
 ValidUTF8 :: pure fn(text: string) -> bool {
     size := strings.ByteLength(text);
@@ -239,7 +239,7 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
     pending: extract.Import[] = [];
     pendingStarts: int[] = [];
     pendingCounts: int[] = [];
-    total: uint64 = cast<uint64>(0);
+    total: uint64 = uint64(0);
     file: int = 0;
     while (file < options.file_count) {
         input := inputs[file];
@@ -268,7 +268,7 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
                 document.has_key = true;
         }
         documents[file] = document;
-        if (cast<uint64>(strings.ByteLength(input.text)) != size) {
+        if (uint64(strings.ByteLength(input.text)) != size) {
             return Reject(Diagnostic(FileRange(file), "Package source contains NUL bytes"), documents, nodes, imports);
         }
         if (!ValidUTF8(input.text)) {

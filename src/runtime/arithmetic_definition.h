@@ -163,7 +163,7 @@
     X(Byte,                                                                    \
       literal_identity,                                                        \
       NATIVE_ARITHMETIC_Byte_NAME,                                             \
-      "byte",                                                                  \
+      "byte_value",                                                            \
       NATIVE_ARITHMETIC_Byte_OPERATOR,                                         \
       NATIVE_ARITHMETIC_Byte_PORTS,                                            \
       NATIVE_ARITHMETIC_Byte_PORTS,                                            \

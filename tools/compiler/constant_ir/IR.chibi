@@ -17,25 +17,26 @@ Expression :: struct {
     arg_start: int;
     arg_count: int;
     effects: int;
+    conversion: int; // Cast range policy: 0 exact, 1 wrap, 2 clamp.
 }
 Symbol :: struct { kind: int; initializer: int; }
 Argument :: struct { value: int; }
 
 // Enum and bit-mask values retain the existing semantic and value ABI.
-Constant :: cast<int>(1);
-SymbolReference :: cast<int>(2);
-Unary :: cast<int>(3);
-Binary :: cast<int>(4);
-Cast :: cast<int>(5);
-Member :: cast<int>(7);
-Index :: cast<int>(9);
-Array :: cast<int>(10);
-Record :: cast<int>(11);
-Nil :: cast<int>(12);
-Union :: cast<int>(19);
-ConstantSymbol :: cast<int>(14);
-Single :: cast<int>(0);
-Boolean :: cast<int>(1);
-String :: cast<int>(13);
-Untyped :: cast<int>(16);
-Literal :: cast<int>(1024);
+Constant: int : 1;
+SymbolReference: int : 2;
+Unary: int : 3;
+Binary: int : 4;
+Cast: int : 5;
+Member: int : 7;
+Index: int : 9;
+Array: int : 10;
+Record: int : 11;
+Nil: int : 12;
+Union: int : 19;
+ConstantSymbol: int : 14;
+Single: int : 0;
+Boolean: int : 1;
+String: int : 13;
+Untyped: int : 16;
+Literal: int : 1024;

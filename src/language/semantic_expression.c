@@ -27,7 +27,18 @@ script_type script_analyzer_arithmetic_type(script_type left, script_type right)
     if (left.storage == PIN_F32 || right.storage == PIN_F32) {
         return (script_type){ .storage = PIN_F32 };
     }
-    return left.storage >= right.storage ? left : right;
+    bool integers = left.storage >= PIN_I8 && left.storage <= PIN_U64 &&
+                    right.storage >= PIN_I8 && right.storage <= PIN_U64;
+    if (!integers) {
+        return left.storage >= right.storage ? left : right;
+    }
+    pin_type common = behavior_scalar_common_integer(left.storage, right.storage);
+    if (common == PIN_FLOW) {
+        return script_analyzer_bad_type();
+    }
+    return common == left.storage  ? left
+         : common == right.storage ? right
+                                   : (script_type){ .storage = common };
 }
 bool script_analyzer_numeric_aggregate(const script_catalog *catalog, script_type type, int depth)
 {
@@ -679,27 +690,6 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         return script_analyzer_call_expression(a, node, expected);
     }
-    if (script_analyzer_is(node, "cast_expression")) {
-        result.kind = SCRIPT_EXPR_CAST;
-        result.type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
-        result.left = script_analyzer_expression(
-            a,
-            script_analyzer_field(node, "value"),
-            result.type
-        );
-        script_type actual = script_analyzer_expr_type(a, result.left);
-        bool numeric = script_type_numeric(actual) && script_type_numeric(result.type);
-        if (!numeric &&
-            script_catalog_type_assignable(a->catalog, result.type, actual)) {
-            /* The cast only supplied the expected type, as for a polymorphic call. */
-            return result.left;
-        }
-        if (!numeric) {
-            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types or the value's own type");
-        }
-        result.effects = script_analyzer_expr_effects(a, result.left);
-        return script_analyzer_expr_add(a, result);
-    }
     if (script_analyzer_is(node, "unary_expression")) {
         result.kind = SCRIPT_EXPR_UNARY;
         TSNode op = script_analyzer_field(node, "operator");
@@ -777,6 +767,20 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         result.right = script_analyzer_expression(a, right, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
         script_type x = script_analyzer_expr_type(a, result.left),
                     y = script_analyzer_expr_type(a, result.right);
+        if (script_type_numeric(x) && script_type_numeric(y) &&
+            !((x.flags | y.flags) & SCRIPT_TYPE_UNTYPED) &&
+            x.storage <= PIN_U64 && y.storage <= PIN_U64 &&
+            behavior_scalar_common_integer(x.storage, y.storage) == PIN_FLOW) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "%s and %s operands need an explicit conversion, such as "
+                "%s(value)",
+                script_scalar_name(x.storage),
+                script_scalar_name(y.storage),
+                script_scalar_name(x.storage)
+            );
+        }
         if (script_type_numeric(x) && script_type_numeric(y)) {
             script_type operands = script_analyzer_arithmetic_type(x, y);
             if ((x.flags & y.flags & SCRIPT_TYPE_UNTYPED) &&

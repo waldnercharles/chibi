@@ -255,11 +255,31 @@ reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Collection natives such as `array_add` return a new value: write
 `hair = array_add(hair, h)`. A pure native called as a statement is an error.
-Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
-`cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
-boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
-value's own type, such as `cast<entity>(get_global_variable("Player"))`, only
-supplies the type a polymorphic call needs.
+Runtime strings cannot contain embedded NUL bytes.
+
+Explicit scalar conversions call the type: `double(value)`, `float(value)` or
+`byte(value)`. Most code needs none. A literal takes its expected type, an
+integer converts implicitly to an integer type that holds every value (`byte` to
+`int`, `uint16` to `uint`), and conversions involving `number`, `double` or
+`float` stay implicit. Only narrowing between integer types needs a conversion:
+
+```code
+low := byte(value)          // checked: fails when value does not fit
+bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
+level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
+```
+
+A checked conversion of an integer constant that does not fit is a compile
+error; a runtime value that does not fit fails the invocation. `wrap` and
+`clamp` apply only between integer types. Floating values convert to integers
+by truncating toward zero, clamping at the destination bounds and mapping NaN
+to zero. Mixed integer operands, in arithmetic and comparisons, use the wider
+type, or `int` or `int64` for a signed and unsigned pair: `byte + int8` is `int`
+and `int + uint` is `int64`. `int64` with `uint64` needs an explicit conversion.
+Arithmetic narrower than 32 bits, and unsigned ordering and subtraction, are not
+yet supported. A constant can declare its type, as in `Mask: uint : 0xFF`. A
+conversion to a value's own type, such as `entity(get_global_variable("Player"))`,
+only supplies the type a polymorphic call needs.
 
 Vector receivers support `velocity.norm()`, statically resolved to the existing
 vec2 normalization operation. `vec2_norm(velocity)` names that operation directly.
@@ -270,7 +290,7 @@ A declared numeric result or argument type supplies context for an otherwise
 untyped arithmetic expression, so ordinary arithmetic does not require casts.
 Typed operands keep their precision: a double
 operand also gives otherwise untyped literals double precision before any
-conversion to a float destination. Use `cast<double>` to request that precision
+conversion to a float destination. Use `double(value)` to request that precision
 explicitly. A decimal point alone does not require double precision.
 
 Host events infer their registered payload. `on Tick(dt) { ... }` binds the

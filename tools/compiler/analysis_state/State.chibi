@@ -64,7 +64,7 @@ DocumentsForPackage :: pure fn(source: snapshot.Result, package_index: int) -> D
                     source_file_to_local: int[] = [];
                     source_file: int = 0;
                     while (source_file < length(documents)) {
-                        source_file_to_local = array_add(source_file_to_local, cast<int>(-1));
+                        source_file_to_local = array_add(source_file_to_local, int(-1));
                         source_file += 1;
                     }
                     local: int = 0;

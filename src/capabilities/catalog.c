@@ -1,5 +1,6 @@
 #include "capabilities/catalog.h"
 
+#include "types/scalar.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -206,6 +207,11 @@ bool script_type_numeric(script_type type)
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
+bool script_numeric_implicit(pin_type from, pin_type to)
+{
+    bool integers = from <= PIN_U64 && to <= PIN_U64;
+    return !integers || behavior_scalar_integer_widens(from, to);
+}
 bool script_type_assignable(script_type expected, script_type actual)
 {
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) {
@@ -237,7 +243,7 @@ bool script_type_assignable(script_type expected, script_type actual)
         actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     }
     if (script_type_numeric(expected) && script_type_numeric(actual)) {
-        return true;
+        return script_numeric_implicit(actual.storage, expected.storage);
     }
     if ((expected.storage == PIN_NAME || expected.storage == PIN_STR) &&
         (actual.storage == PIN_NAME || actual.storage == PIN_STR)) {

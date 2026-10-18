@@ -581,7 +581,7 @@ TEST_CASE(lexical_binding_analyzer_facts_match)
     const char *sources[] = {
         "library Facts { Run :: pure fn(value: int) -> int { local: int = "
         "value; return local; } }",
-        "library Facts { Seed :: cast<int>(3); Run :: pure fn(value: int) -> "
+        "library Facts { Seed: int : 3; Run :: pure fn(value: int) -> "
         "int { local: int = value + Seed; return local; } }",
         "package facts\nRun :: pure fn(value: int) -> int { local: int = "
         "value; return local; }",

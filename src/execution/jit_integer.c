@@ -126,11 +126,144 @@ void behavior_jit_flush_variables(const behavior_machine *m)
 {
     variables(m, true);
 }
+/* Sign- or zero-extends a slot to the full word. */
+static int widening_move(pin_type type)
+{
+    switch (type) {
+        case PIN_I8: return SLJIT_MOV_S8;
+        case PIN_I16: return SLJIT_MOV_S16;
+        case PIN_I32: return SLJIT_MOV_S32;
+        case PIN_I64:
+        case PIN_U64: return SLJIT_MOV;
+        default: return behavior_jit_integer_move(type);
+    }
+}
+static void load_word(const behavior_machine *m, int slot, int reg)
+{
+    int source = m->registers[slot];
+    sljit_emit_op1(
+        m->compiler,
+        widening_move(m->function->slots[slot]),
+        reg,
+        0,
+        source ? source : SLJIT_MEM1(SLJIT_SP),
+        source ? 0 : slot * sizeof(double)
+    );
+}
+/* The mode applies only to source values outside the destination range. */
+static void integer_cast(const behavior_machine *m, const behavior_function_instruction *i)
+{
+    struct sljit_compiler *c = m->compiler;
+    pin_type from = m->function->slots[i->left];
+    bool sign = behavior_scalar_signed(from);
+    int64_t low = behavior_scalar_integer_low(i->type);
+    uint64_t high = behavior_scalar_integer_high(i->type);
+    load_word(m, i->left, SLJIT_R0);
+    if (i->target == BEHAVIOR_CAST_WRAP) {
+        return;
+    }
+    struct sljit_jump *below = NULL, *above = NULL;
+    if (sign && low > behavior_scalar_integer_low(from)) {
+        below = sljit_emit_cmp(c, SLJIT_SIG_LESS, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)low);
+    }
+    if (high < behavior_scalar_integer_high(from)) {
+        above = sljit_emit_cmp(
+            c,
+            sign ? SLJIT_SIG_GREATER : SLJIT_GREATER,
+            SLJIT_R0,
+            0,
+            SLJIT_IMM,
+            (sljit_sw)high
+        );
+    }
+    if (!below && !above) {
+        return;
+    }
+    struct sljit_jump *fits = sljit_emit_jump(c, SLJIT_JUMP), *clamped = NULL;
+    if (i->target == BEHAVIOR_CAST_EXACT) {
+        if (below) {
+            bind(c, below);
+        }
+        if (above) {
+            bind(c, above);
+        }
+        behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
+        bind(c, fits);
+        return;
+    }
+    if (below) {
+        bind(c, below);
+        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)low);
+        clamped = above ? sljit_emit_jump(c, SLJIT_JUMP) : NULL;
+    }
+    if (above) {
+        bind(c, above);
+        sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)high);
+    }
+    if (clamped) {
+        bind(c, clamped);
+    }
+    bind(c, fits);
+}
+/* Rounds toward zero, saturates and maps NaN to zero, like the VM. */
+static void float_cast(const behavior_machine *m, const behavior_function_instruction *i)
+{
+    struct sljit_compiler *c = m->compiler;
+    pin_type from = m->function->slots[i->left];
+    static const double bounds[PIN_U64 + 1][2] = {
+        [PIN_I8] = { INT8_MIN, INT8_MAX },    [PIN_U8] = { 0, UINT8_MAX },
+        [PIN_I16] = { INT16_MIN, INT16_MAX }, [PIN_U16] = { 0, UINT16_MAX },
+        [PIN_I32] = { INT32_MIN, INT32_MAX }, [PIN_U32] = { 0, UINT32_MAX },
+        [PIN_I64] = { -0x1p63, 0x1p63 },      [PIN_U64] = { 0, 0x1p64 },
+    };
+    static const double sign_bit = 0x1p63;
+    int source = m->registers[i->left];
+    sljit_emit_fop1(
+        c,
+        from == PIN_F32 ? SLJIT_CONV_F64_FROM_F32 : SLJIT_MOV_F64,
+        SLJIT_FR0,
+        0,
+        source ? source : SLJIT_MEM1(SLJIT_SP),
+        source ? 0 : i->left * sizeof(double)
+    );
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
+    struct sljit_jump *nan = sljit_emit_fcmp(c, SLJIT_UNORDERED, SLJIT_FR0, 0, SLJIT_FR0, 0);
+    sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&bounds[i->type][0]);
+    struct sljit_jump *low = sljit_emit_fcmp(c, SLJIT_ORDERED_LESS_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
+    sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&bounds[i->type][1]);
+    struct sljit_jump *high = sljit_emit_fcmp(c, SLJIT_ORDERED_GREATER_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
+    struct sljit_jump *upper = NULL;
+    if (i->type == PIN_U64) {
+        /* Word conversion is signed; shift the upper half below 2^63 first. */
+        sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&sign_bit);
+        upper = sljit_emit_fcmp(c, SLJIT_ORDERED_GREATER_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
+    }
+    sljit_emit_fop1(c, SLJIT_CONV_SW_FROM_F64, SLJIT_R0, 0, SLJIT_FR0, 0);
+    struct sljit_jump *normal = sljit_emit_jump(c, SLJIT_JUMP), *shifted = NULL;
+    if (upper) {
+        bind(c, upper);
+        sljit_emit_fop2(c, SLJIT_SUB_F64, SLJIT_FR0, 0, SLJIT_FR0, 0, SLJIT_FR1, 0);
+        sljit_emit_fop1(c, SLJIT_CONV_SW_FROM_F64, SLJIT_R0, 0, SLJIT_FR0, 0);
+        sljit_emit_op2(c, SLJIT_XOR, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)INT64_MIN);
+        shifted = sljit_emit_jump(c, SLJIT_JUMP);
+    }
+    bind(c, low);
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)behavior_scalar_integer_low(i->type));
+    struct sljit_jump *bounded = sljit_emit_jump(c, SLJIT_JUMP);
+    bind(c, high);
+    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, (sljit_sw)behavior_scalar_integer_high(i->type));
+    bind(c, nan);
+    bind(c, normal);
+    bind(c, bounded);
+    if (shifted) {
+        bind(c, shifted);
+    }
+}
 static void cast(const behavior_machine *m, const behavior_function_instruction *i, int dest, sljit_sw offset)
 {
     struct sljit_compiler *c = m->compiler;
     pin_type from = m->function->slots[i->left];
-    if (from == i->type) {
+    if (from == i->type && (from == PIN_F32 || from == PIN_F64)) {
         int source = m->registers[i->left];
         sljit_emit_fop1(
             c,
@@ -143,12 +276,10 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
         return;
     }
     if (i->type == PIN_F64) {
-        load(m, i->left, SLJIT_R0);
+        load_word(m, i->left, SLJIT_R0);
         sljit_emit_fop1(
             c,
-            from == PIN_I64   ? SLJIT_CONV_F64_FROM_SW
-            : from == PIN_U32 ? SLJIT_CONV_F64_FROM_U32
-                              : SLJIT_CONV_F64_FROM_S32,
+            from == PIN_U64 ? SLJIT_CONV_F64_FROM_UW : SLJIT_CONV_F64_FROM_SW,
             SLJIT_FR0,
             0,
             SLJIT_R0,
@@ -157,66 +288,11 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
         sljit_emit_fop1(c, SLJIT_MOV_F64, dest, offset, SLJIT_FR0, 0);
         return;
     }
-    if (from == PIN_I32) {
-        load(m, i->left, SLJIT_R0);
-        sljit_emit_op1(c, SLJIT_MOV_S32, SLJIT_R0, 0, SLJIT_R0, 0);
-        sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_R0, 0);
-        return;
+    if (from == PIN_F32 || from == PIN_F64) {
+        float_cast(m, i);
+    } else {
+        integer_cast(m, i);
     }
-    int source = m->registers[i->left];
-    sljit_emit_fop1(
-        c,
-        from == PIN_F32 ? SLJIT_CONV_F64_FROM_F32 : SLJIT_MOV_F64,
-        SLJIT_FR0,
-        0,
-        source ? source : SLJIT_MEM1(SLJIT_SP),
-        source ? 0 : i->left * sizeof(double)
-    );
-    static const double bounds[][2] = { { 0, UINT8_MAX },
-                                        { INT32_MIN, INT32_MAX },
-                                        { -0x1p63, 0x1p63 } };
-    int which = i->type == PIN_U8 ? 0 : i->type == PIN_I32 ? 1 : 2;
-    sljit_emit_op1(c, SLJIT_MOV, SLJIT_R0, 0, SLJIT_IMM, 0);
-    struct sljit_jump *nan = sljit_emit_fcmp(c, SLJIT_UNORDERED, SLJIT_FR0, 0, SLJIT_FR0, 0);
-    sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&bounds[which][0]);
-    struct sljit_jump *low = sljit_emit_fcmp(c, SLJIT_ORDERED_LESS_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
-    sljit_emit_fop1(c, SLJIT_MOV_F64, SLJIT_FR1, 0, SLJIT_MEM0(), (sljit_sw)&bounds[which][1]);
-    struct sljit_jump *high = sljit_emit_fcmp(c, SLJIT_ORDERED_GREATER_EQUAL, SLJIT_FR0, 0, SLJIT_FR1, 0);
-    sljit_emit_fop1(
-        c,
-        i->type == PIN_I64 ? SLJIT_CONV_SW_FROM_F64 : SLJIT_CONV_S32_FROM_F64,
-        SLJIT_R0,
-        0,
-        SLJIT_FR0,
-        0
-    );
-    struct sljit_jump *normal = sljit_emit_jump(c, SLJIT_JUMP);
-    bind(c, low);
-    sljit_emit_op1(
-        c,
-        SLJIT_MOV,
-        SLJIT_R0,
-        0,
-        SLJIT_IMM,
-        i->type == PIN_U8    ? 0
-        : i->type == PIN_I32 ? INT32_MIN
-                             : (sljit_sw)INT64_MIN
-    );
-    struct sljit_jump *bounded = sljit_emit_jump(c, SLJIT_JUMP);
-    bind(c, high);
-    sljit_emit_op1(
-        c,
-        SLJIT_MOV,
-        SLJIT_R0,
-        0,
-        SLJIT_IMM,
-        i->type == PIN_U8    ? UINT8_MAX
-        : i->type == PIN_I32 ? INT32_MAX
-                             : (sljit_sw)INT64_MAX
-    );
-    bind(c, nan);
-    bind(c, normal);
-    bind(c, bounded);
     sljit_emit_op1(c, behavior_jit_integer_move(i->type), dest, offset, SLJIT_R0, 0);
 }
 static void arithmetic(
@@ -254,13 +330,15 @@ static void arithmetic(
         struct sljit_jump *zero = sljit_emit_cmp(c, SLJIT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, 0);
         struct sljit_jump *
             valid = sljit_emit_cmp(c, SLJIT_NOT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, -1);
+        /* SLJIT negates compare immediates, which INT64_MIN cannot survive. */
+        static const sljit_sw minimum = INT64_MIN;
         struct sljit_jump *not_min = sljit_emit_cmp(
             c,
             SLJIT_NOT_EQUAL | flags,
             SLJIT_R0,
             0,
-            SLJIT_IMM,
-            type == PIN_I32 ? INT32_MIN : (sljit_sw)INT64_MIN
+            type == PIN_I32 ? SLJIT_IMM : SLJIT_MEM0(),
+            type == PIN_I32 ? INT32_MIN : (sljit_sw)&minimum
         );
         bind(c, zero);
         behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);

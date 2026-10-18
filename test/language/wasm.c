@@ -104,8 +104,8 @@ TEST_CASE(wasm_default_executes_emitted_code_with_numeric_and_array_helpers)
                  "Pair :: fn(x: double) -> (r: double[]) { return [x, x + "
                  "1] }"
                  "Step :: fn(x: int) -> (r: double) {"
-                 "if (x & 1) == 0 { return cast<double>(x * 3) }"
-                 "return cast<double>(-x) }"
+                 "if (x & 1) == 0 { return double(x * 3) }"
+                 "return double(-x) }"
                  "on Run { total = 0; i: int = 0; while i < 8 {"
                  "row := Pair(Step(i)); total += row[0] + row[1]; i += 1 } } }";
     execution_wasm_jit_stats before, after;

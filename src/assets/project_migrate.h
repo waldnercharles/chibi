@@ -72,4 +72,12 @@ char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t 
  * unchanged. Returns 0 on success or -1 with error set for invalid source. */
 int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 25 spells conversions T(value): `cast<T>(v)` becomes `T(v)`, a
+ * constant `N :: cast<T>(v)` becomes `N: T : v`, and a cast to
+ * handle<"ecs.entity"> becomes entity(v). Sets `migrated` to an owned copy,
+ * or NULL when the source has no casts. Returns -1 with `error` set for a
+ * cast to a type with no name spelling outside a constant declaration, or a
+ * result the current grammar rejects. */
+int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

@@ -721,7 +721,12 @@ int execution_machine_step(execution_machine *m, int pc)
                 }
             }
             break;
-        case BF_CAST: *out = behavior_scalar_cast(a, i->type); break;
+        case BF_CAST:
+            if (!behavior_scalar_cast(a, i->type, (behavior_cast_mode)i->target, out)) {
+                result = fail(ctx, i, steps, parents, BEHAVIOR_FUNCTION_DATA);
+                goto done;
+            }
+            break;
         case BF_FLAGS: out->b = (a.u & b.u) != 0; break;
         case BF_CONVERT:
             if (i->type == PIN_F32) {

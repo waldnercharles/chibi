@@ -705,6 +705,22 @@ expected Linux relocation on every host; it now asserts that other hosts reject
 the same absolute paths as unowned. The earlier hosted Linux build failure was
 never classified and Linux remains unmeasured for this adapter.
 
+Numeric conversions are now spelled `T(value)`, replacing `cast<T>(value)`,
+because the bounded compiler sources need explicit narrowing. Type names resolve
+to conversions before catalog capabilities, so the Byte literal node is now
+spelled `byte_value`. Mixed signed/unsigned integers compute and compare in
+`int` or `int64`. Integers widen implicitly only when lossless; `T(value)` is checked (a constant that does not
+fit is a compile error, a runtime value fails the invocation), `T(wrap: value)`
+keeps the low bits and `T(clamp: value)` saturates. `BF_CAST` carries the mode in
+every backend, prepared format 15 records it, and dead-code elimination keeps a
+checked cast whose value is unused. Typed constants use `Name: T : value`.
+Project format 25 migrates `cast<T>` sources and their sidecars; Studio's
+`projects/studio` uses `cast<` and upgrades when opened. The authored scalar
+folder mirrors the mode matrix. Unsigned ordered comparison and subtraction are
+still unsupported by the verifier and backends. On macOS the five CI aggregates,
+the Wasm group and 40 focused language and tool selectors pass, each under its
+own 60-second deadline; Linux is unmeasured.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

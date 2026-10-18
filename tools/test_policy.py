@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
+    ('--c-export-alias',): 'Bounded combined C case: twelve I32/I64 DIV/MOD alias fixtures, one authored pause/continuation, two guarded-array fixtures, two four-instruction query-variable functions three five-instruction scalar-component BOOL/U64/F64 readers and three checked scalar writers and seventeen BF_CAST mode fixtures over seven or eight samples each; one shared-library compiler child with existing 10s limit, source<128KiB, sixteen query-variable calls plus 132 scalar reads/failures/recoveries with stale cached columns and 204 paired generated-C/VM write calls (17 fixed cases x3 types x2 inspection modes x2 backends); native POSIX source build with authoring and configured sanitizers; no new executable/frames/GPU/network; shared60s; independent combined-workload admission required; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -648,7 +648,7 @@ TOOLS = {
     # review, separate build, shared 60s; outside the language aggregate.
     'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--type-constructors-chibi'],
-    # Four cases: 105 fixed requests, 210 calls with budget argument 50k.
+    # Four cases: 111 fixed requests, 222 calls with budget argument 50k.
     # Child activations inherit/reset it; not a global instruction ceiling.
     # Five compiler sources/backend (<32 KiB each): ten preparation parses.
     # Caps: 5 definitions, 8 variants/types, 4 uint64 IDs, 3 alias links.

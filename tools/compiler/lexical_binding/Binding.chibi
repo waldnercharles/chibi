@@ -36,14 +36,14 @@ Declaration :: union {
     | Existing(symbol: int, diagnostics: syntax.Diagnostic[])
 }
 
-FunctionKind :: cast<int>(1);
-MacroKind :: cast<int>(2);
-StateKind :: cast<int>(4);
-SharedStateKind :: cast<int>(5);
-ParameterKind :: cast<int>(6);
-ResultKind :: cast<int>(7);
-LocalKind :: cast<int>(8);
-ActionKind :: cast<int>(9);
+FunctionKind: int : 1;
+MacroKind: int : 2;
+StateKind: int : 4;
+SharedStateKind: int : 5;
+ParameterKind: int : 6;
+ResultKind: int : 7;
+LocalKind: int : 8;
+ActionKind: int : 9;
 
 FindName :: pure fn(environment: Environment, scope: int, name: string) -> int {
     switch environment {
@@ -116,22 +116,22 @@ Previous :: pure fn(symbol: Symbol, message: string) -> syntax.Diagnostic {
 // The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
 // one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
 ID :: pure fn(prefix: string, name: string) -> uint64 {
-    hash: uint64 = cast<uint64>(14695981039346656037);
-    prime: uint64 = cast<uint64>(1099511628211);
+    hash: uint64 = uint64(14695981039346656037);
+    prime: uint64 = uint64(1099511628211);
     index: int = 0;
     count := strings.ByteLength(prefix);
     while (index < count) {
-        hash = (hash ^ cast<uint64>(strings.ByteAt(prefix, index))) * prime;
+        hash = (hash ^ uint64(strings.ByteAt(prefix, index))) * prime;
         index += 1;
     }
-    hash = (hash ^ cast<uint64>(58)) * prime;
+    hash = (hash ^ uint64(58)) * prime;
     index = 0;
     count = strings.ByteLength(name);
     while (index < count) {
-        hash = (hash ^ cast<uint64>(strings.ByteAt(name, index))) * prime;
+        hash = (hash ^ uint64(strings.ByteAt(name, index))) * prime;
         index += 1;
     }
-    if (hash == cast<uint64>(0)) { return cast<uint64>(1); }
+    if (hash == uint64(0)) { return uint64(1); }
     return hash;
 }
 SymbolID :: pure fn(environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {

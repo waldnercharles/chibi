@@ -1051,7 +1051,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
         "on Tick { self.Bounded.value=input; observed=self.Bounded.value; "
         "self.Bounded.value+=100; self.Bounded.value-=1; "
         "steps=self.Bounded.value; "
-        "self.Bounded.count=cast<int>(observed); converted=self.Bounded.count; "
+        "self.Bounded.count=int(observed); converted=self.Bounded.count; "
         "local:Bounded={value:input}; constructed=local.value; "
         "defaulted=fresh.positive; } "
         "on Begin { copy:=self.Bounded; self.Bounded=copy; "

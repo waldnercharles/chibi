@@ -31,19 +31,19 @@ Plan :: union {
 Emitter :: union { Emitted(slots: Slot[], locals: Local[], origins: Range[], code: Instruction[]) }
 Frame :: struct { expression: int; phase: int; left: int; local: int; branch_pc: int; skip: int; }
 
-Boolean :: cast<int>(1);
-Integer :: cast<int>(6);
+Boolean: int : 1;
+Integer: int : 6;
 // Private canonical opcodes. The native decoder translates these names one-to-one.
-Constant :: cast<int>(0); VariableRead :: cast<int>(1); LocalRead :: cast<int>(2);
-Context :: cast<int>(3); Index :: cast<int>(4); Write :: cast<int>(5);
-Save :: cast<int>(6); Branch :: cast<int>(7); Jump :: cast<int>(8);
-Return :: cast<int>(9); End :: cast<int>(10); Negate :: cast<int>(11);
-BitNot :: cast<int>(12); Add :: cast<int>(13); Subtract :: cast<int>(14);
-Multiply :: cast<int>(15); Divide :: cast<int>(16); Modulo :: cast<int>(17);
-Equal :: cast<int>(18); NotEqual :: cast<int>(19); Less :: cast<int>(20);
-LessEqual :: cast<int>(21); Greater :: cast<int>(22); GreaterEqual :: cast<int>(23);
-BitAnd :: cast<int>(24); BitOr :: cast<int>(25); BitXor :: cast<int>(26);
-ShiftLeft :: cast<int>(27); ShiftRight :: cast<int>(28);
+Constant: int : 0; VariableRead: int : 1; LocalRead: int : 2;
+Context: int : 3; Index: int : 4; Write: int : 5;
+Save: int : 6; Branch: int : 7; Jump: int : 8;
+Return: int : 9; End: int : 10; Negate: int : 11;
+BitNot: int : 12; Add: int : 13; Subtract: int : 14;
+Multiply: int : 15; Divide: int : 16; Modulo: int : 17;
+Equal: int : 18; NotEqual: int : 19; Less: int : 20;
+LessEqual: int : 21; Greater: int : 22; GreaterEqual: int : 23;
+BitAnd: int : 24; BitOr: int : 25; BitXor: int : 26;
+ShiftLeft: int : 27; ShiftRight: int : 28;
 
 Reject :: pure fn(range: int, message: string) -> Plan {
     diagnostics: Diagnostic[] = [];
@@ -141,7 +141,7 @@ Lower :: pure fn(request: Request) -> Plan {
                 !ValidIndex(request_range, length(ranges))) {
                 return Reject(-1, "scalar lowering input exceeds its schema limits");
             }
-            if (abi.schema != 1 || abi.prepared != 14 ||
+            if (abi.schema != 1 || abi.prepared != 15 ||
                 (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
                 abi.value_size < 1 || abi.value_size > 256 || abi.payload_offset < 0 ||
                 abi.payload_offset > abi.value_size - 4 || abi.results_offset < 0 || abi.results_offset > 4096) {
@@ -176,7 +176,7 @@ Lower :: pure fn(request: Request) -> Plan {
                     return Reject(request_range, "invalid scalar lowering variable signature");
                 }
                 identity := ids[variable.id_slot];
-                if (identity == cast<uint64>(0) || !ValidLiteral(literals[variable.literal], types[variable.type].storage)) {
+                if (identity == uint64(0) || !ValidLiteral(literals[variable.literal], types[variable.type].storage)) {
                     return Reject(request_range, "invalid scalar lowering variable default");
                 }
                 earlier: int = 0;

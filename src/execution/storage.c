@@ -65,16 +65,6 @@ static size_t own_bytes(const behavior_function *f)
     COUNT(components);
     COUNT(state_selections);
 #undef COUNT
-    for (int i = 0; i < acount(f->suspensions); i++) {
-        bytes = add(
-            bytes,
-            vector(f->suspensions[i].values, sizeof *f->suspensions[i].values)
-        );
-        bytes = add(
-            bytes,
-            vector(f->suspensions[i].roots, sizeof *f->suspensions[i].roots)
-        );
-    }
     for (int i = 0; i < acount(f->component_proofs); i++) {
         bytes = add(
             bytes,

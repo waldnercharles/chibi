@@ -508,7 +508,7 @@ static void trace_context(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[a->pc - 1].target];
         int slots = acount(f->slots);
-        for (int i = 0; i < acount(s->values); i++) {
+        for (int i = 0; i < s->value_count; i++) {
             int value = s->values[i];
             pin_type type = value < slots ? f->slots[value]
                                           : f->locals[value - slots].initial.type;
@@ -575,12 +575,12 @@ static void visit_context(
         const behavior_function_suspension
             *s = &f->suspensions[f->instructions[a->pc - 1].target];
         int slots = acount(f->slots);
-        for (int i = 0; i < acount(s->roots); i++) {
+        for (int i = 0; i < s->root_count; i++) {
             pin_value value = s->roots[i].shape;
             value.ptr = (void *)(uintptr_t)a->values[s->roots[i].index];
             visit(user, &value);
         }
-        for (int i = 0; i < acount(s->values); i++) {
+        for (int i = 0; i < s->value_count; i++) {
             int index = s->values[i];
             pin_type type = index < slots ? f->slots[index]
                                           : f->locals[index - slots].initial.type;

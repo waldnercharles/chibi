@@ -188,8 +188,8 @@ Current integration constraints:
 | M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
 | M3 | **Complete** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
-| M4 | **In progress** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
-| M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
+| M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
+| M5 | **Ready** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
@@ -365,8 +365,10 @@ and the package graph and syntax fixtures remain bounded and deterministic.
 
 ### M4. Port the first compiler component
 
-Status: in progress. Parser and owned-value corrections are recorded separately;
-the reviewed authored graph is the remaining milestone commit.
+Status: complete on this branch for the shared package-graph corpus on bytecode
+and SLJIT. The authored component matches C membership, identity, ordering,
+bindings and diagnostics. Parser and owned-value fixes have separate commits and
+regressions. The normal stage-zero compiler still uses C; no deletion is implied.
 
 Port package graph construction and dependency ordering from the current C
 implementation to ordinary `.chibi`. It is the selected first component because
@@ -486,9 +488,11 @@ Last verified: 2026-10-17.
 - Starting checkpoint: `26e0821419e753f42041383bbe4f25db77b62121`, M3 complete
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
-- Completed milestones: M0 through M3; M4 is in progress
-- Recorded M4 changes: approved declaration precedence and owned-value correction
-- Next action: record the reviewed authored graph, then push the completed milestone
+- Completed milestones: M0 through M4; M5 and M7 are ready
+- Recorded language changes: `f5a1a28e9` declaration precedence and `2007c00c5`
+  owned-value correction
+- Next action: port syntax diagnostic traversal from raw Tree-sitter facts as
+  the first M5 component, with shared differential fixtures on both backends
 
 The owner approved declaration precedence on 2026-10-17: `name: Type = value`
 is a declaration when its type begins on the colon's line. A label before a
@@ -498,10 +502,9 @@ persistent state retain their meanings. The language reference and
 The parser is regenerated with the existing Tree-sitter 0.25.10 generator,
 ABI 15. The old parser fails the new syntax regression.
 
-The complete reviewed M4 working tree is being recorded in separate parser,
-owned-value and compiler-component commits. The following evidence belongs to
-that combined candidate; it does not claim each intermediate commit was tested
-in isolation. The remaining changes are already implemented and reviewed.
+The reviewed M4 candidate consists of separate parser, owned-value and
+compiler-component commits. The following evidence covers the complete combined
+milestone; intermediate commits were not separately tested in isolation.
 
 The owned-value correction classifies member/index writes by their storage
 root. Owned local, result and by-value parameter writes remain pure; references,

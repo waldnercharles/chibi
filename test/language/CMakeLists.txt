@@ -28,6 +28,14 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CORE_STRINGS_BYTES "${CHIBI_CORE_STRI
 configure_file(package_core_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_core_source.h" @ONLY)
 
+# The first compiler component is ordinary authored package source.
+set(package_graph_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_graph/Graph.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${package_graph_source}")
+file(READ "${package_graph_source}" CHIBI_PACKAGE_GRAPH_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_PACKAGE_GRAPH_BYTES "${CHIBI_PACKAGE_GRAPH_HEX}")
+configure_file(package_graph_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/package_graph_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -47,7 +55,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
 set_source_files_properties(inferred_string_arrays.c record_publication.c outliner_projection.c row_builder.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c program.c capture.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_builder.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c capture.c query_boundary.c incremental.c modules.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 # Package tests consume the owning SDK implementation; extraction stays private.
-target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c)
+target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_graph_chibi.c)
 set_source_files_properties(package_syntax.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.

@@ -1,16 +1,19 @@
 #include "authoring/source_packages.h"
+#include "package_graph_chibi.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
 #include <string.h>
 
-/* Private descriptor tests only. These are the future parser/resolver's output,
- * not evidence that package text parses or runs. No filesystem or authored code
- * is read/executed. The existing test_language dispatcher owns this fixture.
- * At most two graph owners coexist; the largest has 256 files/packages and
+/* Resolved descriptor corpus. The ordinary route tests the C graph alone;
+ * the differential route also executes the authored implementation through its
+ * public value facade. Neither route reads runtime filesystem input.
+ * The existing test_language dispatcher owns this fixture.
+ * At most two C graph owners coexist; the largest has 256 files/packages and
  * 255 imports. All loops are bounded by those counts. */
 static source_packages *packages, *retained;
 static source_package_error error;
+static bool differential;
 static void cleanup()
 {
     source_packages_free(packages);
@@ -25,6 +28,11 @@ static bool create(
 )
 {
     packages = source_packages_new(files, file_count, imports, import_count, &error);
+    if (differential) {
+        REQUIRE(
+            package_graph_chibi_compare(files, file_count, imports, import_count, packages, &error)
+        );
+    }
     REQUIRE(packages);
     REQUIRE(error.code == SOURCE_PACKAGE_OK);
     REQUIRE(error.file == -1 && error.import == -1 && !error.cycle_count);
@@ -39,6 +47,11 @@ static bool rejected(
 )
 {
     packages = source_packages_new(files, file_count, imports, import_count, &error);
+    if (differential) {
+        REQUIRE(
+            package_graph_chibi_compare(files, file_count, imports, import_count, packages, &error)
+        );
+    }
     REQUIRE(!packages);
     REQUIRE(error.code == code);
     return true;
@@ -419,4 +432,14 @@ void test_language_package_graph()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_SUITE(package_graph_suite);
+    pu_clear_setup();
+}
+void test_language_package_graph_chibi()
+{
+    differential = true;
+    pu_setup(NULL, cleanup);
+    RUN_TEST_SUITE(package_graph_suite);
+    pu_clear_setup();
+    package_graph_chibi_finish();
+    differential = false;
 }

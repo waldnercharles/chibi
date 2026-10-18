@@ -1159,6 +1159,34 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
+existing 23 C graph cases for differential comparison with the authored compiler
+component. Two package owners prepare the actual graph/core sources once for
+bytecode and SLJIT (four source parses). The corpus makes 28 graph constructions,
+so there are 56 authored Builds and 348 bounded public-query calls, with 684
+packed File and 590 Import rows across both backends. At most 256 files and 255
+imports are supplied in a case. The two maximum Builds allow 50 million
+instructions each; the other 402 calls allow 100,000 each. Authored edges are
+sparse, scalar arrays contain at most 256 elements, and per-call arenas retire
+between invocations. One host observation matrix uses at most 256 squared ints.
+The fixture compares complete memberships, order, dependency cells, bindings,
+error fields and cycle indices against C, plus public queries. It performs no
+filesystem, process, service or GPU work. Build separately and independently
+review the exact workload before its first run under one shared 60-second
+ceiling. This focused route is outside the language aggregate.
+
+The compiler port adds separately reviewed language regressions to existing
+routes. Syntax adds two fixed parses for typed declarations, labels and system
+state; program adds two preparations and four calls with 1,000-instruction
+budgets, checking both backends. Semantic adds nine short sources covering
+owned writes and rejected external writes. `language-record-runtime` adds ten
+small preparations and fourteen calls with 10,000-instruction budgets. Two-row
+records verify that by-value mutation preserves caller snapshots, explicit
+references update caller roots, and returned snapshots survive module teardown.
+Scalar arguments, reference exposure, inline and standalone entries share these
+checks. That standalone route now has five cases and 28 calls total. These additions
+create no frames, workers, files, processes or GPU work.
+
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects eighteen C cases in the

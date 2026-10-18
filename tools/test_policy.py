@@ -539,6 +539,15 @@ TOOLS = {
     # First measurement requires independent exact-source/workload review.
     'language-package-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                    '--package-execution'],
+    # Existing23 graph cases compare28 constructions on both backends:
+    # 56 Builds+348 bounded queries, 684 packed File/590 Import rows total.
+    # Two reused owners (four source parses), max256 files/255 imports.
+    # Two max Builds permit50m instructions; other402 calls permit100k each.
+    # Sparse edges, scalar arrays<=256; no filesystem/process/services/GPU.
+    # Independent exact-source/resource review before first run, separate build,
+    # one shared60s ceiling; standalone route outside the language aggregate.
+    'language-package-graph-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--package-graph-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.
@@ -606,7 +615,7 @@ TOOLS = {
     'language-row-builder': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-builder'],
     # Five fixed row-array construction/alias/collection cases; also in language/Wasm groups.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
-    # Four fixed record execution/format cases; independent admission, no aggregate expansion.
+    # Five fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
     # Bounded union scalar replacement and checked component-read differential/control-flow cases.
     'language-scalarize': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--scalarize'],

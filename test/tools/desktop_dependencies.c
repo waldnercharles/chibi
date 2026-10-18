@@ -112,7 +112,13 @@ TEST_CASE(s2n_fetch_omits_unused_verification_submodules)
 
 TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
 {
+#ifdef __linux__
     REQUIRE(relocated("opengl"));
+#else
+    /* Only Linux recreates FindOpenGL's absolute library roles; other hosts
+     * link frameworks or import libraries, so the same paths stay unowned. */
+    REQUIRE(rejected("opengl", "unowned absolute link"));
+#endif
     REQUIRE(rejected("unowned", "unowned absolute link"));
     return true;
 }

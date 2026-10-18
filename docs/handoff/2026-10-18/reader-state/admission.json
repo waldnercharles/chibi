@@ -1,0 +1,98 @@
+{
+  "schema": 1,
+  "status": "private_checkpoint_unarmed_proposal",
+  "independent_runtime_admission": false,
+  "source_repository": "waldnercharles/chibi",
+  "source_pr": 446,
+  "feature_head": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+  "feature_tree": "1ca14bfda693998e9769b552b84b91bbfc4cc6cb",
+  "stack_parent": "1338151c084c1a633f881153084bc83773df27fa",
+  "stack_parent_tree": "6a31c1576aaab2579ebca70a0c0b076b5bd5e1e6",
+  "integration_target_branch": "codex/toolchain-cleanup-20261017",
+  "integration_target_sha": "ace559c9c294a450c95a3a730dcd6d9f1b5ce13c",
+  "already_integrated_main_ancestor": "6ea2221c97d266c9bb028443cb67bd445fdb3476",
+  "future_private_candidate_sha": null,
+  "future_private_candidate_tree": null,
+  "future_private_branch": "refs/heads/codex/m5-snapshot-reader-validation-20261018",
+  "public_repository": "waldnercharles/chibi-studio",
+  "public_pr": 81,
+  "public_branch": "codex/host-m5-unit-validation-20261018",
+  "public_workflow_replacement_path": ".github/workflows/toolchain-m5-unit-analysis.yml",
+  "public_base_sha": "bee5b54e159cce44ee52ca9439be587d9a95f5d2",
+  "reference_control_sha": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+  "reference_control_tree": "ee674c048a629cc1d8fc72f19b7fa4809f44d40c",
+  "future_control_sha": null,
+  "future_control_tree": null,
+  "build": {
+    "runner": "ubuntu-24.04",
+    "compiler": "clang-18",
+    "configuration": "Debug",
+    "compiler_enabled": true,
+    "native_enabled": false,
+    "desktop_enabled": false,
+    "sljit_enabled": true,
+    "parallelism": 2,
+    "targets": [
+      "test_language",
+      "test_tools",
+      "chibi-compiler-host"
+    ]
+  },
+  "selectors": [
+    {
+      "selector": "language-package-snapshot-chibi",
+      "expected_outer_cases": 16,
+      "supervisor_seconds": 60,
+      "complete_invocations": 1
+    },
+    {
+      "selector": "compiler-artifact",
+      "expected_outer_cases": 15,
+      "supervisor_seconds": 60,
+      "complete_invocations": 1
+    },
+    {
+      "selector": "language-signature-reader-chibi",
+      "expected_outer_cases": 4,
+      "supervisor_seconds": 60,
+      "complete_invocations": 1
+    },
+    {
+      "selector": "language-snapshot-reader-chibi",
+      "expected_outer_cases": 3,
+      "supervisor_seconds": 60,
+      "complete_invocations": 1
+    }
+  ],
+  "reused_audit": {
+    "candidate_path": ".github/scripts/transport-boundary-audit.py",
+    "sha256": "612f31e95ee749a308c8d37531cda67972d73cae6a1d26161e66761d4209cadd",
+    "git_blob_sha": "0482fd9afa2ad1e3f0edf0b332b826a9bf067574",
+    "status": "existing_reviewed_bytes_reused_without_changes"
+  },
+  "requires": [
+    "integrate_updated_transport_and_landed_semantic_sources",
+    "independent_exact_source_resource_route_helper_and_control_review",
+    "exact_source_helper_audit_candidate_identity",
+    "resolve_strict_product_link_audit_failure",
+    "verify_existing_public_control_is_available_without_altering_an_active_run",
+    "exact_final_control_review_and_fresh_source_target_refs",
+    "actual_configure_build_audit_and_complete_selector_results",
+    "independent_exact_integration_landing_review_and_server_rules"
+  ],
+  "target_build_or_runtime_executed": false,
+  "published_refs": true,
+  "checkpoint_branch": "refs/heads/codex/m5-snapshot-reader-state-20261018",
+  "source_head_and_tree_describe_original_source_only": true,
+  "original_proposal_manifest_sha256": "0f795d403f0190b40794904323bc634256091818d1f01024f12aa27d05766191",
+  "public_workflow_published": false,
+  "transport_dependency_status": {
+    "source_head": "e165059d1c17ec7605d909ae3bbf727d9e267a80",
+    "source_tree": "8e5ea89dfe428ca7804b68af0c85ba35e5e74b5e",
+    "run_url": "https://github.com/waldnercharles/chibi-studio/actions/runs/39143405107",
+    "configure": "success",
+    "build": "success",
+    "strict_product_link_audit": "failure",
+    "runtime_selectors": "all_seven_skipped"
+  }
+}

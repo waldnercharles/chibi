@@ -1,0 +1,23 @@
+{
+  "reference-semantic-helper.sh": {
+    "git_blob_sha": "97f08c36ca8f13da96d637e9bd474141f459addd"
+  },
+  "reference-active-control.yml": {
+    "git_blob_sha": "869d9ba97ec0066cac86f70e4230ee0ed3e573fd"
+  },
+  "reference-studio-ci.yml": {
+    "git_blob_sha": "c7b98fd05c90dfb653ac7316648adfb15db4c8f8"
+  },
+  "reference-studio-AGENTS.md": {
+    "git_blob_sha": "996f2eb9303d035659a4e8325acaa07b0f06bbbe"
+  },
+  "reference-studio-publish.yml": {
+    "git_blob_sha": "a76a11688f8e278c598b3dfeb332f629f63d5fd5"
+  },
+  "reference-parent-reader.c": {
+    "git_blob_sha": "8604d3a49b8fc73a54f2bdf3fd1e38a30a1251cc"
+  },
+  "reference-parent-policy.py": {
+    "git_blob_sha": "fdfb5861fce38c341e875783eab3508313f7c113"
+  }
+}

@@ -1,0 +1,98 @@
+{
+  "AGENTS.md": {
+    "blob": "8ada0dce2353a4954732f2ecd5126981aab27306",
+    "characters": 10218
+  },
+  "PLAN.md": {
+    "blob": "5fe8390e5a889343a8cd65d9941a191564b2cf52",
+    "characters": 44517
+  },
+  "docs/testing.md": {
+    "blob": "17c469a5dd65c968dde6514f9b1f100900aa515f",
+    "characters": 168384
+  },
+  "test/language/CMakeLists.txt": {
+    "blob": "8bd082aeb756165a847c8963bbe51ee65d32c997",
+    "characters": 20840
+  },
+  "test/language/main.c": {
+    "blob": "7b1c9dc2dc09a90fd5a0a746aca1bc91381c3ea4",
+    "characters": 21455
+  },
+  "test/language/signature_reader_chibi.c": {
+    "blob": "a0e28888a54fca292cca57fa8653cf9a58188923",
+    "characters": 63672
+  },
+  "test/language/signature_reader_chibi_source.h.in": {
+    "blob": "cacd352891d85a57cbf410b27c2775a35370dca5",
+    "characters": 285
+  },
+  "tools/compiler/analysis_state/State.chibi": {
+    "blob": "2616909551f5d89b37c548ae0dfd7a40ad337189",
+    "characters": 4130
+  },
+  "tools/test_policy.py": {
+    "blob": "6caef922a491c8c0db3eeb9e61aca77b66447ac2",
+    "characters": 114430
+  },
+  "tools/compiler/signature_reader/Reader.chibi": {
+    "blob": "aa9fd65642e38a0975bb460a1b50eedf727b6aeb",
+    "characters": 30602
+  },
+  "tools/compiler/named_binding/Binding.chibi": {
+    "blob": "81c2d153666e232e5075e58f0784300759cd98c1",
+    "characters": 16990
+  },
+  "tools/compiler/type_constructors/Constructors.chibi": {
+    "blob": "cc40111fa4f83acd54524c9483f009439b3ce3d2",
+    "characters": 12230
+  },
+  "tools/compiler/unit_algebra/Units.chibi": {
+    "blob": "7e074b04f1c8446e9b36290e44bfb3c4e492e4c3",
+    "characters": 8167
+  },
+  "tools/compiler/lexical_binding/Binding.chibi": {
+    "blob": "fe41b7713f0e4c550b747fa97baeb99b989467de",
+    "characters": 8677
+  },
+  "tools/compiler/syntax_diagnostics/Diagnostics.chibi": {
+    "blob": "b53b26e4a8d21d4ce5f50d12cbc8e7c2dc0fb992",
+    "characters": 2239
+  },
+  "packages/core/strings/Strings.chibi": {
+    "blob": "49a29fdcd3856e70b9023a832ca4d402e6548b5f",
+    "characters": 1843
+  },
+  "tools/compiler/source_snapshot/Snapshot.chibi": {
+    "blob": "e98b5b75ae7afa8ded4c8247ab2197bf600605f9",
+    "characters": 15704
+  },
+  "tools/compiler/compiler_syntax/Syntax.chibi": {
+    "blob": "262d1f51d281ffb5da110b4cc359a9e25e19ce61",
+    "characters": 1568
+  },
+  "tools/compiler/package_routes/Routes.chibi": {
+    "blob": "768cb7a8bc4f1e48a9fb4b25ec7cceedf4552e0a",
+    "characters": 8080
+  },
+  "tools/compiler/package_syntax/Extract.chibi": {
+    "blob": "984a87f7b0a20c23027bdc012ef64524524b58f2",
+    "characters": 4262
+  },
+  "tools/compiler/package_graph/Graph.chibi": {
+    "blob": "b7ceb59f90256460507da08ab5f36203dc23c540",
+    "characters": 12675
+  },
+  "tools/compiler/package_paths/Paths.chibi": {
+    "blob": "dbfa1d412603875399ea32680fe77b3253d5e40d",
+    "characters": 2666
+  },
+  "test/language/signature_fixture.c": {
+    "blob": "2dea86857e5e77350cc697c45df106cd531e9776",
+    "characters": 18299
+  },
+  "test/language/signature_fixture.h": {
+    "blob": "70bed13e601a682b4ff1112354b172a7b3b50fb7",
+    "characters": 918
+  }
+}

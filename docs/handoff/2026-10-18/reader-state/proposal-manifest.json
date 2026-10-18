@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "status": "private_checkpoint_unarmed_proposal",
+  "checkpoint_branch": "refs/heads/codex/m5-snapshot-reader-state-20261018",
+  "original_source_head": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+  "original_source_tree": "1ca14bfda693998e9769b552b84b91bbfc4cc6cb",
+  "original_stack_parent": "1338151c084c1a633f881153084bc83773df27fa",
+  "original_proposal_manifest_sha256": "0f795d403f0190b40794904323bc634256091818d1f01024f12aa27d05766191",
+  "runtime_executed": false,
+  "new_tests_executed_for_checkpoint": false,
+  "independent_helper_control_admission": false,
+  "public_workflow_published": false,
+  "historical_checks": {
+    "synthetic_helper_admission_privacy": 124,
+    "static_workflow_source_contracts": 87,
+    "target_execution": false,
+    "results_rerun_for_checkpoint": false,
+    "control_results_sha256": "5303313103024c9b831c9b75c9db1e424b54996ac73dbddafec7390f052ad1cd",
+    "workflow_results_sha256": "07ce8c50f8ca2810da9ad02b2e560bafda4d158c12e478de12d8ddf534a11332"
+  },
+  "unchanged_proposal_files": {
+    "check-controls.py": {
+      "sha256": "2fbc574bdb84048c851b196b74cc055da735b84c8c616cccf70ea5807f1bfc23",
+      "bytes": 12332
+    },
+    "check-workflow.py": {
+      "sha256": "5f18fd4a652d6aec7157fdb8e1cc40a5943efcaa631c4e990883e3ccf7038db6",
+      "bytes": 13566
+    },
+    "resource-manifest.json": {
+      "sha256": "eaddb73a609e298857bb1969ca7faf1328dd6e82ee5df26161442567faf9c5fe",
+      "bytes": 7754
+    },
+    "recovered-files.json": {
+      "sha256": "00c1fb5aac0cbca2d4ee086d825ce4abe359a629b53624ebd3f2620133bde66e",
+      "bytes": 3075
+    },
+    "reference-identities.json": {
+      "sha256": "ebc02ac1ccd8a248abbe6196d65e064d016d39e18e9c273dea056b2d4d1d088f",
+      "bytes": 719
+    },
+    "proposal/toolchain-m5-unit-analysis.yml": {
+      "sha256": "ea9cf7f94cc15e322fae00d11dbbec1fd869ee416c89ba7ad12b788f2a0e7098",
+      "bytes": 7398
+    }
+  },
+  "reproduction": {
+    "status": "archived_code_requires_reconstructed_disposable_packet_not_a_self_contained_test_suite",
+    "reader_source": {
+      "repository": "waldnercharles/chibi",
+      "commit": "70ff5bf54a1125a110be6a26a7e226a4b5d542ba",
+      "materialize_as": "source/",
+      "identity_file": "recovered-files.json"
+    },
+    "transport_source": {
+      "repository": "waldnercharles/chibi",
+      "commit": "1338151c084c1a633f881153084bc83773df27fa",
+      "materialize_as": "../recovered-transport-validation/source/",
+      "identity_file": "transport-recovered-files.json",
+      "manifest_materialize_as": "../recovered-transport-validation/recovered-files.json"
+    },
+    "helper": {
+      "repository_path": ".github/scripts/reader-state-validation.sh",
+      "materialize_as": "proposal/reader-state-validation.sh",
+      "sha256": "30fcd4a85acd078f50ec8f46cf25d5c20825213efa530e07c8d6c07a8d68e555"
+    },
+    "control": {
+      "repository_path": "docs/handoff/2026-10-18/reader-state/proposal/toolchain-m5-unit-analysis.yml",
+      "materialize_as": "proposal/toolchain-m5-unit-analysis.yml",
+      "sha256": "ea9cf7f94cc15e322fae00d11dbbec1fd869ee416c89ba7ad12b788f2a0e7098"
+    },
+    "references": [
+      {
+        "materialize_as": "reference-semantic-helper.sh",
+        "repository": "waldnercharles/chibi",
+        "commit": "ec13962865b093bbeb2693a46ec6dc22fac6e498",
+        "path": ".github/scripts/semantic-components-validation.sh",
+        "git_blob_sha": "97f08c36ca8f13da96d637e9bd474141f459addd",
+        "sha256": "608690bba3229c5220530e1aaf7c1073ee5091683c58030c3a3821d9994767a3"
+      },
+      {
+        "materialize_as": "reference-active-control.yml",
+        "repository": "waldnercharles/chibi-studio",
+        "commit": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+        "path": ".github/workflows/toolchain-m5-unit-analysis.yml",
+        "git_blob_sha": "869d9ba97ec0066cac86f70e4230ee0ed3e573fd",
+        "sha256": "60a32b92f6c623682247ba0ebc144d553bee7e23cf295021ce725269a7269ee3"
+      },
+      {
+        "materialize_as": "reference-studio-ci.yml",
+        "repository": "waldnercharles/chibi-studio",
+        "commit": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+        "path": ".github/workflows/ci.yml",
+        "git_blob_sha": "c7b98fd05c90dfb653ac7316648adfb15db4c8f8",
+        "sha256": "1a789b9889783181d58d2496d52c99739df2abc3794082449ddce15939d8f947"
+      },
+      {
+        "materialize_as": "reference-studio-AGENTS.md",
+        "repository": "waldnercharles/chibi-studio",
+        "commit": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+        "path": "AGENTS.md",
+        "git_blob_sha": "996f2eb9303d035659a4e8325acaa07b0f06bbbe",
+        "sha256": "4e4add0e103c29668932c3019eb117c29a318f06d61fa13b8199113837e42b44"
+      },
+      {
+        "materialize_as": "reference-studio-publish.yml",
+        "repository": "waldnercharles/chibi-studio",
+        "commit": "02894277346e9c3d8dafdf56b48497b93c9a0052",
+        "path": ".github/workflows/publish.yml",
+        "git_blob_sha": "a76a11688f8e278c598b3dfeb332f629f63d5fd5",
+        "sha256": "aa1cebd9b6a8fd395ca920fcf9589d4e6ecff5392fa371243dad54f8b50187f1"
+      },
+      {
+        "materialize_as": "reference-parent-reader.c",
+        "repository": "waldnercharles/chibi",
+        "commit": "1338151c084c1a633f881153084bc83773df27fa",
+        "path": "test/language/signature_reader_chibi.c",
+        "git_blob_sha": "8604d3a49b8fc73a54f2bdf3fd1e38a30a1251cc",
+        "sha256": "92c40e2c1d3dbfb5af5dfaf74820f9abcfb49ff30b84a1b1831028ba02f72ba5"
+      },
+      {
+        "materialize_as": "reference-parent-policy.py",
+        "repository": "waldnercharles/chibi",
+        "commit": "1338151c084c1a633f881153084bc83773df27fa",
+        "path": "tools/test_policy.py",
+        "git_blob_sha": "fdfb5861fce38c341e875783eab3508313f7c113",
+        "sha256": "52e1d008ffd7d6c6cf83753f858252196cdbea5ed84e5b1d97c8c9c040b999e0"
+      }
+    ]
+  },
+  "files": {
+    ".github/scripts/reader-state-validation.sh": {
+      "mode": "100644",
+      "git_blob_sha": "220a31e6efa74c69a901e7e14962a28835e986a4",
+      "sha256": "30fcd4a85acd078f50ec8f46cf25d5c20825213efa530e07c8d6c07a8d68e555",
+      "bytes": 13083
+    },
+    ".github/scripts/transport-boundary-audit.py": {
+      "mode": "100644",
+      "git_blob_sha": "0482fd9afa2ad1e3f0edf0b332b826a9bf067574",
+      "sha256": "612f31e95ee749a308c8d37531cda67972d73cae6a1d26161e66761d4209cadd",
+      "bytes": 31754
+    },
+    "docs/handoff/2026-10-18/reader-state/README.md": {
+      "mode": "100644",
+      "git_blob_sha": "c7be47f1d272932dc6f06f7fc6d3cd43e368d147",
+      "sha256": "8f7c36f86d8996b3aa7989bac3cbc7663f040fef778d4102372a844e330764ad",
+      "bytes": 8048
+    },
+    "docs/handoff/2026-10-18/reader-state/admission.json": {
+      "mode": "100644",
+      "git_blob_sha": "ab170bfa7ee6e82f8f349a9a980866228a71ece8",
+      "sha256": "18ade8b5f5d004e02b0cf15b7bfc9a19b36d22975f4a5e329ee70d9f54f613bd",
+      "bytes": 3902
+    },
+    "docs/handoff/2026-10-18/reader-state/check-controls.py": {
+      "mode": "100644",
+      "git_blob_sha": "d6e970cc4b186c8eff12427be666dab27478263b",
+      "sha256": "2fbc574bdb84048c851b196b74cc055da735b84c8c616cccf70ea5807f1bfc23",
+      "bytes": 12332
+    },
+    "docs/handoff/2026-10-18/reader-state/check-workflow.py": {
+      "mode": "100644",
+      "git_blob_sha": "b0b93670b7a804bbe3e47cf2a5f27fc2c21949bc",
+      "sha256": "5f18fd4a652d6aec7157fdb8e1cc40a5943efcaa631c4e990883e3ccf7038db6",
+      "bytes": 13566
+    },
+    "docs/handoff/2026-10-18/reader-state/proposal/toolchain-m5-unit-analysis.yml": {
+      "mode": "100644",
+      "git_blob_sha": "122e5ddffecc46f2183b29f669b702fe6992ee86",
+      "sha256": "ea9cf7f94cc15e322fae00d11dbbec1fd869ee416c89ba7ad12b788f2a0e7098",
+      "bytes": 7398
+    },
+    "docs/handoff/2026-10-18/reader-state/recovered-files.json": {
+      "mode": "100644",
+      "git_blob_sha": "c3a5e0bc36d2278cb90437ed0c16270cb311dfaf",
+      "sha256": "00c1fb5aac0cbca2d4ee086d825ce4abe359a629b53624ebd3f2620133bde66e",
+      "bytes": 3075
+    },
+    "docs/handoff/2026-10-18/reader-state/reference-identities.json": {
+      "mode": "100644",
+      "git_blob_sha": "d2b07ff006b6e3d38574bb24d8d6b446f6afd5df",
+      "sha256": "ebc02ac1ccd8a248abbe6196d65e064d016d39e18e9c273dea056b2d4d1d088f",
+      "bytes": 719
+    },
+    "docs/handoff/2026-10-18/reader-state/resource-manifest.json": {
+      "mode": "100644",
+      "git_blob_sha": "f2993575b74352d672d173fee3f8b73275fd0795",
+      "sha256": "eaddb73a609e298857bb1969ca7faf1328dd6e82ee5df26161442567faf9c5fe",
+      "bytes": 7754
+    },
+    "docs/handoff/2026-10-18/reader-state/transport-recovered-files.json": {
+      "mode": "100644",
+      "git_blob_sha": "fc37a17397edc6c2660c446c27f6845b6bf93dee",
+      "sha256": "f5178bffc74182cf363b80b7cc1198f8aeab0e27e50f8ace8a965d2ee4ca3b94",
+      "bytes": 2723
+    }
+  }
+}

@@ -57,11 +57,6 @@ static int root_value(const behavior_function *f, behavior_value_root root)
 {
     return root.index + (root.bank == BEHAVIOR_BANK_LOCAL ? acount(f->slots) : 0);
 }
-static void *owned(behavior_function *f, size_t bytes, size_t budget)
-{
-    return budget ? arena_alloc_bounded(&f->owned, bytes, budget)
-                  : arena_alloc(&f->owned, bytes);
-}
 /* Count before allocating so retained storage is exactly the live sets. */
 static bool save_live(
     behavior_function *f,
@@ -78,13 +73,21 @@ static bool save_live(
         s->root_count += live_at(bits, root_value(f, f->value_roots[i]));
     }
     if (s->value_count) {
-        s->values = owned(f, (size_t)s->value_count * sizeof *s->values, budget);
+        s->values = arena_alloc_bounded(
+            &f->owned,
+            (size_t)s->value_count * sizeof *s->values,
+            budget
+        );
         if (!s->values) {
             return false;
         }
     }
     if (s->root_count) {
-        s->roots = owned(f, (size_t)s->root_count * sizeof *s->roots, budget);
+        s->roots = arena_alloc_bounded(
+            &f->owned,
+            (size_t)s->root_count * sizeof *s->roots,
+            budget
+        );
         if (!s->roots) {
             return false;
         }

@@ -418,12 +418,29 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-The unit-analysis differential is wired and its zero-capability and deep
-recursion defects have been reproduced on both backends. The current candidate
-replaces recursive evaluation with explicit work/operand stacks and fixes the
-zero-capability lookup; its full differential remains pending. The production C
-extraction adapter is deferred until the real native fixture route is validated.
-Union members and effects remain reviewed, unlinked and unexecuted drafts.
+The authored unit-analysis repair is merged in
+[PR #440](https://github.com/waldnercharles/chibi/pull/440) at
+`a5edefd3b79db958e444adc624df7ca8fa493e02`, tree
+`ebfae34988e334412d2239e3b277475391898edc`. It replaces recursive evaluation with
+explicit work/operand stacks and fixes zero-capability lookup after both defects
+were reproduced on bytecode and SLJIT. The full authored unit differential is
+green in [run 39112565011](https://github.com/waldnercharles/chibi-studio/actions/runs/39112565011);
+its sanitized status JSON SHA-256 is
+`3f290081324f0a89d1aae1fdd013ba7649ea4a5eac4e2046ffddf1a765218cfb`.
+The fixture observer remains off by default. The production C extraction
+adapter remains deferred; this does not move the normal compiler off stage zero.
+
+The next type-relations component now has ordinary authored source and a
+dedicated differential route, `language-type-relations-chibi`, outside aggregates.
+Its finite corpus is 105 requests and 210 calls across bytecode and SLJIT, with
+ten preparation parses and a supplied budget argument of 50,000. Outlined and
+inline child activations inherit/reset that argument; it is not an invocation or
+global instruction ceiling. The exact integrated candidate still needs its first
+supervised runtime measurement under the shared 60-second deadline. No native
+type-relation adapter or language syntax change is introduced. Union members and
+effects remain reviewed, unlinked and unexecuted drafts. Complete authored
+semantic analysis, lowering, artifact production, stage one and stage two remain
+incomplete; these focused components do not establish self-hosting.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -534,8 +551,8 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified upstream checkpoint: 2026-10-18 at
-`9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
+Last verified toolchain checkpoint: 2026-10-18 at
+`a5edefd3b79db958e444adc624df7ca8fa493e02` (PR #440).
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed
@@ -554,15 +571,22 @@ Zero-ID and ordinary/full differential calls retain the original no-observer
 path. No production runtime propagation, evaluator policy or backend selection
 was changed to collect the evidence. Raw diagnostics stay runner-local.
 
-The current authored-only repair removes the invalid zero-capability guard and
+The merged authored-only repair removes the invalid zero-capability guard and
 replaces recursive Eval calls with explicit work/operand stacks. It preserves
 cache visits, selective dependency evaluation, diagnostic order and unknown-unit
-behavior. The normal production analyzer is unchanged. Full validation of this
-exact repair remains pending: the existing three-case differential covers 25 raw
-and four analyzed requests, 58 authored attempts across both backends, and owned
-results surviving input/package teardown. Existing budget arguments and the
-single production 60-second supervisor remain unchanged. The supplied instruction
+behavior. The normal production analyzer is unchanged. Source
+`ce379205fc529f8d5d2142bc6346e0079c7ec827` passed the complete three-case
+differential in hosted run `39112565011`: 25 raw and four analyzed requests,
+58 authored attempts across both backends, and owned results surviving
+input/package teardown. Configuration took 5s, build 14s and the single
+production-supervised execution 2s. Its sanitized evidence hash is recorded
+above; the merged tree exactly matches that tested source tree. Budget arguments
+and the single 60-second deadline remain unchanged. The supplied instruction
 budget is inherited/reset per activation, not a whole-call work ceiling.
+
+The current additive type-relations candidate is independently source-reviewed
+and wired for its dedicated full differential. Its first runtime validation
+remains pending; the unit-analysis result is not evidence for that new component.
 
 The active C extraction adapter remains deferred until its real native
 unit-fixtures and affected semantic/incremental contracts can run. The authored

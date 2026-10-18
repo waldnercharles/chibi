@@ -1,5 +1,6 @@
 #define PICO_UNIT_IMPLEMENTATION
 #include "third_party/pico_headers/pico_unit.h"
+#include "type_relations_chibi.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -151,6 +152,8 @@ int main(int argc, char **argv)
     bool named_binding_chibi = argc == 2 && !strcmp(argv[1], "--named-binding-chibi");
     bool type_constructors_chibi = argc == 2 &&
                                    !strcmp(argv[1], "--type-constructors-chibi");
+    bool type_relations_chibi = argc == 2 &&
+                                !strcmp(argv[1], "--type-relations-chibi");
     bool unit_algebra_chibi = argc == 2 && !strcmp(argv[1], "--unit-algebra-chibi");
     bool signature_reader_chibi = argc == 2 &&
                                   !strcmp(argv[1], "--signature-reader-chibi");
@@ -201,9 +204,9 @@ int main(int argc, char **argv)
          !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi &&
-         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+         !constant_proof_chibi && !constant_scalar_chibi && !lexical_binding_chibi &&
+         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
          !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
          !unit_analysis_deep && !package_execution && !package_resolution &&
          !package_imports && !package_files && !package_core && !component_write &&
@@ -224,7 +227,7 @@ int main(int argc, char **argv)
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
-            "--type-constructors-chibi | "
+            "--type-constructors-chibi | --type-relations-chibi | "
             "--unit-algebra-chibi | "
             "--signature-reader-chibi | "
             "--callable-headers-chibi | --unit-analysis-chibi | "
@@ -380,6 +383,8 @@ int main(int argc, char **argv)
         test_language_named_binding_chibi();
     } else if (type_constructors_chibi) {
         test_language_type_constructors_chibi();
+    } else if (type_relations_chibi) {
+        test_language_type_relations_chibi();
     } else if (unit_algebra_chibi) {
         test_language_unit_algebra_chibi();
     } else if (signature_reader_chibi) {

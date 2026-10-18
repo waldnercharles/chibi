@@ -1398,6 +1398,29 @@ each. There are no runtime files, children, services or GPU work.
 Independently review before the first run, build separately and use one shared
 60-second ceiling outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-type-relations-chibi` selects four
+C/pico_unit cases for the five pure catalog type relations. The finite tables
+contain 18 equality, 15 numeric, 30 assignment, 33 catalog-assignment and nine
+canonicalization requests: 105 requests, each once on bytecode and SLJIT, for
+210 direct authored calls with a supplied budget argument of 50,000. Outlined
+and inline child activations inherit/reset that budget; it is not a complete
+invocation or aggregate instruction ceiling. Five fixed compiler sources below
+32 KiB per backend produce ten preparation parses. Raw maxima are
+five catalog definitions, eight variants/type rows, four exact uint64 IDs and
+three alias links; there are no generated combinations or extra analyzed inputs.
+
+C parity and fixed answers cover task wildcard direction, boxed optional and
+error/literal precedence, numeric/generic/reference/name/string rules, full-width
+IDs, alias boundary/cycle behavior, and union tag inclusion, tagged exclusion and
+plain/literal membership. Inputs retire before comparison, and one canonicalized
+cycle result per backend survives compiler-owner destruction. The imported
+named-binding closure uses the existing private JSON binding during preparation;
+these entries make no JSON calls. There are no workload files, children, host
+services, frames or GPU work. Independently review the exact wired candidate
+before first execution, build separately and use one shared 60-second production
+deadline. This route stays outside aggregates. Source registration records no
+measured pass, authored compiler dispatch or stage-one bootstrap.
+
 `python3 tools/test_policy.py tool language-unit-algebra-chibi` compares unit
 parsing, dimension equality, multiplication/division and formatting. Four pico
 cases run 24 Parse, five Same, ten Product and nine Format requests, totaling

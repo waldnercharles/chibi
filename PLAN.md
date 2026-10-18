@@ -454,7 +454,18 @@ at 500,000; record members retains 26 requests, 52 calls, 32 parses and four
 runtime JSON decodes at 500,000. All arguments are inherited/reset per activation,
 not whole-call or aggregate instruction ceilings. Each route remains outside
 aggregates under one unchanged production 60-second deadline. Exact combined
-source/workload review and the first full runtime measurements remain pending.
+source/workload review passed before hosted run 39137179505. That exact source
+`a1126704c16040dc0d8f6e15e183314e8c60cac4` configured and built successfully;
+full union, unit and type differentials passed. Effects and record members each
+failed below one second under their unchanged 60-second supervisors. The minimal
+status JSON SHA-256 is
+`cc0bca43c01dee1edc54837504239cd3614e4dfb0722bd4153dd805df1699652`.
+The next record fix copies an immutable pattern payload into a writable local
+and uses the existing `format_text` capability instead of unsupported string
+addition. It is source-reviewed but has not passed a target measurement yet.
+Effects has no justified source fix yet; closed status-only classification of
+existing private diagnostics will distinguish preparation and runtime failures.
+No raw diagnostics, source contents or build metadata are exported.
 No result is claimed for the separately owned native-unit adapter candidate.
 Complete authored semantic analysis, lowering, artifact production, stage one
 and stage two remain incomplete; these components do not establish self-hosting.
@@ -608,10 +619,13 @@ took 1s and build 14s; execution recorded 0s at integer-second resolution (below
 Debug build without sanitizers. Its source/tree and sanitized evidence hash are
 recorded above; the merge tree exactly matches the tested source tree.
 
-Union-members, effects and record-members are now additive fixture candidates.
-Their three complete selectors remain unexecuted and require independent exact
-combined review and first supervised runtime measurements. No active adapters
-or concurrent native-unit candidate results are incorporated here.
+Union-members, effects and record-members remain additive fixture candidates.
+The first exact reviewed hosted measurement is recorded above: union passed,
+while effects and record members failed. The source-reviewed record preparation
+fix and diagnostic-only helper refinement still require exact combined review
+and a new full supervised measurement. Existing complete selectors, backend and
+lifetime assertions, instruction arguments and deadlines remain unchanged.
+No active adapters or concurrent native-unit results are incorporated here.
 
 The active C extraction adapter remains deferred until its real native
 unit-fixtures and affected semantic/incremental contracts can run. The authored

@@ -56,7 +56,8 @@ Select :: pure fn(environment: reader.Environment, authored_records: bool[],
 Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
                 previous_names: string[], scope: int, document: int) -> Member {
     token := reader.Field(tree, member, "name");
-    switch reader.Name(tree, token, document) { case .Name(name, diagnostics):
+    switch reader.Name(tree, token, document) { case .Name(name, name_diagnostics):
+        diagnostics := name_diagnostics;
         annotation := reader.Type(environment, tree, reader.Field(tree, member, "type"), scope, document);
         switch annotation { case .Read(value, has_unit, unit, updated, errors, uses, publications):
             foreach (error in errors) { diagnostics = array_add(diagnostics, error); }
@@ -72,7 +73,7 @@ Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
             foreach (previous in previous_names) {
                 if (previous == name) {
                     diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
-                        "Duplicate record field '" + name + "'"));
+                        format_text("Duplicate record field '{}'", name)));
                     admissible = false;
                 }
             }

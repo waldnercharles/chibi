@@ -111,10 +111,43 @@ execute() {
     CHIBI_LANGUAGE_BUILD_DIR="$BUILD" python3 tools/test_policy.py tool "$SELECTOR"
 }
 
+failure_diagnostic() {
+    local text package_line
+    text=$(sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g;s/\r//g' "$1" 2>/dev/null) || {
+        printf 'log_unavailable\n'
+        return
+    }
+    if grep -Eq '^compiler fixture:[0-9]+:[0-9]+: ' <<< "$text"; then
+        printf 'snapshot_failure\n'
+        return
+    fi
+    package_line=$(grep -Em1 '^(project|core):[^[:space:]]+:[0-9]+:[0-9]+: ' <<< "$text" || :)
+    if [[ -n "$package_line" ]]; then
+        case "$package_line" in
+          *': Assignment requires a writable value') printf 'package_readonly_assignment\n' ;;
+          *': Operation has no compatible typed operands') printf 'package_incompatible_operands\n' ;;
+          *': Native generic result has no concrete type') printf 'package_unresolved_generic\n' ;;
+          *': Pure function performs execution effects') printf 'package_impure_function\n' ;;
+          *': Incompatible types: expected '*) printf 'package_incompatible_types\n' ;;
+          *) printf 'package_preparation_failure\n' ;;
+        esac
+    elif grep -Eq '^compiler fixture failure: backend=(bytecode|compiled) package=[^[:space:]]+ entry=[^[:space:]]+ status=-?[0-9]+ returned=[01] failure=depth category=-?[0-9]+ error_steps=[0-9]+( message=|$)' <<< "$text"; then
+        printf 'runtime_depth\n'
+    elif grep -Eq '^compiler fixture failure: backend=(bytecode|compiled) package=[^[:space:]]+ entry=[^[:space:]]+ status=-?[0-9]+ returned=[01] failure=budget category=-?[0-9]+ error_steps=[0-9]+( message=|$)' <<< "$text"; then
+        printf 'runtime_budget\n'
+    elif grep -Eq '^compiler fixture failure: ' <<< "$text"; then
+        printf 'runtime_failure\n'
+    elif grep -Fq '(FAILED:' <<< "$text"; then
+        printf 'assertion_failure\n'
+    else
+        printf 'failure_unclassified\n'
+    fi
+}
+
 classify() {
     local selector=$1 expected outcome=not_started rc summary summary_count supervisor_count
     local log="$WORK/execute-$1.log"
-    local identity_verified=false summary_verified=false supervisor=false
+    local identity_verified=false summary_verified=false supervisor=false diagnostic=none
     expected=$(expected_cases "$selector") || return 2
     if identity && [[ -f "$WORK/identity-$selector.verified" ]] &&
        [[ "$(cat "$WORK/identity-$selector.verified")" == "$CANDIDATE_SHA" ]]; then
@@ -141,9 +174,13 @@ classify() {
         esac
     fi
     [[ "$identity_verified" == true ]] || outcome=identity_unverified
+    if [[ "$outcome" != passed && -f "$WORK/execute-$selector.exit" && -r "$log" ]]; then
+        diagnostic=$(failure_diagnostic "$log")
+    fi
     jq -n --arg selector "$selector" --arg outcome "$outcome" \
+      --arg diagnostic "$diagnostic" \
       --argjson identity "$identity_verified" --argjson summary "$summary_verified" --argjson supervisor "$supervisor" \
-      '{selector:$selector,outcome:$outcome,execution_identity_verified:$identity,
+      '{selector:$selector,outcome:$outcome,diagnostic:$diagnostic,execution_identity_verified:$identity,
         expected_pico_summary_verified:$summary,production_supervisor_60s_report_verified:$supervisor}' \
       > "$WORK/result-$selector.json"
 }

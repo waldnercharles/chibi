@@ -418,28 +418,21 @@ snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-A source-only private syntax-retention increment appends raw Tree-sitter named
-and extra flags to the existing parser bridge and snapshot forest, and retains
-`Document.syntax_root` separately from routing `root`. It leaves the eight-package
-closure and syntax-diagnostic node schema unchanged; the signature reader is not
-imported. The snapshot differential adds one missing-token input (46 requests,
-92 calls, 72 offered files); the actual-closure producer checks raw facts and
-rejects the preceding native result ABI without invocation. Snapshot.chibi is
-15,704 bytes under the unchanged strict 16 KiB cap. Source changes, finite
-workload deltas and enforced caps are documented in `docs/testing.md`.
-The same source-only candidate adds a bounded owned `byte[]` return to the private
-runtime host and an atomic `--output-artifact` handoff. Its transport fixture
-still echoes stage-zero-prepared bytes. The integrated artifact selector has
-15 tooling cases and two producer cases, 13 supervised children and 18 source
-preparations; the raw-ABI decode adds no preparation or invocation. The Linux
-GNU/Clang production execution target enables function/data sections so the
-host's existing GC link discards the public prepared writer, which module-set
-validation no longer references. Shared canonical encoding remains reachable
-for reader dependency fingerprints.
-Independent exact-candidate source/resource admission, actual link/symbol review,
-applicable builds and bounded execution remain pending. These source increments
-do not establish authored semantic analysis or serialization, a complete package
-compiler, stage one or stage two.
+The private syntax-retention and byte-transport increment (PR #445) appends raw
+Tree-sitter named and extra flags to the parser bridge and snapshot forest,
+retains `Document.syntax_root` separately from routing `root`, and adds a bounded
+owned `byte[]` return with an atomic `--output-artifact` handoff to the runtime-only
+host. Its first local runs exposed three defects, each now covered by a case that
+failed first. Preparation reserved a full live-value and root vector per
+suspension, about 38 MB for `Snapshot.Build`, whose 943 pauses retain 978 values,
+so the eight-package closure exceeded the host's 64 MiB aggregate. Live sets are
+now counted after liveness and allocated exactly from each definition's bounded
+owned arena. Module-set validation serialized dependencies through the public
+prepared writer only to measure them; `execution_prepared_measure` now supplies
+length and fingerprint, so the writer no longer links into `chibi-compiler-host`.
+Two fixtures assumed MISSING-brace recovery and fixed-width prepared headers.
+The transport fixture still echoes stage-zero-prepared bytes; it does not
+establish authored serialization, a complete compiler, stage one or stage two.
 
 The authored unit-analysis repair is merged in
 [PR #440](https://github.com/waldnercharles/chibi/pull/440) at
@@ -620,19 +613,25 @@ project policy called by allowed dependencies belongs in `.chibi`.
 
 ## Current checkpoint
 
-Last verified toolchain checkpoint: 2026-10-18 at
-`c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), matching tested semantic
-tree `09d520fe2a5723226126b0879faaee390e87b7b9`.
+Last verified toolchain checkpoint: 2026-10-18, PR #445 transport integration
+over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
 
-The source-only transport integration combines the PR445 product delta from
-`1338151c084c1a633f881153084bc83773df27fa` with the landed PR444 checkpoint.
-It preserves raw syntax retention, owned binary output, the production link-layout
-correction and all semantic fixtures. It has no integrated configure/build/runtime
-or actual linked-symbol evidence yet and does not update the verified checkpoint.
-Its next gate is independent exact-source/workload review before separately timed
-builds, normal product-link inspection, both full transport selectors and the five
-full semantic regression selectors in `docs/testing.md`. Every selector retains
-its own unchanged production 60-second deadline; none is split or aggregated.
+| Check on the macOS arm64 candidate (Homebrew Clang 23, Debug, ASan/UBSan) | Result |
+| --- | --- |
+| `make build` of `chibi_ctl`, both drivers and `chibi-compiler-host` | Passed; build timing is separate. |
+| `language-package-snapshot-chibi` | 16 cases / 248,742 assertions, 2.7s. |
+| `compiler-artifact` | 15 cases / 29,562 assertions, 4.2s. |
+| Union, effects, record, unit-analysis and type-relations differentials | 3, 4, 5, 3 and 4 cases; 17.0s, 3.2s, 2.2s, 4.6s and 0.7s. |
+| `language-execution` | 23 cases, including the wide-suspension budget case. |
+| `make test-native`, `test-materials`, `test-projects`, `test-language-all`, `test-tools` | Passed; 23.9s, 28.8s, 31.2s, 18.4s and 27.1s execution. |
+| Host symbols (`nm -a`) | No `execution_prepared_write`, `semantic_*`, `lower_*` or `authoring_packages_prepare`. |
+| Changed C, clang-format 22; `git diff --check` | Passed. |
+
+Each selector ran once under its own unchanged production 60-second deadline.
+The hosted Linux ELF audit (`.github/scripts/transport-boundary-audit.py`) was not
+run; its archive closure and all 19 pinned source inventories match this build's
+File API/compile database, and the writer exclusion holds on Darwin's dead-strip
+link. Linux remains unmeasured for this checkpoint.
 
 The unit-analysis differential and its two independent regression selectors are
 wired. Baseline source `8b2e2116bdaa3270d347ab854970ae3bb6591393` passed

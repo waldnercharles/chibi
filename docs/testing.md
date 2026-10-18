@@ -1282,13 +1282,12 @@ one C snapshot and two authored calls (one additional parse per implementation).
 Category assertions require both named values, both extra values, an ERROR and a
 missing node. Existing error precedence and ownership assertions remain active.
 
-At the source-only revision based on `ace559c9c294a450c95a3a730dcd6d9f1b5ce13c`,
 Snapshot.chibi is 15,704 bytes, below its unchanged strict 16,384-byte cap.
 The bridge adds two arrays per parse, each with one `pin_value` per raw node;
 the retained record adds two Boolean fields per node and one integer per document.
-No packages, imports, node limits or instruction budgets are added. This amended
-workload and exact integrated candidate need independent admission before runtime;
-source review and size measurement are not an executed pass or M5 completion.
+No packages, imports, node limits or instruction budgets are added. The missing
+token case uses `return (1; }`, which the pinned grammar repairs with a MISSING
+`)`, followed by an unterminated declaration it recovers as ERROR.
 
 `python3 tools/test_policy.py tool language-constant-proof-chibi` compares active
 constant admissibility using 36 fixed IR requests and two requests copied from
@@ -1647,9 +1646,7 @@ activation. The existing array capability pack supplies the append operation.
 ## Compiler artifact runtime checks
 
 `python3 tools/test_policy.py tool compiler-artifact` selects fifteen tooling
-cases and two cases in one child producer. The integrated raw-syntax and binary
-extensions below are source-only candidates awaiting exact-source/workload
-admission and measured runtime validation; they are not new passed results. Build `test_language`, `test_tools`
+cases and two cases in one child producer. Build `test_language`, `test_tools`
 and `chibi-compiler-host` separately. The original producer prepares the actual
 eight-package source-snapshot compiler closure on both backends (16 source
 preparations), serializes its executable modules and checks that reversed record
@@ -1690,10 +1687,9 @@ callback invocation, source parse, child or compatibility alias in this check.
 The same ABI equality gate also rejects an old-signature artifact against the
 current host; this fixture directly exercises only the current artifact against
 the previous host descriptor. The language producer adds the runtime native-prepared helper dependency for
-this check; the product host still has no semantic analyzer/lowerer dependency. Exact-candidate
-source/backend runs and link-boundary evidence remain pending independent review
-and execution. Existing on-runner cap assertions are the resource checks; exact
-size export is not a separate gate.
+this check; the product host still has no semantic analyzer/lowerer dependency.
+Existing on-runner cap assertions are the resource checks; exact size export is
+not a separate gate.
 
 The original three direct malformed-container reads reject truncation, duplicate
 IDs and trailing data before executable decoding. The original bad-magic CLI

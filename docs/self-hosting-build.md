@@ -186,10 +186,8 @@ review before any reuse.
 
 ## Private compiler binary handoff
 
-This integrated raw-syntax/binary transport increment is source-only. Exact
-candidate review, actual production link inspection, separately timed builds
-and bounded backend execution remain pending; the contracts below are not a
-runtime or self-hosting completion claim.
+The raw-syntax/binary transport increment passes its selectors on macOS (see
+`PLAN.md`). The contracts below are not a self-hosting completion claim.
 
 The existing raw parser bridge now retains aligned Tree-sitter named/extra flags
 and a syntax root separate from the document's routing root. Its private native

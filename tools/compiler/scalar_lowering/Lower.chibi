@@ -25,11 +25,11 @@ Instruction :: struct {
 Diagnostic :: struct { range: int; message: string; }
 Plan :: union {
     Rejected(diagnostics: Diagnostic[])
-    Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
+    | Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
           slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
 }
 Emitter :: union { Emitted(slots: Slot[], locals: Local[], origins: Range[], code: Instruction[]) }
-Frame :: struct { expression: int; phase: int; left: int; local: int; branch: int; skip: int; }
+Frame :: struct { expression: int; phase: int; left: int; local: int; branch_pc: int; skip: int; }
 
 Boolean :: cast<int>(1);
 Integer :: cast<int>(6);
@@ -127,7 +127,7 @@ Patch :: pure fn(output: Emitter, pc: int, target: int) -> Emitter {
     }
 }
 NewFrame :: pure fn(expression: int) -> Frame {
-    return {expression: expression, phase: 0, left: -1, local: -1, branch: -1, skip: -1};
+    return {expression: expression, phase: 0, left: -1, local: -1, branch_pc: -1, skip: -1};
 }
 
 Lower :: pure fn(request: Request) -> Plan {
@@ -313,12 +313,12 @@ Lower :: pure fn(request: Request) -> Plan {
                                 frame.local = LocalCount(output);
                                 output = AddLocal(output);
                                 output = Emit(output, Code(Save, Boolean, value, 0, frame.local), place, 0, 0);
-                                frame.branch = PC(output);
+                                frame.branch_pc = PC(output);
                                 output = Emit(output, Code(Branch, 0, value, 0, -1), place, 0, 0);
                                 if (item.op == 8) {
                                     frame.skip = PC(output);
                                     output = Emit(output, Code(Jump, 0, 0, 0, -1), place, 0, 0);
-                                    output = Patch(output, frame.branch, PC(output));
+                                    output = Patch(output, frame.branch_pc, PC(output));
                                 }
                             }
                             frames[top] = frame;
@@ -329,7 +329,7 @@ Lower :: pure fn(request: Request) -> Plan {
                         }
                         if (item.op == 8 || item.op == 9) {
                             output = Emit(output, Code(Save, Boolean, value, 0, frame.local), place, 0, 0);
-                            patch: int = frame.branch;
+                            patch: int = frame.branch_pc;
                             if (frame.skip >= 0) { patch = frame.skip; }
                             output = Patch(output, patch, PC(output));
                             output = Emit(output, Code(LocalRead, Boolean, frame.local, 0, 0), place, Boolean, 0);

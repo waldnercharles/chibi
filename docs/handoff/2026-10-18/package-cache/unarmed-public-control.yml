@@ -1,0 +1,135 @@
+name: Package cache validation (review-gated draft)
+
+# Replace only the existing toolchain-m5-unit-analysis.yml on Studio PR81 after release.
+# Temporary test-only control. Publish only after exact source/control review.
+# Raw logs and private source stay on the ephemeral runner.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-m5-native-unit-${{ github.event.pull_request.number }}
+  # Preserve every admitted baseline/candidate run; do not silently cancel it.
+  cancel-in-progress: false
+
+jobs:
+  package-cache:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'codex/host-m5-unit-validation-20261018'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CANDIDATE_SHA: REQUIRES_REVIEWED_PRIVATE_CANDIDATE_SHA
+      CANDIDATE_TREE: REQUIRES_REVIEWED_PRIVATE_CANDIDATE_TREE
+      PACKAGE_CACHE_REVIEWED: 'false'
+      EXPECTED_BASE_SHA: bee5b54e159cce44ee52ca9439be587d9a95f5d2
+      SOURCE_BRANCH: refs/heads/codex/m5-package-cache-closure-20261018
+      CONTROL_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+      PR_HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Require safe normal checkout logging and a fresh source path
+        env:
+          RUNNER_DEBUG_ENABLED: ${{ runner.debug }}
+        run: |
+          if [[ "$GITHUB_RUN_ATTEMPT" != 1 || "$PACKAGE_CACHE_REVIEWED" != true || ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ || ! "$CANDIDATE_TREE" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'phase=source-admission exit=1\n'
+            exit 1
+          fi
+          if [[ "$GITHUB_REPOSITORY" != waldnercharles/chibi-studio ||
+                "$PR_BASE_SHA" != "$EXPECTED_BASE_SHA" || ! "$EXPECTED_BASE_SHA" =~ ^[0-9a-f]{40}$ ||
+                "$PR_BASE_BRANCH" != main || "$PR_HEAD_BRANCH" != codex/host-m5-unit-validation-20261018 ||
+                "$SOURCE_BRANCH" != refs/heads/codex/m5-package-cache-closure-20261018 ||
+                ! "$CONTROL_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            printf 'phase=source-admission exit=1\n'
+            exit 1
+          fi
+          case "$RUNNER_DEBUG_ENABLED" in
+            ''|0) ;;
+            *) printf 'phase=checkout-privacy-guard exit=1\n'; exit 1 ;;
+          esac
+          if [ -e "$GITHUB_WORKSPACE/validation" ] || [ -e "$GITHUB_WORKSPACE/chibi" ] || ! git --version >/dev/null 2>&1; then
+            printf 'phase=checkout-privacy-guard exit=1\n'
+            exit 1
+          fi
+          printf 'phase=checkout-privacy-guard exit=0\n'
+
+      - name: Check out the immutable reviewed control candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.CONTROL_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: validation
+
+      - name: Read the one engine branch, then require the immutable admitted identity
+        # Branch checkout avoids Git's detached-HEAD commit-subject message.
+        # The trusted source-identity gate rejects moved branches before helper execution.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: waldnercharles/chibi
+          token: ${{ secrets.CHIBI_ENGINE_TOKEN }}
+          ref: ${{ env.SOURCE_BRANCH }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: chibi
+          show-progress: false
+          fetch-tags: false
+          clean: false
+          submodules: false
+          lfs: false
+
+      - name: Reject any unreviewed source before invoking its private helper
+        id: source_identity
+        run: |
+          set +x
+          if [[ ! "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ || ! "$CANDIDATE_TREE" =~ ^[0-9a-f]{40}$ ]] ||
+             ! source_head=$(git -C "$GITHUB_WORKSPACE/chibi" rev-parse HEAD 2>/dev/null) ||
+             ! source_tree=$(git -C "$GITHUB_WORKSPACE/chibi" rev-parse 'HEAD^{tree}' 2>/dev/null) ||
+             ! source_status=$(git -C "$GITHUB_WORKSPACE/chibi" status --porcelain 2>/dev/null) ||
+             [[ "$source_head" != "$CANDIDATE_SHA" || "$source_tree" != "$CANDIDATE_TREE" || -n "$source_status" ]]; then
+            printf 'phase=source-identity-guard exit=1\n'
+            exit 1
+          fi
+          printf 'phase=source-identity-guard exit=0\n'
+
+      - name: Verify reviewed source and control identities
+        run: bash chibi/.github/scripts/package-cache-validation.sh prepare
+      - name: Acquire pinned compiler build inputs privately
+        run: bash chibi/.github/scripts/package-cache-validation.sh dependencies
+      - name: Configure the standalone Debug sanitizer language build
+        run: bash chibi/.github/scripts/package-cache-validation.sh configure
+      - name: Build the real language dispatcher separately from execution
+        run: bash chibi/.github/scripts/package-cache-validation.sh build
+
+      - name: Verify actual configuration assertions sanitizers and real SLJIT privately
+        run: bash chibi/.github/scripts/package-cache-validation.sh verify
+
+      - name: Full package imports selector under its unchanged production 60-second ceiling
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          SELECTOR: language-package-imports
+        run: bash chibi/.github/scripts/package-cache-validation.sh execute
+
+      - name: Project raw runner-local logs into minimal statuses
+        if: always() && steps.source_identity.outcome == 'success'
+        run: bash chibi/.github/scripts/package-cache-validation.sh collect
+      - name: Upload status timing and SHA identities only
+        if: always() && steps.source_identity.outcome == 'success'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package-cache-status-${{ env.CANDIDATE_SHA }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/chibi-m5-package-cache-status/status.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require the verified build and complete selector to pass
+        if: always() && steps.source_identity.outcome == 'success'
+        run: bash chibi/.github/scripts/package-cache-validation.sh verdict

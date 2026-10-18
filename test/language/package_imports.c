@@ -393,7 +393,135 @@ TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_va
                           "return missing; }\n";
         REQUIRE(prepare(3, changed, 5, backends[b], 2, "/project"));
         REQUIRE(!authoring_packages_valid(owners[3]));
+        REQUIRE(authoring_packages_reused(owners[3]) == 1);
+        for (int i = 0; i < 4; i++) {
+            const authoring_package *failed = package(3, identities[i]);
+            REQUIRE(failed && !failed->valid && failed->diagnostic_count > 0);
+            REQUIRE(!failed->module && !failed->exports);
+            REQUIRE(failed->generation != package(2, identities[i])->generation);
+        }
+        REQUIRE(
+            package(3, identities[4])->generation == package(2, identities[4])->generation
+        );
         REQUIRE(run(2, identities[0], "Main", backends[b], 3, 19));
+
+        REQUIRE(prepare(0, changed, 5, backends[b], 3, "/project"));
+        REQUIRE(!authoring_packages_valid(owners[0]));
+        REQUIRE(authoring_packages_reused(owners[0]) == 1);
+        for (int i = 0; i < 4; i++) {
+            const authoring_package *failed = package(0, identities[i]);
+            REQUIRE(failed && !failed->valid && failed->diagnostic_count > 0);
+            REQUIRE(!failed->module && !failed->exports);
+            REQUIRE(failed->generation != package(3, identities[i])->generation);
+        }
+        REQUIRE(
+            package(0, identities[4])->generation == package(3, identities[4])->generation
+        );
+
+        const authoring_package *old = package(2, identities[0]);
+        uint64_t main = function_id(old, "Main");
+        retained = old->module;
+        execution_module_retain(retained);
+        authoring_packages_free(owners[2]);
+        owners[2] = NULL;
+        authoring_packages_free(owners[3]);
+        owners[3] = NULL;
+        changed[2].text = "package numbers\nValue :: fn(value: int) -> int { "
+                          "return value + 4; }\n";
+        REQUIRE(prepare(1, changed, 5, backends[b], 0, "/project"));
+        REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 1);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(
+                package(1, identities[i])->generation !=
+                package(0, identities[i])->generation
+            );
+        }
+        REQUIRE(
+            package(1, identities[4])->generation == package(0, identities[4])->generation
+        );
+        authoring_packages_free(owners[0]);
+        owners[0] = NULL;
+        REQUIRE(run(1, identities[0], "Main", backends[b], 3, 19));
+        REQUIRE(call(retained, main, backends[b], 3, 19));
+        execution_module_free(retained);
+        retained = NULL;
+    }
+    return true;
+}
+TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths)
+{
+    static const char *identities[] = { "project:app",
+                                        "project:middle",
+                                        "project:math",
+                                        "project:other" };
+    const source_package_input files[] = { chain[0], chain[1], chain[2], chain[4] };
+    const source_package_input reverse[] = { files[3], files[2], files[1], files[0] };
+    source_package_input expanded[] = {
+        files[0],
+        files[1],
+        files[2],
+        files[3],
+        { "math/extra.chibi", "package numbers\nExtra :: fn(value: int) -> int { return value + 40; }\n", 0 },
+    };
+    for (int b = 0; b < 2; b++) {
+        expanded[4].path = "math/extra.chibi";
+        REQUIRE(prepare(0, files, 4, backends[b], -1, "/project"));
+        REQUIRE(valid(0));
+        REQUIRE(prepare(1, reverse, 4, backends[b], 0, "/project"));
+        REQUIRE(valid(1) && authoring_packages_reused(owners[1]) == 4);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(
+                package(1, identities[i])->generation ==
+                package(0, identities[i])->generation
+            );
+        }
+        REQUIRE(run(1, identities[0], "Main", backends[b], 3, 11));
+
+        REQUIRE(prepare(2, expanded, 5, backends[b], 1, "/project"));
+        REQUIRE(valid(2) && authoring_packages_reused(owners[2]) == 1);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(
+                package(2, identities[i])->generation !=
+                package(1, identities[i])->generation
+            );
+        }
+        REQUIRE(
+            package(2, identities[3])->generation == package(1, identities[3])->generation
+        );
+        REQUIRE(run(2, identities[0], "Main", backends[b], 3, 11));
+        REQUIRE(run(2, identities[2], "Extra", backends[b], 3, 43));
+
+        expanded[4].path = "math/extra-renamed.chibi";
+        REQUIRE(prepare(3, expanded, 5, backends[b], 2, "/project"));
+        REQUIRE(valid(3) && authoring_packages_reused(owners[3]) == 1);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(
+                package(3, identities[i])->generation !=
+                package(2, identities[i])->generation
+            );
+        }
+        REQUIRE(
+            package(3, identities[3])->generation == package(2, identities[3])->generation
+        );
+        REQUIRE(run(3, identities[0], "Main", backends[b], 3, 11));
+
+        REQUIRE(prepare(0, files, 4, backends[b], 3, "/project"));
+        REQUIRE(valid(0) && authoring_packages_reused(owners[0]) == 1);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(
+                package(0, identities[i])->generation !=
+                package(3, identities[i])->generation
+            );
+        }
+        REQUIRE(
+            package(0, identities[3])->generation == package(3, identities[3])->generation
+        );
+        REQUIRE(!function_id(package(0, identities[2]), "Extra"));
+        for (int i = 1; i < MAX_OWNERS; i++) {
+            authoring_packages_free(owners[i]);
+            owners[i] = NULL;
+        }
+        REQUIRE(run(0, identities[0], "Main", backends[b], 3, 11));
     }
     return true;
 }
@@ -696,6 +824,7 @@ void test_language_package_imports()
     RUN_TEST_CASE(package_imports_own_record_union_and_aggregate_constant_values);
     RUN_TEST_CASE(package_imports_ids_and_results_survive_input_order_and_root_relocation);
     RUN_TEST_CASE(package_imports_incremental_reuse_follows_all_edges_and_retains_old_valid_generation);
+    RUN_TEST_CASE(package_imports_cached_closure_tracks_sibling_membership_and_paths);
     RUN_TEST_CASE(package_imports_concrete_constrained_generic_preserves_execution_metadata);
     RUN_TEST_CASE(package_imports_exported_defaults_are_constant_values_without_host_execution);
     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);

@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "purpose": "User-requested checkpoint only; reviewed source and unarmed route proposal; no new tests or implementation",
+  "repository": "waldnercharles/chibi",
+  "target_branch": "codex/toolchain-cleanup-20261017",
+  "parent_commit": "c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb",
+  "parent_tree": "09d520fe2a5723226126b0879faaee390e87b7b9",
+  "branch": "codex/m5-package-cache-closure-20261018",
+  "files": [
+    {
+      "path": ".github/scripts/package-cache-validation.sh",
+      "mode": "100644",
+      "bytes": 15051,
+      "sha256": "5cb53825c0e8e525a2ad0bea8f0578fac5533bfde3cfc8484d7db926a1e0be74",
+      "git_blob": "22974029824c5cf1d4548bf8402535964b9fa3c4"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/README.md",
+      "mode": "100644",
+      "bytes": 7513,
+      "sha256": "fb16d781a8aad4ceaad1c6a6dcd2f051ddae52c25fb8c32c3f9d6d4bb63d0ab9",
+      "git_blob": "811518a58591d3a1e228e4a6c94e34371845e34d"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/frozen-admission.json",
+      "mode": "100644",
+      "bytes": 3084,
+      "sha256": "7c6b700dd64f011e0b659e9383bf8661ab590a8d5e85e860ad821208e62294a4",
+      "git_blob": "f6321115a1296a21f90ea9509ad1f44cd7a173a7"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/frozen-proposal-manifest.json",
+      "mode": "100644",
+      "bytes": 6251,
+      "sha256": "2f8cd0ac3e16f39cac918e378a177b578420be4031043b4ea84f2985dfcf7f34",
+      "git_blob": "1fbbe97ba9da81eab05ed1ab8ff2fddb66663305"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/resource-manifest.json",
+      "mode": "100644",
+      "bytes": 1483,
+      "sha256": "1522f061f1a43fb124eed74a6b55c891efd270a115f6d255428d562c2ae035d2",
+      "git_blob": "e4587c00916268d27bc738e21fbfa341e0bc5a8f"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/route-review.md",
+      "mode": "100644",
+      "bytes": 11224,
+      "sha256": "d213aaa6b600a482b6c50c8344111e7912410aefa45a66fa5c0e3dce1a5c447c",
+      "git_blob": "3c755834c1338daf71d65ac672615354c0d87773"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/source-findings.md",
+      "mode": "100644",
+      "bytes": 8860,
+      "sha256": "64c6f4a0855da94018476ef32dccd5f34bbdbd61c941c8beb5ce348977eb0f5f",
+      "git_blob": "7d99b4fc3ad21d3d46891091c4916aa9b06c77c8"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/source-manifest.json",
+      "mode": "100644",
+      "bytes": 7318,
+      "sha256": "68d220f1526f4f01113faf80de3a22c3b29f18c1c137da63dd6be77091927856",
+      "git_blob": "9bb15dd877be0aa0fb7a676529a534e2266535ca"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/source-review.md",
+      "mode": "100644",
+      "bytes": 7515,
+      "sha256": "fca56408a1ecf8326aa5cdf6c1afe6f23fcdea7ae89241c63642eab9cc6bd86d",
+      "git_blob": "7c0e1eb385dcfb416c94dcd800da8df4569dbdc4"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/source-validation-plan.md",
+      "mode": "100644",
+      "bytes": 6698,
+      "sha256": "822ca60c60c1e69cddb575b97c8d5a11f1320eb5494af187550fa296c712b2dd",
+      "git_blob": "83b7a9a984e299d4419d271268e7ab0f7ee2dc5d"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/source.patch",
+      "mode": "100644",
+      "bytes": 6720,
+      "sha256": "1f9ef589275efe1c600fac889e7f03d78e5195370f205047c3233ffd87526d23",
+      "git_blob": "62b98b4d59b3984a1b21eaaa25d127138c010856"
+    },
+    {
+      "path": "docs/handoff/2026-10-18/package-cache/unarmed-public-control.yml",
+      "mode": "100644",
+      "bytes": 6509,
+      "sha256": "9fbdc39d56c9a2cd878d668f621805633931c865253d0fe89438f071678317cf",
+      "git_blob": "08bf571cd59468ce9ff68ca7a6220e8fa0cc6dda"
+    },
+    {
+      "path": "test/language/package_imports.c",
+      "mode": "100644",
+      "bytes": 36630,
+      "sha256": "d9cbdda7356d84eb244ea275462a0221596c0764b6420b6c7817f767599cbfc5",
+      "git_blob": "5420a82cca5bea1311e89deb0f044b76f36e3a72"
+    }
+  ],
+  "inventory_self_excluded": true,
+  "product_validation_executed": false,
+  "hosted_control_armed": false,
+  "shared_docs_and_supervisor_comments_updated": false
+}

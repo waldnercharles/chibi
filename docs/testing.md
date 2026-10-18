@@ -1209,6 +1209,22 @@ input storage retire. This standalone route has no runtime files, children,
 services or GPU work; independently review it before first execution, build
 separately and use one shared 60-second ceiling.
 
+`python3 tools/test_policy.py tool language-package-paths-chibi` selects three
+cases with 26 fixed lexical requests: twelve existing resolver inputs and
+fourteen boundary cases. The unchanged C helper supplies 26 oracle results;
+52 authored calls across bytecode and SLJIT allow one million instructions each.
+Two retained owners prepare the actual Paths and core sources once per backend
+(four source parses). Four fixed input buffers are at most 4,097 bytes including
+the terminator. Cases cover the path and joined-path limits before collapse,
+long segments, root boundaries, intermediate escapes, absent inputs and absolute
+paths ignoring the unused base. Returned strings are inspected after producer
+and input storage retire; retained 4,095-byte results survive subsequent invalid
+calls and owner teardown. Used bases and floors are canonical absolute paths.
+This corpus has at most four segments per request; it does not establish
+performance at the maximum segment count. The route has no runtime files,
+children, services or GPU work. Independently review before first execution,
+build separately and use one shared 60-second ceiling outside the aggregate.
+
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system
 state; program adds two preparations and four calls with 1,000-instruction

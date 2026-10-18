@@ -104,7 +104,7 @@ bool compiler_fixture_prepare(compiler_fixture *fixture, const source_package_in
     }
     return true;
 }
-static const pin_record *record_type(
+const pin_record *compiler_fixture_record(
     const compiler_fixture *fixture,
     int backend,
     const char *identity,
@@ -288,7 +288,7 @@ bool compiler_fixture_pack_nodes(
     pin_value *fields
 )
 {
-    const pin_record *record = record_type(fixture, backend, "project:syntax_diagnostics", "Node", input);
+    const pin_record *record = compiler_fixture_record(fixture, backend, "project:syntax_diagnostics", "Node", input);
     REQUIRE(record && record->type.field_count == 11);
     pin_array
         *array = pin_array_snapshot_allocate(input, PIN_STRUCT, record->type.name, count);

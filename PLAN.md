@@ -383,16 +383,16 @@ change instead of adding component-specific host behavior.
 
 ### M5. Bootstrap the complete compiler
 
-Status: in progress. Authored syntax diagnostics and package-header/import
-extraction have differential parity on the bounded corpora described in the
-current checkpoint. Package graph construction was completed in M4. The normal
-compiler remains stage zero; this is not a stage-one or stage-two bootstrap.
+Status: in progress. Authored syntax diagnostics, package-header/import
+extraction and lexical path normalization have differential parity on bounded
+corpora. Package graph construction was completed in M4. The normal compiler
+remains stage zero; this is not a stage-one or stage-two bootstrap.
 
-Next component: lexical path normalization, used by collection roots, file paths
-and import targets. Extract the unchanged private C helper for the oracle and
-compare both implementations on shared bounded requests. Root selection, import
-decoding and routing follow that foundation. Nested authored record fields
-remain unsupported; these components use flat named fields and tagged payloads.
+Next component: collection-root validation and selection, stable file identities,
+and import routing. Keep yyjson's external decoding behind a private binding;
+Chibi owns rejection, location and routing policy. Preserve per-file failure
+ordering when connecting these components. Nested authored record fields remain
+unsupported; these components use flat named fields and tagged payloads.
 
 Port the compiler in reviewable components, retaining Tree-sitter, LLVM, SLJIT,
 the platform linker, and other external systems behind C ABIs where useful. The
@@ -496,64 +496,59 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `137d84ae51418ffdb11a63b243b856baba3de644`, syntax diagnostics pushed
+- Starting checkpoint: `58a9dff6963a70809677dcaf9080114a32bfd232`, package extraction pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: port the resolver's lexical path normalization with a shared
-  C/Chibi corpus, preserving intermediate root-escape rejection
+- Next action: port collection roots, stable file identities and import routing,
+  retaining external JSON decoding behind a private binding
 
-`tools/compiler/package_syntax/Extract.chibi` consumes complete raw Tree-sitter
-nodes, aligned incoming field names and source text. It calls the authored
-syntax diagnostics first, then owns package-header selection, blank-name
-rejection, source-order import extraction, alias presence, and exact byte ranges.
-The four field edges used here are direct visible edges in the current grammar.
-Quoted paths remain source ranges; decoding and resolution are still separate.
-Flat `File` and `Import` records retain all C observations with named location
-fields. `Accepted` carries the file and import array; `Rejected` carries the
-first located diagnostic. No component-specific host capability was added.
+`tools/compiler/package_paths/Paths.chibi` owns lexical normalization shared by
+collection roots, file paths and import targets. It preserves absent versus
+empty inputs, byte limits before simplification, absolute paths ignoring their
+base, slash/dot collapse, root-prefix boundaries and rejection of intermediate
+root escapes. Used bases and floors must be canonical absolute paths. It adds no
+language feature or native capability.
 
-The existing eleven C extraction cases supply all 32 attempts (31 parses and one
-incremental edit). Their original assertions remain. Independently parsed raw
-trees feed 64 authored calls on bytecode and SLJIT, and a final count assertion
-requires all 64 results to match. The observed corpus contains 344 raw nodes,
-at most 43 per tree. It checks legacy and invalid roots, names, all location
-fields, implicit versus explicit aliases including `_`, import order, and
-retained original snapshots after an edit.
+The original C helper moved unchanged into the private `source_package_paths`
+module. The normal resolver still calls it at the same points, retaining error
+ordering. It remains the differential oracle. Three pico cases compare 26 fixed
+requests, including twelve existing resolver inputs and fourteen boundaries,
+through 52 calls across bytecode and SLJIT. Two retained owners prepare Paths and
+core strings once per backend. Every call permits one million instructions.
+The corpus reaches the 4,095/4,096-byte boundary and tests oversized joins before
+collapse. It contains at most four segments per request and makes no maximum
+segment-count performance claim.
 
-Shared test mechanics now prepare the actual sources, transport raw nodes and
-field names, and invoke exported functions on both backends. Returned union and
-record values are snapshotted before producer context, activation and storage
-are released. Input text/path/directory copies then retire before comparison;
-returned strings, record payloads and their layouts must reside in the detached arena.
-Failed preparation is attempted once, keeping failure paths within the admitted
-workload. Exact caps are in `docs/testing.md`.
+Results are inspected after producer context, activation, storage and input
+strings retire. A separate snapshot of each 4,095-byte result survives later
+invalid calls and owner teardown. The C oracle remains alive through both
+backend comparisons. No filesystem, process, service or GPU work occurs in this
+focused route. Exact caps are in `docs/testing.md`.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/private-host targets | Passed; initial 5.9s, final language rebuild 4.1s. Build timing is separate. |
-| Authored extraction differential | 11 cases / 19,992 assertions, 0.770s; bytecode and SLJIT. |
-| Authored syntax after shared-helper extraction | 3 cases / 17,043 assertions, 0.276s; bytecode and SLJIT. |
-| `make test-native` | Passed, 25.065s execution. |
-| `make test-materials` | Passed, 29.115s execution. |
-| `make test-projects` | Passed, 31.711s execution. |
-| `make test-language-all` | Passed, 18.455s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 25.656s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed, 5.1s. Build timing is separate. |
+| Authored paths differential | 3 cases / 1,436 assertions, 0.906s; bytecode and SLJIT. |
+| Existing package resolution | 8 cases / 140 assertions, 0.120s. |
+| `make test-native` | Passed, 24.683s execution. |
+| `make test-materials` | Passed, 28.576s execution. |
+| `make test-projects` | Passed, 31.030s execution. |
+| `make test-language-all` | Passed, 18.257s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 25.545s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
 Each route uses one production 60-second ceiling. Python 3.12.14 is selected
-through the Homebrew PATH. Independent review admitted both fixed workloads and
+through the Homebrew PATH. Independent review admitted the fixed workload and
 found no unresolved correctness or lifetime issue. Logs are under ignored
-`.chibi/evidence/toolchain-m5`; this increment's files use the `extraction-`
-prefix, plus `syntax-shared-helper.log` and `build-extraction*.log`. No new
-scratch executable or project copy was created.
+`.chibi/evidence/toolchain-m5`, using the `paths-` prefix and `build-paths.log`.
+No new scratch executable or project copy was created.
 
-Syntax's hidden-recovery branch remains matched by inspection without an
-observed real-parser witness. C diagnostics, extraction and graph construction
-remain authoritative on the normal compiler path. The owned automatic-terminator
-scanner, the remaining resolver, semantic analysis, lowering and artifact
-construction still need ports. No compiler implementation or recovery path is
-deleted by this increment.
+The normal compiler still uses C diagnostics, extraction, graph and path policy.
+The authored scanner, remaining resolver, semantic analysis, lowering and
+artifact construction still need ports. Syntax's hidden-recovery rule remains
+matched by inspection without a real-parser witness in its fixed corpus. No
+compiler implementation or recovery path is deleted by this increment.
 
 PR #420 remains open at `ff6d06c888fe660894776255ec7f9fc507db6393`; PR #407
 remains open, conflicted and explicitly held at

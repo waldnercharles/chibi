@@ -33,6 +33,13 @@ uint64_t compiler_fixture_export(
     const char *identity,
     const char *name
 );
+const pin_record *compiler_fixture_record(
+    const compiler_fixture *,
+    int backend,
+    const char *identity,
+    const char *name,
+    arena *
+);
 /* Exactly one result; its type is seeded from exported signature metadata.
  * Snapshots into detached before destroying producer context/activation/storage.
  * The caller owns arguments and must retire their arena before comparison. */

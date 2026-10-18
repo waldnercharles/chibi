@@ -6,6 +6,7 @@ add_library(chibi_source_catalog STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/source_collection.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_packages.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_package_syntax.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/source_package_paths.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_package_snapshot.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_package_files.c"
     "${CHIBI_SDK_ROOT}/src/authoring/source_package_exports.c"
@@ -16,7 +17,7 @@ chibi_sdk_headers(chibi_source_catalog PUBLIC authoring/language_catalog.h
     authoring/source_catalog.h authoring/source_collection.h
     authoring/source_packages.h authoring/source_package_snapshot.h authoring/source_package_files.h
     authoring/source_package_exports.h authoring/source_package_prepare.h)
-foreach(header source_catalog_snapshot source_prepare_internal source_package_syntax)
+foreach(header source_catalog_snapshot source_prepare_internal source_package_syntax source_package_paths)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog/authoring/${header}.h" COPYONLY)
 endforeach()

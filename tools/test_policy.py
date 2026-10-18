@@ -562,6 +562,12 @@ TOOLS = {
     # children/services/GPU; independent review, separate build, shared60s.
     'language-package-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--package-syntax-chibi'],
+    # Three cases,26 fixed lexical requests,26 C oracle calls,52 authored calls
+    # capped at1m instructions each. Two owners prepare Paths+core:4parses.
+    # Four fixed buffers<=4097bytes; no runtime IO, children, services or GPU.
+    # Independent review before first run; separate build/shared60s, no aggregate.
+    'language-package-paths-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--package-paths-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

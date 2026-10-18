@@ -1,5 +1,6 @@
 #include "authoring/source_package_snapshot.h"
 
+#include "authoring/source_package_paths.h"
 #include "authoring/source_package_syntax.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -13,7 +14,6 @@
 
 enum
 {
-    MAX_PATH = 4096,
     MAX_DEPTH = 16,
     MAX_FILE_BYTES = 512 * 1024,
     MAX_TOTAL_BYTES = 8 * 1024 * 1024,
@@ -54,21 +54,9 @@ static script_range file_range(int file)
 {
     return (script_range){ .line = 1, .column = 1, .document = file };
 }
-static bool bounded_path(const char *path)
-{
-    if (!path) {
-        return false;
-    }
-    for (int i = 0; i < MAX_PATH; i++) {
-        if (!path[i]) {
-            return !strchr(path, '\\');
-        }
-    }
-    return false;
-}
 static bool identifier(const char *name)
 {
-    if (!bounded_path(name) || !*name) {
+    if (!source_package_path_bounded(name) || !*name) {
         return false;
     }
     for (int i = 0; name[i]; i++) {
@@ -80,65 +68,9 @@ static bool identifier(const char *name)
     }
     return true;
 }
-static bool within(const char *root, const char *path)
-{
-    if (!strcmp(root, "/")) {
-        return path[0] == '/';
-    }
-    size_t size = strlen(root);
-    return !strncmp(root, path, size) && (!path[size] || path[size] == '/');
-}
-/* Inputs are lexical paths, not filesystem queries. Reject an intermediate ..
- * escape as well as a final escape; leaving and re-entering a root is invalid. */
-static char *normalize(source_package_snapshot *s, const char *base, const char *path, const char *floor)
-{
-    if (!bounded_path(path)) {
-        return NULL;
-    }
-    char joined[MAX_PATH], result[MAX_PATH] = "/";
-    int size = path[0] == '/' ? snprintf(joined, sizeof joined, "%s", path)
-             : base ? snprintf(joined, sizeof joined, "%s/%s", base, path)
-                    : -1;
-    if (size < 0 || size >= MAX_PATH) {
-        return NULL;
-    }
-    int starts[MAX_PATH / 2], depth = 0;
-    size_t length = 1;
-    for (char *part = joined; *part;) {
-        if (*part == '/') {
-            part++;
-            continue;
-        }
-        char *end = strchr(part, '/');
-        size_t count = end ? (size_t)(end - part) : strlen(part);
-        if (count == 2 && !memcmp(part, "..", 2)) {
-            if (!depth) {
-                return NULL;
-            }
-            length = (size_t)starts[--depth];
-            result[length] = 0;
-            if (floor && !within(floor, result)) {
-                return NULL;
-            }
-        } else if (!(count == 1 && part[0] == '.')) {
-            starts[depth++] = (int)length;
-            if (length > 1) {
-                result[length++] = '/';
-            }
-            memcpy(result + length, part, count);
-            length += count;
-            result[length] = 0;
-        }
-        part += count;
-    }
-    if (floor && !within(floor, result)) {
-        return NULL;
-    }
-    return copy(s, result, length);
-}
 static const char *relative(const char *root, const char *path)
 {
-    assert(within(root, path));
+    assert(source_package_path_within(root, path));
     const char *result = path + strlen(root);
     if (!strcmp(root, "/")) {
         return result;
@@ -159,7 +91,7 @@ static bool add_root(source_package_snapshot *s, const char *name, const char *p
     if (!identifier(name)) {
         return reject(s, range, "Invalid collection name");
     }
-    const char *root = normalize(s, NULL, path, NULL);
+    const char *root = source_package_path_normalize(&s->storage, NULL, path, NULL);
     if (!root) {
         return reject(s, range, "Invalid absolute collection root");
     }
@@ -179,7 +111,7 @@ static int owning_root(const source_package_snapshot *s, const char *directory)
 {
     int selected = -1;
     for (int i = 0; i < s->root_count; i++) {
-        if (within(s->roots[i].root, directory) &&
+        if (source_package_path_within(s->roots[i].root, directory) &&
             (selected < 0 ||
              strlen(s->roots[i].root) > strlen(s->roots[selected].root))) {
             selected = i;
@@ -220,7 +152,7 @@ static bool valid_utf8(const char *text, size_t size)
 static bool retain_file(source_package_snapshot *s, const source_package_input *input, int file, size_t *bytes)
 {
     script_range range = file_range(file);
-    if (!bounded_path(input->path) || !*input->path) {
+    if (!source_package_path_bounded(input->path) || !*input->path) {
         return reject(s, range, "Invalid package file path");
     }
     if (!input->text || input->size > MAX_FILE_BYTES ||
@@ -233,8 +165,8 @@ static bool retain_file(source_package_snapshot *s, const source_package_input *
                                               copy(s, input->text, input->size),
                                               input->size };
     s->documents[file].path = s->inputs[file].path;
-    const char *path = normalize(
-        s,
+    const char *path = source_package_path_normalize(
+        &s->storage,
         s->roots[0].root,
         input->path,
         input->path[0] == '/' ? NULL : s->roots[0].root
@@ -312,11 +244,16 @@ static bool resolve_import(source_package_snapshot *s, int file, int index)
         path = colon + 1;
         base = s->roots[root].root;
     }
-    if ((!colon && !*path) || *path == '/' || !bounded_path(path)) {
+    if ((!colon && !*path) || *path == '/' || !source_package_path_bounded(path)) {
         yyjson_doc_free(json);
         return reject(s, range, "Invalid import path");
     }
-    const char *directory = normalize(s, base, path, s->roots[root].root);
+    const char *directory = source_package_path_normalize(
+        &s->storage,
+        base,
+        path,
+        s->roots[root].root
+    );
     yyjson_doc_free(json);
     if (!directory) {
         return reject(s, range, "Import path escapes its collection root or exceeds the path limit");

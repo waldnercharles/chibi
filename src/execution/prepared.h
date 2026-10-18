@@ -58,6 +58,15 @@ bool execution_prepared_write(
     char *error,
     size_t size
 );
+/* Serialized length and the FNV-1a fingerprint import checks use, without
+ * materializing bytes. Equal results identify the same module generation. */
+bool execution_prepared_measure(
+    const execution_module *,
+    size_t *length,
+    uint64_t *fingerprint,
+    char *error,
+    size_t size
+);
 /* The reader owns all decoded payloads. Failure releases partial definitions
  * and retained dependencies. Built-in runtime intrinsics resolve automatically.
  * Unknown versions, missing identities, ABI/layout mismatches and malformed

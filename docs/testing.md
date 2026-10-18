@@ -1778,14 +1778,16 @@ bytes does not prove a complete authored compiler, authored serializer,
 stage-one/stage-two bootstrap, cross-architecture portability or source-free SDK
 installation.
 
-The Linux GNU/Clang production `chibi_execution` target enables private function
-and data sections, so the host's existing section-GC link can discard the unused
-public `execution_prepared_write` entry point. This is an executable-link
-contract, not removal of every native encoder: the prepared reader legitimately
-uses shared canonical encoding for dependency fingerprints. The static archive
-still exports the writer, and direct producer/tooling fixture calls must retain
-it. Darwin's existing dead-strip link is unchanged and requires separate actual
-linked-binary evidence; unsupported platforms gain no exclusion claim.
+Module-set validation measures generations with `execution_prepared_measure`
+instead of serializing them, so the runtime read path never references the
+public `execution_prepared_write` entry point. The Linux GNU/Clang production
+`chibi_execution` target's private function and data sections and Darwin's
+dead-strip link discard it from the host. This is an executable-link contract,
+not removal of every native encoder: the prepared reader legitimately uses
+shared canonical encoding for dependency fingerprints. The static archive still
+exports the writer, and direct producer/tooling fixture calls must retain it.
+Each platform needs actual linked-binary evidence; unsupported platforms gain
+no exclusion claim.
 
 Inspect the exact unstripped product's actual link inputs and defined symbols.
 Require the loader, JSON/bytes/batch invokers, artifact reader and prepared reader;

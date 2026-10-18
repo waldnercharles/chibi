@@ -433,8 +433,9 @@ still echoes stage-zero-prepared bytes. The integrated artifact selector has
 15 tooling cases and two producer cases, 13 supervised children and 18 source
 preparations; the raw-ABI decode adds no preparation or invocation. The Linux
 GNU/Clang production execution target enables function/data sections so the
-host's existing GC link can discard the unused public prepared writer. Shared
-canonical encoding remains reachable for reader dependency fingerprints.
+host's existing GC link discards the public prepared writer, which module-set
+validation no longer references. Shared canonical encoding remains reachable
+for reader dependency fingerprints.
 Independent exact-candidate source/resource admission, actual link/symbol review,
 applicable builds and bounded execution remain pending. These source increments
 do not establish authored semantic analysis or serialization, a complete package

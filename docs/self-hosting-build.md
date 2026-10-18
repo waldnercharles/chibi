@@ -226,14 +226,15 @@ text/array/JSON/raw-syntax catalog. It is not a generic game-artifact output
 route. The validator neither authors nor serializes an executable and does not
 link source authoring, semantic analysis or lowering into the product host.
 
-The Linux GNU/Clang production execution target uses private function/data
-sections with the host's existing GC link to remove the unused public prepared
-writer entry point. Actual unstripped binary/link-input evidence is required;
-shared canonical encoding used by reader dependency fingerprints remains
-reachable. The writer remains available in the static archive and must remain
-present in real producer/tooling binaries that call it. No validation-only flags
-may supply this boundary. Darwin's existing dead-strip path is unchanged and
-needs its own linked-binary evidence.
+Module-set validation measures dependency length and fingerprint through
+`execution_prepared_measure`, so nothing on the runtime read path references the
+public `execution_prepared_write` entry point. The Linux GNU/Clang production
+execution target's private function/data sections and Darwin's dead-strip link
+therefore drop it from the host. Shared canonical encoding used by reader
+dependency fingerprints remains reachable. The writer remains available in the
+static archive and must remain present in real producer/tooling binaries that
+call it. No validation-only flags may supply this boundary; actual unstripped
+binary/link-input evidence is required on each platform.
 
 Publication uses a private 0600 `mkstemp` file beside the destination, `FD_CLOEXEC`,
 bounded writes with partial-write/EINTR handling, checked close and a final

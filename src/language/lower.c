@@ -48,10 +48,16 @@ typedef struct
     bool pattern_cached;
     int pattern_expression, pattern_value;
 } lower;
+static uint64_t document_id(const script_analysis *analysis, script_range range)
+{
+    const script_source_document
+        *document = script_analysis_document(analysis, range.document);
+    return document ? script_catalog_id("source-document", document->key) : 0;
+}
 static void error(lower *l, script_range range, const char *message)
 {
     execution_module_diagnostic d = {
-        .range = { range.start, range.end, range.line, range.column }
+        .range = { range.start, range.end, range.line, range.column, range.document }
     };
     snprintf(d.message, sizeof d.message, "%s", message);
     apush(l->module->diagnostics, d);
@@ -67,7 +73,14 @@ static void builder_error(lower *l, behavior_function_builder *builder, script_r
             range = (script_range){ origin->start,
                                     origin->end,
                                     origin->line,
-                                    origin->column };
+                                    origin->column,
+                                    0 };
+            for (int i = 0; i < l->a->document_count; i++) {
+                if (!strcmp(origin->asset_name, l->a->documents[i].path)) {
+                    range.document = i;
+                    break;
+                }
+            }
         }
     }
     error(l, range, message);
@@ -153,9 +166,11 @@ static void value_root(lower *l, behavior_value_bank bank, int index, script_typ
 }
 static int emit(lower *l, behavior_function_instruction i, script_range range)
 {
+    const script_source_document
+        *document = script_analysis_document(l->a, range.document);
     i.source = behavior_function_builder_origin(
         l->builder,
-        (behavior_function_source){ .asset_name = l->a->name,
+        (behavior_function_source){ .asset_name = document ? document->path : l->a->name,
                                     .start = range.start,
                                     .end = range.end,
                                     .line = range.line,
@@ -1667,7 +1682,7 @@ static int task_command(lower *l, const node_command *command, int handle, const
     if (result.storage != PIN_FLOW) {
         apush(results, initial(l, result));
     }
-    uint64_t action = id ^ (uint64_t)range.start;
+    uint64_t action = id ^ (uint64_t)range.start ^ document_id(l->a, range);
     int index = behavior_function_builder_command(
         l->builder,
         command,
@@ -1765,7 +1780,8 @@ static int command(lower *l, const script_expression *e, const script_catalog_ca
                               l->a->symbols[e->symbol].kind == SCRIPT_ACTION &&
                               l->a->symbols[e->symbol].initializer >= 0
                         ? l->a->symbols[e->symbol].id
-                        : e->capability ^ (uint64_t)e->range.start;
+                        : e->capability ^ (uint64_t)e->range.start ^
+                              document_id(l->a, e->range);
     int index = behavior_function_builder_command(
         l->builder,
         host.command,
@@ -2562,7 +2578,7 @@ static uint64_t state_action_id(lower *l, const script_expression *e)
     snprintf(name, size, "%s:%d:%d", l->a->identity, e->range.start, e->range.end);
     uint64_t id = script_catalog_id("state-action", name);
     free(name);
-    return id;
+    return id ^ document_id(l->a, e->range);
 }
 static int state_call(lower *l, const script_expression *source, const script_catalog_capability *cap)
 {
@@ -2914,7 +2930,8 @@ static int call(lower *l, const script_expression *e)
                 .op = BF_DELAY,
                 .left = value,
                 .node_id = e->symbol >= 0 ? l->a->symbols[e->symbol].id
-                                          : e->capability ^ (uint64_t)e->range.start },
+                                          : e->capability ^ (uint64_t)e->range.start ^
+                                                document_id(l->a, e->range) },
             e->range
         );
         return -1;
@@ -5237,7 +5254,7 @@ static uint64_t function_id(const script_analysis *analysis, int index)
     );
     uint64_t id = script_catalog_id("function", identity);
     free(identity);
-    return id;
+    return id ^ document_id(analysis, function->range);
 }
 static void dependency_expressions(lower *l, int index, bool *visited, int **out)
 {
@@ -5956,12 +5973,12 @@ static bool same_record(const script_catalog_type *a, const script_catalog_type 
         !a->name || !*a->name || !same_record_text(a->name, b->name) ||
         !same_record_text(a->source_name, b->source_name) ||
         !same_record_text(a->key, b->key) || !same_record_type(a->type, b->type) ||
-        !a->layout || a->layout != b->layout || !a->size || a->size != b->size ||
-        a->underlying != b->underlying || a->component_id != b->component_id ||
-        a->component != b->component || a->derived != b->derived ||
-        a->internal != b->internal || a->variant_count || b->variant_count ||
-        a->field_count <= 0 || a->field_count != b->field_count ||
-        !a->fields || !b->fields) {
+        !a->layout || a->layout != b->layout || !a->size ||
+        a->size != b->size || a->underlying != b->underlying ||
+        a->component_id != b->component_id || a->component != b->component ||
+        a->derived != b->derived || a->internal != b->internal ||
+        a->variant_count || b->variant_count || a->field_count <= 0 ||
+        a->field_count != b->field_count || !a->fields || !b->fields) {
         return false;
     }
     for (int i = 0; i < a->field_count; i++) {
@@ -5973,8 +5990,7 @@ static bool same_record(const script_catalog_type *a, const script_catalog_type 
             x->constant != y->constant || !same_record_text(x->unit, y->unit) ||
             x->range_contract != y->range_contract ||
             memcmp(&x->min, &y->min, sizeof x->min) ||
-            memcmp(&x->max, &y->max, sizeof x->max) ||
-            x->has_default != y->has_default ||
+            memcmp(&x->max, &y->max, sizeof x->max) || x->has_default != y->has_default ||
             (x->has_default && !same_record_default(x, y))) {
             return false;
         }
@@ -6009,7 +6025,12 @@ static bool merge_record(lower *l, script_catalog_type **types, int index)
     return true;
 conflict:
     char message[192];
-    snprintf(message, sizeof message, "Conflicting authored record declaration '%s'", record->name);
+    snprintf(
+        message,
+        sizeof message,
+        "Conflicting authored record declaration '%s'",
+        record->name
+    );
     script_range range = { 0 };
     for (int i = 0; i < l->a->symbol_count; i++) {
         const script_symbol *symbol = &l->a->symbols[i];
@@ -6032,11 +6053,13 @@ execution_module_plan *script_lower(
     if (!a->valid) {
         for (int i = 0; i < a->diagnostic_count; i++) {
             const script_diagnostic *source = &a->diagnostics[i];
-            execution_module_diagnostic diagnostic = { .range = {
-                                                           source->range.start,
-                                                           source->range.end,
-                                                           source->range.line,
-                                                           source->range.column } };
+            execution_module_diagnostic diagnostic = {
+                .range = { source->range.start,
+                           source->range.end,
+                           source->range.line,
+                           source->range.column,
+                           source->range.document }
+            };
             memcpy(diagnostic.message, source->message, sizeof diagnostic.message);
             apush(m->diagnostics, diagnostic);
         }

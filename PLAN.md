@@ -111,8 +111,9 @@ game:       first-party rendering, input, audio, physics, assets, and UI
 vendor:     optional low-level bindings to external native libraries
 ```
 
-Public package execution is not implemented yet. Current package syntax and the
-private graph are foundations, not evidence that authored imports work.
+The SDK can analyze and execute explicitly supplied sibling package snapshots.
+Project package discovery and executable imports remain unimplemented. The
+private graph and syntax fixtures do not establish authored import execution.
 
 ### Bootstrap terms
 
@@ -181,7 +182,7 @@ Current integration constraints:
 | M0 | **Complete** | current main | Explicit `build` and `run` commands over existing preparation and player behavior. |
 | M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
 | M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
-| M3 | **Ready** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
+| M3 | **In progress** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | Blocked | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
@@ -336,7 +337,12 @@ its authored-game meaning.
 
 ### M3. Make packages executable
 
-Status: ready. This is the next action.
+Status: in progress. The first increment adds owned multi-document analysis and
+execution of sibling functions, constants, records and unions on bytecode and
+SLJIT. Sources retain individual paths, text and local diagnostic ranges; exported
+identities do not depend on sibling input order. Imports still report that package
+resolution is required. Next: connect explicit collection roots and file-local
+imports to the package graph, then package lowering and incremental generations.
 
 Extend the current package syntax and private graph into the smallest public,
 multi-file package system needed by the compiler. This milestone owns import
@@ -466,76 +472,69 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `deb6eddd33ac334fa75ca49eb64c783ec7225669`, M1
+- Starting checkpoint: `1118b10a60e05d359227c79cf0347f75f736d2f7`, M2
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch and merge check: upstream unchanged; already an ancestor
-- Completed milestones: M0, M1 and M2
-- Next action: M3, add owned multi-document package analysis, then connect import
-  resolution, lowering and incremental execution through the installed SDK
+- Completed milestones: M0, M1 and M2; M3 is in progress
+- Next action: resolve explicit package roots and file-local imports, connect
+  dependency exports and lowering, then retain incremental package generations
 
-M2 installs `tools/toolchain/Build.chibi`, its three transitional Python helpers
-and the private `chibi-build-host` executable. The authored program owns native
-and tool-host profile arguments, compiler/SDK precedence, cache decisions and
-process sequencing. Make selects it when the host reports protocol 2; missing or
-older hosts use the retained explicit stage-zero recovery target. The host adds
-bounded owned arguments, output, text/array and filesystem primitives. Private
-host object ownership is verified against its installed executable, separately
-from public SDK products. Public command meanings and game catalogs are unchanged.
+The first M3 increment exposes `script_analyze_package` and
+`script_declarations_package` through the existing authoring SDK. Explicit sibling
+snapshots share declarations before bodies; functions, constants, records and
+unions compile together, including mutual recursion and record defaults from
+sibling constants. Analyses own each document's path, key and exact text.
+Diagnostics retain the input document index and local source range; lowered
+instruction origins retain the display path. Exported symbol identities exclude
+file order and unrelated sibling scope ordinals. Legacy single-source analysis,
+recovery and project/editor entry points retain their existing behavior.
+
+The new public range field is propagated through semantic analysis, lowering and
+source diagnostics. Existing positional initializers explicitly select document
+zero. Package analyses are not passed into single-file editor navigation or
+formatting. Imports and package state/game declarations remain explicitly rejected
+by the new entry point; this is not M3 completion or a self-hosted compiler.
 
 Final macOS candidate evidence:
 
 | Check | Result |
 | --- | --- |
-| Authored `make build`, compiler/host/tooling targets | Passed; configuration and compilation timed separately from execution. |
-| `python3 tools/test_policy.py tool build-process` | 18 cases, 2,321 assertions, 6.040s. |
-| `python3 tools/test_policy.py tool build-toolchain` | 6 cases, 107 assertions, 17.397s. |
-| `python3 tools/test_policy.py tool package-ownership` | 2 cases, 141 assertions, 4.899s. |
-| `make test-native` | Passed, 24.647s execution. |
-| `make test-materials` | Passed, 28.575s execution. |
-| `make test-projects` | Passed, 31.221s execution. |
-| `make test-language-all` | Passed, 17.978s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 25.070s execution. |
+| Authored `make build`, language/tooling/private-host targets | Passed; initial compile 12.8s, final corrective build separate from execution. |
+| `python3 tools/test_policy.py tool language-package-execution` | 7 cases, 559 assertions, 0.688s; both bytecode and SLJIT verified by backend counters. |
+| `python3 tools/test_policy.py tool language-package-graph` | 23 cases, 457 assertions, 0.133s. |
+| `python3 tools/test_policy.py tool language-package-syntax` | 11 cases, 292 assertions, 0.169s. |
+| `make test-native` | Passed, 25.002s execution. |
+| `make test-materials` | Passed, 28.443s execution. |
+| `make test-projects` | Passed, 30.265s execution. |
+| `make test-language-all` | Passed, 18.015s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.106s execution. |
 | Changed C files, clang-format 22; `git diff --check` | Passed. |
 
 Each admitted execution command used one production 60-second deadline. Native
 macOS drivers use Debug assertions and ASan/UBSan; the standalone tooling group
 uses its separate Debug configuration. Python 3.12.14 was selected through
-`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. Native/material/project
-results precede the additive private protocol query and final tooling fixture
-changes; final focused checks cover those changes. The recording host and public
-CLI results remain M1 evidence, not newly rerun M2 checks.
+`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. The focused package route
+is separate from the required language aggregate. It uses twelve fixed source
+texts below 1 KiB, at most three documents per snapshot and sixteen direct
+bounded calls, with no filesystem, subprocess, world or GPU workload.
 
-Linux Clang 21.1.2 / Python 3.12.15 on the existing Rancher aarch64 VM passed the
-17-case process fixture (2,316 assertions, 1.856s) and five-case toolchain fixture
-(100 assertions, 2.498s). Both backends ran with Debug assertions and no sanitizers.
-Those results precede the final OBJECT/private-process link ownership correction,
-protocol query and Make routing case; they establish Linux primitive and authored
-program behavior, not those later build/CLI changes. The VM was shut down and its
-disposable build removed after preserving evidence.
+Independent review found and resolved package record defaults being evaluated
+before sibling constants were declared. Restoring the old order made the new
+regression fail with `Unknown value 'Base'` (five cases passed, two failed,
+0.696s). The corrected order passes the final seven cases. Final review found
+no unresolved correctness or ownership issue. Evidence is retained under ignored
+`.chibi/evidence/toolchain-m3/`; previous M2 source reconstruction and installed
+SDK proof remain under `.chibi/evidence/toolchain-m2/`.
 
-The relocated installed SDK configured and built `chibi_compiler` and
-`chibi-build-host` from clean source snapshot commit
-`acad9382e57e15cbb671d6e7ffe3ae63cc29ba3c` (tree
-`e9ee1f9e4f18fc952f6c0216486b532c73b8e018`). That snapshot contains M1 plus the M2
-candidate; it is not a publication commit. Final configuration/build passed in
-3.423s; an identical warm invocation passed in 0.281s, reported no work and kept
-cache, graph and stamp mtimes unchanged. All 1,134 installed file hashes stayed
-unchanged. Additional SDK target compilation passed in 6.900s and package assembly
-in 9.536s. The package manifest records 350 compiled objects and matching compiled
-and installed private-host identity. These are build times, outside test execution.
-This proof precedes the additive protocol query, `ZERO_AR_DATE` allowlist entry and
-final fixture changes; its source and artifact hashes are retained explicitly.
+M2 scratch cleanup is pending: `relocated-sdk`, `clean-source`, `clean-build` and
+`packaged-sdk` still exist inside its evidence directory. Exact removal attempts
+did not complete; no approval-review reason was returned. Their manifests and
+reconstruction patch are preserved separately. Shared dependency caches remain.
 
-Independent review found no unresolved correctness or lifetime issue. It resolved
-private archive ownership, duplicate process linkage, Darwin archive timestamps
-and old-host upgrade routing. Logs, exact commands, source manifests, installed
-identities and review evidence are retained under ignored
-`.chibi/evidence/toolchain-m2/`, including `INSTALLED-PROOF.md`. Generated proof
-checkouts, SDK copies and build trees are being removed after preserving evidence;
-cleanup status is recorded in that proof document. Shared dependency caches remain.
-
-This is stage-zero orchestration, not a self-hosted compiler. Python helpers,
-CMake and the C compiler remain required. Web, Studio and release profiles have
-not migrated. Windows stays on stage zero. Full native/render/Studio/browser/device
-and other quarantined suites were not run and are not passed. Only changed C
-files were format-checked.
+This M3 increment has macOS execution evidence only. Linux, relocated installed
+SDK package imports, portable `core:` modules, import resolution, incremental
+package invalidation and package-level dependency lowering are still pending.
+The M2 Linux and installed-build results belong to their recorded earlier trees.
+Full native/render/Studio/browser/device and other quarantined suites were not
+run and are not passed. Only changed C files were format-checked. The branch has
+not been pushed or merged.

@@ -15,12 +15,6 @@ static inline uint32_t script_analyzer_child_count(TSNode node)
 {
     return ts_node_is_null(node) ? 0 : ts_node_child_count(node);
 }
-static inline script_range script_analyzer_range(TSNode node)
-{
-    return ts_node_is_null(node) ? (script_range){ .line = 1, .column = 1 }
-                                 : script_node_range(node);
-}
-
 typedef struct
 {
     int symbol;
@@ -54,6 +48,8 @@ typedef struct
 typedef struct
 {
     const script_syntax *syntax;
+    const script_package_document *documents;
+    int document_count, package_scope;
     const script_catalog *catalog;
     script_catalog catalog_view;
     script_catalog_type *catalog_types;
@@ -68,6 +64,9 @@ typedef struct
     bool declarations_only;
 } analyzer;
 
+script_range script_analyzer_range(const analyzer *, TSNode);
+const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);
+const script_syntax *script_analyzer_document_syntax(const analyzer *, int document);
 script_syntax *script_analyzer_recovery_syntax(const script_syntax *);
 void script_analyzer_recovery_restore(script_analysis *, const script_syntax *);
 
@@ -138,6 +137,7 @@ int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component
 void script_analyzer_query_intersect(analyzer *a, int term);
 void script_analyzer_system_parameters(analyzer *a, TSNode root);
 void script_analyzer_declaration_pass(analyzer *a, TSNode body);
+void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);
 void script_analyzer_handler(analyzer *a, TSNode node);
 uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
@@ -167,6 +167,8 @@ void script_analyzer_record_fields(analyzer *, TSNode);
 bool script_analyzer_compile_time_value(analyzer *, int, int *steps, bool scalar);
 const char *script_analyzer_scalar_constant(analyzer *, int, pin_type, pin_value *);
 void script_analyzer_union_declarations(analyzer *, TSNode);
+void script_analyzer_union_types(analyzer *, TSNode);
+void script_analyzer_union_fields(analyzer *, TSNode);
 script_type script_analyzer_union_type(analyzer *, TSNode, const script_type *, int);
 script_type script_analyzer_await_type(analyzer *, TSNode, script_type);
 script_type script_analyzer_task_type(analyzer *, script_type, uint64_t);

@@ -472,7 +472,7 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     }
     script_statement block = { .kind = SCRIPT_STMT_BLOCK,
                                .scope = a->scope,
-                               .range = script_analyzer_range(body),
+                               .range = script_analyzer_range(a, body),
                                .symbol = -1,
                                .expression = -1,
                                .second = -1,

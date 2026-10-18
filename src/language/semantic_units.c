@@ -648,6 +648,10 @@ static void assignment(pass *p, const script_statement *s)
 static int by_position(const void *a, const void *b)
 {
     const script_diagnostic *x = a, *y = b;
+    if (x->range.document != y->range.document) {
+        return (x->range.document > y->range.document) -
+               (x->range.document < y->range.document);
+    }
     return (x->range.start > y->range.start) - (x->range.start < y->range.start);
 }
 void script_analyzer_units(analyzer *a)

@@ -8,6 +8,7 @@ typedef struct
 {
     int start, end;   /* Half-open UTF-8 byte offsets. */
     int line, column; /* One-based; column counts bytes. */
+    int document; /* Package input index; zero for single-document syntax. */
 } script_range;
 
 typedef struct

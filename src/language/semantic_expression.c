@@ -173,7 +173,7 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) };
+                                 .range = script_analyzer_range(a, node) };
     char *text = script_analyzer_text_copy(a, node);
     if (negate) {
         size_t size = strlen(text);
@@ -331,7 +331,7 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
         script_range range = expression->range;
         bool negative = signbit(expression->constant.d);
         TSNode node = ts_node_descendant_for_byte_range(
-            ts_tree_root_node(a->syntax->tree),
+            ts_tree_root_node(script_analyzer_document_syntax(a, range.document)->tree),
             (uint32_t)range.start,
             (uint32_t)range.end
         );
@@ -362,7 +362,7 @@ static int join_task(analyzer *a, TSNode node, int value)
     script_type task = script_analyzer_expr_type(a, value);
     script_expression result = { .kind = SCRIPT_EXPR_JOIN,
                                  .type = { .storage = PIN_FLOW },
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = value,
                                  .right = -1,
@@ -482,7 +482,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
                                  .type = script_analyzer_bad_type(),
-                                 .range = script_analyzer_range(node),
+                                 .range = script_analyzer_range(a, node),
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1 };
@@ -705,7 +705,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         if (script_analyzer_text_is(a, op, "-") &&
             script_analyzer_is(operand, "number")) {
             int constant = number_constant(a, operand, expected, true);
-            a->out->expressions[constant].range = script_analyzer_range(node);
+            a->out->expressions[constant].range = script_analyzer_range(a, node);
             return constant;
         }
         result.op = script_analyzer_operator_node(a, op);
@@ -885,7 +885,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 actual.flags &= ~SCRIPT_TYPE_UNTYPED;
             }
             script_analyzer_require(a, child, element, actual);
-            apush(result.arguments, ((script_argument){ value, -1, 0, script_analyzer_range(child) }));
+            apush(
+                result.arguments,
+                ((script_argument){ value, -1, 0, script_analyzer_range(a, child) })
+            );
             result.effects |= script_analyzer_expr_effects(a, value);
         }
         if (!acount(result.arguments) && inferred) {
@@ -932,7 +935,7 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 ((script_argument){ value,
                                     index,
                                     index >= 0 ? type->fields[index].id : 0,
-                                    script_analyzer_range(child) })
+                                    script_analyzer_range(a, child) })
             );
             if (index >= 0) {
                 script_analyzer_require(
@@ -962,7 +965,7 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
                                  .symbol = -1,
                                  .left = -1,
                                  .right = -1,
-                                 .range = script_analyzer_range(node) }
+                                 .range = script_analyzer_range(a, node) }
         );
     }
     a->depth++;

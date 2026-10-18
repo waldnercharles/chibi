@@ -532,6 +532,13 @@ TOOLS = {
     # Existing owning dispatcher, separate build timing, shared60s; no aggregate.
     'language-package-syntax': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                 '--package-syntax'],
+    # Seven fixed package cases: 32 parses, 15 analyses, twelve lowers, eight
+    # backend finalizations and sixteen direct calls with instruction budget2000.
+    # At most three documents per snapshot; twelve fixed source texts each<1KiB.
+    # No files, children, worlds, network or GPU; separate build and shared60s.
+    # First measurement requires independent exact-source/workload review.
+    'language-package-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                   '--package-execution'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

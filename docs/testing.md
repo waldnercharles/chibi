@@ -1084,6 +1084,19 @@ CI remains partial coverage. Report the checks that actually ran. Applicable
 server-required checks, independent review, explicit holds and approval rules
 remain binding.
 
+## Package execution checks
+
+`python3 tools/test_policy.py tool language-package-execution` selects seven
+fixed C cases in `test_language`: sibling calls and mutual recursion on bytecode
+and SLJIT, stable exported identities, document-local errors, duplicate exports,
+declaration discovery, source ownership and sibling records/unions/constants.
+The workload has at most three documents per snapshot, twelve fixed texts below
+1 KiB each, 32 parses, 15 analyses, twelve lowering attempts, eight backend
+finalizations and sixteen direct calls with instruction budgets of 2,000. It
+performs no filesystem, subprocess, world or GPU work. Build separately and run
+under one shared 60-second production deadline. The independent package graph
+and syntax routes remain unchanged; this focused route is not in the aggregate.
+
 ## Private build-host process checks
 
 `python3 tools/test_policy.py tool build-process` selects eighteen C cases in the

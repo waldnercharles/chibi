@@ -32,9 +32,9 @@ void script_analyzer_record_types(analyzer *a, TSNode body)
             false
         );
         script_symbol *s = &a->out->symbols[symbol];
-        if (s->kind != SCRIPT_TYPE ||
-            s->declaration.start !=
-                script_analyzer_range(script_analyzer_field(node, "name")).start) {
+        script_range name_range = script_analyzer_range(a, script_analyzer_field(node, "name"));
+        if (s->kind != SCRIPT_TYPE || s->declaration.document != name_range.document ||
+            s->declaration.start != name_range.start) {
             continue;
         }
         s->type.nominal = s->id;
@@ -65,9 +65,10 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                                                    a->catalog,
                                                    a->out->symbols[symbol].type.nominal
                                                );
+        script_range name_range = script_analyzer_range(a, script_analyzer_field(node, "name"));
         if (!found || !found->authored_record ||
-            a->out->symbols[symbol].declaration.start !=
-                script_analyzer_range(script_analyzer_field(node, "name")).start) {
+            a->out->symbols[symbol].declaration.document != name_range.document ||
+            a->out->symbols[symbol].declaration.start != name_range.start) {
             continue;
         }
         script_catalog_type definition = *found;

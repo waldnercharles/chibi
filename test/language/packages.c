@@ -44,10 +44,10 @@ static bool rejected(
     return true;
 }
 static const source_package_file files[] = {
-    { "/project/app/z.chibi", "/project/app", "app", { 8, 11, 1, 9 } },
-    { "/project/app/a.chibi", "/project/app", "app", { 8, 11, 1, 9 } },
-    { "/project/app/nested/n.chibi", "/project/app/nested", "nested", { 8, 14, 1, 9 } },
-    { "/project/math/m.chibi", "/project/math", "numbers", { 8, 15, 1, 9 } },
+    { "/project/app/z.chibi", "/project/app", "app", { 8, 11, 1, 9, 0 } },
+    { "/project/app/a.chibi", "/project/app", "app", { 8, 11, 1, 9, 0 } },
+    { "/project/app/nested/n.chibi", "/project/app/nested", "nested", { 8, 14, 1, 9, 0 } },
+    { "/project/math/m.chibi", "/project/math", "numbers", { 8, 15, 1, 9, 0 } },
 };
 TEST_CASE(package_empty_snapshot)
 {
@@ -191,8 +191,8 @@ TEST_CASE(package_blank_imports_keep_edges_without_bindings)
 TEST_CASE(package_duplicate_alias_reports_both_imports)
 {
     source_package_import imports[] = {
-        { 0, "/project/math", "lib", { 12, 24, 2, 1 } },
-        { 0, "/project/app/nested", "lib", { 25, 38, 3, 1 } },
+        { 0, "/project/math", "lib", { 12, 24, 2, 1, 0 } },
+        { 0, "/project/app/nested", "lib", { 25, 38, 3, 1, 0 } },
     };
     REQUIRE(rejected(files, 4, imports, 2, SOURCE_PACKAGE_DUPLICATE_IMPORT));
     REQUIRE(error.file == 0 && error.related_file == 0);

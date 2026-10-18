@@ -239,12 +239,33 @@ typedef enum
     SCRIPT_PROGRAM_LIBRARY,
     SCRIPT_PROGRAM_SYSTEM
 } script_program_kind;
+/* Package inputs borrow syntax only during analysis. Keys are explicit stable
+ * document identities; paths are display locations, not declaration identities. */
+enum
+{
+    SCRIPT_PACKAGE_MAX_DOCUMENTS = 256
+};
+typedef struct
+{
+    const char *path, *key;
+    const script_syntax *syntax;
+} script_package_document;
+typedef struct
+{
+    char *path, *key, *text;
+} script_source_document;
+
 /* The resolved program owns text, names, constants, origins and typed records.
  * Indices refer only to this immutable program, never to syntax/graph objects.
  * A failed analysis retains facts and diagnostics but is not executable. */
 typedef struct
 {
     char *text, *name, *identity;
+    /* Package ranges stay local to their original document. Indices follow the
+     * input array, never declaration/member sorting. Legacy analyses have none;
+     * package text retains only the first document for legacy field ownership. */
+    script_source_document *documents;
+    int document_count;
     arena constants;
     script_program_kind kind;
     script_symbol *symbols;
@@ -280,7 +301,28 @@ script_analysis *script_declarations_document(
     const script_catalog *,
     const char *key
 );
+/* Genuine sibling-package analysis; all declarations are collected before
+ * bodies. identity is a stable package key. Inputs and trees may retire after
+ * return; output documents own exact paths/keys/text. This initial seam accepts
+ * functions, constants, records and unions. Imports diagnose pending resolution.
+ * count is bounded by SCRIPT_PACKAGE_MAX_DOCUMENTS; empty packages are invalid.
+ * Export identities are independent of input order and unrelated siblings;
+ * debug record ordinals and document-local byte ranges are not durable IDs. */
+script_analysis *script_analyze_package(
+    const script_package_document *,
+    int count,
+    const script_catalog *,
+    const char *identity
+);
+script_analysis *script_declarations_package(
+    const script_package_document *,
+    int count,
+    const script_catalog *,
+    const char *identity
+);
+const script_source_document *script_analysis_document(const script_analysis *, int document);
 void script_analysis_free(script_analysis *);
+/* Legacy offset-only navigation selects document zero. */
 const script_symbol *script_symbol_at(const script_analysis *, int offset);
 const script_use *script_use_at(const script_analysis *, int offset);
 #endif

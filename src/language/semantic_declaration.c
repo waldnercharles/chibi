@@ -62,7 +62,7 @@ int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind 
         .body = -1,
         .receiver = -1,
         .parent = a->function,
-        .range = script_analyzer_range(node),
+        .range = script_analyzer_range(a, node),
         .pure = script_analyzer_token_present(a, node, "pure"),
         .depth_limit = a->function >= 0 ? a->out->functions[a->function].depth_limit : 64
     };
@@ -153,6 +153,13 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
         (script_type){ .storage = PIN_FLOW },
         false
     );
+    script_range name_range = script_analyzer_range(a, script_analyzer_field(node, "name"));
+    if (a->document_count &&
+        (a->out->symbols[symbol].declaration.document != name_range.document ||
+         a->out->symbols[symbol].declaration.start != name_range.start ||
+         a->out->symbols[symbol].kind != (macro ? SCRIPT_MACRO : SCRIPT_FUNCTION))) {
+        return;
+    }
     int function = script_analyzer_function_new(a, node, SCRIPT_FUNCTION_AUTHORED, symbol);
     a->out->symbols[symbol].function = function;
     a->out->symbols[symbol].capability = a->out->symbols[symbol].id;
@@ -329,7 +336,7 @@ static uint64_t query_source(analyzer *a, TSNode source, int *traversal, int *va
 static script_query query_membership(analyzer *a, TSNode node, bool relationship_allowed)
 {
     script_query result = { .kind = SCRIPT_QUERY_HAS,
-                            .range = script_analyzer_range(node) };
+                            .range = script_analyzer_range(a, node) };
     TSNode name = node;
     if (script_analyzer_is(node, "member_expression")) {
         result.source_relationship = query_source(
@@ -408,7 +415,7 @@ static void query_narrow_restore(analyzer *a, narrowing *saved)
 static script_query query_changed(analyzer *a, TSNode node, TSNode arguments)
 {
     script_query result = { .kind = SCRIPT_QUERY_CHANGED,
-                            .range = script_analyzer_range(node) };
+                            .range = script_analyzer_range(a, node) };
     TSNode argument = query_argument(arguments);
     if (ts_node_is_null(argument)) {
         script_analyzer_diagnostic(a, node, "changed requires one component or component binding");
@@ -430,12 +437,12 @@ static script_query query_changed(analyzer *a, TSNode node, TSNode arguments)
     }
     result = query_membership(a, argument, false);
     result.kind = SCRIPT_QUERY_CHANGED;
-    result.range = script_analyzer_range(node);
+    result.range = script_analyzer_range(a, node);
     return result;
 }
 int script_analyzer_query_expression(analyzer *a, TSNode node)
 {
-    script_query result = { .range = script_analyzer_range(node) };
+    script_query result = { .range = script_analyzer_range(a, node) };
     if (script_analyzer_is(node, "parenthesized_expression")) {
         return script_analyzer_query_expression(a, script_analyzer_field(node, "expression"));
     }
@@ -542,14 +549,14 @@ int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component
         a->out->queries,
         ((script_query){ .kind = SCRIPT_QUERY_HAS,
                          .component = component,
-                         .range = script_analyzer_range(node) })
+                         .range = script_analyzer_range(a, node) })
     );
     int index = acount(a->out->queries) - 1;
     if (!excluded) {
         return index;
     }
     script_query not = { .kind = SCRIPT_QUERY_NOT,
-                         .range = script_analyzer_range(node) };
+                         .range = script_analyzer_range(a, node) };
     apush(not.children, index);
     not.child_count = 1;
     apush(a->out->queries, not);
@@ -675,7 +682,7 @@ static void query_generator(analyzer *a, TSNode node)
                          .component = relationship,
                          .source_variable = source_variable,
                          .target_variable = variable,
-                         .range = script_analyzer_range(node) })
+                         .range = script_analyzer_range(a, node) })
     );
     script_analyzer_query_intersect(a, acount(a->out->queries) - 1);
 }
@@ -726,10 +733,8 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
         );
     }
 }
-void script_analyzer_declaration_pass(analyzer *a, TSNode body)
+void script_analyzer_value_declarations(analyzer *a, TSNode body)
 {
-    script_analyzer_record_types(a, body);
-    script_analyzer_union_declarations(a, body);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (script_analyzer_is(node, "state_declaration") ||
@@ -770,11 +775,12 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             );
             a->out->symbols[symbol].capability = id;
         } else if (script_analyzer_is(node, "exit_declaration")) {
-            script_range range = script_analyzer_range(script_analyzer_field(node, "name"));
+            script_range range = script_analyzer_range(a, script_analyzer_field(node, "name"));
             bool declared = false;
             for (int j = 0; j < acount(a->out->symbols); j++) {
                 if (a->out->symbols[j].kind == SCRIPT_LABEL &&
                     a->out->symbols[j].scope == a->scope &&
+                    a->out->symbols[j].declaration.document == range.document &&
                     a->out->symbols[j].declaration.start == range.start) {
                     declared = true;
                     break;
@@ -822,13 +828,20 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body)
             a->out->owner_type = owner.nominal;
         }
     }
+}
+void script_analyzer_declaration_pass(analyzer *a, TSNode body)
+{
+    script_analyzer_record_types(a, body);
+    script_analyzer_union_declarations(a, body);
+    script_analyzer_value_declarations(a, body);
     script_analyzer_record_fields(a, body);
 }
 int script_analyzer_scope_at(const analyzer *a, TSNode body)
 {
-    script_range range = script_analyzer_range(body);
+    script_range range = script_analyzer_range(a, body);
     for (int i = 0; i < acount(a->out->scopes); i++) {
-        if (a->out->scopes[i].range.start == range.start &&
+        if (a->out->scopes[i].range.document == range.document &&
+            a->out->scopes[i].range.start == range.start &&
             a->out->scopes[i].range.end == range.end) {
             return i;
         }
@@ -1174,7 +1187,7 @@ void script_analyzer_binding(analyzer *a, TSNode node)
     if (a->out->kind == SCRIPT_PROGRAM_LIBRARY || a->function >= 0) {
         script_analyzer_diagnostic(a, node, "Bindings belong to behavior or system roots");
     }
-    script_binding result = { .range = script_analyzer_range(node) };
+    script_binding result = { .range = script_analyzer_range(a, node) };
     result.target = script_analyzer_expression(
         a,
         script_analyzer_field(node, "target"),
@@ -1273,11 +1286,12 @@ void script_analyzer_definition_pass(analyzer *a, TSNode body)
             script_analyzer_definition_pass(a, script_analyzer_field(node, "body"));
             a->scope = old;
         } else if (script_analyzer_is(node, "entry_declaration")) {
-            script_range range = script_analyzer_range(node);
+            script_range range = script_analyzer_range(a, node);
             int function = -1;
             for (int j = 0; j < acount(a->out->functions); j++) {
                 if (a->out->functions[j].kind == SCRIPT_FUNCTION_MACRO_ENTRY &&
                     a->out->functions[j].parent == a->function &&
+                    a->out->functions[j].range.document == range.document &&
                     a->out->functions[j].range.start == range.start) {
                     function = j;
                     break;

@@ -7,6 +7,7 @@
 typedef struct
 {
     int start, end, line, column;
+    int document; /* Source snapshot index; zero for single-document callers. */
 } execution_source_range;
 typedef struct
 {

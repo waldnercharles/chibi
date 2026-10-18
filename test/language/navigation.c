@@ -757,13 +757,13 @@ static bool external_project()
           .name = "Spark",
           .path = "prototypes/Spark.kdl",
           .text = "name \"Spark\"\n",
-          .range = { 5, 12, 1, 6 } },
+          .range = { 5, 12, 1, 6, 0 } },
         { .id = 401,
           .kind = SCRIPT_CAPABILITY_EVENT,
           .name = "Pulse",
           .path = "events/Pulse.kdl",
           .text = "name \"Pulse\"\n",
-          .range = { 5, 12, 1, 6 } },
+          .range = { 5, 12, 1, 6, 0 } },
     };
     static const source_catalog_reference references[] = {
         { .id = 400,
@@ -771,7 +771,7 @@ static bool external_project()
           .name = "Spark",
           .path = "scenes/Start.kdl",
           .text = "prototype \"Spark\"\nnote \"Spark\"\n",
-          .range = { 10, 17, 1, 11 } },
+          .range = { 10, 17, 1, 11, 0 } },
     };
     catalog = (script_catalog){ .types = &component_type,
                                 .type_count = 1,
@@ -923,7 +923,7 @@ static bool spawn_project(const char *const *source, int count)
           .name = "Spark",
           .path = "prototypes/Spark.kdl",
           .text = "name \"Spark\"\n",
-          .range = { 5, 12, 1, 6 } },
+          .range = { 5, 12, 1, 6, 0 } },
     };
     base_catalog();
     capabilities[1] = (script_catalog_capability){ .id = 400,
@@ -1011,7 +1011,7 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
         .name = "Pulse",
         .path = "events/Pulse.kdl",
         .text = "name \"Pulse\"\n",
-        .range = { 5, 12, 1, 6 },
+        .range = { 5, 12, 1, 6, 0 },
         .text_kind = SOURCE_TEXT_KDL
     };
     static const char
@@ -1024,21 +1024,21 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
           .name = "Pulse",
           .path = "ui/Hud.rml",
           .text = rml,
-          .range = { 22, 27, 1, 23 },
+          .range = { 22, 27, 1, 23, 0 },
           .text_kind = SOURCE_TEXT_RML },
         { .id = 401,
           .kind = SOURCE_REFERENCE_EVENT,
           .name = "Pulse",
           .path = "ui/Hud.rml",
           .text = rml,
-          .range = { 46, 51, 1, 47 },
+          .range = { 46, 51, 1, 47, 0 },
           .text_kind = SOURCE_TEXT_RML },
         { .id = 401,
           .kind = SOURCE_REFERENCE_EVENT,
           .name = "Pulse",
           .path = "ui/Hud.rml",
           .text = rml,
-          .range = { 74, 79, 1, 75 },
+          .range = { 74, 79, 1, 75, 0 },
           .text_kind = SOURCE_TEXT_RML },
     };
     catalog = (script_catalog){ .capabilities = &pulse, .capability_count = 1 };
@@ -1263,21 +1263,21 @@ static bool scene_globals_project()
           .name = "Level",
           .path = "scenes/First.kdl",
           .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
-          .range = { 24, 31, 2, 10 } },
+          .range = { 24, 31, 2, 10, 0 } },
         { .id = 40,
           .field = true,
           .owner = 30,
           .name = "Level",
           .path = "scenes/Second.kdl",
           .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
-          .range = { 24, 31, 2, 10 } },
+          .range = { 24, 31, 2, 10, 0 } },
         { .id = 41,
           .field = true,
           .owner = 30,
           .name = "Camera",
           .path = "scenes/Camera.kdl",
           .text = "GlobalBinder {\n    Name \"Camera\"\n}\n",
-          .range = { 24, 32, 2, 10 } },
+          .range = { 24, 32, 2, 10, 0 } },
     };
     const char *sources[] = { "behavior App { on Tick { level:=globals.Level; "
                               "other:=globals.level; label:=\"Level\"; } }" };

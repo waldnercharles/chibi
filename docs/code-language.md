@@ -9,6 +9,40 @@ The [versioned current contract](language-contracts/v1.md) pins source evidence,
 existing C conformance cases and unresolved migration semantics separately.
 Its source audit is not fresh runtime or cross-backend validation.
 
+## Package analysis
+
+The SDK's `script_analyze_package` and `script_declarations_package` accept an
+explicit group of sibling source snapshots with one matching `package` header.
+Functions, constants, records and unions share a package scope. Declarations are
+collected before function bodies, so siblings can refer to one another and
+functions with declared results can recurse across files.
+
+```code
+// arithmetic.chibi
+package sample
+Add :: fn(value: int) -> int { return value + 2; }
+```
+
+```code
+// main.chibi
+package sample
+Main :: fn(value: int) -> int { return Add(value); }
+```
+
+Each input supplies a display path, a stable document key and parsed syntax; the
+caller supplies a stable package identity. The returned analysis owns its source
+texts, paths and keys. `script_range.document` selects the input document, while
+byte offsets and line/column values stay local to that document. Lowered execution
+origins retain its display path after the analysis is freed. Exported identities
+depend on package identity and declaration, not input order or unrelated sibling
+files. Debug record ordinals and byte offsets are not durable identities.
+
+This is the first M3 increment in [the toolchain plan](../PLAN.md). Imports,
+package globals and embedded game roots are rejected by this entry point until
+their resolution and ownership are implemented. Project loading, formatting and
+editor navigation still use their existing single-source entry points. Package
+analysis does not discover files or change the public build command.
+
 ## Declarative documents
 
 Project manifests are `project.kdl`, version 24. Scenes, prototypes, event

@@ -256,8 +256,8 @@ TEST_CASE(source_relationship_declarations_and_initial_pairs_reject_invalid_cont
         "Bad :: prototype { behaviors: [Probe, \"Other\"] }",
         "Bad :: prototype { links: {Targets: \"child.enemy\"} }",
         "Bad :: prototype { links: {Targets: [child.enemy, \"child.other\"]} }",
-        "Bad :: prototype { children: [{name: \"enemy\", prototype: "
-        "\"Child\"}] }",
+        ("Bad :: prototype { children: [{name: \"enemy\", prototype: "
+         "\"Child\"}] }"),
     };
     for (size_t i = 0; i < sizeof quoted / sizeof *quoted; i++) {
         REQUIRE(!authoring_prototype_source_read(quoted[i], NULL, error, sizeof error));

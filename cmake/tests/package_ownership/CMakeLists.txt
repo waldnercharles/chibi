@@ -13,6 +13,10 @@ target_precompile_headers(owner PRIVATE src/owned.h)
 set_target_properties(owner PROPERTIES OUTPUT_NAME renamed ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/relocated")
 add_library(debug_archive STATIC src/debug.c)
 add_executable(auxiliary src/auxiliary.c)
+if(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
+    add_executable(chibi-build-host src/auxiliary.c)
+    install(TARGETS chibi-build-host RUNTIME DESTINATION libexec/chibi)
+endif()
 # Keep a .res-shaped compiler output with real host compilation and Ninja
 # dependencies. This checks ownership, not native Windows resource compilation.
 configure_file(src/resource.manifest resource.manifest COPYONLY)

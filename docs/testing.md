@@ -1086,10 +1086,10 @@ remain binding.
 
 ## Private build-host process checks
 
-`python3 tools/test_policy.py tool build-process` selects ten C cases in the
+`python3 tools/test_policy.py tool build-process` selects eighteen C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
-two fixed authored sources, at most 40 controlled process launches or failed
+fixed authored sources, at most 54 controlled process launches or failed
 spawn attempts, and one shared 60-second production deadline. It performs no
 engine configure/build, network, renderer or GPU work. Case deadlines are at
 most two seconds, with shorter deliberate timeout/cancellation budgets; every
@@ -1103,10 +1103,27 @@ actual backend counters and failure-path assertions. Compiler-enabled full
 native builds also verify absence from the ordinary game catalog; minimal
 compiler-only builds verify rejection by a catalog without build capabilities.
 Two CLI invocations cover source loading, a nonzero authored result and a missing
-entry. The original eight `language-build-workflow` recording cases remain an
+entry. Seven additional cases cover argument and returned-value lifetimes,
+string operations, truncated or binary output rejection, regular-file and size
+limits, and atomic write failure cleanup. Their fixed file workload is about
+7 MiB. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-Both `build-process` and M0's `chibi-cli` remain focused routes. The complete
+`python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
+installed authored build program. Four cases make 38 API invocations across
+bytecode and SLJIT; one runs the host CLI with exact tail arguments. Ten tiny
+Git roots and at most 53 controlled CMake attempts cover compiler/environment/
+cache precedence, explicit typed and split definitions, loaded inputs, compiler
+identity, private dependency overrides, failure/retry and exact argument
+forwarding. The sixth case uses the production Makefile to select recovery for
+missing/old hosts and authored orchestration for a compatible host, including
+paths with spaces; three outer and three recursive Make calls run marker recipes
+only. The process route also tests the private protocol query used by this
+transition. Python runs only the production input probes; no Python tests are
+introduced. These cases never configure or build the engine. Actual clean-source
+configuration and compilation are separate build evidence.
+
+`build-process`, `build-toolchain` and M0's `chibi-cli` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build
 the private host or public launcher. Route registration does not add either
 fixture to that aggregate. Current platform results belong in `PLAN.md`;

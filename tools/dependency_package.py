@@ -16,6 +16,8 @@ import sys
 import tempfile
 import time
 
+# Installed toolchain helpers must leave the checksummed SDK unchanged.
+sys.dont_write_bytecode = True
 import fetchcontent_cache
 
 SCHEMA = 1

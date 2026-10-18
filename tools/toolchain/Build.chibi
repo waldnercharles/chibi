@@ -1,0 +1,293 @@
+library ToolchainBuild {
+    Join :: fn(parts: string[]) -> string {
+        return BuildJoin(parts, "");
+    }
+    Helper :: fn(name: string) -> string {
+        return BuildJoin([BuildProgramDirectory(), "..", name], "/");
+    }
+    Definition :: fn(argument: string) -> string {
+        if (!BuildStartsWith(argument, "-D")) {
+            return "";
+        }
+        return BuildBefore(BuildBefore(BuildAfter(argument, "-D"), "="), ":");
+    }
+    Normalize :: fn(arguments: string[]) -> string[] {
+        result: string[] = [];
+        split := false;
+        foreach (argument in arguments) {
+            if (split) {
+                result = BuildConcat(result, [Join(["-D", argument])]);
+                split = false;
+            } else if (argument == "-D") {
+                split = true;
+            } else {
+                result = BuildConcat(result, [argument]);
+            }
+        }
+        if (split) {
+            result = BuildConcat(result, ["-D"]);
+        }
+        return result;
+    }
+    Cached :: fn(cache: string, name: string) -> string {
+        prefix := Join([name, ":"]);
+        foreach (line in BuildLines(cache)) {
+            if (BuildStartsWith(line, prefix)) {
+                return BuildAfter(line, "=");
+            }
+        }
+        return "";
+    }
+    NativeArguments :: fn(build: string, arguments: string[]) -> string[] {
+        cachePath := Join([build, "/CMakeCache.txt"]);
+        cache := BuildReadFile(cachePath);
+        selected := BuildEnvironment("CC") != "" ||
+                    BuildEnvironment("CXX") != "" ||
+                    BuildEnvironment("CMAKE_TOOLCHAIN_FILE") != "";
+        foreach (argument in Normalize(arguments)) {
+            name := Definition(argument);
+            if (name == "CMAKE_C_COMPILER" || name == "CMAKE_CXX_COMPILER" ||
+                name == "CMAKE_TOOLCHAIN_FILE" || argument == "--toolchain" ||
+                BuildStartsWith(argument, "--toolchain=") || BuildStartsWith(argument, "-C")) {
+                selected = true;
+            }
+        }
+        result := arguments;
+        if (BuildPlatform() == "Linux" && !BuildFileExists(cachePath) && !selected &&
+            BuildFindExecutable("clang") != "" && BuildFindExecutable("clang++") != "") {
+            result = BuildConcat(result, ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]);
+        }
+        return result;
+    }
+    NativeSDK :: fn(cache: string, arguments: string[]) -> string {
+        sdk := BuildEnvironment("SDKROOT");
+        compiler := BuildEnvironment("CC");
+        if (compiler == "") {
+            compiler = "cc";
+        }
+        cachedSDK := Cached(cache, "CMAKE_OSX_SYSROOT");
+        cachedCompiler := Cached(cache, "CMAKE_C_COMPILER");
+        if (cachedSDK != "") {
+            sdk = cachedSDK;
+        }
+        if (cachedCompiler != "") {
+            compiler = cachedCompiler;
+        }
+        foreach (argument in Normalize(arguments)) {
+            name := Definition(argument);
+            if (name == "CMAKE_OSX_SYSROOT") {
+                sdk = BuildAfter(argument, "=");
+            }
+            if (name == "CMAKE_C_COMPILER") {
+                compiler = BuildAfter(argument, "=");
+            }
+        }
+        if (sdk != "") {
+            return sdk;
+        }
+        if (RunBuildStep(["python3", Helper("configure_inputs.py"), "compiler-sdk", compiler]) == 0) {
+            sdk = BuildTrim(BuildLastStdout());
+        }
+        if (sdk == "" && RunBuildStep(["xcrun", "--show-sdk-path"]) == 0) {
+            sdk = BuildTrim(BuildLastStdout());
+        }
+        return sdk;
+    }
+    CacheRoot :: fn() -> string {
+        root := BuildEnvironment("CHIBI_FETCHCONTENT_CACHE_DIR");
+        if (root == "") {
+            base := BuildEnvironment("XDG_CACHE_HOME");
+            if (base != "") {
+                root = Join([base, "/chibi-fetchcontent"]);
+            } else {
+                base = BuildEnvironment("HOME");
+                if (base != "") {
+                    root = Join([base, "/.cache/chibi-fetchcontent"]);
+                }
+            }
+        }
+        if (root == "" || BuildFindExecutable("python3") == "" || !BuildMakeDirectory(root)) {
+            return "";
+        }
+        return BuildResolvePath(root);
+    }
+    Signature :: fn(profile: string, build: string, arguments: string[]) -> string {
+        if (!BuildFileExists(Join([build, "/CMakeCache.txt"]))) {
+            return "";
+        }
+        command := BuildConcat([
+            "python3", Helper("configure_inputs.py"), "signature", BuildRoot(), build,
+            profile, Join([BuildProgramDirectory(), "/Build.chibi"]), "--"
+        ], arguments);
+        if (RunBuildStep(command) != 0) {
+            return "";
+        }
+        return BuildTrim(BuildLastStdout());
+    }
+    Configure :: fn(profile: string, build: string, arguments: string[]) -> int {
+        stamp := Join([build, "/.chibi-toolchain-config-inputs"]);
+        signature := Signature(profile, build, arguments);
+        if (signature != "" && signature == BuildTrim(BuildReadFile(stamp))) {
+            return 0;
+        }
+        if (!BuildMakeDirectory(build)) {
+            BuildReport("cannot create the build directory");
+            return 1;
+        }
+        selected := NativeArguments(build, arguments);
+        if (BuildPlatform() == "Darwin") {
+            sdk := NativeSDK(BuildReadFile(Join([build, "/CMakeCache.txt"])), selected);
+            if (sdk == "") {
+                BuildReport("cannot discover the selected compiler SDK");
+                return 1;
+            }
+            selected = BuildConcat(selected, [Join(["-DCMAKE_OSX_SYSROOT=", sdk])]);
+        }
+        root := BuildRoot();
+        packageEnabled := BuildEnvironment("CHIBI_DEPENDENCY_PACKAGES");
+        package: string = "";
+        if (packageEnabled == "" || packageEnabled == "1") {
+            status := RunBuildStep(BuildConcat([
+                "python3", Helper("configure_inputs.py"), "package-enabled", build, "--"
+            ], selected));
+            if (status != 0) {
+                return status;
+            }
+            packageEnabled = BuildTrim(BuildLastStdout());
+        }
+        if (packageEnabled == "1") {
+            status := RunBuildStep(BuildConcat([
+                "python3", Helper("dependency_package.py"), "prepare", "--source-dir", root,
+                "--build-dir", build, "--profile", "native", "--"
+            ], selected));
+            if (status != 0) {
+                BuildReport("dependency preparation failed");
+                return status;
+            }
+            package = BuildTrim(BuildLastStdout());
+        } else {
+            if (!BuildWriteFile(Join([build, "/.chibi-dependency-package.cmake"]),
+                "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)\nunset(CHIBI_DEPENDENCY_SOURCE_ROOT CACHE)\n")) {
+                return 1;
+            }
+        }
+        cache := CacheRoot();
+        if (cache != "" && RunBuildStep([
+            "python3", Helper("fetchcontent_cache.py"), "fingerprint", "--source-dir", root
+        ]) != 0) {
+            cache = "";
+        }
+        if (package != "" || cache == "") {
+            if (!BuildWriteFile(Join([build, "/.chibi-fetchcontent-cache.cmake"]), "")) {
+                return 1;
+            }
+        } else {
+            prepare := ["python3", Helper("fetchcontent_cache.py"), "prepare",
+                        "--source-dir", root, "--build-dir", build, "--cache-root", cache];
+            foreach (argument in Normalize(selected)) {
+                if (Definition(argument) == "CHIBI_ENABLE_TRACY") {
+                    value := BuildAfter(argument, "=");
+                    if (value == "ON" || value == "TRUE" || value == "1") {
+                        prepare = BuildConcat(prepare, ["--tracy"]);
+                    }
+                }
+            }
+            status := RunBuildStep(prepare);
+            if (status != 0) {
+                return status;
+            }
+        }
+        source := root;
+        if (profile == "tool-host") {
+            source = Join([root, "/sdk"]);
+        }
+        configure := ["cmake", "-S", source, "-B", build];
+        if (!BuildFileExists(Join([build, "/CMakeCache.txt"])) &&
+            BuildEnvironment("CMAKE_GENERATOR") == "" && BuildFindExecutable("ninja") != "") {
+            configure = BuildConcat(configure, ["-G", "Ninja"]);
+        }
+        configure = BuildConcat(configure, ["-C", Join([build, "/.chibi-fetchcontent-cache.cmake"]),
+                                           "-C", Join([build, "/.chibi-dependency-package.cmake"])]);
+        status := RunBuildStep(BuildConcat(configure, selected));
+        if (status != 0) {
+            BuildReport("native configuration failed");
+            return status;
+        }
+        if (package == "" && cache != "" && RunBuildStep([
+            "python3", Helper("fetchcontent_cache.py"), "publish", "--source-dir", root,
+            "--build-dir", build, "--cache-root", cache
+        ]) != 0) {
+            BuildReport("warning: could not publish FetchContent source cache");
+        }
+        signature = Signature(profile, build, arguments);
+        if (signature != "" && !BuildWriteFile(stamp, Join([signature, "\n"]))) {
+            BuildReport("cannot save configuration input stamp");
+            return 1;
+        }
+        return 0;
+    }
+    Build :: fn() -> int {
+        arguments := BuildArguments();
+        if (BuildLength(arguments) < 2) {
+            BuildReport("usage: native|tool-host BUILD_DIR [--target NAME] [--jobs N] [--configure-only] -- CMAKE_ARGUMENTS");
+            return 2;
+        }
+        profile := arguments[0];
+        if (profile != "native" && profile != "tool-host") {
+            BuildReport("unknown build profile");
+            return 2;
+        }
+        build := arguments[1];
+        configure: string[] = [];
+        targets: string[] = [];
+        jobs: string = "";
+        configureOnly := false;
+        tail := false;
+        index: int = 2;
+        while (index < BuildLength(arguments)) {
+            argument := arguments[index];
+            index += 1;
+            if (tail) {
+                configure = BuildConcat(configure, [argument]);
+            } else if (argument == "--") {
+                tail = true;
+            } else if (argument == "--configure-only") {
+                configureOnly = true;
+            } else if ((argument == "--target" || argument == "--jobs") && index < BuildLength(arguments)) {
+                if (argument == "--target") {
+                    targets = BuildConcat(targets, [arguments[index]]);
+                } else {
+                    jobs = arguments[index];
+                }
+                index += 1;
+            } else {
+                BuildReport("invalid toolchain build option");
+                return 2;
+            }
+        }
+        if (profile == "tool-host") {
+            configure = BuildConcat([
+                "-DCHIBI_SDK_BUILD_COMPILER=ON", "-DCHIBI_SDK_BUILD_NATIVE=OFF", "-DCHIBI_SDK_BUILD_DESKTOP=OFF"
+            ], configure);
+            if (BuildLength(targets) == 0) {
+                targets = ["chibi-build-host"];
+            }
+        }
+        status := Configure(profile, build, configure);
+        if (status != 0 || configureOnly) {
+            return status;
+        }
+        command := ["cmake", "--build", build];
+        if (BuildLength(targets) > 0) {
+            command = BuildConcat(command, BuildConcat(["--target"], targets));
+        }
+        if (jobs != "") {
+            command = BuildConcat(command, ["--parallel", jobs]);
+        }
+        status = RunBuildStep(command);
+        if (status != 0) {
+            BuildReport("native build failed");
+        }
+        return status;
+    }
+}

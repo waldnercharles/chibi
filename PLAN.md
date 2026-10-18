@@ -168,7 +168,7 @@ Current integration constraints:
   empty-mesh fix. Preserve those changes when editing test policy or fixtures.
 - Engine PR #438 landed on main at `6ea2221c9`. This branch integrates its
   release-build correction for terrain-volume assertions.
-- Engine PR #420 is a conflicted language and typed-runtime redesign. Recheck its
+- Engine PR #420 is an open language and typed-runtime redesign. Recheck its
   authoring commands, SDK manifests, language docs, plan, and test-policy
   contracts before modifying those areas.
 - Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
@@ -180,8 +180,8 @@ Current integration constraints:
 | --- | --- | --- | --- |
 | M0 | **Complete** | current main | Explicit `build` and `run` commands over existing preparation and player behavior. |
 | M1 | **Complete** | M0 | A private build-only host that executes real direct-argv processes for an authored Chibi program. |
-| M2 | **Ready** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
-| M3 | Blocked | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
+| M2 | **Complete** | M1 | A Chibi build driver that configures and builds the current stage-zero toolchain without shell-owned policy. |
+| M3 | **Ready** | M2 | Executable multi-file packages and the minimal `core:` support needed by compiler sources. |
 | M4 | Blocked | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | Blocked | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
@@ -307,7 +307,14 @@ Completion criteria:
 
 ### M2. Drive the existing build from Chibi
 
-Status: ready. This is the next action.
+Status: complete on this branch for native Linux and macOS orchestration.
+Windows retains stage zero.
+
+The installed driver, private host primitives, cache probes and focused C
+fixtures are implemented. The relocated SDK configures and builds compiler/host
+products from a clean source snapshot and assembles a standalone SDK with verified
+private-tool provenance. Python dependency/input helpers and the CMake graph remain
+transitional dependencies. See the current checkpoint for exact coverage.
 
 Write one installed `.chibi` build program that invokes the existing CMake and C
 compiler steps through M1. It owns argument construction, profile selection,
@@ -328,6 +335,8 @@ move to the internal Chibi build program. The public `chibi build` command keeps
 its authored-game meaning.
 
 ### M3. Make packages executable
+
+Status: ready. This is the next action.
 
 Extend the current package syntax and private graph into the smallest public,
 multi-file package system needed by the compiler. This milestone owns import
@@ -457,59 +466,76 @@ Last verified: 2026-10-17.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `9ea13c24bce7c470ac1cde30b2ec8f714e6f33fd`, M0
+- Starting checkpoint: `deb6eddd33ac334fa75ca49eb64c783ec7225669`, M1
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
-- Latest fetch and merge check: upstream unchanged; already up to date
-- Completed milestones: M0 and M1
-- Next action: M2, implement the installed Chibi program for native stage-zero
-  configuration/build, preserving compiler and cache precedence
+- Latest fetch and merge check: upstream unchanged; already an ancestor
+- Completed milestones: M0, M1 and M2
+- Next action: M3, add owned multi-document package analysis, then connect import
+  resolution, lowering and incremental execution through the installed SDK
 
-M1 adds `src/host/build_host.c`, `build_host.h`, `build_main.c`, the bounded
-capture API in `process.c`/`.h`, and the private stage-zero CMake targets.
-`test/tools/build_process.c` and `BuildProcessFixture.chibi` cover the real host;
-the original recording source and cases remain unchanged. No public package,
-game catalog, project format, normal command meaning or recovery path changed.
-The host is not installed into the SDK yet; installed orchestration belongs to M2.
+M2 installs `tools/toolchain/Build.chibi`, its three transitional Python helpers
+and the private `chibi-build-host` executable. The authored program owns native
+and tool-host profile arguments, compiler/SDK precedence, cache decisions and
+process sequencing. Make selects it when the host reports protocol 2; missing or
+older hosts use the retained explicit stage-zero recovery target. The host adds
+bounded owned arguments, output, text/array and filesystem primitives. Private
+host object ownership is verified against its installed executable, separately
+from public SDK products. Public command meanings and game catalogs are unchanged.
 
-Current candidate evidence:
+Final macOS candidate evidence:
 
 | Check | Result |
 | --- | --- |
-| `make build BUILD_TARGET='chibi chibi-build-host test_tools'` | Passed; final configure 3.3s, build 1.6s, separate from execution. |
-| `python3 tools/test_policy.py tool build-process`, macOS | 10 cases, 2,155 assertions, 5.054s. |
-| `python3 tools/test_policy.py tool build-process`, Linux | 10 cases, 2,154 assertions, 1.673s. |
-| `python3 tools/test_policy.py tool language-build-workflow`, macOS | 8 cases, 90 assertions, 1.228s. |
-| `python3 tools/test_policy.py tool language-build-workflow`, Linux | 8 cases, 90 assertions, 0.051s. |
-| `python3 tools/test_policy.py tool chibi-cli` | 1 case, 22 assertions, 1.381s. |
-| `make test-native` | Passed, 24.803s execution. |
-| `make test-materials` | Passed, 28.982s execution. |
-| `make test-projects` | Passed, 31.079s execution. |
-| `make test-language-all` | Passed, 18.265s execution. |
-| `make test-tools` | 125 cases, 27,270 assertions, 25.426s execution. |
+| Authored `make build`, compiler/host/tooling targets | Passed; configuration and compilation timed separately from execution. |
+| `python3 tools/test_policy.py tool build-process` | 18 cases, 2,321 assertions, 6.040s. |
+| `python3 tools/test_policy.py tool build-toolchain` | 6 cases, 107 assertions, 17.397s. |
+| `python3 tools/test_policy.py tool package-ownership` | 2 cases, 141 assertions, 4.899s. |
+| `make test-native` | Passed, 24.647s execution. |
+| `make test-materials` | Passed, 28.575s execution. |
+| `make test-projects` | Passed, 31.221s execution. |
+| `make test-language-all` | Passed, 17.978s execution. |
+| `make test-tools` | 125 cases, 27,270 assertions, 25.070s execution. |
 | Changed C files, clang-format 22; `git diff --check` | Passed. |
 
-Every execution route uses the production inherited deadline, with a 60-second
-ceiling per admitted command. macOS uses the native Debug build with assertions,
-ASan/UBSan and the installed LLVM compiler. The standalone complete tooling group
-uses its own Debug configuration. Python 3.12.14 was selected through
-`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`.
-Linux uses Clang 21.1.2, Debug assertions and Python 3.12.15 on the existing
-Rancher aarch64 VM, without sanitizers or native/desktop SDK packages. The macOS
-case checks the full ordinary game catalog; Linux's minimal catalog rejects the
-private names. Both execute real bytecode and SLJIT and verify backend counters.
+Each admitted execution command used one production 60-second deadline. Native
+macOS drivers use Debug assertions and ASan/UBSan; the standalone tooling group
+uses its separate Debug configuration. Python 3.12.14 was selected through
+`PATH=/opt/homebrew/opt/python@3.12/libexec/bin:$PATH`. Native/material/project
+results precede the additive private protocol query and final tooling fixture
+changes; final focused checks cover those changes. The recording host and public
+CLI results remain M1 evidence, not newly rerun M2 checks.
 
-Independent review found and resolved argv-zero rewriting and an invalid test
-binding. Execution exposed two macOS differences, now covered by the real-child
-cases: Python's uptime clock differs from `CLOCK_MONOTONIC`, and Darwin can return
-`EPERM` for a group containing only a completed, unreaped leader. Final review
-found no unresolved correctness or lifetime issue. Process supervision covers
-ordinary same-credential child groups; it is not containment of children that
-escape their group or change credentials.
+Linux Clang 21.1.2 / Python 3.12.15 on the existing Rancher aarch64 VM passed the
+17-case process fixture (2,316 assertions, 1.856s) and five-case toolchain fixture
+(100 assertions, 2.498s). Both backends ran with Debug assertions and no sanitizers.
+Those results precede the final OBJECT/private-process link ownership correction,
+protocol query and Make routing case; they establish Linux primitive and authored
+program behavior, not those later build/CLI changes. The VM was shut down and its
+disposable build removed after preserving evidence.
 
-Logs, configuration commands, review notes and checksums are retained under
-ignored `.chibi/evidence/toolchain-m1/`. Linux used only cached dependency source
-and disposable build directories. No engine project was configured or built by
-an authored test. Windows process-tree equivalence remains unimplemented, so its
-stage-zero path stays selected. Full native/render/Studio/browser/device and
-other quarantined suites were not run and are not passed. Repository-wide format
-was not rerun; only changed C files were checked.
+The relocated installed SDK configured and built `chibi_compiler` and
+`chibi-build-host` from clean source snapshot commit
+`acad9382e57e15cbb671d6e7ffe3ae63cc29ba3c` (tree
+`e9ee1f9e4f18fc952f6c0216486b532c73b8e018`). That snapshot contains M1 plus the M2
+candidate; it is not a publication commit. Final configuration/build passed in
+3.423s; an identical warm invocation passed in 0.281s, reported no work and kept
+cache, graph and stamp mtimes unchanged. All 1,134 installed file hashes stayed
+unchanged. Additional SDK target compilation passed in 6.900s and package assembly
+in 9.536s. The package manifest records 350 compiled objects and matching compiled
+and installed private-host identity. These are build times, outside test execution.
+This proof precedes the additive protocol query, `ZERO_AR_DATE` allowlist entry and
+final fixture changes; its source and artifact hashes are retained explicitly.
+
+Independent review found no unresolved correctness or lifetime issue. It resolved
+private archive ownership, duplicate process linkage, Darwin archive timestamps
+and old-host upgrade routing. Logs, exact commands, source manifests, installed
+identities and review evidence are retained under ignored
+`.chibi/evidence/toolchain-m2/`, including `INSTALLED-PROOF.md`. Generated proof
+checkouts, SDK copies and build trees are being removed after preserving evidence;
+cleanup status is recorded in that proof document. Shared dependency caches remain.
+
+This is stage-zero orchestration, not a self-hosted compiler. Python helpers,
+CMake and the C compiler remain required. Web, Studio and release profiles have
+not migrated. Windows stays on stage zero. Full native/render/Studio/browser/device
+and other quarantined suites were not run and are not passed. Only changed C
+files were format-checked.

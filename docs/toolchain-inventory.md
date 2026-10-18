@@ -50,7 +50,7 @@ make the compiler self-hosted.
 | --- | --- | --- | --- |
 | Project prepare and run | `src/host/chibi_main.c`, `src/host/compile_main.c`, `src/authoring/project_compile.c` | Expose stable commands first, then move orchestration into installed `.chibi` modules through the build-only host. | `test/tools/chibi_cli.c`, installed-SDK build/run, cache hit and invalidation, exact player arguments, failure status. |
 | Build-host process execution | `src/host/process.c`, `src/host/build_host.c`, `src/host/build_main.c`, `test/language/BuildWorkflow.chibi` | Private stage-zero host supplies direct argv, cwd, allowlisted environment, bounded output and deadline, error mapping, cancellation, and process-group cleanup. Keep it out of game catalogs; retain native bindings as Chibi takes ownership of orchestration. | `build-process` real-child cases on Linux/macOS and `language-build-workflow` recording parity; Windows retains stage zero pending equivalent process-tree support. |
-| Native configuration | `tools/configure.sh`, `tools/configure_native.sh`, `tools/configure_web.sh` | Chibi build modules preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
+| Native configuration | `tools/toolchain/Build.chibi`, `tools/configure_inputs.py`, `tools/configure.sh`, `tools/configure_native.sh`, `tools/configure_web.sh` | Installed Chibi program owns native orchestration; read-only Python probes and shell recovery remain until their replacement gates. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `build-toolchain` authored cases plus `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
 | Dependency acquisition and cache | `tools/dependency_package.py`, `tools/fetchcontent_cache.py`, `cmake/dependencies.cmake`, `cmake/dependency_package/` | Preserve exact dependency identities, applied patches, pristine snapshots, interprocess locking, atomic completion, and corrupt-cache rejection. | Direct cold, warm, concurrent, interrupted, and corrupt cache fixtures plus current package/configuration cases. |
 | Build logs and command display | `tools/quiet.py`, Makefile `QUIET` | Build host owns bounded capture, full failure diagnostics, log retention, pruning, concurrent writers, and signal cleanup. | Focused native fixtures for success, large output, failure, interruption, pruning, and concurrent commands. |
 | SDK and runtime packaging | `tools/package_sdk.py`, `sdk/CMakeLists.txt`, `sdk/*.cmake` | Chibi modules assemble installed outputs, enforce target/header/object ownership, retain licenses and identity, and work without source checkout. | Admitted `package`, `package-ownership`, and `desktop-dependencies`; source-free and relocated installed SDK consumers. |
@@ -77,6 +77,9 @@ tools/package_player.py
 tools/package_studio.py
 tools/install_game_runtime.py
 tools/kdl_asset.py
+tools/configure_inputs.py
+tools/dependency_package.py
+tools/fetchcontent_cache.py
 ```
 
 Remove an installed script only when the replacement is present in the installed
@@ -90,6 +93,7 @@ The current top-level migration set is:
 ```text
 tools/agent.py
 tools/dependency_package.py
+tools/configure_inputs.py
 tools/fetchcontent_cache.py
 tools/gpu_capabilities.py
 tools/install_game_runtime.py

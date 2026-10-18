@@ -3,6 +3,8 @@
 #include "authoring/source_prepare.h"
 #include "execution/module.h"
 #include "execution/status.h"
+#include "host/build_host_internal.h"
+#include "host/build_values.h"
 #include "host/process.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -13,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -30,16 +33,64 @@ static const char *const environment_names[] = {
     "DEVELOPER_DIR",
     "CHIBI_TEST_DEADLINE",
     "CHIBI_BUILD_WORKER",
+    "CC",
+    "CXX",
+    "CFLAGS",
+    "CXXFLAGS",
+    "CPPFLAGS",
+    "LDFLAGS",
+    "MACOSX_DEPLOYMENT_TARGET",
+    "CMAKE_GENERATOR",
+    "CMAKE_GENERATOR_PLATFORM",
+    "CMAKE_GENERATOR_TOOLSET",
+    "EMSDK",
+    "EMSDK_NODE",
+    "EM_CACHE",
+    "EMCC_CFLAGS",
+    "OBJC",
+    "OBJCXX",
+    "OBJCFLAGS",
+    "OBJCXXFLAGS",
+    "CMAKE_PREFIX_PATH",
+    "CMAKE_INCLUDE_PATH",
+    "CMAKE_LIBRARY_PATH",
+    "CMAKE_FRAMEWORK_PATH",
+    "CMAKE_APPBUNDLE_PATH",
+    "CPATH",
+    "C_INCLUDE_PATH",
+    "CPLUS_INCLUDE_PATH",
+    "OBJC_INCLUDE_PATH",
+    "LIBRARY_PATH",
+    "PKG_CONFIG_PATH",
+    "PKG_CONFIG_LIBDIR",
+    "PKG_CONFIG_SYSROOT_DIR",
+    "CMAKE_TOOLCHAIN_FILE",
+    "EMMAKEN_CMAKE_TOOLCHAIN",
+    "CHIBI_FETCHCONTENT_CACHE_DIR",
+    "CHIBI_DEPENDENCY_PACKAGE_CACHE_DIR",
+    "CHIBI_DEPENDENCY_PACKAGES",
+    "XDG_CACHE_HOME",
+    "CMAKE_BUILD_PARALLEL_LEVEL",
+    "MallocNanoZone",
+    "ASAN_OPTIONS",
+    "UBSAN_OPTIONS",
+    "LSAN_OPTIONS",
+    "CHIBI_DEPENDENCY_PACKAGE_KEEP",
+    "CHIBI_DEPENDENCY_PACKAGE_JOBS",
+    "EM_CONFIG",
+    "CCACHE_DIR",
+    "CCACHE_BASEDIR",
+    "CCACHE_DISABLE",
+    "CCACHE_CONFIGPATH",
+    "CCACHE_TEMPDIR",
+    "LANG",
+    "LC_ALL",
+    "ZERO_AR_DATE",
 };
-typedef struct
-{
-    const chibi_build_options *options;
-    chibi_build_result *result;
-    char *root;
-    char *environment[sizeof(environment_names) / sizeof(*environment_names) + 1];
-    double deadline;
-} build_host;
-
+_Static_assert(
+    sizeof(environment_names) / sizeof(*environment_names) < BUILD_ENVIRONMENT_CAPACITY,
+    "build environment capacity"
+);
 double chibi_build_now()
 {
     double now = chibi_process_now();
@@ -56,7 +107,7 @@ static const char *environment_value(const build_host *host, const char *name)
     }
     return "";
 }
-static const char *host_ready(build_host *host)
+const char *build_host_ready(build_host *host)
 {
     if (host->options->cancelled && *host->options->cancelled) {
         return "build process cancelled";
@@ -74,7 +125,7 @@ static char *join(const char *base, const char *name)
     snprintf(path, size, "%s/%s", base, name);
     return path;
 }
-static char *executable(build_host *host, const char *name)
+char *build_host_executable(build_host *host, const char *name)
 {
     if (name[0] == '/') {
         return xstrdup(name);
@@ -103,7 +154,9 @@ static char *executable(build_host *host, const char *name)
         char *candidate = join(base, name);
         free(base);
         free(directory);
-        if (!access(candidate, X_OK)) {
+        struct stat info;
+        if (!stat(candidate, &info) && S_ISREG(info.st_mode) &&
+            !access(candidate, X_OK)) {
             return candidate;
         }
         free(candidate);
@@ -114,13 +167,13 @@ static char *executable(build_host *host, const char *name)
     }
     return NULL;
 }
-static const char *run_step(void *service, const pin_value *arguments, pin_value *results)
+const char *build_host_run_step(void *service, const pin_value *arguments, pin_value *results)
 {
     build_host *host = service;
     if (!host) {
         return "build host service is unavailable";
     }
-    const char *failure = host_ready(host);
+    const char *failure = build_host_ready(host);
     if (failure) {
         return failure;
     }
@@ -149,7 +202,7 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
     if (!array->items[0].str[0]) {
         return "invalid build process arguments";
     }
-    char *program = executable(host, array->items[0].str);
+    char *program = build_host_executable(host, array->items[0].str);
     if (!program) {
         return "build process spawn failed";
     }
@@ -159,14 +212,10 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
     }
     argv[array->count] = NULL;
     chibi_build_result *result = host->result;
-    chibi_process_output out = {
-        .data = result->stdout_text + result->stdout_size,
-        .capacity = sizeof(result->stdout_text) - result->stdout_size,
-    };
-    chibi_process_output err = {
-        .data = result->stderr_text + result->stderr_size,
-        .capacity = sizeof(result->stderr_text) - result->stderr_size,
-    };
+    chibi_process_output out = { .data = host->last_stdout,
+                                 .capacity = sizeof(host->last_stdout) };
+    chibi_process_output err = { .data = host->last_stderr,
+                                 .capacity = sizeof(host->last_stderr) };
     result->steps++;
     chibi_process_capture_result child = chibi_process_capture(
         program,
@@ -183,10 +232,22 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
     }
     free(argv);
     free(program);
-    result->stdout_size += out.size;
-    result->stderr_size += err.size;
-    result->stdout_truncated |= out.truncated;
-    result->stderr_truncated |= err.truncated;
+    size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
+    size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
+    size_t out_copy = out.size < out_remaining ? out.size : out_remaining;
+    size_t err_copy = err.size < err_remaining ? err.size : err_remaining;
+    memcpy(result->stdout_text + result->stdout_size, out.data, out_copy);
+    memcpy(result->stderr_text + result->stderr_size, err.data, err_copy);
+    result->stdout_size += out_copy;
+    result->stderr_size += err_copy;
+    result->stdout_text[result->stdout_size] = 0;
+    result->stderr_text[result->stderr_size] = 0;
+    result->stdout_truncated |= out.truncated || out_copy != out.size;
+    result->stderr_truncated |= err.truncated || err_copy != err.size;
+    host->last_stdout_size = out.size;
+    host->last_stderr_size = err.size;
+    host->last_stdout_truncated = out.truncated;
+    host->last_stderr_truncated = err.truncated;
     switch (child.error) {
         case CHIBI_PROCESS_OK: results[0].i = child.status; return NULL;
         case CHIBI_PROCESS_INVALID_INPUT:
@@ -198,11 +259,15 @@ static const char *run_step(void *service, const pin_value *arguments, pin_value
     }
     return "build process host failure";
 }
-static const char *read_environment(void *service, const pin_value *arguments, pin_value *results)
+const char *build_host_environment(void *service, const pin_value *arguments, pin_value *results)
 {
     build_host *host = service;
     if (!host) {
         return "build host service is unavailable";
+    }
+    const char *failure = build_host_ready(host);
+    if (failure) {
+        return failure;
     }
     if (arguments[0].type != PIN_STR ||
         arguments[0].container != PIN_CONTAINER_SINGLE || !arguments[0].str) {
@@ -216,53 +281,6 @@ static const char *read_environment(void *service, const pin_value *arguments, p
     }
     return "build environment name is not allowed";
 }
-static const script_catalog_parameter step_argument = {
-    .name = "arguments",
-    .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY },
-};
-static const script_catalog_parameter status_result = { .name = "status",
-                                                        .type = { .storage = PIN_I32 } };
-static const script_catalog_parameter environment_name = { .name = "name",
-                                                           .type = { .storage = PIN_STR } };
-static const script_catalog_parameter environment_result = { .name = "value",
-                                                             .type = { .storage = PIN_STR } };
-static const script_catalog_capability capabilities[] = {
-    { .id = 901,
-      .name = "RunBuildStep",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &step_argument,
-      .parameter_count = 1,
-      .results = &status_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_HOST },
-    { .id = 902,
-      .name = "BuildEnvironment",
-      .kind = SCRIPT_CAPABILITY_FUNCTION,
-      .parameters = &environment_name,
-      .parameter_count = 1,
-      .results = &environment_result,
-      .result_count = 1,
-      .effects = SCRIPT_EFFECT_HOST },
-};
-static const script_catalog catalog = { .capabilities = capabilities,
-                                        .capability_count = 2 };
-static const node_host_call calls[] = {
-    { .service = "tool.build",
-      .invoke = run_step,
-      .missing_service = "build host service is unavailable" },
-    { .service = "tool.build",
-      .invoke = read_environment,
-      .missing_service = "build host service is unavailable" },
-};
-static bool resolve_host(void *, uint64_t id, script_lower_host *out)
-{
-    if (id != 901 && id != 902) {
-        return false;
-    }
-    static const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
-    *out = (script_lower_host){ .call = &calls[id - 901], .access = &access };
-    return true;
-}
 static void diagnose(chibi_build_result *result, const char *message)
 {
     snprintf(result->diagnostic, sizeof(result->diagnostic), "%s", message);
@@ -272,6 +290,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     *result = (chibi_build_result){ 0 };
     if (!options || !options->root || !options->source_path ||
         !options->source_text || !options->entry || !options->entry[0] ||
+        options->argument_count < 0 || options->argument_count > BUILD_MAX_ARGUMENTS ||
+        (options->argument_count && !options->arguments) ||
         !isfinite(options->deadline) || options->deadline <= 0 ||
         (options->backend != BEHAVIOR_BYTECODE && options->backend != BEHAVIOR_SLJIT) ||
         !behavior_backend_available(options->backend)) {
@@ -286,13 +306,35 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         diagnose(result, "invalid build root");
         return false;
     }
+    char *program_path = options->source_path[0] == '/'
+                           ? xstrdup(options->source_path)
+                           : join(host.root, options->source_path);
+    char *slash = strrchr(program_path, '/');
+    if (slash) {
+        slash[slash == program_path ? 1 : 0] = 0;
+    }
+    host.program_directory = realpath(program_path, NULL);
+    free(program_path);
+    if (!host.program_directory) {
+        free(host.root);
+        diagnose(result, "invalid build program directory");
+        return false;
+    }
     int count = 0;
+    size_t environment_bytes = 0;
+    bool environment_valid = true;
     for (size_t i = 0; i < sizeof(environment_names) / sizeof(*environment_names); i++) {
         const char *value = getenv(environment_names[i]);
         if (!value) {
             continue;
         }
-        size_t size = strlen(environment_names[i]) + strlen(value) + 2;
+        size_t value_size = strnlen(value, BUILD_TEXT_LIMIT + 1);
+        size_t size = strlen(environment_names[i]) + value_size + 2;
+        if (size > BUILD_TEXT_LIMIT - environment_bytes) {
+            environment_valid = false;
+            break;
+        }
+        environment_bytes += size;
         host.environment[count] = xmalloc(size);
         snprintf(host.environment[count++], size, "%s=%s", environment_names[i], value);
     }
@@ -303,8 +345,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
             break;
         }
     }
-    const char *failure = NULL;
-    if (inherited) {
+    const char *failure = environment_valid ? NULL : "build environment limit exceeded";
+    if (inherited && !failure) {
         char *end;
         double deadline = strtod(inherited, &end);
         if (end == inherited || *end || !isfinite(deadline) || deadline <= 0) {
@@ -319,17 +361,37 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     arena storage = { 0 };
     service_binding *services = NULL;
     bool success = false;
+    size_t argument_bytes = 0;
     if (!failure) {
-        failure = host_ready(&host);
+        host.arguments = build_values_array(&host.values, options->argument_count);
+        failure = host.arguments ? NULL : host.values.error;
+    }
+    for (int i = 0; !failure && i < options->argument_count; i++) {
+        const char *text = options->arguments[i];
+        size_t bytes = text ? strnlen(text, BUILD_MAX_ARGUMENT_BYTES) + 1 : 0;
+        if (!text || bytes > BUILD_MAX_ARGUMENT_BYTES - argument_bytes) {
+            failure = "invalid build host arguments";
+            break;
+        }
+        argument_bytes += bytes;
+        char *copy = build_values_text(&host.values, text, bytes - 1);
+        if (!copy) {
+            failure = host.values.error;
+            break;
+        }
+        host.arguments->items[i] = (pin_value){ .type = PIN_STR, .str = copy };
+    }
+    if (!failure) {
+        failure = build_host_ready(&host);
     }
     if (failure) {
         goto done;
     }
-    const script_lower_bindings bindings = { .host = resolve_host };
+    const script_lower_bindings bindings = { .host = build_host_resolve };
     source = authoring_source_prepare(
         options->source_path,
         options->source_text,
-        &catalog,
+        build_host_catalog(),
         &bindings,
         options->backend
     );
@@ -368,7 +430,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         failure = "build entry was not found";
         goto done;
     }
-    failure = host_ready(&host);
+    failure = build_host_ready(&host);
     if (failure) {
         goto done;
     }
@@ -396,7 +458,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
                                         : "build source execution failed";
         goto done;
     }
-    failure = host_ready(&host);
+    failure = build_host_ready(&host);
     if (!failure) {
         result->value = value.i;
         success = true;
@@ -414,5 +476,7 @@ done:
         free(host.environment[i]);
     }
     free(host.root);
+    free(host.program_directory);
+    arena_free(&host.values.memory);
     return success;
 }

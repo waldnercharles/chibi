@@ -222,9 +222,15 @@ TOOLS = {
                       '--build-process',
                       str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
                       str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
+    # Six fixed orchestration cases: 38 API invocations on both backends, one CLI,
+    # ten tiny Git roots, controlled CMake workers and Make routing; no engine builds.
+    'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                        '--build-toolchain',
+                        str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
+                        str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host'))],
     # Seven offline desktop dependency ownership cases; sixteen children, each <=10s.
     'desktop-dependencies': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--desktop-dependencies'],
-    # One configured-ownership case: 15 children, 11 rejects, six tiny C units and one PCH.
+    # Two configured-ownership cases: 21 children, 13 rejects, nine tiny C units and one PCH.
     # Host-produced .res and declared-manifest evidence; native Windows execution untested.
     # Produced fixture programs never execute; existing 10s child/60s route caps.
     'package-ownership': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package-ownership'],

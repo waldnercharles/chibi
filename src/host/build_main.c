@@ -32,7 +32,7 @@ static void cancel(int signal)
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N\n");
+    fprintf(stderr, "usage: chibi-build-host --root DIR --source FILE --entry NAME --timeout-ms N [-- ARGUMENTS...]\n");
     return 1;
 }
 #define BUILD_SOURCE_LIMIT (1024 * 1024)
@@ -75,9 +75,18 @@ static char *read_source(const char *path, double deadline)
 }
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
+        printf("%d\n", CHIBI_BUILD_HOST_PROTOCOL);
+        return 0;
+    }
     const char *root = NULL, *path = NULL, *entry = NULL;
     long timeout = 0;
+    int arguments_start = argc;
     for (int i = 1; i < argc; i += 2) {
+        if (!strcmp(argv[i], "--")) {
+            arguments_start = i + 1;
+            break;
+        }
         if (i + 1 == argc) {
             return usage();
         }
@@ -146,6 +155,8 @@ int main(int argc, char **argv)
         .source_path = source_path,
         .source_text = text,
         .entry = entry,
+        .arguments = (const char *const *)&argv[arguments_start],
+        .argument_count = argc - arguments_start,
         .backend = BEHAVIOR_BYTECODE,
         .deadline = deadline,
         .cancelled = &cancelled,

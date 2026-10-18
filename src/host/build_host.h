@@ -6,11 +6,14 @@
 
 #include <signal.h>
 
+#define CHIBI_BUILD_HOST_PROTOCOL 2
 #define CHIBI_BUILD_OUTPUT_CAPACITY 4096
 
 typedef struct
 {
     const char *root, *source_path, *source_text, *entry;
+    const char *const *arguments;
+    int argument_count;
     behavior_backend backend;
     double deadline; /* Absolute chibi_build_now() seconds; also bounded by inherited supervision. */
     const volatile sig_atomic_t *cancelled;

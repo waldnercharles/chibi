@@ -43,6 +43,11 @@ function Count Matching Entities
 # Engine internals that scenes don't author directly.
 component Drive
 
+# The private tool.build catalog is deliberately absent from game/scene hosts.
+# build-process and build-toolchain exercise all of its file, text, environment,
+# argument and process capabilities on bytecode and SLJIT; scene admission would
+# expose build authority to games. No runtime capability entries are omitted.
+
 # Move Objects is a Studio-host service rather than a runtime catalog entry.
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
 # event and scene-move covers the scene contract. It cannot run in this fixture.

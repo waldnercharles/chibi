@@ -883,12 +883,41 @@ The language follow-up admits these focused C checks under the same supervisor:
   effect replacement, failure retry and ordering, one recursive dispatch, and a
   129-system oversized-cache fallback. There are eight fixed cases; cached
   allocation assertions and retained scratch accounting complement timings.
-- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise four
+- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise five
   fixed binding-cache cases on both backends: module/owner generation changes,
   peer destruction, caller ordering, cycle rejection before writes, query-gate
   changes and dynamic dependency targets. Cache fallback uses 17 programs and
   1,025 independent constant binding rows, proving cache bounds are not execution
   limits. There are no frames, child processes or GPU work.
+  The fifth case adds managed evaluator ownership through actual source bindings:
+  a direct string binding, a boolean binding with whole numeric-array/record
+  dependency results, and a constant binding with a zero-result dependency
+  evaluator. Array pointer equality is guarded by literal true because state
+  reads snapshot separately; record equality keeps the final boolean true while
+  changed state still requires fresh owned dependencies. Direct operands avoid
+  a helper call that would become a single dependency.
+  Two fixed documents (62 and 246 bytes) prepare one module and one owner per
+  backend. The added case has four parses/analyses, two lowers/finalizations,
+  four initializer BYTECODE entries, twelve maintenance calls, six state writes
+  and 714 expected assertions on the successful path. There are 48 root
+  evaluator calls and no authored helper calls; each maintenance receives the
+  existing 10,000 budget. Selected-backend entry counts are 6, 3, 4, 4, 4, 3 per
+  backend. All calls reject unexpected backends, inspection fallback and counter
+  overflow. Cache snapshots survive replacement of state and poisoned caller
+  storage, ECS text has independent ownership, and detached results survive
+  program/module/world teardown.
+  Across both backends, the complete five-case route expects 5,588 successful
+  assertions, 40 parses/analyses, 38 lowers/finalizations, 56 explicit maintenance
+  calls and six bootstrap BYTECODE entries. The 48 evaluator calls and four
+  initializer entries above are the new case's delta, not whole-route totals;
+  the original cases' query/body/failure work remains inside the same deadline.
+  Native runs select BYTECODE and SLJIT; the existing Wasm selector retains its
+  BYTECODE/Wasm pair. Both expanded routes need independent exact-source workload
+  admission before their first run. These are planned counts, not measured
+  passes. Run the whole selected route under its unchanged shared production
+  60-second deadline, including preparation and cleanup; configuration and build
+  timing remain separate. The benchmark workload and aggregate membership are
+  unchanged.
 - `tool language-activation-cache` and `tool wasm-activation-cache` use five
   cases on both backends to check warm allocation counts, owner/default reset,
   nested tasks, read-only observation, reload, managed payloads, errors, suspended
@@ -1319,6 +1348,63 @@ integer and floating operators retain their result families. Admissibility does
 not establish these type invariants. The corpus also checks result-width changes
 within a family; malformed cross-family C union reinterpretation is outside this
 private interface's contract.
+
+`python3 tools/test_policy.py tool language-scalar-lowering-chibi` selects one
+C/pico_unit case in the existing `test_language --scalar-lowering-chibi`
+dispatcher. It compares an authored Bool/I32 value-evaluator lowering component
+with the production native emitter before optimization. This is source-only
+registration: independent exact-source and workload admission is required before
+the first supervised invocation. It is outside every native and Wasm aggregate.
+
+One embedded `tools/compiler/scalar_lowering/Lower.chibi` source, below 32 KiB,
+is prepared once for BYTECODE and once for SLJIT. Those two preparations execute
+31 named-constant bootstrap initializers each: 62 additional BYTECODE VM entries
+with the existing 100,000 context-budget argument. Source preparation and these
+initializer runs are part of the supervised workload, not configuration/build.
+Eight fixed raw typed-IR requests per backend make 16 top-level authored `Lower`
+calls. Each receives a 500,000 context budget, which child activations inherit
+and reset; neither that argument nor 16 times it is an aggregate work ceiling.
+
+Six accepted requests cover shared arithmetic/bitwise trees, signed comparisons,
+NOT and identity conversions, guarded AND/OR division, ordered Bool/I32 results,
+and nested short circuits. Two requests reject an optional type and a call
+expression. Raw expression counts are 16, 9, 8, 8, 4, 11, 1 and 1; accepted
+visited-instance counts are 22, 13, 9, 9, 6 and 15. Canonical instruction counts
+are 32, 26, 19, 18, 16 and 32; slot counts are 28, 18, 12, 12, 12 and 18.
+The component caps types/expressions/literals at 24, symbols/variables/results
+at two, IDs at four, ranges at 25 and document paths at three (240 bytes each).
+Accepted traversal allocates exactly 257 frame rows and permits at most 256
+visits/instructions, with no recursive helper call path or generated corpus.
+
+The six accepted requests across both backends and authored/reference routes
+produce 24 pre-finish canonical plans and 24 prepared serialization round trips.
+Each loaded definition runs two fixed state vectors: 48 target evaluator calls,
+24 authored-plan and 24 reference. The generated target bodies are call-free
+and receive budget 128. Four fixed AND-plan decoder mutations per backend add
+eight decoder-only rejections, with no extra authored or target invocation.
+The fixture requires actual SLJIT availability and checks backend entry counters;
+there is no Wasm fallback. Input arenas, compiler-package owners, plan/holder
+storage and serialized bytes retire before the corresponding retained outputs
+or loaded definitions are inspected or run. Pico teardown releases partial work.
+
+The only new execution-library code is a private bounded plan decoder and builder
+materializer. The private C oracle shares the existing native value-evaluator
+emitter, so its extraction also touches active production query predicates,
+binding values and dependency evaluators. Independent integration review must
+cover those callers, including managed results and zero-result dependencies;
+the new scalar-only differential does not establish that broader coverage.
+The oracle header remains private and is not installed as an SDK contract.
+
+There are no workload files, children, services, network requests, engine frames,
+GPU operations, sleeps or benchmark loops. After admission, run the complete
+fixed fixture under one unchanged production 60-second supervisor deadline,
+including preparation, initializers, calls, materialization, round trips and
+cleanup. Build/configuration timing stays separate. A timeout does not authorize
+splitting the workload. Native producer verification, optimization, finalization,
+liveness/borrowing/runtime rewriting, parallel proof, definition snapshots,
+module publication, prepared serialization and backend emission remain required.
+This evaluator component is not a completed source compiler, stage-one/stage-two
+self-build or compiler-free normal build/link path; no measured pass is recorded.
 
 `python3 tools/test_policy.py tool language-lexical-binding-chibi` compares
 lexical lookup, declaration admission and stable identity construction. Three

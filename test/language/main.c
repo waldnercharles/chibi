@@ -45,6 +45,7 @@ void test_language_package_routes_chibi();
 void test_language_package_snapshot_chibi();
 void test_language_constant_proof_chibi();
 void test_language_constant_scalar_chibi();
+void test_language_scalar_lowering_chibi();
 void test_language_lexical_binding_chibi();
 void test_language_nominal_binding_chibi();
 void test_language_named_binding_chibi();
@@ -145,6 +146,8 @@ int main(int argc, char **argv)
                                 !strcmp(argv[1], "--constant-proof-chibi");
     bool constant_scalar_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--constant-scalar-chibi");
+    bool scalar_lowering_chibi = argc == 2 &&
+                                 !strcmp(argv[1], "--scalar-lowering-chibi");
     bool lexical_binding_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--lexical-binding-chibi");
     bool nominal_binding_chibi = argc == 2 &&
@@ -204,15 +207,16 @@ int main(int argc, char **argv)
          !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
-         !constant_proof_chibi && !constant_scalar_chibi && !lexical_binding_chibi &&
-         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
-         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
-         !unit_analysis_deep && !package_execution && !package_resolution &&
-         !package_imports && !package_files && !package_core && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
+         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
+         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
+         !signature_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
+         !unit_analysis_zero_id && !unit_analysis_deep && !package_execution &&
+         !package_resolution && !package_imports && !package_files &&
+         !package_core && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -225,6 +229,7 @@ int main(int argc, char **argv)
             "--package-graph-chibi | --syntax-chibi | --package-paths-chibi | "
             "--package-routes-chibi | --package-snapshot-chibi | "
             "--constant-proof-chibi | --constant-scalar-chibi | "
+            "--scalar-lowering-chibi | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -375,6 +380,8 @@ int main(int argc, char **argv)
         test_language_constant_proof_chibi();
     } else if (constant_scalar_chibi) {
         test_language_constant_scalar_chibi();
+    } else if (scalar_lowering_chibi) {
+        test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {
         test_language_lexical_binding_chibi();
     } else if (nominal_binding_chibi) {

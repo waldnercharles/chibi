@@ -441,6 +441,19 @@ type-relation adapter or language syntax change is introduced. Union members and
 effects remain reviewed, unlinked and unexecuted drafts. Complete authored
 semantic analysis, lowering, artifact production, stage one and stage two remain
 incomplete; these focused components do not establish self-hosting.
+The Bool/I32 evaluator-lowering component is integrated as a source-only
+candidate with the focused `language-scalar-lowering-chibi` differential. Chibi
+owns the admitted typed-expression traversal and plan emission. The native
+adapter decodes that plan and retains builder verification, optimization,
+finalization/liveness/borrowing/runtime rewriting, parallel proof, definition
+snapshots, module publication, serialization and backend emission. Its private
+reference oracle shares the production value-evaluator emitter, so managed
+binding/dependency results and zero-result dependencies need the expanded
+five-case binding-schedule coverage as well as the scalar differential. Exact
+combined-source review, workload admission and applicable builds/runtime checks
+remain pending; this source integration establishes no measured pass or normal
+compiler-free build, stage-one or stage-two completion.
+
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged

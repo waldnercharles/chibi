@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Proposed, UNEXECUTED finite workload. Eight raw requests on two backends:
+/* Finite workload. Eight raw requests on two backends:
  * 16 authored Lower calls, six accepted plans x two state vectors x two
  * backends x authored/reference = 48 target runs. Two Lower.chibi preparations
  * also run 31 named-constant bootstrap initializers each: 62 additional BYTECODE
@@ -29,8 +29,8 @@
  * add no authored or target invocation. Context budget 500000 is supplied to
  * Lower; it is inherited/reset by child calls and is NOT a global work ceiling.
  * Target bodies contain no calls, loops, native callbacks, tasks or IO; their
- * supplied budget is 128. Admission and the production 60-second supervisor
- * are still required. Configuration/build timing is separate. */
+ * supplied budget is 128. One production 60-second supervisor deadline covers
+ * the fixture; configuration/build timing is separate. */
 enum
 {
     CASES = 8,

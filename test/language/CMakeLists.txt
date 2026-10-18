@@ -141,6 +141,13 @@ string(REGEX REPLACE "(..)" "0x\\1," CHIBI_SIGNATURE_READER_BYTES "${CHIBI_SIGNA
 configure_file(signature_reader_chibi_source.h.in
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/signature_reader_chibi_source.h" @ONLY)
 
+set(callable_headers_source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/callable_headers/Headers.chibi")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${callable_headers_source}")
+file(READ "${callable_headers_source}" CHIBI_CALLABLE_HEADERS_HEX HEX)
+string(REGEX REPLACE "(..)" "0x\\1," CHIBI_CALLABLE_HEADERS_BYTES "${CHIBI_CALLABLE_HEADERS_HEX}")
+configure_file(callable_headers_chibi_source.h.in
+    "${CMAKE_CURRENT_BINARY_DIR}/testing/include/callable_headers_chibi_source.h" @ONLY)
+
 # Embed the single reviewed build-flow fixture; no runtime filesystem input.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/BuildWorkflow.chibi")
@@ -176,8 +183,8 @@ set_source_files_properties(compiler_artifact_chibi.c
     "${CHIBI_LANGUAGE_TEST_ROOT}/src/toolchain/compiler_artifact.c"
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 target_link_libraries(test_language PRIVATE Chibi::asset_json)
-target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c)
-set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c
+target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c)
+set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c
     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 # Private exact constants are exercised only by the owning test dispatcher.
 target_sources(test_language PRIVATE numeric.c

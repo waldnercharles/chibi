@@ -139,7 +139,6 @@ bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *w
 void script_analyzer_declare_value(analyzer *a, TSNode node);
 void script_analyzer_declare_constant(analyzer *a, TSNode node);
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol);
-void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bool results);
 void script_analyzer_declare_function(analyzer *a, TSNode node);
 int script_analyzer_query_expression(analyzer *a, TSNode node);
 int script_analyzer_query_component(analyzer *a, TSNode node, uint64_t component, bool excluded);

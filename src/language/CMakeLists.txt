@@ -11,7 +11,7 @@ set_source_files_properties(src/parser.c PROPERTIES COMPILE_OPTIONS "-w")
 
 add_library(chibi_language STATIC semantic.c semantic_context.c identity.c component.c
     semantic_expression.c semantic_calls.c semantic_statement.c semantic_declaration.c semantic_effects.c semantic_units.c
-    semantic_recovery.c semantic_union.c semantic_record.c semantic_constant.c constant_proof.c scalar_constant.c lexical_binding.c nominal_binding.c named_binding.c type_constructors.c unit_algebra.c signature_reader.c semantic_package.c)
+    semantic_recovery.c semantic_union.c semantic_record.c semantic_constant.c constant_proof.c scalar_constant.c lexical_binding.c nominal_binding.c named_binding.c type_constructors.c unit_algebra.c signature_reader.c callable_headers.c semantic_package.c)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/semantic_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/semantic_internal.h" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/constant_proof.h"
@@ -30,6 +30,8 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/unit_algebra.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/unit_algebra.h" COPYONLY)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/signature_reader.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/signature_reader.h" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/callable_headers.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/language/callable_headers.h" COPYONLY)
 add_library(Chibi::language ALIAS chibi_language)
 set_target_properties(chibi_language PROPERTIES EXPORT_NAME language)
 chibi_sdk_headers(chibi_language PUBLIC language/semantic.h language/identity.h language/component.h)

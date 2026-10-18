@@ -243,121 +243,200 @@ Modifiers :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
         }
     }
 }
-// No new language recursion limit: this follows the existing recursive C
-// annotation reader. Callers retain finite parser trees and execution budgets.
-Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
-    depth_limit 0;
-    if (node < 0) { return Empty(environment, named.Value.Typed(0, 0, 16, cast<uint64>(0), cast<uint64>(0))); }
-    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, source):
-        if (Kind(tree, node, "type")) {
-            child := nodes[node].first_child;
-            while (child >= 0) {
-                if (named_flags[child] && Kind(tree, child, "union_type")) { return Type(environment, tree, child, scope, document); }
-                child = nodes[child].next_sibling;
-            }
-            name_node := Field(tree, node, "name");
-            arguments := Field(tree, node, "arguments");
-            switch Name(tree, name_node, document) { case .Name(name, prefix):
-                collection := name == "array" || name == "set" || name == "map";
-                nominal_wrapper := name == "struct" || name == "enum" || name == "handle";
-                if (name == "task" && arguments >= 0) {
-                    count: int = 0;
-                    argument: int = -1;
-                    child = nodes[arguments].first_child;
-                    while (child >= 0) {
-                        if (named_flags[child]) { count += 1; if (argument < 0) { argument = child; } }
-                        child = nodes[child].next_sibling;
-                    }
-                    if (count != 1) {
-                        failure := Empty(environment, named.Builtin("invalid"));
-                        errors := array_add(prefix, Diagnostic(tree, node, document, "task requires one result type"));
-                        return Modifiers(Prefix(failure, errors), tree, node);
-                    }
-                    reading := Type(environment, tree, argument, scope, document);
-                    switch reading { case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
-                        switch updated { case .Tables(names, constructor_tables, pointer_size):
-                            switch constructor_tables { case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
-                                switch AddType(types, ids, value) { case .Added(rows, pool, result_index):
-                                    facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
-                                    return Modifiers(Prefix(Construct(reading, constructors.Task(facts, result_index, cast<uint64>(0))), prefix), tree, node);
-                                }
-                            }
-                        }
-                    }
-                }
-                if (collection || nominal_wrapper) {
-                    argument: int = -1;
-                    if (arguments >= 0) {
-                        child = nodes[arguments].first_child;
-                        while (child >= 0 && argument < 0) {
-                            if (named_flags[child]) { argument = child; }
-                            child = nodes[child].next_sibling;
-                        }
-                    }
-                    reading := Empty(environment, named.Builtin("invalid"));
-                    if (argument < 0) {
-                        errors := array_add(prefix, Diagnostic(tree, node, document, format_text("Type '{}' requires a type argument", name)));
-                        reading = Prefix(reading, errors);
-                    } else { reading = Prefix(Type(environment, tree, argument, scope, document), prefix); }
-                    switch reading { case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
-                        switch value { case .Typed(old_storage, old_container, flags, nominal, parameter):
-                            storage := old_storage;
-                            container := old_container;
-                            if (collection) {
-                                container = 1;
-                                if (name == "set") { container = 2; }
-                                if (name == "map") { container = 3; }
-                            } else if (name == "enum") { storage = 16; }
-                            else if (name == "handle") { storage = 14; }
-                            return Modifiers(Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter)), tree, node);
-                        }
-                    }
-                }
-                tokens: string[] = [];
-                child = nodes[node].first_child;
-                while (child >= 0) { tokens = array_add(tokens, Text(tree, child)); child = nodes[child].next_sibling; }
-                switch environment { case .Tables(names, constructor_tables, pointer_size):
-                    return Prefix(Resolve(environment, named.Parsed(names, Request(tree, name_node, scope, document, name), tokens)), prefix);
-                }
-            }
-        }
-        if (Kind(tree, node, "union_type")) {
-            reading := Empty(environment, named.Builtin("invalid"));
-            members: named.Value[] = [];
-            child := nodes[node].first_child;
-            while (child >= 0) {
-                if (named_flags[child] && !extra_flags[child]) {
-                    switch reading { case .Read(old_value, has_unit, unit, updated, diagnostics, uses, publications):
-                        next := Type(updated, tree, child, scope, document);
-                        reading = Merge(reading, next);
-                        switch next { case .Read(value, next_has_unit, next_unit, next_environment, next_diagnostics, next_uses, next_publications):
-                            members = array_add(members, value);
-                        }
-                    }
-                }
-                child = nodes[child].next_sibling;
-            }
-            switch reading { case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
-                switch updated { case .Tables(names, constructor_tables, pointer_size):
-                    switch constructor_tables { case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
-                        rows := types;
-                        pool := ids;
-                        indices: int[] = [];
-                        foreach (item in members) {
-                            switch AddType(rows, pool, item) { case .Added(new_rows, new_pool, type_index):
-                                rows = new_rows; pool = new_pool; indices = array_add(indices, type_index);
-                            }
-                        }
-                        facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
-                        return Construct(reading, constructors.Union(facts, indices, pointer_size));
-                    }
-                }
-            }
-        }
-        switch environment { case .Tables(names, constructor_tables, pointer_size):
-            return Resolve(environment, named.Text(names, Request(tree, node, scope, document, Text(tree, node))));
+// Explicit source continuations keep callable depth independent of annotation
+// nesting. Frames and member suffixes belong to this one bounded invocation.
+Work :: struct { node: int; kind: int; child: int; member_start: int; name: string; }
+WorkValue :: pure fn(node: int, kind: int, child: int, member_start: int, name: string) -> Work {
+    row: Work = {node: node, kind: kind, child: child, member_start: member_start, name: name};
+    return row;
+}
+AppendDiagnostics :: pure fn(reading: Reading, added: syntax.Diagnostic[]) -> Reading {
+    switch reading { case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
+        combined := diagnostics;
+        foreach (item in added) { combined = array_add(combined, item); }
+        return Reading.Read(value, has_unit, unit, environment, combined, uses, publications);
+    }
+}
+Wrap :: pure fn(reading: Reading, tree: Tree, node: int, name: string) -> Reading {
+    switch reading { case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
+        switch value { case .Typed(old_storage, old_container, flags, nominal, parameter):
+            storage := old_storage;
+            container := old_container;
+            if (name == "array" || name == "set" || name == "map") {
+                container = 1;
+                if (name == "set") { container = 2; }
+                if (name == "map") { container = 3; }
+            } else if (name == "enum") { storage = 16; }
+            else if (name == "handle") { storage = 14; }
+            return Modifiers(Replace(reading, named.Value.Typed(storage, container, flags, nominal, parameter)), tree, node);
         }
     }
+}
+FinishTask :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
+    switch reading { case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
+        switch environment { case .Tables(names, constructor_tables, pointer_size):
+            switch constructor_tables { case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
+                switch AddType(types, ids, value) { case .Added(rows, pool, result_index):
+                    facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
+                    return Modifiers(Construct(reading, constructors.Task(facts, result_index, cast<uint64>(0))), tree, node);
+                }
+            }
+        }
+    }
+}
+FinishUnion :: pure fn(reading: Reading, members: named.Value[]) -> Reading {
+    switch reading { case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
+        switch environment { case .Tables(names, constructor_tables, pointer_size):
+            switch constructor_tables { case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
+                rows := types;
+                pool := ids;
+                indices: int[] = [];
+                foreach (item in members) {
+                    switch AddType(rows, pool, item) { case .Added(new_rows, new_pool, type_index):
+                        rows = new_rows; pool = new_pool; indices = array_add(indices, type_index);
+                    }
+                }
+                facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
+                return Construct(reading, constructors.Union(facts, indices, pointer_size));
+            }
+        }
+    }
+}
+NextMember :: pure fn(tree: Tree, first: int) -> int {
+    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, source):
+        child := first;
+        while (child >= 0) {
+            if (named_flags[child] && !extra_flags[child]) { return child; }
+            child = nodes[child].next_sibling;
+        }
+        return -1;
+    }
+}
+Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
+    reading := Empty(environment, named.Builtin("invalid"));
+    frames: Work[] = [];
+    members: named.Value[] = [];
+    position := node;
+    ready := false;
+    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, source):
+        while (true) {
+            if (ready) {
+                top := length(frames) - 1;
+                if (top < 0) { return reading; }
+                work := frames[top];
+                frames = slice(frames, 0, top);
+                if (work.kind == 1) {
+                    reading = FinishTask(reading, tree, work.node);
+                    continue;
+                }
+                if (work.kind == 2) {
+                    reading = Wrap(reading, tree, work.node, work.name);
+                    continue;
+                }
+                switch reading { case .Read(value, has_unit, unit, live, diagnostics, uses, publications):
+                    members = array_add(members, value);
+                }
+                next_member := NextMember(tree, work.child);
+                if (next_member >= 0) {
+                    frames = array_add(frames, WorkValue(work.node, 3, nodes[next_member].next_sibling, work.member_start, ""));
+                    position = next_member;
+                    ready = false;
+                    continue;
+                }
+                completed := slice(members, work.member_start, length(members) - work.member_start);
+                members = slice(members, 0, work.member_start);
+                reading = FinishUnion(reading, completed);
+                continue;
+            }
+            if (position < 0) {
+                reading = Replace(reading, named.Value.Typed(0, 0, 16, cast<uint64>(0), cast<uint64>(0)));
+                ready = true;
+                continue;
+            }
+            switch reading { case .Read(old_value, has_unit, unit, live, diagnostics, uses, publications):
+                if (Kind(tree, position, "type")) {
+                    union_child: int = -1;
+                    child := nodes[position].first_child;
+                    while (child >= 0 && union_child < 0) {
+                        if (named_flags[child] && Kind(tree, child, "union_type")) { union_child = child; }
+                        child = nodes[child].next_sibling;
+                    }
+                    if (union_child >= 0) { position = union_child; continue; }
+                    name_node := Field(tree, position, "name");
+                    arguments := Field(tree, position, "arguments");
+                    switch Name(tree, name_node, document) { case .Name(name, prefix):
+                        // Emit before descending, rather than retaining a prefix
+                        // on every source frame. Earlier sibling facts stay first.
+                        reading = AppendDiagnostics(reading, prefix);
+                        if (name == "task" && arguments >= 0) {
+                            count: int = 0;
+                            argument: int = -1;
+                            child = nodes[arguments].first_child;
+                            while (child >= 0) {
+                                if (named_flags[child]) { count += 1; if (argument < 0) { argument = child; } }
+                                child = nodes[child].next_sibling;
+                            }
+                            if (count != 1) {
+                                errors: syntax.Diagnostic[] = [];
+                                errors = array_add(errors, Diagnostic(tree, position, document, "task requires one result type"));
+                                reading = Modifiers(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position);
+                                ready = true;
+                                continue;
+                            }
+                            frames = array_add(frames, WorkValue(position, 1, -1, 0, ""));
+                            position = argument;
+                            continue;
+                        }
+                        if (name == "array" || name == "set" || name == "map" || name == "struct" || name == "enum" || name == "handle") {
+                            argument: int = -1;
+                            if (arguments >= 0) {
+                                child = nodes[arguments].first_child;
+                                while (child >= 0 && argument < 0) {
+                                    if (named_flags[child]) { argument = child; }
+                                    child = nodes[child].next_sibling;
+                                }
+                            }
+                            if (argument < 0) {
+                                errors: syntax.Diagnostic[] = [];
+                                errors = array_add(errors, Diagnostic(tree, position, document, format_text("Type '{}' requires a type argument", name)));
+                                reading = Wrap(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, name);
+                                ready = true;
+                                continue;
+                            }
+                            frames = array_add(frames, WorkValue(position, 2, -1, 0, name));
+                            position = argument;
+                            continue;
+                        }
+                        tokens: string[] = [];
+                        child = nodes[position].first_child;
+                        while (child >= 0) { tokens = array_add(tokens, Text(tree, child)); child = nodes[child].next_sibling; }
+                        switch live { case .Tables(names, constructor_tables, pointer_size):
+                            reading = Merge(reading, Resolve(live, named.Parsed(names, Request(tree, name_node, scope, document, name), tokens)));
+                        }
+                        ready = true;
+                        continue;
+                    }
+                }
+                if (Kind(tree, position, "union_type")) {
+                    first := NextMember(tree, nodes[position].first_child);
+                    if (first < 0) {
+                        empty_members: named.Value[] = [];
+                        reading = FinishUnion(reading, empty_members);
+                        ready = true;
+                        continue;
+                    }
+                    frames = array_add(frames, WorkValue(position, 3, nodes[first].next_sibling, length(members), ""));
+                    position = first;
+                    continue;
+                }
+                switch live { case .Tables(names, constructor_tables, pointer_size):
+                    reading = Merge(reading, Resolve(live, named.Text(names, Request(tree, position, scope, document, Text(tree, position)))));
+                }
+                ready = true;
+            }
+        }
+    }
+    return reading;
 }
 Shorthand :: pure fn(name: string) -> bool {
     names: string[] = ["u", "px", "m", "s", "ms", "rad", "deg", "Hz", "fps", "bpm", "EV", "dB", "kg", "N"];

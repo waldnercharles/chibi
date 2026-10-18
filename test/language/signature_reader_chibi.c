@@ -22,12 +22,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 24 fixed reads,48 authored calls at500,000 instructions. Seven compiler
- * sources per backend plus24 external Tree-sitter parses give38 parses total.
+/* 24 fixed reads plus one65-array deep read,50 authored calls at500,000
+ * instructions. Seven compiler
+ * sources per backend plus25 external Tree-sitter parses give39 parses total.
  * The parser supplies complete raw nodes/fields/named/extra flags; no C reader
  * result is supplied as an authored input. Request3's owned environment feeds
  * request6 within the same48calls. Inputs stay below256bytes/256nodes/depth32;
- * compiler sources below32KiB. Inputs have2scopes/2symbols/1function/2documents,
+ * the separate deep case stays below512bytes/512nodes/depth256.
+ * Compiler sources stay below32KiB. Inputs have2scopes/2symbols/1function/2documents,
  * 3catalog definitions/2variants/1import/export; one chained definition adds1.
  * Outputs:4publications/4newtypes/4uses/4diagnostics,64types/128IDs.
  * Four retained readings serialize before/after producer retirement: eight
@@ -910,6 +912,93 @@ TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match)
     printf("Signature reader:24 raw trees,48 calls,4 publications, max%d nodes/depth%d\n", max_nodes, max_depth);
     return true;
 }
+TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
+{
+    REQUIRE(prepared && parser && calls == 48 && parses == 24);
+    cleanup();
+    facts_reset(false, false);
+    char deep_source[512];
+    compiler_fixture_node deep_nodes[512];
+    int length = snprintf(deep_source, sizeof deep_source, "library Facts { Run :: fn(value: ");
+    REQUIRE(length > 0);
+    for (int i = 0; i < 65; i++) {
+        memcpy(deep_source + length, "array<", 6);
+        length += 6;
+    }
+    memcpy(deep_source + length, "int", 3);
+    length += 3;
+    for (int i = 0; i < 65; i++) {
+        deep_source[length++] = '>';
+    }
+    REQUIRE(length + sizeof ") {} }" < sizeof deep_source);
+    memcpy(deep_source + length, ") {} }", sizeof ") {} }");
+    length += (int)sizeof ") {} }" - 1;
+    scopes[0].range.end = scopes[1].range.end = length;
+    script_signature_facts context = facts(false);
+    tree = ts_parser_parse_string(parser, NULL, deep_source, (uint32_t)length);
+    REQUIRE(tree && !ts_node_has_error(ts_tree_root_node(tree)));
+    parses++;
+    int count = 0;
+    REQUIRE(compiler_fixture_nodes(ts_tree_root_node(tree), deep_nodes, 512, 256, &count));
+    int depths[512], deepest = 0;
+    for (int i = 0; i < count; i++) {
+        REQUIRE(deep_nodes[i].parent < i);
+        depths[i] = deep_nodes[i].parent < 0 ? 0 : depths[deep_nodes[i].parent] + 1;
+        if (depths[i] > deepest) {
+            deepest = depths[i];
+        }
+    }
+    REQUIRE(deepest > 64);
+    TSNode program = ts_node_named_child(ts_tree_root_node(tree), 0),
+           body = ts_node_child_by_field_name(program, "body", 4),
+           function = ts_node_named_child(body, 0),
+           parameters = ts_node_child_by_field_name(function, "parameters", 10),
+           parameter = ts_node_named_child(parameters, 0),
+           target = ts_node_child_by_field_name(parameter, "type", 4);
+    REQUIRE(!ts_node_is_null(target));
+    int target_index = -1;
+    for (int i = 0; i < count; i++) {
+        if (ts_node_eq(target, deep_nodes[i].node)) {
+            target_index = i;
+            break;
+        }
+    }
+    REQUIRE(target_index >= 0);
+    reading = script_signature_read(&oracle, &context, target, deep_source, 1, 0, false);
+    REQUIRE(
+        reading.type.storage == PIN_I32 && reading.type.container == PIN_CONTAINER_ARRAY &&
+        !reading.type.flags && !reading.type.nominal &&
+        !reading.type.parameter && !reading.unit && !reading.diagnostic_count &&
+        !reading.use_count && !reading.publication_count && !reading.type_count
+    );
+    for (int b = 0; b < 2; b++) {
+        arena_free(&input);
+        arena_free(&detached);
+        arena_free(&baseline_storage);
+        pin_value values[5], before, result;
+        REQUIRE(
+            signature_fixture_environment(&fixture, b, &context, 2, &input, &values[0]) &&
+            signature_fixture_tree(&fixture, b, deep_nodes, count, deep_source, &input, &values[1]) &&
+            !pin_value_snapshot_to_arena(&baseline_storage, &before, &values[0])
+        );
+        values[2] = integer(target_index);
+        values[3] = integer(1);
+        values[4] = integer(0);
+        REQUIRE(
+            compiler_fixture_call(&fixture, b, PACKAGE, "Type", values, 5, 500000, &detached, &result)
+        );
+        calls++;
+        arena_free(&input);
+        const pin_value *updated;
+        REQUIRE(
+            owned(&detached, &result, 0) &&
+            reading_value(b, &result, &before, &context, &reading, &updated)
+        );
+    }
+    REQUIRE(calls == 50 && parses == 25 && publication_count == 4);
+    printf("Signature deep arrays:65 wrappers,%d bytes,%d nodes/depth%d,2 calls\n", length, count, deepest);
+    return true;
+}
 TEST_CASE(signature_reader_readings_survive_all_producer_owners)
 {
     cleanup();
@@ -938,6 +1027,7 @@ void test_language_signature_reader_chibi()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(signature_reader_type_syntax_and_publication_state_match);
     RUN_TEST_CASE(signature_reader_units_names_diagnostics_and_uses_match);
+    RUN_TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth);
     RUN_TEST_CASE(signature_reader_readings_survive_all_producer_owners);
     pu_clear_setup();
     cleanup();

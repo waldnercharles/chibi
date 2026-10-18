@@ -1416,12 +1416,14 @@ before the first run, build separately and use one shared 60-second ceiling
 outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-signature-reader-chibi` compares raw
-annotation and signature reading. Three pico cases run sixteen Type and eight
-Signature requests, totaling 48 authored calls across bytecode and SLJIT at
+annotation and signature reading. Four pico cases run seventeen Type and eight
+Signature requests, totaling 50 authored calls across bytecode and SLJIT at
 500,000 instructions each. Seven compiler sources per backend, each below
-32 KiB, and 24 raw Tree-sitter inputs total 38 parses. Quoted names make four
-private JSON callbacks. Input sources are below 256 bytes with at most 256 nodes
-at depth 32; raw fields, named/extra flags and source text are preserved.
+32 KiB, and 25 raw Tree-sitter inputs total 39 parses. Quoted names make four
+private JSON callbacks. The original 24 sources are below 256 bytes with at most
+256 nodes at depth 32. One fixed 65-array annotation stays below 512 bytes,
+512 nodes and depth 256, checking helper call depth beyond the default limit.
+Raw fields, named/extra flags and source text are preserved.
 
 Input tables contain two scopes, two symbols, one function, two documents, three
 catalog definitions, two variants and one import/export; a chained returned
@@ -1433,6 +1435,23 @@ retained readings produce eight before/after serialization projections, each
 below 128 KiB, checking ownership after producer retirement. No runtime files,
 children, services or GPU work occur. Independently review before the first run,
 build separately and use one shared 60-second ceiling outside the aggregate.
+
+`python3 tools/test_policy.py tool language-callable-headers-chibi` compares
+callable header registration from raw syntax and analyzer tables. Two pico cases
+run fifteen requests on both backends: 30 Register calls at two million
+instructions each. Eight sources per backend (Headers below 64 KiB, dependencies
+below 32 KiB) and fifteen raw trees total 31 parses, with four private JSON calls.
+Inputs are below 512 bytes with at most 256 nodes at depth 32.
+
+Inputs have one scope, at most one symbol and no functions or catalog definitions.
+Outputs have at most ten symbols, two scopes, three functions, two defaults, one
+body and four uses/diagnostics; this corpus publishes no constructor definitions.
+Membership banks hold sixteen cells, with 64 types and 128 IDs. Comparisons cover
+registration changes, final tables, active membership spans, pending syntax
+references and both refreshed reader views. A complete measured header survives
+input, syntax and module retirement. No runtime files, children, services or GPU
+work occur. Independently review before the first run, build separately and use
+one shared 60-second ceiling outside the language aggregate.
 
 The compiler port also adds separately reviewed language regressions to existing
 routes. Syntax adds two fixed parses for typed declarations, labels and system

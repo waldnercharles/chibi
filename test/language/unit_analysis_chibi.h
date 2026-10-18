@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_UNIT_ANALYSIS_CHIBI_H
+#define CHIBI_TEST_UNIT_ANALYSIS_CHIBI_H
+void test_language_unit_analysis_chibi();
+#endif

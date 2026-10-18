@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_UNION_MEMBERS_CHIBI_H
+#define CHIBI_TEST_UNION_MEMBERS_CHIBI_H
+void test_language_union_members_chibi(void);
+#endif

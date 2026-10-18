@@ -644,9 +644,10 @@ TOOLS = {
     # Independent first-run review, separate build, shared 60s; outside aggregate.
     'language-unit-algebra-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                   '--unit-algebra-chibi'],
-    # Three cases: 24 raw annotation reads/48 authored calls at 500k each.
-    # Seven sources per backend (<32 KiB each) + 24 raw TS trees: 38 parses,
-    # 4 private JSON callbacks. Raw sources <256 bytes, 256 nodes/depth 32.
+    # Four cases: 25 raw annotation reads/50 authored calls at 500k each.
+    # Seven sources per backend (<32 KiB each) + 25 raw TS trees: 39 parses,
+    # 4 private JSON callbacks. Original24 sources <256 bytes,256nodes/depth32;
+    # one fixed65-array regression <512bytes/512nodes/depth256.
     # Inputs 2 scopes/2 symbols/1 function/2 documents/3 definitions/2 variants,
     # 1 import/export; a chained return adds 1 definition. Pools 64 types/128 IDs.
     # At most 4 new types/publications/uses/diagnostics; 8 retained-result
@@ -654,6 +655,16 @@ TOOLS = {
     # first-run review, separate build, shared 60s; outside language aggregate.
     'language-signature-reader-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--signature-reader-chibi'],
+    # Two cases: 15 raw declarations/30 Register calls at 2m instructions each.
+    # Eight sources/backend (Headers<64KiB, others<32KiB) + 15 raw trees:
+    # 31 parses, 4 private JSON callbacks. Sources<512 bytes,256 nodes/depth32.
+    # Input 1 scope/<=1 symbol/0 functions/catalogs; output <=10 symbols,
+    # 2 scopes/3 functions/2 defaults/1 body/4 uses and diagnostics/0 publications.
+    # Membership banks16, type pool64, ID pool128. Retained complete measured
+    # header survives input/owner retirement. No runtimeIO/children/services/GPU.
+    # Independent first-run review, separate build, shared60s; outside aggregate.
+    'language-callable-headers-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                     '--callable-headers-chibi'],
     # Eight fixed resolver cases: 24 snapshot constructions, at most 56 parses
     # and 34 imports, five files/four imports per snapshot, three owners live.
     # Each source<1KiB; no filesystem, authored execution, children or GPU.

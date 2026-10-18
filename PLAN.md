@@ -398,12 +398,18 @@ Shared unit algebra preserves parsing, dimension equality, products, formatting
 and overflow results using authored strings and term arrays.
 Raw annotation and signature reading composes those modules from complete
 syntax trees, preserving immediate constructor publication and type-use records.
+Callable headers preserve sequential generic/parameter visibility, signature
+metadata, membership and pending initializer/body references. Annotation reading
+uses explicit traversal frames so nested types do not consume callable depth.
 Bounded differential corpora pass on both backends. The actual eight-package
 snapshot closure also roundtrips through prepared executable artifacts and runs
 in fresh runtime-only processes. The normal compiler remains stage zero; this
 is not a stage-one or stage-two bootstrap.
 
-Next component: integrate callable headers, then unit analysis.
+Next component: run the prepared unit-analysis regressions, fix its deep
+evaluation and capability-zero lookup gaps, then integrate the pass. Union
+members and effects also have reviewed, unlinked drafts; none of those three
+drafts has been compiled or executed yet.
 The inactive exact-rational draft remains unused. Full-size scalar
 evaluation-budget exhaustion needs separate resource admission. Nested authored
 record fields remain unsupported; these components use flat fields and tagged
@@ -518,64 +524,93 @@ Last verified: 2026-10-18.
 
 - Repository: `chibi`
 - Branch: `codex/toolchain-cleanup-20261017`
-- Starting checkpoint: `f32849e14d524e1a0108b8bfccd33f9c6e4f8ca3`, unit algebra pushed
+- Starting checkpoint: `a6624c47c95ef7d9cbf55559620141e64a3dafdc`, annotation reader pushed
 - Integrated upstream base: `origin/main` at `6ea2221c97d266c9bb028443cb67bd445fdb3476`
 - Latest fetch: upstream unchanged and already an ancestor
 - Completed milestones: M0 through M4; M5 is in progress and M7 is ready
-- Next action: integrate callable headers
+- Next action: wire and run the unit-analysis failing regressions, then fix its evaluator
 
-`signature_reader.c` extracts raw type and signature traversal. Active analyzer
-wrappers supply syntax and current catalog/symbol tables, then append diagnostics,
-uses and materialized definitions. Constructor publications immediately update
-the reader's local catalog, so later siblings see them. Temporary names and text
-live in scratch storage; returned types, plans and nullable units are owned.
+`callable_headers.c` extracts registration policy from `semantic_declaration.c`.
+Active wrappers provide raw live tables and syntax, apply masked symbol changes,
+rebuild function membership vectors and queue original initializer/body nodes.
+Existing symbol flags and deferred count finalization are preserved. Returned
+names, units and memberships are owned; the adapter transfers them to the
+analyzer's existing heap ownership. Obsolete standalone parameter APIs were removed.
 
-`tools/compiler/signature_reader/Reader.chibi` composes named binding, type
-constructors and unit algebra from raw syntax with named/extra flags and field
-edges. It preserves union precedence, wrapper modifiers, quoted-name decoding,
-shorthand units and measured-type diagnostics. Both catalog views grow after
-each publication. A returned task environment feeds a later array annotation
-directly; no C-computed annotation decisions are supplied to authored code.
+`tools/compiler/callable_headers/Headers.chibi` owns the same sequential policy,
+including generic bounds, duplicate/origin guards, implicit results, synthetic
+entry symbols and macro entries/exits. Fifteen raw declarations compare full
+changes, final tables, pending syntax references and refreshed reader views on
+both backends. Explicit integer literals fix bootstrap generic-array inference.
 
-Three pico cases compare sixteen type and eight signature requests on bytecode
-and SLJIT, including constructor selections and full returned catalog/use views.
-Four retained readings survive input, syntax and module retirement. Preparation
-exposed a reserved `after` parameter and an empty switch arm parsed as a struct
-literal; ordinary parameter names and an explicit return preserve behavior with
-the current bootstrap. The shared raw-table packer also serves callable headers.
+A fixed 65-array annotation exposed a reader failure beyond the original shallow
+corpus. Runtime limits apply to total depth at each callee, so `depth_limit 0`
+on a recursive entry does not exempt default-limited helpers. Reader now uses
+explicit task/wrapper/union continuations and an ordered member stack; diagnostic,
+use and publication order stays intact while helper depth stays constant. The
+same deep case failed the recursive source and passes the iterative source.
+The bootstrap also requires an explicit final return after the infinite loop.
 
 | Check on the macOS candidate | Result |
 | --- | --- |
-| Authored `make build`, language/tooling/both private hosts | Passed after bootstrap syntax corrections, 6.0s. Build timing is separate. |
-| Annotation/signature reader differential | 3 cases / 111,766 assertions, 3.025s. |
-| `make test-native` | Passed, 27.142s execution. |
-| `make test-materials` | Passed, 30.203s execution. |
-| `make test-projects` | Passed, 33.186s execution. |
-| `make test-language-all` | Passed, 18.897s execution. |
-| `make test-tools` | 125 cases / 27,270 assertions, 26.464s execution. |
+| Authored `make build`, language/tooling/both private hosts | Passed after bootstrap syntax corrections, 6.2s. Build timing is separate. |
+| Annotation/signature reader differential | 4 cases / 128,443 assertions, 8.018s, including the previously failing deep case. |
+| Callable header differential | 2 cases / 89,805 assertions, 5.668s. |
+| `make test-native` | Passed, 26.867s execution. |
+| `make test-materials` | Passed, 28.916s execution. |
+| `make test-projects` | Passed, 31.584s execution. |
+| `make test-language-all` | Passed, 18.109s execution. |
+| `make test-tools` | 125 cases / 27,270 assertions, 26.627s execution. |
 | Changed C, clang-format 22; `git diff --check` | Passed. |
 
-Every execution route uses one production 60-second ceiling. The independently
-reviewed reader route has 48 calls with 500,000-instruction budgets. Seven sources
-per backend and 24 raw trees total 38 parses, with four private JSON calls.
-Sources are below 256 bytes, bounded at 256 nodes/depth 32; observed maximum was
-41 nodes/depth 14. Inputs have at most two scopes, two symbols, one function,
-two documents, three catalog definitions, two variants and one import/export.
-A chained result adds one definition. Pools hold 64 types/128 IDs; at most four
-new definitions, publications, uses or diagnostics are allowed. Eight retained
-result projections stay below 128 KiB each. No runtime files, children, services
-or GPU work occur.
+Every execution route uses one production 60-second ceiling. The callable route
+has 30 calls at two million instructions, 31 parses and four private JSON calls.
+Its header source is below 64 KiB; seven dependencies are below 32 KiB each.
+Inputs are below 512 bytes/256 nodes/depth 32. Output caps are ten symbols, two
+scopes, three functions, two defaults, one body and four uses/diagnostics; this
+corpus publishes no constructors. Membership banks have sixteen cells, with
+64 types and 128 IDs. A measured header survives all producer owners.
+
+Reader now has 50 calls at 500,000 instructions, 39 parses and four private JSON
+calls. Its added deep case has 497 bytes, 413 nodes and depth 138, within the
+reviewed 512-byte/512-node/depth-256 bounds. Original requests and ownership
+projections retain their previous bounds. No runtime files, children, services
+or GPU work occur in either focused route.
 Python 3.12.14 is selected through Homebrew PATH. Logs and static link evidence
 are under ignored `.chibi/evidence/toolchain-m5`; this checkpoint uses
-`reader-` and `build-reader` logs. No scratch executable or project
+`headers-`, `reader-` and their build logs. No scratch executable or project
 copy remains.
 
-This verifies annotation reading, not a complete compiler bootstrap. Prior
-checkpoints prove unit algebra, type construction, named/lexical binding and the
-snapshot component's executable closure in the private runtime host. Remaining
-semantic analysis, lowering,
-authored artifact construction, scanner ownership and stage-one/stage-two
-equivalence still need implementation and validation. Full-size scalar evaluation
+At the owner's request, this checkpoint also saves three **unintegrated,
+uncompiled and unexecuted drafts**: `unit_analysis`, `union_members` and
+`effect_analysis`, each with C helpers, authored source and pico fixtures. Their
+source has been reviewed and finite workloads admitted, but active adapters,
+CMake embedding, dispatcher routes and execution evidence are still pending.
+
+- Unit analysis: 29 requests, 58 calls at 500,000 instructions and 14 parses.
+  The old recursive evaluator and incorrect zero-capability guard intentionally
+  remain for the prepared failing baseline. One fixed 81-expression chain and
+  an existing capability-zero case need to fail before their fixes. Iterative
+  evaluation must preserve cache visits and dependency decisions; diagnostics
+  retain the existing positional sort and unspecified equal-position ordering.
+- Union members: 24 requests, 48 calls and 32 parses. Source calls allow two
+  million instructions; raw cycle validation allows sixteen million. The raw
+  depth boundary uses 257 definitions/fields, at most 66,049 nominal comparisons,
+  258 traversal calls and 514 persistent state writes. Positive native task
+  capability-result metadata remains uncovered by this corpus.
+- Effects: 34 requests, 68 calls at 500,000 instructions and 10 parses. One raw
+  query/cycle graph has 85 expressions. Preserve the existing function-count-plus-one
+  propagation bound, exact diagnostic phases and stable binding ordering.
+  Actual analyzed-source replays do not establish initial effect propagation;
+  separate raw seed/cycle cases cover that behavior.
+
+This verifies callable headers and annotation reading, not a complete compiler
+bootstrap. Prior checkpoints prove unit algebra, type construction, named/lexical
+binding and the snapshot component's executable closure in the private runtime
+host. Remaining
+semantic analysis, lowering, authored artifact construction, scanner ownership
+and stage-one/stage-two equivalence still need implementation and validation.
+Full-size scalar evaluation
 exhaustion remains unadmitted. No compiler implementation or stage-zero recovery
 path is deleted.
 

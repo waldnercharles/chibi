@@ -6,12 +6,18 @@
 #include "lexical_binding_chibi_source.h"
 #include "named_binding_chibi_source.h"
 #include "package_core_source.h"
+#include "package_graph_chibi_source.h"
+#include "package_paths_chibi_source.h"
+#include "package_routes_chibi_source.h"
+#include "package_snapshot_chibi_source.h"
+#include "package_syntax_chibi_source.h"
 #include "signature_fixture.h"
 #include "signature_reader_chibi_source.h"
 #include "support/asset_json.h"
 #include "syntax_chibi_source.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_json.h"
+#include "toolchain/compiler_syntax.h"
 #include "type_constructors_chibi_source.h"
 #include "types/array.h"
 #include "types/union.h"
@@ -1046,4 +1052,578 @@ void test_language_signature_reader_chibi()
     }
     arena_free(&chained_c);
     chain_catalog = (script_catalog){ 0 };
+}
+
+/* Separate proposed selector in this owner: three fixed snapshot requests,
+ * two accepted three-file orders and one two-file rejected prefix. Fourteen
+ * source files/backend, 28 preparation parses, seven C oracle parses and 14
+ * private raw parses. There are 64 top-level authored calls: six Build, 14
+ * maps, 20 tree views and 24 reader calls. See exact assertions below.
+ * No existing selector's source cap, closure or instruction budget changes. */
+enum
+{
+    SNAPSHOT_FILES = 3,
+    SNAPSHOT_NODES = 128,
+    SNAPSHOT_SOURCE_CAP = 256
+};
+static const char STATE[] = "project:analysis_state",
+                  SNAPSHOT[] = "project:source_snapshot";
+static arena snapshot_storage, map_storage[2][2],
+    view_storage[2][SNAPSHOT_FILES], direct_storage;
+static pin_value snapshot_value, mapped[2][2], views[2][SNAPSHOT_FILES];
+static int snapshot_calls, map_calls, view_calls, reader_calls, snapshot_parses;
+static int snapshot_max_nodes;
+static bool snapshot_named[2], snapshot_extra[2];
+static const char
+    snapshot_a[] = "package app\nimport lib \"project:lib\"\nA :: fn(value: "
+                   "task<int>) {}\n",
+    snapshot_lib[] = "package lib\nLib :: fn(value: u /* gap */ / s) {}\n",
+    snapshot_b[] = "package app\nB :: fn(value: Missing) {}\n";
+static const source_package_input snapshot_sources[] = {
+    { "app/A.chibi", snapshot_a, sizeof snapshot_a - 1 },
+    { "lib/Lib.chibi", snapshot_lib, sizeof snapshot_lib - 1 },
+    { "app/B.chibi", snapshot_b, sizeof snapshot_b - 1 },
+};
+static void snapshot_cleanup()
+{
+    cleanup();
+    arena_free(&snapshot_storage);
+    arena_free(&direct_storage);
+    snapshot_value = (pin_value){ 0 };
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            arena_free(&map_storage[b][i]);
+            mapped[b][i] = (pin_value){ 0 };
+        }
+        for (int i = 0; i < SNAPSHOT_FILES; i++) {
+            arena_free(&view_storage[b][i]);
+            views[b][i] = (pin_value){ 0 };
+        }
+    }
+}
+static pin_value snapshot_text(const char *s)
+{
+    size_t size = strlen(s) + 1;
+    char *copy = arena_alloc(&input, size);
+    memcpy(copy, s, size);
+    return (pin_value){ .type = PIN_STR, .str = copy };
+}
+static bool snapshot_put(pin_value *row, const char *name, pin_value value)
+{
+    const type_field *field = pin_type_field_path(pin_value_type(row), name);
+    REQUIRE(field && field->type == value.type);
+    pin_write_field(row->ptr, field, value);
+    return true;
+}
+static bool snapshot_row(int b, const char *name, pin_value *out)
+{
+    const pin_record *record = compiler_fixture_record(&fixture, b, SNAPSHOT, name, &input);
+    REQUIRE(record);
+    *out = (pin_value){ .type = PIN_STRUCT,
+                        .record = record,
+                        .type_name = record->type.name,
+                        .ptr = arena_alloc(&input, record->type.size) };
+    memset(out->ptr, 0, record->type.size);
+    return true;
+}
+static bool snapshot_pack(int b, const source_package_input *files, int count, pin_value *values)
+{
+    REQUIRE(count > 0 && count <= SNAPSHOT_FILES && snapshot_row(b, "Options", &values[0]));
+    pin_value yes = { .type = PIN_BOOL, .b = true };
+    REQUIRE(
+        snapshot_put(&values[0], "project", snapshot_text("/facts")) &&
+        snapshot_put(&values[0], "has_project", yes) &&
+        snapshot_put(&values[0], "has_options", yes) &&
+        snapshot_put(&values[0], "has_files", yes) &&
+        snapshot_put(&values[0], "has_collections", yes) &&
+        snapshot_put(&values[0], "file_count", integer(count)) &&
+        snapshot_put(&values[0], "collection_count", integer(0))
+    );
+    const pin_record *collection = compiler_fixture_record(
+        &fixture,
+        b,
+        "project:package_routes",
+        "Collection",
+        &input
+    );
+    const pin_record *record = compiler_fixture_record(&fixture, b, SNAPSHOT, "Input", &input);
+    REQUIRE(collection && record);
+    pin_array
+        *items = pin_array_snapshot_allocate(&input, PIN_STRUCT, record->type.name, count);
+    pin_array *sizes = pin_array_snapshot_allocate(&input, PIN_U64, NULL, count);
+    REQUIRE(items && sizes);
+    items->record = record;
+    values[1] = (pin_value){ .type = PIN_STRUCT,
+                             .container = PIN_CONTAINER_ARRAY,
+                             .record = collection,
+                             .type_name = collection->type.name };
+    values[2] = (pin_value){ .type = PIN_STRUCT,
+                             .container = PIN_CONTAINER_ARRAY,
+                             .record = record,
+                             .type_name = record->type.name,
+                             .ptr = items };
+    values[3] = (pin_value){ .type = PIN_U64,
+                             .container = PIN_CONTAINER_ARRAY,
+                             .ptr = sizes };
+    for (int i = 0; i < count; i++) {
+        REQUIRE(
+            files[i].size == strlen(files[i].text) && files[i].size < SNAPSHOT_SOURCE_CAP &&
+            snapshot_row(b, "Input", &items->items[i]) &&
+            snapshot_put(&items->items[i], "path", snapshot_text(files[i].path)) &&
+            snapshot_put(&items->items[i], "text", snapshot_text(files[i].text)) &&
+            snapshot_put(&items->items[i], "has_path", yes) &&
+            snapshot_put(&items->items[i], "has_text", yes)
+        );
+        sizes->items[i] = (pin_value){ .type = PIN_U64, .u64 = files[i].size };
+    }
+    return true;
+}
+static bool snapshot_build(int b, const source_package_input *files, int count, bool accepted)
+{
+    pin_value values[4];
+    REQUIRE(
+        snapshot_pack(b, files, count, values) &&
+        compiler_fixture_call(&fixture, b, SNAPSHOT, "Build", values, 4, 3000000, &snapshot_storage, &snapshot_value)
+    );
+    snapshot_calls++;
+    arena_free(&input);
+    const pin_value *payload;
+    REQUIRE(
+        tagged(b, &snapshot_value, SNAPSHOT, "Result", accepted ? "Accepted" : "Rejected", accepted ? 5 : 7, &payload)
+    );
+    const pin_array *documents, *forest, *imports;
+    REQUIRE(
+        array(&payload[accepted ? 1 : 4], PIN_STRUCT, count, &documents) &&
+        bounded_array(&payload[accepted ? 2 : 5], PIN_STRUCT, SNAPSHOT_FILES * SNAPSHOT_NODES, &forest) &&
+        bounded_array(&payload[accepted ? 3 : 6], PIN_STRUCT, 1, &imports)
+    );
+    REQUIRE(forest && forest->count > 0);
+    if (accepted) {
+        const pin_value *graph;
+        const pin_array *rows;
+        REQUIRE(
+            array(&payload[0], PIN_STRUCT, 1, &rows) &&
+            tagged(b, &payload[4], "project:package_graph", "Graph", "Accepted", 6, &graph) &&
+            array(&graph[0], PIN_STRUCT, 2, &rows) &&
+            array(&graph[1], PIN_I32, count, &rows) &&
+            array(&graph[2], PIN_I32, count, &rows) &&
+            array(&graph[3], PIN_I32, 2, &rows) &&
+            array(&graph[4], PIN_STRUCT, 1, &rows) &&
+            array(&graph[5], PIN_STRUCT, 1, &rows)
+        );
+    } else {
+        const pin_array *cycle;
+        REQUIRE(array(&payload[3], PIN_I32, 256, &cycle));
+    }
+    for (int i = 0; i < count; i++) {
+        pin_value start, size;
+        REQUIRE(
+            read(&documents->items[i], "node_start", &start) && start.type == PIN_I32 &&
+            read(&documents->items[i], "node_count", &size) &&
+            size.type == PIN_I32 && size.i >= 0 && size.i <= SNAPSHOT_NODES
+        );
+        if (accepted || i == 0) {
+            REQUIRE(
+                size.i > 0 && same_bool(&documents->items[i], "has_syntax", true) &&
+                same_int(&documents->items[i], "syntax_root", start.i)
+            );
+            if (i > 0) {
+                REQUIRE(start.i > 0);
+            }
+        } else {
+            REQUIRE(
+                size.i == 0 && same_bool(&documents->items[i], "has_syntax", false) &&
+                same_int(&documents->items[i], "syntax_root", -1)
+            );
+        }
+        REQUIRE(same_int(&documents->items[i], "root", 0));
+    }
+    return true;
+}
+static bool snapshot_map(int b, int package, const int *expected, int count, const int *inverse)
+{
+    pin_value values[] = { snapshot_value, integer(package) };
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        STATE,
+        "DocumentsForPackage",
+        values,
+        2,
+        500000,
+        &map_storage[b][package],
+        &mapped[b][package]
+    ));
+    map_calls++;
+    const pin_value *payload;
+    const pin_array *local, *global;
+    REQUIRE(
+        owned(&map_storage[b][package], &mapped[b][package], 0) &&
+        tagged(b, &mapped[b][package], STATE, "DocumentMap", "Mapped", 2, &payload) &&
+        array(&payload[0], PIN_I32, count, &local) &&
+        array(&payload[1], PIN_I32, SNAPSHOT_FILES, &global)
+    );
+    for (int i = 0; i < count; i++) {
+        REQUIRE(local->items[i].type == PIN_I32 && local->items[i].i == expected[i]);
+    }
+    for (int i = 0; i < SNAPSHOT_FILES; i++) {
+        REQUIRE(global->items[i].type == PIN_I32 && global->items[i].i == inverse[i]);
+    }
+    return true;
+}
+static bool snapshot_view(int b, int file, bool parsed)
+{
+    pin_value values[] = { snapshot_value, integer(file) };
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        STATE,
+        "TreeForDocument",
+        values,
+        2,
+        500000,
+        &view_storage[b][file],
+        &views[b][file]
+    ));
+    view_calls++;
+    const pin_value *payload;
+    REQUIRE(
+        owned(&view_storage[b][file], &views[b][file], 0) &&
+        tagged(b, &views[b][file], STATE, "DocumentTree", parsed ? "Parsed" : "Missing", parsed ? 2 : 0, &payload)
+    );
+    return true;
+}
+static bool snapshot_missing(int b, bool map, int index)
+{
+    pin_value values[] = { snapshot_value, integer(index) }, result;
+    REQUIRE(compiler_fixture_call(
+        &fixture,
+        b,
+        STATE,
+        map ? "DocumentsForPackage" : "TreeForDocument",
+        values,
+        2,
+        500000,
+        &detached,
+        &result
+    ));
+    if (map) {
+        map_calls++;
+    } else {
+        view_calls++;
+    }
+    const pin_value *payload;
+    REQUIRE(
+        owned(&detached, &result, 0) &&
+        tagged(b, &result, STATE, map ? "DocumentMap" : "DocumentTree", "Missing", 0, &payload)
+    );
+    arena_free(&detached);
+    return true;
+}
+static bool snapshot_parse(const source_package_input *file, TSNode *target, int *target_index)
+{
+    ts_tree_delete(tree);
+    tree = ts_parser_parse_string(parser, NULL, file->text, (uint32_t)file->size);
+    REQUIRE(tree && !ts_node_has_error(ts_tree_root_node(tree)));
+    snapshot_parses++;
+    REQUIRE(
+        compiler_fixture_nodes(ts_tree_root_node(tree), nodes, SNAPSHOT_NODES, DEPTH_CAP, &node_count)
+    );
+    if (node_count > snapshot_max_nodes) {
+        snapshot_max_nodes = node_count;
+    }
+    *target_index = -1;
+    for (int i = 0; i < node_count; i++) {
+        snapshot_named[ts_node_is_named(nodes[i].node)] = true;
+        snapshot_extra[ts_node_is_extra(nodes[i].node)] = true;
+        if (!strcmp(ts_node_type(nodes[i].node), "parameter")) {
+            *target = ts_node_child_by_field_name(nodes[i].node, "type", 4);
+        }
+    }
+    REQUIRE(!ts_node_is_null(*target));
+    for (int i = 0; i < node_count; i++) {
+        if (ts_node_eq(nodes[i].node, *target)) {
+            *target_index = i;
+        }
+    }
+    REQUIRE(*target_index >= 0);
+    return true;
+}
+static bool snapshot_read(
+    int b,
+    int file,
+    int document,
+    const source_package_input *source,
+    TSNode target,
+    int target_index,
+    int retain_slot
+)
+{
+    /* The complete direct Tree.Raw and both readings must match. The adapter
+     * cannot substitute filtered children, token spelling, or a C reading. */
+    const pin_value *view;
+    pin_value values[5], direct_tree, direct_result, adapted_result, before;
+    REQUIRE(
+        tagged(b, &views[b][file], STATE, "DocumentTree", "Parsed", 2, &view) &&
+        view[1].type == PIN_I32 && view[1].i == 0 &&
+        signature_fixture_tree(&fixture, b, nodes, node_count, source->text, &input, &direct_tree) &&
+        pin_value_equal(&view[0], &direct_tree)
+    );
+    facts_reset(false, false);
+    script_signature_facts context = facts(false);
+    context.named.import_count = 0;
+    context.named.document_count = document + 1;
+    for (int i = 0; i <= document; i++) {
+        documents[i].key = i == document ? source->path : "app/sibling.chibi";
+    }
+    REQUIRE(target_index >= 0);
+    reading = script_signature_read(&oracle, &context, target, source->text, 1, document, true);
+    if (source->text == snapshot_a) {
+        REQUIRE(
+            reading.publication_count == 1 && reading.type_count == 1 &&
+            (reading.type.flags & SCRIPT_TYPE_TASK) && !reading.diagnostic_count
+        );
+    }
+    if (source->text == snapshot_lib) {
+        REQUIRE(reading.unit && !strcmp(reading.unit, "u/s") && !reading.diagnostic_count);
+    }
+    if (source->text == snapshot_b) {
+        REQUIRE(
+            reading.diagnostic_count > 0 && reading.diagnostic_count <= 4 &&
+            reading.diagnostics[0].range.document == document
+        );
+    }
+    REQUIRE(
+        signature_fixture_environment(&fixture, b, &context, 2, &input, &values[0]) &&
+        !pin_value_snapshot_to_arena(&baseline_storage, &before, &values[0])
+    );
+    values[1] = direct_tree;
+    values[2] = integer(target_index);
+    values[3] = integer(1);
+    values[4] = integer(document);
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "Signature", values, 5, 500000, &direct_storage, &direct_result)
+    );
+    reader_calls++;
+    values[1] = view[0];
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "Signature", values, 5, 500000, &detached, &adapted_result)
+    );
+    reader_calls++;
+    arena_free(&input);
+    arena_free(&view_storage[b][file]);
+    views[b][file] = (pin_value){ 0 };
+    const pin_value *updated;
+    REQUIRE(
+        owned(&direct_storage, &direct_result, 0) &&
+        owned(&detached, &adapted_result, 0) &&
+        pin_value_equal(&direct_result, &adapted_result) &&
+        reading_value(b, &adapted_result, &before, &context, &reading, &updated)
+    );
+    if (retain_slot >= 0) {
+        REQUIRE(retain_slot < 2);
+        REQUIRE(
+            !pin_value_snapshot_to_arena(&retained[b][retain_slot], &kept[b][retain_slot], &adapted_result) &&
+            serialize(&kept[b][retain_slot], &golden[b][retain_slot])
+        );
+    }
+    arena_free(&oracle);
+    arena_free(&baseline_storage);
+    arena_free(&detached);
+    arena_free(&direct_storage);
+    return true;
+}
+static bool snapshot_request(int request)
+{
+    static const int order[2][SNAPSHOT_FILES] = { { 0, 1, 2 }, { 1, 2, 0 } };
+    static const int members[2][2][2] = { { { 0, 2 }, { 1, -1 } },
+                                          { { 0, -1 }, { 1, 2 } } };
+    static const int counts[2][2] = { { 2, 1 }, { 1, 2 } };
+    static const int inverse[2][2][SNAPSHOT_FILES] = { { { 0, -1, 1 }, { -1, 0, -1 } },
+                                                       { { 0, -1, -1 }, { -1, 0, 1 } } };
+    static const int package_for_file[2][SNAPSHOT_FILES] = { { 0, 1, 0 }, { 0, 1, 1 } };
+    source_package_input files[SNAPSHOT_FILES];
+    for (int i = 0; i < SNAPSHOT_FILES; i++) {
+        files[i] = snapshot_sources[order[request][i]];
+    }
+    snapshot_cleanup();
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(snapshot_build(b, files, SNAPSHOT_FILES, true));
+        const pin_value *value, *graph;
+        const pin_array *dependency_order;
+        REQUIRE(
+            tagged(b, &snapshot_value, SNAPSHOT, "Result", "Accepted", 5, &value) &&
+            tagged(b, &value[4], "project:package_graph", "Graph", "Accepted", 6, &graph) &&
+            array(&graph[3], PIN_I32, 2, &dependency_order)
+        );
+        REQUIRE(
+            dependency_order->items[0].i == (request == 0 ? 1 : 0) &&
+            dependency_order->items[1].i == (request == 0 ? 0 : 1)
+        );
+        for (int p = 0; p < 2; p++) {
+            REQUIRE(
+                snapshot_map(b, p, members[request][p], counts[request][p], inverse[request][p])
+            );
+        }
+        for (int i = 0; i < SNAPSHOT_FILES; i++) {
+            REQUIRE(snapshot_view(b, i, true));
+        }
+        REQUIRE(snapshot_missing(b, true, -1) && snapshot_missing(b, false, SNAPSHOT_FILES));
+        /* Views and maps must own their outputs after the input snapshot dies. */
+        arena_free(&snapshot_storage);
+        snapshot_value = (pin_value){ 0 };
+    }
+    /* Each oracle tree is parsed once, shared read-only across both backends. */
+    for (int i = 0; i < SNAPSHOT_FILES; i++) {
+        TSNode target = { 0 };
+        int target_index;
+        REQUIRE(snapshot_parse(&files[i], &target, &target_index));
+        for (int b = 0; b < 2; b++) {
+            const pin_value *mapping;
+            REQUIRE(
+                tagged(b, &mapped[b][package_for_file[request][i]], STATE, "DocumentMap", "Mapped", 2, &mapping)
+            );
+            const pin_array *local = mapping[1].ptr;
+            REQUIRE(
+                local && local->items[i].type == PIN_I32 &&
+                local->items[i].i == inverse[request][package_for_file[request][i]][i]
+            );
+            REQUIRE(snapshot_read(
+                b,
+                i,
+                local->items[i].i,
+                &files[i],
+                target,
+                target_index,
+                request == 0 && i == 2   ? 0
+                : request == 1 && i == 0 ? 1
+                                         : -1
+            ));
+        }
+    }
+    return true;
+}
+TEST_CASE(snapshot_reader_interleaved_packages_and_reordered_documents_match)
+{
+    const source_package_input sources[] = {
+        { "analysis_state/State.chibi",
+          ANALYSIS_STATE_CHIBI_SOURCE,
+          sizeof ANALYSIS_STATE_CHIBI_SOURCE - 1 },
+        { "signature_reader/Reader.chibi",
+          SIGNATURE_READER_CHIBI_SOURCE,
+          sizeof SIGNATURE_READER_CHIBI_SOURCE - 1 },
+        { "named_binding/Binding.chibi",
+          NAMED_BINDING_CHIBI_SOURCE,
+          sizeof NAMED_BINDING_CHIBI_SOURCE - 1 },
+        { "type_constructors/Constructors.chibi",
+          TYPE_CONSTRUCTORS_CHIBI_SOURCE,
+          sizeof TYPE_CONSTRUCTORS_CHIBI_SOURCE - 1 },
+        { "unit_algebra/Units.chibi",
+          UNIT_ALGEBRA_CHIBI_SOURCE,
+          sizeof UNIT_ALGEBRA_CHIBI_SOURCE - 1 },
+        { "lexical_binding/Binding.chibi",
+          LEXICAL_BINDING_CHIBI_SOURCE,
+          sizeof LEXICAL_BINDING_CHIBI_SOURCE - 1 },
+        { "syntax_diagnostics/Diagnostics.chibi",
+          SYNTAX_CHIBI_SOURCE,
+          sizeof SYNTAX_CHIBI_SOURCE - 1 },
+        { "/sdk/core/strings/Strings.chibi",
+          CORE_STRINGS_SOURCE,
+          sizeof CORE_STRINGS_SOURCE - 1 },
+        { "source_snapshot/Snapshot.chibi",
+          PACKAGE_SNAPSHOT_CHIBI_SOURCE,
+          sizeof PACKAGE_SNAPSHOT_CHIBI_SOURCE - 1 },
+        { "compiler_syntax/Syntax.chibi",
+          COMPILER_SYNTAX_CHIBI_SOURCE,
+          sizeof COMPILER_SYNTAX_CHIBI_SOURCE - 1 },
+        { "package_routes/Routes.chibi",
+          PACKAGE_ROUTES_CHIBI_SOURCE,
+          sizeof PACKAGE_ROUTES_CHIBI_SOURCE - 1 },
+        { "package_syntax/Extract.chibi",
+          PACKAGE_SYNTAX_CHIBI_SOURCE,
+          sizeof PACKAGE_SYNTAX_CHIBI_SOURCE - 1 },
+        { "package_graph/Graph.chibi",
+          PACKAGE_GRAPH_CHIBI_SOURCE,
+          sizeof PACKAGE_GRAPH_CHIBI_SOURCE - 1 },
+        { "package_paths/Paths.chibi",
+          PACKAGE_PATHS_CHIBI_SOURCE,
+          sizeof PACKAGE_PATHS_CHIBI_SOURCE - 1 },
+    };
+    size_t total = 0;
+    for (int i = 0; i < 14; i++) {
+        /* Keep reader's existing 32 KiB bound and snapshot's stricter 16 KiB.
+         * Shared syntax/strings retain the stricter snapshot bound as well. */
+        REQUIRE(sources[i].size < (i > 5 ? 16384 : 32768));
+        total += sources[i].size;
+    }
+    REQUIRE(total < 128 * 1024 && sizeof ANALYSIS_STATE_CHIBI_SOURCE < 8192);
+    const native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&fixture, sources, 14, packs, 2));
+    parser = ts_parser_new();
+    REQUIRE(parser && ts_parser_set_language(parser, tree_sitter_chibi()));
+    REQUIRE(snapshot_request(0) && snapshot_request(1));
+    REQUIRE(
+        snapshot_calls == 4 && map_calls == 12 && view_calls == 16 &&
+        reader_calls == 24 && snapshot_parses == 6 && snapshot_named[0] &&
+        snapshot_named[1] && snapshot_extra[0] && snapshot_extra[1]
+    );
+    return true;
+}
+TEST_CASE(snapshot_reader_rejected_prefix_keeps_only_parsed_document)
+{
+    snapshot_cleanup();
+    source_package_input files[] = { snapshot_sources[0], snapshot_sources[1] };
+    files[1].path = "/outside/Lib.chibi";
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(
+            snapshot_build(b, files, 2, false) && snapshot_view(b, 0, true) &&
+            snapshot_view(b, 1, false) && snapshot_missing(b, true, 0)
+        );
+        arena_free(&snapshot_storage);
+        snapshot_value = (pin_value){ 0 };
+    }
+    TSNode target = { 0 };
+    int target_index;
+    REQUIRE(snapshot_parse(&files[0], &target, &target_index));
+    for (int b = 0; b < 2; b++) {
+        pin_value direct;
+        const pin_value *view;
+        REQUIRE(
+            tagged(b, &views[b][0], STATE, "DocumentTree", "Parsed", 2, &view) &&
+            signature_fixture_tree(&fixture, b, nodes, node_count, files[0].text, &input, &direct) &&
+            pin_value_equal(&view[0], &direct) && view[1].type == PIN_I32 &&
+            view[1].i == 0
+        );
+        arena_free(&input);
+    }
+    REQUIRE(
+        snapshot_calls == 6 && map_calls == 14 && view_calls == 20 &&
+        reader_calls == 24 && snapshot_parses == 7
+    );
+    printf("Snapshot reader:3 requests,64 calls,7 C trees,14 raw parses,28 preparation parses; max %d nodes\n", snapshot_max_nodes);
+    return true;
+}
+void test_language_snapshot_reader_chibi()
+{
+    snapshot_calls = map_calls = view_calls = reader_calls = snapshot_parses = snapshot_max_nodes = 0;
+    memset(snapshot_named, 0, sizeof snapshot_named);
+    memset(snapshot_extra, 0, sizeof snapshot_extra);
+    pu_setup(NULL, snapshot_cleanup);
+    RUN_TEST_CASE(snapshot_reader_interleaved_packages_and_reordered_documents_match);
+    RUN_TEST_CASE(snapshot_reader_rejected_prefix_keeps_only_parsed_document);
+    RUN_TEST_CASE(signature_reader_readings_survive_all_producer_owners);
+    pu_clear_setup();
+    snapshot_cleanup();
+    compiler_fixture_free(&fixture);
+    ts_parser_delete(parser);
+    parser = NULL;
+    for (int b = 0; b < 2; b++) {
+        for (int i = 0; i < 2; i++) {
+            arena_free(&retained[b][i]);
+            kept[b][i] = (pin_value){ 0 };
+            free(golden[b][i]);
+            golden[b][i] = NULL;
+        }
+    }
 }

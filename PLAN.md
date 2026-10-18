@@ -535,28 +535,32 @@ self-hosting. All Chibi project policy called by them belongs in `.chibi`.
 Last verified upstream checkpoint: 2026-10-18 at
 `9bf6e2754ad1f9dd1ea6a135f9d66b7b081d772d`.
 
-The current reviewable increment wires the saved unit-analysis draft into
-stage-zero language builds and adds its full differential route plus independent
-zero-ID and deep-chain baseline selectors. The C oracle is extracted but not yet
-used by the active analyzer. Both original focused selectors compiled and ran
-under the unchanged production 60-second supervisor, but failed during source
-snapshot preparation before either C witness or authored Analyze invocation.
-Studio run `39110139847` pins source `f2624cb2963c7327487a3c499f7a725d0ed3252f`
-and control `8ddbb30cbb80331ea77d9ccfbf6efbe0c45f213b`; verified minimal evidence
-SHA256 is `3e3af6c668ba9b2f110e8aef489517663be45869a199c92e6bc37d24d73781b6`.
-Configuration took 5s and build 22s, separately from execution.
+The current increment wires the saved unit-analysis differential and independent
+zero-ID/deep-chain selectors. Source `587c3d2dc3985fec4226ec15fc7ff141e3b309d9`
+prepares successfully after private reserved-name renames and explicit integer
+array-item typing. Studio run `39110782016` built that exact source and proved the
+zero-ID mismatch on both bytecode and SLJIT against independent C witnesses.
+Its deep-chain case reached both C witnesses and produced two runtime failures,
+but root-context metadata did not establish the intended failure category.
+Verified status evidence SHA256:
+`3d94c9543589fee4ccf5725e172fefba7bc2f7be9591fa8c0e3bf92c93400593`.
+Configuration took 1s and build 20s; each focused execution took about 1s.
 
-Source review identified bare reserved identifiers (`state`, `event`, `after`)
-and three untyped numeric arguments to generic integer-array helpers. This
-preparation correction renames only those private identifiers and makes the
-three item literals explicitly `int`. It changes no grammar, test workload,
-zero-capability guard, recursive evaluator, instruction budget or deadline.
-Successful preparation and both intended red observations on this corrected
-candidate are still pending; the earlier failures do not establish either
-semantic regression. After that red evidence, apply the independently reviewed
-iterative evaluator/zero-ID repair, run the complete differential and affected
-admitted checks, then integrate the active adapter. No milestone is newly
-complete and no recovery path is removed.
+The fixture now records the first failure through the existing runtime observer
+before child frames retire, retaining only the category, step count and an owned
+bounded diagnostic message. Successful call behavior and backend selection are
+unchanged; no runtime failure propagation or evaluator policy is modified.
+Raw diagnostics remain runner-local. The original zero-ID guard and recursive
+evaluator remain intact until the intended deep failure is observed accurately.
+
+Both fixed selectors retain two backend calls, ten preparation parses, the
+existing budget argument and one actual 60-second production deadline each.
+That instruction budget is inherited/reset per activation, not an aggregate
+whole-call work ceiling; the finite fixed graphs and wall-clock supervisor bound
+this corpus. No budget or deadline is increased. Successful intended-deep
+classification on this observer candidate remains pending. Then apply the
+reviewed iterative/zero-ID repair and active adapter, and validate the exact
+combined differential and affected contracts. No milestone is newly complete.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

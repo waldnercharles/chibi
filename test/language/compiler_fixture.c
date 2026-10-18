@@ -157,11 +157,36 @@ const pin_record *compiler_fixture_record(
 }
 typedef struct
 {
+    bool observed;
+    behavior_function_failure category;
+    uintptr_t steps;
+    char message[192];
+} failure_state;
+typedef struct
+{
     behavior_function_context context;
     behavior_function_activation activation;
     arena producer;
     pin_value result;
+    failure_state failure;
 } call_state;
+static void observe_failure(const behavior_function *, const behavior_function_context *context, int)
+{
+    failure_state *failure = context->inspection_user;
+    if (failure->observed) {
+        return;
+    }
+    /* Child contexts retire during unwind; retain only this first observation. */
+    failure->observed = true;
+    failure->category = context->failure;
+    failure->steps = context->error_steps;
+    snprintf(
+        failure->message,
+        sizeof failure->message,
+        "%s",
+        context->error_message ? context->error_message : ""
+    );
+}
 static bool run(
     const compiler_fixture *fixture,
     int backend,
@@ -201,7 +226,9 @@ static bool run(
         .arguments = arguments,
         .argument_count = count,
         .results = &state->result,
-        .budget = (uintptr_t)budget
+        .budget = (uintptr_t)budget,
+        .inspection_user = &state->failure,
+        .failure_observer = observe_failure
     };
     behavior_function_bind_storage(&state->context, &state->producer);
     REQUIRE(behavior_function_bind(function, &state->context, NULL, 0));
@@ -211,11 +238,15 @@ static bool run(
     behavior_run_scope_end(&runs);
     if (status != FLOW_OK || !state->context.returned) {
         const behavior_function_context *context = &state->context;
-        const char *failure = context->failure == BEHAVIOR_FUNCTION_DEPTH
-                                ? "depth"
-                            : context->failure == BEHAVIOR_FUNCTION_BUDGET
-                                ? "budget"
-                                : "other";
+        const failure_state *observed = &state->failure;
+        behavior_function_failure category = observed->observed ? observed->category
+                                                                : context->failure;
+        uintptr_t steps = observed->observed ? observed->steps : context->error_steps;
+        const char *message = observed->observed ? observed->message
+                                                 : context->error_message;
+        const char *failure = category == BEHAVIOR_FUNCTION_DEPTH  ? "depth"
+                            : category == BEHAVIOR_FUNCTION_BUDGET ? "budget"
+                                                                   : "other";
         fprintf(
             stderr,
             "compiler fixture failure: backend=%s package=%s entry=%s "
@@ -227,9 +258,9 @@ static bool run(
             status,
             context->returned,
             failure,
-            context->failure,
-            (size_t)context->error_steps,
-            context->error_message ? context->error_message : ""
+            category,
+            (size_t)steps,
+            message ? message : ""
         );
     }
     REQUIRE(status == FLOW_OK && state->context.returned);

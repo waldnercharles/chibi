@@ -101,18 +101,21 @@ static size_t calls_fixed_bytes(const struct behavior_function_calls *calls)
     return sizeof *calls + sizeof(dyna_hdr) +
            (size_t)acap(calls->frames) * sizeof *calls->frames;
 }
-/* Frees the least recently retired spares until they and the stack fit
- * `budget`. */
+/* Keeps the most recently retired spares that fit `budget` with the stack
+ * and frees the rest, in one pass over the list. */
 static void trim_spares(struct behavior_function_calls *calls, size_t budget)
 {
-    while (calls->spare && calls_fixed_bytes(calls) + calls->spare_bytes > budget) {
-        invocation_frame **oldest = &calls->spare;
-        while ((*oldest)->next) {
-            oldest = &(*oldest)->next;
-        }
-        calls->spare_bytes -= (*oldest)->bytes;
-        frame_free(*oldest, FLOW_OK);
-        *oldest = NULL;
+    size_t used = calls_fixed_bytes(calls);
+    invocation_frame **kept = &calls->spare;
+    while (*kept && used + (*kept)->bytes <= budget) {
+        used += (*kept)->bytes;
+        kept = &(*kept)->next;
+    }
+    while (*kept) {
+        invocation_frame *frame = *kept;
+        *kept = frame->next;
+        calls->spare_bytes -= frame->bytes;
+        frame_free(frame, FLOW_OK);
     }
 }
 
@@ -124,7 +127,8 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     arena_reset(&frame->storage);
     frame->invocation = (behavior_function_invocation){ 0 };
     /* Live frames are an execution requirement, not an idle-retention budget.
-     * Count the reusable list and its vector capacity before adding this one. */
+     * A frame that cannot fit beside the stack's vector is freed at once. A
+     * full list drops to half the budget, so trims stay rare. */
     frame->bytes = frame_bytes(frame);
     if (calls_fixed_bytes(calls) + frame->bytes > CALL_RUN_CACHE_BYTES) {
         frame_free(frame, FLOW_OK);
@@ -133,7 +137,9 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     frame->next = calls->spare;
     calls->spare = frame;
     calls->spare_bytes += frame->bytes;
-    trim_spares(calls, CALL_RUN_CACHE_BYTES);
+    if (calls_fixed_bytes(calls) + calls->spare_bytes > CALL_RUN_CACHE_BYTES) {
+        trim_spares(calls, CALL_RUN_CACHE_BYTES / 2);
+    }
 }
 
 void behavior_function_calls_free(struct behavior_function_calls *calls)
@@ -164,9 +170,7 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
 static int settle_calls(struct behavior_function_calls *calls, int result)
 {
     calls->result = result;
-    if (result >= 0) {
-        trim_spares(calls, CALL_CACHE_BYTES);
-    }
+    trim_spares(calls, CALL_CACHE_BYTES);
     if (result == FLOW_OK) {
         behavior_function_calls_reset(calls);
     }

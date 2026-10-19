@@ -114,6 +114,15 @@ typedef struct
     uint64_t *components;
     bool result;
 } behavior_component_proof;
+/* Whether a call may pass arguments without copying them; zero is unknown. */
+typedef enum
+{
+    BEHAVIOR_SHARING_UNKNOWN,
+    BEHAVIOR_SHARING_SAFE,
+    BEHAVIOR_SHARING_COPY,
+    BEHAVIOR_SHARING_PENDING_SAFE,
+    BEHAVIOR_SHARING_PENDING_COPY
+} behavior_argument_sharing;
 struct behavior_function
 {
     arena owned;
@@ -133,6 +142,7 @@ struct behavior_function
         checkpoints, pin_watches;
     /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
     bool readonly_collections;
+    behavior_argument_sharing argument_sharing;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;

@@ -757,6 +757,13 @@ and checks every item of a borrowed scalar array, so the writer keeps its
 tables in one function; stage-one code must do the same until borrowing covers
 records. The bounded compiler is its first caller.
 
+That rule no longer binds stage-one code. Calls copied every argument, so a
+helper that read one row of a 4,000-row table cost 11 s for 4,000 calls. A
+callee that leaves the caller's storage untouched now receives its arguments
+without copies (see "Read-only plain-array traversals" in
+`docs/code-language.md`); the same loop takes 0.1 s. Reads through a `ref`
+parameter still copy the referenced value.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

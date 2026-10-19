@@ -3,12 +3,14 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
+#include "execution/module_effects.h"
 #include "execution/prepared.h"
 #include "execution/program_internal.h"
 #include "execution/status.h"
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/copy.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -991,6 +993,271 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     return true;
 }
 
+/* Calls pass arguments without copies only when the callee leaves the caller's
+ * storage untouched: writes through argument items, state stores and real
+ * suspension copy; reads, private writes, results and pauses share. */
+TEST_CASE(borrow_argument_sharing_rejects_writes_through_caller_storage)
+{
+    static const struct
+    {
+        int kind;
+        behavior_argument_sharing expected;
+    } cases[] = {
+        { COUNT, BEHAVIOR_SHARING_SAFE },
+        { PAYLOAD, BEHAVIOR_SHARING_SAFE },
+        { CAPACITY, BEHAVIOR_SHARING_SAFE },
+        { IDENTITY, BEHAVIOR_SHARING_SAFE },
+        { RAW_WRITE, BEHAVIOR_SHARING_COPY },
+        { VARIABLE_ALIAS, BEHAVIOR_SHARING_COPY },
+        { RESULT_ALIAS, BEHAVIOR_SHARING_SAFE },
+        { HOST_ALIAS, BEHAVIOR_SHARING_SAFE },
+        { SAVED_ALIAS, BEHAVIOR_SHARING_SAFE },
+        { VM_ALIAS, BEHAVIOR_SHARING_SAFE },
+        { PAUSE, BEHAVIOR_SHARING_SAFE },
+        { WAIT, BEHAVIOR_SHARING_COPY },
+        { OPAQUE, BEHAVIOR_SHARING_SAFE },
+        { ESCAPE, BEHAVIOR_SHARING_SAFE },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        cleanup();
+        REQUIRE(fixture(cases[i].kind));
+        REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_UNKNOWN);
+        execution_prepare_argument_sharing(function);
+        REQUIRE(function->argument_sharing == cases[i].expected);
+    }
+    return true;
+}
+
+/* Module functions keep source order. */
+enum
+{
+    SELECTED,
+    CONTEXT_PATH,
+    LAUNDERED,
+    SQUARE_ROOT
+};
+/* Definitions no lowering emits that could still reach caller storage: a
+ * select between pointers and an address derived from the context or from a
+ * cell holding the argument. A math helper stays safe. */
+static bool hand_built(int kind)
+{
+    builder = behavior_function_builder_new();
+    pin_value output = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, &array_shape, 1, &output, 1, NULL, 0);
+    int cell = behavior_function_builder_values(builder, &array_shape, 1);
+    int argument = value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_ARGUMENT,
+                                         .value = array_shape },
+        true
+    );
+    int number = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 2 } },
+        false
+    );
+    int address = -1;
+    if (kind == SELECTED) {
+        int empty = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = BF_POINTER_TYPE,
+                                             .value = { .type = BF_POINTER_TYPE } },
+            true
+        );
+        int choice = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = PIN_BOOL,
+                                             .value = { .type = PIN_BOOL } },
+            false
+        );
+        address = value(
+            (behavior_function_instruction){ .op = BF_SELECT,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = choice,
+                                             .right = empty,
+                                             .target = argument },
+            true
+        );
+    } else if (kind == CONTEXT_PATH || kind == LAUNDERED) {
+        int base;
+        if (kind == CONTEXT_PATH) {
+            base = value(
+                (behavior_function_instruction){ .op = BF_CONTEXT,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .target = 1 },
+                true
+            );
+        } else {
+            base = host_address(cell);
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = argument,
+                                                  .right = base,
+                                                  .offset = offsetof(pin_value, d) });
+        }
+        int zero = value(
+            (behavior_function_instruction){ .op = BF_CONSTANT,
+                                             .type = BF_POINTER_TYPE,
+                                             .value = { .type = BF_POINTER_TYPE } },
+            false
+        );
+        int derived = value(
+            (
+                behavior_function_instruction
+            ){ .op = BF_ADD, .type = BF_POINTER_TYPE, .left = base, .right = zero },
+            true
+        );
+        address = value(
+            (behavior_function_instruction){
+                .op = BF_LOAD,
+                .type = BF_POINTER_TYPE,
+                .left = derived,
+                .offset = kind == CONTEXT_PATH
+                            ? offsetof(behavior_function_context, arguments)
+                            : offsetof(pin_value, d) },
+            true
+        );
+    }
+    if (address >= 0) {
+        emit((behavior_function_instruction){ .op = BF_WRITE,
+                                              .type = PIN_F64,
+                                              .left = number,
+                                              .right = address,
+                                              .offset = offsetof(pin_array, count) });
+    }
+    int result = number;
+    if (kind == SQUARE_ROOT) {
+        result = value(
+            (behavior_function_instruction){ .op = BF_SQRT, .type = PIN_F64, .left = number },
+            false
+        );
+    }
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = result });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!function) {
+        fprintf(stderr, "sharing fixture %d: %s\n", kind, error);
+    }
+    return function != NULL;
+}
+TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses)
+{
+    const struct
+    {
+        int kind;
+        behavior_argument_sharing expected;
+    } cases[] = { { SELECTED, BEHAVIOR_SHARING_COPY },
+                  { CONTEXT_PATH, BEHAVIOR_SHARING_COPY },
+                  { LAUNDERED, BEHAVIOR_SHARING_COPY },
+                  { SQUARE_ROOT, BEHAVIOR_SHARING_SAFE } };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        cleanup();
+        REQUIRE(hand_built(cases[i].kind));
+        execution_prepare_argument_sharing(function);
+        REQUIRE(function->argument_sharing == cases[i].expected);
+    }
+    return true;
+}
+
+static behavior_function *authored_function(int index)
+{
+    const execution_module *owner = decoded ? decoded : module;
+    assert(index < execution_module_function_count(owner));
+    return (behavior_function *)execution_module_function_at(owner, index).body;
+}
+static pin_value strings(pin_array *array, pin_value *items, const char *const *texts, int count)
+{
+    for (int i = 0; i < count; i++) {
+        items[i] = (pin_value){ .type = PIN_STR, .str = texts[i] };
+    }
+    *array = (pin_array){ .element_type = PIN_STR,
+                          .count = count,
+                          .capacity = count,
+                          .items = items };
+    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+}
+
+/* A helper that only reads a table, or copies it before changing it, receives
+ * the caller's array without a copy; value semantics still hold. */
+TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
+{
+    REQUIRE(authored(
+        "library Share {"
+        "Root :: pure (input: string[]) -> int { total: int = 0; i: int = 0;"
+        "while i < 64 { total += Match(input, i); i += 1; }"
+        "copy := input; changed := Change(copy);"
+        "if copy[0] == \"a\" { total += 1000; } return total + changed * 100; }"
+        "Match :: pure (input: string[], at: int) -> int {"
+        "if input[at % 4] == \"a\" { return 1; } return 0; }"
+        "Change :: pure (values: string[]) -> int { local := values; local[0] "
+        "= \"z\";"
+        "if local[0] == \"z\" { return 1; } return 0; } }"
+    ));
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    const char *texts[] = { "a", "b", "c", "d" };
+    pin_value items[4];
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 4);
+    uint64_t copied[2];
+    for (int run = 0; run < 2; run++) {
+        /* The second run forces the copying path the proof avoids. */
+        if (run) {
+            authored_function(1)->argument_sharing = BEHAVIOR_SHARING_COPY;
+        }
+        pin_value output = { .type = PIN_I32 };
+        pin_copy_scope copies = { 0 };
+        pin_copy_scope_begin(&copies);
+        int status = begin(&input, 1, &output, NULL, 0);
+        pin_copy_scope_end(&copies);
+        REQUIRE(status == FLOW_OK && output.i == 1116 && !strcmp(items[0].str, "a"));
+        copied[run] = copies.counts.text_bytes;
+    }
+    REQUIRE(copied[0] * 8 < copied[1]);
+    release_run();
+    char error[256];
+    size_t length;
+    REQUIRE(execution_prepared_write(module, &prepared, &length, error, sizeof error));
+    const execution_prepared_linker linker = { 0 };
+    decoded = execution_prepared_read(prepared, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(decoded);
+    /* Loading recomputes the verdict instead of reading it. */
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    return true;
+}
+
+/* A callee that writes through a reference argument, and every caller of it,
+ * keeps copying: its value argument stays the caller's original. */
+TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
+{
+    REQUIRE(authored(
+        "library Share {"
+        "Root :: (input: string[]) -> int { local := input; return "
+        "Write(local, local); }"
+        "Write :: (values: string[], target: ref string[]) -> int { target[0] "
+        "= \"z\";"
+        "if values[0] == \"a\" { return 1; } return 0; } }"
+    ));
+    REQUIRE(authored_function(1)->argument_sharing == BEHAVIOR_SHARING_COPY);
+    REQUIRE(authored_function(0)->argument_sharing == BEHAVIOR_SHARING_COPY);
+    const char *texts[] = { "a" };
+    pin_value items[1], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 1);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 1 && !strcmp(items[0].str, "a"));
+    }
+    return true;
+}
+
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
@@ -1006,5 +1273,9 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_rejects_mutation_identity_headers_escape_and_opaque_calls);
     RUN_TEST_CASE(borrow_preserves_ownership_across_debug_and_real_suspension);
     RUN_TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code);
+    RUN_TEST_CASE(borrow_argument_sharing_rejects_writes_through_caller_storage);
+    RUN_TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses);
+    RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
+    RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     pu_clear_setup();
 }

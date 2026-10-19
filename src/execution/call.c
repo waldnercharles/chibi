@@ -290,11 +290,18 @@ static invocation_frame *frame_new(
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
-    bool views = call.function->readonly_collections &&
-                 !behavior_function_inspection_required(function, parent) &&
-                 program_call_views_allowed(parent);
+    bool direct = !behavior_function_inspection_required(function, parent) &&
+                  program_call_views_allowed(parent);
+    bool shared = direct && call.function->argument_sharing == BEHAVIOR_SHARING_SAFE;
+    bool views = direct && call.function->readonly_collections;
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
+        /* The callee and its callees leave the caller's storage untouched, and
+         * the caller waits for the call, so the arguments need no copies. */
+        if (shared) {
+            arguments[p] = parent->data->values[call.first + p];
+            continue;
+        }
         if (views && behavior_function_borrow_argument(
                          call.function,
                          &frame->context,

@@ -54,7 +54,6 @@ void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
-void test_tool_publish();
 void test_tool_web_storage();
 void test_tool_player_url();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
@@ -1431,7 +1430,6 @@ int main(int argc, char **argv)
         test_tool_collab();
         test_tool_test_policy();
         test_tool_validation_plan();
-        test_tool_publish();
 #ifdef CHIBI_TEST_C_EXPORT
         test_tool_c_export();
 #endif

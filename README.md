@@ -263,8 +263,7 @@ edit/save/reload, input or export acceptance in a browser. The
 records those interactions on named revisions. See
 [current execution evidence and remaining work](docs/status.md#execution-evidence)
 for that distinction; threaded browser acceptance remains separate.
-The old local `make publish-web` wrapper remains unavailable; use the owning
-repository's publication workflow.
+Publication belongs to those workflows; the engine has no local publisher.
 
 ## Checks and authoring
 

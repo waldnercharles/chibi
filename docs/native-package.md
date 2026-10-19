@@ -195,8 +195,8 @@ project directly. The browser workspace owns its imported project files. Use
 `chibi_ctl --project-root` for native inspection and validation, or prepare an
 artifact with `chibi-compile` and run it with the installed `chibi-player`.
 
-Engine-owned web deployment is retired. `make publish-web` reports that no
-publication was performed; deployment belongs to the extracted Studio product.
+Engine-owned web deployment is retired and its publisher removed; deployment
+belongs to the extracted Studio product.
 Engine CI compiles owned SDK/CLI targets and runs admitted C tooling checks.
 Historical browser publication fixtures do not establish current deployment.
 

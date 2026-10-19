@@ -27,13 +27,13 @@ CHIBICLO header and rows sorted bytewise by name.
 
 ## Cost
 
-A call copies its record-array and union arguments, and checks every item of a
-borrowed scalar array. So `Write` keeps every table in one function and passes
-helpers only scalars, text and single records. It encodes all values once, from
-the last back, into one byte pool, so a value's nested values are already
-encoded when it is reached. The time is linear in the module size: about 36 KB/s
-on bytecode and 110 KB/s on SLJIT in a Debug ASan build. Stage-one code follows
-the same rule until borrowing covers record arrays.
+`Write` keeps every table in one function and passes helpers only scalars,
+text and single records. It was written when every call copied its record-array
+arguments; calls to helpers that leave the caller's storage untouched now share
+them (see `docs/code-language.md`). It encodes all values once, from the last
+back, into one byte pool, so a value's nested values are already encoded when it
+is reached. The time is linear in the module size: about 36 KB/s on bytecode and
+110 KB/s on SLJIT in a Debug ASan build.
 
 `entry`, `owner`, `component` and `depth_limit` are keywords, so the model uses
 `entry_name`, `owner_type`, `component_index` and `depth_bound`.

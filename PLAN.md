@@ -588,8 +588,15 @@ each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. Package trees are not
 formatted yet: the source formatter still rewrites package syntax such as
-`case .Variant` and continued arguments wrongly. `web` and moving `export`
-behind Chibi modules remain.
+`case .Variant` and continued arguments wrongly. `chibi web [PROJECT] --player
+PLAYER [--port PORT]` exports the browser site into a `mkdtemp` folder under
+`TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
+launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or
+SIGHUP, and then removes that folder; a busy port or failed export leaves
+nothing behind. The server answers only requests whose Host is this computer,
+against DNS rebinding, and gives each connection ten seconds. Like a static
+host it sends no cross-origin isolation headers: with them the non-threaded
+browser player aborts in WebGPU. Windows does not serve yet. Moving `export` behind Chibi modules remains.
 
 Implement commands through shared modules, not separate scripts:
 

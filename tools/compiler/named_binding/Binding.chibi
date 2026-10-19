@@ -167,16 +167,8 @@ Matches :: pure fn(left: string, right: string) -> bool {
     }
 }
 ShortName :: pure fn(name: string) -> string {
-    start: int = 0;
-    index: int = 0;
-    count := strings.ByteLength(name);
-    while (index < count) {
-        if (strings.ByteAt(name, index) == 46) {
-            start = index + 1;
-        }
-        index += 1;
-    }
-    return strings.Slice(name, start, count - start);
+    start := strings.LastIndexByte(name, 46) + 1;
+    return strings.Slice(name, start, strings.ByteLength(name) - start);
 }
 FindCatalog :: pure fn(entries: Entry[], name: string) -> int {
     found: int = -1;
@@ -219,12 +211,8 @@ Namespace :: pure fn(environment: Environment, scope: int, document: int, name: 
             if (!has_documents) {
                 return -1;
             }
-            dot: int = 0;
-            count := strings.ByteLength(name);
-            while (dot < count && strings.ByteAt(name, dot) != 46) {
-                dot += 1;
-            }
-            if (dot == 0 || dot == count) {
+            dot := strings.IndexByte(name, 46);
+            if (dot <= 0) {
                 return -1;
             }
             alias := strings.Slice(name, 0, dot);
@@ -255,10 +243,7 @@ FindType :: pure fn(environment: Environment, scope: int, document: int, name: s
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                      identity, package_scope, has_native, has_documents, entity_id):
             if (importedIndex >= 0) {
-                dot: int = 0;
-                while (strings.ByteAt(name, dot) != 46) {
-                    dot += 1;
-                }
+                dot := strings.IndexByte(name, 46);
                 member := strings.Slice(name, dot + 1, strings.ByteLength(name) - dot - 1);
                 imported := imports[importedIndex];
                 if (imported.identity == identity) {
@@ -413,58 +398,42 @@ BindName :: pure fn(environment: Environment, request: Request, name: string,
 Parsed :: pure fn(environment: Environment, request: Request, tokens: string[]) -> Resolution {
     return BindName(environment, request, request.text, true, tokens, -1, 0);
 }
-Whitespace :: pure fn(byte: int) -> bool {
-    return byte == 32 || (byte >= 9 && byte <= 13);
-}
 Text :: pure fn(environment: Environment, request: Request) -> Resolution {
-    name := "";
-    index: int = 0;
-    count := strings.ByteLength(request.text);
-    while (index < count) {
-        if (!Whitespace(strings.ByteAt(request.text, index))) {
-            name = format_text("{}{}", name, strings.Slice(request.text, index, 1));
-        }
-        index += 1;
-    }
+    name := strings.Concatenate(strings.Fields(request.text));
     flags: int = 0;
-    count = strings.ByteLength(name);
-    if (strings.Slice(name, 0, 3) == "ref" && count > 3) {
-        name = strings.Slice(name, 3, count - 3);
-        count -= 3;
+    if (strings.HasPrefix(name, "ref") && name != "ref") {
+        name = strings.TrimPrefix(name, "ref");
         flags = flags | 4;
     }
-    if (count > 0 && strings.ByteAt(name, count - 1) == 63) {
-        count -= 1;
-        name = strings.Slice(name, 0, count);
+    if (strings.HasSuffix(name, "?")) {
+        name = strings.TrimSuffix(name, "?");
         flags = flags | 2;
     }
     container: int = 0;
-    if (count >= 2 && strings.Slice(name, count - 2, 2) == "[]") {
-        count -= 2;
-        name = strings.Slice(name, 0, count);
+    if (strings.HasSuffix(name, "[]")) {
+        name = strings.TrimSuffix(name, "[]");
         container = 1;
     }
     prefixes: string[] = ["set<", "map<", "array<"];
     containers: int[] = [2, 3, 1];
-    index = 0;
+    index: int = 0;
     while (index < length(prefixes)) {
         prefix := prefixes[index];
-        size := strings.ByteLength(prefix);
-        if (strings.Slice(name, 0, size) == prefix && count > size && strings.ByteAt(name, count - 1) == 62) {
+        if (strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ">")) {
             container = containers[index];
-            count -= size + 1;
-            name = strings.Slice(name, size, count);
+            name = strings.TrimSuffix(strings.TrimPrefix(name, prefix), ">");
             break;
         }
         index += 1;
     }
-    if ((strings.Slice(name, 0, 7) == "struct<" || strings.Slice(name, 0, 7) == "handle<") &&
-        count > 7 && strings.ByteAt(name, count - 1) == 62) {
-        name = strings.Slice(name, 7, count - 8);
-    } else if (strings.Slice(name, 0, 5) == "enum<" && count > 5 && strings.ByteAt(name, count - 1) == 62) {
-        name = strings.Slice(name, 5, count - 6);
+    wrappers: string[] = ["struct<", "handle<", "enum<"];
+    foreach (wrapper in wrappers) {
+        if (strings.HasPrefix(name, wrapper) && strings.HasSuffix(name, ">")) {
+            name = strings.TrimSuffix(strings.TrimPrefix(name, wrapper), ">");
+            break;
+        }
     }
-    if (strings.ByteAt(name, 0) == 34) {
+    if (strings.HasPrefix(name, "\"")) {
         decoded := compiler_json_string(name);
         // Legacy fallback copies the decoded C-string prefix, including when
         // JSON contains NUL. Parsed-name validation is a different entry path.

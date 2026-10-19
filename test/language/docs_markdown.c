@@ -128,7 +128,8 @@ static bool reports(int backend, const char *markdown, const char *page, const c
 }
 
 /* Headings carry GitHub's anchors; paragraphs join their lines; text is
- * escaped; fenced code keeps its lines and names its language. */
+ * escaped; fenced code keeps its lines and names its language. Lines lose
+ * their spaces, tabs and carriage returns at either end. */
 TEST_CASE(docs_markdown_renders_blocks)
 {
     REQUIRE(prepare());
@@ -153,6 +154,9 @@ TEST_CASE(docs_markdown_renders_blocks)
             "<ol>\n<li>first</li>\n<li><em>second</em></li>\n</ol>\n"
             "<blockquote><p>quoted text</p></blockquote>\n"
         ));
+        REQUIRE(
+            renders(b, "# Title\t\r\n\r\n\tOne \t\r\ntwo\r\n", "README.md", "<h1 id=\"title\">Title</h1>\n<p>One two</p>\n")
+        );
     }
     return true;
 }

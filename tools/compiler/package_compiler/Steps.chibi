@@ -1068,13 +1068,16 @@ ForeachStep :: pure fn(array: Value, ops: Ops, target: Target, at: Bases, node: 
         Typed(at.slot + 8, array.storage, 0, array.record), NoValue(), marks);
 }
 
-// One switch arm on the union in local `subject`: when it holds variant
-// types[variant], the names in `bindings` take its payload fields in order;
-// otherwise control jumps past the arm, through the jump the mark reports.
-// Bindings are not writable, so record and array payloads are read in place.
-ArmStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-                   subject: int, variant: int, bindings: int, ops: Ops, target: Target, at: Bases,
-                   node: snapshot.SnapshotNode) -> Step {
+// A match on the union in local `subject`, or, when `subject` is -1, in slot
+// `from`, which it first saves to a new local. When the union holds variant
+// types[variant], the names in `bindings` take its payload fields in order.
+// A switch arm (`arm`) jumps past itself when the test fails, through the jump
+// the mark reports; an `is` expression produces the test, negated when
+// `negated`. Bindings are not writable, so record and array payloads are read
+// in place.
+MatchStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                     subject: int, from: int, variant: int, bindings: int, arm: bool, negated: bool, ops: Ops,
+                     target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
     locals: int[] = [];
@@ -1088,8 +1091,14 @@ ArmStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     value: Slot = {storage: UnionStorage, kind: ValueKind};
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
+    source := subject;
+    if (source < 0) {
+        locals = array_add(locals, UnionStorage);
+        source = at.local;
+        code = array_add(code, Instruction(ops.save, UnionStorage, 0, from, 0, source, node));
+    }
     slots = array_add(slots, value);
-    code = array_add(code, Instruction(ops.local, UnionStorage, at.slot, subject, 0, 0, node));
+    code = array_add(code, Instruction(ops.local, UnionStorage, at.slot, source, 0, 0, node));
     // The test takes the union and the tag and returns whether they match.
     held: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
     tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: 0, variant: variant, kind: ValueKind};
@@ -1111,9 +1120,23 @@ ArmStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDec
     read := Instruction(ops.load, BoolStorage, at.slot + 3, at.slot + 2, 0, 0, node);
     read.offset = target.payload_offset;
     code = array_add(code, read);
-    code = array_add(code, Instruction(ops.branch_if, 0, 0, at.slot + 3, 0, at.pc + length(code) + 2, node));
-    leave := at.pc + length(code);
-    code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    marks: int[] = [];
+    produced := Typed(at.slot + 3, BoolStorage, 0, -1);
+    if (arm) {
+        code = array_add(code, Instruction(ops.branch_if, 0, 0, at.slot + 3, 0, at.pc + length(code) + 2, node));
+        marks = array_add(marks, at.pc + length(code));
+        code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+        produced = NoValue();
+    } else if (negated) {
+        // Not is equality with false.
+        slots = array_add(slots, flag);
+        constant := Instruction(ops.constant, BoolStorage, at.slot + 4, 0, 0, 0, node);
+        constant.value_storage = BoolStorage;
+        code = array_add(code, constant);
+        slots = array_add(slots, flag);
+        code = array_add(code, Instruction(ops.eq, BoolStorage, at.slot + 5, at.slot + 3, at.slot + 4, -1, node));
+        produced = Typed(at.slot + 5, BoolStorage, 0, -1);
+    }
     // Each binding takes the payload field at its position.
     position: int = 0;
     binding := FirstMember(forest, bindings);
@@ -1163,6 +1186,44 @@ ArmStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDec
         position += 1;
         binding = NextMember(forest, binding);
     }
-    marks: int[] = [leave];
-    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
+    popped: int = 0;
+    if (!arm) { popped = 1; }
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(),
+        marks);
+}
+
+// `value is .V` and `value is not .V`. Bindings, `value is .V(a, b)`, are
+// allowed only in an if or while condition, as stage zero allows them; they
+// hold the payload where the test holds.
+IsStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                  members: TypeMember[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+                  at: Bases) -> Step {
+    held := values[top - 1];
+    if (!Single(held, UnionStorage)) {
+        return Fail(forest, Field(forest, item.node, "value"), document, "is needs a union value");
+    }
+    pattern := Field(forest, item.node, "type");
+    if (!Is(forest, pattern, "variant_pattern") || Field(forest, item.node, "binding") >= 0) {
+        return Fail(forest, pattern, document, "is pattern is not supported yet");
+    }
+    member := Text(forest, text, Field(forest, pattern, "name"));
+    variant := FindVariant(types, held.record, member);
+    if (variant < 0) { return Fail(forest, pattern, document, format_text("Unknown union variant '{}'", member)); }
+    bindings := Field(forest, pattern, "bindings");
+    count: int = 0;
+    binding := FirstMember(forest, bindings);
+    while (binding >= 0) {
+        count += 1;
+        binding = NextMember(forest, binding);
+    }
+    if (count != 0 && count != types[variant].count) {
+        return Fail(forest, pattern, document, "A union payload pattern must bind every field");
+    }
+    negated := Field(forest, item.node, "negated") >= 0;
+    if (count != 0 && (negated || !BindingCondition(forest, text, item.node))) {
+        return Fail(forest, FirstMember(forest, bindings), document,
+            "Pattern bindings require a matching if, while or switch arm");
+    }
+    return MatchStep(forest, text, types, members, -1, held.slot, variant, bindings, false, negated, ops, target, at,
+        forest[item.node]);
 }

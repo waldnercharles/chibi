@@ -777,19 +777,19 @@ parameter still copy the referenced value.
 The stage-one compiler starts as `tools/compiler/package_compiler` (see
 `docs/package-compiler.md`). It compiles packages of functions, records,
 unions and `int` literal constants, and the `project:` and `core:` packages
-they import, with `int`,
-`bool` and `string` values and arrays of them, statements, control flow
-including `foreach` and exhaustive `switch` over unions, calls within and
-across packages, and calls of the natives the target links, to runnable
-multi-module closures that agree with stage zero, with no native step after
-the parser. Records and arrays use stage zero's value model: construct, snapshot
-and in-place array intrinsics, stage zero's record IDs and layout hashes, and
-value roots for suspended callers. Unions use the union-make, -test and -get
-intrinsics with stage zero's tags. Each package is a module whose import rows
-carry the fingerprints the runtime checks. `is` patterns, natives with several
-results, `uint64` and conversions follow, then the compiler's own sources. Debugger
-points and watches are deferred until before stage one becomes the normal
-compiler.
+they import, with `int`, `bool` and `string` values and arrays of them,
+statements, control flow including `foreach`, exhaustive `switch` over unions
+and `is` patterns with bindings, calls within and across packages, and calls
+of the natives the target links, to runnable multi-module closures that agree
+with stage zero, with no native step after the parser. Records and arrays use
+stage zero's value model: construct, snapshot and in-place array intrinsics,
+stage zero's record IDs and layout hashes, and value roots for suspended
+callers. Unions use the union-make, -test and -get intrinsics with stage zero's
+tags. Each package is a module whose import rows carry the fingerprints the
+runtime checks. Compiling the compiler's own sources stops first at a `uint64`
+payload in `prepared_writer`; `uint64` and conversions, natives with several
+results, then the rest of the compiler's sources follow. Debugger points and
+watches are deferred until before stage one becomes the normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the

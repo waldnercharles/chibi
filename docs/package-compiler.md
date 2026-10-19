@@ -50,6 +50,10 @@ import:
   every payload field, and a default `case:`. Bindings are immutable. As in
   stage zero, a switch without a default arm must cover every variant, and a
   repeated variant or default arm is rejected;
+- `value is .V` and `value is not .V`, and `value is .V(a, b)` binding the
+  payload in an if or while condition, alone or joined by `&&`, as stage zero
+  allows bindings. They last through the consequence or loop body, not the
+  else branch;
 - calls between the package's functions, including recursion, and calls of
   natives with one result or none, such as `length` and `slice`. A native's
   inferred ports take the one type its arguments give them, matched by name
@@ -63,10 +67,13 @@ import:
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
 Anything else is rejected with its source position. Constants of other types
-or computed values, `is` patterns, record field defaults, field assignment,
+or computed values, type patterns, record field defaults, field assignment,
 assigning record or array parameters, named payload arguments, literal
 variants, natives with several results or variadic ones, `uint64` and
 conversions come next.
+One check is missing the other way: stage one does not yet reject a local name
+declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`, which
+stage zero reports as a duplicate declaration.
 
 ## Output
 
@@ -125,14 +132,14 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 47 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 6,515 assertions in
-34.3 s under the supervisor, with other test runs loading the machine). A sample is package `facts`, optionally with a `lib` package and
-`core:strings`. Every accepted closure loads in a fresh runtime host and runs
-on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
-same packages must return the same JSON; calls that must fail,
-such as out-of-bounds reads, fail on all three. Rejections check the exact
-message and position.
+`tool language-package-compiler-chibi` compiles 54 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 7,302 assertions in
+29.0 s). A sample is package `facts`, optionally with a
+`lib` package and `core:strings`. Every accepted closure loads in a fresh
+runtime host and runs on bytecode and SLJIT with JSON arguments, and stage
+zero's own closure of the same packages must return the same JSON; calls that
+must fail, such as out-of-bounds reads, fail on all three. Rejections check
+the exact message and position.
 
 Compiling is slow. In this build, compiling all the samples takes about 17 s
 of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT

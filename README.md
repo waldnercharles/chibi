@@ -61,6 +61,13 @@ the target's commands directly.
 artifact format by name. It reads them from `share/chibi/engine.json`, which
 configuring generates and SDK packaging completes with the build ID.
 
+`chibi doctor` checks, without changing anything, that the SDK's identity
+document is valid, that its compiler and player run, that it was built for this
+platform, and whether it has the native SLJIT backend. `chibi doctor --web
+PLAYER` also checks a browser player folder and the `node` that runs its
+compiler. Each line says supported, unavailable or broken, and the command
+fails only when something it checked is broken.
+
 `chibi check [PROJECT]` parses, resolves and validates a project as
 `chibi build` does, with the same compiler, but migrates and writes nothing. An
 older project fails with the command that migrates it. It exits 0 for a valid

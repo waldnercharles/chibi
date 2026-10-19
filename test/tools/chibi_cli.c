@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 static char root[128], launcher[256], log_path[256], compiler[256], built[256];
@@ -316,6 +317,138 @@ TEST_CASE(version_of_the_built_launcher)
     return true;
 }
 
+/* Whether the file at `relative` contains `text`. */
+static bool file_has(const char *relative, const char *text)
+{
+    char file[256];
+    path(file, relative);
+    char *contents = tool_read(file);
+    bool found = contents && strstr(contents, text);
+    free(contents);
+    return found;
+}
+
+/* An identity document for this host, or `system`, with `backends`. */
+static void identity(const char *system, const char *backends)
+{
+    struct utsname host;
+    assert(!uname(&host));
+    char document[1024];
+    snprintf(
+        document,
+        sizeof document,
+        "{\"sdk_version\": \"9.8.7\", \"system\": \"%s\", \"processor\": "
+        "\"%s\", \"backends\": [%s], \"project_version\": 25, "
+        "\"artifact_formats\": {\"execution\": {\"version\": 15}}}\n",
+        system ? system : host.sysname,
+        host.machine,
+        backends
+    );
+    write_file("share/chibi/engine.json", document);
+}
+
+/* Runs `chibi doctor` with `extra` arguments and PATH `programs`. */
+static int doctor(const char *extra, const char *web, const char *programs)
+{
+    char output[256], saved[4096];
+    path(output, "doctor.log");
+    snprintf(saved, sizeof saved, "%s", getenv("PATH"));
+    setenv("PATH", programs, 1);
+    const char *args[] = { launcher, "doctor", extra, web, NULL };
+    int status = tool_run(args, root, output);
+    setenv("PATH", saved, 1);
+    return status;
+}
+
+/* doctor reports each capability and fails only for a broken one it checks;
+ * browser export is checked only for --web. */
+TEST_CASE(doctor_reports_each_capability)
+{
+    char file[256], expected[512], bin[256], programs[512], tools[512];
+    path(file, "fail");
+    unlink(file);
+    path(bin, "node-bin");
+    REQUIRE(!mkdir(bin, 0700));
+    write_file("node-bin/node", "#!/bin/sh\nexit 0\n");
+    path(file, "node-bin/node");
+    REQUIRE(!chmod(file, 0700));
+    snprintf(tools, sizeof tools, "/usr/bin:/bin");
+    snprintf(programs, sizeof programs, "%s:/usr/bin:/bin", bin);
+
+    identity(NULL, "\"bytecode\", \"sljit\"");
+    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(file_has("doctor.log", "sdk: supported (chibi 9.8.7, build unpackaged)\n"));
+    snprintf(expected, sizeof expected, "compiler: supported (%s/bin/chibi-compile)\n", root);
+    REQUIRE(file_has("doctor.log", expected));
+    snprintf(expected, sizeof expected, "player: supported (%s/bin/chibi-player)\n", root);
+    REQUIRE(file_has("doctor.log", expected));
+    REQUIRE(file_has("doctor.log", "platform: supported ("));
+    REQUIRE(file_has("doctor.log", "native backend: supported (SLJIT)\n"));
+    REQUIRE(file_has("doctor.log", "browser export: unavailable ("));
+
+    identity(NULL, "\"bytecode\"");
+    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(
+        file_has("doctor.log", "native backend: unavailable (built for the bytecode interpreter only)\n")
+    );
+
+    identity("Plan9", "\"bytecode\"");
+    REQUIRE(doctor(NULL, NULL, tools) == 1);
+    REQUIRE(file_has("doctor.log", "platform: broken (built for Plan9 "));
+    identity(NULL, "\"bytecode\"");
+
+    write_file("fail", "");
+    REQUIRE(doctor(NULL, NULL, tools) == 1);
+    snprintf(expected, sizeof expected, "compiler: broken (%s/bin/chibi-compile --help failed)\n", root);
+    REQUIRE(file_has("doctor.log", expected));
+    path(file, "fail");
+    REQUIRE(!unlink(file));
+
+    char player[256], moved[256];
+    path(player, "bin/chibi-player");
+    path(moved, "chibi-player.moved");
+    REQUIRE(!rename(player, moved));
+    REQUIRE(doctor(NULL, NULL, tools) == 1);
+    snprintf(expected, sizeof expected, "player: broken (missing %s/bin/chibi-player)\n", root);
+    REQUIRE(file_has("doctor.log", expected));
+    REQUIRE(!rename(moved, player));
+
+    char web[256];
+    path(web, "web");
+    REQUIRE(!mkdir(web, 0700));
+    path(file, "web/compiler");
+    REQUIRE(!mkdir(file, 0700));
+    write_file("web/index.html", "");
+    write_file("web/chibi-player.js", "");
+    REQUIRE(doctor("--web", web, programs) == 1);
+    snprintf(expected, sizeof expected, "browser export: broken (%s lacks chibi-player.wasm)\n", web);
+    REQUIRE(file_has("doctor.log", expected));
+    write_file("web/chibi-player.wasm", "");
+    write_file("web/compiler/chibi-compile.js", "");
+    REQUIRE(doctor("--web", web, programs) == 0);
+    snprintf(expected, sizeof expected, "browser export: supported (%s with %s/node)\n", web, bin);
+    REQUIRE(file_has("doctor.log", expected));
+    REQUIRE(doctor("--web", web, tools) == 1);
+    REQUIRE(file_has("doctor.log", "browser export: broken (node, which runs "));
+
+    REQUIRE(doctor("--help", NULL, tools) == 0);
+    REQUIRE(doctor("--frames", NULL, tools) == 2);
+    return true;
+}
+
+/* The built launcher in place finds its real compiler and player. */
+TEST_CASE(doctor_of_the_built_launcher)
+{
+    char output[256];
+    path(output, "built-doctor.log");
+    const char *args[] = { built, "doctor", NULL };
+    REQUIRE(tool_run(args, root, output) == 0);
+    REQUIRE(file_has("built-doctor.log", "\ncompiler: supported ("));
+    REQUIRE(file_has("built-doctor.log", "\nplayer: supported ("));
+    REQUIRE(file_has("built-doctor.log", "\nplatform: supported ("));
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -333,5 +466,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_check_writes_nothing);
     RUN_TEST_CASE(version_reads_the_build_identity);
     RUN_TEST_CASE(version_of_the_built_launcher);
+    RUN_TEST_CASE(doctor_reports_each_capability);
+    RUN_TEST_CASE(doctor_of_the_built_launcher);
     tool_remove_tree(root);
 }

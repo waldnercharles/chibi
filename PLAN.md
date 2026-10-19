@@ -563,8 +563,12 @@ launcher with a fake compiler and through the real `chibi-compile`; its
 installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
 build, compiler and artifact-format identity from one generated document,
 `share/chibi/engine.json`: configuring writes it, build trees keep it beside
-their shaders, and SDK packaging installs it with the build ID. `doctor`,
-`fmt`, `test`, `web` and moving `export` behind Chibi modules remain.
+their shaders, and SDK packaging installs it with the build ID. The document
+also records the platform and execution backends the SDK was built for, which
+`doctor` compares with the host. `doctor` reports the SDK, compiler, player,
+platform, native backend and, with `--web PLAYER`, browser export as supported,
+unavailable or broken, and fails only for a broken one it checked; it never
+writes. `fmt`, `test`, `web` and moving `export` behind Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

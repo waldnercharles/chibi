@@ -582,6 +582,14 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
+bool chibi_project_package_folder(const char *path)
+{
+    char *manifest = join_path(path, CHIBI_PROJECT_MANIFEST);
+    bool folder = is_directory(path) && !is_file(manifest);
+    free(manifest);
+    return folder;
+}
+
 static int open_project(chibi_project *project, const char *path, bool migrate, char *error, size_t error_size)
 {
     if (!project) {

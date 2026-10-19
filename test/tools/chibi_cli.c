@@ -605,7 +605,8 @@ TEST_CASE(compiler_test_needs_the_core_collection)
 
 /* fmt hands each project, or the one at or above the working directory, to
  * the compiler's --format, with --check when asked, and fails when one does;
- * an older project is reported, not migrated. */
+ * an older project is reported, not migrated. A folder without a project.kdl
+ * goes to the compiler as given, which formats its packages. */
 TEST_CASE(fmt_formats_each_project)
 {
     char file[256], expected[1024];
@@ -644,6 +645,14 @@ TEST_CASE(fmt_formats_each_project)
     bool kept = file_is("stale/project.kdl", manifest);
     free(manifest);
     REQUIRE(kept);
+    char loose[256];
+    path(loose, "loose");
+    REQUIRE(!mkdir(loose, 0700));
+    const char *packages[] = { launcher, "fmt", "--check", "loose", NULL };
+    REQUIRE(tool_run(packages, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", "--project-root\nloose\n--format\n--check\n"));
+    const char *missing[] = { launcher, "fmt", "absent", NULL };
+    REQUIRE(tool_run(missing, root, log_path) == 2);
     const char *help[] = { launcher, "fmt", "--help", NULL };
     REQUIRE(tool_run(help, root, log_path) == 0);
     const char *unknown[] = { launcher, "fmt", "--quick", NULL };
@@ -732,6 +741,66 @@ static void directory(const char *relative)
     char folder[256];
     path(folder, relative);
     assert(!mkdir(folder, 0700) || errno == EEXIST);
+}
+
+static const char MESSY_PACKAGE[] = "package lib\nDouble :: fn(x: int) -> int "
+                                    "{   return x*2; }\n";
+
+/* Below a folder without a project.kdl, the real compiler's --format formats
+ * each package source, naming them as it does a project's. A file that is
+ * not a package, or a tree the package loader refuses, fails the run before
+ * anything is written, and so does a folder with no sources. */
+TEST_CASE(compiler_format_rewrites_package_sources)
+{
+    directory("tree");
+    directory("tree/lib");
+    directory("tree/more");
+    write_file("tree/lib/Lib.chibi", MESSY_PACKAGE);
+    write_file("tree/more/More.chibi", "package more\n");
+    char tree[256], output[256];
+    path(tree, "tree");
+    path(output, "packages.log");
+    const char *check[] = { compiler,   "--project-root", tree,
+                            "--format", "--check",        NULL };
+    REQUIRE(tool_run(check, root, output) == 1);
+    REQUIRE(file_is("packages.log", "not canonical: lib/Lib.chibi\n"));
+    REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
+
+    directory("tree/z");
+    write_file("tree/z/Spin.chibi", MESSY_SOURCE);
+    const char *format[] = { compiler, "--project-root", tree, "--format", NULL };
+    REQUIRE(tool_run(format, root, output) == 1);
+    REQUIRE(file_has("packages.log", "z/Spin.chibi: it does not declare a package"));
+    REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
+    char spin[256];
+    path(spin, "tree/z/Spin.chibi");
+    REQUIRE(!unlink(spin));
+    char link[256];
+    path(link, "tree/z/Link.chibi");
+    REQUIRE(!symlink("../lib/Lib.chibi", link));
+    REQUIRE(tool_run(format, root, output) == 1);
+    REQUIRE(file_has("packages.log", "Package descendants must not be symlinks"));
+    REQUIRE(file_is("tree/lib/Lib.chibi", MESSY_PACKAGE));
+    REQUIRE(!unlink(link));
+
+    REQUIRE(tool_run(format, root, output) == 0);
+    REQUIRE(file_is("packages.log", "formatted lib/Lib.chibi\n"));
+    REQUIRE(
+        file_is("tree/lib/Lib.chibi", "package lib\nDouble :: fn(x: int) -> int {\n    return x * 2;\n}\n")
+    );
+    REQUIRE(tool_run(check, root, output) == 0);
+
+    write_file("tree/z/Broken.chibi", "package z\nBroken :: fn( {\n");
+    REQUIRE(tool_run(check, root, output) == 1);
+    REQUIRE(file_has("packages.log", "z/Broken.chibi: "));
+
+    directory("bare");
+    char bare[256];
+    path(bare, "bare");
+    const char *empty[] = { compiler, "--project-root", bare, "--format", NULL };
+    REQUIRE(tool_run(empty, root, output) == 1);
+    REQUIRE(file_has("packages.log", "holds no project.kdl or package files"));
+    return true;
 }
 
 /* The whole response to a GET of target from 127.0.0.1:port naming host;
@@ -1255,6 +1324,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
+    RUN_TEST_CASE(compiler_format_rewrites_package_sources);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
     RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
@@ -1310,7 +1380,7 @@ TEST_CASE(installed_project_commands)
     return true;
 }
 
-TEST_CASE(installed_package_tests_and_docs)
+TEST_CASE(installed_package_commands_and_docs)
 {
     const char *directories[] = { "packages", "packages/facts" };
     for (int i = 0; i < 2; i++) {
@@ -1324,6 +1394,14 @@ TEST_CASE(installed_package_tests_and_docs)
     REQUIRE(tool_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
     REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+
+    directory("packages/lib");
+    write_file("packages/lib/Lib.chibi", MESSY_PACKAGE);
+    const char *format[] = { launcher, "fmt", tree, NULL };
+    REQUIRE(tool_run(format, root, output) == 0);
+    REQUIRE(file_has("packages/lib/Lib.chibi", "    return x * 2;\n"));
+    const char *check[] = { launcher, "fmt", "--check", tree, NULL };
+    REQUIRE(tool_run(check, root, output) == 0);
 
     site_fixture("site");
     char site[256];
@@ -1349,6 +1427,6 @@ void test_tool_chibi_cli_installed(const char *binary)
     path(log_path, "output.log");
     RUN_TEST_CASE(installed_identity_and_doctor);
     RUN_TEST_CASE(installed_project_commands);
-    RUN_TEST_CASE(installed_package_tests_and_docs);
+    RUN_TEST_CASE(installed_package_commands_and_docs);
     tool_remove_tree(root);
 }

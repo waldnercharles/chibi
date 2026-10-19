@@ -1,9 +1,15 @@
 #include "authoring/project_compile.h"
 
 #include "authoring/graph_catalog.h"
+#include "authoring/native_bindings.h"
+#include "authoring/package_tests.h"
 #include "authoring/project_prepare.h"
 #include "authoring/renderer_catalog.h"
+#include "authoring/source_package_files.h"
+#include "execution/backend.h"
+#include "host/native_default.h"
 #include "runtime/component_catalog.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -189,4 +195,111 @@ int authoring_project_compile(const char *project, const char *scene, const char
     }
     authoring_project_artifact_free(&artifact);
     return valid ? 0 : 1;
+}
+
+static void print_diagnostic(const char *path, const script_diagnostic *diagnostic)
+{
+    if (!path) {
+        fprintf(stderr, "%s\n", diagnostic->message);
+        return;
+    }
+    const script_range *at = &diagnostic->range;
+    fprintf(stderr, "%s:%d:%d: %s\n", path, at->line, at->column, diagnostic->message);
+}
+static void print_invalid(const authoring_packages *packages)
+{
+    const source_package_snapshot *snapshot = authoring_packages_snapshot(packages);
+    const source_package_snapshot_error *error = source_package_snapshot_error_at(snapshot);
+    if (error) {
+        int count = 0;
+        const script_package_document
+            *documents = source_package_snapshot_documents(snapshot, &count);
+        int document = error->diagnostic.range.document;
+        print_diagnostic(
+            document >= 0 && document < count ? documents[document].path : NULL,
+            &error->diagnostic
+        );
+        return;
+    }
+    for (int i = 0; i < authoring_packages_count(packages); i++) {
+        const authoring_package *package = authoring_packages_at(packages, i);
+        for (int j = 0; j < package->diagnostic_count; j++) {
+            const script_diagnostic *diagnostic = &package->diagnostics[j];
+            int document = diagnostic->range.document;
+            const script_analysis *analysis = package->analysis;
+            bool known = analysis && document >= 0 && document < analysis->document_count;
+            print_diagnostic(known ? analysis->documents[document].path : NULL, diagnostic);
+        }
+    }
+}
+/* Runs each test and prints its outcome; the number that failed. */
+static int run_tests(const authoring_packages *packages, behavior_backend backend)
+{
+    package_test *tests = package_tests_find(packages);
+    int failed = 0;
+    for (int i = 0; i < acount(tests); i++) {
+        package_test_failure failure;
+        bool passed = package_test_run(&tests[i], backend, PACKAGE_TEST_BUDGET, &failure);
+        printf(
+            "%s %s.%s\n",
+            passed ? "PASS" : "FAIL",
+            tests[i].package,
+            tests[i].name
+        );
+        if (passed) {
+            continue;
+        }
+        failed++;
+        if (failure.path) {
+            printf(
+                "  %s:%d:%d: %s\n",
+                failure.path,
+                failure.line,
+                failure.column,
+                failure.message
+            );
+        } else {
+            printf("  %s\n", failure.message);
+        }
+    }
+    printf("%d tests, %d failed\n", acount(tests), failed);
+    afree(tests);
+    return failed;
+}
+/* Tests run without a game, so they get the natives that need none of it. */
+int authoring_project_test(const char *root, const char *core)
+{
+    char error[512] = { 0 };
+    native_capabilities *native = host_native_standalone_catalog_new(error, sizeof error);
+    if (!native) {
+        fprintf(stderr, "Test preparation failed: %s\n", error);
+        return 1;
+    }
+    source_package_collection collections[] = { { "core", core } };
+    source_package_disk_options options = { root, collections, 1 };
+    source_package_load_error load = { 0 };
+    source_package_snapshot *snapshot = source_package_snapshot_load(&options, &load);
+    if (!snapshot) {
+        fprintf(stderr, "%s: %s\n", load.path, load.message);
+        native_capabilities_free(native);
+        return 1;
+    }
+    script_lower_bindings bindings = authoring_native_bindings(native);
+    behavior_backend backend = behavior_default_backend();
+    authoring_packages *packages = authoring_packages_prepare(
+        snapshot,
+        native_capabilities_catalog(native),
+        &bindings,
+        backend,
+        NULL
+    );
+    int status = 1;
+    if (authoring_packages_valid(packages)) {
+        status = run_tests(packages, backend) ? 1 : 0;
+    } else {
+        print_invalid(packages);
+    }
+    authoring_packages_free(packages);
+    native_capabilities_free(native);
+    return status;
 }

@@ -804,6 +804,10 @@ TOOLS = {
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
+    # Two C cases, eight tests in two project packages per backend; one test
+    # spends its 100000-instruction budget. No filesystem/process/services/GPU.
+    'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-tests'],
     # Duplicate subset of language-component-write: one C case, eight sizing maps;
     # no source compilation or JIT execution. Already covered once by its group member.
     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],

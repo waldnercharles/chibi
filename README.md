@@ -74,6 +74,18 @@ fails only when something it checked is broken.
 older project fails with the command that migrates it. It exits 0 for a valid
 project and nonzero otherwise, so it suits a pre-commit hook or a project's CI.
 
+`chibi test [ROOT]` runs the `@test` functions (see
+[the language guide](docs/code-language.md#tests-and-attributes)) of every
+package below ROOT, the working directory by default. ROOT is their `project:`
+collection and holds only package files, so a game project's behaviors and
+libraries are not tests; imports of `core:` use the SDK's collection. It prints
+`PASS` or `FAIL` with each test's package and name, where a failed test
+stopped, and a count, and fails when a test fails or a package is invalid.
+Each test runs alone on the native backend, or the bytecode interpreter
+without one, for at most 100 million instructions. It may call the natives
+that need no running game: core, text, arrays, vectors, math and value
+operations. A test that waits or starts a task fails.
+
 To ship a game, export it with an installed SDK's `chibi`:
 
 ```sh

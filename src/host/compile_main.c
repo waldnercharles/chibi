@@ -1,8 +1,11 @@
 #include "authoring/project_compile.h"
 #include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
+#include "support/file_io.h"
+#include "support/xalloc.h"
 #include "types/catalog.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -52,14 +55,50 @@ type_catalog_pack type_catalog_pack_at(int index)
 }
 static int usage(const char *program)
 {
-    fprintf(stderr, "Usage: %s --project-root PATH (--output FILE | --check) [--scene PATH]\n", program);
+    fprintf(stderr, "Usage: %s --project-root PATH (--output FILE | --check | --test) [--scene PATH]\n", program);
     return 2;
 }
-/* --check prepares the project without migrating it or writing anything. */
+#ifdef __EMSCRIPTEN__
+/* The browser-target compiler only prepares projects for export. */
+static int test(const char *)
+{
+    fprintf(stderr, "This compiler prepares browser exports; it runs no tests\n");
+    return 2;
+}
+#else
+/* Runs the tests of the packages below project with the SDK's core collection,
+ * share/chibi/core beside this program's directory. */
+static int test(const char *project)
+{
+    char *root = realpath(project, NULL);
+    if (!root) {
+        fprintf(stderr, "%s: %s\n", project, strerror(errno));
+        return 1;
+    }
+    char *bin = file_executable_dir();
+    size_t size = strlen(bin) + sizeof "/../share/chibi/core";
+    char *installed = xmalloc(size);
+    snprintf(installed, size, "%s/../share/chibi/core", bin);
+    char *core = realpath(installed, NULL);
+    int status = 1;
+    if (core) {
+        status = authoring_project_test(root, core);
+    } else {
+        fprintf(stderr, "The SDK has no core collection at %s: %s\n", installed, strerror(errno));
+    }
+    free(core);
+    free(installed);
+    free(bin);
+    free(root);
+    return status;
+}
+#endif
+/* --check prepares the project without migrating it or writing anything;
+ * --test runs its package tests. */
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL;
-    bool check = false;
+    bool check = false, tests = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
@@ -67,6 +106,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--check") && !check) {
             check = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--test") && !tests) {
+            tests = true;
             continue;
         }
         if (i + 1 == argc) {
@@ -86,8 +129,13 @@ int main(int argc, char **argv)
         }
         return usage(argv[0]);
     }
-    if (!project || !*project || check == (output != NULL) || (output && !*output)) {
+    int modes = check + tests + (output != NULL);
+    if (!project || !*project || modes != 1 || (output && !*output) ||
+        (tests && scene)) {
         return usage(argv[0]);
+    }
+    if (tests) {
+        return test(project);
     }
     return authoring_project_compile(project, scene, output);
 }

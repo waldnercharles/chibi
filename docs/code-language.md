@@ -126,6 +126,13 @@ not `pure`, so a `pure fn` cannot call it and no optimization removes it. Tests
 are ordinary functions: they compile into the package like any other and run
 only when something calls them.
 
+`chibi test [ROOT]` calls them: it prepares every package below ROOT, runs the
+tests of those packages in file and line order, and reports each failure at the
+call where it stopped, with its file, line and column. A test runs alone,
+without a game: it may call the natives that need none, such as text, array
+and math functions, and fails when it waits or starts a task, or after 100
+million instructions.
+
 ## Declarative documents
 
 Project manifests are `project.kdl`, version 24. Scenes, prototypes, event

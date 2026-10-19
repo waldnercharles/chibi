@@ -65,6 +65,7 @@ void test_language_package_resolution();
 void test_language_package_imports();
 void test_language_package_files();
 void test_language_package_core();
+void test_language_package_tests();
 void test_language_scalarize();
 void test_language_component_write();
 void test_language_component_write_source();
@@ -194,6 +195,7 @@ int main(int argc, char **argv)
     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
+    bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
     bool component_write = argc == 2 && !strcmp(argv[1], "--component-write");
     bool component_write_layout = argc == 2 &&
@@ -228,18 +230,18 @@ int main(int argc, char **argv)
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
-         !package_compiler_chibi_types && !lexical_binding_chibi &&
-         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
-         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
-         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
-         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files &&
-         !package_core && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !bounded_compiler_chibi && !prepared_writer_chibi &&
+         !package_compiler_chibi && !package_compiler_chibi_types &&
+         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
+         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
+         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
+         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+         !package_execution && !package_resolution && !package_imports &&
+         !package_files && !package_core && !package_tests && !component_write &&
+         !component_write_layout && !scalarize && !borrow && !reductions &&
+         !binding_schedule && !activation_cache && !headless && !build_workflow &&
+         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -267,6 +269,7 @@ int main(int argc, char **argv)
             "--package-syntax | --package-syntax-chibi | --package-execution | "
             "--package-resolution | "
             "--package-imports | --package-files | --package-core | "
+            "--package-tests | "
             "--component-write | --component-write-layout | --scalarize | "
             "--borrow | --reductions | "
             "--binding-schedule | "
@@ -453,6 +456,8 @@ int main(int argc, char **argv)
         test_language_package_imports();
     } else if (package_core) {
         test_language_package_core();
+    } else if (package_tests) {
+        test_language_package_tests();
     } else if (package_files) {
         test_language_package_files();
     } else if (package_graph_chibi) {

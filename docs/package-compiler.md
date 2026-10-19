@@ -55,7 +55,10 @@ import:
   and bit operations for `byte`, as stage zero's verifier allows. String
   equality, and `!`, `&&` and `||` with short-circuit evaluation;
 - struct and array literals, where the type is known from the declared local,
-  the result or the parameter; field reads; bounds-checked element reads;
+  the result or the parameter. With no type expected, as for `xs := [a, b]` or
+  an argument of a native such as `resize([int(0)], n)`, an array literal's
+  first item gives its element type, as in stage zero; field reads;
+  bounds-checked element reads;
 - element assignment, compound included, and `xs = array_add(xs, x)` and
   `xs = append(xs, ys)` on a local array, which update it in place;
 - union values `U.V` and `U.V(a, b)`, with one positional value per payload
@@ -80,8 +83,8 @@ import:
   constant, and `alias.T` names an imported record or union in types,
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
-Anything else is rejected with its source position. Array literals typed by
-their items, floating and other integer types, implicit widening of call
+Anything else is rejected with its source position. Floating and other
+integer types, implicit widening of call
 arguments, element stores, literal members, payloads and in-place natives,
 constants of other types or computed values, type patterns, record field
 defaults, field assignment, assigning record or array parameters, named
@@ -154,14 +157,23 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 72 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 9,229 assertions in
-34.7 s under the supervisor). A sample is package `facts`, optionally with a
-`lib` package and `core:strings`. Every accepted closure loads in a fresh
-runtime host and runs on bytecode and SLJIT with JSON arguments, and stage
-zero's own closure of the same packages must return the same JSON; calls that
-must fail, such as out-of-bounds reads, fail on all three. Rejections check
-the exact message and position.
+Two selectors compile 74 samples on both compiler backends, each under its
+own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19, with other
+test runs loading the machine):
+
+- `tool language-package-compiler-chibi`: scalars, control flow, records,
+  arrays, strings and natives, and every rejection (8,194 assertions in
+  22.9 s);
+- `tool language-package-compiler-chibi-types`: unions, imports, constants,
+  patterns, scopes, integer types and inferred arrays (2,647 assertions in
+  27.5 s).
+
+A sample is package `facts`, optionally with a `lib` package and
+`core:strings`. Every accepted closure loads in a fresh runtime host and runs
+on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
+same packages must return the same JSON; calls that must fail, such as
+out-of-bounds reads, fail on all three. Rejections check the exact message and
+position.
 
 Compiling is slow. In this build, compiling all the samples takes about 17 s
 of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT

@@ -809,11 +809,12 @@ tags. Each package is a module whose import rows carry the fingerprints the
 runtime checks. Integers are `int`, `byte`, `int64` and `uint64`, with literals
 typed by their use and checked, wrapping and clamping conversions; the
 compiler's own `x := -1` locals now declare `int`, since stage zero makes an
-untyped literal a double. Compiling
-the compiler's own sources now stops first at an array literal passed to a
-native in `package_graph`; array literals typed by their items, natives with
-several results, then the rest of the compiler's sources follow. Debugger points and
-watches are deferred until before stage one becomes the normal compiler.
+untyped literal a double. Array literals with no type expected take their
+first item's type. Compiling the compiler's own sources now stops first at
+`format_text`, a variadic native, in `package_paths`; variadic natives and
+natives with several results, then the rest of the compiler's sources follow.
+Debugger points and watches are deferred until before stage one becomes the
+normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the

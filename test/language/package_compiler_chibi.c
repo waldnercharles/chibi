@@ -44,11 +44,13 @@ typedef struct
     const char *function, *arguments, *expected;
 } sample_call;
 /* `source` is package facts; `library` is package lib when present, and
- * `core` adds core:strings. */
+ * `core` adds core:strings. Samples of unions, imports, constants, patterns
+ * and integer types (`types`) run under their own selector, so each selector
+ * stays within its time ceiling. */
 typedef struct
 {
     const char *name, *source, *library;
-    bool core;
+    bool core, types;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -194,6 +196,7 @@ static const sample samples[] = {
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
     { .name = "unions",
+      .types = true,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Shape :: union { Circle(radius: int) | Box(width: int, "
@@ -256,6 +259,7 @@ static const sample samples[] = {
                  { "Make", "[3]", "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
                  { "Make", "[4]", "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
     { .name = "imports",
+      .types = true,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "import strings \"core:strings\"\n"
@@ -305,6 +309,7 @@ static const sample samples[] = {
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
     { .name = "constants",
+      .types = true,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "Base: int : 40;\n"
@@ -328,6 +333,7 @@ static const sample samples[] = {
                  { "Limits", "[]", "[-1]" },
                  { "Scale", "[]", "[200]" } } },
     { .name = "patterns",
+      .types = true,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Value :: union { Int(n: int) | Text(s: string) | Pair(a: int, "
@@ -380,6 +386,7 @@ static const sample samples[] = {
                  { "Walk", "[]", "[33]" },
                  { "Empty", "[4]", "[true]" } } },
     { .name = "shadowing",
+      .types = true,
       .source = "package facts\n"
                 "Shadow :: pure fn(n: int) -> int {\n"
                 "    m := n + 1;\n"
@@ -392,6 +399,7 @@ static const sample samples[] = {
                 "n: int = 2; return n; case .B: return 0; } return -1; }",
       .calls = { { "Shadow", "[3]", "[13]" }, { "Arm", "[]", "[2]" } } },
     { .name = "integers",
+      .types = true,
       .source = "package facts\n"
                 "Mask: uint64 : 0xFF00000000000000;\n"
                 "Small: byte : 200;\n"
@@ -423,6 +431,7 @@ static const sample samples[] = {
                  { "Clamp", "[300]", "[255]" },
                  { "Clamp", "[-5]", "[0]" } } },
     { .name = "wide values",
+      .types = true,
       .source = "package facts\n"
                 "Wide: int64 : -5000000000;\n"
                 "Tag :: union { Bits(value: uint64) | None }\n"
@@ -443,6 +452,28 @@ static const sample samples[] = {
                  { "Twice", "[]", "[-10000000000]" },
                  { "Negative", "[-1]", "[true]" },
                  { "Pick", "[5]", "[5000000035]" } } },
+    { .name = "inferred arrays",
+      .types = true,
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Sizes :: pure fn(n: int) -> int {\n"
+                "    flags := resize([false], n);\n"
+                "    counts := resize([int(0)], n);\n"
+                "    counts[0] = 7;\n"
+                "    total: int = 0;\n"
+                "    foreach (count in counts) { total += count; }\n"
+                "    if (flags[1]) { return -1; }\n"
+                "    return total * 10 + length(flags);\n}\n"
+                "Words :: pure fn() -> int { first := \"x\"; words := [first, "
+                "\"yy\", \"zzz\"]; return length(words); }\n"
+                "Points :: pure fn() -> int { p: Point = {x: 1, y: 2}; points "
+                ":= [p, p]; return points[1].y + length(points); }\n"
+                "Wide :: pure fn() -> uint64 { bits := [uint64(1), 2, 0xFF]; "
+                "return bits[1] + bits[2]; }",
+      .calls = { { "Sizes", "[3]", "[73]" },
+                 { "Words", "[]", "[3]" },
+                 { "Points", "[]", "[4]" },
+                 { "Wide", "[]", "[257]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -504,9 +535,10 @@ static const sample samples[] = {
     { .name = "untyped array",
       .source = "package facts\nOne :: pure fn() -> int { xs := [1]; return 0; "
                 "}",
-      .message = "Array literal needs an explicit array type",
+      .message = "an untyped number is a double; give the array an integer "
+                 "type",
       .line = 2,
-      .column = 33 },
+      .column = 34 },
     { .name = "unknown function",
       .source = "package facts\nOne :: pure fn() -> int { return Missing(1); }",
       .message = "Unknown function 'Missing'",
@@ -749,6 +781,12 @@ static const sample samples[] = {
       .message = "Numeric literal is outside the range of int64",
       .line = 2,
       .column = 45 },
+    { .name = "untyped empty array",
+      .source = "package facts\nOne :: pure fn() -> int { xs := []; return "
+                "length(xs); }",
+      .message = "Empty arrays need an explicit element type",
+      .line = 2,
+      .column = 33 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
@@ -1128,12 +1166,15 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     REQUIRE(valid);
     return true;
 }
-TEST_CASE(package_compiler_builds_runnable_packages)
+static bool run_samples(bool types)
 {
     REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < (int)SAMPLES; i++) {
             const sample *s = &samples[i];
+            if (s->types != types) {
+                continue;
+            }
             pin_value out;
             REQUIRE(compile(b, s, &out));
             const pin_union *value = out.ptr;
@@ -1202,9 +1243,23 @@ TEST_CASE(package_compiler_builds_runnable_packages)
     }
     return true;
 }
+TEST_CASE(package_compiler_builds_runnable_packages)
+{
+    return run_samples(false);
+}
+TEST_CASE(package_compiler_builds_runnable_typed_packages)
+{
+    return run_samples(true);
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_types()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
     pu_clear_setup();
 }

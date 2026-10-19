@@ -577,6 +577,8 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, NoValue(), marks);
 }
 
+// The phase of an array literal whose element type its first item gives.
+InferPhase: int : 2;
 // Struct and array literals, built by the construct intrinsic: the value's
 // header, then each array item, or each field as an offset cell and a value
 // cell; it returns the new value.
@@ -596,7 +598,34 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
     next: Work[] = [];
     marks: int[] = [];
     if (array && item.container != ArrayContainer) {
-        return Fail(forest, item.node, document, "Array literal needs an explicit array type");
+        // With no type expected, the first item's type is the element type,
+        // as in stage zero, and the other items take it.
+        if (item.storage != 0) { return Fail(forest, item.node, document, "Array literal needs an explicit array type"); }
+        first := FirstMember(forest, item.node);
+        if (item.phase == 0) {
+            if (first < 0) { return Fail(forest, item.node, document, "Empty arrays need an explicit element type"); }
+            next = array_add(next, Visit(first));
+            next = array_add(next, Resume(item.node, InferPhase, 0, 0));
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(),
+                marks);
+        }
+        element := values[top - 1];
+        if (element.storage == NumberStorage) {
+            return Fail(forest, first, document, "an untyped number is a double; give the array an integer type");
+        }
+        if (element.container != 0) { return Fail(forest, first, document, "arrays of arrays are not supported yet"); }
+        count: int = 1;
+        member := NextMember(forest, first);
+        while (member >= 0) {
+            next = array_add(next, Expect(member, element.storage, 0, element.record));
+            count += 1;
+            member = NextMember(forest, member);
+        }
+        rest := Expect(item.node, element.storage, ArrayContainer, element.record);
+        rest.phase = 1;
+        rest.a = count;
+        next = array_add(next, rest);
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
     if (!array && (item.storage != StructStorage || item.container != 0)) {
         return Fail(forest, item.node, document, "Struct literal needs an explicit record type");

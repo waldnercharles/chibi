@@ -766,10 +766,12 @@ browser editor's leftovers are gone: `tools/configure_web.sh`,
 `tools/web_*` and the collaboration client. Nothing had called them since
 Studio took over the browser build on 2026-10-08 (`aff61c28f`); Studio builds
 from its own `web/` and `test/tools/web_storage.c` already reads that copy.
-Delete now: the retired one-off probes (`tools/hrc_sparse_sweep.c`,
-`tools/compare_neon_frames.mjs`, `tools/png-check.mjs`). Replace now: the `compiler-sdk` and
-`package-enabled` probes of `tools/configure_inputs.py`, moving into
-`Build.chibi`. Waiting on a decision: `.github/scripts/` (the M5 owner
+So are the retired one-off probes: `tools/hrc_sparse_sweep.c`, built by
+nothing since its September HRC study (its research note says how to recover
+it from Git), and `tools/compare_neon_frames.mjs` with `tools/png-check.mjs`,
+a frame diff for a game no longer in this repository. Replace now: the
+`compiler-sdk` and `package-enabled` probes of `tools/configure_inputs.py`,
+moving into `Build.chibi`. Waiting on a decision: `.github/scripts/` (the M5 owner
 confirms its hosted runs are finished), the CUT61 analysis scripts (owner
 review of the stale record), and game runtime installation (whether the
 `update-game-runtime` workflow outlived the retired game repositories).

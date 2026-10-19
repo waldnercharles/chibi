@@ -158,14 +158,12 @@ these the **host file primitives** below.
 | `src/ui/rml.cpp`, `test/draw_backend.cpp` | Pass-through shims to RmlUi and Cute's C++ API. | **Keep** while those libraries are used. |
 | `tools/reflect/` | Native reflection generator. `sdk/native.cmake`, Makefile reflect builds. | **Blocked**: its ledger gate. |
 | `test/`, `tools/benchmark.c` | C regression, differential and benchmark drivers. `make test-*`, CI. | **Blocked**: each leaves with the C it tests. |
-| `tools/hrc_sparse_sweep.c` | Probe for the September 2026 HRC sparse-storage study. Built by nothing; cited only by `docs/research/hrc-sparse-investigation.md`. | **Delete now**. |
 
 ### Node and browser JavaScript
 
 | Files | Responsibility and callers | Decision |
 | --- | --- | --- |
 | `tools/collab/server/` | Collaboration room service. `test/tools/collab.c`, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
-| `tools/compare_neon_frames.mjs`, `tools/png-check.mjs` | Frame-difference diagnostic for NeonSwarm, a game no longer in this repository. No callers. | **Delete now**. |
 | `docs/reviews/studio-ux-2026-10-02/performance/browser-sample.js` | Sampler for a finished Studio UX review. Only its own record. | **Owner decision**: delete with the stale record. |
 
 Only Python that Blender imports through `bpy` belongs to the Blender exception.

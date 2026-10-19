@@ -1,17 +1,20 @@
 name: Documentation site
 
-# Builds the public site that docs/site.kdl lists and uploads it as the Pages
-# artifact. It does not deploy: review the artifact for private paths and
-# internal material before adding a deploy job.
+# Builds the public site that docs/site.kdl lists, uploads it as the Pages
+# artifact and deploys it. Run it by hand; the repository's Pages source must
+# be GitHub Actions, and the github-pages environment decides which branches
+# may deploy.
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# One deployment at a time; a queued run waits rather than cancelling one that
+# is publishing.
 concurrency:
-  group: docs-site-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages
+  cancel-in-progress: false
 
 env:
   CC: clang-18
@@ -53,3 +56,19 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: build/docs
+
+  deploy:
+    name: Deploy the documentation site
+    needs: site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

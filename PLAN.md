@@ -204,7 +204,7 @@ Current integration constraints:
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7, owner review | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | Blocked | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -638,8 +638,8 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: blocked on the owner's review of the Pages artifact, the decision gate
-below; everything else is implemented. `chibi doc [ROOT] [--serve] [--port
+Status: implemented and reviewed; the first deployment waits for this branch
+to land on `main`, as the end of this status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
@@ -664,16 +664,24 @@ lists each rule of a Tree-sitter grammar's `rules` block with its comments
 language reference (Learn), the Testing guide, the generated `core` reference
 (Packages), the examples, the FAQ, the generated Grammar and the Toolchain
 guide. The manual `Documentation site` workflow
-(`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
-the Pages artifact; it has no deploy job, which waits for the owner's review of
-that artifact. A pre-review of the artifact on 2026-10-19 found no local paths,
+(`.github/workflows/docs.yml`) builds the site, uploads only `build/docs` as
+the Pages artifact and, since the owner approved it on 2026-10-19, deploys it
+with `actions/deploy-pages` (one deployment at a time, never cancelled). A
+pre-review of the artifact on 2026-10-19 found no local paths,
 credentials or links into private repositories (the linked `chibi-studio` is
 public). At the owner's request the README, Examples and Learn pages were then
 rewritten so that no sentence leans on a link to an unpublished document (the
 site had dropped 25 such links to plain text), and Examples no longer names the
 archived private repositories. The site folder now gets the permissions
 `mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
-it. No published page uses an image yet, so the manifest has no
+it. At the owner's request the repository's Pages source became GitHub Actions
+on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
+on `gh-pages` keeps serving until the first deployment replaces it. GitHub
+runs a `workflow_dispatch` workflow only from the default branch, and the
+`github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
+so the owner's instruction is to run the workflow once this branch reaches
+`main`. No published page uses an
+image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
 

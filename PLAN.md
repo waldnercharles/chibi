@@ -766,13 +766,25 @@ parameter still copy the referenced value.
 
 The stage-one compiler starts as `tools/compiler/package_compiler` (see
 `docs/package-compiler.md`). It compiles packages of functions and records,
-with `int`, `bool` and `string` values, statements, control flow and calls, to
+with `int`, `bool` and `string` values and arrays of them, statements, control
+flow including `foreach`, calls, and calls of the natives the target links, to
 runnable closures that agree with stage zero, with no native step after the
-parser. Records use stage zero's value model: construct and snapshot
-intrinsics, stage zero's record IDs and layout hashes, and value roots for
-suspended callers. Arrays, unions, imports and natives follow, then the
-compiler's own sources. Debugger points and watches are deferred until before
-stage one becomes the normal compiler.
+parser. Records and arrays use stage zero's value model: construct, snapshot
+and in-place array intrinsics, stage zero's record IDs and layout hashes, and
+value roots for suspended callers. Unions, imports, natives with several
+results and conversions follow, then the compiler's own sources. Debugger
+points and watches are deferred until before stage one becomes the normal
+compiler.
+
+Two runtime gaps surfaced on the way. Argument sharing rejected every function
+that assigned a field of its own record, because the analysis ignored the
+reference kind stage zero keeps in a data cell's initial value, and because
+storing the caller's text tainted the record. The analysis now reads initial
+values and tracks stored text separately, tainting only a read of it as an
+address, so 62 of the compiler's 63 functions share their tables. Compiling is
+still slow, about 1.8 s for a 40-line sample on SLJIT in a Debug + ASan build:
+per-call data-cell setup and record layout validation on every copy are the
+measured costs to remove before stage one compiles the compiler.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

@@ -989,7 +989,12 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     );
     REQUIRE(!invalid);
     /* The prepared reader wraps the detailed builder diagnostic checked above. */
-    REQUIRE(!strcmp(error, "prepared definition verification failed"));
+    REQUIRE(!strcmp(
+        error,
+        "prepared definition verification failed: instruction 19: runtime host "
+        "flags are not "
+        "canonical instructions"
+    ));
     return true;
 }
 
@@ -1034,11 +1039,13 @@ enum
     SELECTED,
     CONTEXT_PATH,
     LAUNDERED,
+    TEXT_ADDRESS,
     SQUARE_ROOT
 };
 /* Definitions no lowering emits that could still reach caller storage: a
- * select between pointers and an address derived from the context or from a
- * cell holding the argument. A math helper stays safe. */
+ * select between pointers, an address derived from the context or from a cell
+ * holding the argument, and the caller's text stored in a cell and read back
+ * as an address. A math helper stays safe. */
 static bool hand_built(int kind)
 {
     builder = behavior_function_builder_new();
@@ -1080,7 +1087,7 @@ static bool hand_built(int kind)
                                              .target = argument },
             true
         );
-    } else if (kind == CONTEXT_PATH || kind == LAUNDERED) {
+    } else if (kind == CONTEXT_PATH || kind == LAUNDERED || kind == TEXT_ADDRESS) {
         int base;
         if (kind == CONTEXT_PATH) {
             base = value(
@@ -1089,11 +1096,26 @@ static bool hand_built(int kind)
                                                  .target = 1 },
                 true
             );
-        } else {
+        } else if (kind == LAUNDERED) {
             base = host_address(cell);
             emit((behavior_function_instruction){ .op = BF_WRITE,
                                                   .type = BF_POINTER_TYPE,
                                                   .left = argument,
+                                                  .right = base,
+                                                  .offset = offsetof(pin_value, d) });
+        } else {
+            int text = value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = PIN_STR,
+                                                 .left = argument,
+                                                 .offset = offsetof(pin_array, items) },
+                false
+            );
+            pin_value text_cell = { .type = PIN_STR };
+            base = host_address(behavior_function_builder_values(builder, &text_cell, 1));
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = PIN_STR,
+                                                  .left = text,
                                                   .right = base,
                                                   .offset = offsetof(pin_value, d) });
         }
@@ -1153,12 +1175,145 @@ TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses)
     } cases[] = { { SELECTED, BEHAVIOR_SHARING_COPY },
                   { CONTEXT_PATH, BEHAVIOR_SHARING_COPY },
                   { LAUNDERED, BEHAVIOR_SHARING_COPY },
+                  { TEXT_ADDRESS, BEHAVIOR_SHARING_COPY },
                   { SQUARE_ROOT, BEHAVIOR_SHARING_SAFE } };
     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
         cleanup();
         REQUIRE(hand_built(cases[i].kind));
         execution_prepare_argument_sharing(function);
         REQUIRE(function->argument_sharing == cases[i].expected);
+    }
+    return true;
+}
+
+/* A value reference to `root`'s cell, made by a host whose cells the caller
+ * may reach before the call: returns the host. */
+static int reference_host()
+{
+    pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                            { .type = PIN_I32 },
+                            { .type = PIN_I32, .i = LANGUAGE_REFERENCE_VALUE },
+                            { .type = PIN_I32, .i = -1 },
+                            { .type = BF_POINTER_TYPE },
+                            { .type = PIN_HANDLE },
+                            { .type = PIN_U64 },
+                            { .type = PIN_U64 },
+                            { .type = PIN_U64 } };
+    pin_value result = { .type = BF_POINTER_TYPE };
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_reference_make_call,
+        &EXECUTION_value_access,
+        headers,
+        9,
+        &result,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_reference_make_call);
+    assert(behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id)));
+    int first = behavior_function_builder_host_first(builder, host);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first, BEHAVIOR_ADDRESS));
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, first + 4, BEHAVIOR_ADDRESS));
+    int made = behavior_function_builder_host_results(builder, host);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, made, BEHAVIOR_REFERENCE));
+    return host;
+}
+static void put_address(int cell, int address)
+{
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = address,
+                                          .right = host_address(cell),
+                                          .offset = offsetof(pin_value, d) });
+}
+/* Makes the reference `host` describes to `root` and writes `number` through it. */
+static void write_reference(int host, int root, int number)
+{
+    int first = behavior_function_builder_host_first(builder, host);
+    put_address(
+        first,
+        value((behavior_function_instruction){ .op = BF_CONTEXT, .type = BF_POINTER_TYPE, .target = 1 }, true)
+    );
+    put_address(first + 4, host_address(root));
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int made = behavior_function_builder_slot(builder, BF_POINTER_TYPE);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_SLOT, made, BEHAVIOR_REFERENCE));
+    emit((behavior_function_instruction){
+        .op = BF_LOAD,
+        .type = BF_POINTER_TYPE,
+        .output = made,
+        .left = host_address(behavior_function_builder_host_results(builder, host)),
+        .offset = offsetof(pin_value, d) });
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, { .type = PIN_I32 } },
+              done = { .type = PIN_BOOL };
+    int write = behavior_function_builder_host(
+        builder,
+        &EXECUTION_reference_write_call,
+        &EXECUTION_assignment_access,
+        headers,
+        2,
+        &done,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_reference_write_call);
+    assert(behavior_function_builder_host_identity(builder, write, id, execution_intrinsic_abi(id)));
+    int target = behavior_function_builder_host_first(builder, write);
+    assert(behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, target, BEHAVIOR_REFERENCE));
+    put_address(target, made);
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_I32,
+                                          .left = number,
+                                          .right = host_address(target + 1),
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = write,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+}
+/* A value reference to an own cell writes only that cell; one aimed at a
+ * second reference's kind can turn that one into a state reference, after
+ * which its write must copy. */
+TEST_CASE(borrow_argument_sharing_tracks_reference_kinds)
+{
+    for (int retargeted = 0; retargeted < 2; retargeted++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value output = { .type = PIN_I32 }, own = { .type = PIN_I32 };
+        behavior_function_builder_signature(builder, &array_shape, 1, &output, 1, NULL, 0);
+        int cell = behavior_function_builder_values(builder, &own, 1);
+        int second = reference_host();
+        int kind = value(
+            (behavior_function_instruction){
+                .op = BF_CONSTANT,
+                .type = PIN_I32,
+                .value = { .type = PIN_I32, .i = LANGUAGE_REFERENCE_STATE } },
+            false
+        );
+        if (retargeted) {
+            write_reference(
+                reference_host(),
+                behavior_function_builder_host_first(builder, second) + 2,
+                kind
+            );
+        }
+        write_reference(second, cell, kind);
+        emit((behavior_function_instruction){ .op = BF_RESULT,
+                                              .type = PIN_I32,
+                                              .left = kind });
+        emit((behavior_function_instruction){ .op = BF_RETURN });
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[256];
+        function = behavior_function_builder_finish(builder, error, sizeof error);
+        if (!function) {
+            fprintf(stderr, "reference fixture: %s\n", error);
+        }
+        REQUIRE(function);
+        execution_prepare_argument_sharing(function);
+        REQUIRE(
+            function->argument_sharing ==
+            (retargeted ? BEHAVIOR_SHARING_COPY : BEHAVIOR_SHARING_SAFE)
+        );
     }
     return true;
 }
@@ -1233,6 +1388,33 @@ TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies)
     return true;
 }
 
+/* Changing fields of a record the helper owns, even to text from its
+ * arguments, writes only the helper's storage, so the table still shares. */
+TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes)
+{
+    REQUIRE(authored(
+        "library Share { Row :: struct { name: string; count: int; }"
+        "Root :: pure (input: string[]) -> int { total: int = 0; i: int = 0;"
+        "while i < 8 { total += Label(input, i); i += 1; } return total; }"
+        "Label :: pure (input: string[], at: int) -> int {"
+        "row: Row = {name: \"\", count: 0}; row.count = at; row.name = "
+        "input[at % 2];"
+        "if row.name == \"a\" { return row.count; } return 0; } }"
+    ));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(authored_function(i)->argument_sharing == BEHAVIOR_SHARING_SAFE);
+    }
+    const char *texts[] = { "a", "b" };
+    pin_value items[2], output = { .type = PIN_I32 };
+    pin_array array;
+    pin_value input = strings(&array, items, texts, 2);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+        REQUIRE(output.i == 12 && !strcmp(items[0].str, "a") && !strcmp(items[1].str, "b"));
+    }
+    return true;
+}
+
 /* A callee that writes through a reference argument, and every caller of it,
  * keeps copying: its value argument stays the caller's original. */
 TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
@@ -1275,7 +1457,9 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code);
     RUN_TEST_CASE(borrow_argument_sharing_rejects_writes_through_caller_storage);
     RUN_TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses);
+    RUN_TEST_CASE(borrow_argument_sharing_tracks_reference_kinds);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
+    RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);
     RUN_TEST_CASE(borrow_argument_sharing_copies_around_reference_writes);
     pu_clear_setup();
 }

@@ -1,5 +1,5 @@
 # Source-only standalone package compiler fixture. Registration is not test admission.
-foreach(component Compile Body Tree)
+foreach(component Compile Body Steps Tree)
     string(TOUPPER "${component}" component_upper)
     set(source "${CHIBI_LANGUAGE_TEST_ROOT}/tools/compiler/package_compiler/${component}.chibi")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${source}")

@@ -10,26 +10,37 @@ import strings "core:strings"
 // Compiles one package of functions and records to a prepared closure. Stage
 // zero builds this compiler; everything after the raw parser is authored.
 
-// Layout facts of the runtime this compiler targets, which Chibi cannot see:
-// pointer width and the byte offsets of a value header's members.
+// Facts of the runtime this compiler targets, which Chibi cannot see: pointer
+// width, the byte offsets of a value header's and an array's members, and the
+// failure kinds a host call and a failed assertion report.
 Target :: struct {
     pointer_storage: int; pointer_size: int; value_size: int; payload_offset: int; results_offset: int;
-    type_offset: int; container_offset: int; name_offset: int; record_offset: int;
+    type_offset: int; container_offset: int; name_offset: int; record_offset: int; count_offset: int;
+    items_offset: int; data_failure: int; argument_failure: int;
 }
 // Prepared instructions this compiler emits, as ordinals on the target.
 Ops :: struct {
     constant: int; argument: int; local: int; save: int; context: int; array: int; host_slot: int;
     string_equal: int; index: int; load: int; write: int; result: int; host_call: int; invoke: int;
-    check: int; branch_if: int; jump: int; finish: int; end: int; add: int; sub: int; mul: int;
+    guard: int; check: int; branch_if: int; jump: int; finish: int; end: int; add: int; sub: int; mul: int;
     div: int; mod: int; neg: int; bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int;
     shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
 }
-// A signature type: a storage code and, for records, a record index.
-ValueType :: struct { storage: int; record: int; }
+// A type: a storage code, whether it is an array, and a record index for
+// records and arrays of records.
+ValueType :: struct { storage: int; container: int; record: int; }
 Callable :: struct {
-    name: string; document: int; node: int; first: int; count: int; result: int; result_record: int;
+    name: string; document: int; node: int; first: int; count: int; result: int; result_container: int;
+    result_record: int;
 }
-Param :: struct { name: string; storage: int; record: int; }
+Param :: struct { name: string; storage: int; container: int; record: int; }
+// A native function the target links, as its catalog describes it. Its
+// parameters and then its results are ports[first, first + parameters +
+// results); its ID and ABI are identities[2 * index] and [2 * index + 1].
+Native :: struct { name: string; first: int; parameters: int; results: int; variadic: bool; }
+// A native port. Storage 0 is a type the call infers, one type for every such
+// port of the native; storage -1 is a type this compiler cannot pass.
+Port :: struct { storage: int; container: int; }
 // An authored record; its fields are fields[first, first + count).
 Record :: struct { name: string; type_name: string; first: int; count: int; size: int; }
 RecordField :: struct { name: string; storage: int; offset: int; }
@@ -63,7 +74,8 @@ ResolveOps :: pure fn(names: string[]) -> Ops {
         array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
         string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
         load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
-        host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), check: Ordinal(names, "CHECK"),
+        host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+        check: Ordinal(names, "CHECK"),
         branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
         end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
         mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
@@ -76,7 +88,7 @@ ResolveOps :: pure fn(names: string[]) -> Ops {
 Complete :: pure fn(ops: Ops) -> bool {
     used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
         ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
-        ops.invoke, ops.check, ops.branch_if, ops.jump, ops.finish,
+        ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
         ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
         ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne];
     foreach (op in used) {
@@ -99,13 +111,27 @@ FindRecord :: pure fn(records: Record[], name: string) -> int {
     }
     return -1;
 }
-// A field type or a record of this package; storage 0 when neither.
-ResolveType :: pure fn(records: Record[], text: string) -> ValueType {
-    storage := FieldStorage(text);
-    if (storage != 0) { return {storage: storage, record: -1}; }
-    record := FindRecord(records, text);
-    if (record < 0) { return {storage: 0, record: -1}; }
-    return {storage: StructStorage, record: record};
+// The type a `type` node names: a field type or a record of this package,
+// or an array of either; storage 0 for any other.
+ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, records: Record[], node: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
+        HasToken(forest, node, "?")) {
+        return none;
+    }
+    container: int = 0;
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && forest[child].kind == "[") { container += 1; }
+        child = forest[child].next_sibling;
+    }
+    if (container > 1) { return none; }
+    name := NameText(forest, text, FirstMember(forest, Field(forest, node, "name")));
+    storage := FieldStorage(name);
+    if (storage != 0) { return {storage: storage, container: container, record: -1}; }
+    record := FindRecord(records, name);
+    if (record < 0 || NextMember(forest, FirstMember(forest, Field(forest, node, "name"))) >= 0) { return none; }
+    return {storage: StructStorage, container: container, record: record};
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: pure fn(storage: int, target: Target) -> int {
@@ -152,8 +178,10 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     if (field_name == "") {
                         return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                     }
-                    storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
-                    if (storage == 0 || Field(forest, item, "value") >= 0) {
+                    field_type := ReadType(forest, text, records, Field(forest, item, "type"));
+                    storage := field_type.storage;
+                    if (storage == 0 || storage == StructStorage || field_type.container != 0 ||
+                        Field(forest, item, "value") >= 0) {
                         return Declarations.Failed(Diagnose(forest, item, file,
                             "record field needs an int, bool or string type and no default"));
                     }
@@ -199,7 +227,7 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 first := length(params);
                 parameter := FirstMember(forest, Field(forest, member, "parameters"));
                 while (parameter >= 0) {
-                    declared := ResolveType(records, Text(forest, text, Field(forest, parameter, "type")));
+                    declared := ReadType(forest, text, records, Field(forest, parameter, "type"));
                     if (declared.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
                     }
@@ -207,20 +235,22 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     if (param_name == "") {
                         return Declarations.Failed(Diagnose(forest, Field(forest, parameter, "name"), file, "Invalid string or embedded NUL"));
                     }
-                    param: Param = {name: param_name, storage: declared.storage, record: declared.record};
+                    param: Param = {name: param_name, storage: declared.storage, container: declared.container,
+                        record: declared.record};
                     params = array_add(params, param);
                     parameter = NextMember(forest, parameter);
                 }
-                result: ValueType = {storage: 0, record: -1};
+                result: ValueType = {storage: 0, container: 0, record: -1};
                 results := Field(forest, member, "results");
                 if (results >= 0) {
-                    result = ResolveType(records, Text(forest, text, results));
+                    result = ReadType(forest, text, records, results);
                     if (result.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
                     }
                 }
                 callable: Callable = {name: name, document: file, node: member, first: first,
-                    count: length(params) - first, result: result.storage, result_record: result.record};
+                    count: length(params) - first, result: result.storage, result_container: result.container,
+                    result_record: result.record};
                 callables = array_add(callables, callable);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
@@ -235,8 +265,19 @@ ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
     return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
         wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
 }
-// The header of a value of `storage`; an absent record names its layout.
-Header :: pure fn(storage: int, record: int, records: Record[], layouts: int[]) -> writer.Value {
+// The header of an absent value of a type. A record names its layout; an
+// array of records, like a record, names its type.
+Header :: pure fn(storage: int, container: int, record: int, records: Record[], layouts: int[]) -> writer.Value {
+    if (container != 0) {
+        value := ScalarValue(storage, 0);
+        value.container = container;
+        if (storage == StructStorage) {
+            value.type_name = records[record].type_name;
+            value.has_type_name = true;
+            value.authored = true;
+        }
+        return value;
+    }
     if (storage != StructStorage) { return ScalarValue(storage, 0); }
     return {tag: StructStorage, container: 0, type_name: records[record].type_name, has_type_name: true,
         authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
@@ -292,7 +333,8 @@ LayoutHash :: pure fn(record: Record, fields: RecordField[], target: Target) -> 
 // runtime verifies and finalizes when it loads it.
 Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], identity: string,
                     module: uint64, callables: Callable[], params: Param[], records: Record[],
-                    record_fields: RecordField[], ops: Ops, target: Target, abi: uint64) -> Result {
+                    record_fields: RecordField[], natives: Native[], ports: Port[], identities: uint64[],
+                    ops: Ops, target: Target, abi: uint64) -> Result {
     wide: uint64[] = [0];
     values: writer.Value[] = [];
     ints: int[] = [];
@@ -333,7 +375,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     while (index < length(callables)) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            records, record_fields, index, ops, target);
+            records, record_fields, natives, ports, index, ops, target);
         switch tables {
             case .Failed(diagnostic): return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
@@ -343,7 +385,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 at: int = 0;
                 while (at < callable.count) {
                     param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.record, records, layouts));
+                    values = array_add(values, Header(param.storage, param.container, param.record, records, layouts));
                     at += 1;
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
@@ -354,7 +396,8 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 if (callable.result != 0) { result_count = 1; }
                 spans = array_add(spans, Range(length(values), result_count));
                 if (result_count != 0) {
-                    values = array_add(values, Header(callable.result, callable.result_record, records, layouts));
+                    values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
+                        records, layouts));
                 }
                 spans = array_add(spans, Range(length(ints), result_count));
                 if (result_count != 0) { ints = array_add(ints, int(0)); }
@@ -363,10 +406,10 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 foreach (slot in body_slots) { ints = array_add(ints, slot.storage); }
                 spans = array_add(spans, Range(length(ints), length(body_slots)));
                 foreach (slot in body_slots) { ints = array_add(ints, slot.kind); }
-                // Record pointers each slot may hold while the function waits.
+                // Record and array pointers each slot may hold while the function waits.
                 spans = array_add(spans, Range(length(roots), length(body_roots)));
                 foreach (root in body_roots) {
-                    values = array_add(values, Header(StructStorage, root.record, records, layouts));
+                    values = array_add(values, Header(root.storage, root.container, root.record, records, layouts));
                     row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
                     roots = array_add(roots, row);
                 }
@@ -374,7 +417,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 spans = array_add(spans, Range(length(instructions), length(body_code)));
                 pc: int = 0;
                 foreach (code in body_code) {
-                    value := Header(code.value_storage, code.value_record, records, layouts);
+                    value := Header(code.value_storage, code.value_container, code.value_record, records, layouts);
                     if (code.has_text) {
                         value.text = code.text;
                         value.has_text = true;
@@ -403,7 +446,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 at = 0;
                 while (at < callable.count) {
                     param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.record, records, layouts));
+                    values = array_add(values, Header(param.storage, param.container, param.record, records, layouts));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
                     parameters = array_add(parameters, parameter);
                     at += 1;
@@ -432,21 +475,29 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 // constructor offset cells hold their field offset.
                 spans = array_add(spans, Range(length(data), length(body_cells)));
                 foreach (cell in body_cells) {
-                    value := Header(cell.storage, cell.record, records, layouts);
+                    value := Header(cell.storage, cell.container, cell.record, records, layouts);
                     size: int = 0;
-                    if (cell.storage == StructStorage) { size = records[cell.record].size; }
+                    if (cell.storage == StructStorage && cell.container == 0) { size = records[cell.record].size; }
                     if (cell.offset != 0) {
                         value.wide = length(wide);
                         wide = array_add(wide, uint64(cell.offset));
                     }
                     values = array_add(values, value);
-                    datum: writer.Data = {kind: 0, initial: length(values) - 1, size: size};
+                    datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
                     data = array_add(data, datum);
                 }
                 spans = array_add(spans, Range(length(hosts), length(body_hosts)));
                 foreach (host in body_hosts) {
-                    wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
-                    row: writer.Host = {capability: length(wide) - 1, abi: abi_one, first: host.first,
+                    capability := length(wide);
+                    host_abi := abi_one;
+                    if (host.linked >= 0) {
+                        wide = array_add(wide, identities[2 * host.linked]);
+                        wide = array_add(wide, identities[2 * host.linked + 1]);
+                        host_abi = capability + 1;
+                    } else {
+                        wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
+                    }
+                    row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
                         result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
                         outcome_count: 0};
                     hosts = array_add(hosts, row);
@@ -491,12 +542,19 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     return Result.Compiled(module, writer.Closure(module, ids, names, prepared, starts, lengths));
 }
 
-// `abi` is the target's prepared header ABI and `names` its instruction names
-// in ordinal order.
+// `abi` is the target's prepared header ABI, `names` its instruction names in
+// ordinal order, and `natives` the native functions it links.
 Compile :: pure fn(project: string, paths: string[], sources: string[], target: Target,
-                   abi: uint64, names: string[]) -> Result {
+                   abi: uint64, names: string[], natives: Native[], ports: Port[], identities: uint64[]) -> Result {
     ops := ResolveOps(names);
-    if (abi == 0 || !Complete(ops) || length(paths) == 0 || length(paths) != length(sources)) {
+    complete := length(identities) == 2 * length(natives);
+    foreach (native_row in natives) {
+        if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
+            native_row.first + native_row.parameters + native_row.results > length(ports)) {
+            complete = false;
+        }
+    }
+    if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources)) {
         return InputFailure(-1, "unsupported compiler input or target");
     }
     inputs: snapshot.Input[] = [];
@@ -526,7 +584,7 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], target: 
                         case .Collected(callables, params, records, fields):
                             identity := documents[files[0]].identity;
                             return Assemble(nodes, documents, identity, binding.ID("module", identity),
-                                callables, params, records, fields, ops, target, abi);
+                                callables, params, records, fields, natives, ports, identities, ops, target, abi);
                     }
             }
     }

@@ -35,7 +35,9 @@ Diagnose :: pure fn(nodes: Node[], root: int) -> Diagnostic[] {
         hidden := !node.error && !node.missing && node.has_error;
         child := node.first_child;
         while (hidden && child >= 0) {
-            if (nodes[child].has_error) { hidden = false; }
+            if (nodes[child].has_error) {
+                hidden = false;
+            }
             child = nodes[child].next_sibling;
         }
 
@@ -66,7 +68,9 @@ Diagnose :: pure fn(nodes: Node[], root: int) -> Diagnostic[] {
         }
         while (nodes[current].next_sibling < 0) {
             current = nodes[current].parent;
-            if (current < 0) { return diagnostics; }
+            if (current < 0) {
+                return diagnostics;
+            }
         }
         current = nodes[current].next_sibling;
     }

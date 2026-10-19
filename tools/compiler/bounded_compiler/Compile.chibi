@@ -19,7 +19,9 @@ Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
     Compiled(module: uint64, function_id: uint64, bytes: byte[])
 }
-ScalarSignature :: union { Accepted(storage: int) | Rejected(diagnostic: syntax.Diagnostic) }
+ScalarSignature :: union {
+    Accepted(storage: int) | Rejected(diagnostic: syntax.Diagnostic)
+}
 
 InputFailure :: pure fn(document: int, message: string) -> Result {
     diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1,
@@ -30,30 +32,37 @@ SourceFailure :: pure fn(tree: reader.Tree, node: int, document: int, message: s
     return Result.Rejected(reader.Diagnostic(tree, node, document, message));
 }
 FirstMember :: pure fn(tree: reader.Tree, parent: int) -> int {
-    if (parent < 0) { return -1; }
-    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, text):
-        return reader.NextMember(tree, nodes[parent].first_child);
+    if (parent < 0) {
+        return -1;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            return reader.NextMember(tree, nodes[parent].first_child);
     }
 }
 FollowingMember :: pure fn(tree: reader.Tree, node: int) -> int {
-    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, text):
-        return reader.NextMember(tree, nodes[node].next_sibling);
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            return reader.NextMember(tree, nodes[node].next_sibling);
     }
 }
 DirectToken :: pure fn(tree: reader.Tree, parent: int, token: string) -> bool {
-    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, text):
-        child := nodes[parent].first_child;
-        while (child >= 0) {
-            if (!extra_flags[child] && nodes[child].kind == token) { return true; }
-            child = nodes[child].next_sibling;
-        }
-        return false;
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            child := nodes[parent].first_child;
+            while (child >= 0) {
+                if (!extra_flags[child] && nodes[child].kind == token) {
+                    return true;
+                }
+                child = nodes[child].next_sibling;
+            }
+            return false;
     }
 }
 
 LexicalEnvironment :: pure fn(keys: string[]) -> binding.Environment {
     scope: binding.Scope = {parent: -1, function: -1, start: 0, end: 0,
-                           line: 1, column: 1, document: 0};
+                            line: 1, column: 1, document: 0};
     symbols: binding.Symbol[] = [];
     functions: binding.Function[] = [];
     ids: uint64[] = [];
@@ -68,14 +77,14 @@ SignatureEnvironment :: pure fn(lexical: binding.Environment, identity: string, 
     exports: named.Export[] = [];
     uses: named.Use[] = [];
     names := named.Environment.Tables(lexical, types, ids, entries, entries, entries,
-        indices, imports, exports, uses, identity, 0, false, true, 0);
+                                      indices, imports, exports, uses, identity, 0, false, true, 0);
     definitions: constructors.Definition[] = [];
     variants: constructors.RawVariant[] = [];
     capabilities: constructors.Capability[] = [];
     functions: constructors.Function[] = [];
     symbols: constructors.Symbol[] = [];
     construction := constructors.Environment.Tables(types, ids, definitions, variants,
-        capabilities, functions, symbols, indices);
+                                                    capabilities, functions, symbols, indices);
     return reader.Environment.Tables(names, construction, pointer_size);
 }
 ReadSignature :: pure fn(environment: reader.Environment, tree: reader.Tree, node: int, document: int) -> ScalarSignature {
@@ -88,14 +97,17 @@ ReadSignature :: pure fn(environment: reader.Environment, tree: reader.Tree, nod
     }
     switch reader.Signature(environment, tree, node, 0, document) {
         case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
-            if (length(diagnostics) != 0) { return ScalarSignature.Rejected(diagnostics[0]); }
-            switch value { case .Typed(storage, container, flags, nominal, parameter):
-                if ((storage != 1 && storage != 6) || container != 0 || flags != 0 ||
-                    nominal != 0 || parameter != 0 || has_unit ||
-                    length(uses) != 0 || length(publications) != 0) {
-                    return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "unsupported bounded result signature"));
-                }
-                return ScalarSignature.Accepted(storage);
+            if (length(diagnostics) != 0) {
+                return ScalarSignature.Rejected(diagnostics[0]);
+            }
+            switch value {
+                case .Typed(storage, container, flags, nominal, parameter):
+                    if ((storage != 1 && storage != 6) || container != 0 || flags != 0 ||
+                        nominal != 0 || parameter != 0 || has_unit ||
+                        length(uses) != 0 || length(publications) != 0) {
+                        return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "unsupported bounded result signature"));
+                    }
+                    return ScalarSignature.Accepted(storage);
             }
     }
 }
@@ -121,19 +133,24 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
     }
     lexical := LexicalEnvironment(keys);
     context: binding.Context = {identity: identity, scope: 0, function: -1,
-        package_scope: 0, has_identity: true, has_documents: true};
+                                package_scope: 0, has_identity: true, has_documents: true};
     place := reader.Request(tree, name_node, 0, document, name);
     request: binding.Request = {name: name, kind: binding.FunctionKind,
-        start: place.start, end: place.end, line: place.line, column: place.column, document: document};
+                                start: place.start, end: place.end, line: place.line, column: place.column, document: document};
     function_id: uint64 = 0;
     switch binding.Declare(lexical, context, request) {
-        case .Existing(symbol, diagnostics): return Result.Rejected(diagnostics[0]);
+        case .Existing(symbol, diagnostics):
+            return Result.Rejected(diagnostics[0]);
         case .Appended(id, diagnostics):
-            if (length(diagnostics) != 0) { return Result.Rejected(diagnostics[0]); }
+            if (length(diagnostics) != 0) {
+                return Result.Rejected(diagnostics[0]);
+            }
             function_id = id;
     }
     pointer_size: int = 4;
-    if (abi.pointer_storage == 9) { pointer_size = 8; }
+    if (abi.pointer_storage == 9) {
+        pointer_size = 8;
+    }
     environment := SignatureEnvironment(lexical, identity, pointer_size);
     result_storage: int = 0;
     signature := reader.Field(tree, function, "results");
@@ -141,8 +158,10 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
         return SourceFailure(tree, function, document, "bounded compiler requires one ordinary int or bool result");
     }
     switch ReadSignature(environment, tree, signature, document) {
-        case .Rejected(diagnostic): return Result.Rejected(diagnostic);
-        case .Accepted(storage): result_storage = storage;
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Accepted(storage):
+            result_storage = storage;
     }
     body := reader.Field(tree, function, "body");
     statement := FirstMember(tree, body);
@@ -151,12 +170,17 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
         return SourceFailure(tree, body, document, "bounded function body needs exactly one ordinary return");
     }
     expression := reader.Field(tree, statement, "value");
-    if (expression < 0) { return SourceFailure(tree, statement, document, "bounded return requires a scalar expression"); }
+    if (expression < 0) {
+        return SourceFailure(tree, statement, document, "bounded return requires a scalar expression");
+    }
     switch ReadExpression(tree, expression, document, result_storage) {
-        case .Rejected(diagnostic): return Result.Rejected(diagnostic);
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
         case .Accepted(expressions, literals, expression_ranges, result):
             result_type: int = 0;
-            if (result_storage == 6) { result_type = 1; }
+            if (result_storage == 6) {
+                result_type = 1;
+            }
             if (expressions[result].type != result_type) {
                 return SourceFailure(tree, expression, document, "bounded return expression differs from its declared result type");
             }
@@ -168,7 +192,7 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
             output: lower.Result = {expression: result, type: result_type};
             ranges := array_add(expression_ranges, ExpressionRange(tree, function, document));
             facts := lower.Request.Tables([boolean, integer], expressions, symbols, variables,
-                [output], literals, ids, ranges, keys, abi, length(ranges) - 1);
+                                          [output], literals, ids, ranges, keys, abi, length(ranges) - 1);
             plan := lower.Lower(facts);
             switch plan {
                 case .Rejected(diagnostics):
@@ -184,22 +208,27 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
                     starts: int[] = [0];
                     lengths: int[] = [length(prepared)];
                     return Result.Compiled(module, function_id,
-                        writer.Closure(module, ids, names, prepared, starts, lengths));
+                                           writer.Closure(module, ids, names, prepared, starts, lengths));
             }
     }
 }
 
 CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target,
-                          prepared_abi: uint64, opcodes: int[]) -> Result {
+                           prepared_abi: uint64, opcodes: int[]) -> Result {
     switch source {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
         case .Accepted(roots, documents, nodes, imports, graph):
-            if (length(imports) != 0) { return InputFailure(imports[0].file, "bounded compiler does not support imports"); }
+            if (length(imports) != 0) {
+                return InputFailure(imports[0].file, "bounded compiler does not support imports");
+            }
             switch graph {
-                case .Rejected(error, cycle): return InputFailure(-1, "bounded compiler requires an accepted package graph");
+                case .Rejected(error, cycle):
+                    return InputFailure(-1, "bounded compiler requires an accepted package graph");
                 case .Accepted(packages, members, file_packages, order, edges, bindings):
-                    if (length(packages) != 1) { return InputFailure(-1, "bounded compiler requires one complete package"); }
+                    if (length(packages) != 1) {
+                        return InputFailure(-1, "bounded compiler requires one complete package");
+                    }
             }
             keys: string[] = [];
             foreach (item in documents) {
@@ -212,11 +241,13 @@ CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target,
             function: int = -1;
             document: int = -1;
             switch analysis.DocumentsForPackage(source, 0) {
-                case .Missing: return InputFailure(-1, "bounded compiler has no package document map");
+                case .Missing:
+                    return InputFailure(-1, "bounded compiler has no package document map");
                 case .Mapped(local_to_source_file, source_file_to_local):
                     foreach (source_file in local_to_source_file) {
                         switch analysis.TreeForDocument(source, source_file) {
-                            case .Missing: return InputFailure(source_file, "bounded compiler has no retained source tree");
+                            case .Missing:
+                                return InputFailure(source_file, "bounded compiler has no retained source tree");
                             case .Parsed(tree, root):
                                 child := FirstMember(tree, root);
                                 while (child >= 0) {
@@ -235,12 +266,15 @@ CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target,
                         }
                     }
             }
-            if (function < 0) { return InputFailure(-1, "bounded package needs one function"); }
+            if (function < 0) {
+                return InputFailure(-1, "bounded package needs one function");
+            }
             switch analysis.TreeForDocument(source, document) {
-                case .Missing: return InputFailure(document, "bounded compiler lost its retained source tree");
+                case .Missing:
+                    return InputFailure(document, "bounded compiler lost its retained source tree");
                 case .Parsed(tree, root):
                     return CompileFunction(tree, function, document, documents[document].identity,
-                        keys, abi, prepared_abi, opcodes);
+                                           keys, abi, prepared_abi, opcodes);
             }
     }
 }
@@ -271,7 +305,7 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], abi: low
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
-        has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
+                                 has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
     collections: routes.Collection[] = [];
     return CompileSnapshot(snapshot.Build(options, collections, inputs, sizes), abi, prepared_abi, opcodes);
 }

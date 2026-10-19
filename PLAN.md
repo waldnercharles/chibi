@@ -936,7 +936,7 @@ The bootstrap also requires an explicit final return after the infinite loop.
 
 Every execution route uses one production 60-second ceiling. The callable route
 has 30 calls at two million instructions, 31 parses and four private JSON calls.
-Its header source is below 64 KiB; seven dependencies are below 32 KiB each.
+Its header source is below 64 KiB; seven dependencies are below 48 KiB each.
 Inputs are below 512 bytes/256 nodes/depth 32. Output caps are ten symbols, two
 scopes, three functions, two defaults, one body and four uses/diagnostics; this
 corpus publishes no constructors. Membership banks have sixteen cells, with

@@ -7,115 +7,219 @@ import strings "core:strings"
 
 // Raw analyzer/catalog facts, preserving original order and full-width IDs.
 // Negative ID slots mean zero. All other indices/spans obey analyzer invariants.
-Type :: struct { storage: int; container: int; flags: int; nominal_slot: int;  }
-Range :: struct { start: int; end: int; line: int; column: int; document: int;  }
-Expression :: struct { kind: int; op: int; type: int; range: int; symbol: int; left: int; right: int; arg_start: int; arg_count: int; result_count: int; capability_slot: int; member_slot: int; offset_slot: int; task: bool; }
-Symbol :: struct { id_slot: int; kind: int; range: int; initializer: int; has_unit: bool; unit: string; }
-Function :: struct { param_start: int; param_count: int; result_start: int; result_count: int;  }
-Argument :: struct { value: int; parameter: int; range: int;  }
-Capability :: struct { id_slot: int; kind: int; param_start: int; param_count: int; result_start: int; result_count: int; event_sender: bool; variadic: bool; }
-Field :: struct { id_slot: int; has_unit: bool; unit: string; }
-CatalogType :: struct { id_slot: int; field_start: int; field_count: int;  }
-Global :: struct { id_slot: int; has_unit: bool; unit: string; }
-Statement :: struct { kind: int; range: int; op: int; expression: int; symbol: int; second: int;  }
-Binding :: struct { target: int; value: int; range: int;  }
-Cache :: struct { kind: int; term_start: int; term_count: int;  }
-Port :: struct { name: string; has_unit: bool; unit: string; }
-Environment :: union { Tables(types: Type[], ids: uint64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[]) }
-State :: union { Cached(cache: Cache[], terms: units.Term[], visits: int[], diagnostics: syntax.Diagnostic[]) }
-Evaluation :: union { Evaluated(value: units.Unit, current: State) }
-Analysis :: union { Completed(cache: Cache[], terms: units.Term[], diagnostics: syntax.Diagnostic[]) }
+Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    nominal_slot: int;
+}
+Range :: struct {
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+Expression :: struct {
+    kind: int;
+    op: int;
+    type: int;
+    range: int;
+    symbol: int;
+    left: int;
+    right: int;
+    arg_start: int;
+    arg_count: int;
+    result_count: int;
+    capability_slot: int;
+    member_slot: int;
+    offset_slot: int;
+    task: bool;
+}
+Symbol :: struct {
+    id_slot: int;
+    kind: int;
+    range: int;
+    initializer: int;
+    has_unit: bool;
+    unit: string;
+}
+Function :: struct {
+    param_start: int;
+    param_count: int;
+    result_start: int;
+    result_count: int;
+}
+Argument :: struct {
+    value: int;
+    parameter: int;
+    range: int;
+}
+Capability :: struct {
+    id_slot: int;
+    kind: int;
+    param_start: int;
+    param_count: int;
+    result_start: int;
+    result_count: int;
+    event_sender: bool;
+    variadic: bool;
+}
+Field :: struct {
+    id_slot: int;
+    has_unit: bool;
+    unit: string;
+}
+CatalogType :: struct {
+    id_slot: int;
+    field_start: int;
+    field_count: int;
+}
+Global :: struct {
+    id_slot: int;
+    has_unit: bool;
+    unit: string;
+}
+Statement :: struct {
+    kind: int;
+    range: int;
+    op: int;
+    expression: int;
+    symbol: int;
+    second: int;
+}
+Binding :: struct {
+    target: int;
+    value: int;
+    range: int;
+}
+Cache :: struct {
+    kind: int;
+    term_start: int;
+    term_count: int;
+}
+Port :: struct {
+    name: string;
+    has_unit: bool;
+    unit: string;
+}
+Environment :: union {
+    Tables(types: Type[], ids: uint64[], symbols: Symbol[], expressions: Expression[], arguments: Argument[], functions: Function[], symbol_indices: int[], capabilities: Capability[], ports: Port[], fields: Field[], catalog_types: CatalogType[], globals: Global[], statements: Statement[], bindings: Binding[], ranges: Range[])
+}
+State :: union {
+    Cached(cache: Cache[], terms: units.Term[], visits: int[], diagnostics: syntax.Diagnostic[])
+}
+Evaluation :: union {
+    Evaluated(value: units.Unit, current: State)
+}
+Analysis :: union {
+    Completed(cache: Cache[], terms: units.Term[], diagnostics: syntax.Diagnostic[])
+}
 
 Types :: pure fn(environment: Environment) -> Type[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return types;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return types;
     }
 }
 
 Ids :: pure fn(environment: Environment) -> uint64[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return ids;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return ids;
     }
 }
 
 Symbols :: pure fn(environment: Environment) -> Symbol[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return symbols;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return symbols;
     }
 }
 
 Expressions :: pure fn(environment: Environment) -> Expression[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return expressions;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return expressions;
     }
 }
 
 Arguments :: pure fn(environment: Environment) -> Argument[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return arguments;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return arguments;
     }
 }
 
 Functions :: pure fn(environment: Environment) -> Function[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return functions;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return functions;
     }
 }
 
 SymbolIndices :: pure fn(environment: Environment) -> int[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return symbol_indices;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return symbol_indices;
     }
 }
 
 Capabilities :: pure fn(environment: Environment) -> Capability[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return capabilities;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return capabilities;
     }
 }
 
 Ports :: pure fn(environment: Environment) -> Port[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return ports;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return ports;
     }
 }
 
 Fields :: pure fn(environment: Environment) -> Field[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return fields;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return fields;
     }
 }
 
 CatalogTypes :: pure fn(environment: Environment) -> CatalogType[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return catalog_types;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return catalog_types;
     }
 }
 
 Globals :: pure fn(environment: Environment) -> Global[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return globals;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return globals;
     }
 }
 
 Statements :: pure fn(environment: Environment) -> Statement[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return statements;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return statements;
     }
 }
 
 Bindings :: pure fn(environment: Environment) -> Binding[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return bindings;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return bindings;
     }
 }
 
 Ranges :: pure fn(environment: Environment) -> Range[] {
     switch environment {
-        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges): return ranges;
+        case .Tables(types, ids, symbols, expressions, arguments, functions, symbol_indices, capabilities, ports, fields, catalog_types, globals, statements, bindings, ranges):
+            return ranges;
     }
 }
-
 
 // Existing typed IR enum values and type flags retain their ABI.
 ConstantExpression: int : 1;
@@ -156,20 +260,27 @@ ResultsFlag: int : 8;
 NumericExcludedFlags: int : 75;
 
 IDAt :: pure fn(environment: Environment, slot: int) -> uint64 {
-    if (slot < 0) { return 0; }
+    if (slot < 0) {
+        return 0;
+    }
     return Ids(environment)[slot];
 }
 // Match a full-width offset to a bounded native index without narrowing it.
 OffsetIndex :: pure fn(offset: uint64, count: int) -> int {
     index: int = 0;
     while (index < count) {
-        if (offset == uint64(index)) { return index; }
+        if (offset == uint64(index)) {
+            return index;
+        }
         index += 1;
     }
     return -1;
 }
 Kind :: pure fn(value: units.Unit) -> int {
-    switch value { case .Value(kind, terms): return kind; }
+    switch value {
+        case .Value(kind, terms):
+            return kind;
+    }
 }
 Numeric :: pure fn(type: Type, environment: Environment) -> bool {
     return type.container == 0 &&
@@ -180,7 +291,9 @@ CapabilityAt :: pure fn(environment: Environment, id: uint64) -> int {
     rows := Capabilities(environment);
     index: int = 0;
     while (index < length(rows)) {
-        if (IDAt(environment, rows[index].id_slot) == id) { return index; }
+        if (IDAt(environment, rows[index].id_slot) == id) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -222,8 +335,12 @@ Match :: pure fn(current: State, range: Range, left: units.Unit, op: string, rig
     if (Clash(left, right)) {
         return Evaluation.Evaluated(units.Empty(units.Unknown), ReportUnits(current, range, left, op, right));
     }
-    if (Kind(left) == units.Known) { return Evaluation.Evaluated(left, current); }
-    if (Kind(right) == units.Known) { return Evaluation.Evaluated(right, current); }
+    if (Kind(left) == units.Known) {
+        return Evaluation.Evaluated(left, current);
+    }
+    if (Kind(right) == units.Known) {
+        return Evaluation.Evaluated(right, current);
+    }
     if (Kind(left) == units.Literal && Kind(right) == units.Literal) {
         return Evaluation.Evaluated(units.Empty(units.Literal), current);
     }
@@ -232,13 +349,17 @@ Match :: pure fn(current: State, range: Range, left: units.Unit, op: string, rig
 Product :: pure fn(current: State, range: Range, left: units.Unit, right: units.Unit, sign: int) -> Evaluation {
     switch units.Product(left, right, sign) {
         case .Product(value, overflow):
-            if (overflow) { current = Report(current, range, "Unit expression exceeds supported dimensional complexity"); }
+            if (overflow) {
+                current = Report(current, range, "Unit expression exceeds supported dimensional complexity");
+            }
             return Evaluation.Evaluated(value, current);
     }
 }
 OpText :: pure fn(op: int) -> string {
     names: string[] = ["", "+", "-", "*", "/", "%", "", "", "", "", "==", "!=", "<", "<=", ">", ">="];
-    if (op < 0 || op >= length(names)) { return ""; }
+    if (op < 0 || op >= length(names)) {
+        return "";
+    }
     return names[op];
 }
 ResultSource :: pure fn(environment: Environment, index: int) -> int {
@@ -247,10 +368,15 @@ ResultSource :: pure fn(environment: Environment, index: int) -> int {
     depth: int = 0;
     while (index >= 0 && depth < 256) {
         value := expressions[index];
-        if (value.kind == UnwrapExpression) { index = value.left; }
-        else if (value.result_count != 0) { return index; }
-        else if (value.kind == SymbolExpression && value.symbol >= 0) { index = symbols[value.symbol].initializer; }
-        else { return index; }
+        if (value.kind == UnwrapExpression) {
+            index = value.left;
+        } else if (value.result_count != 0) {
+            return index;
+        } else if (value.kind == SymbolExpression && value.symbol >= 0) {
+            index = symbols[value.symbol].initializer;
+        } else {
+            return index;
+        }
         depth += 1;
     }
     return -1;
@@ -277,7 +403,12 @@ ResultUnit :: pure fn(environment: Environment, current: State, expression: Expr
 }
 // Separate the symbol's dependency decision from evaluation. The iterative
 // evaluator follows only the selected initializer or narrowing source.
-SymbolSource :: struct { expression: int; known_only: bool; has_unit: bool; unit: string; }
+SymbolSource :: struct {
+    expression: int;
+    known_only: bool;
+    has_unit: bool;
+    unit: string;
+}
 SymbolInput :: pure fn(environment: Environment, index: int) -> SymbolSource {
     symbol := Symbols(environment)[index];
     source: SymbolSource = {expression: -1, known_only: false, has_unit: false, unit: ""};
@@ -313,10 +444,14 @@ SymbolInput :: pure fn(environment: Environment, index: int) -> SymbolSource {
 }
 SymbolUnit :: pure fn(environment: Environment, current: State, index: int, range: Range) -> Evaluation {
     source := SymbolInput(environment, index);
-    if (source.expression < 0) { return Annotated(current, range, source.has_unit, source.unit); }
+    if (source.expression < 0) {
+        return Annotated(current, range, source.has_unit, source.unit);
+    }
     switch Eval(environment, current, source.expression) {
         case .Evaluated(value, next):
-            if (!source.known_only || Kind(value) == units.Known) { return Evaluation.Evaluated(value, next); }
+            if (!source.known_only || Kind(value) == units.Known) {
+                return Evaluation.Evaluated(value, next);
+            }
             return Evaluation.Evaluated(units.Empty(units.Unknown), next);
     }
 }
@@ -339,7 +474,9 @@ MemberUnit :: pure fn(environment: Environment, current: State, expression: Expr
             resultIndex := OffsetIndex(offset, row.result_count);
             if (resultIndex >= 0) {
                 port := Ports(environment)[row.result_start + resultIndex];
-                if (member == binding.ID("port", port.name)) { return ResultUnit(environment, current, original, resultIndex); }
+                if (member == binding.ID("port", port.name)) {
+                    return ResultUnit(environment, current, original, resultIndex);
+                }
             }
         }
     }
@@ -358,7 +495,9 @@ MemberUnit :: pure fn(environment: Environment, current: State, expression: Expr
             index: int = 0;
             while (index < type.field_count) {
                 field := Fields(environment)[type.field_start + index];
-                if (IDAt(environment, field.id_slot) == member) { return Annotated(current, range, field.has_unit, field.unit); }
+                if (IDAt(environment, field.id_slot) == member) {
+                    return Annotated(current, range, field.has_unit, field.unit);
+                }
                 index += 1;
             }
             return Evaluation.Evaluated(units.Empty(units.Unknown), current);
@@ -371,7 +510,9 @@ MemberUnit :: pure fn(environment: Environment, current: State, expression: Expr
 // In particular, malformed annotations precede that argument's diagnostics.
 CallTarget :: pure fn(environment: Environment, current: State, expression: Expression, argument: Argument) -> Evaluation {
     capability: int = -1;
-    if (expression.right < 0) { capability = CallCapability(environment, expression); }
+    if (expression.right < 0) {
+        capability = CallCapability(environment, expression);
+    }
     parameter := argument.parameter;
     present := false;
     annotation := "";
@@ -404,18 +545,25 @@ CallTarget :: pure fn(environment: Environment, current: State, expression: Expr
 }
 Operation :: pure fn(environment: Environment, current: State, expression: Expression, left: units.Unit, right: units.Unit) -> Evaluation {
     if (expression.right < 0) {
-        if (expression.op == OpNegate || expression.op == OpNone) { return Evaluation.Evaluated(left, current); }
+        if (expression.op == OpNegate || expression.op == OpNone) {
+            return Evaluation.Evaluated(left, current);
+        }
         return Evaluation.Evaluated(units.Empty(units.Unknown), current);
     }
     range := Ranges(environment)[expression.range];
-    if (expression.op == OpMultiply) { return Product(current, range, left, right, 1); }
-    if (expression.op == OpDivide) { return Product(current, range, left, right, -1); }
+    if (expression.op == OpMultiply) {
+        return Product(current, range, left, right, 1);
+    }
+    if (expression.op == OpDivide) {
+        return Product(current, range, left, right, -1);
+    }
     if (expression.op == OpAdd || expression.op == OpSubtract || expression.op == OpModulo) {
         return Match(current, range, left, OpText(expression.op), right);
     }
     if (expression.op >= OpEqual && expression.op <= OpGreaterEqual) {
         switch Match(current, range, left, OpText(expression.op), right) {
-            case .Evaluated(ignored, next): return Evaluation.Evaluated(units.Empty(units.Unknown), next);
+            case .Evaluated(ignored, next):
+                return Evaluation.Evaluated(units.Empty(units.Unknown), next);
         }
     }
     return Evaluation.Evaluated(units.Empty(units.Unknown), current);
@@ -424,7 +572,12 @@ Operation :: pure fn(environment: Environment, current: State, expression: Expre
 // One pending expression owns one continuation and one saved operand. Child
 // results flow through value; only selected dependencies are pushed. Keeping
 // source depth in arrays leaves every callable's ordinary depth limit intact.
-Work :: struct { expression: int; phase: int; argument: int; catalog: int; }
+Work :: struct {
+    expression: int;
+    phase: int;
+    argument: int;
+    catalog: int;
+}
 Enter: int : 0;
 Finish: int : 1;
 KnownOnly: int : 2;
@@ -489,15 +642,21 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
         if (work.phase == Enter) {
             work.phase = Finish;
             if (expression.kind == ConstantExpression) {
-                if (Numeric(Types(environment)[expression.type], environment)) { value = units.Empty(units.Literal); }
+                if (Numeric(Types(environment)[expression.type], environment)) {
+                    value = units.Empty(units.Literal);
+                }
             } else if (expression.kind == SymbolExpression) {
                 source := SymbolInput(environment, expression.symbol);
                 if (source.expression < 0) {
                     switch Annotated(current, range, source.has_unit, source.unit) {
-                        case .Evaluated(unit, next): value = unit; current = next;
+                        case .Evaluated(unit, next):
+                            value = unit;
+                            current = next;
                     }
                 } else {
-                    if (source.known_only) { work.phase = KnownOnly; }
+                    if (source.known_only) {
+                        work.phase = KnownOnly;
+                    }
                     child = source.expression;
                     descend = true;
                 }
@@ -513,7 +672,9 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
             } else if (expression.kind == JoinExpression) {
                 if (expression.result_count == 1) {
                     switch ResultUnit(environment, current, expression, 0) {
-                        case .Evaluated(unit, next): value = unit; current = next;
+                        case .Evaluated(unit, next):
+                            value = unit;
+                            current = next;
                     }
                 }
             } else if (expression.kind == StructExpression && expression.arg_count > 0) {
@@ -521,17 +682,25 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                 rows := CatalogTypes(environment);
                 catalog: int = 0;
                 while (catalog < length(rows) && work.catalog < 0) {
-                    if (IDAt(environment, rows[catalog].id_slot) == nominal) { work.catalog = catalog; }
+                    if (IDAt(environment, rows[catalog].id_slot) == nominal) {
+                        work.catalog = catalog;
+                    }
                     catalog += 1;
                 }
-                if (work.catalog >= 0) { work.phase = ArgumentsPhase; }
+                if (work.catalog >= 0) {
+                    work.phase = ArgumentsPhase;
+                }
             } else if (expression.kind == MemberExpression) {
                 switch MemberUnit(environment, current, expression) {
-                    case .Evaluated(unit, next): value = unit; current = next;
+                    case .Evaluated(unit, next):
+                        value = unit;
+                        current = next;
                 }
             }
         } else if (work.phase == KnownOnly) {
-            if (Kind(value) != units.Known) { value = units.Empty(units.Unknown); }
+            if (Kind(value) != units.Known) {
+                value = units.Empty(units.Unknown);
+            }
             work.phase = Finish;
         } else if (work.phase == Left) {
             saved[top] = value;
@@ -539,7 +708,9 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                 work.phase = ArgumentsPhase;
             } else if (expression.kind != StoreExpression && expression.right < 0) {
                 switch Operation(environment, current, expression, value, units.Empty(units.Unknown)) {
-                    case .Evaluated(unit, next): value = unit; current = next;
+                    case .Evaluated(unit, next):
+                        value = unit;
+                        current = next;
                 }
                 work.phase = Finish;
             } else {
@@ -550,21 +721,29 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
         } else if (work.phase == Right) {
             if (expression.kind == StoreExpression) {
                 switch Match(current, range, saved[top], "=", value) {
-                    case .Evaluated(unit, next): value = unit; current = next;
+                    case .Evaluated(unit, next):
+                        value = unit;
+                        current = next;
                 }
             } else {
                 switch Operation(environment, current, expression, saved[top], value) {
-                    case .Evaluated(unit, next): value = unit; current = next;
+                    case .Evaluated(unit, next):
+                        value = unit;
+                        current = next;
                 }
             }
             work.phase = Finish;
         } else if (work.phase == ArgumentsPhase) {
             if (work.argument >= expression.arg_count) {
                 value = units.Empty(units.Unknown);
-                if (expression.kind == FallbackExpression) { value = saved[top]; }
+                if (expression.kind == FallbackExpression) {
+                    value = saved[top];
+                }
                 if (expression.kind == CallExpression && !expression.task && expression.result_count == 1) {
                     switch ResultUnit(environment, current, expression, 0) {
-                        case .Evaluated(unit, next): value = unit; current = next;
+                        case .Evaluated(unit, next):
+                            value = unit;
+                            current = next;
                     }
                 }
                 work.phase = Finish;
@@ -575,13 +754,17 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                 } else {
                     if (expression.kind == CallExpression) {
                         switch CallTarget(environment, current, expression, argument) {
-                            case .Evaluated(unit, next): saved[top] = unit; current = next;
+                            case .Evaluated(unit, next):
+                                saved[top] = unit;
+                                current = next;
                         }
                     } else if (expression.kind == StructExpression) {
                         type := CatalogTypes(environment)[work.catalog];
                         field := Fields(environment)[type.field_start + argument.parameter];
                         switch Annotated(current, Ranges(environment)[argument.range], field.has_unit, field.unit) {
-                            case .Evaluated(unit, next): saved[top] = unit; current = next;
+                            case .Evaluated(unit, next):
+                                saved[top] = unit;
+                                current = next;
                         }
                     }
                     work.phase = ArgumentPhase;
@@ -592,11 +775,17 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
         } else if (work.phase == ArgumentPhase) {
             argument := Arguments(environment)[expression.arg_start + work.argument];
             op := "=";
-            if (expression.kind == CallExpression) { op = "argument"; }
-            if (expression.kind == FallbackExpression) { op = "fallback"; }
+            if (expression.kind == CallExpression) {
+                op = "argument";
+            }
+            if (expression.kind == FallbackExpression) {
+                op = "fallback";
+            }
             switch Match(current, Ranges(environment)[argument.range], saved[top], op, value) {
                 case .Evaluated(unit, next):
-                    if (expression.kind == FallbackExpression) { saved[top] = unit; }
+                    if (expression.kind == FallbackExpression) {
+                        saved[top] = unit;
+                    }
                     current = next;
             }
             work.argument += 1;
@@ -615,15 +804,29 @@ Assignment :: pure fn(environment: Environment, current: State, statement: State
     value := units.Empty(units.Unknown);
     range := Ranges(environment)[statement.range];
     if (statement.expression >= 0) {
-        switch Eval(environment, current, statement.expression) { case .Evaluated(unit, next): target = unit; current = next; }
+        switch Eval(environment, current, statement.expression) {
+            case .Evaluated(unit, next):
+                target = unit;
+                current = next;
+        }
     } else if (statement.symbol >= 0) {
-        switch SymbolUnit(environment, current, statement.symbol, range) { case .Evaluated(unit, next): target = unit; current = next; }
+        switch SymbolUnit(environment, current, statement.symbol, range) {
+            case .Evaluated(unit, next):
+                target = unit;
+                current = next;
+        }
     }
-    switch Eval(environment, current, statement.second) { case .Evaluated(unit, next): value = unit; current = next; }
+    switch Eval(environment, current, statement.second) {
+        case .Evaluated(unit, next):
+            value = unit;
+            current = next;
+    }
     if (statement.op == OpNone || statement.op == OpAdd || statement.op == OpSubtract || statement.op == OpModulo) {
         if (Clash(target, value)) {
             op := "=";
-            if (statement.op != OpNone) { op = format_text("{}=", OpText(statement.op)); }
+            if (statement.op != OpNone) {
+                op = format_text("{}=", OpText(statement.op));
+            }
             return ReportUnits(current, range, target, op, value);
         }
     } else if (statement.op == OpMultiply || statement.op == OpDivide) {
@@ -632,7 +835,9 @@ Assignment :: pure fn(environment: Environment, current: State, statement: State
                 case .Value(kind, terms):
                     if (length(terms) > 0) {
                         sign: int = 1;
-                        if (statement.op == OpDivide) { sign = -1; }
+                        if (statement.op == OpDivide) {
+                            sign = -1;
+                        }
                         switch Product(current, range, target, value, sign) {
                             case .Evaluated(productValue, next):
                                 return Report(next, range, format_text("Units differ: {}= would turn {} into {}", OpText(statement.op), units.Format(target, 192), units.Format(productValue, 192)));
@@ -658,31 +863,52 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
         if (symbol.has_unit) {
             range := Ranges(environment)[symbol.range];
             target := units.Empty(units.Unknown);
-            switch Annotated(current, range, true, symbol.unit) { case .Evaluated(value, next): target = value; current = next; }
+            switch Annotated(current, range, true, symbol.unit) {
+                case .Evaluated(value, next):
+                    target = value;
+                    current = next;
+            }
             if (symbol.initializer >= 0) {
                 switch Eval(environment, current, symbol.initializer) {
                     case .Evaluated(value, next):
-                        switch Match(next, range, target, "default", value) { case .Evaluated(ignored, final): current = final; }
+                        switch Match(next, range, target, "default", value) {
+                            case .Evaluated(ignored, final):
+                                current = final;
+                        }
                 }
             }
         }
     }
     index: int = 0;
     while (index < length(Expressions(environment))) {
-        switch Eval(environment, current, index) { case .Evaluated(ignored, next): current = next; }
+        switch Eval(environment, current, index) {
+            case .Evaluated(ignored, next):
+                current = next;
+        }
         index += 1;
     }
     foreach (statement in Statements(environment)) {
-        if (statement.kind == AssignStatement || statement.kind == ReduceStatement) { current = Assignment(environment, current, statement); }
+        if (statement.kind == AssignStatement || statement.kind == ReduceStatement) {
+            current = Assignment(environment, current, statement);
+        }
     }
     foreach (bindingRow in Bindings(environment)) {
         target := units.Empty(units.Unknown);
-        switch Eval(environment, current, bindingRow.target) { case .Evaluated(value, next): target = value; current = next; }
+        switch Eval(environment, current, bindingRow.target) {
+            case .Evaluated(value, next):
+                target = value;
+                current = next;
+        }
         switch Eval(environment, current, bindingRow.value) {
             case .Evaluated(value, next):
                 current = next;
-                if (Clash(target, value)) { current = ReportUnits(current, Ranges(environment)[bindingRow.range], target, "=", value); }
+                if (Clash(target, value)) {
+                    current = ReportUnits(current, Ranges(environment)[bindingRow.range], target, "=", value);
+                }
         }
     }
-    switch current { case .Cached(rows, names, done, errors): return Analysis.Completed(rows, names, errors); }
+    switch current {
+        case .Cached(rows, names, done, errors):
+            return Analysis.Completed(rows, names, errors);
+    }
 }

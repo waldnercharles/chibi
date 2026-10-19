@@ -600,7 +600,7 @@ static bool prepare()
     REQUIRE((int)(sizeof sources / sizeof sources[0]) == 19);
     size_t total = 0;
     for (int i = 0; i < 19; i++) {
-        REQUIRE(sources[i].size < 32768);
+        REQUIRE(sources[i].size < 48 * 1024);
         total += sources[i].size;
     }
     REQUIRE(total < 256 * 1024);

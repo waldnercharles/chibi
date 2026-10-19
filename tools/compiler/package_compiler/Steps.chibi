@@ -249,7 +249,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             if (names[found].place == ResultsPlace) {
                 return Fail(forest, destination, document, "assigning a native's several results is not supported yet");
             }
-            if (!names[found].writable) { return Fail(forest, destination, document, "pattern bindings cannot be assigned"); }
+            if (!names[found].writable) { return Fail(forest, destination, document, "Assignment requires a writable value"); }
             binding := names[found];
             stored := result;
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
@@ -1398,9 +1398,10 @@ ForeachStep :: pure fn(array: Value, ops: Ops, target: Target, at: Bases, node: 
 }
 
 // `x.f = v` and `x.f op= v` on the local record `binding`, as stage zero
-// writes a field: a reference to the local's cell and then to the field, and
-// a write through it, which copies the record with the new field, so no other
-// value shares the old storage, and copies a string into it.
+// writes a field: a narrower integer `v` converted first, a reference to the
+// local's cell and then to the field, and a write through it, which copies
+// the record with the new field, so no other value shares the old storage,
+// and copies a string into it.
 FieldStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, binding: Name, field: TypeMember,
                      value: Value, item: Work, ops: Ops, target: Target, at: Bases,
                      node: snapshot.SnapshotNode) -> Step {
@@ -1417,27 +1418,34 @@ FieldStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
     stored := value;
+    if (value.container == 0 && Widens(value.storage, field.storage)) {
+        widened: Slot = {storage: field.storage, kind: ValueKind};
+        slots = array_add(slots, widened);
+        code = array_add(code, CastCode(ops, field.storage, at.slot, value.slot, 0, node));
+        stored = Typed(at.slot, field.storage, 0, -1);
+    }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
         op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
-        if (op < 0 || Comparison(ops, op) || !Integer(field.storage) || !Single(value, field.storage)) {
+        if (op < 0 || Comparison(ops, op) || !Integer(field.storage) || !Single(stored, field.storage)) {
             return Fail(forest, item.node, document, "compound assignment needs integer operands of its type");
         }
         if (!Computes(ops, op, field.storage)) { return Fail(forest, item.node, document, "unsupported arithmetic type"); }
+        base := at.slot + length(slots);
         slots = array_add(slots, address);
-        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, binding.index, 0, 0, node));
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, base, binding.index, 0, 0, node));
         slots = array_add(slots, address);
-        record := Instruction(ops.load, target.pointer_storage, at.slot + 1, at.slot, 0, 0, node);
+        record := Instruction(ops.load, target.pointer_storage, base + 1, base, 0, 0, node);
         record.offset = target.payload_offset;
         code = array_add(code, record);
         current: Slot = {storage: field.storage, kind: ValueKind};
         slots = array_add(slots, current);
-        read := Instruction(ops.load, field.storage, at.slot + 2, at.slot + 1, 0, 0, node);
+        read := Instruction(ops.load, field.storage, base + 2, base + 1, 0, 0, node);
         read.offset = field.offset;
         code = array_add(code, read);
         slots = array_add(slots, current);
-        code = array_add(code, Instruction(op, field.storage, at.slot + 3, at.slot + 2, value.slot, -1, node));
-        stored = Typed(at.slot + 3, field.storage, 0, -1);
+        code = array_add(code, Instruction(op, field.storage, base + 3, base + 2, stored.slot, -1, node));
+        stored = Typed(base + 3, field.storage, 0, -1);
     }
     if (!SameType(field.storage, 0, -1, stored)) { return Fail(forest, item.node, document, "field value differs from its type"); }
     // Reference make: the owner, the record's type, a value reference to the

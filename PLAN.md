@@ -825,9 +825,9 @@ untyped literal a double. Array literals with no type expected take their
 first item's type, variadic natives such as `format_text` and natives with
 several results such as `compiler_json_string` work, and field assignment
 writes through stage zero's reference intrinsics, with written record and
-array parameters copied on entry. With these, stage one compiles the
-compiler's complete source set to a closure. Loading that closure as stage
-one and comparing what it compiles with stage zero's build, stage one to
+array parameters copied on entry. With these, stage one accepts the
+compiler's complete source set; a test that loads the closure it builds and
+checks that it compiles the same sources to the same bytes, stage one to
 stage two, follows.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.

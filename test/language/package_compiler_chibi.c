@@ -529,10 +529,13 @@ static const sample samples[] = {
                 "    note.count *= 2;\n"
                 "    note.open = true;\n"
                 "    stamped := Stamp(note, 7);\n"
+                "    b: byte = 3;\n"
+                "    copy.count = b;\n"
+                "    copy.count += b;\n"
                 "    return format_text(\"{} {} {} {} {} {}\", note.text, "
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
-      .calls = { { "Fields", "[4]", "[\"a 10 true 1 #7 7\"]" } } },
+      .calls = { { "Fields", "[4]", "[\"a 10 true 6 #7 7\"]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -650,7 +653,7 @@ static const sample samples[] = {
       .source = "package facts\nU :: union { A(x: int) }\n"
                 "One :: pure fn(u: U) -> int { switch u { case .A(x): x = 2; "
                 "return x; } return 0; }",
-      .message = "pattern bindings cannot be assigned",
+      .message = "Assignment requires a writable value",
       .line = 3,
       .column = 54 },
     { .name = "missing payload",
@@ -861,6 +864,18 @@ static const sample samples[] = {
       .message = "Assignment requires a writable value",
       .line = 4,
       .column = 54 },
+    { .name = "foreach field assignment",
+      .source = "package facts\nP :: struct { x: int; }\nOne :: pure fn(ps: P[]) -> "
+                "int { foreach (p in ps) { p.x = 1; } return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 3,
+      .column = 54 },
+    { .name = "foreach assignment",
+      .source = "package facts\nOne :: pure fn(xs: int[]) -> "
+                "int { foreach (x in xs) { x = 1; } return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 2,
+      .column = 56 },
     { .name = "element field assignment",
       .source = "package facts\nP :: struct { x: int; }\nOne :: pure fn() -> "
                 "int { ps: P[] = []; ps[0].x = 1; return 0; }",

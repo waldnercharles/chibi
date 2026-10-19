@@ -478,9 +478,10 @@ FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
 // element of it.
 Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
     pending: int[] = [node];
-    while (length(pending) > 0) {
-        at := pending[length(pending) - 1];
-        pending = slice(pending, 0, length(pending) - 1);
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
         if (Is(forest, at, "assignment")) {
             target := Field(forest, at, "target");
             while (Is(forest, target, "member_expression") || Is(forest, target, "index_expression")) {
@@ -490,7 +491,8 @@ Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, nam
         }
         child := forest[at].first_child;
         while (child >= 0) {
-            pending = array_add(pending, child);
+            if (top < length(pending)) { pending[top] = child; } else { pending = array_add(pending, child); }
+            top += 1;
             child = forest[child].next_sibling;
         }
     }
@@ -716,7 +718,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top -= 1;
                 kept := values[value_top];
                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
-                    index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: true};
+                    index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: false};
                 names = array_add(names, binding);
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                 next = array_add(next, Resume(item.node, 4, 0, 0));
@@ -984,7 +986,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                                     length(locals) - 1, node));
                                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")),
                                     place: LocalPlace, index: length(locals) - 1, storage: element.storage,
-                                    container: 0, record: element.record, writable: true};
+                                    container: 0, record: element.record, writable: false};
                                 names = array_add(names, binding);
                                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                                 next = array_add(next, Resume(item.node, 4, 0, 0));

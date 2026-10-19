@@ -67,10 +67,11 @@ import:
 - field assignment, compound included, on a local record: `x.f = v` writes as
   stage zero writes it, through the reference make, field and write
   intrinsics, which copy the record with the new field, so no other value
-  shares the old storage, and copy a string into it. A record or array
-  parameter whose value, fields or elements the function writes gets a copy
-  of its own on entry, as stage zero isolates it; the others are read in
-  place;
+  shares the old storage, and copy a string into it. A narrower integer
+  value converts to the field's type. A record or array parameter whose
+  value, fields or elements the function writes is copied into a cell of its
+  own on entry, so the caller's value never changes; the others are read in
+  place. Foreach elements, like pattern bindings, cannot be assigned;
 - union values `U.V` and `U.V(a, b)`, with one positional value per payload
   field, and `switch` over a union with `case .V:`, `case .V(a, b):` binding
   every payload field, and a default `case:`. Bindings are immutable. As in

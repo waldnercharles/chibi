@@ -102,16 +102,17 @@ names the verifier's own reason. Function and record IDs, record type names
 and layout hashes follow stage zero's scheme, so a host invokes the same
 entries and the runtime accepts the same record requirements.
 
-Each package is its own module, assembled dependencies first, as stage zero
-does:
+Each package is its own module, assembled dependencies first:
 
 - A call into another package goes through an import row, added on the first
-  such call. The row names the callee's module ID and the fingerprint of its
-  prepared bytes, which the runtime checks on load. The reference names the
-  callee's entry ID.
-- Record requirements cover the records of the package and every package it
-  reaches, under their own package's IDs and type names. Unions have no
-  requirement rows, and a variant's tag is the same in every module.
+  such call, as stage zero adds them. The row names the callee's module ID and
+  the fingerprint of its prepared bytes, which the runtime checks on load. The
+  reference names the callee's entry ID.
+- Record requirements cover every record of the package and of each package
+  it reaches, under the declaring package's IDs and type names. Stage zero
+  lists only its own records and the types its direct imports export; the
+  runtime accepts the extra rows. Unions have no requirement rows, and a
+  variant's tag is the same in every module.
 - The closure has one row per package, named by its identity.
 
 Runtime sources record each instruction's origin. Debugger points and watches
@@ -119,9 +120,9 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 41 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 5,886 assertions in
-32.9 s). A sample is package `facts`, optionally with a `lib` package and
+`tool language-package-compiler-chibi` compiles 42 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 5,984 assertions in
+31.1 s). A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
 on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
 same packages must return the same JSON; calls that must fail,

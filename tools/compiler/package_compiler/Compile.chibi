@@ -209,7 +209,8 @@ InputFailure :: pure fn(document: int, message: string) -> Result {
 // Every record, union and function of each package, dependencies first, so
 // a package's declarations follow those of every package it imports.
 Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
-                   files_of: int[], order: int[], links: graph.Binding[], target: Target) -> Declarations {
+                   files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
+                   target: Target) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
     types: TypeDecl[] = [];
@@ -224,6 +225,14 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 params = more_params;
                 types = more_types;
                 members = more_members;
+        }
+        // An import alias may not name a declaration of its package.
+        foreach (link in links) {
+            if (Position(files, link.file) >= 0 &&
+                (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0)) {
+                return Declarations.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
+                    "Package import alias conflicts with a package declaration"));
+            }
         }
     }
     return Declarations.Collected(callables, params, types, members);
@@ -819,7 +828,7 @@ Compile :: pure fn(project: string, collection_names: string[], collection_paths
             switch built {
                 case .Rejected(error, cycle): return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
-                    switch Declare(nodes, documents, packages, files_of, order, links, target) {
+                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
                         case .Failed(diagnostic): return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members):
                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,

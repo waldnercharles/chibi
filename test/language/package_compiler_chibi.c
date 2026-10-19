@@ -442,6 +442,13 @@ static const sample samples[] = {
       .message = "Unknown function 'Missing'",
       .line = 3,
       .column = 38 },
+    { .name = "alias conflict",
+      .source = "package facts\nimport lib \"project:lib\"\nlib :: pure fn() "
+                "-> int { return 1; }",
+      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .message = "Package import alias conflicts with a package declaration",
+      .line = 2,
+      .column = 1 },
     { .name = "alias value",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: pure fn() "
                 "-> int { return lib; }",

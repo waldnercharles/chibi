@@ -409,10 +409,13 @@ def build_identity(build, cache):
     version = metadata.get('project_version')
     if type(version) is not int or version < 1:
         raise ValueError('Configured engine project version is invalid')
+    sdk_version = metadata.get('sdk_version')
+    if type(sdk_version) is not str or not sdk_version:
+        raise ValueError('Configured SDK version is missing; reconfigure first')
     formats = metadata.get('artifact_formats')
     if not isinstance(formats, dict) or 'execution' not in formats:
         raise ValueError('Configured artifact format requirements are missing; reconfigure first')
-    configured = {'project_version': version, 'artifact_formats': formats,
+    configured = {'sdk_version': sdk_version, 'project_version': version, 'artifact_formats': formats,
                   'sha256': hashlib.sha256(metadata_bytes).hexdigest()}
     commands_file = build / 'compile_commands.json'
     if not commands_file.is_file():
@@ -569,10 +572,14 @@ def build_identity(build, cache):
 
 
 def engine_manifest(stage, compiled):
-    # Engine identity describes the compiled inputs and archives. Package
-    # identity is computed later from installed files, including this manifest.
+    # The configured build identity document, with the engine identity, which
+    # describes the compiled inputs and archives. Package identity is computed
+    # later from installed files, including this manifest.
+    configured = compiled['configured_engine']
     manifest = {'manifest_format': 1, 'build_id': canonical_digest(compiled),
-                'project_version': compiled['configured_engine']['project_version']}
+                'sdk_version': configured['sdk_version'],
+                'project_version': configured['project_version'],
+                'artifact_formats': configured['artifact_formats']}
     path = stage / 'share/chibi/engine.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')

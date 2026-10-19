@@ -560,8 +560,11 @@ Status: in progress. `check` runs the build's compiler with `--check`, which
 prepares the project read-only: it neither migrates an older project nor writes
 an artifact. The `chibi-cli` fixture covers it in the build tree, through the
 launcher with a fake compiler and through the real `chibi-compile`; its
-installed-SDK and missing-compiler coverage remain. `version`, `doctor`, `fmt`,
-`test`, `web` and moving `export` behind Chibi modules remain.
+installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
+build, compiler and artifact-format identity from one generated document,
+`share/chibi/engine.json`: configuring writes it, build trees keep it beside
+their shaders, and SDK packaging installs it with the build ID. `doctor`,
+`fmt`, `test`, `web` and moving `export` behind Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

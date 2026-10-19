@@ -213,10 +213,11 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Three finite CLI cases: thirteen launcher calls over fake sibling
-    # compiler/player and four runs of the launcher's real sibling chibi-compile
-    # --check, which builds its renderer catalog; five tiny authored projects, no
-    # network. About 4s Debug + ASan of one shared 60s.
+    # Five finite CLI cases: nineteen launcher calls over fake sibling
+    # compiler/player and identity documents, the built launcher's version, and
+    # four runs of its real sibling chibi-compile --check, which builds its
+    # renderer catalog; five tiny authored projects, no network. About 5s Debug +
+    # ASan of one shared 60s.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
     # Fixed POSIX process/VM/SLJIT cases over one controlled worker and disposable

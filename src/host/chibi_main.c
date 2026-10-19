@@ -14,12 +14,15 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#include <yyjson.h>
 #ifdef _WIN32
 #include <signal.h>
 #include <sys/utime.h>
 #endif
 
-/* chibi build [PROJECT]: prepares the project when its sources or the compiler
+/* chibi version: prints the SDK, build, compiler and artifact-format identity
+ * from the build identity document.
+ * chibi build [PROJECT]: prepares the project when its sources or the compiler
  * changed since the last preparation.
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
@@ -137,12 +140,15 @@ static int usage(const char *program)
 {
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
+        "       %s version\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
+        "version prints the SDK, build, compiler and artifact-format "
+        "identity.\n"
         "build prepares .chibi/build/game.chibip without starting the player.\n"
         "check parses, resolves and validates the project as build does, but\n"
         "migrates and writes nothing; an older project fails until migrated.\n"
@@ -154,6 +160,7 @@ static int usage(const char *program)
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
         "--archive also writes DIR.tar.gz.\n",
+        program,
         program,
         program,
         program,
@@ -367,6 +374,95 @@ static int project_command(const char *requested, int player_argc, char **player
     return result;
 }
 
+/* Whether there are artifact formats and each records an integer version. */
+static bool formats_valid(yyjson_val *formats)
+{
+    if (!yyjson_is_obj(formats) || !yyjson_obj_size(formats)) {
+        return false;
+    }
+    size_t index, count;
+    yyjson_val *name, *format;
+    bool valid = true;
+    yyjson_obj_foreach(formats, index, count, name, format)
+    {
+        valid = valid && yyjson_is_int(yyjson_obj_get(format, "version"));
+    }
+    return valid;
+}
+
+static int by_name(const void *a, const void *b)
+{
+    return strcmp(yyjson_get_str(*(yyjson_val *const *)a), yyjson_get_str(*(yyjson_val *const *)b));
+}
+
+/* Each artifact format and its version, by name, whatever the document's order. */
+static void print_formats(yyjson_val *formats)
+{
+    size_t index, count;
+    yyjson_val *name, *format;
+    yyjson_val **names = xmalloc(yyjson_obj_size(formats) * sizeof *names);
+    yyjson_obj_foreach(formats, index, count, name, format)
+    {
+        names[index] = name;
+    }
+    qsort(names, count, sizeof *names, by_name);
+    printf("artifact formats:");
+    for (size_t i = 0; i < count; i++) {
+        yyjson_val *version = yyjson_obj_get(
+            yyjson_obj_get(formats, yyjson_get_str(names[i])),
+            "version"
+        );
+        printf("%s %s %d", i ? "," : "", yyjson_get_str(names[i]), yyjson_get_int(version));
+    }
+    printf("\n");
+    free(names);
+}
+
+static int print_version(int argc, char **argv)
+{
+    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
+        return usage(argv[0]);
+    }
+    if (argc > 2) {
+        fprintf(stderr, "Invalid version option; use --help.\n");
+        return 2;
+    }
+    /* The build identity document configuring writes and the build tree and
+     * installed SDKs keep beside their shaders; packaging adds a build ID. */
+    char *bin = file_executable_dir();
+    char *path = join(bin, "../share/chibi/engine.json");
+    yyjson_read_err error = { 0 };
+    yyjson_doc *document = yyjson_read_file(path, 0, NULL, &error);
+    yyjson_val *root = yyjson_doc_get_root(document);
+    yyjson_val *sdk = yyjson_obj_get(root, "sdk_version");
+    yyjson_val *project = yyjson_obj_get(root, "project_version");
+    yyjson_val *build = yyjson_obj_get(root, "build_id");
+    yyjson_val *formats = yyjson_obj_get(root, "artifact_formats");
+    bool valid = yyjson_is_str(sdk) && yyjson_is_int(project) &&
+                 formats_valid(formats) && (!build || yyjson_is_str(build));
+    if (valid) {
+        char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+        printf("chibi %s\n", yyjson_get_str(sdk));
+        printf("build: %s\n", build ? yyjson_get_str(build) : "unpackaged");
+        printf("compiler: %s\n", compiler);
+        printf("project format: %d\n", yyjson_get_int(project));
+        print_formats(formats);
+        free(compiler);
+    } else {
+        fprintf(
+            stderr,
+            "Invalid build identity %s%s%s\n",
+            path,
+            document ? "" : ": ",
+            document ? "" : error.msg
+        );
+    }
+    yyjson_doc_free(document);
+    free(path);
+    free(bin);
+    return valid ? 0 : 1;
+}
+
 /* Reads `chibi COMMAND [PROJECT]`: -1 with `requested` set, or the status to
  * exit with after help or an invalid argument. */
 static int project_argument(int argc, char **argv, const char **requested)
@@ -430,6 +526,9 @@ int main(int argc, char **argv)
 {
     if (argc > 1 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
         return usage(argv[0]);
+    }
+    if (argc > 1 && !strcmp(argv[1], "version")) {
+        return print_version(argc, argv);
     }
     if (argc > 1 && !strcmp(argv[1], "export")) {
         return export_game(argc, argv);

@@ -237,9 +237,11 @@ make test-tools
 invalid build profiles. The former script-based relocation tests
 are retired; the minimal suite does not establish their former coverage.
 
-`share/chibi/engine.json` records SHA-256 hashes of the payload, a build ID
-derived from those hashes, the project version, host platform, and source
-revision. The ID includes resources as well as binaries.
+`share/chibi/engine.json` is the build identity document `chibi version` reads:
+the SDK version, the project format and each prepared artifact format with its
+owning sources' hashes, as configuring generates them, plus the build ID SDK
+packaging derives from the compiled inputs and archives. The package manifest
+records the payload's file hashes, platform and source revision.
 Distribution builds have no resource fallback to the engine checkout.
 `CHIBI_RESOURCE_DIR` can explicitly override the resource directory;
 `CHIBI_RENDER_SHADER_DIR` can override only the shaders. Development and web

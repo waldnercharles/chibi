@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-static char root[128], launcher[256], log_path[256], compiler[256];
+static char root[128], launcher[256], log_path[256], compiler[256], built[256];
 
 static void path(char *out, const char *relative)
 {
@@ -257,6 +257,65 @@ TEST_CASE(compiler_check_writes_nothing)
     return true;
 }
 
+/* version prints the build identity document beside the shaders, with the
+ * build ID packaging adds, and fails without a valid one. */
+TEST_CASE(version_reads_the_build_identity)
+{
+    char output[256];
+    path(output, "version.log");
+    const char *version[] = { launcher, "version", NULL };
+    REQUIRE(tool_run(version, root, output) == 1);
+
+    char directory[256];
+    path(directory, "share");
+    REQUIRE(!mkdir(directory, 0700));
+    path(directory, "share/chibi");
+    REQUIRE(!mkdir(directory, 0700));
+    /* Out of name order, as a build tree writes them; output sorts by name. */
+    const char *formats = "\"artifact_formats\": {\"player\": {\"version\": "
+                          "3}, \"execution\": "
+                          "{\"version\": 15, \"source\": "
+                          "\"src/execution/prepared.c\"}}";
+    char document[512];
+    snprintf(document, sizeof document, "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, %s}\n", formats);
+    write_file("share/chibi/engine.json", document);
+    REQUIRE(tool_run(version, root, output) == 0);
+    char expected[1024];
+    snprintf(expected, sizeof expected, "chibi 9.8.7\nbuild: unpackaged\ncompiler: %s/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n", root);
+    REQUIRE(file_is("version.log", expected));
+
+    snprintf(document, sizeof document, "{\"manifest_format\": 1, \"build_id\": \"fixture-build\", \"sdk_version\": \"9.8.7\", \"project_version\": 25, %s}\n", formats);
+    write_file("share/chibi/engine.json", document);
+    REQUIRE(tool_run(version, root, output) == 0);
+    snprintf(expected, sizeof expected, "chibi 9.8.7\nbuild: fixture-build\ncompiler: %s/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n", root);
+    REQUIRE(file_is("version.log", expected));
+
+    write_file("share/chibi/engine.json", "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, \"artifact_formats\": {\"execution\": {}}}\n");
+    REQUIRE(tool_run(version, root, output) == 1);
+    const char *help[] = { launcher, "version", "--help", NULL };
+    REQUIRE(tool_run(help, root, output) == 0);
+    const char *extra[] = { launcher, "version", "more", NULL };
+    REQUIRE(tool_run(extra, root, output) == 2);
+    return true;
+}
+
+/* The launcher in place reads the identity its build generated. */
+TEST_CASE(version_of_the_built_launcher)
+{
+    char output[256], expected[64];
+    path(output, "built.log");
+    const char *version[] = { built, "version", NULL };
+    REQUIRE(tool_run(version, root, output) == 0);
+    char *text = tool_read(output);
+    snprintf(expected, sizeof expected, "\nproject format: %d\n", CHIBI_PROJECT_VERSION);
+    bool reported = text && !strncmp(text, "chibi ", 6) && strstr(text, expected) &&
+                    strstr(text, "\nartifact formats: ") &&
+                    strstr(text, " execution ");
+    free(text);
+    REQUIRE(reported);
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -266,9 +325,13 @@ void test_tool_chibi_cli(const char *binary)
     *strrchr(directory, '/') = 0;
     int length = snprintf(compiler, sizeof compiler, "%s/chibi-compile", directory);
     assert(length > 0 && length < (int)sizeof compiler);
+    length = snprintf(built, sizeof built, "%s/chibi", directory);
+    assert(length > 0 && length < (int)sizeof built);
     free(directory);
     RUN_TEST_CASE(build_and_run_use_the_prepared_project);
     RUN_TEST_CASE(check_prepares_without_writing);
     RUN_TEST_CASE(compiler_check_writes_nothing);
+    RUN_TEST_CASE(version_reads_the_build_identity);
+    RUN_TEST_CASE(version_of_the_built_launcher);
     tool_remove_tree(root);
 }

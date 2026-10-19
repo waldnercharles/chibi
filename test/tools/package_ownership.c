@@ -40,8 +40,9 @@ static int inspect()
                          "f=p.package_files(s);i=p.installed_archive_owners(r,"
                          "f,'',False)\n"
                          "t=p.installed_private_tools(r,f,s)\n"
+                         "e=p.engine_manifest(b/'engine-stage',r)\n"
                          "print(json.dumps({'compiled':r,'installation':i,'"
-                         "files':f},sort_keys=True))\n";
+                         "files':f,'engine':e},sort_keys=True))\n";
     const char *args[] = { "python3", "-B",  "-c",  script, tool_root(),
                            source,    build, stage, NULL };
     return tool_run(args, directory, log_path);
@@ -156,6 +157,14 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     yyjson_val *compiled = yyjson_obj_get(result, "compiled");
     yyjson_val *objects = yyjson_obj_get(compiled, "objects");
     yyjson_val *archives = yyjson_obj_get(compiled, "archives");
+    /* The installed build identity is the configured document with a build ID. */
+    yyjson_val *engine = yyjson_obj_get(result, "engine");
+    REQUIRE(text_is(engine, "sdk_version", "0.1.0"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(engine, "project_version")) == 1);
+    REQUIRE(yyjson_get_str(yyjson_obj_get(engine, "build_id")));
+    yyjson_val *execution = yyjson_obj_get(yyjson_obj_get(engine, "artifact_formats"), "execution");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(execution, "version")) == 1);
+    REQUIRE(text_is(execution, "source", "src/owned.c"));
 #if defined(__linux__) || defined(__APPLE__)
     REQUIRE(yyjson_obj_size(objects) == 10);
 #else
@@ -247,6 +256,15 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     status = inspect();
     REQUIRE(utimensat(AT_FDCWD, filename, times, 0) == 0);
     REQUIRE(diagnostic(status, "predates a link dependency"));
+    char metadata[1024];
+    path(metadata, build, "chibi_engine_metadata.json");
+    char *configured = tool_read(metadata);
+    REQUIRE(configured);
+    tool_write(metadata, "{\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1}}}\n");
+    status = inspect();
+    tool_write(metadata, configured);
+    free(configured);
+    REQUIRE(diagnostic(status, "Configured SDK version is missing"));
 
     char graph_path[1024];
     path(graph_path, build, "build.ninja");
@@ -394,7 +412,8 @@ TEST_CASE(makefiles_private_tool_owns_direct_host_objects)
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.c\" source_hash)\n"
         "file(SHA256 \"${CMAKE_CURRENT_SOURCE_DIR}/src/host.h\" header_hash)\n"
         "file(WRITE \"${CMAKE_BINARY_DIR}/chibi_engine_metadata.json\" "
-        "\"{\\\"project_version\\\":1,\\\"artifact_formats\\\":{"
+        "\"{\\\"sdk_version\\\":\\\"0.1.0\\\",\\\"project_version\\\":1,"
+        "\\\"artifact_formats\\\":{"
         "\\\"execution\\\":{"
         "\\\"version\\\":1,\\\"source\\\":\\\"src/host.c\\\","
         "\\\"header\\\":\\\"src/"

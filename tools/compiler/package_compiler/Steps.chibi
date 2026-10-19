@@ -57,7 +57,7 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    argument: Cell = {storage: kept.storage, container: kept.container, record: kept.record, offset: 0, kind: ValueKind};
+    argument: Cell = {storage: kept.storage, container: kept.container, record: kept.record, constant: 0, variant: -1, kind: ValueKind};
     cells = array_add(cells, argument);
     cells = array_add(cells, argument);
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -84,7 +84,7 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                         records: Record[], natives: Native[], names: Name[], values: Value[], top: int,
+                         types: TypeDecl[], natives: Native[], names: Name[], values: Value[], top: int,
                          function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
@@ -109,7 +109,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
             if (declared >= 0) {
-                resolved := ReadType(forest, text, records, declared);
+                resolved := ReadType(forest, text, types, declared);
                 if (resolved.storage == 0) { return Fail(forest, declared, document, "local type is not supported yet"); }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             }
@@ -146,7 +146,8 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                 object := Field(forest, destination, "object");
                 found := -1;
                 if (Is(forest, object, "identifier")) { found = Lookup(names, Text(forest, text, object)); }
-                if (found < 0 || names[found].place != CellPlace || names[found].container != ArrayContainer) {
+                if (found < 0 || names[found].place != CellPlace || names[found].container != ArrayContainer ||
+                    !names[found].writable) {
                     return Fail(forest, destination, document, "element assignment needs a local array");
                 }
                 binding := names[found];
@@ -176,7 +177,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             declared := Field(forest, item.node, "type");
             local := result;
             if (declared >= 0) {
-                resolved := ReadType(forest, text, records, declared);
+                resolved := ReadType(forest, text, types, declared);
                 local = Typed(-1, resolved.storage, resolved.container, resolved.record);
             }
             if (!SameType(local.storage, local.container, local.record, result)) {
@@ -192,7 +193,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                 locals = array_add(locals, local.storage);
                 code = array_add(code, Instruction(ops.save, local.storage, 0, result.slot, 0, at.local, node));
                 binding: Name = {name: name, place: LocalPlace, index: at.local, storage: local.storage, container: 0,
-                    record: -1};
+                    record: local.record, writable: true};
                 bound = array_add(bound, binding);
             }
         } else if (kind == "assignment") {
@@ -202,6 +203,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             if (found < 0 || names[found].place == ParameterPlace) {
                 return Fail(forest, destination, document, "assignment needs a local name");
             }
+            if (!names[found].writable) { return Fail(forest, destination, document, "pattern bindings cannot be assigned"); }
             binding := names[found];
             stored := result;
             operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
@@ -247,7 +249,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         if (kind == "local_declaration") {
             binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
-                index: at.cell - 1, storage: kept.storage, container: kept.container, record: kept.record};
+                index: at.cell - 1, storage: kept.storage, container: kept.container, record: kept.record, writable: true};
             bound = array_add(bound, binding);
         } else if (kind == "assignment") {
             slots = array_add(slots, address);
@@ -344,22 +346,22 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
         }
         // The intrinsic takes the local's header address, then the index of a
         // store, then the item; it returns a bool.
-        address_cell: Cell = {storage: target.pointer_storage, container: 0, record: -1, offset: 0, kind: AddressKind};
+        address_cell: Cell = {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: AddressKind};
         cells = array_add(cells, address_cell);
         sources: int[] = [-1];
         storages: int[] = [target.pointer_storage];
         if (intrinsic == ArrayStoreIntrinsic) {
-            index_cell: Cell = {storage: IntStorage, container: 0, record: -1, offset: 0, kind: ValueKind};
+            index_cell: Cell = {storage: IntStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
             cells = array_add(cells, index_cell);
             sources = array_add(sources, index_value.slot);
             storages = array_add(storages, IntStorage);
         }
-        item_cell: Cell = {storage: binding.storage, container: item_container, record: binding.record, offset: 0,
+        item_cell: Cell = {storage: binding.storage, container: item_container, record: binding.record, constant: 0, variant: -1,
             kind: ValueKind};
         cells = array_add(cells, item_cell);
         sources = array_add(sources, item_value.slot);
         storages = array_add(storages, SlotStorage(item_value.storage, item_value.container, target));
-        done: Cell = {storage: BoolStorage, container: 0, record: -1, offset: 0, kind: ValueKind};
+        done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
         cells = array_add(cells, done);
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         slots = array_add(slots, address);
@@ -385,8 +387,8 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
 }
 
 // Literals, names, parentheses, field reads and element reads.
-ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, records: Record[],
-                     fields: RecordField[], names: Name[], values: Value[], top: int, item: Work, ops: Ops,
+ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                     members: TypeMember[], names: Name[], values: Value[], top: int, item: Work, ops: Ops,
                      target: Target, at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
@@ -463,6 +465,30 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
         produced = Typed(at.slot + length(slots) - 1, binding.storage, binding.container, binding.record);
     } else if (kind == "parenthesized_expression") {
         next = array_add(next, Expect(Field(forest, item.node, "expression"), item.storage, item.container, item.record));
+    } else if (item.phase == 0 && kind == "member_expression" && UnionOf(forest, text, types, names, item.node) >= 0) {
+        // A variant without a payload: the constructor takes only its tag.
+        sum_type := UnionOf(forest, text, types, names, item.node);
+        member := NameText(forest, text, Field(forest, item.node, "member"));
+        variant := FindVariant(types, sum_type, member);
+        if (variant < 0) { return Fail(forest, item.node, document, format_text("Unknown variant '{}'", member)); }
+        if (types[variant].count != 0) {
+            return Fail(forest, item.node, document, format_text("variant '{}' needs its payload", member));
+        }
+        tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: 0, variant: variant, kind: ValueKind};
+        cells = array_add(cells, tag);
+        made: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
+        cells = array_add(cells, made);
+        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1, result_count: 1};
+        hosts = array_add(hosts, host);
+        code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        slots = array_add(slots, address);
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell + 1, 0, 0, node));
+        value: Slot = {storage: UnionStorage, kind: ValueKind};
+        slots = array_add(slots, value);
+        load := Instruction(ops.load, UnionStorage, at.slot + 1, at.slot, 0, 0, node);
+        load.offset = target.payload_offset;
+        code = array_add(code, load);
+        produced = Typed(at.slot + 1, UnionStorage, 0, sum_type);
     } else if (item.phase == 0) {
         next = array_add(next, Visit(Field(forest, item.node, "object")));
         if (kind == "index_expression") { next = array_add(next, Visit(Field(forest, item.node, "index"))); }
@@ -473,9 +499,9 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
         member := NameText(forest, text, Field(forest, item.node, "member"));
         if (member == "") { return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL"); }
         found := -1;
-        if (Single(object, StructStorage)) { found = FindField(records, fields, object.record, member); }
+        if (Single(object, StructStorage)) { found = FindField(types, members, object.record, member); }
         if (found < 0) { return Fail(forest, item.node, document, format_text("Unknown field '{}'", member)); }
-        field := fields[found];
+        field := members[found];
         slot: Slot = {storage: field.storage, kind: ValueKind};
         slots = array_add(slots, slot);
         read := Instruction(ops.load, field.storage, at.slot, object.slot, 0, 0, node);
@@ -504,8 +530,8 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
 // Struct and array literals, built by the construct intrinsic: the value's
 // header, then each array item, or each field as an offset cell and a value
 // cell; it returns the new value.
-LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, records: Record[],
-                       fields: RecordField[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                       members: TypeMember[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
                        at: Bases) -> Step {
     node := forest[item.node];
     array := node.kind == "array_expression";
@@ -535,7 +561,7 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
             } else {
                 name := NameText(forest, text, Field(forest, member, "name"));
                 if (name == "") { return Fail(forest, Field(forest, member, "name"), document, "Invalid string or embedded NUL"); }
-                if (FindField(records, fields, record, name) < 0) {
+                if (FindField(types, members, record, name) < 0) {
                     return Fail(forest, member, document, format_text("Unknown field '{}'", name));
                 }
                 earlier := FirstMember(forest, item.node);
@@ -550,7 +576,7 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
             count += 1;
             member = NextMember(forest, member);
         }
-        if (!array && count != records[record].count) {
+        if (!array && count != types[record].count) {
             return Fail(forest, item.node, document, "Struct literal needs every field");
         }
         rest := Expect(item.node, item.storage, item.container, record);
@@ -559,7 +585,7 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
         next = array_add(next, rest);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
-    header: Cell = {storage: item.storage, container: item.container, record: record, offset: 0, kind: ValueKind};
+    header: Cell = {storage: item.storage, container: item.container, record: record, constant: 0, variant: -1, kind: ValueKind};
     cells = array_add(cells, header);
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     member := FirstMember(forest, item.node);
@@ -570,14 +596,14 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
             return Fail(forest, member, document, "array item differs from the array's type");
         }
         if (!array) {
-            field := fields[FindField(records, fields, record, NameText(forest, text, Field(forest, member, "name")))];
+            field := members[FindField(types, members, record, NameText(forest, text, Field(forest, member, "name")))];
             if (!SameType(field.storage, 0, -1, value)) {
                 return Fail(forest, member, document, "field value differs from its type");
             }
-            offset: Cell = {storage: WordStorage, container: 0, record: -1, offset: field.offset, kind: ValueKind};
+            offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: field.offset, variant: -1, kind: ValueKind};
             cells = array_add(cells, offset);
         }
-        content: Cell = {storage: value.storage, container: 0, record: value.record, offset: 0, kind: ValueKind};
+        content: Cell = {storage: value.storage, container: 0, record: value.record, constant: 0, variant: -1, kind: ValueKind};
         cells = array_add(cells, content);
         slots = array_add(slots, address);
         code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + length(slots) - 1,
@@ -612,8 +638,9 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
 CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                    params: Param[], natives: Native[], ports: Port[], values: Value[], top: int, item: Work,
-                    ops: Ops, target: Target, at: Bases) -> Step {
+                    params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+                    names: Name[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+                    at: Bases) -> Step {
     node := forest[item.node];
     code: Code[] = [];
     slots: Slot[] = [];
@@ -627,6 +654,33 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     marks: int[] = [];
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
+        sum_type := -1;
+        if (Is(forest, callee, "member_expression")) { sum_type = UnionOf(forest, text, types, names, callee); }
+        if (sum_type >= 0) {
+            // A variant with a payload: each argument is a payload field, in order.
+            member := NameText(forest, text, Field(forest, callee, "member"));
+            variant := FindVariant(types, sum_type, member);
+            if (variant < 0) { return Fail(forest, callee, document, format_text("Unknown variant '{}'", member)); }
+            count: int = 0;
+            argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+            while (argument >= 0) {
+                if (Is(forest, argument, "named_argument")) {
+                    return Fail(forest, argument, document, "named payload arguments are not supported yet");
+                }
+                if (count >= types[variant].count) { break; }
+                field := members[types[variant].first + count];
+                next = array_add(next, Expect(argument, field.storage, field.container, field.record));
+                count += 1;
+                argument = NextMember(forest, argument);
+            }
+            if (argument >= 0 || count != types[variant].count) {
+                return Fail(forest, item.node, document, "variant payload needs one value per field");
+            }
+            finish := Resume(item.node, 1, variant, count);
+            finish.c = 2;
+            next = array_add(next, finish);
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
+        }
         if (!Is(forest, callee, "identifier")) { return Fail(forest, callee, document, "call needs a function name"); }
         callee_name := Text(forest, text, callee);
         found := FindCallable(callables, callee_name);
@@ -672,9 +726,52 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         next = array_add(next, finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
     }
-    linked := item.c == 1;
     count := item.b;
     first := top - count;
+    if (item.c == 2) {
+        // The constructor takes the variant's tag, then each payload field.
+        variant := types[item.a];
+        tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: 0, variant: item.a, kind: ValueKind};
+        cells = array_add(cells, tag);
+        address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+        index: int = 0;
+        while (index < count) {
+            argument := values[first + index];
+            field := members[variant.first + index];
+            if (!SameType(field.storage, field.container, field.record, argument)) {
+                return Fail(forest, item.node, document, "payload value differs from its field type");
+            }
+            cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record,
+                constant: 0, variant: -1, kind: ValueKind};
+            cells = array_add(cells, cell);
+            slots = array_add(slots, address);
+            code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + index, at.cell + 1 + index,
+                0, 0, node));
+            write := Instruction(ops.write, SlotStorage(argument.storage, argument.container, target), 0, argument.slot,
+                at.slot + index, 0, node);
+            write.offset = target.payload_offset;
+            code = array_add(code, write);
+            index += 1;
+        }
+        made: Cell = {storage: UnionStorage, container: 0, record: variant.parent, constant: 0, variant: -1,
+            kind: ValueKind};
+        cells = array_add(cells, made);
+        host: Host = {intrinsic: UnionMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 1 + count,
+            result_count: 1};
+        hosts = array_add(hosts, host);
+        code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        slots = array_add(slots, address);
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + count, at.cell + 1 + count,
+            0, 0, node));
+        value: Slot = {storage: UnionStorage, kind: ValueKind};
+        slots = array_add(slots, value);
+        load := Instruction(ops.load, UnionStorage, at.slot + count + 1, at.slot + count, 0, 0, node);
+        load.offset = target.payload_offset;
+        code = array_add(code, load);
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count,
+            Typed(at.slot + count + 1, UnionStorage, 0, variant.parent), NoValue(), marks);
+    }
+    linked := item.c == 1;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) { first_port = natives[item.a].first; }
@@ -701,7 +798,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         if (!SameType(expected.storage, expected.container, expected.record, argument)) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
         }
-        cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, offset: 0,
+        cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0, variant: -1,
             kind: ValueKind};
         cells = array_add(cells, cell);
         index += 1;
@@ -722,7 +819,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         result_count = 1;
     }
     if (result_count == 1) {
-        cell: Cell = {storage: result.storage, container: result.container, record: result.record, offset: 0,
+        cell: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
             kind: ValueKind};
         cells = array_add(cells, cell);
     }
@@ -942,4 +1039,103 @@ ForeachStep :: pure fn(array: Value, ops: Ops, target: Target, at: Bases, node: 
     marks: int[] = [head, leave, at.local];
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
         Typed(at.slot + 8, array.storage, 0, array.record), NoValue(), marks);
+}
+
+// One switch arm on the union in local `subject`: when it holds variant
+// types[variant], the names in `bindings` take its payload fields in order;
+// otherwise control jumps past the arm, through the jump the mark reports.
+// Bindings are not writable, so record and array payloads are read in place.
+ArmStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                   subject: int, variant: int, bindings: int, ops: Ops, target: Target, at: Bases,
+                   node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    locals: int[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    sum_type := types[variant].parent;
+    value: Slot = {storage: UnionStorage, kind: ValueKind};
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    flag: Slot = {storage: BoolStorage, kind: ValueKind};
+    slots = array_add(slots, value);
+    code = array_add(code, Instruction(ops.local, UnionStorage, at.slot, subject, 0, 0, node));
+    // The test takes the union and the tag and returns whether they match.
+    held: Cell = {storage: UnionStorage, container: 0, record: sum_type, constant: 0, variant: -1, kind: ValueKind};
+    tag: Cell = {storage: WordStorage, container: 0, record: -1, constant: 0, variant: variant, kind: ValueKind};
+    answer: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells = array_add(cells, held);
+    cells = array_add(cells, tag);
+    cells = array_add(cells, answer);
+    slots = array_add(slots, address);
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + 1, at.cell, 0, 0, node));
+    write := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + 1, 0, node);
+    write.offset = target.payload_offset;
+    code = array_add(code, write);
+    test: Host = {intrinsic: UnionTestIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1};
+    hosts = array_add(hosts, test);
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    slots = array_add(slots, address);
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + 2, at.cell + 2, 0, 0, node));
+    slots = array_add(slots, flag);
+    read := Instruction(ops.load, BoolStorage, at.slot + 3, at.slot + 2, 0, 0, node);
+    read.offset = target.payload_offset;
+    code = array_add(code, read);
+    code = array_add(code, Instruction(ops.branch_if, 0, 0, at.slot + 3, 0, at.pc + length(code) + 2, node));
+    leave := at.pc + length(code);
+    code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    // Each binding takes the payload field at its position.
+    position: int = 0;
+    binding := FirstMember(forest, bindings);
+    while (binding >= 0) {
+        field := members[types[variant].first + position];
+        first := at.cell + length(cells);
+        index: Cell = {storage: IntStorage, container: 0, record: -1, constant: position, variant: -1, kind: ValueKind};
+        whole: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+        payload: Cell = {storage: field.storage, container: field.container, record: field.record, constant: 0,
+            variant: -1, kind: ValueKind};
+        cells = array_add(cells, held);
+        cells = array_add(cells, tag);
+        cells = array_add(cells, index);
+        cells = array_add(cells, whole);
+        cells = array_add(cells, payload);
+        slots = array_add(slots, address);
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + length(slots) - 1, first, 0, 0,
+            node));
+        put := Instruction(ops.write, UnionStorage, 0, at.slot, at.slot + length(slots) - 1, 0, node);
+        put.offset = target.payload_offset;
+        code = array_add(code, put);
+        get: Host = {intrinsic: UnionGetIntrinsic, linked: -1, first: first, result_first: first + 4, result_count: 1};
+        hosts = array_add(hosts, get);
+        code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + length(hosts) - 1,
+            node));
+        name := Text(forest, text, binding);
+        if (Pointer(field.storage, field.container)) {
+            view: Name = {name: name, place: CellPlace, index: first + 4, storage: field.storage,
+                container: field.container, record: field.record, writable: false};
+            bound = array_add(bound, view);
+        } else {
+            slots = array_add(slots, address);
+            code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + length(slots) - 1,
+                first + 4, 0, 0, node));
+            loaded: Slot = {storage: field.storage, kind: ValueKind};
+            slots = array_add(slots, loaded);
+            take := Instruction(ops.load, field.storage, at.slot + length(slots) - 1, at.slot + length(slots) - 2, 0, 0, node);
+            take.offset = target.payload_offset;
+            code = array_add(code, take);
+            locals = array_add(locals, field.storage);
+            code = array_add(code, Instruction(ops.save, field.storage, 0, at.slot + length(slots) - 1, 0,
+                at.local + length(locals) - 1, node));
+            copy: Name = {name: name, place: LocalPlace, index: at.local + length(locals) - 1, storage: field.storage,
+                container: 0, record: field.record, writable: false};
+            bound = array_add(bound, copy);
+        }
+        position += 1;
+        binding = NextMember(forest, binding);
+    }
+    marks: int[] = [leave];
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
 }

@@ -50,6 +50,10 @@ import:
   every payload field, and a default `case:`. Bindings are immutable. As in
   stage zero, a switch without a default arm must cover every variant, and a
   repeated variant or default arm is rejected;
+- `value is .V` and `value is not .V`, and `value is .V(a, b)` binding the
+  payload in an if or while condition, alone or joined by `&&`, as stage zero
+  allows bindings. They last through the consequence or loop body, not the
+  else branch;
 - calls between the package's functions, including recursion, and calls of
   natives with one result or none, such as `length` and `slice`. A native's
   inferred ports take the one type its arguments give them, matched by name
@@ -63,10 +67,13 @@ import:
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
 Anything else is rejected with its source position. Constants of other types
-or computed values, `is` patterns, record field defaults, field assignment,
+or computed values, type patterns, record field defaults, field assignment,
 assigning record or array parameters, named payload arguments, literal
 variants, natives with several results or variadic ones, `uint64` and
 conversions come next.
+One check is missing the other way: stage one does not yet reject a local name
+declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`, which
+stage zero reports as a duplicate declaration.
 
 ## Output
 
@@ -125,20 +132,26 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 47 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 6,515 assertions in
-34.3 s under the supervisor, with other test runs loading the machine). A sample is package `facts`, optionally with a `lib` package and
-`core:strings`. Every accepted closure loads in a fresh runtime host and runs
-on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
-same packages must return the same JSON; calls that must fail,
-such as out-of-bounds reads, fail on all three. Rejections check the exact
-message and position.
+`tool language-package-compiler-chibi` compiles 54 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 7,302 assertions in
+29.0 s). A sample is package `facts`, optionally with a
+`lib` package and `core:strings`. Every accepted closure loads in a fresh
+runtime host and runs on bytecode and SLJIT with JSON arguments, and stage
+zero's own closure of the same packages must return the same JSON; calls that
+must fail, such as out-of-bounds reads, fail on all three. Rejections check
+the exact message and position.
 
-Compiling is slow: the arrays sample, about 50 lines, takes 1.4 s on SLJIT and
-2.8 s on bytecode in this build. Retiring a call no longer re-measures every
-spare frame and its data cells, and an array copy checks each distinct record
-once, which cut compile time by about an eighth. The remaining cost is the
-interpreter itself, per-call setup of large frames, and one record layout check
-per record copy; they come before stage one compiles the compiler. The imports
-sample alone adds about 8 s, most of it compiling `core:strings`, and the suite
-now uses over half its 60 s ceiling.
+Compiling is slow. In this build, compiling all the samples takes about 17 s
+of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT
+and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
+3.2 s. Two runtime changes cut the selector from 34 s to 28 s:
+
+- A running call stack keeps up to 8 MiB of retired frames, evicting the least
+  recently retired, and settles back to the 64 KiB idle budget. Before, the
+  frames of the compiler's step functions, 0.2 to 0.7 MB each, were set up
+  afresh on every call.
+- Copying a record descriptor into another arena copies its bytes instead of
+  re-deriving and re-hashing its layout.
+
+The bytecode interpreter's dispatch is now 43% of the profile and record
+validation 13%. They come before stage one compiles the compiler.

@@ -782,19 +782,19 @@ parameter still copy the referenced value.
 The stage-one compiler starts as `tools/compiler/package_compiler` (see
 `docs/package-compiler.md`). It compiles packages of functions, records,
 unions and `int` literal constants, and the `project:` and `core:` packages
-they import, with `int`,
-`bool` and `string` values and arrays of them, statements, control flow
-including `foreach` and exhaustive `switch` over unions, calls within and
-across packages, and calls of the natives the target links, to runnable
-multi-module closures that agree with stage zero, with no native step after
-the parser. Records and arrays use stage zero's value model: construct, snapshot
-and in-place array intrinsics, stage zero's record IDs and layout hashes, and
-value roots for suspended callers. Unions use the union-make, -test and -get
-intrinsics with stage zero's tags. Each package is a module whose import rows
-carry the fingerprints the runtime checks. `is` patterns, natives with several
-results, `uint64` and conversions follow, then the compiler's own sources. Debugger
-points and watches are deferred until before stage one becomes the normal
-compiler.
+they import, with `int`, `bool` and `string` values and arrays of them,
+statements, control flow including `foreach`, exhaustive `switch` over unions
+and `is` patterns with bindings, calls within and across packages, and calls
+of the natives the target links, to runnable multi-module closures that agree
+with stage zero, with no native step after the parser. Records and arrays use
+stage zero's value model: construct, snapshot and in-place array intrinsics,
+stage zero's record IDs and layout hashes, and value roots for suspended
+callers. Unions use the union-make, -test and -get intrinsics with stage zero's
+tags. Each package is a module whose import rows carry the fingerprints the
+runtime checks. Compiling the compiler's own sources stops first at a `uint64`
+payload in `prepared_writer`; `uint64` and conversions, natives with several
+results, then the rest of the compiler's sources follow. Debugger points and
+watches are deferred until before stage one becomes the normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the
@@ -802,10 +802,11 @@ reference kind stage zero keeps in a data cell's initial value, and because
 storing the caller's text tainted the record. The analysis now reads initial
 values and tracks stored text separately, tainting only a read of it as an
 address, so 62 of the compiler's 63 functions share their tables. Compiling is
-still slow, about 1.4 s for a 50-line sample on SLJIT in a Debug + ASan build,
-after call retirement stopped re-measuring every spare frame. The interpreter,
-per-call setup of large frames and a record layout check per copy remain the
-measured costs to remove before stage one compiles the compiler.
+still slow, about 0.9 s for a 50-line sample on SLJIT in a Debug + ASan build.
+Call retirement no longer re-measures every spare frame, a running stack reuses
+frames larger than the 64 KiB idle budget, and descriptor copies no longer
+re-derive layouts. The bytecode interpreter's dispatch and record validation
+remain the measured costs to remove before stage one compiles the compiler.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

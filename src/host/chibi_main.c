@@ -48,7 +48,9 @@ extern char **environ;
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
  * folder, or a static site for browsers.
  * chibi web [PROJECT] --player PLAYER [--port PORT]: exports the static site
- * into a temporary folder and serves it on loopback until interrupted. */
+ * into a temporary folder and serves it on loopback until interrupted.
+ * chibi doc [ROOT] [--serve] [--port PORT]: writes ROOT/build/docs from
+ * ROOT/docs/site.kdl and, with --serve, serves it on loopback. */
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
@@ -167,6 +169,7 @@ static int usage(const char *program)
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "       %s web [PROJECT] --player PLAYER [--port PORT]\n"
+        "       %s doc [ROOT] [--serve] [--port PORT]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
         "version prints the SDK, build, compiler and artifact-format "
@@ -195,7 +198,13 @@ static int usage(const char *program)
         "--archive also writes DIR.tar.gz.\n"
         "web exports the browser site into a temporary folder, serves it at\n"
         "http://127.0.0.1:PORT/ (8000 by default; 0 picks a free port) until\n"
-        "interrupted, then removes the folder. Windows does not serve yet.\n",
+        "interrupted, then removes the folder. Windows does not serve yet.\n"
+        "doc writes the documentation site that ROOT/docs/site.kdl lists, "
+        "ROOT\n"
+        "being the working directory without one, into ROOT/build/docs;\n"
+        "--serve then serves it like web until interrupted. Windows does not\n"
+        "build documentation yet.\n",
+        program,
         program,
         program,
         program,
@@ -374,13 +383,6 @@ static int export_game(int argc, char **argv)
 }
 
 #ifndef _WIN32
-static volatile sig_atomic_t stop_serving;
-
-static void stop_web(int)
-{
-    stop_serving = 1;
-}
-
 /* A loopback port: 0 asks for any free one. */
 static bool port_number(const char *text, int *port)
 {
@@ -390,10 +392,16 @@ static bool port_number(const char *text, int *port)
     return *text && !*end && value >= 0 && value <= 65535;
 }
 
-/* Exports the site into a temporary folder it owns and serves it until
- * SIGINT, SIGTERM or SIGHUP, then removes the folder. A signal during the
- * export ends the command once the export does. */
-static int serve_site(chibi_export_spec *spec, int port)
+static volatile sig_atomic_t stop_serving;
+
+static void stop_web(int)
+{
+    stop_serving = 1;
+}
+
+/* A socket listening on 127.0.0.1 at port, with SIGINT, SIGTERM and SIGHUP
+ * stopping the server rather than the command; -1 when it cannot listen. */
+static int serve_listen(int port, int *bound)
 {
     struct sigaction stop = { .sa_handler = stop_web };
     sigemptyset(&stop.sa_mask);
@@ -401,9 +409,28 @@ static int serve_site(chibi_export_spec *spec, int port)
     for (size_t i = 0; i < sizeof signals / sizeof *signals; i++) {
         sigaction(signals[i], &stop, NULL);
     }
-    int bound = 0, server = chibi_serve_listen(port, &bound);
+    int server = chibi_serve_listen(port, bound);
     if (server < 0) {
         fprintf(stderr, "Cannot listen on 127.0.0.1:%d: %s\n", port, strerror(errno));
+    }
+    return server;
+}
+
+/* Serves folder from server until a stop signal. */
+static void serve_until_stopped(int server, const char *folder, int bound)
+{
+    printf("Serving %s at http://127.0.0.1:%d/\nPress Ctrl+C to stop.\n", folder, bound);
+    fflush(stdout);
+    chibi_serve(server, folder, &stop_serving);
+}
+
+/* Exports the site into a temporary folder it owns and serves it until a
+ * stop signal, then removes the folder. A signal during the export ends the
+ * command once the export does. */
+static int serve_site(chibi_export_spec *spec, int port)
+{
+    int bound = 0, server = serve_listen(port, &bound);
+    if (server < 0) {
         return 1;
     }
     const char *base = getenv("TMPDIR");
@@ -419,9 +446,7 @@ static int serve_site(chibi_export_spec *spec, int port)
     spec->output = site;
     bool exported = chibi_export(spec);
     if (exported && !stop_serving) {
-        printf("Serving %s at http://127.0.0.1:%d/\nPress Ctrl+C to stop.\n", site, bound);
-        fflush(stdout);
-        chibi_serve(server, site, &stop_serving);
+        serve_until_stopped(server, site, bound);
     } else {
         close(server);
     }
@@ -434,6 +459,60 @@ static int serve_site(chibi_export_spec *spec, int port)
     return exported && removed ? 0 : 1;
 }
 #endif
+
+/* chibi doc [ROOT] [--serve] [--port PORT]: the compiler writes the site;
+ * --serve then serves it. */
+static int doc_site(int argc, char **argv)
+{
+#ifdef _WIN32
+    (void)argc;
+    (void)argv;
+    fprintf(stderr, "chibi doc cannot read package sources on Windows yet.\n");
+    return 2;
+#else
+    const char *requested = NULL;
+    bool serve = false, ported = false;
+    int port = 8000;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (!strcmp(argv[i], "--serve") && !serve) {
+            serve = true;
+        } else if (!strcmp(argv[i], "--port") && i + 1 < argc && !ported && port_number(argv[i + 1], &port)) {
+            ported = true;
+            i++;
+        } else if (argv[i][0] != '-' && !requested) {
+            requested = argv[i];
+        } else {
+            fprintf(stderr, "Invalid doc option: %s; use --help.\n", argv[i]);
+            return 2;
+        }
+    }
+    if (ported && !serve) {
+        fprintf(stderr, "--port needs --serve; use --help.\n");
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    char *root = xstrdup(requested ? requested : ".");
+    char *args[] = { compiler, "--project-root", root, "--docs", NULL };
+    int status = chibi_process_run(args);
+    if (!status && serve) {
+        char *site = join(root, "build/docs");
+        int bound = 0, server = serve_listen(port, &bound);
+        if (server >= 0) {
+            serve_until_stopped(server, site, bound);
+        }
+        status = server < 0;
+        free(site);
+    }
+    free(root);
+    free(compiler);
+    free(bin);
+    return status;
+#endif
+}
 
 /* chibi web [PROJECT] --player PLAYER [--port PORT]: chibi export --web into a
  * folder of its own, served on loopback while it runs. */
@@ -991,6 +1070,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "web")) {
         return web_game(argc, argv);
+    }
+    if (argc > 1 && !strcmp(argv[1], "doc")) {
+        return doc_site(argc, argv);
     }
     if (argc > 1 && !strcmp(argv[1], "build")) {
         return build_game(argc, argv);

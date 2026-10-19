@@ -1,4 +1,6 @@
+#include "assets/project.h"
 #include "authoring/project_compile.h"
+#include "authoring/project_format.h"
 #include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
@@ -55,7 +57,12 @@ type_catalog_pack type_catalog_pack_at(int index)
 }
 static int usage(const char *program)
 {
-    fprintf(stderr, "Usage: %s --project-root PATH (--output FILE | --check | --test) [--scene PATH]\n", program);
+    fprintf(
+        stderr,
+        "Usage: %s --project-root PATH (--output FILE | --check | --test | "
+        "--format [--check]) [--scene PATH]\n",
+        program
+    );
     return 2;
 }
 #ifdef __EMSCRIPTEN__
@@ -65,9 +72,29 @@ static int test(const char *)
     fprintf(stderr, "This compiler prepares browser exports; it runs no tests\n");
     return 2;
 }
+static int format(const char *, bool)
+{
+    fprintf(stderr, "This compiler prepares browser exports; it formats nothing\n");
+    return 2;
+}
 #else
-/* Runs the tests of the packages below project with the SDK's core collection,
- * share/chibi/core beside this program's directory. */
+/* The SDK's core collection, share/chibi/core beside this program's
+ * directory; NULL, having said why, when it has none. */
+static char *core_collection()
+{
+    char *bin = file_executable_dir();
+    size_t size = strlen(bin) + sizeof "/../share/chibi/core";
+    char *installed = xmalloc(size);
+    snprintf(installed, size, "%s/../share/chibi/core", bin);
+    char *core = realpath(installed, NULL);
+    if (!core) {
+        fprintf(stderr, "The SDK has no core collection at %s: %s\n", installed, strerror(errno));
+    }
+    free(installed);
+    free(bin);
+    return core;
+}
+/* Runs the tests of the packages below project. */
 static int test(const char *project)
 {
     char *root = realpath(project, NULL);
@@ -75,30 +102,39 @@ static int test(const char *project)
         fprintf(stderr, "%s: %s\n", project, strerror(errno));
         return 1;
     }
-    char *bin = file_executable_dir();
-    size_t size = strlen(bin) + sizeof "/../share/chibi/core";
-    char *installed = xmalloc(size);
-    snprintf(installed, size, "%s/../share/chibi/core", bin);
-    char *core = realpath(installed, NULL);
-    int status = 1;
-    if (core) {
-        status = authoring_project_test(root, core);
-    } else {
-        fprintf(stderr, "The SDK has no core collection at %s: %s\n", installed, strerror(errno));
-    }
+    char *core = core_collection();
+    int status = core ? authoring_project_test(root, core) : 1;
     free(core);
-    free(installed);
-    free(bin);
     free(root);
     return status;
 }
+/* Formats the project's assets with the composition chibi build uses; with
+ * check only reports what differs. Fails for an older project, which it does
+ * not migrate, an asset that differs under check, an invalid one or a failed
+ * write. */
+static int format(const char *project, bool check)
+{
+    char error[512] = { 0 };
+    chibi_project read = { 0 };
+    bool current = !chibi_project_read(&read, project, error, sizeof error);
+    chibi_project_free(&read);
+    authoring_application application;
+    if (!current || !authoring_application_begin(&application, error, sizeof error)) {
+        fprintf(stderr, "format: %s\n", error);
+        return 1;
+    }
+    int differing = authoring_project_format(project, application.native, check);
+    authoring_application_end(&application);
+    return differing < 0 || (check && differing) ? 1 : 0;
+}
 #endif
 /* --check prepares the project without migrating it or writing anything;
- * --test runs its package tests. */
+ * --test runs its package tests; --format rewrites its assets canonically, or
+ * with --check reports the ones that are not. */
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL;
-    bool check = false, tests = false;
+    bool check = false, tests = false, formats = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
@@ -110,6 +146,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--test") && !tests) {
             tests = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--format") && !formats) {
+            formats = true;
             continue;
         }
         if (i + 1 == argc) {
@@ -129,13 +169,16 @@ int main(int argc, char **argv)
         }
         return usage(argv[0]);
     }
-    int modes = check + tests + (output != NULL);
+    int modes = (check && !formats) + tests + formats + (output != NULL);
     if (!project || !*project || modes != 1 || (output && !*output) ||
-        (tests && scene)) {
+        ((tests || formats) && scene)) {
         return usage(argv[0]);
     }
     if (tests) {
         return test(project);
+    }
+    if (formats) {
+        return format(project, check);
     }
     return authoring_project_compile(project, scene, output);
 }

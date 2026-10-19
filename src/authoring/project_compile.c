@@ -149,40 +149,53 @@ static bool write_artifact(
     free(manifest);
     return valid;
 }
-int authoring_project_compile(const char *project, const char *scene, const char *output)
+bool authoring_application_begin(authoring_application *application, char *error, size_t size)
 {
-    char error[512] = { 0 };
-    native_capabilities *native = authoring_renderer_catalog_new(error, sizeof error);
-    if (!native) {
-        fprintf(stderr, "Project preparation failed: %s\n", error);
-        return 1;
+    *application = (authoring_application){ authoring_renderer_catalog_new(error, size),
+                                            NULL };
+    if (!application->native) {
+        return false;
     }
     authoring_graph_catalog_config config = {
-        .native = native,
+        .native = application->native,
         .types = TYPE_PACK,
         .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT }
     };
-    authoring_graph_catalog *graphs = authoring_graph_catalog_new(config, error, sizeof error);
-    if (!graphs) {
+    application->graphs = authoring_graph_catalog_new(config, error, size);
+    if (!application->graphs) {
+        native_capabilities_free(application->native);
+        return false;
+    }
+    int count = 0;
+    const registry_pack *const
+        *packs = authoring_graph_catalog_packs(application->graphs, &count);
+    registry_set_packs(packs, count);
+    return true;
+}
+void authoring_application_end(authoring_application *application)
+{
+    registry_set_packs(NULL, 0);
+    authoring_graph_catalog_free(application->graphs);
+    native_capabilities_free(application->native);
+}
+int authoring_project_compile(const char *project, const char *scene, const char *output)
+{
+    char error[512] = { 0 };
+    authoring_application application;
+    if (!authoring_application_begin(&application, error, sizeof error)) {
         fprintf(stderr, "Project preparation failed: %s\n", error);
-        native_capabilities_free(native);
         return 1;
     }
-    int pack_count = 0;
-    const registry_pack *const *packs = authoring_graph_catalog_packs(graphs, &pack_count);
-    registry_set_packs(packs, pack_count);
     authoring_project_artifact artifact = { 0 };
     authoring_project_options options = { .project = project,
                                           .scene = scene,
-                                          .native = native,
+                                          .native = application.native,
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
                                           .modules = WORLD_MODULES_ALL,
                                           .read_only = !output };
     bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
-    registry_set_packs(NULL, 0);
-    authoring_graph_catalog_free(graphs);
-    native_capabilities_free(native);
+    authoring_application_end(&application);
     if (valid && output) {
         valid = write_artifact(output, &artifact, error, sizeof error);
     }

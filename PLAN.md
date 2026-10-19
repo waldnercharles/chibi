@@ -583,8 +583,13 @@ package files, so a game project's behaviors are not tests yet.
 `src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
 the launcher, the real compiler and a compiler without the core collection.
 The compiler's own packages cannot run under it yet, because their raw-syntax
-bridge is not among those natives. `fmt`, `web` and moving `export` behind
-Chibi modules remain.
+bridge is not among those natives. `chibi fmt [--check] [PROJECT...]` hands
+each project to the compiler's `--format`, which runs the formatter that moved
+out of the automation controller into `src/authoring/project_format.c`;
+`chibi_ctl --format` now calls the same module. Package trees are not
+formatted yet: the source formatter still rewrites package syntax such as
+`case .Variant` and continued arguments wrongly. `web` and moving `export`
+behind Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

@@ -585,7 +585,7 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c")
-    foreach(header compiler_artifact compiler_host compiler_json compiler_syntax)
+    foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax)
         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/toolchain/${header}.h" COPYONLY)
     endforeach()
@@ -595,8 +595,13 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
         PRIVATE chibi_native_prepared chibi_text_capabilities chibi_array_capabilities
         chibi_value_document chibi_asset_json chibi_language_syntax)
     target_compile_options(chibi_compiler_host PRIVATE -Wall -Wextra -Werror)
-    add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c")
-    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host)
+    # Bootstrap artifacts are the executable's own: no other compiler-host
+    # consumer reads their KDL contract.
+    add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c"
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c")
+    target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
+        chibi_json)
+    target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_compile_options(chibi-compiler-host PRIVATE -Wall -Wextra -Werror)
     if(APPLE)
         target_link_options(chibi-compiler-host PRIVATE -Wl,-dead_strip)

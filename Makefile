@@ -274,7 +274,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap test-short test-policy-inventory tools-build
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact test-recovery test-short test-policy-inventory tools-build
 agent-list:
 	@python3 tools/agent.py list
 
@@ -308,6 +308,22 @@ test-projects: test-build
 test-bootstrap:
 	@$(MAKE) build-release BUILD_TARGET=test_language
 	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+
+# The bootstrap artifact: the bootstrap check leaves stage two and its
+# arguments in a seed folder, and the Release compiler host writes the artifact
+# once stage two compiles the sources to itself. test-recovery recovers the
+# compiler from it with sources exported from HEAD. See docs/self-hosting-build.md.
+BOOTSTRAP_ARTIFACT ?= $(RELEASE_BUILD_DIR)/bootstrap
+bootstrap-artifact:
+	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
+	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed" && mkdir -p "$(BOOTSTRAP_ARTIFACT).seed"
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_ARTIFACT).seed)" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_ARTIFACT).seed" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed"
+
+test-recovery: test-build
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" CHIBI_BOOTSTRAP_ARTIFACT="$(BOOTSTRAP_ARTIFACT)" python3 tools/test_policy.py tool bootstrap-recovery
 
 test: test-short
 

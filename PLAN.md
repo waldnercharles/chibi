@@ -534,8 +534,25 @@ Once the complete stage-one compiler works, run this sequence in a clean tree:
 Introduce compiler language dependencies in two steps: first implement a feature
 using the existing bootstrap language and validate the resulting compiler; only
 then use that feature in later compiler sources. Keep the compatible bootstrap
-artifact available and reject unsupported bootstrap versions explicitly. These
-version checks and the recovery artifact are still pending.
+artifact available and reject unsupported bootstrap versions explicitly.
+
+Step 5 is implemented for the package compiler on 2026-10-19:
+- `make bootstrap-artifact` writes stage two as a checksummed artifact, with a
+  manifest recording:
+  - its revision;
+  - its bootstrap version and minimum, from `tools/compiler/bootstrap.kdl`;
+  - each source's SHA-256;
+  - the external inputs: the value layout, prepared ABI, instruction names and
+    native identities.
+- `chibi-compiler-host --bootstrap` recovers the compiler from it. It rejects
+  another format, a damaged closure, a missing source or grown package,
+  another target and a version older than the sources' minimum. It then requires the artifact's own bytes, or a
+  fixpoint when the sources changed.
+- `make test-recovery` runs that recovery from sources exported from HEAD in
+  about 12 s: one compile, or two when the sources changed.
+
+The artifact is still a build output; where the clean-checkout recovery
+artifact is kept is still to be decided. See `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
 supported host configuration. Keep an explicit stage-zero recovery invocation

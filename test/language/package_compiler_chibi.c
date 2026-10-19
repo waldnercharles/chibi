@@ -1637,6 +1637,27 @@ static void stage_two_rejection(const char *json, size_t length)
         called ? result.json : result.diagnostic
     );
 }
+/* Writes bytes to folder/name. */
+static bool write_seed_file(const char *folder, const char *name, const void *bytes, size_t length)
+{
+    char path[4096];
+    snprintf(path, sizeof path, "%s/%s", folder, name);
+    FILE *file = fopen(path, "wb");
+    bool written = file && fwrite(bytes, 1, length, file) == length;
+    if (file) {
+        written = !fclose(file) && written;
+    }
+    return written;
+}
+/* With CHIBI_BOOTSTRAP_SEED naming a folder, leaves stage two and Compile's
+ * arguments there, the seed make bootstrap-artifact writes the bootstrap
+ * artifact from. */
+static bool write_seed(const unsigned char *stage_two, size_t length, const char *json, size_t json_length)
+{
+    const char *seed = getenv("CHIBI_BOOTSTRAP_SEED");
+    return !seed || (write_seed_file(seed, "compiler.chibip", stage_two, length) &&
+                     write_seed_file(seed, "compile.json", json, json_length));
+}
 /* Stage two, loaded in `host`, compiles every sample as stage one does: its
  * Compile result projects to the same JSON, the same closure or the same
  * rejection. */
@@ -1760,10 +1781,12 @@ TEST_CASE(package_compiler_compiles_itself)
             at
         );
     }
+    bool seeded = same && write_seed(stage_two, length, json, json_length);
     free(again.bytes);
     free(stage_two);
     free(json);
     REQUIRE(same);
+    REQUIRE(seeded);
     return stage_two_samples();
 }
 void test_language_package_compiler_chibi()

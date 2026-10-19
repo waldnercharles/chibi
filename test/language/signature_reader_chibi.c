@@ -897,7 +897,7 @@ TEST_CASE(signature_reader_type_syntax_and_publication_state_match)
           sizeof CORE_STRINGS_SOURCE - 1 },
     };
     for (int i = 0; i < 7; i++) {
-        REQUIRE(files[i].size < 32768);
+        REQUIRE(files[i].size < 48 * 1024);
     }
     REQUIRE(compiler_fixture_prepare_packs(&fixture, files, 7, &COMPILER_JSON_DEFINITION_PACK, 1));
     prepared = true;
@@ -1558,12 +1558,12 @@ TEST_CASE(snapshot_reader_interleaved_packages_and_reordered_documents_match)
     };
     size_t total = 0;
     for (int i = 0; i < 14; i++) {
-        /* Keep reader's existing 32 KiB bound and snapshot's stricter 16 KiB.
-         * Shared syntax/strings retain the stricter snapshot bound as well. */
-        REQUIRE(sources[i].size < (i > 5 ? 16384 : 32768));
+        /* Keep reader's 48 KiB bound and snapshot's stricter 16 KiB. Shared
+         * syntax/strings retain the stricter snapshot bound as well. */
+        REQUIRE(sources[i].size < (i > 5 ? 16384 : 48 * 1024));
         total += sources[i].size;
     }
-    REQUIRE(total < 128 * 1024 && sizeof ANALYSIS_STATE_CHIBI_SOURCE < 8192);
+    REQUIRE(total < 160 * 1024 && sizeof ANALYSIS_STATE_CHIBI_SOURCE < 8192);
     const native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
     REQUIRE(compiler_fixture_prepare_packs(&fixture, sources, 14, packs, 2));

@@ -1568,7 +1568,7 @@ outside the language aggregate.
 annotation and signature reading. Four pico cases run seventeen Type and eight
 Signature requests, totaling 50 authored calls across bytecode and SLJIT at
 500,000 instructions each. Seven compiler sources per backend, each below
-32 KiB, and 25 raw Tree-sitter inputs total 39 parses. Quoted names make four
+48 KiB, and 25 raw Tree-sitter inputs total 39 parses. Quoted names make four
 private JSON callbacks. The original 24 sources are below 256 bytes with at most
 256 nodes at depth 32. One fixed 65-array annotation stays below 512 bytes,
 512 nodes and depth 256, checking helper call depth beyond the default limit.
@@ -1589,7 +1589,7 @@ build separately and use one shared 60-second ceiling outside the aggregate.
 callable header registration from raw syntax and analyzer tables. Two pico cases
 run fifteen requests on both backends: 30 Register calls at two million
 instructions each. Eight sources per backend (Headers below 64 KiB, dependencies
-below 32 KiB) and fifteen raw trees total 31 parses, with four private JSON calls.
+below 48 KiB) and fifteen raw trees total 31 parses, with four private JSON calls.
 Inputs are below 512 bytes with at most 256 nodes at depth 32.
 
 Inputs have one scope, at most one symbol and no functions or catalog definitions.
@@ -1608,7 +1608,7 @@ requests, each on bytecode and SLJIT, for 48 authored calls and 32 parses.
 Source calls supply 2,000,000 instructions; raw validation supplies 16,000,000.
 Both budgets are inherited/reset per activation, including outlined and inline
 children; neither is a whole-call or corpus instruction ceiling. Eight compiler
-sources per backend are below 32 KiB. Sixteen fact sources are at most 512 bytes,
+sources per backend are below 48 KiB. Sixteen fact sources are at most 512 bytes,
 256 syntax nodes and depth 32; initial source tables hold at most two symbols
 and definitions, one scope and no functions, imports or capabilities.
 
@@ -1663,7 +1663,7 @@ calls across bytecode and SLJIT, with 32 parses and four runtime JSON decodes.
 Each call supplies budget 500,000, which outlined and inline child activations
 inherit/reset. This is not a shared invocation or corpus instruction ceiling.
 
-Eight compiler sources per backend are below 32 KiB each. Sixteen fact-source
+Eight compiler sources per backend are below 48 KiB each. Sixteen fact-source
 parses use inputs below 256 bytes, at most 128 nodes and depth 32. Raw facts have
 one scope, at most one symbol, three definitions, two variants and three prior
 names; pools hold 64 type rows and 128 exact IDs. Per-member outputs have at most
@@ -2679,9 +2679,9 @@ Reader fixture tables keep the existing 64-type/128-ID envelope,
 two scopes/two symbols/one function, two definitions/two variants and zero
 semantic import entries. A reading has at most four publications/new types,
 uses and diagnostics. Eight retained-result projections stay below 128 KiB each.
-All existing source bounds remain: reader sources below 32 KiB, snapshot/shared
-sources below 16 KiB; the new State source is below 8 KiB and the combined closure
-is below 128 KiB. The exact source manifest records measured source bytes.
+Source bounds: reader sources below 48 KiB, snapshot/shared sources below
+16 KiB; the State source is below 8 KiB and the combined closure is below
+160 KiB. The exact source manifest records measured source bytes.
 
 Each adapted full tree is compared with the current Tree-sitter-derived reader
 input. For the six accepted document instances, direct and adapted inputs

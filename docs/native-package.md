@@ -148,11 +148,11 @@ name "Main"
 (array)entities
 ```
 
-Open the project or run it with the installed application:
+Check the project, or build and run it, with the installed launcher:
 
 ```sh
-/path/to/chibi/bin/chibi --project-root /path/to/my-game
-/path/to/chibi/bin/chibi --play --project-root /path/to/my-game
+/path/to/chibi/bin/chibi check /path/to/my-game
+/path/to/chibi/bin/chibi run /path/to/my-game
 ```
 
 Edit `.chibi` executable source and KDL declarative assets directly or through

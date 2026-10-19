@@ -23,9 +23,9 @@ Code :: struct {
     value_storage: int; value_container: int; value_record: int; payload: int; text: string;
     has_text: bool; start: int; end: int; line: int; column: int;
 }
-// A data cell's header type and kind; `offset` is a constant payload some
-// cells carry.
-Cell :: struct { storage: int; container: int; record: int; offset: int; kind: int; }
+// A data cell's header type and kind. Some cells hold a constant payload: the
+// bits `constant`, or the tag of variant types[variant] when that is not -1.
+Cell :: struct { storage: int; container: int; record: int; constant: int; variant: int; kind: int; }
 Invocation :: struct { callee: int; first: int; count: int; result_first: int; result_count: int; }
 // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
 // when `linked` is not -1.
@@ -42,12 +42,18 @@ Body :: union {
 Work :: struct { node: int; phase: int; a: int; b: int; c: int; storage: int; container: int; record: int; }
 Value :: struct { slot: int; storage: int; container: int; record: int; }
 // A name in scope: a locals-bank value, a record or array held in a data
-// cell, or a record or array parameter read in place.
-Name :: struct { name: string; place: int; index: int; storage: int; container: int; record: int; }
+// cell, or a record or array parameter read in place. Pattern bindings are
+// not writable.
+Name :: struct { name: string; place: int; index: int; storage: int; container: int; record: int; writable: bool; }
 // A loop being emitted. A while loop's continues jump to `head`; a foreach
 // loop patches them to its increment, and owns its index local, the names to
 // drop and its exit jump, `leave`.
 Loop :: struct { head: int; first_break: int; first_continue: int; each: bool; index: int; mark: int; leave: int; }
+// A switch being emitted: the local holding its union, where its exit jumps
+// start in `exits` and its matched variants in `covered`, whether it has a
+// default arm, the pending jump past the current arm, and the names the arm's
+// bindings start at.
+Switch :: struct { subject: int; held: int; first_exit: int; first_cover: int; defaulted: bool; skip: int; mark: int; }
 // The size of each table when a step starts.
 Bases :: struct { pc: int; slot: int; local: int; cell: int; host: int; call: int; }
 // What a step adds: instructions and table rows, names it binds, work it
@@ -73,6 +79,9 @@ ConstructIntrinsic: int : 2;
 ArrayPushIntrinsic: int : 27;
 ArrayStoreIntrinsic: int : 28;
 ArrayExtendIntrinsic: int : 29;
+UnionMakeIntrinsic: int : 20;
+UnionTestIntrinsic: int : 21;
+UnionGetIntrinsic: int : 22;
 // Statement phases after the value is ready.
 ValuePhase: int : 1;
 RetainedPhase: int : 2;
@@ -168,10 +177,10 @@ FindCallable :: pure fn(callables: Callable[], name: string) -> int {
     }
     return -1;
 }
-FindField :: pure fn(records: Record[], fields: RecordField[], record: int, name: string) -> int {
-    at := records[record].first;
-    while (at < records[record].first + records[record].count) {
-        if (fields[at].name == name) { return at; }
+FindField :: pure fn(types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+    at := types[record].first;
+    while (at < types[record].first + types[record].count) {
+        if (members[at].name == name) { return at; }
         at += 1;
     }
     return -1;
@@ -225,12 +234,37 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
     }
     return found;
 }
+// The union `U` names when `node` is a member expression `U.Variant` and no
+// local hides U; -1 otherwise.
+UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], node: int) -> int {
+    object := Field(forest, node, "object");
+    if (!Is(forest, object, "identifier") || Lookup(names, Text(forest, text, object)) >= 0) { return -1; }
+    declared := FindType(types, Text(forest, text, object));
+    if (declared < 0 || types[declared].kind != UnionDecl) { return -1; }
+    return declared;
+}
+// Whether `variant` is among `covered` from `first` on.
+Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
+    at := first;
+    while (at < length(covered)) {
+        if (covered[at] == variant) { return true; }
+        at += 1;
+    }
+    return false;
+}
+// The next switch arm after `node` among its siblings, -1 when none.
+NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := NextMember(forest, node);
+    while (at >= 0 && !Is(forest, at, "switch_arm")) { at = NextMember(forest, at); }
+    return at;
+}
 // The native `xs = name(xs, value)` updates in place when xs names the local
 // array names[found]: "Array Add" or "Append"; -1 for any other statement.
 InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
                          names: Name[], found: int, destination: int, value: int) -> int {
     binding := names[found];
-    if (binding.place != CellPlace || binding.container != ArrayContainer || !Is(forest, value, "call_expression")) {
+    if (binding.place != CellPlace || binding.container != ArrayContainer || !binding.writable ||
+        !Is(forest, value, "call_expression")) {
         return -1;
     }
     callee := Field(forest, value, "function");
@@ -247,7 +281,7 @@ InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
 }
 
 EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
-                    callables: Callable[], params: Param[], records: Record[], fields: RecordField[],
+                    callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
                     natives: Native[], ports: Port[], function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
@@ -265,6 +299,9 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     loops: Loop[] = [];
     breaks: int[] = [];
     continues: int[] = [];
+    switches: Switch[] = [];
+    exits: int[] = [];
+    covered: int[] = [];
     work_top: int = 0;
     value_top: int = 0;
     // Scalar and string parameters move to locals, so assigning one needs no
@@ -274,7 +311,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         param := params[callable.first + index];
         if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
-                container: param.container, record: param.record};
+                container: param.container, record: param.record, writable: true};
             names = array_add(names, name);
         } else {
             slot: Slot = {storage: param.storage, kind: ValueKind};
@@ -286,7 +323,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             code = array_add(code, Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
                 length(locals) - 1, declaration));
             name: Name = {name: param.name, place: LocalPlace, index: length(locals) - 1,
-                storage: param.storage, container: 0, record: -1};
+                storage: param.storage, container: 0, record: param.record, writable: true};
             names = array_add(names, name);
         }
         index += 1;
@@ -413,7 +450,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top -= 1;
                 kept := values[value_top];
                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
-                    index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record};
+                    index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: true};
                 names = array_add(names, binding);
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                 next = array_add(next, Resume(item.node, 4, 0, 0));
@@ -454,6 +491,96 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 }
                 breaks = slice(breaks, 0, loop.first_break);
                 names = slice(names, 0, loop.mark);
+            }
+        } else if (kind == "switch_statement") {
+            if (item.phase == 0) {
+                stepped = false;
+                code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
+                next = array_add(next, Visit(Field(forest, item.node, "value")));
+                next = array_add(next, Resume(item.node, 1, 0, 0));
+            } else if (item.phase == 1) {
+                // The union waits in a local while each arm tests it in turn.
+                stepped = false;
+                value_top -= 1;
+                subject := values[value_top];
+                if (!Single(subject, UnionStorage)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "switch needs a union value"));
+                }
+                locals = array_add(locals, UnionStorage);
+                code = array_add(code, Instruction(ops.save, UnionStorage, 0, subject.slot, 0, length(locals) - 1, node));
+                current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
+                    first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
+                switches = array_add(switches, current);
+                next = array_add(next, Resume(item.node, 2, NextArm(forest, Field(forest, item.node, "value")), 0));
+            } else if (item.phase == 2 && item.a < 0) {
+                stepped = false;
+                current := switches[length(switches) - 1];
+                if (!current.defaulted && length(covered) - current.first_cover < types[current.held].count) {
+                    return Body.Failed(Diagnose(forest, item.node, document,
+                        "Non-exhaustive switch: a union alternative is missing"));
+                }
+                switches = slice(switches, 0, length(switches) - 1);
+                covered = slice(covered, 0, current.first_cover);
+                at_exit := current.first_exit;
+                while (at_exit < length(exits)) {
+                    exit_jump := code[exits[at_exit]];
+                    exit_jump.target = length(code);
+                    code[exits[at_exit]] = exit_jump;
+                    at_exit += 1;
+                }
+                exits = slice(exits, 0, current.first_exit);
+            } else if (item.phase == 2) {
+                current := switches[length(switches) - 1];
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                pattern := Field(forest, item.a, "value");
+                if (pattern < 0) {
+                    if (current.defaulted) { return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm")); }
+                    current.defaulted = true;
+                    switches[length(switches) - 1] = current;
+                    stepped = false;
+                } else {
+                    if (!Is(forest, pattern, "variant_pattern")) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "switch arms need a variant pattern"));
+                    }
+                    member := Text(forest, text, Field(forest, pattern, "name"));
+                    variant := FindVariant(types, current.held, member);
+                    if (variant < 0) {
+                        return Body.Failed(Diagnose(forest, pattern, document, format_text("Unknown variant '{}'", member)));
+                    }
+                    if (current.defaulted || Covers(covered, current.first_cover, variant)) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "Unreachable duplicate union pattern"));
+                    }
+                    covered = array_add(covered, variant);
+                    bindings := Field(forest, pattern, "bindings");
+                    count: int = 0;
+                    binding := FirstMember(forest, bindings);
+                    while (binding >= 0) {
+                        count += 1;
+                        binding = NextMember(forest, binding);
+                    }
+                    if (count != 0 && count != types[variant].count) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
+                    }
+                    step = ArmStep(forest, text, types, members, current.subject, variant, bindings, ops, target, at, node);
+                }
+                next = array_add(next, Visit(Field(forest, item.a, "body")));
+                next = array_add(next, Resume(item.node, 3, item.a, 0));
+            } else {
+                // The arm is done: leave the switch, and send a failed test here.
+                stepped = false;
+                exits = array_add(exits, length(code));
+                code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                current := switches[length(switches) - 1];
+                if (current.skip >= 0) {
+                    skip := code[current.skip];
+                    skip.target = length(code);
+                    code[current.skip] = skip;
+                }
+                current.skip = -1;
+                switches[length(switches) - 1] = current;
+                names = slice(names, 0, current.mark);
+                next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
             }
         } else if (kind == "break_statement" || kind == "continue_statement") {
             stepped = false;
@@ -513,16 +640,16 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, records, natives, names, values, value_top,
+            step = StatementStep(forest, text, document, callables, types, natives, names, values, value_top,
                 function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, records, fields, names, values, value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, types, members, names, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
-            step = LiteralStep(forest, text, document, records, fields, values, value_top, item, ops, target, at);
+            step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, natives, ports, values, value_top, item, ops,
-                target, at);
+            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names, values,
+                value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else {
@@ -556,6 +683,12 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                         value_top -= popped;
                         if (value.storage != 0) { produced = value; }
                         if (pass == 0) { retain = kept; }
+                        if (length(marks) == 1) {
+                            // A switch arm's test: the jump past the arm.
+                            current := switches[length(switches) - 1];
+                            current.skip = marks[0];
+                            switches[length(switches) - 1] = current;
+                        }
                         if (length(marks) == 3) {
                             // A foreach head: its loop, then its element's binding.
                             loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
@@ -572,7 +705,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                                     length(locals) - 1, node));
                                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")),
                                     place: LocalPlace, index: length(locals) - 1, storage: element.storage,
-                                    container: 0, record: -1};
+                                    container: 0, record: element.record, writable: true};
                                 names = array_add(names, binding);
                                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                                 next = array_add(next, Resume(item.node, 4, 0, 0));

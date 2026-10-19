@@ -7,8 +7,9 @@ import syntax "project:syntax_diagnostics"
 import writer "project:prepared_writer"
 import strings "core:strings"
 
-// Compiles one package of functions and records to a prepared closure. Stage
-// zero builds this compiler; everything after the raw parser is authored.
+// Compiles one package of functions, records and unions to a prepared
+// closure. Stage zero builds this compiler; everything after the raw parser is
+// authored.
 
 // Facts of the runtime this compiler targets, which Chibi cannot see: pointer
 // width, the byte offsets of a value header's and an array's members, and the
@@ -26,8 +27,8 @@ Ops :: struct {
     div: int; mod: int; neg: int; bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int;
     shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
 }
-// A type: a storage code, whether it is an array, and a record index for
-// records and arrays of records.
+// A type: a storage code, whether it is an array, and for records, unions and
+// arrays of them the index of their declaration in `types`.
 ValueType :: struct { storage: int; container: int; record: int; }
 Callable :: struct {
     name: string; document: int; node: int; first: int; count: int; result: int; result_container: int;
@@ -41,13 +42,16 @@ Native :: struct { name: string; first: int; parameters: int; results: int; vari
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; storage -1 is a type this compiler cannot pass.
 Port :: struct { storage: int; container: int; }
-// An authored record; its fields are fields[first, first + count).
-Record :: struct { name: string; type_name: string; first: int; count: int; size: int; }
-RecordField :: struct { name: string; storage: int; offset: int; }
+// A declared type. A record's fields and a variant's payload are
+// members[first, first + count); a union's variants are types[first, first +
+// count), and each variant names its union as `parent`.
+TypeDecl :: struct { name: string; type_name: string; kind: int; first: int; count: int; size: int; parent: int; }
+// A record field, with its byte offset, or a variant's payload field.
+TypeMember :: struct { name: string; storage: int; container: int; record: int; offset: int; }
 Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
-    | Collected(callables: Callable[], params: Param[], records: Record[], fields: RecordField[])
+    | Collected(callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[])
 }
 
 BoolStorage: int : 1;
@@ -55,8 +59,13 @@ IntStorage: int : 6;
 WordStorage: int : 9;
 TextStorage: int : 13;
 StructStorage: int : 15;
+UnionStorage: int : 18;
+RecordDecl: int : 0;
+UnionDecl: int : 1;
+VariantDecl: int : 2;
+// Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
-RecordKind: int : 13;
+TypeKind: int : 13;
 // Runtime intrinsics are host capabilities with this prefix and ABI one.
 IntrinsicBase: uint64 : 0x4348494900000000;
 
@@ -103,17 +112,27 @@ FieldStorage :: pure fn(text: string) -> int {
     if (text == "string") { return TextStorage; }
     return 0;
 }
-FindRecord :: pure fn(records: Record[], name: string) -> int {
+// The record or union of this package named `name`, -1 when none.
+FindType :: pure fn(types: TypeDecl[], name: string) -> int {
     index: int = 0;
-    while (index < length(records)) {
-        if (records[index].name == name) { return index; }
+    while (index < length(types)) {
+        if (types[index].kind != VariantDecl && types[index].name == name) { return index; }
         index += 1;
     }
     return -1;
 }
-// The type a `type` node names: a field type or a record of this package,
-// or an array of either; storage 0 for any other.
-ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, records: Record[], node: int) -> ValueType {
+// The variant `name` of union types[of], -1 when none.
+FindVariant :: pure fn(types: TypeDecl[], of: int, name: string) -> int {
+    at := types[of].first;
+    while (at < types[of].first + types[of].count) {
+        if (types[at].name == name) { return at; }
+        at += 1;
+    }
+    return -1;
+}
+// The type a `type` node names: a field type, a record or union of this
+// package, or an array of one; storage 0 for any other.
+ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
         HasToken(forest, node, "?")) {
@@ -129,9 +148,10 @@ ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, records: Reco
     name := NameText(forest, text, FirstMember(forest, Field(forest, node, "name")));
     storage := FieldStorage(name);
     if (storage != 0) { return {storage: storage, container: container, record: -1}; }
-    record := FindRecord(records, name);
-    if (record < 0 || NextMember(forest, FirstMember(forest, Field(forest, node, "name"))) >= 0) { return none; }
-    return {storage: StructStorage, container: container, record: record};
+    declared := FindType(types, name);
+    if (declared < 0 || NextMember(forest, FirstMember(forest, Field(forest, node, "name"))) >= 0) { return none; }
+    if (types[declared].kind == UnionDecl) { return {storage: UnionStorage, container: container, record: declared}; }
+    return {storage: StructStorage, container: container, record: declared};
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: pure fn(storage: int, target: Target) -> int {
@@ -149,64 +169,126 @@ InputFailure :: pure fn(document: int, message: string) -> Result {
     return Result.Rejected(diagnostic);
 }
 
-// Every record and function of one package, in file and source order.
-// Records come first, so any signature may name any record.
+// Every record, union and function of one package, in file and source
+// order. Types come first, so any signature or payload may name any type.
 Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
                    package_name: string, target: Target) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
-    records: Record[] = [];
-    fields: RecordField[] = [];
+    types: TypeDecl[] = [];
+    members: TypeMember[] = [];
     foreach (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
-            if (Is(forest, member, "record_declaration")) {
+            record := Is(forest, member, "record_declaration");
+            if (record || Is(forest, member, "union_declaration")) {
                 name := NameText(forest, text, Field(forest, member, "name"));
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
                 }
-                if (FindRecord(records, name) >= 0) {
+                if (FindType(types, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                first := length(fields);
-                size: int = 0;
-                alignment: int = 1;
-                item := FirstMember(forest, Field(forest, member, "body"));
-                while (item >= 0) {
-                    field_name := NameText(forest, text, Field(forest, item, "name"));
-                    if (field_name == "") {
-                        return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
-                    }
-                    field_type := ReadType(forest, text, records, Field(forest, item, "type"));
-                    storage := field_type.storage;
-                    if (storage == 0 || storage == StructStorage || field_type.container != 0 ||
-                        Field(forest, item, "value") >= 0) {
-                        return Declarations.Failed(Diagnose(forest, item, file,
-                            "record field needs an int, bool or string type and no default"));
-                    }
-                    at := first;
-                    while (at < length(fields)) {
-                        if (fields[at].name == field_name) {
-                            return Declarations.Failed(Diagnose(forest, item, file,
-                                format_text("Duplicate field '{}'", field_name)));
+                declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), kind: RecordDecl,
+                    first: length(members), count: 0, size: 0, parent: -1};
+                if (!record) {
+                    // Variants follow their union; their payloads resolve below.
+                    declared.kind = UnionDecl;
+                    declared.first = length(types) + 1;
+                    holder := length(types);
+                    types = array_add(types, declared);
+                    variant := FirstMember(forest, member);
+                    while (variant >= 0) {
+                        if (Is(forest, variant, "union_variant")) {
+                            if (Field(forest, variant, "literal") >= 0) {
+                                return Declarations.Failed(Diagnose(forest, variant, file,
+                                    "literal union alternatives are not supported yet"));
+                            }
+                            variant_name := NameText(forest, text, Field(forest, variant, "name"));
+                            if (FindVariant(types, holder, variant_name) >= 0) {
+                                return Declarations.Failed(Diagnose(forest, variant, file,
+                                    format_text("Duplicate union alternative '{}'", variant_name)));
+                            }
+                            alternative: TypeDecl = {name: variant_name, type_name: "", kind: VariantDecl, first: 0,
+                                count: 0, size: 0, parent: holder};
+                            types = array_add(types, alternative);
+                            grown := types[holder];
+                            grown.count += 1;
+                            types[holder] = grown;
                         }
-                        at += 1;
+                        variant = NextMember(forest, variant);
                     }
-                    width := FieldSize(storage, target);
-                    size = AlignTo(size, width);
-                    field: RecordField = {name: field_name, storage: storage, offset: size};
-                    fields = array_add(fields, field);
-                    size += width;
-                    if (width > alignment) { alignment = width; }
-                    item = NextMember(forest, item);
+                } else {
+                    size: int = 0;
+                    alignment: int = 1;
+                    item := FirstMember(forest, Field(forest, member, "body"));
+                    while (item >= 0) {
+                        field_name := NameText(forest, text, Field(forest, item, "name"));
+                        if (field_name == "") {
+                            return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
+                        }
+                        storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
+                        if (storage == 0 || Field(forest, item, "value") >= 0) {
+                            return Declarations.Failed(Diagnose(forest, item, file,
+                                "record field needs an int, bool or string type and no default"));
+                        }
+                        at := declared.first;
+                        while (at < length(members)) {
+                            if (members[at].name == field_name) {
+                                return Declarations.Failed(Diagnose(forest, item, file,
+                                    format_text("Duplicate field '{}'", field_name)));
+                            }
+                            at += 1;
+                        }
+                        width := FieldSize(storage, target);
+                        size = AlignTo(size, width);
+                        field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size};
+                        members = array_add(members, field);
+                        size += width;
+                        if (width > alignment) { alignment = width; }
+                        item = NextMember(forest, item);
+                    }
+                    if (length(members) == declared.first) {
+                        return Declarations.Failed(Diagnose(forest, member, file, "record needs a field"));
+                    }
+                    declared.count = length(members) - declared.first;
+                    declared.size = AlignTo(size, alignment);
+                    types = array_add(types, declared);
                 }
-                if (length(fields) == first) {
-                    return Declarations.Failed(Diagnose(forest, member, file, "record needs a field"));
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    // Payloads may name any type, so they resolve once every type is known.
+    foreach (file in files) {
+        text := documents[file].text;
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "union_declaration")) {
+                holder := FindType(types, NameText(forest, text, Field(forest, member, "name")));
+                variant := FirstMember(forest, member);
+                while (variant >= 0) {
+                    if (Is(forest, variant, "union_variant")) {
+                        at := FindVariant(types, holder, NameText(forest, text, Field(forest, variant, "name")));
+                        alternative := types[at];
+                        alternative.first = length(members);
+                        parameter := FirstMember(forest, Field(forest, variant, "parameters"));
+                        while (parameter >= 0) {
+                            payload := ReadType(forest, text, types, Field(forest, parameter, "type"));
+                            if (payload.storage == 0) {
+                                return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
+                            }
+                            field: TypeMember = {name: NameText(forest, text, Field(forest, parameter, "name")),
+                                storage: payload.storage, container: payload.container, record: payload.record, offset: 0};
+                            members = array_add(members, field);
+                            parameter = NextMember(forest, parameter);
+                        }
+                        alternative.count = length(members) - alternative.first;
+                        types[at] = alternative;
+                    }
+                    variant = NextMember(forest, variant);
                 }
-                record: Record = {name: name, type_name: format_text("{}.{}", package_name, name), first: first,
-                    count: length(fields) - first, size: AlignTo(size, alignment)};
-                records = array_add(records, record);
             }
             member = NextMember(forest, member);
         }
@@ -220,14 +302,14 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
                 }
-                // Records and functions share the package scope.
-                if (FindCallable(callables, name) >= 0 || FindRecord(records, name) >= 0) {
+                // Types and functions share the package scope.
+                if (FindCallable(callables, name) >= 0 || FindType(types, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
                 first := length(params);
                 parameter := FirstMember(forest, Field(forest, member, "parameters"));
                 while (parameter >= 0) {
-                    declared := ReadType(forest, text, records, Field(forest, parameter, "type"));
+                    declared := ReadType(forest, text, types, Field(forest, parameter, "type"));
                     if (declared.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
                     }
@@ -243,7 +325,7 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 result: ValueType = {storage: 0, container: 0, record: -1};
                 results := Field(forest, member, "results");
                 if (results >= 0) {
-                    result = ReadType(forest, text, records, results);
+                    result = ReadType(forest, text, types, results);
                     if (result.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
                     }
@@ -252,13 +334,14 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     count: length(params) - first, result: result.storage, result_container: result.container,
                     result_record: result.record};
                 callables = array_add(callables, callable);
-            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration")) {
+            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration") &&
+                       !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
             }
             member = NextMember(forest, member);
         }
     }
-    return Declarations.Collected(callables, params, records, fields);
+    return Declarations.Collected(callables, params, types, members);
 }
 
 ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
@@ -267,21 +350,21 @@ ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
 }
 // The header of an absent value of a type. A record names its layout; an
 // array of records, like a record, names its type.
-Header :: pure fn(storage: int, container: int, record: int, records: Record[], layouts: int[]) -> writer.Value {
+Header :: pure fn(storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
     if (container != 0) {
         value := ScalarValue(storage, 0);
         value.container = container;
         if (storage == StructStorage) {
-            value.type_name = records[record].type_name;
+            value.type_name = types[record].type_name;
             value.has_type_name = true;
             value.authored = true;
         }
         return value;
     }
     if (storage != StructStorage) { return ScalarValue(storage, 0); }
-    return {tag: StructStorage, container: 0, type_name: records[record].type_name, has_type_name: true,
+    return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
         authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
-        count: records[record].count};
+        count: types[record].count};
 }
 NoSource :: pure fn() -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
@@ -312,7 +395,7 @@ HashText :: pure fn(hash: uint64, text: string) -> uint64 {
 }
 // The runtime's layout hash of a record: its size and field count, then each
 // field's name, offset, size, storage and (absent) type name.
-LayoutHash :: pure fn(record: Record, fields: RecordField[], target: Target) -> uint64 {
+LayoutHash :: pure fn(record: TypeDecl, fields: TypeMember[], target: Target) -> uint64 {
     hash: uint64 = 1469598103934665603;
     hash = HashBytes(hash, uint64(record.size), target.pointer_size);
     hash = HashBytes(hash, uint64(record.count), 4);
@@ -332,8 +415,8 @@ LayoutHash :: pure fn(record: Record, fields: RecordField[], target: Target) -> 
 // The prepared module of a package. Each body is a canonical definition the
 // runtime verifies and finalizes when it loads it.
 Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], identity: string,
-                    module: uint64, callables: Callable[], params: Param[], records: Record[],
-                    record_fields: RecordField[], natives: Native[], ports: Port[], identities: uint64[],
+                    module: uint64, callables: Callable[], params: Param[], types: TypeDecl[],
+                    members: TypeMember[], natives: Native[], ports: Port[], identities: uint64[],
                     ops: Ops, target: Target, abi: uint64) -> Result {
     wide: uint64[] = [0];
     values: writer.Value[] = [];
@@ -353,20 +436,31 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     entries: writer.Entry[] = [];
     requirements: writer.Requirement[] = [];
     fields: writer.Field[] = [];
-    // Each record's layout, as an index into `wide`.
+    // Each record's layout and each variant's tag, as indices into `wide`.
     layouts: int[] = [];
-    foreach (record in records) {
-        wide = array_add(wide, binding.ID("package-symbol", format_text("{}:{}:{}", identity, RecordKind, record.name)));
-        wide = array_add(wide, LayoutHash(record, record_fields, target));
-        layouts = array_add(layouts, length(wide) - 1);
-        requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
-            name: record.type_name, size: record.size, authored: true, first: length(fields), count: record.count};
-        requirements = array_add(requirements, requirement);
-        at := record.first;
-        while (at < record.first + record.count) {
-            field: writer.Field = {name: record_fields[at].name, kind: record_fields[at].storage};
-            fields = array_add(fields, field);
-            at += 1;
+    tags: int[] = [];
+    foreach (declared in types) {
+        layouts = array_add(layouts, int(0));
+        tags = array_add(tags, int(0));
+        if (declared.kind == VariantDecl) {
+            // Stage zero's tag: the union's ID in decimal, then the variant.
+            union_id := binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, types[declared.parent].name));
+            wide = array_add(wide, binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
+            tags[length(tags) - 1] = length(wide) - 1;
+        } else if (declared.kind == RecordDecl) {
+            wide = array_add(wide, binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, declared.name)));
+            wide = array_add(wide, LayoutHash(declared, members, target));
+            layouts[length(layouts) - 1] = length(wide) - 1;
+            requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
+                name: declared.type_name, size: declared.size, authored: true, first: length(fields),
+                count: declared.count};
+            requirements = array_add(requirements, requirement);
+            at := declared.first;
+            while (at < declared.first + declared.count) {
+                field: writer.Field = {name: members[at].name, kind: members[at].storage};
+                fields = array_add(fields, field);
+                at += 1;
+            }
         }
     }
     abi_one := length(wide);
@@ -375,7 +469,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     while (index < length(callables)) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            records, record_fields, natives, ports, index, ops, target);
+            types, members, natives, ports, index, ops, target);
         switch tables {
             case .Failed(diagnostic): return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
@@ -385,7 +479,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 at: int = 0;
                 while (at < callable.count) {
                     param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, records, layouts));
+                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
                     at += 1;
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
@@ -397,7 +491,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 spans = array_add(spans, Range(length(values), result_count));
                 if (result_count != 0) {
                     values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
-                        records, layouts));
+                        types, layouts));
                 }
                 spans = array_add(spans, Range(length(ints), result_count));
                 if (result_count != 0) { ints = array_add(ints, int(0)); }
@@ -409,7 +503,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 // Record and array pointers each slot may hold while the function waits.
                 spans = array_add(spans, Range(length(roots), length(body_roots)));
                 foreach (root in body_roots) {
-                    values = array_add(values, Header(root.storage, root.container, root.record, records, layouts));
+                    values = array_add(values, Header(root.storage, root.container, root.record, types, layouts));
                     row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
                     roots = array_add(roots, row);
                 }
@@ -417,7 +511,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 spans = array_add(spans, Range(length(instructions), length(body_code)));
                 pc: int = 0;
                 foreach (code in body_code) {
-                    value := Header(code.value_storage, code.value_container, code.value_record, records, layouts);
+                    value := Header(code.value_storage, code.value_container, code.value_record, types, layouts);
                     if (code.has_text) {
                         value.text = code.text;
                         value.has_text = true;
@@ -446,7 +540,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 at = 0;
                 while (at < callable.count) {
                     param := params[callable.first + at];
-                    values = array_add(values, Header(param.storage, param.container, param.record, records, layouts));
+                    values = array_add(values, Header(param.storage, param.container, param.record, types, layouts));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
                     parameters = array_add(parameters, parameter);
                     at += 1;
@@ -472,15 +566,17 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 spans = array_add(spans, Range(0, 0));
                 spans = array_add(spans, Range(0, 0));
                 // Data cells: record cells own a buffer of the record's size;
-                // constructor offset cells hold their field offset.
+                // others may hold a constant or a variant's tag.
                 spans = array_add(spans, Range(length(data), length(body_cells)));
                 foreach (cell in body_cells) {
-                    value := Header(cell.storage, cell.container, cell.record, records, layouts);
+                    value := Header(cell.storage, cell.container, cell.record, types, layouts);
                     size: int = 0;
-                    if (cell.storage == StructStorage && cell.container == 0) { size = records[cell.record].size; }
-                    if (cell.offset != 0) {
+                    if (cell.storage == StructStorage && cell.container == 0) { size = types[cell.record].size; }
+                    if (cell.variant >= 0) {
+                        value.wide = tags[cell.variant];
+                    } else if (cell.constant != 0) {
                         value.wide = length(wide);
-                        wide = array_add(wide, uint64(cell.offset));
+                        wide = array_add(wide, uint64(wrap: int64(cell.constant)));
                     }
                     values = array_add(values, value);
                     datum: writer.Data = {kind: cell.kind, initial: length(values) - 1, size: size};
@@ -581,10 +677,10 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], target: 
                     files := slice(members, packages[0].member_start, packages[0].member_count);
                     switch Declare(nodes, documents, files, packages[0].name, target) {
                         case .Failed(diagnostic): return Result.Rejected(diagnostic);
-                        case .Collected(callables, params, records, fields):
+                        case .Collected(callables, params, types, members):
                             identity := documents[files[0]].identity;
                             return Assemble(nodes, documents, identity, binding.ID("module", identity),
-                                callables, params, records, fields, natives, ports, identities, ops, target, abi);
+                                callables, params, types, members, natives, ports, identities, ops, target, abi);
                     }
             }
     }

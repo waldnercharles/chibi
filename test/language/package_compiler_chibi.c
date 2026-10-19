@@ -189,6 +189,68 @@ static const sample samples[] = {
                  { "Nested",
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
+    { .name = "unions",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Shape :: union { Circle(radius: int) | Box(width: int, "
+                "height: int) | Spot(at: Point)\n"
+                "    | Named(name: string, sides: int[]) | Empty }\n"
+                "Make :: pure fn(kind: int) -> Shape {\n"
+                "    if (kind == 0) { return Shape.Circle(3); }\n"
+                "    if (kind == 1) { return Shape.Box(2, 5); }\n"
+                "    if (kind == 2) { p: Point = {x: 4, y: 6}; return "
+                "Shape.Spot(p); }\n"
+                "    if (kind == 3) { sides: int[] = [1, 2, 3]; return "
+                "Shape.Named(\"tri\", sides); }\n"
+                "    return Shape.Empty;\n}\n"
+                "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
+                "Area :: pure fn(shape: Shape) -> int {\n"
+                "    switch shape {\n"
+                "        case .Circle(radius): return radius * radius * 3;\n"
+                "        case .Box(width, height): return width * height;\n"
+                "        case .Spot(at): total := Sum(at); return total + "
+                "at.x;\n"
+                "        case .Named(name, sides):\n"
+                "            total: int = 0;\n"
+                "            foreach (side in sides) { total += side; }\n"
+                "            if (name == \"tri\") { total += 100; }\n"
+                "            return total;\n"
+                "        case .Empty: return -1;\n"
+                "    }\n    return -2;\n}\n"
+                "Score :: pure fn(n: int) -> int {\n"
+                "    total: int = 0;\n    i: int = 0;\n"
+                "    while (i < n) { total += Area(Make(i)); i += 1; }\n"
+                "    return total;\n}\n"
+                "Kinds :: pure fn() -> int {\n"
+                "    shapes: Shape[] = [Shape.Circle(1), Shape.Empty, "
+                "Shape.Box(1, 1)];\n"
+                "    count: int = 0;\n"
+                "    foreach (shape in shapes) {\n"
+                "        switch shape {\n            case .Empty: count += "
+                "10;\n            case .Box: count += 100;\n"
+                "            case: count += 1;\n        }\n"
+                "    }\n    return count;\n}\n"
+                "Pair :: pure fn(a: Shape, b: Shape) -> int {\n"
+                "    switch a {\n"
+                "        case .Empty:\n"
+                "            switch b {\n                case .Empty: return "
+                "2;\n                case: return 1;\n            }\n"
+                "        case .Circle(radius): return radius;\n"
+                "        case .Box(width, height): return width;\n"
+                "        case .Spot(at): return at.x;\n"
+                "        case .Named(name, sides): return length(sides);\n"
+                "    }\n    return -1;\n}\n"
+                "Nested :: pure fn() -> int {\n"
+                "    return Pair(Shape.Empty, Shape.Empty) * 10 + "
+                "Pair(Shape.Empty, Shape.Circle(1)) * 100 + Pair(Shape.Box(3, "
+                "4), Shape.Empty);\n}",
+      .calls = { { "Score", "[5]", "[156]" },
+                 { "Kinds", "[]", "[111]" },
+                 { "Nested", "[]", "[123]" },
+                 { "Make", "[1]", "[{\"tag\":6300533083688230396,\"values\":[2,5]}]" },
+                 { "Make", "[2]", "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
+                 { "Make", "[3]", "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
+                 { "Make", "[4]", "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -288,6 +350,58 @@ static const sample samples[] = {
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 42 },
+    { .name = "switch scalar",
+      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(n: int) "
+                "-> int { switch n { case .A: return 1; } return 0; }",
+      .message = "switch needs a union value",
+      .line = 3,
+      .column = 40 },
+    { .name = "unknown variant",
+      .source = "package facts\nU :: union { A | B }\nOne :: pure fn() -> U { "
+                "return U.C; }",
+      .message = "Unknown variant 'C'",
+      .line = 3,
+      .column = 32 },
+    { .name = "partial bindings",
+      .source = "package facts\nU :: union { A(x: int, y: int) }\n"
+                "One :: pure fn(u: U) -> int { switch u { case .A(x): return "
+                "x; } return 0; }",
+      .message = "A union payload pattern must bind every field",
+      .line = 3,
+      .column = 47 },
+    { .name = "assigned binding",
+      .source = "package facts\nU :: union { A(x: int) }\n"
+                "One :: pure fn(u: U) -> int { switch u { case .A(x): x = 2; "
+                "return x; } return 0; }",
+      .message = "pattern bindings cannot be assigned",
+      .line = 3,
+      .column = 54 },
+    { .name = "missing payload",
+      .source = "package facts\nU :: union { A(x: int) }\nOne :: pure fn() -> "
+                "U { return U.A; }",
+      .message = "variant 'A' needs its payload",
+      .line = 3,
+      .column = 32 },
+    { .name = "non-exhaustive switch",
+      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
+                "int { switch u { case .A: return 2; } return 1; }",
+      .message = "Non-exhaustive switch: a union alternative is missing",
+      .line = 3,
+      .column = 31 },
+    { .name = "duplicate arm",
+      .source = "package facts\nU :: union { A | B }\n"
+                "One :: pure fn(u: U) -> int { switch u { case .A: return 2; "
+                "case .A: return 3; case .B: return 4; } return 1; }",
+      .message = "Unreachable duplicate union pattern",
+      .line = 3,
+      .column = 66 },
+    { .name = "duplicate default",
+      .source = "package facts\nU :: union { A | B }\n"
+                "One :: pure fn(u: U) -> int { switch u { case: return 2; "
+                "case: return 3; } return 1; }",
+      .message = "Duplicate default arm",
+      .line = 3,
+      .column = 58 },
     { .name = "duplicate field",
       .source = "package facts\nPair :: struct { a: int; a: bool; }",
       .message = "Duplicate field 'a'",

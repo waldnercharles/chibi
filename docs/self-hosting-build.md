@@ -206,15 +206,16 @@ selection, cache and installed-format contracts do not change.
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
 requires exactly one primitive `byte[]` return declaration. Address/reference
 argument or result provenance rejects before JSON decoding. The caller chooses
-an output limit from 1 through 1,000,000 octets; the CLI uses the upper bound.
+an output limit from 1 through `COMPILER_HOST_MAX_OUTPUT_BYTES` (16 MiB) octets;
+the CLI uses the upper bound.
 After successful return, the host validates the runtime array shape and item
 types and copies each full `pin_value` item's `.u8` into malloc-owned bytes
 before releasing runtime storage. Empty success is a null pointer and zero
 length; failure is also null/zero with a false result and diagnostic. Returned
 bytes survive input, prepared-artifact and host teardown. The API is format-
 agnostic and preserves all 256 octets without text encoding or JSON projection.
-The 64 MiB represented-output ceiling includes header, declared item capacity
-and packed bytes. These are transport/storage checks, not a whole-compilation
+The represented-output ceiling, header, declared item capacity up to twice the
+limit and packed bytes, follows from that limit. These are transport/storage checks, not a whole-compilation
 allocator sandbox; supervised hard deadlines still cover decode/JIT/execution.
 
 The CLI validates the exact returned bytes through the existing runtime-only

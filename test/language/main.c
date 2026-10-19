@@ -236,17 +236,17 @@ int main(int argc, char **argv)
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
          !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
          !package_compiler_chibi_types && !package_compiler_chibi_bootstrap &&
-         !lexical_binding_chibi &&
-         !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
-         !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
-         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
-         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
-         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
-         !package_resolution && !package_imports && !package_files &&
-         !package_core && !package_tests && !docs_markdown && !component_write &&
-         !component_write_layout && !scalarize && !borrow && !reductions &&
-         !binding_schedule && !activation_cache && !headless && !build_workflow &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
+         !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
+         !type_constructors_chibi && !type_relations_chibi &&
+         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
+         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
+         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
+         !record_members_chibi && !package_execution && !package_resolution &&
+         !package_imports && !package_files && !package_core && !package_tests &&
+         !docs_markdown && !component_write && !component_write_layout &&
+         !scalarize && !borrow && !reductions && !binding_schedule &&
+         !activation_cache && !headless && !build_workflow && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -261,7 +261,8 @@ int main(int argc, char **argv)
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--scalar-lowering-chibi | --bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
-            "--package-compiler-chibi-types | --package-compiler-chibi-bootstrap | "
+            "--package-compiler-chibi-types | "
+            "--package-compiler-chibi-bootstrap | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "

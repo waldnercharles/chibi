@@ -1464,20 +1464,66 @@ static char *arguments_json(const pin_value *args, size_t *length)
     av_doc_free(doc);
     return json;
 }
+/* Stage two's rejection of the compiler's sources, from Compile's result. */
+static void stage_two_rejection(const char *json, size_t length)
+{
+    bool called = compiler_host_invoke(
+        host,
+        script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable"),
+        json,
+        length,
+        SELF_BUDGET,
+        &result
+    );
+    fprintf(
+        stderr,
+        "package compiler stage two rejected: %s\n",
+        called ? result.json : result.diagnostic
+    );
+}
 /* Stage zero prepares stage one, which compiles its own packages to a closure:
  * stage two. Stage two, loaded by the compiler host, compiles the same
  * packages to the same bytes. */
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
-    const source_package_input inputs[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
+    const source_package_input files[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
+    enum
+    {
+        FILES = sizeof files / sizeof *files
+    };
+    /* Compile's root package is its first file's: the package compiler's. */
+    source_package_input inputs[FILES];
+    int count = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < FILES; i++) {
+            bool own = !strncmp(files[i].path, "package_compiler/", 17);
+            if (own == !pass) {
+                inputs[count++] = files[i];
+            }
+        }
+    }
     pin_value args[ARGUMENTS], out;
-    REQUIRE(arguments(1, inputs, (int)(sizeof inputs / sizeof *inputs), args));
+    REQUIRE(arguments(1, inputs, count, args));
     REQUIRE(
         compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, SELF_BUDGET, &detached, &out)
     );
     const pin_union *value = out.ptr;
-    REQUIRE(out.type == PIN_UNION && value->tag == tag(1, "Compiled") && value->count == 2);
+    REQUIRE(out.type == PIN_UNION && value);
+    if (value->tag != tag(1, "Compiled")) {
+        pin_value message, line, column;
+        get(&value->values[0], "message", &message);
+        get(&value->values[0], "line", &line);
+        get(&value->values[0], "column", &column);
+        fprintf(
+            stderr,
+            "package compiler stage one rejected: %s at %d:%d\n",
+            message.str,
+            line.i,
+            column.i
+        );
+    }
+    REQUIRE(value->tag == tag(1, "Compiled") && value->count == 2);
     size_t length, json_length;
     unsigned char *stage_two = closure_bytes(value, &length);
     char *json = arguments_json(args, &json_length);
@@ -1495,6 +1541,8 @@ TEST_CASE(package_compiler_compiles_itself)
                        COMPILER_HOST_MAX_OUTPUT_BYTES,
                        &again
                    );
+    bool same = invoked && again.flow_status == FLOW_OK &&
+                again.length == length && !memcmp(again.bytes, stage_two, length);
     if (!invoked) {
         fprintf(
             stderr,
@@ -1502,9 +1550,22 @@ TEST_CASE(package_compiler_compiles_itself)
             host ? "" : error,
             again.diagnostic
         );
+    } else if (!again.length) {
+        stage_two_rejection(json, json_length);
+    } else if (!same) {
+        size_t at = 0;
+        while (at < length && at < again.length && again.bytes[at] == stage_two[at]) {
+            at++;
+        }
+        fprintf(
+            stderr,
+            "package compiler stage two: %zu bytes, stage one %zu; first "
+            "difference at %zu\n",
+            again.length,
+            length,
+            at
+        );
     }
-    bool same = invoked && again.flow_status == FLOW_OK &&
-                again.length == length && !memcmp(again.bytes, stage_two, length);
     free(again.bytes);
     free(stage_two);
     free(json);

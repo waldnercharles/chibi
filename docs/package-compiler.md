@@ -223,4 +223,5 @@ descriptors on every snapshot, so this check runs only on the Release build.
 Stage two needs the compiler host's larger closure bounds: the package
 compiler's module needs about 113 M units of record-layout work and decodes to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
-prepared read, and its closure is about 200 MB as a `byte[]` result.
+prepared read, and its 6.2 MB closure, as a `byte[]` of 40-byte values, is
+past the host's former 1,000,000-value byte result.

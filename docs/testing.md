@@ -29,6 +29,7 @@ make test-native         # every other CPU test_tools selector with checked-in i
 make test-materials      # the material simulation selectors, one 60-second deadline
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # admitted native language aggregate, one 60-second deadline
+make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
@@ -42,7 +43,9 @@ reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
 coverage, mesh files, project validation and model import alone took 33 s.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced and that Release `chibi_ctl`; set
+the drivers `make test-build` produced and that Release `chibi_ctl`, except
+`language-package-compiler-chibi-bootstrap`, which runs the Release
+`test_language` that `make test-bootstrap` builds; set
 `CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
 build.
 
@@ -1075,6 +1078,7 @@ make test-list
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | The admitted native language aggregate under one shared deadline. |
+| `test-bootstrap` | Stage one compiles the compiler and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; see `docs/package-compiler.md`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
 | `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |

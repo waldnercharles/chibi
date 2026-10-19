@@ -330,6 +330,11 @@ static bool byte_type(const pin_value *value, pin_container container)
     return value->type == PIN_U8 && value->container == container &&
            !value->record && !value->type_name;
 }
+/* A byte result's storage: its header, its items as values with growth's spare
+ * capacity, and the copy of its octets. */
+#define OUTPUT_STORAGE                                                         \
+    (sizeof(pin_array) +                                                       \
+     (size_t)COMPILER_HOST_MAX_OUTPUT_BYTES * (2 * sizeof(pin_value) + 1))
 /* pin_array stores full pin_values, not packed octets. Copy while the runtime
  * arena is alive, and expose nothing until every item has been checked. */
 static bool extract_bytes(const pin_value *value, size_t limit, invocation_result *out)
@@ -344,13 +349,13 @@ static bool extract_bytes(const pin_value *value, size_t limit, invocation_resul
     if (array->element_type != PIN_U8 || array->record || array->type_name ||
         array->count < 0 || array->capacity < array->count ||
         (array->count && !array->items) || (size_t)array->count > limit ||
-        (size_t)array->capacity > (COMPILER_HOST_MAX_CLOSURE_BYTES - sizeof *array) /
-                                      sizeof *array->items) {
+        (size_t)array->capacity >
+            (OUTPUT_STORAGE - sizeof *array) / sizeof *array->items) {
         return false;
     }
     size_t length = (size_t)array->count;
     size_t represented = sizeof *array + (size_t)array->capacity * sizeof *array->items;
-    if (length > COMPILER_HOST_MAX_CLOSURE_BYTES - represented) {
+    if (length > OUTPUT_STORAGE - represented) {
         return false;
     }
     unsigned char *bytes = length ? xmalloc(length) : NULL;

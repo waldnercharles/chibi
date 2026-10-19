@@ -7,14 +7,14 @@
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
 /* A compiler's own closure is a large program, in and out. The package
  * compiler's module decodes to about 80 MB with its verification scratch and
- * needs about 113 M units of record-layout work, and its 6.2 MB closure is
- * about 200 MB as a byte[] of values. Loading allows each module, and the
- * closure together, this much storage, and each module this much layout work;
- * a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long and represented in
- * this much storage. JSON invocations keep COMPILER_HOST_MAX_BYTES. */
+ * needs about 113 M units of record-layout work. Loading allows each module,
+ * and the closure together, this much storage, and each module this much
+ * layout work. Its closure, 6.2 MB, is returned as a byte[] of that length;
+ * a byte result may be COMPILER_HOST_MAX_OUTPUT_BYTES long. JSON invocations
+ * keep COMPILER_HOST_MAX_BYTES. */
 #define COMPILER_HOST_MAX_CLOSURE_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_LAYOUT_WORK (256u * 1024u * 1024u)
-#define COMPILER_HOST_MAX_OUTPUT_BYTES (8u * 1024u * 1024u)
+#define COMPILER_HOST_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64

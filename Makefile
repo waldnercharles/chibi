@@ -303,16 +303,16 @@ test-materials: test-build
 # validate-project starts chibi_ctl dozens of times, and each start builds the
 # authoring catalog, which sanitizers make too slow for one 60-second deadline.
 # The project selectors run against an unsanitized Release chibi_ctl instead.
+test-projects: test-build
+	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group projects
+
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap
 # check runs against an unsanitized Release test_language.
 test-bootstrap:
 	@$(MAKE) build-release BUILD_TARGET=test_language
 	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-
-test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group projects
 
 test: test-short
 

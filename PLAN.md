@@ -104,10 +104,10 @@ until the Chibi build program owns them. There is no `serve` command; browser
 development is `web`. Asset import and schema migration stay with the owning
 asset or project workflow instead of becoming permanent top-level commands.
 
-The unnamed `chibi [PROJECT] [PLAYER OPTIONS]` run form is a temporary migration
-alias. Named commands take precedence, so a project directory named `build` or
-`run` must be passed as `./build` or `./run`. Remove the alias after checked-in
-callers and onboarding use `chibi run`.
+The unnamed `chibi [PROJECT] [PLAYER OPTIONS]` run form was a temporary
+migration alias. It was removed on 2026-10-19, once no checked-in caller,
+Studio (which runs only `chibi export`) or supported project used it; `chibi`
+without a command prints its usage, and an unknown command fails.
 
 ### Language and package ownership
 
@@ -617,9 +617,9 @@ Implement commands through shared modules, not separate scripts:
   prints the URL, serves until interruption, and removes only its owned temporary
   files. `export --web` remains non-serving.
 
-Remove the unnamed run alias only after repository, Studio, and supported project
-callers use `chibi run`. Every command needs help, exit-status, installed-SDK, build-tree,
-missing-capability, and failure-path coverage.
+The unnamed run alias is removed (see "Stable command interface"). Every command
+needs help, exit-status, installed-SDK, build-tree, missing-capability, and
+failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 

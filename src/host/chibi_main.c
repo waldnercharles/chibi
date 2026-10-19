@@ -45,7 +45,6 @@ extern char **environ;
  * chibi fmt [--check] [PROJECT...]: rewrites each project's assets in their
  * canonical form, or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
- * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
  * folder, or a static site for browsers.
  * chibi web [PROJECT] --player PLAYER [--port PORT]: exports the static site
@@ -159,8 +158,7 @@ static bool changed_since(const char *directory, int64_t since)
 static int usage(const char *program)
 {
     printf(
-        "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
-        "       %s version\n"
+        "Usage: %s version\n"
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
@@ -187,7 +185,7 @@ static int usage(const char *program)
         "only package files.\n"
         "fmt rewrites each project's sources and KDL assets as their savers\n"
         "write them; --check writes nothing and fails when one would change.\n"
-        "run prepares and starts the player; the unnamed form is equivalent.\n"
+        "run prepares and starts the player.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
         "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
@@ -198,7 +196,6 @@ static int usage(const char *program)
         "web exports the browser site into a temporary folder, serves it at\n"
         "http://127.0.0.1:PORT/ (8000 by default; 0 picks a free port) until\n"
         "interrupted, then removes the folder. Windows does not serve yet.\n",
-        program,
         program,
         program,
         program,
@@ -1010,6 +1007,10 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "run")) {
         return run_game(argc, argv);
     }
-    int first = argc > 1 && argv[1][0] != '-' ? 2 : 1;
-    return project_command(first == 2 ? argv[1] : NULL, argc - first, argv + first, true);
+    if (argc > 1) {
+        fprintf(stderr, "Unknown command: %s; use --help.\n", argv[1]);
+        return 2;
+    }
+    usage(argv[0]);
+    return 2;
 }

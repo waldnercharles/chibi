@@ -126,16 +126,18 @@ TEST_CASE(build_and_run_use_the_prepared_project)
     REQUIRE(file_is("player.args", expected));
     REQUIRE(file_is("compiles", "compile\n"));
 
-    const char *implicit_run[] = { launcher, "game with spaces", "--frames", "3", NULL };
-    REQUIRE(tool_run(implicit_run, root, log_path) == 0);
-    snprintf(
-        expected,
-        sizeof expected,
-        "%s/.chibi/build/game.chibip\n--resource-root\n%s\n--frames\n3\n",
-        game,
-        game
-    );
-    REQUIRE(file_is("player.args", expected));
+    /* The unnamed run form is gone: a project is not a command. */
+    char played_path[256];
+    path(played_path, "player.args");
+    char *played = tool_read(played_path);
+    REQUIRE(played);
+    const char *unnamed[] = { launcher, "game with spaces", "--frames", "3", NULL };
+    REQUIRE(tool_run(unnamed, root, log_path) == 2);
+    const char *bare[] = { launcher, NULL };
+    REQUIRE(tool_run(bare, root, log_path) == 2);
+    bool unplayed = file_is("player.args", played);
+    free(played);
+    REQUIRE(unplayed);
     REQUIRE(file_is("compiles", "compile\n"));
 
     write_file("fail", "");

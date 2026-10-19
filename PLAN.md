@@ -664,7 +664,8 @@ generator is authored Chibi in `tools/docs`, which SDKs ship as
 `share/chibi/docs`: `markdown` renders the subset the public pages use
 (headings with GitHub anchors, paragraphs, lists, block quotes, fenced code,
 pipe tables, inline code, emphasis and links) and maps links between published
-sources to their pages, dropping links to anything unpublished; `site` lays out
+sources to their pages, dropping links to anything unpublished and reporting
+each one at its source line; `site` lays out
 the navigation and stylesheet. The C side reads the manifest and files and
 calls the generator on the natives that need no running game. A page's source
 must resolve, links included, to a regular file inside ROOT. The site is written
@@ -689,7 +690,10 @@ credentials or links into private repositories (the linked `chibi-studio` is
 public). At the owner's request the README, Examples and Learn pages were then
 rewritten so that no sentence leans on a link to an unpublished document (the
 site had dropped 25 such links to plain text), and Examples no longer names the
-archived private repositories. The site folder now gets the permissions
+archived private repositories. `chibi doc` now prints `SOURCE:LINE: link to
+TARGET is not published; written as text` for each link it drops, comments in
+generated pages included, so a page cannot quietly regain one; the
+repository's own site reports none. The site folder now gets the permissions
 `mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
 it. At the owner's request the repository's Pages source became GitHub Actions
 on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
@@ -920,11 +924,16 @@ array parameters copied on entry. In-place array updates are recognized by
 capability identity, as in stage zero. With these, stage one compiles the
 compiler's complete source set, and the stage-two closure it builds, loaded by
 the compiler host, compiles the same sources to the same bytes
-(`make test-bootstrap`, a Release build, 18.6 s). The compiler host allows a
+and every sample as stage one does (`make test-bootstrap`, a Release build,
+about 30 s). The compiler host allows a
 compiler-sized closure: 256 MiB of decoded storage per load, 256 Mi units of
-record-layout work per module, and a 16 MiB `byte[]` result. Still open in this milestone: running the
-semantic fixture set with stage two, the stage-two compiler's 5.2 GB peak
-memory, and the checksummed bootstrap artifact with its version checks.
+record-layout work per module, and a 16 MiB `byte[]` result. The bootstrap run's 5 GB peak footprint is
+mostly stage zero's build writing the package compiler's module; stage two
+alone compiles the compiler in 7.9 s with a 3.6 GB peak. Still open in this
+milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
+Lab's behaviors need behaviors, events, state, doubles, vectors, named
+arguments and results, and effectful natives) and the checksummed bootstrap
+artifact with its version checks (step 5).
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

@@ -88,18 +88,20 @@ Package :: pure fn(path: string) -> string {
 }
 
 // The Markdown of one file's declarations, under its package's heading when
-// the file starts a package.
+// the file starts a package, and the index in lines of each of its lines:
+// a comment's own, and its declaration's for the lines written around it.
 FileMarkdown :: pure fn(collection: string, path: string, first: bool, lines: string[], start: int,
-                        end: int) -> string[] {
-    md: string[] = [];
+                        end: int) -> (md: string[], origins: int[]) {
     if (first) {
         md = array_add(md, format_text("## {}", strings.BaseName(Package(path))));
         md = array_add(md, "");
         md = array_add(md, format_text("Import it as `{}:{}`.", collection, Package(path)));
         md = array_add(md, "");
+        origins = markdown.Pad(origins, length(md), start);
     }
     // An attributed declaration, such as a @test, is not part of the API.
-    comment: string[] = [];
+    // comment holds the lines of the comment above the current line.
+    comment: int[] = [];
     attributed := false;
     index := start;
     while (index < end) {
@@ -123,28 +125,32 @@ FileMarkdown :: pure fn(collection: string, path: string, first: bool, lines: st
             md = array_add(md, Signature(lines, index, end));
             md = array_add(md, "```");
             md = array_add(md, "");
-            foreach (text in comment) {
-                md = array_add(md, text);
+            origins = markdown.Pad(origins, length(md), index);
+            foreach (at in comment) {
+                md = array_add(md, CommentText(lines[at]));
+                origins = array_add(origins, at);
             }
             md = array_add(md, "");
+            origins = array_add(origins, index);
         }
         if (IsComment(line) && !markdown.IsBlank(markdown.At(line, 0))) {
-            comment = array_add(comment, CommentText(line));
+            comment = array_add(comment, index);
         } else {
             comment = [];
         }
         index += 1;
     }
-    return md;
+    return (md: md, origins: origins);
 }
 
-// The reference page's body. paths names each file relative to the
-// collection's folder, starts[i] is where file i begins in lines, and the
-// last three arguments map links as markdown.Render does.
-Render :: pure fn(collection: string, paths: string[], starts: int[], lines: string[], page: string,
-                  sources: string[], outputs: string[]) -> string[] {
-    md: string[] = [format_text("# The {} packages", collection), "",
-                    "Each package's declarations and the comments written above them in its source.", ""];
+// The Markdown of the reference page, and the index in lines of each of its
+// lines. paths names each file relative to the collection's folder, and
+// starts[i] is where file i begins in lines.
+Markdown :: pure fn(collection: string, paths: string[], starts: int[],
+                    lines: string[]) -> (md: string[], origins: int[]) {
+    md = [format_text("# The {} packages", collection), "",
+          "Each package's declarations and the comments written above them in its source.", ""];
+    origins = markdown.Pad(origins, length(md), 0);
     previous: string = "";
     index: int = 0;
     while (index < length(paths)) {
@@ -154,8 +160,40 @@ Render :: pure fn(collection: string, paths: string[], starts: int[], lines: str
         }
         first := Package(paths[index]) != previous;
         previous = Package(paths[index]);
-        md = append(md, FileMarkdown(collection, paths[index], first, lines, starts[index], end));
+        file := FileMarkdown(collection, paths[index], first, lines, starts[index], end);
+        md = append(md, file.md);
+        origins = append(origins, file.origins);
         index += 1;
     }
-    return markdown.Render(md, page, sources, outputs);
+    return (md: md, origins: origins);
+}
+
+// The reference page's body, with Markdown's arguments; page is the
+// collection's folder, and the last two arguments map links as
+// markdown.Render does.
+Render :: pure fn(collection: string, paths: string[], starts: int[], lines: string[], page: string,
+                  sources: string[], outputs: string[]) -> string[] {
+    reference := Markdown(collection, paths, starts, lines);
+    return markdown.Render(reference.md, page, sources, outputs);
+}
+
+// A report, as markdown.Dropped writes it, of each link Render writes as text,
+// at the file and line of the comment that holds it.
+Unpublished :: pure fn(collection: string, paths: string[], starts: int[], lines: string[], page: string,
+                       sources: string[], outputs: string[]) -> string[] {
+    reference := Markdown(collection, paths, starts, lines);
+    rendered := markdown.Page(reference.md, page, sources, outputs);
+    reports: string[] = [];
+    index: int = 0;
+    while (index < length(rendered.at)) {
+        line := reference.origins[rendered.at[index]];
+        file: int = 0;
+        while (file + 1 < length(starts) && starts[file + 1] <= line) {
+            file += 1;
+        }
+        source := format_text("{}/{}", page, paths[file]);
+        reports = array_add(reports, markdown.Dropped(source, line - starts[file] + 1, rendered.targets[index]));
+        index += 1;
+    }
+    return reports;
 }

@@ -21,24 +21,27 @@ RuleName :: pure fn(line: string) -> string {
     return strings.Slice(line, 4, colon - 4);
 }
 
-// The grammar page's body: lines are the grammar file's, and the last three
-// arguments map links as markdown.Render does.
-Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
-    md: string[] = ["# Grammar", "",
-                    "The syntax of `.chibi` source, rule by rule, as the parser defines it. A rule whose name starts with `_` shapes others without appearing in syntax trees.",
-                    ""];
+// The Markdown of the grammar page, generated from the grammar file's lines,
+// and the index in lines of each of its lines: a comment's or definition's
+// own, and its rule's for the lines written around them.
+Markdown :: pure fn(lines: string[]) -> (md: string[], origins: int[]) {
+    md = ["# Grammar", "",
+          "The syntax of `.chibi` source, rule by rule, as the parser defines it. A rule whose name starts with `_` shapes others without appearing in syntax trees.",
+          ""];
+    origins = markdown.Pad(origins, length(md), 0);
     count := length(lines);
     index: int = 0;
     while (index < count && lines[index] != "  rules: {") {
         index += 1;
     }
     index += 1;
-    comment: string[] = [];
+    // The lines of the comment above the current line.
+    comment: int[] = [];
     while (index < count && !markdown.StartsWith(lines[index], "  }")) {
         line := lines[index];
         name := RuleName(line);
         if (markdown.StartsWith(line, "    //")) {
-            comment = array_add(comment, markdown.Trim(markdown.From(line, 6)));
+            comment = array_add(comment, index);
             index += 1;
             continue;
         }
@@ -49,21 +52,49 @@ Render :: pure fn(lines: string[], page: string, sources: string[], outputs: str
         }
         md = array_add(md, format_text("### {}", name));
         md = array_add(md, "");
-        foreach (text in comment) {
-            md = array_add(md, text);
+        origins = markdown.Pad(origins, length(md), index);
+        foreach (at in comment) {
+            md = array_add(md, markdown.Trim(markdown.From(lines[at], 6)));
+            origins = array_add(origins, at);
         }
         md = array_add(md, "");
         md = array_add(md, "```js");
+        origins = markdown.Pad(origins, length(md), index);
         md = array_add(md, markdown.From(line, 4));
+        origins = array_add(origins, index);
         index += 1;
         while (index < count && !markdown.StartsWith(lines[index], "  }") &&
                RuleName(lines[index]) == "" && !markdown.StartsWith(lines[index], "    //")) {
             md = array_add(md, markdown.From(lines[index], 4));
+            origins = array_add(origins, index);
             index += 1;
         }
         md = array_add(md, "```");
         md = array_add(md, "");
+        origins = markdown.Pad(origins, length(md), index - 1);
         comment = [];
     }
-    return markdown.Render(md, page, sources, outputs);
+    return (md: md, origins: origins);
+}
+
+// The grammar page's body: lines are the grammar file's, and the last three
+// arguments map links as markdown.Render does.
+Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    grammar := Markdown(lines);
+    return markdown.Render(grammar.md, page, sources, outputs);
+}
+
+// A report, as markdown.Dropped writes it, of each link Render writes as text,
+// at the line of the grammar file that holds it.
+Unpublished :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    grammar := Markdown(lines);
+    rendered := markdown.Page(grammar.md, page, sources, outputs);
+    reports: string[] = [];
+    index: int = 0;
+    while (index < length(rendered.at)) {
+        line := grammar.origins[rendered.at[index]];
+        reports = array_add(reports, markdown.Dropped(page, line + 1, rendered.targets[index]));
+        index += 1;
+    }
+    return reports;
 }

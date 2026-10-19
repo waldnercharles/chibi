@@ -2,6 +2,7 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import syntax "project:syntax_diagnostics"
+import binding "project:lexical_binding"
 import strings "core:strings"
 
 // One function body, emitted in one pass. A work stack visits statements and
@@ -506,12 +507,14 @@ NativePort :: pure fn(native: Native, index: int) -> int {
     }
     return native.first + index;
 }
-// The native `xs = name(xs, value)` updates in place when xs names the local
-// array names[found]: "Array Add" or "Append"; -1 for any other statement.
-InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                         names: Name[], package: int, found: int, destination: int, value: int) -> int {
-    binding := names[found];
-    if (binding.place != CellPlace || binding.container != ArrayContainer || !binding.writable ||
+// How `xs = name(xs, value)` updates the local array names[found] in place:
+// 0 for a push, 1 for an extension and -1 for any other statement. As in stage
+// zero, the native is the array pack's by its capability identity.
+InPlaceUpdate :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
+                         identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                         value: int) -> int {
+    updated := names[found];
+    if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
         !Is(forest, value, "call_expression")) {
         return -1;
     }
@@ -524,14 +527,17 @@ InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
     second := NextMember(forest, first);
     if (second < 0 || NextMember(forest, second) >= 0) { return -1; }
     native := FindNative(natives, Text(forest, text, callee));
-    if (native < 0 || (natives[native].name != "Array Add" && natives[native].name != "Append")) { return -1; }
-    return native;
+    if (native < 0) { return -1; }
+    capability := identities[2 * native];
+    if (capability == binding.ID("capability", "Array Add")) { return 0; }
+    if (capability == binding.ID("capability", "Append")) { return 1; }
+    return -1;
 }
 
 EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
                     callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-                    constants: ConstDecl[], natives: Native[], ports: Port[], aliases: Name[], function: int, ops: Ops,
-                    target: Target) -> Body {
+                    constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], aliases: Name[],
+                    function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -911,7 +917,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, members, natives, names, scopes[length(scopes) - 1],
+            step = StatementStep(forest, text, document, callables, types, members, natives, identities, names, scopes[length(scopes) - 1],
                 callable.package, values, value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {

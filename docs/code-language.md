@@ -102,6 +102,30 @@ embedded game roots remain unsupported. Project loading, formatting and editor
 navigation use their existing single-source entry points. The package APIs do
 not change the public build command.
 
+### Tests and attributes
+
+An attribute is `@name` before a function declaration, on its own line or the
+same one. `@test` is the only attribute; any other name, or `@test` twice, is a
+diagnostic. It marks a package-level function that takes no parameters, has no
+type parameters and returns nothing:
+
+```chibi
+package scoring
+
+@test
+DoublesPoints :: fn() {
+    expect(Double(3) == 6, "three doubles to six");
+}
+```
+
+A test passes when it returns. It fails when `expect(condition, message)` sees
+a false condition, which fails the call with `Expectation failed: message` at
+the `expect` call's position, or on any other runtime failure, such as an
+out-of-bounds read or a checked conversion. `expect` is a core function that is
+not `pure`, so a `pure fn` cannot call it and no optimization removes it. Tests
+are ordinary functions: they compile into the package like any other and run
+only when something calls them.
+
 ## Declarative documents
 
 Project manifests are `project.kdl`, version 24. Scenes, prototypes, event

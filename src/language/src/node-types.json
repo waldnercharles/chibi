@@ -603,6 +603,22 @@
     }
   },
   {
+    "type": "attribute",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "await_expression",
     "named": true,
     "fields": {
@@ -2541,6 +2557,16 @@
     "type": "function_declaration",
     "named": true,
     "fields": {
+      "attribute": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "attribute",
+            "named": true
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,
@@ -6280,6 +6306,10 @@
   },
   {
     "type": "?",
+    "named": false
+  },
+  {
+    "type": "@",
     "named": false
   },
   {

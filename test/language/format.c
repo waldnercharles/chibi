@@ -129,6 +129,12 @@ TEST_CASE(source_format_spaces_typed_constant_colons)
     REQUIRE(strstr(text, "Limit: int : 5") && strstr(text, "Mask :: 255"));
     return true;
 }
+TEST_CASE(source_format_keeps_attributes_on_their_line)
+{
+    REQUIRE(format("package facts\n@test\nAdds :: fn() { }\n@ test Second :: fn() { }\n"));
+    REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: fn() {}\n@test Second :: fn() {}\n"));
+    return true;
+}
 TEST_CASE(source_format_options_preserve_defaults)
 {
     const char *input = "behavior Demo{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
@@ -1291,6 +1297,7 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
+    RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

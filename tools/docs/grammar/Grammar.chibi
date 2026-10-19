@@ -1,0 +1,69 @@
+package grammar
+
+import markdown "project:markdown"
+import strings "core:strings"
+
+// The grammar page, generated from the Tree-sitter grammar's source: each
+// rule in source order, with the comments written above it and its
+// definition. The grammar file keeps its rules in a `rules: {` block, one per
+// four-space-indented `name: ($) =>` line.
+
+// The rule a line starts, or "".
+RuleName :: pure fn(line: string) -> string {
+    if (!markdown.StartsWith(line, "    ") || markdown.IsBlank(markdown.At(line, 4)) ||
+        markdown.StartsWith(line, "    //")) {
+        return "";
+    }
+    colon := markdown.FindText(line, ": ", 4);
+    if (colon < 0) {
+        return "";
+    }
+    return strings.Slice(line, 4, colon - 4);
+}
+
+// The grammar page's body: lines are the grammar file's, and the last three
+// arguments map links as markdown.Render does.
+Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    md: string[] = ["# Grammar", "",
+                    "The syntax of `.chibi` source, rule by rule, as the parser defines it. A rule whose name starts with `_` shapes others without appearing in syntax trees.",
+                    ""];
+    count := length(lines);
+    index: int = 0;
+    while (index < count && lines[index] != "  rules: {") {
+        index += 1;
+    }
+    index += 1;
+    comment: string[] = [];
+    while (index < count && !markdown.StartsWith(lines[index], "  }")) {
+        line := lines[index];
+        name := RuleName(line);
+        if (markdown.StartsWith(line, "    //")) {
+            comment = array_add(comment, markdown.Trim(markdown.From(line, 6)));
+            index += 1;
+            continue;
+        }
+        if (name == "") {
+            comment = [];
+            index += 1;
+            continue;
+        }
+        md = array_add(md, format_text("### {}", name));
+        md = array_add(md, "");
+        foreach (text in comment) {
+            md = array_add(md, text);
+        }
+        md = array_add(md, "");
+        md = array_add(md, "```js");
+        md = array_add(md, markdown.From(line, 4));
+        index += 1;
+        while (index < count && !markdown.StartsWith(lines[index], "  }") &&
+               RuleName(lines[index]) == "" && !markdown.StartsWith(lines[index], "    //")) {
+            md = array_add(md, markdown.From(lines[index], 4));
+            index += 1;
+        }
+        md = array_add(md, "```");
+        md = array_add(md, "");
+        comment = [];
+    }
+    return markdown.Render(md, page, sources, outputs);
+}

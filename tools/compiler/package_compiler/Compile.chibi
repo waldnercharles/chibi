@@ -672,7 +672,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            types, members, constants, natives, ports, Aliases(links, callable.document), index, ops, target);
+            types, members, constants, natives, ports, identities, Aliases(links, callable.document), index, ops, target);
         switch tables {
             case .Failed(diagnostic): return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):

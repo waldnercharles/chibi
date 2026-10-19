@@ -17,6 +17,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/copy.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -46,11 +47,13 @@ typedef struct
 /* `source` is package facts; `library` is package lib when present, and
  * `core` adds core:strings. Samples of unions, imports, constants, patterns
  * and integer types (`types`) run under their own selector, so each selector
- * stays within its time ceiling. */
+ * stays within its time ceiling. An `updates` sample's `Build(count)` updates
+ * a local array in place: doubling its count at most doubles the values it
+ * copies, where copying the array on each update would quadruple them. */
 typedef struct
 {
     const char *name, *source, *library;
-    bool core, types;
+    bool core, types, updates;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -536,6 +539,30 @@ static const sample samples[] = {
                 "note.count, note.open, copy.count, stamped.text, "
                 "stamped.count);\n}",
       .calls = { { "Fields", "[4]", "[\"a 10 true 6 #7 7\"]" } } },
+    { .name = "record push",
+      .source = "package facts\nNode :: struct { kind: string; start: int; }\n"
+                "Build :: pure fn(count: int) -> int {\n"
+                "    nodes: Node[] = [];\n"
+                "    index: int = 0;\n"
+                "    while (index < count) {\n"
+                "        node: Node = {kind: \"a\", start: index};\n"
+                "        nodes = array_add(nodes, node);\n"
+                "        index += 1;\n"
+                "    }\n"
+                "    return length(nodes);\n}",
+      .updates = true,
+      .calls = { { "Build", "[3]", "[3]" } } },
+    { .name = "extension",
+      .source = "package facts\nBuild :: pure fn(count: int) -> int {\n"
+                "    xs: int[] = [];\n"
+                "    index: int = 0;\n"
+                "    while (index < count) {\n"
+                "        xs = append(xs, [index, index]);\n"
+                "        index += 1;\n"
+                "    }\n"
+                "    return length(xs);\n}",
+      .updates = true,
+      .calls = { { "Build", "[3]", "[6]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -1270,6 +1297,60 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     REQUIRE(valid);
     return true;
 }
+/* The closure of a Compiled result. */
+static unsigned char *closure_bytes(const pin_union *value, size_t *length)
+{
+    const pin_array *array = value->values[1].ptr;
+    *length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(*length);
+    for (size_t i = 0; i < *length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
+    return bytes;
+}
+/* The values `Build(count)` copies in `host`. */
+static uint64_t copies(int count)
+{
+    char arguments[32];
+    snprintf(arguments, sizeof arguments, "[%d]", count);
+    pin_copy_scope scope = { 0 };
+    pin_copy_scope_begin(&scope);
+    bool called = compiler_host_invoke(
+        host,
+        function_id("Build"),
+        arguments,
+        strlen(arguments),
+        TARGET_BUDGET,
+        &result
+    );
+    pin_copy_scope_end(&scope);
+    free(result.json);
+    result = (compiler_host_result){ 0 };
+    return called ? scope.counts.value_header_moves : UINT64_MAX;
+}
+static bool updates_in_place(const unsigned char *bytes, size_t length, const char *name)
+{
+    char error[256];
+    host = compiler_host_load(bytes, length, BEHAVIOR_SLJIT, error, sizeof error);
+    if (!host) {
+        fprintf(stderr, "package compiler %s load: %s\n", name, error);
+    }
+    REQUIRE(host);
+    uint64_t fewer = copies(100), more = copies(200);
+    if (!fewer || fewer == UINT64_MAX || more > 2 * fewer) {
+        fprintf(
+            stderr,
+            "package compiler %s copies %llu then %llu\n",
+            name,
+            (unsigned long long)fewer,
+            (unsigned long long)more
+        );
+    }
+    REQUIRE(fewer && fewer != UINT64_MAX && more <= 2 * fewer);
+    compiler_host_free(host);
+    host = NULL;
+    return true;
+}
 static bool run_samples(bool types)
 {
     REQUIRE(prepare());
@@ -1324,16 +1405,13 @@ static bool run_samples(bool types)
                 );
             }
             REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
-            const pin_array *array = value->values[1].ptr;
-            size_t length = (size_t)array->count;
-            unsigned char *bytes = xmalloc(length);
-            for (size_t k = 0; k < length; k++) {
-                bytes[k] = array->items[k].u8;
-            }
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
             arena_free(&detached);
             unsigned char *expected = NULL;
             size_t expected_length = 0;
-            bool ran = b || oracle_closure(s, &expected, &expected_length);
+            bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
+                       (b || oracle_closure(s, &expected, &expected_length));
             for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
                 for (int backend = 0; ran && backend < 2; backend++) {
                     ran = run(bytes, length, &s->calls[c], backend);

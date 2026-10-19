@@ -24,12 +24,63 @@ title "Chibi"
         }
     }
     - {
+        name "Testing"
+        (array)pages {
+            - {
+                title "Testing"
+                source "docs/guide/testing.md"
+                output "testing.html"
+            }
+        }
+    }
+    - {
+        name "Packages"
+        (array)pages {
+            - {
+                title "Core packages"
+                packages "packages/core"
+                collection "core"
+                output "packages.html"
+            }
+        }
+    }
+    - {
         name "Examples"
         (array)pages {
             - {
                 title "Examples"
                 source "docs/examples.md"
                 output "examples.html"
+            }
+        }
+    }
+    - {
+        name "FAQ"
+        (array)pages {
+            - {
+                title "FAQ"
+                source "docs/guide/faq.md"
+                output "faq.html"
+            }
+        }
+    }
+    - {
+        name "Grammar"
+        (array)pages {
+            - {
+                title "Grammar"
+                grammar "src/language/grammar.js"
+                output "grammar.html"
+            }
+        }
+    }
+    - {
+        name "Toolchain"
+        (array)pages {
+            - {
+                title "Toolchain"
+                source "docs/guide/toolchain.md"
+                output "toolchain.html"
             }
         }
     }

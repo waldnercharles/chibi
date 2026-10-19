@@ -509,7 +509,7 @@ NativePort :: pure fn(native: Native, index: int) -> int {
 }
 // How `xs = name(xs, value)` updates the local array names[found] in place:
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
-// zero, the native is the array pack's by its capability identity.
+// zero, the native is recognized by its capability identity.
 InPlaceUpdate :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
                          identities: uint64[], names: Name[], package: int, found: int, destination: int,
                          value: int) -> int {

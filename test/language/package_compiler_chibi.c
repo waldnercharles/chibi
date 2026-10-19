@@ -1344,9 +1344,12 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
 {
     char error[256];
     host = compiler_host_load(bytes, length, BEHAVIOR_SLJIT, error, sizeof error);
+    if (!host) {
+        fprintf(stderr, "package compiler %s load: %s\n", name, error);
+    }
     REQUIRE(host);
     uint64_t fewer = copies(100), more = copies(200);
-    if (fewer == UINT64_MAX || more > 2 * fewer) {
+    if (!fewer || fewer == UINT64_MAX || more > 2 * fewer) {
         fprintf(
             stderr,
             "package compiler %s copies %llu then %llu\n",
@@ -1355,7 +1358,7 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
             (unsigned long long)more
         );
     }
-    REQUIRE(fewer != UINT64_MAX && more <= 2 * fewer);
+    REQUIRE(fewer && fewer != UINT64_MAX && more <= 2 * fewer);
     compiler_host_free(host);
     host = NULL;
     return true;

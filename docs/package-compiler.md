@@ -63,7 +63,8 @@ import:
   first item gives its element type, as in stage zero; field reads;
   bounds-checked element reads;
 - element assignment, compound included, and `xs = array_add(xs, x)` and
-  `xs = append(xs, ys)` on a local array, which update it in place;
+  `xs = append(xs, ys)` on a local array, which update it in place. As in
+  stage zero, the native is recognized by its capability identity;
 - field assignment, compound included, on a local record: `x.f = v` writes as
   stage zero writes it, through the reference make, field and write
   intrinsics, which copy the record with the new field, so no other value
@@ -172,23 +173,26 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-Two selectors compile 74 samples on both compiler backends, each under its
-own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19, with other
-test runs loading the machine):
+Two selectors compile 85 samples on both compiler backends, each under its
+own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (8,194 assertions in
-  22.9 s);
+  arrays, strings and natives, and every rejection (9,788 assertions in
+  27.4 s);
 - `tool language-package-compiler-chibi-types`: unions, imports, constants,
-  patterns, scopes, integer types and inferred arrays (2,647 assertions in
-  27.5 s).
+  patterns, scopes, integer types and inferred arrays (3,039 assertions in
+  28.6 s).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
 on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
 same packages must return the same JSON; calls that must fail, such as
 out-of-bounds reads, fail on all three. Rejections check the exact message and
-position.
+position. In the push and extension samples, `Build(count)` must update its
+local array in place: doubling the count at most doubles the values it copies.
+Until stage one matched the array natives by capability identity, every update
+copied the whole array, and the stage-two compiler grew past 4 GB compiling the
+compiler's sources.
 
 Compiling is slow. In this build, compiling all the samples takes about 17 s
 of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT
@@ -202,5 +206,6 @@ and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
 - Copying a record descriptor into another arena copies its bytes instead of
   re-deriving and re-hashing its layout.
 
-The bytecode interpreter's dispatch is now 43% of the profile and record
-validation 13%. They come before stage one compiles the compiler.
+Stage one compiles the compiler's complete source set in about 13 s in a
+Release build and 126 s under Debug and the sanitizers, where validating
+record descriptors on every snapshot is about 40% of the profile.

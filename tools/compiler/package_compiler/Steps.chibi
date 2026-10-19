@@ -127,17 +127,17 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                     expected = Expect(value, binding.storage, binding.container, binding.record);
                     // `xs = array_add(xs, x)` and `xs = append(xs, ys)` on a
                     // local array update it in place.
-                    extend: int = -1;
+                    update: int = -1;
                     if (operator == "") {
-                        extend = InPlaceUpdate(forest, text, callables, natives, identities, names, package, found,
+                        update = InPlaceUpdate(forest, text, callables, natives, identities, names, package, found,
                             destination, value);
                     }
-                    if (extend >= 0) {
+                    if (update >= 0) {
                         argument := NextMember(forest, FirstMember(forest, Field(forest, value, "arguments")));
                         container: int = 0;
-                        if (extend == 1) { container = ArrayContainer; }
+                        if (update == 1) { container = ArrayContainer; }
                         next = array_add(next, Expect(argument, binding.storage, container, binding.record));
-                        next = array_add(next, Resume(item.node, PushPhase, found, extend));
+                        next = array_add(next, Resume(item.node, PushPhase, found, update));
                         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                             NoValue(), retain, marks);
                     }

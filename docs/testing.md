@@ -1192,11 +1192,12 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects four fixed C
+`python3 tools/test_policy.py tool language-docs-markdown` selects six fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
-`markdown` and `site` packages with `core:strings` per case, rendering blocks,
-tables and site links and laying out navigation on bytecode and SLJIT, each call
-under a 2,000,000-instruction budget. There is no filesystem, process, service or
+`markdown`, `site`, `reference` and `grammar` packages with `core:strings` per
+case, rendering blocks, tables and site links, laying out navigation and
+generating a package reference and a grammar page on bytecode and SLJIT, each
+call under a 2,000,000-instruction budget. There is no filesystem, process, service or
 GPU work. This focused route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C

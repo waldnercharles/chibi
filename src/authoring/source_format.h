@@ -37,7 +37,9 @@ typedef enum
  * borrowed and unchanged. Syntax errors or a changed parse return NULL with an
  * error. Limits: 8 MiB input/output, 256 syntax levels, 262144 tokens.
  * No catalog, graph, compiler or editor state is needed. Default output is LF,
- * four spaces, and the existing line breaks within expressions. */
+ * four spaces, and the existing line breaks within expressions. A continued
+ * line aligns with the first item of its bracket, or indents one level when
+ * the bracket ends its line; continued operands align with the first one. */
 char *authoring_source_format(const script_syntax *, char *error, size_t size);
 
 /* NULL options selects defaults. Width reflows argument/parameter lists, arrays,

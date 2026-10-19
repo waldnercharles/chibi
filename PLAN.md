@@ -646,10 +646,22 @@ calls the generator on the natives that need no running game. A page's source
 must resolve, links included, to a regular file inside ROOT. The site is written
 into a fresh folder that then replaces `build/docs`, so the published folder
 never holds a partial site or a page the manifest no longer lists. `--serve`
-serves the result like `chibi web`. The manifest so far publishes the README, the
-language reference and the examples. The Testing, Packages, FAQ, Grammar and
-Toolchain pages, the generated package reference and grammar, checked examples,
-static assets and the Pages workflow remain.
+serves the result like `chibi web`. Examples are checked: every block fenced as
+`chibi` on a published Markdown page must parse, and one that is a whole package must
+analyze against the natives a test may call, or the build fails at the
+example's line. A page can also be generated: `packages` with its
+`collection` lists every package folder's declarations, signatures and the
+comments above them (the generator's `reference` package), and `grammar`
+lists each rule of a Tree-sitter grammar's `rules` block with its comments
+(`grammar`). The site now has all eight sections: the README (Overview), the
+language reference (Learn), the Testing guide, the generated `core` reference
+(Packages), the examples, the FAQ, the generated Grammar and the Toolchain
+guide. The manual `Documentation site` workflow
+(`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
+the Pages artifact; it has no deploy job, which waits for the owner's review of
+that artifact. No published page uses an image yet, so the manifest has no
+static assets beyond the generated stylesheet; listing assets comes with the
+first page that needs one.
 
 Use one source of truth for prose and package comments. Create an explicit public
 manifest under `docs/` that names every Markdown page, generated grammar page,

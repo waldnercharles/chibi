@@ -6,7 +6,8 @@ import strings "core:strings"
 // public pages use: headings, paragraphs, lists, block quotes, fenced code,
 // pipe tables, and inline code, emphasis and links. Links between pages
 // follow the site's own map from source files to pages; a link to a file the
-// site does not publish keeps only its text.
+// site does not publish keeps only its text, and Unpublished names each such
+// link at its line.
 
 Space :: 32;
 Quote :: 34;
@@ -239,8 +240,10 @@ Punctuation :: pure fn(byte: int) -> bool {
            byte == Less || byte == Greater || byte == Dash || byte == Dot;
 }
 
-// The inline content of a block as HTML.
-Inline :: pure fn(text: string, page: string, sources: string[], outputs: string[]) -> string {
+// The inline content of a block as HTML, and the target of each link written
+// as text, in order.
+Inline :: pure fn(text: string, page: string, sources: string[],
+                  outputs: string[]) -> (html: string, dropped: string[]) {
     out: string = "";
     size := Size(text);
     start: int = 0;
@@ -270,7 +273,8 @@ Inline :: pure fn(text: string, page: string, sources: string[], outputs: string
             if (close > index + 2) {
                 pending := Escape(strings.Slice(text, start, index - start));
                 inner := Inline(strings.Slice(text, index + 2, close - index - 2), page, sources, outputs);
-                out = format_text("{}{}<strong>{}</strong>", out, pending, inner);
+                out = format_text("{}{}<strong>{}</strong>", out, pending, inner.html);
+                dropped = append(dropped, inner.dropped);
                 index = close + 2;
                 start = index;
                 continue;
@@ -281,7 +285,8 @@ Inline :: pure fn(text: string, page: string, sources: string[], outputs: string
             if (close > index + 1) {
                 pending := Escape(strings.Slice(text, start, index - start));
                 inner := Inline(strings.Slice(text, index + 1, close - index - 1), page, sources, outputs);
-                out = format_text("{}{}<em>{}</em>", out, pending, inner);
+                out = format_text("{}{}<em>{}</em>", out, pending, inner.html);
+                dropped = append(dropped, inner.dropped);
                 index = close + 1;
                 start = index;
                 continue;
@@ -300,13 +305,15 @@ Inline :: pure fn(text: string, page: string, sources: string[], outputs: string
             }
             if (close > middle && middle > index) {
                 pending := Escape(strings.Slice(text, start, index - start));
+                // Without brackets, a label holds no link to drop.
                 label := Inline(strings.Slice(text, index + 1, middle - index - 1), page, sources, outputs);
                 url := strings.Slice(text, middle + 2, close - middle - 2);
                 target := Target(url, page, sources, outputs);
                 if (target == "") {
-                    out = format_text("{}{}{}", out, pending, label);
+                    out = format_text("{}{}{}", out, pending, label.html);
+                    dropped = array_add(dropped, url);
                 } else {
-                    out = format_text("{}{}<a href=\"{}\">{}</a>", out, pending, Escape(target), label);
+                    out = format_text("{}{}<a href=\"{}\">{}</a>", out, pending, Escape(target), label.html);
                 }
                 index = close + 1;
                 start = index;
@@ -315,7 +322,7 @@ Inline :: pure fn(text: string, page: string, sources: string[], outputs: string
         }
         index += 1;
     }
-    return format_text("{}{}", out, Escape(From(text, start)));
+    return (html: format_text("{}{}", out, Escape(From(text, start))), dropped: dropped);
 }
 
 // 1 to 6 for an ATX heading line, otherwise 0.
@@ -396,12 +403,15 @@ Cells :: pure fn(line: string) -> string[] {
     return cells;
 }
 
-TableRow :: pure fn(line: string, tag: string, page: string, sources: string[], outputs: string[]) -> string {
+TableRow :: pure fn(line: string, tag: string, page: string, sources: string[],
+                    outputs: string[]) -> (html: string, dropped: string[]) {
     out := "<tr>";
     foreach (cell in Cells(line)) {
-        out = format_text("{}<{}>{}</{}>", out, tag, Inline(cell, page, sources, outputs), tag);
+        inline := Inline(cell, page, sources, outputs);
+        out = format_text("{}<{}>{}</{}>", out, tag, inline.html, tag);
+        dropped = append(dropped, inline.dropped);
     }
-    return format_text("{}</tr>\n", out);
+    return (html: format_text("{}</tr>\n", out), dropped: dropped);
 }
 
 // Whether a line begins a block other than a paragraph.
@@ -410,93 +420,168 @@ BlockStart :: pure fn(line: string) -> bool {
            StartsWith(line, ">") || StartsWith(line, "|");
 }
 
-// The page's Markdown, given as its lines, as HTML pieces to write in order.
-// page is the page's source path, and sources and outputs map published
-// sources to their pages for links. Lines arrive split because reading a byte
-// of a string costs the length of the string.
-Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+// The block that starts at the line first, which is not blank: its HTML
+// pieces, the line after it, and the target of each link it writes as text.
+Block :: pure fn(lines: string[], first: int, page: string, sources: string[],
+                 outputs: string[]) -> (html: string[], end: int, dropped: string[]) {
     count := length(lines);
-    html: string[] = [];
-    index: int = 0;
-    while (index < count) {
-        line := Trim(lines[index]);
-        if (line == "") {
-            index += 1;
-            continue;
+    index := first;
+    line := Trim(lines[index]);
+    if (StartsWith(line, "```")) {
+        language := Trim(From(line, 3));
+        if (language == "") {
+            html = array_add(html, "<pre><code>");
+        } else {
+            html = array_add(html, format_text("<pre><code class=\"language-{}\">", Escape(language)));
         }
-        if (StartsWith(line, "```")) {
-            language := Trim(From(line, 3));
-            if (language == "") {
-                html = array_add(html, "<pre><code>");
-            } else {
-                html = array_add(html, format_text("<pre><code class=\"language-{}\">", Escape(language)));
-            }
-            index += 1;
-            while (index < count && !StartsWith(Trim(lines[index]), "```")) {
-                html = array_add(html, format_text("{}\n", Escape(lines[index])));
-                index += 1;
-            }
-            html = array_add(html, "</code></pre>\n");
-            index += 1;
-            continue;
-        }
-        level := HeadingLevel(line);
-        if (level > 0) {
-            title := Trim(From(line, level + 1));
-            html = array_add(html, format_text("<h{} id=\"{}\">{}</h{}>\n", level, Slug(title),
-                                               Inline(title, page, sources, outputs), level));
-            index += 1;
-            continue;
-        }
-        if (StartsWith(line, "|") && index + 1 < count && IsTableRule(Trim(lines[index + 1]))) {
-            html = array_add(html, "<table>\n<thead>\n");
-            html = array_add(html, TableRow(line, "th", page, sources, outputs));
-            html = array_add(html, "</thead>\n<tbody>\n");
-            index += 2;
-            while (index < count && StartsWith(Trim(lines[index]), "|")) {
-                html = array_add(html, TableRow(lines[index], "td", page, sources, outputs));
-                index += 1;
-            }
-            html = array_add(html, "</tbody>\n</table>\n");
-            continue;
-        }
-        if (ItemText(line) != "") {
-            tag := "ul";
-            if (Ordered(line)) {
-                tag = "ol";
-            }
-            html = array_add(html, format_text("<{}>\n", tag));
-            while (index < count && ItemText(Trim(lines[index])) != "") {
-                item := ItemText(Trim(lines[index]));
-                index += 1;
-                while (index < count && Trim(lines[index]) != "" &&
-                       ItemText(Trim(lines[index])) == "" && !StartsWith(Trim(lines[index]), "```") &&
-                       IsBlank(At(lines[index], 0))) {
-                    item = format_text("{} {}", item, Trim(lines[index]));
-                    index += 1;
-                }
-                html = array_add(html, format_text("<li>{}</li>\n", Inline(item, page, sources, outputs)));
-            }
-            html = array_add(html, format_text("</{}>\n", tag));
-            continue;
-        }
-        if (StartsWith(line, ">")) {
-            quote := "";
-            while (index < count && StartsWith(Trim(lines[index]), ">")) {
-                quote = Trim(format_text("{} {}", quote, Trim(From(Trim(lines[index]), 1))));
-                index += 1;
-            }
-            html = array_add(html, format_text("<blockquote><p>{}</p></blockquote>\n",
-                                               Inline(quote, page, sources, outputs)));
-            continue;
-        }
-        paragraph := line;
         index += 1;
-        while (index < count && Trim(lines[index]) != "" && !BlockStart(Trim(lines[index]))) {
-            paragraph = format_text("{} {}", paragraph, Trim(lines[index]));
+        while (index < count && !StartsWith(Trim(lines[index]), "```")) {
+            html = array_add(html, format_text("{}\n", Escape(lines[index])));
             index += 1;
         }
-        html = array_add(html, format_text("<p>{}</p>\n", Inline(paragraph, page, sources, outputs)));
+        html = array_add(html, "</code></pre>\n");
+        return (html: html, end: index + 1, dropped: dropped);
     }
-    return html;
+    level := HeadingLevel(line);
+    if (level > 0) {
+        title := Trim(From(line, level + 1));
+        inline := Inline(title, page, sources, outputs);
+        html = array_add(html, format_text("<h{} id=\"{}\">{}</h{}>\n", level, Slug(title), inline.html, level));
+        return (html: html, end: index + 1, dropped: inline.dropped);
+    }
+    if (StartsWith(line, "|") && index + 1 < count && IsTableRule(Trim(lines[index + 1]))) {
+        head := TableRow(line, "th", page, sources, outputs);
+        html = ["<table>\n<thead>\n", head.html, "</thead>\n<tbody>\n"];
+        dropped = head.dropped;
+        index += 2;
+        while (index < count && StartsWith(Trim(lines[index]), "|")) {
+            row := TableRow(lines[index], "td", page, sources, outputs);
+            html = array_add(html, row.html);
+            dropped = append(dropped, row.dropped);
+            index += 1;
+        }
+        html = array_add(html, "</tbody>\n</table>\n");
+        return (html: html, end: index, dropped: dropped);
+    }
+    if (ItemText(line) != "") {
+        tag := "ul";
+        if (Ordered(line)) {
+            tag = "ol";
+        }
+        html = array_add(html, format_text("<{}>\n", tag));
+        while (index < count && ItemText(Trim(lines[index])) != "") {
+            item := ItemText(Trim(lines[index]));
+            index += 1;
+            while (index < count && Trim(lines[index]) != "" &&
+                   ItemText(Trim(lines[index])) == "" && !StartsWith(Trim(lines[index]), "```") &&
+                   IsBlank(At(lines[index], 0))) {
+                item = format_text("{} {}", item, Trim(lines[index]));
+                index += 1;
+            }
+            inline := Inline(item, page, sources, outputs);
+            html = array_add(html, format_text("<li>{}</li>\n", inline.html));
+            dropped = append(dropped, inline.dropped);
+        }
+        html = array_add(html, format_text("</{}>\n", tag));
+        return (html: html, end: index, dropped: dropped);
+    }
+    if (StartsWith(line, ">")) {
+        quote := "";
+        while (index < count && StartsWith(Trim(lines[index]), ">")) {
+            quote = Trim(format_text("{} {}", quote, Trim(From(Trim(lines[index]), 1))));
+            index += 1;
+        }
+        inline := Inline(quote, page, sources, outputs);
+        html = array_add(html, format_text("<blockquote><p>{}</p></blockquote>\n", inline.html));
+        return (html: html, end: index, dropped: inline.dropped);
+    }
+    paragraph := line;
+    index += 1;
+    while (index < count && Trim(lines[index]) != "" && !BlockStart(Trim(lines[index]))) {
+        paragraph = format_text("{} {}", paragraph, Trim(lines[index]));
+        index += 1;
+    }
+    inline := Inline(paragraph, page, sources, outputs);
+    html = array_add(html, format_text("<p>{}</p>\n", inline.html));
+    return (html: html, end: index, dropped: inline.dropped);
+}
+
+// The line of each of a block's dropped targets, in order, among its lines
+// first to end: the first line, from where the previous target was found on,
+// that holds "](target)", or the previous target's line for a link that a line
+// break splits.
+Locate :: pure fn(lines: string[], first: int, end: int, targets: string[]) -> int[] {
+    found: int[] = [];
+    line := first;
+    column: int = 0;
+    foreach (target in targets) {
+        link := format_text("]({})", target);
+        at := line;
+        index := FindText(lines[at], link, column);
+        while (index < 0 && at + 1 < end) {
+            at += 1;
+            index = FindText(lines[at], link, 0);
+        }
+        if (index >= 0) {
+            line = at;
+            column = index + 1;
+        }
+        found = array_add(found, line);
+    }
+    return found;
+}
+
+// The page's Markdown, given as its lines, as HTML pieces to write in order,
+// and the line index and target of each link written as text. page is the
+// page's source path, and sources and outputs map published sources to their
+// pages for links. Lines arrive split because reading a byte of a string costs
+// the length of the string.
+Page :: pure fn(lines: string[], page: string, sources: string[],
+                outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
+    index: int = 0;
+    while (index < length(lines)) {
+        if (Trim(lines[index]) == "") {
+            index += 1;
+            continue;
+        }
+        block := Block(lines, index, page, sources, outputs);
+        html = append(html, block.html);
+        at = append(at, Locate(lines, index, block.end, block.dropped));
+        targets = append(targets, block.dropped);
+        index = block.end;
+    }
+    return (html: html, at: at, targets: targets);
+}
+
+// The page's HTML pieces, as Page renders them.
+Render :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    rendered := Page(lines, page, sources, outputs);
+    return rendered.html;
+}
+
+// items followed by item until there are count of them; generated pages use
+// it to keep the source line of each Markdown line they write.
+Pad :: pure fn(items: int[], count: int, item: int) -> int[] {
+    padded := items;
+    while (length(padded) < count) {
+        padded = array_add(padded, item);
+    }
+    return padded;
+}
+
+// What chibi doc reports for a link written as text at line of source.
+Dropped :: pure fn(source: string, line: int, target: string) -> string {
+    return format_text("{}:{}: link to {} is not published; written as text\n", source, line, target);
+}
+
+// A report, as Dropped writes it, of each link Render writes as text.
+Unpublished :: pure fn(lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
+    rendered := Page(lines, page, sources, outputs);
+    reports: string[] = [];
+    index: int = 0;
+    while (index < length(rendered.at)) {
+        reports = array_add(reports, Dropped(page, rendered.at[index] + 1, rendered.targets[index]));
+        index += 1;
+    }
+    return reports;
 }

@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Six cases on bytecode and the compiled backend. One preparation of the
+/* Eight cases on bytecode and the compiled backend. One preparation of the
  * shipped site generator packages with core:strings per case; each call
- * renders or lays out one page of at most a few hundred bytes with a
- * 2,000,000-instruction budget. No filesystem, processes or frames. */
+ * renders, lays out or reports on one page of at most a few hundred bytes with
+ * a 2,000,000-instruction budget. No filesystem, processes or frames. */
 enum
 {
     BUDGET = 2000000
@@ -94,8 +94,9 @@ static pin_value lines(const char *markdown)
     }
     return strings(items, count);
 }
-/* The page at `page` rendered with the site map below, as one string. */
-static char *render(int backend, const char *markdown, const char *page)
+/* What markdown's `name` makes of the page at `page` with the site map below,
+ * as one string. */
+static char *page_call(int backend, const char *name, const char *markdown, const char *page)
 {
     static const char *const sources[] = { "README.md",
                                            "docs/code-language.md",
@@ -105,17 +106,25 @@ static char *render(int backend, const char *markdown, const char *page)
                               text(page),
                               strings(sources, 3),
                               strings(outputs, 3) };
-    return call(backend, "project:markdown", "Render", arguments, 4);
+    return call(backend, "project:markdown", name, arguments, 4);
+}
+/* Whether a call's joined result is expected; frees it. */
+static bool joined_is(char *joined, const char *expected)
+{
+    bool same = joined && !strcmp(joined, expected);
+    if (joined && !same) {
+        fprintf(stderr, "got:\n%s\nexpected:\n%s\n", joined, expected);
+    }
+    free(joined);
+    return same;
 }
 static bool renders(int backend, const char *markdown, const char *page, const char *expected)
 {
-    char *html = render(backend, markdown, page);
-    bool same = html && !strcmp(html, expected);
-    if (html && !same) {
-        fprintf(stderr, "rendered:\n%s\nexpected:\n%s\n", html, expected);
-    }
-    free(html);
-    return same;
+    return joined_is(page_call(backend, "Render", markdown, page), expected);
+}
+static bool reports(int backend, const char *markdown, const char *page, const char *expected)
+{
+    return joined_is(page_call(backend, "Unpublished", markdown, page), expected);
 }
 
 /* Headings carry GitHub's anchors; paragraphs join their lines; text is
@@ -205,6 +214,55 @@ TEST_CASE(docs_markdown_maps_links_to_pages)
             "<p>run) <a href=\"https://a.example/&quot;x&quot;\">quoted</a> "
             "<a href=\"examples.html?x=1#t\">q</a> xs[i] (see <a "
             "href=\"examples.html\">guide</a>)</p>\n"
+        ));
+    }
+    return true;
+}
+
+/* Each link written as text is reported, in order, at the line that holds
+ * it, in any block and inside emphasis; code and escaped brackets hold no
+ * links, and links the site keeps are not reported. */
+TEST_CASE(docs_markdown_reports_unpublished_links)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(reports(
+            b,
+            "# Home and [plans](PLAN.md)\n\n"
+            "See [the guide](examples.md), [notes](notes.md) and\n"
+            "**[notes](notes.md)** twice: [notes](notes.md).\n\n"
+            "```\n[code](code.md)\n```\n"
+            "`[span](span.md)` \\[escaped](escaped.md) "
+            "[web](https://a.example)\n\n"
+            "| A | B |\n| --- | --- |\n| [cell](cell.md) | [out](../x.md) |\n\n"
+            "- one\n  [item](item.md#a)\n\n"
+            "> [ftp](ftp://a.example/x) [home](#top)\n",
+            "docs/code-language.md",
+            "docs/code-language.md:1: link to PLAN.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:3: link to notes.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:4: link to notes.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:4: link to notes.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:13: link to cell.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:13: link to ../x.md is not published; "
+            "written as text\n"
+            "docs/code-language.md:16: link to item.md#a is not published; "
+            "written as text\n"
+            "docs/code-language.md:18: link to ftp://a.example/x is not "
+            "published; written as text\n"
+        ));
+        REQUIRE(reports(b, "See [the guide](docs/code-language.md#tests).\n", "README.md", ""));
+        /* A line break inside a link's target leaves it at the line before. */
+        REQUIRE(reports(
+            b,
+            "See [x](\ny.md) and [z](z.md).\n",
+            "README.md",
+            "README.md:1: link to  y.md is not published; written as text\n"
+            "README.md:2: link to z.md is not published; written as text\n"
         ));
     }
     return true;
@@ -354,14 +412,69 @@ TEST_CASE(docs_grammar_lists_rules)
     return true;
 }
 
+/* The generated pages report a link they write as text at the file and line
+ * of the comment that holds it; a comment they do not publish reports none. */
+TEST_CASE(docs_generated_pages_report_unpublished_links)
+{
+    REQUIRE(prepare());
+    static const char *const paths[] = { "shapes/A.chibi", "shapes/B.chibi" };
+    static const char *const files[] = {
+        "package shapes",
+        "// Not [attached](a.md).",
+        "",
+        "// The [area](area.md).",
+        "Area :: pure fn() -> int {",
+        "    return 1;",
+        "}",
+        "package shapes",
+        "// Four [sides](PLAN.md#sides), as [Area](#area).",
+        "Sides: int : 4;"
+    };
+    static const char *const grammar[] = {
+        "  rules: {",
+        "    // A [file](file.md) is one item.",
+        "    source_file: ($) => $.item,",
+        "  },"
+    };
+    static const char *const none[] = { "README.md" };
+    for (int b = 0; b < 2; b++) {
+        pin_value starts = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+        pin_array *offsets = pin_array_snapshot_allocate(&input, PIN_I32, NULL, 2);
+        offsets->items[0] = (pin_value){ .type = PIN_I32, .i = 0 };
+        offsets->items[1] = (pin_value){ .type = PIN_I32, .i = 7 };
+        starts.ptr = offsets;
+        pin_value reference[] = { text("core"),     strings(paths, 2),
+                                  starts,           strings(files, 10),
+                                  text("packages"), strings(none, 1),
+                                  strings(none, 1) };
+        REQUIRE(joined_is(
+            call(b, "project:reference", "Unpublished", reference, 7),
+            "packages/shapes/A.chibi:4: link to area.md is not published; "
+            "written as text\n"
+            "packages/shapes/B.chibi:2: link to PLAN.md#sides is not "
+            "published; written as text\n"
+        ));
+        pin_value rules[] = { strings(grammar, 4),
+                              text("grammar.js"),
+                              strings(none, 1),
+                              strings(none, 1) };
+        REQUIRE(
+            joined_is(call(b, "project:grammar", "Unpublished", rules, 4), "grammar.js:2: link to file.md is not published; written as text\n")
+        );
+    }
+    return true;
+}
+
 void test_language_docs_markdown()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(docs_markdown_renders_blocks);
     RUN_TEST_CASE(docs_markdown_renders_tables);
     RUN_TEST_CASE(docs_markdown_maps_links_to_pages);
+    RUN_TEST_CASE(docs_markdown_reports_unpublished_links);
     RUN_TEST_CASE(docs_site_lays_out_navigation);
     RUN_TEST_CASE(docs_reference_lists_declarations);
     RUN_TEST_CASE(docs_grammar_lists_rules);
+    RUN_TEST_CASE(docs_generated_pages_report_unpublished_links);
     pu_clear_setup();
 }

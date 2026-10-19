@@ -1055,8 +1055,8 @@ static void site_fixture(const char *relative)
 
 /* The real compiler's --docs writes exactly the pages docs/site.kdl lists,
  * linked to one another, with the stylesheet, into a folder as readable as
- * mkdir makes one, and refuses a manifest whose pages leave the root or the
- * site folder, collide or are missing. */
+ * mkdir makes one, names each link it writes as text, and refuses a manifest
+ * whose pages leave the root or the site folder, collide or are missing. */
 TEST_CASE(compiler_docs_writes_the_listed_pages)
 {
     site_fixture("site");
@@ -1068,6 +1068,7 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     REQUIRE(
         file_has("site/build/docs/index.html", "Read <a href=\"guide.html\">the guide</a> and plans.</p>")
     );
+    REQUIRE(file_has("docs.log", "README.md:3: link to PLAN.md is not published; written as text\n"));
     REQUIRE(file_has("site/build/docs/index.html", "<title>Home · Fixture</title>"));
     REQUIRE(file_has("site/build/docs/guide.html", "Back <a href=\"index.html\">home</a>."));
     REQUIRE(
@@ -1159,7 +1160,8 @@ static void generated_site(const char *packages, const char *collection)
 }
 
 /* The real compiler's --docs generates a package reference from the
- * packages of a folder and a grammar page from a grammar's rules. */
+ * packages of a folder and a grammar page from a grammar's rules, and names
+ * a link written as text at the line of its source file. */
 TEST_CASE(compiler_docs_generates_reference_pages)
 {
     const char *folders[] = { "generated", "generated/docs", "generated/lib", "generated/lib/shapes" };
@@ -1167,8 +1169,8 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         directory(folders[i]);
     }
     write_file("generated/README.md", "# Home\n\nSee [the grammar](grammar.js).\n");
-    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four sides.\nSides: int : 4;\n");
-    write_file("generated/grammar.js", "  rules: {\n    // One item.\n    item: ($) => \"x\",\n  },\n");
+    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\nSides: int : 4;\n");
+    write_file("generated/grammar.js", "  rules: {\n    // One [item](item.md).\n    item: ($) => \"x\",\n  },\n");
     generated_site("lib", "lib");
     char site[256], output[256];
     path(site, "generated");
@@ -1184,6 +1186,12 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     );
     REQUIRE(
         file_has("generated/build/docs/index.html", "See <a href=\"grammar.html\">the grammar</a>.")
+    );
+    REQUIRE(
+        file_has("generated.log", "lib/shapes/Shapes.chibi:3: link to sides.md is not published; written as text\n")
+    );
+    REQUIRE(
+        file_has("generated.log", "grammar.js:2: link to item.md is not published; written as text\n")
     );
 
     generated_site("lib", NULL);

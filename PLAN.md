@@ -740,6 +740,19 @@ stage one must build. Lowering now emits in-place `array_push`,
 because every store copies. Capacity doubles like Odin's dynamic arrays, and
 16,000 record appends take 0.07 s on SLJIT. Parameters still alias the caller's
 array and keep the copying path. The counted-row builder this replaces is gone.
+Collectable arenas, which program activations use, still walked every live
+value on each record copy. They now index live values by page, so 40,000
+collectable record appends take 0.67 s (PR #452).
+
+The authored prepared writer (`tools/compiler/prepared_writer`, see
+`docs/authored-prepared-writer.md`) reproduces `execution_prepared_write` byte
+for byte. `language-prepared-writer-chibi` marshals five stage-zero modules,
+including the writer's own 1.3 MiB module, into its flat model and compares
+every byte on both compiler backends. Its `Fingerprint` and `Closure` match the
+native fingerprint and CHIBICLO writer. A call copies record-array arguments
+and checks every item of a borrowed scalar array, so the writer keeps its
+tables in one function; stage-one code must do the same until borrowing covers
+records. Nothing calls the writer in production yet.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

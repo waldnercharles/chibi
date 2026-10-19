@@ -71,9 +71,13 @@ or computed values, type patterns, record field defaults, field assignment,
 assigning record or array parameters, named payload arguments, literal
 variants, natives with several results or variadic ones, `uint64` and
 conversions come next.
-One check is missing the other way: stage one does not yet reject a local name
-declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`, which
-stage zero reports as a duplicate declaration.
+Locals follow stage zero's scopes: blocks, switch arms, whose statements form
+a block, and if and while statements, which hold their condition's bindings.
+A name declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`,
+is a duplicate declaration, and an inner scope may hide an outer name. One
+difference remains, and only for programs stage zero rejects: stage zero
+declares a local for its whole scope, so `n := n + 1` with a parameter `n` is
+a cyclic dependency there, while stage one reads the parameter.
 
 ## Output
 
@@ -132,9 +136,9 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 54 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 7,302 assertions in
-29.0 s). A sample is package `facts`, optionally with a
+`tool language-package-compiler-chibi` compiles 58 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 7,715 assertions in
+30.6 s). A sample is package `facts`, optionally with a
 `lib` package and `core:strings`. Every accepted closure loads in a fresh
 runtime host and runs on bytecode and SLJIT with JSON arguments, and stage
 zero's own closure of the same packages must return the same JSON; calls that

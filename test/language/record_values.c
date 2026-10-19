@@ -228,6 +228,22 @@ TEST_CASE(record_identity_and_borrow)
     const pin_record *record = row_layout(&source, 91);
     const pin_record *clone = pin_record_snapshot(&other, record);
     REQUIRE(pin_record_same(record, clone));
+    /* The copy owns its names: it stays valid without the original. */
+    REQUIRE(clone != record && pin_record_valid(clone) && clone->bytes == record->bytes);
+    REQUIRE(
+        arena_contains(&other, clone->type.name) &&
+        !strcmp(clone->type.name, record->type.name)
+    );
+    for (int i = 0; i < clone->type.field_count; i++) {
+        const type_field *copied = &clone->type.fields[i],
+                         *original = &record->type.fields[i];
+        REQUIRE(
+            arena_contains(&other, copied->name) &&
+            !strcmp(copied->name, original->name)
+        );
+        REQUIRE(copied->type == original->type && copied->offset == original->offset);
+    }
+    REQUIRE(pin_record_snapshot(&other, clone) == clone);
     pin_value input = row(&source, record, 1), equal = row(&other, clone, 1);
     REQUIRE(pin_value_equal(&input, &equal));
     REQUIRE(!pin_value_copy(&borrowed, &input));

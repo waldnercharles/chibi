@@ -134,11 +134,17 @@ same packages must return the same JSON; calls that must fail,
 such as out-of-bounds reads, fail on all three. Rejections check the exact
 message and position.
 
-Compiling is slow: the arrays sample, about 50 lines, takes 1.4 s on SLJIT and
-2.8 s on bytecode in this build. Retiring a call no longer re-measures every
-spare frame and its data cells, and an array copy checks each distinct record
-once, which cut compile time by about an eighth. The remaining cost is the
-interpreter itself, per-call setup of large frames, and one record layout check
-per record copy; they come before stage one compiles the compiler. The imports
-sample alone adds about 8 s, most of it compiling `core:strings`, and the suite
-now uses over half its 60 s ceiling.
+Compiling is slow. In this build, compiling all the samples takes about 17 s
+of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT
+and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
+3.2 s. Two runtime changes cut the selector from 34 s to 28 s:
+
+- A running call stack keeps up to 8 MiB of retired frames, evicting the least
+  recently retired, and settles back to the 64 KiB idle budget. Before, the
+  frames of the compiler's step functions, 0.2 to 0.7 MB each, were set up
+  afresh on every call.
+- Copying a record descriptor into another arena copies its bytes instead of
+  re-deriving and re-hashing its layout.
+
+The bytecode interpreter's dispatch is now 43% of the profile and record
+validation 13%. They come before stage one compiles the compiler.

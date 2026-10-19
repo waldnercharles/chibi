@@ -797,10 +797,11 @@ reference kind stage zero keeps in a data cell's initial value, and because
 storing the caller's text tainted the record. The analysis now reads initial
 values and tracks stored text separately, tainting only a read of it as an
 address, so 62 of the compiler's 63 functions share their tables. Compiling is
-still slow, about 1.4 s for a 50-line sample on SLJIT in a Debug + ASan build,
-after call retirement stopped re-measuring every spare frame. The interpreter,
-per-call setup of large frames and a record layout check per copy remain the
-measured costs to remove before stage one compiles the compiler.
+still slow, about 0.9 s for a 50-line sample on SLJIT in a Debug + ASan build.
+Call retirement no longer re-measures every spare frame, a running stack reuses
+frames larger than the 64 KiB idle budget, and descriptor copies no longer
+re-derive layouts. The bytecode interpreter's dispatch and record validation
+remain the measured costs to remove before stage one compiles the compiler.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

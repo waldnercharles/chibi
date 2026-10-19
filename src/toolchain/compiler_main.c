@@ -2,6 +2,7 @@
 #define _DARWIN_C_SOURCE
 #endif
 #include "support/xalloc.h"
+#include "toolchain/compiler_bootstrap.h"
 #include "toolchain/compiler_host.h"
 #include "types/catalog.h"
 
@@ -162,8 +163,33 @@ static bool number(const char *text, int base, uint64_t *out)
 }
 static int usage()
 {
-    fprintf(stderr, "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE --backend bytecode|sljit --budget N [--timeout-ms N] [--batch | --output-artifact FILE]\n");
+    fprintf(
+        stderr,
+        "usage: chibi-compiler-host --artifact FILE --entry HEXID --input FILE "
+        "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
+        "--output-artifact FILE]\n"
+        "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
+        "[--seed DIR [--revision TEXT]]\n"
+    );
     return 1;
+}
+/* --bootstrap DIR checks the bootstrap artifact in DIR against the compiler
+ * sources; with --seed it writes one from a seed instead. */
+static int bootstrap(const compiler_bootstrap *b)
+{
+    char report[512] = { 0 };
+    bool ok = b->seed ? compiler_bootstrap_write(b, report, sizeof report)
+                      : compiler_bootstrap_check(b, report, sizeof report);
+    if (!ok) {
+        fprintf(stderr, "bootstrap: %s\n", report);
+        return 1;
+    }
+    if (b->seed) {
+        printf("wrote the bootstrap artifact %s\n", b->folder);
+    } else {
+        printf("%s\n", report);
+    }
+    return 0;
 }
 int main(int argc, char **argv)
 {
@@ -171,6 +197,7 @@ int main(int argc, char **argv)
     uint64_t entry = 0, budget = 0, timeout = 0;
     behavior_backend backend = BEHAVIOR_UNAVAILABLE;
     bool batch = false;
+    compiler_bootstrap boot = { 0 };
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--batch") && !batch) {
             batch = true;
@@ -180,7 +207,17 @@ int main(int argc, char **argv)
             return usage();
         }
         const char *key = argv[i++], *value = argv[i];
-        if (!strcmp(key, "--artifact") && !artifact) {
+        const char **bootstrap_value = !strcmp(key, "--bootstrap") ? &boot.folder
+                                     : !strcmp(key, "--compiler") ? &boot.compiler
+                                     : !strcmp(key, "--core") ? &boot.core
+                                     : !strcmp(key, "--seed") ? &boot.seed
+                                     : !strcmp(key, "--revision") ? &boot.revision
+                                                                  : NULL;
+        if (bootstrap_value && !*bootstrap_value && *value) {
+            *bootstrap_value = value;
+        } else if (bootstrap_value) {
+            return usage();
+        } else if (!strcmp(key, "--artifact") && !artifact) {
             artifact = value;
         } else if (!strcmp(key, "--input") && !input) {
             input = value;
@@ -209,6 +246,13 @@ int main(int argc, char **argv)
         } else {
             return usage();
         }
+    }
+    if (boot.folder || boot.compiler || boot.core || boot.seed || boot.revision) {
+        bool alone = !artifact && !input && !output_artifact && !entry && !budget &&
+                     !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
+        bool complete = boot.folder && boot.compiler && boot.core &&
+                        (boot.seed || !boot.revision);
+        return alone && complete ? bootstrap(&boot) : usage();
     }
     if (!artifact || !input || !entry || !budget ||
         backend == BEHAVIOR_UNAVAILABLE || (batch && output_artifact)) {

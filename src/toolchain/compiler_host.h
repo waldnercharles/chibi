@@ -43,6 +43,14 @@ typedef struct
  * Only text, arrays and the external JSON/raw-syntax bridges are admitted. */
 compiler_host *compiler_host_load(const void *, size_t, behavior_backend, char *error, size_t error_size);
 void compiler_host_free(compiler_host *);
+/* Compile's last six arguments for this host, which a compile for it takes:
+ * the value layout, prepared ABI, instruction names, the natives it may call
+ * (data functions with no flow, outcomes or suspension), their ports, and each
+ * native's identity and signature ABI. Malloc-owned JSON; release with free(). */
+char *compiler_host_target_json(const compiler_host *, size_t *length);
+/* The entry ID of a package symbol, such as
+ * "project:package_compiler:1:Compile:callable". */
+uint64_t compiler_host_entry(const char *symbol);
 /* Explicit entry ID in the artifact's root module. Arguments are a JSON array,
  * packed against decoded declarations. Address/reference argument and result
  * banks reject before JSON decoding; only owned-value contracts are admitted. Invalid UTF-8 bytes are preserved by the

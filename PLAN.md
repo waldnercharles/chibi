@@ -556,9 +556,10 @@ Step 5 is implemented for the package compiler on 2026-10-19:
   about 12 s: one compile, or two when the sources changed.
 
 At the owner's direction the clean-checkout artifact is published as a release
-asset, not checked in. The prerelease
-`compiler-bootstrap-1-d1c40f0d3c94` was built from revision `375459b4b`, and
-`tools/compiler/bootstrap.kdl` pins its manifest's SHA-256.
+asset, not checked in. The current prerelease,
+`compiler-bootstrap-1-fd1b5aaf8c6c`, was built from revision `da03e96dd`
+after `text_bytes` joined the host's natives, and `tools/compiler/bootstrap.kdl`
+pins its manifest's SHA-256.
 `make bootstrap-recover` downloads that release with `gh` and recovers the
 compiler from it, about 11 s on macOS arm64. See
 `docs/self-hosting-build.md`.

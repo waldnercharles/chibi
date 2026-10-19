@@ -6,35 +6,55 @@ import strings "core:strings"
 
 // One function body, emitted in one pass. A work stack visits statements and
 // expressions in evaluation order; each expression pushes its typed value.
-// Scalars live in the locals bank; calls pass values through data cells.
+// Scalars and strings live in the locals bank. Records live in data cells,
+// copied on every store; host calls and authored calls pass values through
+// cells, whose headers carry each value's type.
 
 Slot :: struct { storage: int; kind: int; }
 // An instruction with the value a constant or argument carries and the source
 // range it lowers.
 Code :: struct {
     op: int; type: int; output: int; left: int; right: int; target: int; offset: int;
-    value_storage: int; payload: int; start: int; end: int; line: int; column: int;
+    value_storage: int; value_record: int; payload: int; text: string; has_text: bool;
+    start: int; end: int; line: int; column: int;
 }
+// A data cell's header type; `offset` is a constant payload some cells carry.
+Cell :: struct { storage: int; record: int; offset: int; }
 Invocation :: struct { callee: int; first: int; count: int; result_first: int; result_count: int; }
+Host :: struct { intrinsic: int; first: int; result_first: int; result_count: int; }
+// A slot that holds a record pointer the collector must trace.
+Root :: struct { slot: int; record: int; }
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
-    | Emitted(slots: Slot[], locals: int[], cells: int[], code: Code[], calls: Invocation[])
+    | Emitted(slots: Slot[], locals: int[], cells: Cell[], code: Code[], calls: Invocation[],
+              hosts: Host[], roots: Root[])
 }
-Work :: struct { node: int; phase: int; a: int; b: int; }
-Value :: struct { slot: int; storage: int; }
-Name :: struct { name: string; local: int; storage: int; }
+Work :: struct { node: int; phase: int; a: int; b: int; expected: int; }
+Value :: struct { slot: int; storage: int; record: int; }
+// A name in scope: a locals-bank value, a record held in a data cell, or a
+// record parameter read in place.
+Name :: struct { name: string; place: int; index: int; storage: int; record: int; }
 Loop :: struct { head: int; first_break: int; }
 
 ValueKind: int : 0;
 AddressKind: int : 1;
+LocalPlace: int : 0;
+CellPlace: int : 1;
+ParameterPlace: int : 2;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
+// Expected-type codes: no expectation, or a record index.
+Unexpected: int : -1;
+SnapshotIntrinsic: int : 1;
+ConstructIntrinsic: int : 2;
+// The host-data failure category a host call reports.
+HostDataFailure: int : 4;
 
 Instruction :: pure fn(op: int, type: int, output: int, left: int, right: int, target: int,
                        item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
-        offset: 0, value_storage: 0, payload: 0, start: item.start, end: item.end,
-        line: item.row + 1, column: item.column + 1};
+        offset: 0, value_storage: 0, value_record: -1, payload: 0, text: "", has_text: false,
+        start: item.start, end: item.end, line: item.row + 1, column: item.column + 1};
 }
 // Decimal digits as an int, or -1 when they do not fit.
 Decimal :: pure fn(text: string) -> int64 {
@@ -85,17 +105,31 @@ FindCallable :: pure fn(callables: Callable[], name: string) -> int {
     }
     return -1;
 }
+FindField :: pure fn(records: Record[], fields: RecordField[], record: int, name: string) -> int {
+    at := records[record].first;
+    while (at < records[record].first + records[record].count) {
+        if (fields[at].name == name) { return at; }
+        at += 1;
+    }
+    return -1;
+}
+SameType :: pure fn(storage: int, record: int, value: Value) -> bool {
+    return storage == value.storage && record == value.record;
+}
 
 EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
-                    callables: Callable[], params: Param[], function: int,
-                    ops: Ops, target: Target) -> Body {
+                    callables: Callable[], params: Param[], records: Record[], fields: RecordField[],
+                    function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
+    // The storage of each locals-bank value; records never live there.
     locals: int[] = [];
-    cells: int[] = [];
+    cells: Cell[] = [];
     code: Code[] = [];
     calls: Invocation[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
     names: Name[] = [];
     work: Work[] = [];
     values: Value[] = [];
@@ -103,23 +137,30 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     breaks: int[] = [];
     work_top: int = 0;
     value_top: int = 0;
-    // Parameters move to locals, so assigning one needs no other form.
+    // Scalar and string parameters move to locals, so assigning one needs no
+    // other form; record parameters are read in place.
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
-        slot: Slot = {storage: param.storage, kind: ValueKind};
-        slots = array_add(slots, slot);
-        read := Instruction(ops.argument, param.storage, length(slots) - 1, index, 0, 0, declaration);
-        read.value_storage = param.storage;
-        code = array_add(code, read);
-        locals = array_add(locals, param.storage);
-        code = array_add(code, Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
-            length(locals) - 1, declaration));
-        name: Name = {name: param.name, local: length(locals) - 1, storage: param.storage};
-        names = array_add(names, name);
+        if (param.storage == StructStorage) {
+            name: Name = {name: param.name, place: ParameterPlace, index: index, storage: StructStorage, record: param.record};
+            names = array_add(names, name);
+        } else {
+            slot: Slot = {storage: param.storage, kind: ValueKind};
+            slots = array_add(slots, slot);
+            read := Instruction(ops.argument, param.storage, length(slots) - 1, index, 0, 0, declaration);
+            read.value_storage = param.storage;
+            code = array_add(code, read);
+            locals = array_add(locals, param.storage);
+            code = array_add(code, Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
+                length(locals) - 1, declaration));
+            name: Name = {name: param.name, place: LocalPlace, index: length(locals) - 1,
+                storage: param.storage, record: -1};
+            names = array_add(names, name);
+        }
         index += 1;
     }
-    first: Work = {node: Field(forest, callable.node, "body"), phase: 0, a: 0, b: 0};
+    first: Work = {node: Field(forest, callable.node, "body"), phase: 0, a: 0, b: 0, expected: Unexpected};
     work = array_add(work, first);
     work_top = 1;
     while (work_top > 0) {
@@ -129,12 +170,17 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         kind := node.kind;
         // Items this one schedules, in the order they run.
         next: Work[] = [];
+        // A value this item leaves for its consumer, when `produced.storage` is set.
+        produced: Value = {slot: -1, storage: 0, record: -1};
+        // A value to copy into a fresh cell and then hand to `retain_phase`.
+        retain_slot := -1;
+        retain_record := -1;
         if (kind == "callable_body" || kind == "block") {
             if (item.phase == 0) {
-                close: Work = {node: item.node, phase: 1, a: length(names), b: 0};
+                close: Work = {node: item.node, phase: 1, a: length(names), b: 0, expected: Unexpected};
                 child := FirstMember(forest, item.node);
                 while (child >= 0) {
-                    statement: Work = {node: child, phase: 0, a: 0, b: 0};
+                    statement: Work = {node: child, phase: 0, a: 0, b: 0, expected: Unexpected};
                     next = array_add(next, statement);
                     child = NextMember(forest, child);
                 }
@@ -148,32 +194,72 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
                 value := Field(forest, item.node, "value");
                 if (kind == "expression_statement") { value = FirstMember(forest, item.node); }
+                expected := Unexpected;
+                if (kind == "local_declaration") {
+                    declared := Field(forest, item.node, "type");
+                    if (declared >= 0) {
+                        resolved := ResolveType(records, Text(forest, text, declared));
+                        if (resolved.storage == StructStorage) { expected = resolved.record; }
+                    }
+                } else if (kind == "return_statement" && callable.result == StructStorage) {
+                    expected = callable.result_record;
+                } else if (kind == "assignment") {
+                    destination := Text(forest, text, Field(forest, item.node, "target"));
+                    at := length(names) - 1;
+                    while (at >= 0) {
+                        if (names[at].name == destination) {
+                            if (names[at].storage == StructStorage) { expected = names[at].record; }
+                            at = -1;
+                        }
+                        at -= 1;
+                    }
+                }
                 if (kind == "return_statement" && value < 0) {
                     if (callable.result != 0) {
                         return Body.Failed(Diagnose(forest, item.node, document, "return needs a value"));
                     }
                     code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
                 } else {
-                    expression: Work = {node: value, phase: 0, a: 0, b: 0};
-                    rest: Work = {node: item.node, phase: 1, a: 0, b: 0};
+                    expression: Work = {node: value, phase: 0, a: 0, b: 0, expected: expected};
+                    rest: Work = {node: item.node, phase: 1, a: 0, b: 0, expected: Unexpected};
                     next = array_add(next, expression);
                     next = array_add(next, rest);
                 }
-            } else {
+            } else if (item.phase == 1) {
                 value_top -= 1;
                 result := values[value_top];
                 if (kind == "local_declaration") {
                     declared := Field(forest, item.node, "type");
                     storage := result.storage;
-                    if (declared >= 0) { storage = TypeStorage(Text(forest, text, declared)); }
-                    if (storage == 0 || storage != result.storage) {
+                    record := result.record;
+                    if (declared >= 0) {
+                        resolved := ResolveType(records, Text(forest, text, declared));
+                        storage = resolved.storage;
+                        record = resolved.record;
+                    }
+                    if (result.storage < 0) {
+                        return Body.Failed(Diagnose(forest, item.node, document, "call has no value"));
+                    }
+                    if (storage == 0 || !SameType(storage, record, result)) {
                         return Body.Failed(Diagnose(forest, item.node, document, "local value differs from its type"));
                     }
-                    locals = array_add(locals, storage);
-                    code = array_add(code, Instruction(ops.save, storage, 0, result.slot, 0, length(locals) - 1, node));
-                    name: Name = {name: Text(forest, text, Field(forest, item.node, "name")),
-                        local: length(locals) - 1, storage: storage};
-                    names = array_add(names, name);
+                    name := NameText(forest, text, Field(forest, item.node, "name"));
+                    if (name == "") {
+                        return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document, "Invalid string or embedded NUL"));
+                    }
+                    if (storage == StructStorage) {
+                        // The local is the cell that holds its own copy.
+                        retain_slot = result.slot;
+                        retain_record = record;
+                        bound: Work = {node: item.node, phase: 2, a: 0, b: 0, expected: Unexpected};
+                        next = array_add(next, bound);
+                    } else {
+                        locals = array_add(locals, storage);
+                        code = array_add(code, Instruction(ops.save, storage, 0, result.slot, 0, length(locals) - 1, node));
+                        binding: Name = {name: name, place: LocalPlace, index: length(locals) - 1,
+                            storage: storage, record: -1};
+                        names = array_add(names, binding);
+                    }
                 } else if (kind == "assignment") {
                     destination := Field(forest, item.node, "target");
                     found := -1;
@@ -185,7 +271,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                             at -= 1;
                         }
                     }
-                    if (found < 0) {
+                    if (found < 0 || names[found].place == ParameterPlace) {
                         return Body.Failed(Diagnose(forest, destination, document, "assignment needs a local name"));
                     }
                     binding := names[found];
@@ -193,45 +279,105 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
                     if (operator != "") {
                         op := BinaryOp(ops, operator);
-                        if (op < 0 || Comparison(ops, op) || binding.storage != Integer || result.storage != Integer) {
+                        if (op < 0 || Comparison(ops, op) || binding.storage != IntStorage || result.storage != IntStorage) {
                             return Body.Failed(Diagnose(forest, item.node, document, "compound assignment needs int operands"));
                         }
-                        current: Slot = {storage: Integer, kind: ValueKind};
+                        current: Slot = {storage: IntStorage, kind: ValueKind};
                         slots = array_add(slots, current);
-                        code = array_add(code, Instruction(ops.local, Integer, length(slots) - 1, binding.local, 0, 0, node));
-                        combined: Slot = {storage: Integer, kind: ValueKind};
+                        code = array_add(code, Instruction(ops.local, IntStorage, length(slots) - 1, binding.index, 0, 0, node));
+                        combined: Slot = {storage: IntStorage, kind: ValueKind};
                         slots = array_add(slots, combined);
-                        code = array_add(code, Instruction(op, Integer, length(slots) - 1, length(slots) - 2,
+                        code = array_add(code, Instruction(op, IntStorage, length(slots) - 1, length(slots) - 2,
                             result.slot, -1, node));
-                        stored = {slot: length(slots) - 1, storage: Integer};
+                        stored = {slot: length(slots) - 1, storage: IntStorage, record: -1};
                     }
-                    if (stored.storage != binding.storage) {
+                    if (!SameType(binding.storage, binding.record, stored)) {
                         return Body.Failed(Diagnose(forest, item.node, document, "assigned value differs from its local"));
                     }
-                    code = array_add(code, Instruction(ops.save, binding.storage, 0, stored.slot, 0, binding.local, node));
+                    if (binding.place == CellPlace) {
+                        retain_slot = stored.slot;
+                        retain_record = binding.record;
+                        rest: Work = {node: item.node, phase: 2, a: binding.index, b: 0, expected: Unexpected};
+                        next = array_add(next, rest);
+                    } else {
+                        code = array_add(code, Instruction(ops.save, binding.storage, 0, stored.slot, 0, binding.index, node));
+                    }
                 } else if (kind == "return_statement") {
-                    if (result.storage != callable.result) {
+                    if (!SameType(callable.result, callable.result_record, result)) {
                         return Body.Failed(Diagnose(forest, item.node, document, "returned value differs from the result type"));
                     }
+                    if (result.storage == StructStorage) {
+                        retain_slot = result.slot;
+                        retain_record = result.record;
+                        rest: Work = {node: item.node, phase: 2, a: -1, b: 0, expected: Unexpected};
+                        next = array_add(next, rest);
+                    } else {
+                        returned := Instruction(ops.result, result.storage, 0, result.slot, 0, 0, node);
+                        code = array_add(code, returned);
+                        code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
+                    }
+                }
+            } else {
+                // A retained record: bind its cell, store it in a local's cell,
+                // or publish its header.
+                value_top -= 1;
+                kept := values[value_top];
+                if (kind == "local_declaration") {
+                    binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
+                        index: length(cells) - 1, storage: StructStorage, record: kept.record};
+                    names = array_add(names, binding);
+                } else if (kind == "assignment") {
+                    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, address);
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1, item.a, 0, 0, node));
+                    write := Instruction(ops.write, target.pointer_storage, 0, kept.slot, length(slots) - 1, 0, node);
+                    write.offset = target.payload_offset;
+                    code = array_add(code, write);
+                } else {
+                    // The retained cell is the last result cell; copy its whole
+                    // header, layout included, into result zero.
+                    source: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, source);
+                    source_slot := length(slots) - 1;
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, source_slot,
+                        length(cells) - 1, 0, 0, node));
                     results: Slot = {storage: target.pointer_storage, kind: AddressKind};
                     slots = array_add(slots, results);
                     context := Instruction(ops.context, target.pointer_storage, length(slots) - 1, 0, 0, 0, node);
                     context.offset = target.results_offset;
                     code = array_add(code, context);
-                    zero: Slot = {storage: Integer, kind: ValueKind};
+                    zero: Slot = {storage: IntStorage, kind: ValueKind};
                     slots = array_add(slots, zero);
-                    constant := Instruction(ops.constant, Integer, length(slots) - 1, 0, 0, 0, node);
-                    constant.value_storage = Integer;
+                    constant := Instruction(ops.constant, IntStorage, length(slots) - 1, 0, 0, 0, node);
+                    constant.value_storage = IntStorage;
                     code = array_add(code, constant);
-                    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-                    slots = array_add(slots, address);
+                    destination: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, destination);
                     element := Instruction(ops.index, target.pointer_storage, length(slots) - 1,
                         length(slots) - 3, length(slots) - 2, 0, node);
                     element.offset = target.value_size;
                     code = array_add(code, element);
-                    write := Instruction(ops.write, result.storage, 0, result.slot, length(slots) - 1, 0, node);
-                    write.offset = target.payload_offset;
-                    code = array_add(code, write);
+                    destination_slot := length(slots) - 1;
+                    header: int[] = [target.type_offset, target.container_offset, target.name_offset,
+                        target.record_offset, target.payload_offset];
+                    part: int = 0;
+                    while (part < 5) {
+                        storage := target.pointer_storage;
+                        part_kind := AddressKind;
+                        if (part < 2) {
+                            storage = IntStorage;
+                            part_kind = ValueKind;
+                        }
+                        loaded: Slot = {storage: storage, kind: part_kind};
+                        slots = array_add(slots, loaded);
+                        load := Instruction(ops.load, storage, length(slots) - 1, source_slot, 0, 0, node);
+                        load.offset = header[part];
+                        code = array_add(code, load);
+                        store := Instruction(ops.write, storage, 0, length(slots) - 1, destination_slot, 0, node);
+                        store.offset = header[part];
+                        code = array_add(code, store);
+                        part += 1;
+                    }
                     code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
                 }
             }
@@ -239,14 +385,14 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             if (item.phase == 0) {
                 head := length(code);
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
-                condition: Work = {node: Field(forest, item.node, "condition"), phase: 0, a: 0, b: 0};
-                decide: Work = {node: item.node, phase: 1, a: head, b: 0};
+                condition: Work = {node: Field(forest, item.node, "condition"), phase: 0, a: 0, b: 0, expected: Unexpected};
+                decide: Work = {node: item.node, phase: 1, a: head, b: 0, expected: Unexpected};
                 next = array_add(next, condition);
                 next = array_add(next, decide);
             } else if (item.phase == 1) {
                 value_top -= 1;
                 condition := values[value_top];
-                if (condition.storage != Boolean) {
+                if (condition.storage != BoolStorage) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "condition"), document,
                         "condition needs a bool"));
                 }
@@ -258,8 +404,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     loop: Loop = {head: item.a, first_break: length(breaks)};
                     loops = array_add(loops, loop);
                 }
-                body: Work = {node: Field(forest, item.node, field), phase: 0, a: 0, b: 0};
-                rest: Work = {node: item.node, phase: 2, a: item.a, b: length(code) - 1};
+                body: Work = {node: Field(forest, item.node, field), phase: 0, a: 0, b: 0, expected: Unexpected};
+                rest: Work = {node: item.node, phase: 2, a: item.a, b: length(code) - 1, expected: Unexpected};
                 next = array_add(next, body);
                 next = array_add(next, rest);
             } else if (item.phase == 2) {
@@ -284,8 +430,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     skip := code[item.b];
                     skip.target = length(code);
                     code[item.b] = skip;
-                    other: Work = {node: alternative, phase: 0, a: 0, b: 0};
-                    close: Work = {node: item.node, phase: 3, a: 0, b: length(code) - 1};
+                    other: Work = {node: alternative, phase: 0, a: 0, b: 0, expected: Unexpected};
+                    close: Work = {node: item.node, phase: 3, a: 0, b: length(code) - 1, expected: Unexpected};
                     next = array_add(next, other);
                     next = array_add(next, close);
                 } else {
@@ -309,10 +455,10 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             } else {
                 code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, loops[length(loops) - 1].head, node));
             }
-        } else if (kind == "number" || kind == "boolean" || kind == "identifier") {
-            storage := Integer;
+        } else if (kind == "number" || kind == "boolean" || kind == "string") {
+            storage := IntStorage;
             payload: int = 0;
-            local := -1;
+            literal := "";
             if (kind == "number") {
                 parsed := Decimal(Text(forest, text, item.node));
                 if (parsed < 0 || parsed > 2147483647) {
@@ -320,52 +466,193 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 }
                 payload = int(parsed);
             } else if (kind == "boolean") {
-                storage = Boolean;
+                storage = BoolStorage;
                 if (Text(forest, text, item.node) == "true") { payload = 1; }
             } else {
-                wanted := Text(forest, text, item.node);
-                at := length(names) - 1;
-                while (at >= 0 && local < 0) {
-                    if (names[at].name == wanted) {
-                        local = names[at].local;
-                        storage = names[at].storage;
-                    }
-                    at -= 1;
+                // String literals are JSON strings.
+                storage = TextStorage;
+                decoded := compiler_json_string(Text(forest, text, item.node));
+                if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "Invalid string or embedded NUL"));
                 }
-                if (local < 0) {
-                    return Body.Failed(Diagnose(forest, item.node, document, format_text("Unknown name '{}'", wanted)));
-                }
+                literal = decoded.value;
             }
             slot: Slot = {storage: storage, kind: ValueKind};
             slots = array_add(slots, slot);
-            if (local >= 0) {
-                code = array_add(code, Instruction(ops.local, storage, length(slots) - 1, local, 0, 0, node));
-            } else {
-                constant := Instruction(ops.constant, storage, length(slots) - 1, 0, 0, 0, node);
-                constant.value_storage = storage;
-                constant.payload = payload;
-                code = array_add(code, constant);
+            constant := Instruction(ops.constant, storage, length(slots) - 1, 0, 0, 0, node);
+            constant.value_storage = storage;
+            constant.payload = payload;
+            constant.text = literal;
+            constant.has_text = kind == "string";
+            code = array_add(code, constant);
+            produced = {slot: length(slots) - 1, storage: storage, record: -1};
+        } else if (kind == "identifier") {
+            wanted := Text(forest, text, item.node);
+            found := -1;
+            at := length(names) - 1;
+            while (at >= 0 && found < 0) {
+                if (names[at].name == wanted) { found = at; }
+                at -= 1;
             }
-            produced: Value = {slot: length(slots) - 1, storage: storage};
-            if (value_top < length(values)) { values[value_top] = produced; } else { values = array_add(values, produced); }
-            value_top += 1;
+            if (found < 0) {
+                return Body.Failed(Diagnose(forest, item.node, document, format_text("Unknown name '{}'", wanted)));
+            }
+            binding := names[found];
+            if (binding.place == LocalPlace) {
+                slot: Slot = {storage: binding.storage, kind: ValueKind};
+                slots = array_add(slots, slot);
+                code = array_add(code, Instruction(ops.local, binding.storage, length(slots) - 1, binding.index, 0, 0, node));
+            } else {
+                address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                slots = array_add(slots, address);
+                if (binding.place == CellPlace) {
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                        binding.index, 0, 0, node));
+                    pointer: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, pointer);
+                    load := Instruction(ops.load, target.pointer_storage, length(slots) - 1, length(slots) - 2, 0, 0, node);
+                    load.offset = target.payload_offset;
+                    code = array_add(code, load);
+                } else {
+                    read := Instruction(ops.array, target.pointer_storage, length(slots) - 1, binding.index, 0,
+                        ops.argument, node);
+                    read.value_storage = StructStorage;
+                    read.value_record = binding.record;
+                    code = array_add(code, read);
+                }
+                root: Root = {slot: length(slots) - 1, record: binding.record};
+                roots = array_add(roots, root);
+            }
+            produced = {slot: length(slots) - 1, storage: binding.storage, record: binding.record};
         } else if (kind == "parenthesized_expression") {
-            inner: Work = {node: Field(forest, item.node, "expression"), phase: 0, a: 0, b: 0};
+            inner: Work = {node: Field(forest, item.node, "expression"), phase: 0, a: 0, b: 0, expected: item.expected};
             next = array_add(next, inner);
+        } else if (kind == "member_expression") {
+            if (item.phase == 0) {
+                object: Work = {node: Field(forest, item.node, "object"), phase: 0, a: 0, b: 0, expected: Unexpected};
+                rest: Work = {node: item.node, phase: 1, a: 0, b: 0, expected: Unexpected};
+                next = array_add(next, object);
+                next = array_add(next, rest);
+            } else {
+                value_top -= 1;
+                object := values[value_top];
+                member := NameText(forest, text, Field(forest, item.node, "member"));
+                if (member == "") {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL"));
+                }
+                found := -1;
+                if (object.storage == StructStorage) { found = FindField(records, fields, object.record, member); }
+                if (found < 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, format_text("Unknown field '{}'", member)));
+                }
+                field := fields[found];
+                slot: Slot = {storage: field.storage, kind: ValueKind};
+                slots = array_add(slots, slot);
+                read := Instruction(ops.load, field.storage, length(slots) - 1, object.slot, 0, 0, node);
+                read.offset = field.offset;
+                code = array_add(code, read);
+                produced = {slot: length(slots) - 1, storage: field.storage, record: -1};
+            }
+        } else if (kind == "struct_expression") {
+            record := item.expected;
+            if (record < 0) {
+                return Body.Failed(Diagnose(forest, item.node, document, "Struct literal needs an explicit record type"));
+            }
+            if (item.phase == 0) {
+                count: int = 0;
+                member := FirstMember(forest, item.node);
+                while (member >= 0) {
+                    name := NameText(forest, text, Field(forest, member, "name"));
+                    if (name == "") {
+                        return Body.Failed(Diagnose(forest, Field(forest, member, "name"), document, "Invalid string or embedded NUL"));
+                    }
+                    found := FindField(records, fields, record, name);
+                    if (found < 0) {
+                        return Body.Failed(Diagnose(forest, member, document, format_text("Unknown field '{}'", name)));
+                    }
+                    earlier := FirstMember(forest, item.node);
+                    while (earlier != member) {
+                        if (NameText(forest, text, Field(forest, earlier, "name")) == name) {
+                            return Body.Failed(Diagnose(forest, member, document,
+                                format_text("Duplicate literal member '{}'", name)));
+                        }
+                        earlier = NextMember(forest, earlier);
+                    }
+                    value: Work = {node: Field(forest, member, "value"), phase: 0, a: 0, b: 0, expected: Unexpected};
+                    next = array_add(next, value);
+                    count += 1;
+                    member = NextMember(forest, member);
+                }
+                if (count != records[record].count) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "Struct literal needs every field"));
+                }
+                rest: Work = {node: item.node, phase: 1, a: count, b: 0, expected: record};
+                next = array_add(next, rest);
+            } else {
+                // The constructor takes the record header, then each field as an
+                // offset cell and a value cell, and returns the new record.
+                base := length(cells);
+                header: Cell = {storage: StructStorage, record: record, offset: 0};
+                cells = array_add(cells, header);
+                value_top -= item.a;
+                member := FirstMember(forest, item.node);
+                at: int = 0;
+                while (member >= 0) {
+                    field := fields[FindField(records, fields, record, NameText(forest, text, Field(forest, member, "name")))];
+                    value := values[value_top + at];
+                    if (!SameType(field.storage, -1, value)) {
+                        return Body.Failed(Diagnose(forest, member, document, "field value differs from its type"));
+                    }
+                    offset: Cell = {storage: WordStorage, record: -1, offset: field.offset};
+                    cells = array_add(cells, offset);
+                    content: Cell = {storage: field.storage, record: -1, offset: 0};
+                    cells = array_add(cells, content);
+                    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, address);
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                        length(cells) - 1, 0, 0, forest[member]));
+                    write := Instruction(ops.write, field.storage, 0, value.slot, length(slots) - 1, 0, forest[member]);
+                    write.offset = target.payload_offset;
+                    code = array_add(code, write);
+                    at += 1;
+                    member = NextMember(forest, member);
+                }
+                made: Cell = {storage: StructStorage, record: record, offset: 0};
+                cells = array_add(cells, made);
+                host: Host = {intrinsic: ConstructIntrinsic, first: base, result_first: length(cells) - 1, result_count: 1};
+                hosts = array_add(hosts, host);
+                code = array_add(code, Instruction(ops.host_call, 0, 0, HostDataFailure, 0, length(hosts) - 1, node));
+                address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                slots = array_add(slots, address);
+                code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                    length(cells) - 1, 0, 0, node));
+                pointer: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                slots = array_add(slots, pointer);
+                load := Instruction(ops.load, target.pointer_storage, length(slots) - 1, length(slots) - 2, 0, 0, node);
+                load.offset = target.payload_offset;
+                code = array_add(code, load);
+                root: Root = {slot: length(slots) - 1, record: record};
+                roots = array_add(roots, root);
+                produced = {slot: length(slots) - 1, storage: StructStorage, record: record};
+            }
         } else if (kind == "unary_expression" || kind == "binary_expression" || kind == "call_expression") {
             operator := Text(forest, text, Field(forest, item.node, "operator"));
             logic := operator == "&&" || operator == "and" || operator == "||" || operator == "or";
             if (item.phase == 0) {
                 if (kind == "unary_expression") {
-                    operand: Work = {node: Field(forest, item.node, "operand"), phase: 0, a: 0, b: 0};
+                    operand: Work = {node: Field(forest, item.node, "operand"), phase: 0, a: 0, b: 0, expected: Unexpected};
                     next = array_add(next, operand);
+                    finish: Work = {node: item.node, phase: 1, a: 0, b: 0, expected: Unexpected};
+                    next = array_add(next, finish);
                 } else if (kind == "binary_expression") {
-                    left: Work = {node: Field(forest, item.node, "left"), phase: 0, a: 0, b: 0};
+                    left: Work = {node: Field(forest, item.node, "left"), phase: 0, a: 0, b: 0, expected: Unexpected};
                     next = array_add(next, left);
                     if (!logic) {
-                        right: Work = {node: Field(forest, item.node, "right"), phase: 0, a: 0, b: 0};
+                        right: Work = {node: Field(forest, item.node, "right"), phase: 0, a: 0, b: 0, expected: Unexpected};
                         next = array_add(next, right);
                     }
+                    finish: Work = {node: item.node, phase: 1, a: 0, b: 0, expected: Unexpected};
+                    next = array_add(next, finish);
                 } else {
                     callee := Field(forest, item.node, "function");
                     found := -1;
@@ -376,7 +663,11 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     count: int = 0;
                     argument := FirstMember(forest, Field(forest, item.node, "arguments"));
                     while (argument >= 0) {
-                        value: Work = {node: argument, phase: 0, a: 0, b: 0};
+                        expected := Unexpected;
+                        if (count < callables[found].count && params[callables[found].first + count].storage == StructStorage) {
+                            expected = params[callables[found].first + count].record;
+                        }
+                        value: Work = {node: argument, phase: 0, a: 0, b: 0, expected: expected};
                         next = array_add(next, value);
                         count += 1;
                         argument = NextMember(forest, argument);
@@ -384,24 +675,19 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     if (count != callables[found].count) {
                         return Body.Failed(Diagnose(forest, item.node, document, "call has the wrong number of arguments"));
                     }
-                    finish: Work = {node: item.node, phase: 1, a: found, b: count};
-                    next = array_add(next, finish);
-                    item.phase = -1;
-                }
-                if (item.phase == 0) {
-                    finish: Work = {node: item.node, phase: 1, a: 0, b: 0};
+                    finish: Work = {node: item.node, phase: 1, a: found, b: count, expected: Unexpected};
                     next = array_add(next, finish);
                 }
             } else if (kind == "binary_expression" && logic && item.phase == 1) {
                 // The temporary local holds the answer whichever side decides it.
                 value_top -= 1;
                 left := values[value_top];
-                if (left.storage != Boolean) {
+                if (left.storage != BoolStorage) {
                     return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
                 }
-                locals = array_add(locals, Boolean);
+                locals = array_add(locals, BoolStorage);
                 answer := length(locals) - 1;
-                code = array_add(code, Instruction(ops.save, Boolean, 0, left.slot, 0, answer, node));
+                code = array_add(code, Instruction(ops.save, BoolStorage, 0, left.slot, 0, answer, node));
                 escape := length(code);
                 if (operator == "&&" || operator == "and") {
                     code = array_add(code, Instruction(ops.branch_if, 0, 0, left.slot, 0, length(code) + 2, node));
@@ -410,103 +696,115 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 } else {
                     code = array_add(code, Instruction(ops.branch_if, 0, 0, left.slot, 0, Pending, node));
                 }
-                right: Work = {node: Field(forest, item.node, "right"), phase: 0, a: 0, b: 0};
-                close: Work = {node: item.node, phase: 2, a: answer, b: escape};
+                right: Work = {node: Field(forest, item.node, "right"), phase: 0, a: 0, b: 0, expected: Unexpected};
+                close: Work = {node: item.node, phase: 2, a: answer, b: escape, expected: Unexpected};
                 next = array_add(next, right);
                 next = array_add(next, close);
+            } else if (kind == "binary_expression" && logic) {
+                value_top -= 1;
+                right := values[value_top];
+                if (right.storage != BoolStorage) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
+                }
+                code = array_add(code, Instruction(ops.save, BoolStorage, 0, right.slot, 0, item.a, node));
+                escape := code[item.b];
+                escape.target = length(code);
+                code[item.b] = escape;
+                slot: Slot = {storage: BoolStorage, kind: ValueKind};
+                slots = array_add(slots, slot);
+                code = array_add(code, Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
+                produced = {slot: length(slots) - 1, storage: BoolStorage, record: -1};
+            } else if (kind == "call_expression") {
+                // Arguments go to fresh data cells, the result comes back in one.
+                called := callables[item.a];
+                first_cell := length(cells);
+                argument_index: int = 0;
+                while (argument_index < item.b) {
+                    param := params[called.first + argument_index];
+                    cell: Cell = {storage: param.storage, record: param.record, offset: 0};
+                    cells = array_add(cells, cell);
+                    argument_index += 1;
+                }
+                value_top -= item.b;
+                argument_index = 0;
+                while (argument_index < item.b) {
+                    argument := values[value_top + argument_index];
+                    param := params[called.first + argument_index];
+                    if (!SameType(param.storage, param.record, argument)) {
+                        return Body.Failed(Diagnose(forest, item.node, document, "argument differs from its parameter type"));
+                    }
+                    storage := param.storage;
+                    if (storage == StructStorage) { storage = target.pointer_storage; }
+                    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, address);
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                        first_cell + argument_index, 0, 0, node));
+                    write := Instruction(ops.write, storage, 0, argument.slot, length(slots) - 1, 0, node);
+                    write.offset = target.payload_offset;
+                    code = array_add(code, write);
+                    argument_index += 1;
+                }
+                result_count: int = 0;
+                if (called.result != 0) {
+                    result_count = 1;
+                    cell: Cell = {storage: called.result, record: called.result_record, offset: 0};
+                    cells = array_add(cells, cell);
+                }
+                invocation: Invocation = {callee: item.a, first: first_cell, count: item.b,
+                    result_first: first_cell + item.b, result_count: result_count};
+                calls = array_add(calls, invocation);
+                // Each invocation suspends the caller once; its index is its order.
+                code = array_add(code, Instruction(ops.invoke, 0, 0, length(calls) - 1, 0, length(calls) - 1, node));
+                if (called.result == 0) {
+                    produced = {slot: -1, storage: -1, record: -1};
+                } else {
+                    storage := called.result;
+                    slot_kind := ValueKind;
+                    if (storage == StructStorage) {
+                        storage = target.pointer_storage;
+                        slot_kind = AddressKind;
+                    }
+                    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                    slots = array_add(slots, address);
+                    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                        first_cell + item.b, 0, 0, node));
+                    result: Slot = {storage: storage, kind: slot_kind};
+                    slots = array_add(slots, result);
+                    read := Instruction(ops.load, storage, length(slots) - 1, length(slots) - 2, 0, 0, node);
+                    read.offset = target.payload_offset;
+                    code = array_add(code, read);
+                    if (called.result == StructStorage) {
+                        root: Root = {slot: length(slots) - 1, record: called.result_record};
+                        roots = array_add(roots, root);
+                    }
+                    produced = {slot: length(slots) - 1, storage: called.result, record: called.result_record};
+                }
             } else {
-                storage := Integer;
+                storage := IntStorage;
                 op := -1;
-                operand_storage := Integer;
+                operand_storage := IntStorage;
                 left_slot := -1;
                 right_slot := -1;
-                result_local := -1;
-                if (kind == "call_expression") {
-                    // Arguments go to fresh data cells, the result comes back in one.
-                    called := callables[item.a];
-                    first_cell := length(cells);
-                    argument_index: int = 0;
-                    while (argument_index < item.b) {
-                        cells = array_add(cells, params[called.first + argument_index].storage);
-                        argument_index += 1;
-                    }
-                    value_top -= item.b;
-                    argument_index = 0;
-                    while (argument_index < item.b) {
-                        argument := values[value_top + argument_index];
-                        expected := params[called.first + argument_index].storage;
-                        if (argument.storage != expected) {
-                            return Body.Failed(Diagnose(forest, item.node, document,
-                                "argument differs from its parameter type"));
-                        }
-                        address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-                        slots = array_add(slots, address);
-                        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
-                            first_cell + argument_index, 0, 0, node));
-                        write := Instruction(ops.write, expected, 0, argument.slot, length(slots) - 1, 0, node);
-                        write.offset = target.payload_offset;
-                        code = array_add(code, write);
-                        argument_index += 1;
-                    }
-                    result_count: int = 0;
-                    if (called.result != 0) {
-                        result_count = 1;
-                        cells = array_add(cells, called.result);
-                    }
-                    invocation: Invocation = {callee: item.a, first: first_cell, count: item.b,
-                        result_first: first_cell + item.b, result_count: result_count};
-                    calls = array_add(calls, invocation);
-                    // Each invocation suspends the caller once; its index is its order.
-                    code = array_add(code, Instruction(ops.invoke, 0, 0, length(calls) - 1, 0, length(calls) - 1, node));
-                    if (called.result == 0) {
-                        empty: Value = {slot: -1, storage: 0};
-                        if (value_top < length(values)) { values[value_top] = empty; } else { values = array_add(values, empty); }
-                        value_top += 1;
-                        storage = -1;
-                    } else {
-                        address: Slot = {storage: target.pointer_storage, kind: AddressKind};
-                        slots = array_add(slots, address);
-                        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
-                            first_cell + item.b, 0, 0, node));
-                        result: Slot = {storage: called.result, kind: ValueKind};
-                        slots = array_add(slots, result);
-                        read := Instruction(ops.read, called.result, length(slots) - 1, length(slots) - 2, 0, 0, node);
-                        read.offset = target.payload_offset;
-                        code = array_add(code, read);
-                        storage = -2;
-                    }
-                } else if (kind == "binary_expression" && logic) {
-                    value_top -= 1;
-                    right := values[value_top];
-                    if (right.storage != Boolean) {
-                        return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
-                    }
-                    code = array_add(code, Instruction(ops.save, Boolean, 0, right.slot, 0, item.a, node));
-                    escape := code[item.b];
-                    escape.target = length(code);
-                    code[item.b] = escape;
-                    storage = Boolean;
-                    result_local = item.a;
-                } else if (kind == "unary_expression") {
+                if (kind == "unary_expression") {
                     value_top -= 1;
                     operand := values[value_top];
                     left_slot = operand.slot;
                     operand_storage = operand.storage;
                     storage = operand.storage;
-                    if (operator == "-" && operand.storage == Integer) {
+                    if (operator == "-" && operand.storage == IntStorage) {
                         op = ops.neg;
-                    } else if (operator == "~" && operand.storage == Integer) {
+                    } else if (operator == "~" && operand.storage == IntStorage) {
                         op = ops.bit_not;
-                    } else if ((operator == "!" || operator == "not") && operand.storage == Boolean) {
+                    } else if ((operator == "!" || operator == "not") && operand.storage == BoolStorage) {
                         // Not is equality with false.
-                        zero: Slot = {storage: Boolean, kind: ValueKind};
+                        zero: Slot = {storage: BoolStorage, kind: ValueKind};
                         slots = array_add(slots, zero);
-                        constant := Instruction(ops.constant, Boolean, length(slots) - 1, 0, 0, 0, node);
-                        constant.value_storage = Boolean;
+                        constant := Instruction(ops.constant, BoolStorage, length(slots) - 1, 0, 0, 0, node);
+                        constant.value_storage = BoolStorage;
                         code = array_add(code, constant);
                         right_slot = length(slots) - 1;
                         op = ops.eq;
-                    } else if (operator == "+" && operand.storage == Integer) {
+                    } else if (operator == "+" && operand.storage == IntStorage) {
                         op = -2;
                     } else {
                         return Body.Failed(Diagnose(forest, item.node, document, "operator does not apply to this operand"));
@@ -520,43 +818,85 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     right_slot = right.slot;
                     operand_storage = left.storage;
                     storage = left.storage;
-                    integral := left.storage == Integer && right.storage == Integer;
-                    same := left.storage == right.storage && left.storage != 0;
-                    if (op < 0 || (!integral && !((op == ops.eq || op == ops.ne) && same))) {
+                    integral := left.storage == IntStorage && right.storage == IntStorage;
+                    equality := op == ops.eq || op == ops.ne;
+                    same := left.storage == right.storage && (left.storage == IntStorage || left.storage == BoolStorage ||
+                                                              left.storage == TextStorage);
+                    if (op < 0 || (!integral && !(equality && same))) {
                         return Body.Failed(Diagnose(forest, item.node, document, "operator does not apply to these operands"));
                     }
-                    if (Comparison(ops, op)) { storage = Boolean; }
-                }
-                if (storage >= 0) {
-                    produced: Value = {slot: -1, storage: storage};
-                    if (result_local >= 0) {
-                        slot: Slot = {storage: Boolean, kind: ValueKind};
-                        slots = array_add(slots, slot);
-                        code = array_add(code, Instruction(ops.local, Boolean, length(slots) - 1, result_local, 0, 0, node));
-                        produced.slot = length(slots) - 1;
-                    } else if (op == -2) {
-                        produced.slot = left_slot;
-                    } else {
-                        slot: Slot = {storage: storage, kind: ValueKind};
-                        slots = array_add(slots, slot);
-                        operation := Instruction(op, operand_storage, length(slots) - 1, left_slot, right_slot, -1, node);
-                        if (op == ops.neg || op == ops.bit_not) {
-                            operation.right = 0;
-                            operation.target = 0;
+                    if (Comparison(ops, op)) { storage = BoolStorage; }
+                    if (equality && left.storage == TextStorage) {
+                        // TextStorage compares by content; inequality negates it.
+                        equal: Slot = {storage: BoolStorage, kind: ValueKind};
+                        slots = array_add(slots, equal);
+                        code = array_add(code, Instruction(ops.string_equal, BoolStorage, length(slots) - 1, left_slot,
+                            right_slot, 0, node));
+                        left_slot = length(slots) - 1;
+                        operand_storage = BoolStorage;
+                        if (op == ops.eq) {
+                            op = -2;
+                        } else {
+                            zero: Slot = {storage: BoolStorage, kind: ValueKind};
+                            slots = array_add(slots, zero);
+                            constant := Instruction(ops.constant, BoolStorage, length(slots) - 1, 0, 0, 0, node);
+                            constant.value_storage = BoolStorage;
+                            code = array_add(code, constant);
+                            right_slot = length(slots) - 1;
+                            op = ops.eq;
                         }
-                        code = array_add(code, operation);
-                        produced.slot = length(slots) - 1;
                     }
-                    if (value_top < length(values)) { values[value_top] = produced; } else { values = array_add(values, produced); }
-                    value_top += 1;
-                } else if (storage == -2) {
-                    produced: Value = {slot: length(slots) - 1, storage: callables[item.a].result};
-                    if (value_top < length(values)) { values[value_top] = produced; } else { values = array_add(values, produced); }
-                    value_top += 1;
+                }
+                if (op == -2) {
+                    produced = {slot: left_slot, storage: storage, record: -1};
+                } else {
+                    slot: Slot = {storage: storage, kind: ValueKind};
+                    slots = array_add(slots, slot);
+                    operation := Instruction(op, operand_storage, length(slots) - 1, left_slot, right_slot, -1, node);
+                    if (op == ops.neg || op == ops.bit_not) {
+                        operation.right = 0;
+                        operation.target = 0;
+                    }
+                    code = array_add(code, operation);
+                    produced = {slot: length(slots) - 1, storage: storage, record: -1};
                 }
             }
         } else {
             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
+        }
+        if (retain_slot >= 0) {
+            // Copy the record into a fresh snapshot cell and keep its new address.
+            argument: Cell = {storage: StructStorage, record: retain_record, offset: 0};
+            cells = array_add(cells, argument);
+            kept: Cell = {storage: StructStorage, record: retain_record, offset: 0};
+            cells = array_add(cells, kept);
+            address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+            slots = array_add(slots, address);
+            code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                length(cells) - 2, 0, 0, node));
+            write := Instruction(ops.write, target.pointer_storage, 0, retain_slot, length(slots) - 1, 0, node);
+            write.offset = target.payload_offset;
+            code = array_add(code, write);
+            host: Host = {intrinsic: SnapshotIntrinsic, first: length(cells) - 2, result_first: length(cells) - 1,
+                result_count: 1};
+            hosts = array_add(hosts, host);
+            code = array_add(code, Instruction(ops.host_call, 0, 0, HostDataFailure, 0, length(hosts) - 1, node));
+            result_address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+            slots = array_add(slots, result_address);
+            code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                length(cells) - 1, 0, 0, node));
+            pointer: Slot = {storage: target.pointer_storage, kind: AddressKind};
+            slots = array_add(slots, pointer);
+            load := Instruction(ops.load, target.pointer_storage, length(slots) - 1, length(slots) - 2, 0, 0, node);
+            load.offset = target.payload_offset;
+            code = array_add(code, load);
+            root: Root = {slot: length(slots) - 1, record: retain_record};
+            roots = array_add(roots, root);
+            produced = {slot: length(slots) - 1, storage: StructStorage, record: retain_record};
+        }
+        if (produced.storage != 0) {
+            if (value_top < length(values)) { values[value_top] = produced; } else { values = array_add(values, produced); }
+            value_top += 1;
         }
         // Run scheduled items in order: the last pushed runs first.
         at := length(next) - 1;
@@ -567,5 +907,5 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         }
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
-    return Body.Emitted(slots, locals, cells, code, calls);
+    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots);
 }

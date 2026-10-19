@@ -765,11 +765,14 @@ without copies (see "Read-only plain-array traversals" in
 parameter still copy the referenced value.
 
 The stage-one compiler starts as `tools/compiler/package_compiler` (see
-`docs/package-compiler.md`). It compiles packages of scalar functions with
-statements, control flow and calls to runnable closures that agree with stage
-zero, with no native step after the parser. Records, arrays, strings, unions,
-imports and natives follow, then the compiler's own sources. Debugger points
-and watches are deferred until before stage one becomes the normal compiler.
+`docs/package-compiler.md`). It compiles packages of functions and records,
+with `int`, `bool` and `string` values, statements, control flow and calls, to
+runnable closures that agree with stage zero, with no native step after the
+parser. Records use stage zero's value model: construct and snapshot
+intrinsics, stage zero's record IDs and layout hashes, and value roots for
+suspended callers. Arrays, unions, imports and natives follow, then the
+compiler's own sources. Debugger points and watches are deferred until before
+stage one becomes the normal compiler.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

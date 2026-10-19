@@ -7,27 +7,47 @@ import syntax "project:syntax_diagnostics"
 import writer "project:prepared_writer"
 import strings "core:strings"
 
-// Compiles one package of scalar functions to a prepared closure. Stage zero
-// builds this compiler; everything after the raw parser is authored.
+// Compiles one package of functions and records to a prepared closure. Stage
+// zero builds this compiler; everything after the raw parser is authored.
 
-// Layout facts of the runtime this compiler targets, which Chibi cannot see.
-Target :: struct { pointer_storage: int; value_size: int; payload_offset: int; results_offset: int; }
+// Layout facts of the runtime this compiler targets, which Chibi cannot see:
+// pointer width and the byte offsets of a value header's members.
+Target :: struct {
+    pointer_storage: int; pointer_size: int; value_size: int; payload_offset: int; results_offset: int;
+    type_offset: int; container_offset: int; name_offset: int; record_offset: int;
+}
 // Prepared instructions this compiler emits, as ordinals on the target.
 Ops :: struct {
-    constant: int; argument: int; local: int; save: int; context: int; host_slot: int;
-    index: int; read: int; write: int; invoke: int; check: int; branch_if: int; jump: int;
-    finish: int; end: int; add: int; sub: int; mul: int; div: int; mod: int; neg: int;
-    bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int; shr: int;
-    lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
+    constant: int; argument: int; local: int; save: int; context: int; array: int; host_slot: int;
+    string_equal: int; index: int; load: int; write: int; result: int; host_call: int; invoke: int;
+    check: int; branch_if: int; jump: int; finish: int; end: int; add: int; sub: int; mul: int;
+    div: int; mod: int; neg: int; bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int;
+    shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
 }
-Callable :: struct { name: string; document: int; node: int; first: int; count: int; result: int; }
-Param :: struct { name: string; storage: int; }
+// A signature type: a storage code and, for records, a record index.
+ValueType :: struct { storage: int; record: int; }
+Callable :: struct {
+    name: string; document: int; node: int; first: int; count: int; result: int; result_record: int;
+}
+Param :: struct { name: string; storage: int; record: int; }
+// An authored record; its fields are fields[first, first + count).
+Record :: struct { name: string; type_name: string; first: int; count: int; size: int; }
+RecordField :: struct { name: string; storage: int; offset: int; }
 Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
-Declarations :: union { Failed(diagnostic: syntax.Diagnostic) | Collected(callables: Callable[], params: Param[]) }
+Declarations :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Collected(callables: Callable[], params: Param[], records: Record[], fields: RecordField[])
+}
 
-Boolean: int : 1;
-Integer: int : 6;
+BoolStorage: int : 1;
+IntStorage: int : 6;
+WordStorage: int : 9;
+TextStorage: int : 13;
+StructStorage: int : 15;
 FunctionKind: int : 1;
+RecordKind: int : 13;
+// Runtime intrinsics are host capabilities with this prefix and ABI one.
+IntrinsicBase: uint64 : 0x4348494900000000;
 
 Ordinal :: pure fn(names: string[], name: string) -> int {
     index: int = 0;
@@ -40,8 +60,10 @@ Ordinal :: pure fn(names: string[], name: string) -> int {
 ResolveOps :: pure fn(names: string[]) -> Ops {
     return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
         local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
-        host_slot: Ordinal(names, "HOST_SLOT"), index: Ordinal(names, "INDEX"), read: Ordinal(names, "READ"),
-        write: Ordinal(names, "WRITE"), invoke: Ordinal(names, "INVOKE"), check: Ordinal(names, "CHECK"),
+        array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
+        string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
+        load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
+        host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), check: Ordinal(names, "CHECK"),
         branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
         end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
         mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
@@ -52,8 +74,9 @@ ResolveOps :: pure fn(names: string[]) -> Ops {
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: pure fn(ops: Ops) -> bool {
-    used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.host_slot,
-        ops.index, ops.read, ops.write, ops.invoke, ops.check, ops.branch_if, ops.jump, ops.finish,
+    used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
+        ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
+        ops.invoke, ops.check, ops.branch_if, ops.jump, ops.finish,
         ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
         ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne];
     foreach (op in used) {
@@ -61,75 +84,215 @@ Complete :: pure fn(ops: Ops) -> bool {
     }
     return true;
 }
-TypeStorage :: pure fn(text: string) -> int {
-    if (text == "int") { return Integer; }
-    if (text == "bool") { return Boolean; }
+// The storage of a type a record field may hold, 0 for any other.
+FieldStorage :: pure fn(text: string) -> int {
+    if (text == "int") { return IntStorage; }
+    if (text == "bool") { return BoolStorage; }
+    if (text == "string") { return TextStorage; }
     return 0;
+}
+FindRecord :: pure fn(records: Record[], name: string) -> int {
+    index: int = 0;
+    while (index < length(records)) {
+        if (records[index].name == name) { return index; }
+        index += 1;
+    }
+    return -1;
+}
+// A field type or a record of this package; storage 0 when neither.
+ResolveType :: pure fn(records: Record[], text: string) -> ValueType {
+    storage := FieldStorage(text);
+    if (storage != 0) { return {storage: storage, record: -1}; }
+    record := FindRecord(records, text);
+    if (record < 0) { return {storage: 0, record: -1}; }
+    return {storage: StructStorage, record: record};
+}
+// Field width, which is also its alignment, as the runtime lays records out.
+FieldSize :: pure fn(storage: int, target: Target) -> int {
+    if (storage == TextStorage) { return target.pointer_size; }
+    if (storage == IntStorage) { return 4; }
+    return 1;
+}
+AlignTo :: pure fn(size: int, alignment: int) -> int {
+    rest := size % alignment;
+    if (rest == 0) { return size; }
+    return size + alignment - rest;
 }
 InputFailure :: pure fn(document: int, message: string) -> Result {
     diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
     return Result.Rejected(diagnostic);
 }
 
-// Every function of one package, in file and source order.
-Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[]) -> Declarations {
+// Every record and function of one package, in file and source order.
+// Records come first, so any signature may name any record.
+Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
+                   package_name: string, target: Target) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
+    records: Record[] = [];
+    fields: RecordField[] = [];
+    foreach (file in files) {
+        text := documents[file].text;
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "record_declaration")) {
+                name := NameText(forest, text, Field(forest, member, "name"));
+                if (name == "") {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
+                }
+                if (FindRecord(records, name) >= 0) {
+                    return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
+                }
+                first := length(fields);
+                size: int = 0;
+                alignment: int = 1;
+                item := FirstMember(forest, Field(forest, member, "body"));
+                while (item >= 0) {
+                    field_name := NameText(forest, text, Field(forest, item, "name"));
+                    if (field_name == "") {
+                        return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
+                    }
+                    storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
+                    if (storage == 0 || Field(forest, item, "value") >= 0) {
+                        return Declarations.Failed(Diagnose(forest, item, file,
+                            "record field needs an int, bool or string type and no default"));
+                    }
+                    at := first;
+                    while (at < length(fields)) {
+                        if (fields[at].name == field_name) {
+                            return Declarations.Failed(Diagnose(forest, item, file,
+                                format_text("Duplicate field '{}'", field_name)));
+                        }
+                        at += 1;
+                    }
+                    width := FieldSize(storage, target);
+                    size = AlignTo(size, width);
+                    field: RecordField = {name: field_name, storage: storage, offset: size};
+                    fields = array_add(fields, field);
+                    size += width;
+                    if (width > alignment) { alignment = width; }
+                    item = NextMember(forest, item);
+                }
+                if (length(fields) == first) {
+                    return Declarations.Failed(Diagnose(forest, member, file, "record needs a field"));
+                }
+                record: Record = {name: name, type_name: format_text("{}.{}", package_name, name), first: first,
+                    count: length(fields) - first, size: AlignTo(size, alignment)};
+                records = array_add(records, record);
+            }
+            member = NextMember(forest, member);
+        }
+    }
     foreach (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
             if (Is(forest, member, "function_declaration")) {
-                name := Text(forest, text, Field(forest, member, "name"));
-                if (FindCallable(callables, name) >= 0) {
+                name := NameText(forest, text, Field(forest, member, "name"));
+                if (name == "") {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
+                }
+                // Records and functions share the package scope.
+                if (FindCallable(callables, name) >= 0 || FindRecord(records, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
                 first := length(params);
                 parameter := FirstMember(forest, Field(forest, member, "parameters"));
                 while (parameter >= 0) {
-                    storage := TypeStorage(Text(forest, text, Field(forest, parameter, "type")));
-                    if (storage == 0) {
-                        return Declarations.Failed(Diagnose(forest, parameter, file, "parameter needs an int or bool type"));
+                    declared := ResolveType(records, Text(forest, text, Field(forest, parameter, "type")));
+                    if (declared.storage == 0) {
+                        return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
                     }
-                    param: Param = {name: Text(forest, text, Field(forest, parameter, "name")), storage: storage};
+                    param_name := NameText(forest, text, Field(forest, parameter, "name"));
+                    if (param_name == "") {
+                        return Declarations.Failed(Diagnose(forest, Field(forest, parameter, "name"), file, "Invalid string or embedded NUL"));
+                    }
+                    param: Param = {name: param_name, storage: declared.storage, record: declared.record};
                     params = array_add(params, param);
                     parameter = NextMember(forest, parameter);
                 }
-                result: int = 0;
+                result: ValueType = {storage: 0, record: -1};
                 results := Field(forest, member, "results");
                 if (results >= 0) {
-                    result = TypeStorage(Text(forest, text, results));
-                    if (result == 0) {
-                        return Declarations.Failed(Diagnose(forest, results, file, "result needs an int or bool type"));
+                    result = ResolveType(records, Text(forest, text, results));
+                    if (result.storage == 0) {
+                        return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
                     }
                 }
                 callable: Callable = {name: name, document: file, node: member, first: first,
-                    count: length(params) - first, result: result};
+                    count: length(params) - first, result: result.storage, result_record: result.record};
                 callables = array_add(callables, callable);
-            } else if (!Is(forest, member, "package_header")) {
+            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
             }
             member = NextMember(forest, member);
         }
     }
-    return Declarations.Collected(callables, params);
+    return Declarations.Collected(callables, params, records, fields);
 }
 
 ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
     return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
         wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
 }
+// The header of a value of `storage`; an absent record names its layout.
+Header :: pure fn(storage: int, record: int, records: Record[], layouts: int[]) -> writer.Value {
+    if (storage != StructStorage) { return ScalarValue(storage, 0); }
+    return {tag: StructStorage, container: 0, type_name: records[record].type_name, has_type_name: true,
+        authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
+        count: records[record].count};
+}
 NoSource :: pure fn() -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
 }
 Range :: pure fn(first: int, count: int) -> writer.Span { return {first: first, count: count}; }
 Own :: pure fn(index: int) -> writer.Reference { return {imported: -1, own: index, function: 0, role: 0}; }
+// FNV-1a over `count` little-endian bytes of `value`, as the runtime hashes
+// layouts.
+HashBytes :: pure fn(hash: uint64, value: uint64, count: int) -> uint64 {
+    out := hash;
+    rest := value;
+    index: int = 0;
+    while (index < count) {
+        out = (out ^ (rest & 255)) * 1099511628211;
+        rest = rest >> 8;
+        index += 1;
+    }
+    return out;
+}
+HashText :: pure fn(hash: uint64, text: string) -> uint64 {
+    out := hash;
+    index: int = 0;
+    while (index < strings.ByteLength(text)) {
+        out = HashBytes(out, uint64(strings.ByteAt(text, index)), 1);
+        index += 1;
+    }
+    return HashBytes(out, 0, 1);
+}
+// The runtime's layout hash of a record: its size and field count, then each
+// field's name, offset, size, storage and (absent) type name.
+LayoutHash :: pure fn(record: Record, fields: RecordField[], target: Target) -> uint64 {
+    hash: uint64 = 1469598103934665603;
+    hash = HashBytes(hash, uint64(record.size), target.pointer_size);
+    hash = HashBytes(hash, uint64(record.count), 4);
+    at := record.first;
+    while (at < record.first + record.count) {
+        field := fields[at];
+        hash = HashText(hash, field.name);
+        hash = HashBytes(hash, uint64(field.offset), target.pointer_size);
+        hash = HashBytes(hash, uint64(FieldSize(field.storage, target)), target.pointer_size);
+        hash = HashBytes(hash, uint64(field.storage), 4);
+        hash = HashText(hash, "");
+        at += 1;
+    }
+    return hash;
+}
 
-// The prepared module of a package's functions. Each body is a canonical
-// definition the runtime verifies and finalizes when it loads it.
+// The prepared module of a package. Each body is a canonical definition the
+// runtime verifies and finalizes when it loads it.
 Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], identity: string,
-                    module: uint64, callables: Callable[], params: Param[], ops: Ops, target: Target,
-                    abi: uint64) -> Result {
+                    module: uint64, callables: Callable[], params: Param[], records: Record[],
+                    record_fields: RecordField[], ops: Ops, target: Target, abi: uint64) -> Result {
     wide: uint64[] = [0];
     values: writer.Value[] = [];
     ints: int[] = [];
@@ -141,23 +304,46 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     frames: writer.Frame[] = [];
     sources: writer.Source[] = [];
     data: writer.Data[] = [];
+    hosts: writer.Host[] = [];
+    roots: writer.Root[] = [];
     calls: writer.Call[] = [];
     references: writer.Reference[] = [];
     entries: writer.Entry[] = [];
+    requirements: writer.Requirement[] = [];
+    fields: writer.Field[] = [];
+    // Each record's layout, as an index into `wide`.
+    layouts: int[] = [];
+    foreach (record in records) {
+        wide = array_add(wide, binding.ID("package-symbol", format_text("{}:{}:{}", identity, RecordKind, record.name)));
+        wide = array_add(wide, LayoutHash(record, record_fields, target));
+        layouts = array_add(layouts, length(wide) - 1);
+        requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
+            name: record.type_name, size: record.size, authored: true, first: length(fields), count: record.count};
+        requirements = array_add(requirements, requirement);
+        at := record.first;
+        while (at < record.first + record.count) {
+            field: writer.Field = {name: record_fields[at].name, kind: record_fields[at].storage};
+            fields = array_add(fields, field);
+            at += 1;
+        }
+    }
+    abi_one := length(wide);
+    wide = array_add(wide, uint64(1));
     index: int = 0;
     while (index < length(callables)) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            index, ops, target);
+            records, record_fields, index, ops, target);
         switch tables {
             case .Failed(diagnostic): return Result.Rejected(diagnostic);
-            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls):
+            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans = array_add(spans, Range(length(values), callable.count));
                 at: int = 0;
                 while (at < callable.count) {
-                    values = array_add(values, ScalarValue(params[callable.first + at].storage, 0));
+                    param := params[callable.first + at];
+                    values = array_add(values, Header(param.storage, param.record, records, layouts));
                     at += 1;
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
@@ -167,7 +353,9 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 result_count: int = 0;
                 if (callable.result != 0) { result_count = 1; }
                 spans = array_add(spans, Range(length(values), result_count));
-                if (result_count != 0) { values = array_add(values, ScalarValue(callable.result, 0)); }
+                if (result_count != 0) {
+                    values = array_add(values, Header(callable.result, callable.result_record, records, layouts));
+                }
                 spans = array_add(spans, Range(length(ints), result_count));
                 if (result_count != 0) { ints = array_add(ints, int(0)); }
                 spans = array_add(spans, Range(0, 0));
@@ -175,12 +363,22 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 foreach (slot in body_slots) { ints = array_add(ints, slot.storage); }
                 spans = array_add(spans, Range(length(ints), length(body_slots)));
                 foreach (slot in body_slots) { ints = array_add(ints, slot.kind); }
-                spans = array_add(spans, Range(0, 0));
+                // Record pointers each slot may hold while the function waits.
+                spans = array_add(spans, Range(length(roots), length(body_roots)));
+                foreach (root in body_roots) {
+                    values = array_add(values, Header(StructStorage, root.record, records, layouts));
+                    row: writer.Root = {bank: 0, index: root.slot, shape: length(values) - 1};
+                    roots = array_add(roots, row);
+                }
                 // Instructions, each with its own value row and source at pc + 1.
                 spans = array_add(spans, Range(length(instructions), length(body_code)));
                 pc: int = 0;
                 foreach (code in body_code) {
-                    value := ScalarValue(code.value_storage, 0);
+                    value := Header(code.value_storage, code.value_record, records, layouts);
+                    if (code.has_text) {
+                        value.text = code.text;
+                        value.has_text = true;
+                    }
                     bits := uint64(wrap: int64(code.payload));
                     if (bits != 0) {
                         value.wide = length(wide);
@@ -204,7 +402,8 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 spans = array_add(spans, Range(length(parameters), callable.count));
                 at = 0;
                 while (at < callable.count) {
-                    values = array_add(values, ScalarValue(params[callable.first + at].storage, 0));
+                    param := params[callable.first + at];
+                    values = array_add(values, Header(param.storage, param.record, records, layouts));
                     parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
                     parameters = array_add(parameters, parameter);
                     at += 1;
@@ -229,13 +428,29 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 }
                 spans = array_add(spans, Range(0, 0));
                 spans = array_add(spans, Range(0, 0));
+                // Data cells: record cells own a buffer of the record's size;
+                // constructor offset cells hold their field offset.
                 spans = array_add(spans, Range(length(data), length(body_cells)));
-                foreach (storage in body_cells) {
-                    values = array_add(values, ScalarValue(storage, 0));
-                    cell: writer.Data = {kind: 0, initial: length(values) - 1, size: 0};
-                    data = array_add(data, cell);
+                foreach (cell in body_cells) {
+                    value := Header(cell.storage, cell.record, records, layouts);
+                    size: int = 0;
+                    if (cell.storage == StructStorage) { size = records[cell.record].size; }
+                    if (cell.offset != 0) {
+                        value.wide = length(wide);
+                        wide = array_add(wide, uint64(cell.offset));
+                    }
+                    values = array_add(values, value);
+                    datum: writer.Data = {kind: 0, initial: length(values) - 1, size: size};
+                    data = array_add(data, datum);
                 }
-                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(length(hosts), length(body_hosts)));
+                foreach (host in body_hosts) {
+                    wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
+                    row: writer.Host = {capability: length(wide) - 1, abi: abi_one, first: host.first,
+                        result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
+                        outcome_count: 0};
+                    hosts = array_add(hosts, row);
+                }
                 spans = array_add(spans, Range(length(calls), length(body_calls)));
                 foreach (invocation in body_calls) {
                     references = array_add(references, Own(invocation.callee));
@@ -262,17 +477,13 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
         }
         index += 1;
     }
-    requirements: writer.Requirement[] = [];
-    fields: writer.Field[] = [];
     imports: writer.Import[] = [];
-    roots: writer.Root[] = [];
-    layouts: writer.ResultLayout[] = [];
-    hosts: writer.Host[] = [];
+    layouts_table: writer.ResultLayout[] = [];
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
     prepared := writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
         fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
-        layouts, data, hosts, calls, references, points, watches, entries));
+        layouts_table, data, hosts, calls, references, points, watches, entries));
     ids: uint64[] = [module];
     names: string[] = [identity];
     starts: int[] = [0];
@@ -310,12 +521,12 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], target: 
                 case .Accepted(packages, members, file_packages, order, edges, bindings):
                     if (length(packages) != 1) { return InputFailure(-1, "one package is supported yet"); }
                     files := slice(members, packages[0].member_start, packages[0].member_count);
-                    switch Declare(nodes, documents, files) {
+                    switch Declare(nodes, documents, files, packages[0].name, target) {
                         case .Failed(diagnostic): return Result.Rejected(diagnostic);
-                        case .Collected(callables, params):
+                        case .Collected(callables, params, records, fields):
                             identity := documents[files[0]].identity;
                             return Assemble(nodes, documents, identity, binding.ID("module", identity),
-                                callables, params, ops, target, abi);
+                                callables, params, records, fields, ops, target, abi);
                     }
             }
     }

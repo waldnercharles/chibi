@@ -55,6 +55,11 @@ CMake lists in `build-install-sdk/install_manifest.txt` and
 `PREFIX/share/chibi/engine.json`. On Windows, which has no make wrappers, run
 the target's commands directly.
 
+`chibi check [PROJECT]` parses, resolves and validates a project as
+`chibi build` does, with the same compiler, but migrates and writes nothing. An
+older project fails with the command that migrates it. Use it before a commit
+or in a project's CI.
+
 To ship a game, export it with an installed SDK's `chibi`:
 
 ```sh

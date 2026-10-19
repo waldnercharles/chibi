@@ -21,6 +21,8 @@
 
 /* chibi build [PROJECT]: prepares the project when its sources or the compiler
  * changed since the last preparation.
+ * chibi check [PROJECT]: prepares the project as build does, without
+ * migrating it or writing anything.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
  * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
@@ -136,11 +138,14 @@ static int usage(const char *program)
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
         "       %s build [PROJECT]\n"
+        "       %s check [PROJECT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
         "build prepares .chibi/build/game.chibip without starting the player.\n"
+        "check parses, resolves and validates the project as build does, but\n"
+        "migrates and writes nothing; an older project fails until migrated.\n"
         "run prepares and starts the player; the unnamed form is equivalent.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
@@ -152,12 +157,14 @@ static int usage(const char *program)
         program,
         program,
         program,
+        program,
         program
     );
     return 0;
 }
 
-static bool open_project(chibi_project *project, const char *requested)
+/* Opening migrates an older project; reading leaves it as it is. */
+static bool open_project(chibi_project *project, const char *requested, bool migrate)
 {
     char *found = requested ? NULL : chibi_project_find(".");
     if (!requested && !found) {
@@ -165,7 +172,11 @@ static bool open_project(chibi_project *project, const char *requested)
         return false;
     }
     char error[512];
-    bool opened = !chibi_project_open(project, requested ? requested : found, error, sizeof error);
+    const char *path = requested ? requested : found;
+    bool opened = !(
+        migrate ? chibi_project_open(project, path, error, sizeof error)
+                : chibi_project_read(project, path, error, sizeof error)
+    );
     if (!opened) {
         fprintf(stderr, "%s\n", error);
     }
@@ -290,7 +301,7 @@ static int export_game(int argc, char **argv)
         return 2;
     }
     chibi_project project = { 0 };
-    if (!open_project(&project, requested)) {
+    if (!open_project(&project, requested, true)) {
         return 2;
     }
     char *bin = file_executable_dir();
@@ -319,7 +330,7 @@ static int export_game(int argc, char **argv)
 static int project_command(const char *requested, int player_argc, char **player_argv, bool play)
 {
     chibi_project project = { 0 };
-    if (!open_project(&project, requested)) {
+    if (!open_project(&project, requested, true)) {
         return 2;
     }
     char *bin = file_executable_dir();
@@ -368,6 +379,29 @@ static int build_game(int argc, char **argv)
     return project_command(argc == 3 ? argv[2] : NULL, 0, NULL, false);
 }
 
+static int check_game(int argc, char **argv)
+{
+    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
+        return usage(argv[0]);
+    }
+    if (argc > 3 || (argc == 3 && argv[2][0] == '-')) {
+        fprintf(stderr, "Invalid check option; use --help.\n");
+        return 2;
+    }
+    chibi_project project = { 0 };
+    if (!open_project(&project, argc == 3 ? argv[2] : NULL, false)) {
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    char *args[] = { compiler, "--project-root", project.root, "--check", NULL };
+    int result = chibi_process_run(args);
+    free(compiler);
+    free(bin);
+    chibi_project_free(&project);
+    return result;
+}
+
 static int run_game(int argc, char **argv)
 {
     if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
@@ -394,6 +428,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "build")) {
         return build_game(argc, argv);
+    }
+    if (argc > 1 && !strcmp(argv[1], "check")) {
+        return check_game(argc, argv);
     }
     if (argc > 1 && !strcmp(argv[1], "run")) {
         return run_game(argc, argv);

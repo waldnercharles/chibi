@@ -77,6 +77,9 @@ CellPlace: int : 1;
 ParameterPlace: int : 2;
 // An import alias; its index is the package it names.
 AliasPlace: int : 3;
+// A local holding a native call's several results: its index is the first
+// result's cell and its record the native.
+ResultsPlace: int : 4;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -187,6 +190,9 @@ ByteStorage: int : 3;
 Int64Storage: int : 8;
 // A value no instruction holds yet: an integer literal its use gives a type.
 NumberStorage: int : -3;
+// The several results of a native call: the value's slot is the cell of the
+// first result and its record the native; `.name` reads one result.
+ResultsStorage: int : -4;
 // The integer types this compiler emits.
 Integer :: pure fn(storage: int) -> bool {
     return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
@@ -441,6 +447,34 @@ NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
     at := NextMember(forest, node);
     while (at >= 0 && !Is(forest, at, "switch_arm")) { at = NextMember(forest, at); }
     return at;
+}
+// The index of a native's result named `name`, matched as natives are: an
+// exact name first, else the one name that matches loosely; -1 for none and
+// -2 when several match.
+FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
+    found := -1;
+    index: int = 0;
+    while (index < native.results) {
+        result := ports[native.first + native.parameters + index].name;
+        if (result == name) { return index; }
+        if (NameMatches(result, name)) {
+            if (found >= 0) {
+                found = -2;
+            } else if (found == -1) {
+                found = index;
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
+// The port of a native's argument `index`; a variadic native's last
+// parameter takes every argument from it on.
+NativePort :: pure fn(native: Native, index: int) -> int {
+    if (index >= native.parameters && native.variadic && native.parameters > 0) {
+        return native.first + native.parameters - 1;
+    }
+    return native.first + index;
 }
 // The native `xs = name(xs, value)` updates in place when xs names the local
 // array names[found]: "Array Add" or "Append"; -1 for any other statement.
@@ -847,8 +881,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 callable.package, values, value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, constants, names, callable.package, values,
-                value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, types, members, constants, natives, ports, names,
+                callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {

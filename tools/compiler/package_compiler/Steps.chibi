@@ -173,7 +173,8 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
     } else if (item.phase == ValuePhase) {
         popped = 1;
         result := values[top - 1];
-        if (result.storage < 0 && result.storage != NumberStorage && kind != "expression_statement") {
+        if (result.storage < 0 && result.storage != NumberStorage && !Single(result, ResultsStorage) &&
+            kind != "expression_statement") {
             return Fail(forest, item.node, document, "call has no value");
         }
         if (kind == "local_declaration") {
@@ -201,7 +202,12 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             if (Declared(names, scope, name)) {
                 return Fail(forest, Field(forest, item.node, "name"), document, format_text("Duplicate declaration '{}'", name));
             }
-            if (Pointer(local.storage, local.container)) {
+            if (Single(result, ResultsStorage) && declared < 0) {
+                // The local reads the call's result cells.
+                binding: Name = {name: name, place: ResultsPlace, index: result.slot, storage: ResultsStorage,
+                    container: 0, record: result.record, writable: false};
+                bound = array_add(bound, binding);
+            } else if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy.
                 retain = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, 0, 0));
@@ -218,6 +224,9 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             if (Is(forest, destination, "identifier")) { found = Lookup(names, Text(forest, text, destination)); }
             if (found < 0 || names[found].place == ParameterPlace || names[found].place == AliasPlace) {
                 return Fail(forest, destination, document, "assignment needs a local name");
+            }
+            if (names[found].place == ResultsPlace) {
+                return Fail(forest, destination, document, "assigning a native's several results is not supported yet");
             }
             if (!names[found].writable) { return Fail(forest, destination, document, "pattern bindings cannot be assigned"); }
             binding := names[found];
@@ -420,8 +429,9 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
 
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                     members: TypeMember[], constants: ConstDecl[], names: Name[], package: int, values: Value[],
-                     top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+                     members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[], names: Name[],
+                     package: int, values: Value[], top: int, item: Work, ops: Ops, target: Target,
+                     at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
     code: Code[] = [];
@@ -488,6 +498,10 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
             return Fail(forest, item.node, document, format_text("Unknown name '{}'", wanted));
         }
         binding := names[found];
+        if (binding.place == ResultsPlace) {
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                Typed(binding.index, ResultsStorage, 0, binding.record), NoValue(), marks);
+        }
         if (binding.place == LocalPlace) {
             slot: Slot = {storage: binding.storage, kind: ValueKind};
             slots = array_add(slots, slot);
@@ -548,6 +562,29 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
         object := values[top - 1];
         member := NameText(forest, text, Field(forest, item.node, "member"));
         if (member == "") { return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL"); }
+        if (Single(object, ResultsStorage)) {
+            // One of a native's results, read from its cell.
+            called := natives[object.record];
+            index := FindResult(ports, called, member);
+            if (index == -2) { return Fail(forest, item.node, document, format_text("Ambiguous result '{}'", member)); }
+            if (index < 0) { return Fail(forest, item.node, document, format_text("Unknown result '{}'", member)); }
+            port := ports[called.first + called.parameters + index];
+            slots = array_add(slots, address);
+            code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, object.slot + index, 0, 0,
+                node));
+            loaded: Slot = {storage: SlotStorage(port.storage, port.container, target),
+                kind: SlotKind(port.storage, port.container)};
+            slots = array_add(slots, loaded);
+            read := Instruction(ops.load, loaded.storage, at.slot + 1, at.slot, 0, 0, node);
+            read.offset = target.payload_offset;
+            code = array_add(code, read);
+            if (Pointer(port.storage, port.container)) {
+                root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: -1};
+                roots = array_add(roots, root);
+            }
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+                Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
+        }
         found := -1;
         if (Single(object, StructStorage)) { found = FindField(types, members, object.record, member); }
         if (found < 0) { return Fail(forest, item.node, document, format_text("Unknown field '{}'", member)); }
@@ -613,6 +650,7 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
         if (element.storage == NumberStorage) {
             return Fail(forest, first, document, "an untyped number is a double; give the array an integer type");
         }
+        if (element.storage <= 0) { return Fail(forest, first, document, "array item has no value type"); }
         if (element.container != 0) { return Fail(forest, first, document, "arrays of arrays are not supported yet"); }
         count: int = 1;
         member := NextMember(forest, first);
@@ -815,10 +853,14 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             if (native == -2) { return Fail(forest, callee, document, format_text("Ambiguous function '{}'", callee_name)); }
             if (native < 0) { return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name)); }
             called := natives[native];
-            supported := !called.variadic && called.results <= 1;
+            // A result takes a known or inferred type, never each value's own.
+            supported := true;
             port := called.first;
             while (port < called.first + called.parameters + called.results) {
-                if (ports[port].storage < 0) { supported = false; }
+                if (ports[port].storage == UnsupportedPort ||
+                    (port >= called.first + called.parameters && ports[port].storage == AnyPort)) {
+                    supported = false;
+                }
                 port += 1;
             }
             if (!supported) { return Fail(forest, callee, document, format_text("native '{}' is not supported yet", callee_name)); }
@@ -831,15 +873,19 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             if (found >= 0 && count < expected_count) {
                 param := params[callables[found].first + count];
                 expected = Expect(argument, param.storage, param.container, param.record);
-            } else if (native >= 0 && count < expected_count && ports[natives[native].first + count].storage > 0) {
-                port := ports[natives[native].first + count];
+            } else if (native >= 0 && (count < expected_count || natives[native].variadic) &&
+                       ports[NativePort(natives[native], count)].storage > 0) {
+                port := ports[NativePort(natives[native], count)];
                 expected = Expect(argument, port.storage, port.container, -1);
             }
             next = array_add(next, expected);
             count += 1;
             argument = NextMember(forest, argument);
         }
-        if (count != expected_count) { return Fail(forest, item.node, document, "call has the wrong number of arguments"); }
+        // A variadic native's last parameter takes any number of arguments.
+        arity := count == expected_count;
+        if (native >= 0 && natives[native].variadic) { arity = count >= expected_count - 1; }
+        if (!arity) { return Fail(forest, item.node, document, "call has the wrong number of arguments"); }
         finish := Resume(item.node, 1, found, count);
         if (native >= 0) {
             finish.a = native;
@@ -945,9 +991,11 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         argument := values[first + index];
         expected := NoValue();
         if (linked) {
-            port := ports[first_port + index];
+            port := ports[NativePort(natives[item.a], index)];
             expected = Typed(-1, port.storage, port.container, -1);
-            if (port.storage == 0) {
+            if (port.storage == AnyPort && argument.storage > 0) {
+                expected = argument;
+            } else if (port.storage == 0) {
                 element := Typed(-1, argument.storage, 0, argument.record);
                 if (argument.storage <= 0 || argument.container != port.container ||
                     (inferred.storage != 0 && !SameType(inferred.storage, 0, inferred.record, element))) {
@@ -970,8 +1018,22 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     }
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
-    if (linked && natives[item.a].results == 1) {
-        port := ports[first_port + count];
+    if (linked && natives[item.a].results > 1) {
+        // Several results land in cells a local or `.name` reads.
+        called := natives[item.a];
+        at_result: int = 0;
+        while (at_result < called.results) {
+            port := ports[called.first + called.parameters + at_result];
+            if (port.storage <= 0) { return Fail(forest, item.node, document, "native result type is not known"); }
+            cell: Cell = {storage: port.storage, container: port.container, record: -1, constant: 0, variant: -1,
+                kind: ValueKind};
+            cells = array_add(cells, cell);
+            at_result += 1;
+        }
+        result_count = called.results;
+        result = Typed(at.cell + count, ResultsStorage, 0, item.a);
+    } else if (linked && natives[item.a].results == 1) {
+        port := ports[first_port + natives[item.a].parameters];
         result = Typed(-1, port.storage, port.container, -1);
         if (port.storage == 0) {
             if (inferred.storage == 0) { return Fail(forest, item.node, document, "native result type is not known"); }

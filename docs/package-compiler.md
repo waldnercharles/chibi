@@ -24,9 +24,12 @@ target supplies what Chibi cannot see:
 - the instruction names in ordinal order
   (`execution_prepared_instruction_name`), which the compiler resolves by name;
 - the native functions it links, as its catalog describes them: each name,
-  its ports' storage and container, and its capability ID and ABI. A port of
-  storage 0 takes the type the call infers; -1 marks one the compiler cannot
-  pass. The test builds these tables from the compiler host's packs.
+  its ports' names, storage and container, and its capability ID and ABI. A
+  port of storage 0 takes the type the call infers, one for all such ports of
+  a call, as a generic port does; -2 takes each argument's own type, as a
+  wildcard port such as `format_text`'s values does; -1 marks one the
+  compiler cannot pass. A variadic native's last parameter takes any number
+  of arguments. The test builds these tables from the compiler host's packs.
 
 ## Supported language
 
@@ -71,9 +74,13 @@ import:
   allows bindings. They last through the consequence or loop body, not the
   else branch;
 - calls between the package's functions, including recursion, and calls of
-  natives with one result or none, such as `length` and `slice`. A native's
-  inferred ports take the one type its arguments give them, matched by name
-  as the catalog matches names;
+  natives, such as `length`, `slice` and `format_text`. A native's generic
+  ports take the one type its arguments give them, its wildcard ports each
+  argument's own type, and a variadic native's last parameter any number of
+  arguments; natives are matched by name as the catalog matches names. A
+  native with several results, such as `compiler_json_string`, gives a value
+  whose `.name` reads one result, directly or through a local:
+  `decoded := compiler_json_string(text); decoded.valid`;
 - integer constants whose value is an integer literal, `-` allowed, with their
   type (`Mask: uint64 : 0xFF;`). An untyped constant, `Name :: 5;`, is a
   double in stage zero, and stage one rejects it. A use is the value itself;
@@ -88,8 +95,9 @@ integer types, implicit widening of call
 arguments, element stores, literal members, payloads and in-place natives,
 constants of other types or computed values, type patterns, record field
 defaults, field assignment, assigning record or array parameters, named
-payload arguments, literal variants, and natives with several results or
-variadic ones come next. One check stage zero makes at compile time happens
+payload arguments and literal variants come next. A literal passed to a
+wildcard port, as in `format_text("{}", 1)`, is a double in stage zero, and
+stage one rejects it. One check stage zero makes at compile time happens
 at run time here: a checked conversion of a named constant that does not
 fit fails the call.
 Locals follow stage zero's scopes: blocks, switch arms, whose statements form

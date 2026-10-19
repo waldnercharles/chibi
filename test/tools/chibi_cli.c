@@ -164,10 +164,23 @@ static void project(const char *relative, int version)
     write_file(file, "version 1\nname \"Start\"\n(array)entities\n");
 }
 
+/* The text of the file at `relative`, which must exist. */
+static char *contents(const char *relative)
+{
+    char file[256];
+    path(file, relative);
+    char *text = tool_read(file);
+    assert(text);
+    return text;
+}
+
 /* check hands the project to the compiler's --check and writes nothing; an
  * older project is reported, not migrated. */
 TEST_CASE(check_prepares_without_writing)
 {
+    char file[256];
+    path(file, "fail");
+    unlink(file);
     project("checked", CHIBI_PROJECT_VERSION);
     const char *check[] = { launcher, "check", "checked", NULL };
     REQUIRE(tool_run(check, root, log_path) == 0);
@@ -176,28 +189,35 @@ TEST_CASE(check_prepares_without_writing)
     REQUIRE(file_is("compile.args", expected));
     REQUIRE(!exists("checked/.chibi"));
 
+    /* Without PROJECT, the project at or above the working directory. */
+    char game[256];
+    path(game, "checked/content");
+    const char *found[] = { launcher, "check", NULL };
+    REQUIRE(tool_run(found, game, log_path) == 0);
+    REQUIRE(file_is("compile.args", expected));
+
     write_file("fail", "");
     REQUIRE(tool_run(check, root, log_path) == 37);
-    char file[256];
-    path(file, "fail");
     REQUIRE(!unlink(file));
     REQUIRE(!exists("checked/.chibi"));
 
     project("old", CHIBI_PROJECT_VERSION - 1);
-    char manifest[256];
-    path(file, "old/project.kdl");
-    char *before = tool_read(file);
-    snprintf(manifest, sizeof manifest, "%s", before);
-    free(before);
+    char *manifest = contents("old/project.kdl");
     const char *old[] = { launcher, "check", "old", NULL };
     REQUIRE(tool_run(old, root, log_path) == 2);
-    REQUIRE(file_is("old/project.kdl", manifest));
+    bool kept = file_is("old/project.kdl", manifest);
+    free(manifest);
+    REQUIRE(kept);
     REQUIRE(!exists("old/.chibi"));
 
+    char *compiles = contents("compiles");
     const char *help[] = { launcher, "check", "--help", NULL };
     REQUIRE(tool_run(help, root, log_path) == 0);
     const char *extra[] = { launcher, "check", "checked", "more", NULL };
     REQUIRE(tool_run(extra, root, log_path) == 2);
+    bool unrun = file_is("compiles", compiles);
+    free(compiles);
+    REQUIRE(unrun);
     return true;
 }
 
@@ -205,33 +225,35 @@ TEST_CASE(check_prepares_without_writing)
  * leaves both, and an older one, exactly as they were. */
 TEST_CASE(compiler_check_writes_nothing)
 {
+    project("real", CHIBI_PROJECT_VERSION);
     char game[256];
-    path(game, "checked");
+    path(game, "real");
     const char *valid[] = { compiler, "--project-root", game, "--check", NULL };
     REQUIRE(tool_run(valid, root, log_path) == 0);
-    REQUIRE(!exists("checked/.chibi"));
+    REQUIRE(!exists("real/.chibi"));
 
-    write_file("checked/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n");
+    char output[256];
+    path(output, "out/game.chibip");
+    const char *both[] = { compiler,   "--project-root", game, "--check",
+                           "--output", output,           NULL };
+    REQUIRE(tool_run(both, root, log_path) == 2);
+    REQUIRE(!exists("out"));
+
+    const char *invalid = "version 1\nname \"Start\"\n(array)entities {\n";
+    write_file("real/content/scenes/Start.kdl", invalid);
     REQUIRE(tool_run(valid, root, log_path) == 1);
-    REQUIRE(
-        file_is("checked/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n")
-    );
+    REQUIRE(file_is("real/content/scenes/Start.kdl", invalid));
+    REQUIRE(!exists("real/.chibi"));
 
-    char old[256], file[256];
-    path(old, "old");
-    path(file, "old/project.kdl");
-    char *before = tool_read(file);
+    project("real-old", CHIBI_PROJECT_VERSION - 1);
+    char *manifest = contents("real-old/project.kdl");
+    char old[256];
+    path(old, "real-old");
     const char *older[] = { compiler, "--project-root", old, "--check", NULL };
     REQUIRE(tool_run(older, root, log_path) == 1);
-    bool kept = file_is("old/project.kdl", before);
-    free(before);
+    bool kept = file_is("real-old/project.kdl", manifest);
+    free(manifest);
     REQUIRE(kept);
-
-    const char *both[] = { compiler,  "--project-root", game,
-                           "--check", "--output",       file,
-                           NULL };
-    REQUIRE(tool_run(both, root, log_path) == 2);
-    REQUIRE(!exists("checked/.chibi"));
     return true;
 }
 

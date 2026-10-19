@@ -57,8 +57,8 @@ the target's commands directly.
 
 `chibi check [PROJECT]` parses, resolves and validates a project as
 `chibi build` does, with the same compiler, but migrates and writes nothing. An
-older project fails with the command that migrates it. Use it before a commit
-or in a project's CI.
+older project fails with the command that migrates it. It exits 0 for a valid
+project and nonzero otherwise, so it suits a pre-commit hook or a project's CI.
 
 To ship a game, export it with an installed SDK's `chibi`:
 

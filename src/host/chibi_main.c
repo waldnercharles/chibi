@@ -367,29 +367,37 @@ static int project_command(const char *requested, int player_argc, char **player
     return result;
 }
 
-static int build_game(int argc, char **argv)
+/* Reads `chibi COMMAND [PROJECT]`: -1 with `requested` set, or the status to
+ * exit with after help or an invalid argument. */
+static int project_argument(int argc, char **argv, const char **requested)
 {
     if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
         return usage(argv[0]);
     }
     if (argc > 3 || (argc == 3 && argv[2][0] == '-')) {
-        fprintf(stderr, "Invalid build option; use --help.\n");
+        fprintf(stderr, "Invalid %s option; use --help.\n", argv[1]);
         return 2;
     }
-    return project_command(argc == 3 ? argv[2] : NULL, 0, NULL, false);
+    *requested = argc == 3 ? argv[2] : NULL;
+    return -1;
+}
+
+static int build_game(int argc, char **argv)
+{
+    const char *requested = NULL;
+    int status = project_argument(argc, argv, &requested);
+    return status >= 0 ? status : project_command(requested, 0, NULL, false);
 }
 
 static int check_game(int argc, char **argv)
 {
-    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
-        return usage(argv[0]);
-    }
-    if (argc > 3 || (argc == 3 && argv[2][0] == '-')) {
-        fprintf(stderr, "Invalid check option; use --help.\n");
-        return 2;
+    const char *requested = NULL;
+    int status = project_argument(argc, argv, &requested);
+    if (status >= 0) {
+        return status;
     }
     chibi_project project = { 0 };
-    if (!open_project(&project, argc == 3 ? argv[2] : NULL, false)) {
+    if (!open_project(&project, requested, false)) {
         return 2;
     }
     char *bin = file_executable_dir();

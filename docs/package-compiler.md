@@ -1,7 +1,7 @@
 # Authored package compiler
 
 `tools/compiler/package_compiler` is the stage-one compiler as it grows. It
-compiles a package's source files to a prepared closure, entirely in Chibi
+compiles packages' source files to a prepared closure, entirely in Chibi
 after the raw Tree-sitter parser: the source snapshot and package graph, the
 declarations, typing, lowering and the prepared writer. Stage zero still
 builds the compiler itself; stage one is this compiler once it compiles the
@@ -9,11 +9,14 @@ compiler sources.
 
 ## Entry
 
-`Compile(project: string, paths: string[], sources: string[], target: Target,
-abi: uint64, names: string[], natives: Native[], ports: Port[],
-identities: uint64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO
-closure of one module, or `Rejected(diagnostic)`. The target supplies what
-Chibi cannot see:
+`Compile(project: string, collection_names: string[], collection_paths:
+string[], paths: string[], sources: string[], target: Target, abi: uint64,
+names: string[], natives: Native[], ports: Port[], identities: uint64[]) ->
+Result` returns `Compiled(module, bytes)`, a CHIBICLO closure with a module
+for every package, or `Rejected(diagnostic)`. `paths` and `sources` hold the
+files of every package, those of imported collections such as `core` under
+their collection's path; the package of `paths[0]` is the closure's root. The
+target supplies what Chibi cannot see:
 
 - `Target`: pointer width, the offsets of a value header's and an array's
   members, and the failure kinds a host call and a failed assertion report;
@@ -27,7 +30,7 @@ Chibi cannot see:
 
 ## Supported language
 
-One package of functions, records and unions:
+Packages of functions, records and unions, and the packages they import:
 
 - `int`, `bool` and `string` values, records of those, unions whose variants
   carry them, and arrays of any of these, as parameters, results and locals;
@@ -49,12 +52,16 @@ One package of functions, records and unions:
 - calls between the package's functions, including recursion, and calls of
   natives with one result or none, such as `length` and `slice`. A native's
   inferred ports take the one type its arguments give them, matched by name
-  as the catalog matches names.
+  as the catalog matches names;
+- imports of `project:` and collection packages such as `core:strings`:
+  `alias.F(...)` calls an imported function, and `alias.T` names an imported
+  record or union in types, literals and `alias.U.V` variants. A local hides
+  an alias of the same name.
 
-Anything else is rejected with its source position. Imports, `is` patterns,
-record field defaults, field assignment, assigning record or array parameters,
-named payload arguments, literal variants, natives with several results or
-variadic ones, and conversions come next.
+Anything else is rejected with its source position. Package constants, `is`
+patterns, record field defaults, field assignment, assigning record or array
+parameters, named payload arguments, literal variants, natives with several
+results or variadic ones, and conversions come next.
 
 ## Output
 
@@ -95,16 +102,29 @@ names the verifier's own reason. Function and record IDs, record type names
 and layout hashes follow stage zero's scheme, so a host invokes the same
 entries and the runtime accepts the same record requirements.
 
+Each package is its own module, assembled dependencies first, as stage zero
+does:
+
+- A call into another package goes through an import row, added on the first
+  such call. The row names the callee's module ID and the fingerprint of its
+  prepared bytes, which the runtime checks on load. The reference names the
+  callee's entry ID.
+- Record requirements cover the records of the package and every package it
+  reaches, under their own package's IDs and type names. Unions have no
+  requirement rows, and a variant's tag is the same in every module.
+- The closure has one row per package, named by its identity.
+
 Runtime sources record each instruction's origin. Debugger points and watches
 are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 38 sample packages on both
-compiler backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 5,533
-assertions in 23.3 s). Every accepted closure loads in a fresh runtime host
-and runs on bytecode and SLJIT with JSON arguments, and stage zero's own
-closure of the same package must return the same JSON; calls that must fail,
+`tool language-package-compiler-chibi` compiles 41 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 5,886 assertions in
+32.9 s). A sample is package `facts`, optionally with a `lib` package and
+`core:strings`. Every accepted closure loads in a fresh runtime host and runs
+on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
+same packages must return the same JSON; calls that must fail,
 such as out-of-bounds reads, fail on all three. Rejections check the exact
 message and position.
 
@@ -113,4 +133,6 @@ Compiling is slow: the arrays sample, about 50 lines, takes 1.4 s on SLJIT and
 spare frame and its data cells, and an array copy checks each distinct record
 once, which cut compile time by about an eighth. The remaining cost is the
 interpreter itself, per-call setup of large frames, and one record layout check
-per record copy; they come before stage one compiles the compiler.
+per record copy; they come before stage one compiles the compiler. The imports
+sample alone adds about 8 s, most of it compiling `core:strings`, and the suite
+now uses over half its 60 s ceiling.

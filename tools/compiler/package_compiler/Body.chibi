@@ -71,6 +71,8 @@ AddressKind: int : 1;
 LocalPlace: int : 0;
 CellPlace: int : 1;
 ParameterPlace: int : 2;
+// An import alias; its index is the package it names.
+AliasPlace: int : 3;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -169,10 +171,11 @@ CompoundOperator :: pure fn(text: string) -> string {
     if (text == "=") { return ""; }
     return strings.Slice(text, 0, strings.ByteLength(text) - 1);
 }
-FindCallable :: pure fn(callables: Callable[], name: string) -> int {
+// The function of `package` named `name`, -1 when none.
+FindCallable :: pure fn(callables: Callable[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(callables)) {
-        if (callables[index].name == name) { return index; }
+        if (callables[index].package == package && callables[index].name == name) { return index; }
         index += 1;
     }
     return -1;
@@ -234,12 +237,31 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
     }
     return found;
 }
-// The union `U` names when `node` is a member expression `U.Variant` and no
-// local hides U; -1 otherwise.
-UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], node: int) -> int {
+// The package a name of package `package` qualified by `node` names: that
+// package for none, the imported one when `node` is an import alias no local
+// hides, and -1 otherwise.
+QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
+    if (node < 0) { return package; }
+    if (!Is(forest, node, "identifier")) { return -1; }
+    found := Lookup(names, Text(forest, text, node));
+    if (found < 0 || names[found].place != AliasPlace) { return -1; }
+    return names[found].index;
+}
+// The union `U` names when `node` is a member expression `U.Variant` or
+// `alias.U.Variant` and no local hides U or the alias; -1 otherwise.
+UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                   node: int) -> int {
     object := Field(forest, node, "object");
-    if (!Is(forest, object, "identifier") || Lookup(names, Text(forest, text, object)) >= 0) { return -1; }
-    declared := FindType(types, Text(forest, text, object));
+    qualifier := -1;
+    if (Is(forest, object, "member_expression")) {
+        qualifier = Field(forest, object, "object");
+        object = Field(forest, object, "member");
+    } else if (!Is(forest, object, "identifier") || Lookup(names, Text(forest, text, object)) >= 0) {
+        return -1;
+    }
+    home := QualifierOf(forest, text, names, package, qualifier);
+    if (home < 0) { return -1; }
+    declared := FindType(types, home, NameText(forest, text, object));
     if (declared < 0 || types[declared].kind != UnionDecl) { return -1; }
     return declared;
 }
@@ -261,7 +283,7 @@ NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
 // The native `xs = name(xs, value)` updates in place when xs names the local
 // array names[found]: "Array Add" or "Append"; -1 for any other statement.
 InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                         names: Name[], found: int, destination: int, value: int) -> int {
+                         names: Name[], package: int, found: int, destination: int, value: int) -> int {
     binding := names[found];
     if (binding.place != CellPlace || binding.container != ArrayContainer || !binding.writable ||
         !Is(forest, value, "call_expression")) {
@@ -269,7 +291,7 @@ InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
     }
     callee := Field(forest, value, "function");
     first := FirstMember(forest, Field(forest, value, "arguments"));
-    if (!Is(forest, callee, "identifier") || FindCallable(callables, Text(forest, text, callee)) >= 0 ||
+    if (!Is(forest, callee, "identifier") || FindCallable(callables, package, Text(forest, text, callee)) >= 0 ||
         !Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination)) {
         return -1;
     }
@@ -282,7 +304,7 @@ InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
 
 EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
                     callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-                    natives: Native[], ports: Port[], function: int, ops: Ops, target: Target) -> Body {
+                    natives: Native[], ports: Port[], aliases: Name[], function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -293,7 +315,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     calls: Invocation[] = [];
     hosts: Host[] = [];
     roots: Root[] = [];
-    names: Name[] = [];
+    // Import aliases are the outermost names; every local may hide one.
+    names := aliases;
     work: Work[] = [];
     values: Value[] = [];
     loops: Loop[] = [];
@@ -640,16 +663,17 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, natives, names, values, value_top,
-                function, item, ops, target, at);
+            step = StatementStep(forest, text, document, callables, types, natives, names, callable.package, values,
+                value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, names, values, value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, types, members, names, callable.package, values, value_top, item,
+                ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names, values,
-                value_top, item, ops, target, at);
+            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names,
+                callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else {

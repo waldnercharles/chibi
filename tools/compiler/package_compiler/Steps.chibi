@@ -84,7 +84,7 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                         types: TypeDecl[], natives: Native[], names: Name[], values: Value[], top: int,
+                         types: TypeDecl[], natives: Native[], names: Name[], package: int, values: Value[], top: int,
                          function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
@@ -109,7 +109,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
         if (kind == "local_declaration") {
             declared := Field(forest, item.node, "type");
             if (declared >= 0) {
-                resolved := ReadType(forest, text, types, declared);
+                resolved := ReadType(forest, text, types, names, package, declared);
                 if (resolved.storage == 0) { return Fail(forest, declared, document, "local type is not supported yet"); }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             }
@@ -126,7 +126,9 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                     // `xs = array_add(xs, x)` and `xs = append(xs, ys)` on a
                     // local array update it in place.
                     native := -1;
-                    if (operator == "") { native = InPlaceNative(forest, text, callables, natives, names, found, destination, value); }
+                    if (operator == "") {
+                        native = InPlaceNative(forest, text, callables, natives, names, package, found, destination, value);
+                    }
                     if (native >= 0) {
                         argument := NextMember(forest, FirstMember(forest, Field(forest, value, "arguments")));
                         extend: int = 0;
@@ -177,7 +179,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             declared := Field(forest, item.node, "type");
             local := result;
             if (declared >= 0) {
-                resolved := ReadType(forest, text, types, declared);
+                resolved := ReadType(forest, text, types, names, package, declared);
                 local = Typed(-1, resolved.storage, resolved.container, resolved.record);
             }
             if (!SameType(local.storage, local.container, local.record, result)) {
@@ -200,7 +202,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             destination := Field(forest, item.node, "target");
             found := -1;
             if (Is(forest, destination, "identifier")) { found = Lookup(names, Text(forest, text, destination)); }
-            if (found < 0 || names[found].place == ParameterPlace) {
+            if (found < 0 || names[found].place == ParameterPlace || names[found].place == AliasPlace) {
                 return Fail(forest, destination, document, "assignment needs a local name");
             }
             if (!names[found].writable) { return Fail(forest, destination, document, "pattern bindings cannot be assigned"); }
@@ -388,8 +390,8 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
 
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                     members: TypeMember[], names: Name[], values: Value[], top: int, item: Work, ops: Ops,
-                     target: Target, at: Bases) -> Step {
+                     members: TypeMember[], names: Name[], package: int, values: Value[], top: int, item: Work,
+                     ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
     code: Code[] = [];
@@ -437,7 +439,9 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
     } else if (kind == "identifier") {
         wanted := Text(forest, text, item.node);
         found := Lookup(names, wanted);
-        if (found < 0) { return Fail(forest, item.node, document, format_text("Unknown name '{}'", wanted)); }
+        if (found < 0 || names[found].place == AliasPlace) {
+            return Fail(forest, item.node, document, format_text("Unknown name '{}'", wanted));
+        }
         binding := names[found];
         if (binding.place == LocalPlace) {
             slot: Slot = {storage: binding.storage, kind: ValueKind};
@@ -465,9 +469,10 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
         produced = Typed(at.slot + length(slots) - 1, binding.storage, binding.container, binding.record);
     } else if (kind == "parenthesized_expression") {
         next = array_add(next, Expect(Field(forest, item.node, "expression"), item.storage, item.container, item.record));
-    } else if (item.phase == 0 && kind == "member_expression" && UnionOf(forest, text, types, names, item.node) >= 0) {
+    } else if (item.phase == 0 && kind == "member_expression" &&
+               UnionOf(forest, text, types, names, package, item.node) >= 0) {
         // A variant without a payload: the constructor takes only its tag.
-        sum_type := UnionOf(forest, text, types, names, item.node);
+        sum_type := UnionOf(forest, text, types, names, package, item.node);
         member := NameText(forest, text, Field(forest, item.node, "member"));
         variant := FindVariant(types, sum_type, member);
         if (variant < 0) { return Fail(forest, item.node, document, format_text("Unknown variant '{}'", member)); }
@@ -639,7 +644,7 @@ LiteralStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: 
 // the one type its arguments give them.
 CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
                     params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
-                    names: Name[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
+                    names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops, target: Target,
                     at: Bases) -> Step {
     node := forest[item.node];
     code: Code[] = [];
@@ -655,7 +660,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
         sum_type := -1;
-        if (Is(forest, callee, "member_expression")) { sum_type = UnionOf(forest, text, types, names, callee); }
+        if (Is(forest, callee, "member_expression")) { sum_type = UnionOf(forest, text, types, names, package, callee); }
         if (sum_type >= 0) {
             // A variant with a payload: each argument is a payload field, in order.
             member := NameText(forest, text, Field(forest, callee, "member"));
@@ -681,13 +686,25 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             next = array_add(next, finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        if (!Is(forest, callee, "identifier")) { return Fail(forest, callee, document, "call needs a function name"); }
+        // `F(...)` calls this package's F or a native; `alias.F(...)` calls an
+        // imported package's F.
+        qualifier := -1;
+        if (Is(forest, callee, "member_expression")) {
+            qualifier = Field(forest, callee, "object");
+            callee = Field(forest, callee, "member");
+        }
+        home := QualifierOf(forest, text, names, package, qualifier);
+        if (home < 0 || !Is(forest, callee, "identifier")) {
+            return Fail(forest, Field(forest, item.node, "function"), document, "call needs a function name");
+        }
         callee_name := Text(forest, text, callee);
-        found := FindCallable(callables, callee_name);
+        found := FindCallable(callables, home, callee_name);
         native := -1;
         expected_count: int = 0;
         if (found >= 0) {
             expected_count = callables[found].count;
+        } else if (qualifier >= 0) {
+            return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name));
         } else {
             native = FindNative(natives, callee_name);
             if (native == -2) { return Fail(forest, callee, document, format_text("Ambiguous function '{}'", callee_name)); }

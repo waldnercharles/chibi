@@ -271,10 +271,11 @@ TEST_CASE(version_reads_the_build_identity)
     REQUIRE(!mkdir(directory, 0700));
     path(directory, "share/chibi");
     REQUIRE(!mkdir(directory, 0700));
-    const char *formats = "\"artifact_formats\": {\"execution\": {\"version\": "
-                          "15, \"source\": "
-                          "\"src/execution/prepared.c\"}, \"player\": "
-                          "{\"version\": 3}}";
+    /* Out of name order, as a build tree writes them; output sorts by name. */
+    const char *formats = "\"artifact_formats\": {\"player\": {\"version\": "
+                          "3}, \"execution\": "
+                          "{\"version\": 15, \"source\": "
+                          "\"src/execution/prepared.c\"}}";
     char document[512];
     snprintf(document, sizeof document, "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, %s}\n", formats);
     write_file("share/chibi/engine.json", document);
@@ -308,7 +309,8 @@ TEST_CASE(version_of_the_built_launcher)
     char *text = tool_read(output);
     snprintf(expected, sizeof expected, "\nproject format: %d\n", CHIBI_PROJECT_VERSION);
     bool reported = text && !strncmp(text, "chibi ", 6) && strstr(text, expected) &&
-                    strstr(text, "\nartifact formats: execution ");
+                    strstr(text, "\nartifact formats: ") &&
+                    strstr(text, " execution ");
     free(text);
     REQUIRE(reported);
     return true;

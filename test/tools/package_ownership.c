@@ -256,6 +256,15 @@ TEST_CASE(configured_artifacts_preserve_complete_object_ownership)
     status = inspect();
     REQUIRE(utimensat(AT_FDCWD, filename, times, 0) == 0);
     REQUIRE(diagnostic(status, "predates a link dependency"));
+    char metadata[1024];
+    path(metadata, build, "chibi_engine_metadata.json");
+    char *configured = tool_read(metadata);
+    REQUIRE(configured);
+    tool_write(metadata, "{\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1}}}\n");
+    status = inspect();
+    tool_write(metadata, configured);
+    free(configured);
+    REQUIRE(diagnostic(status, "Configured SDK version is missing"));
 
     char graph_path[1024];
     path(graph_path, build, "build.ninja");

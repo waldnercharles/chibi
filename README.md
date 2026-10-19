@@ -55,11 +55,11 @@ CMake lists in `build-install-sdk/install_manifest.txt` and
 `PREFIX/share/chibi/engine.json`. On Windows, which has no make wrappers, run
 the target's commands directly.
 
-`chibi version` prints the SDK version, the build ID of a packaged SDK
-(`unpackaged` for a build tree or a plain `make install`), the compiler it runs,
-the project format and each prepared artifact format. It reads them from
-`share/chibi/engine.json`, which configuring generates and SDK packaging
-completes with the build ID.
+`chibi version` prints the SDK version, the build ID of a packaged SDK such as
+`make install` installs (`unpackaged` for a build tree or a plain
+`cmake --install`), the compiler it runs, the project format and each prepared
+artifact format by name. It reads them from `share/chibi/engine.json`, which
+configuring generates and SDK packaging completes with the build ID.
 
 `chibi check [PROJECT]` parses, resolves and validates a project as
 `chibi build` does, with the same compiler, but migrates and writes nothing. An

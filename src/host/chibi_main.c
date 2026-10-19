@@ -374,17 +374,48 @@ static int project_command(const char *requested, int player_argc, char **player
     return result;
 }
 
-/* Whether every artifact format records an integer version. */
+/* Whether there are artifact formats and each records an integer version. */
 static bool formats_valid(yyjson_val *formats)
 {
+    if (!yyjson_is_obj(formats) || !yyjson_obj_size(formats)) {
+        return false;
+    }
     size_t index, count;
     yyjson_val *name, *format;
-    bool valid = yyjson_is_obj(formats) && yyjson_obj_size(formats);
+    bool valid = true;
     yyjson_obj_foreach(formats, index, count, name, format)
     {
         valid = valid && yyjson_is_int(yyjson_obj_get(format, "version"));
     }
     return valid;
+}
+
+static int by_name(const void *a, const void *b)
+{
+    return strcmp(yyjson_get_str(*(yyjson_val *const *)a), yyjson_get_str(*(yyjson_val *const *)b));
+}
+
+/* Each artifact format and its version, by name, whatever the document's order. */
+static void print_formats(yyjson_val *formats)
+{
+    size_t index, count;
+    yyjson_val *name, *format;
+    yyjson_val **names = xmalloc(yyjson_obj_size(formats) * sizeof *names);
+    yyjson_obj_foreach(formats, index, count, name, format)
+    {
+        names[index] = name;
+    }
+    qsort(names, count, sizeof *names, by_name);
+    printf("artifact formats:");
+    for (size_t i = 0; i < count; i++) {
+        yyjson_val *version = yyjson_obj_get(
+            yyjson_obj_get(formats, yyjson_get_str(names[i])),
+            "version"
+        );
+        printf("%s %s %d", i ? "," : "", yyjson_get_str(names[i]), yyjson_get_int(version));
+    }
+    printf("\n");
+    free(names);
 }
 
 static int print_version(int argc, char **argv)
@@ -415,19 +446,7 @@ static int print_version(int argc, char **argv)
         printf("build: %s\n", build ? yyjson_get_str(build) : "unpackaged");
         printf("compiler: %s\n", compiler);
         printf("project format: %d\n", yyjson_get_int(project));
-        printf("artifact formats:");
-        size_t index, count;
-        yyjson_val *name, *format;
-        yyjson_obj_foreach(formats, index, count, name, format)
-        {
-            printf(
-                "%s %s %d",
-                index ? "," : "",
-                yyjson_get_str(name),
-                yyjson_get_int(yyjson_obj_get(format, "version"))
-            );
-        }
-        printf("\n");
+        print_formats(formats);
         free(compiler);
     } else {
         fprintf(

@@ -5,10 +5,6 @@ The shared C frontend retains syntax snapshots and resolves typed semantic
 records. The compiler lowers those records directly into verified execution
 modules; visual editors consume their authoring projections.
 
-The [versioned current contract](language-contracts/v1.md) pins source evidence,
-existing C conformance cases and unresolved migration semantics separately.
-Its source audit is not fresh runtime or cross-backend validation.
-
 ## Package analysis
 
 The SDK's `script_analyze_package` and `script_declarations_package` accept a
@@ -97,8 +93,7 @@ also use the existing pure generic array capability pack. General authored
 generic specialization remains a separate language gap; core does not provide
 an imported generic array-wrapper API.
 
-These are M3 increments in [the toolchain plan](../PLAN.md). Package globals and
-embedded game roots remain unsupported. Project loading, formatting and editor
+Package globals and embedded game roots remain unsupported. Project loading, formatting and editor
 navigation use their existing single-source entry points. The package APIs do
 not change the public build command.
 
@@ -395,8 +390,7 @@ result = result + 1;
 
 Same-line labels before other statement forms, such as `finish: goto finish;`
 or `compound: result += 1;`, remain valid. Inferred `:=` locals and persistent
-system-root declarations retain their existing meaning. See the
-[approved parse decision](language-contracts/typed-local-label-proposal.md).
+system-root declarations retain their existing meaning.
 
 A `switch` evaluates its value once and executes the matching case. Cases never
 fall through, so they do not need `break`. `case:` is the default. The switch
@@ -638,10 +632,7 @@ Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `Name :: pure fn(...)` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
 `"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
-The bounded [qualified-module composition specimen](module-composition.md) checks
-existing discovery, lexical/qualified binding, cycle rejection, state visibility
-and independent catalogs. It does not introduce import aliases or new visibility
-syntax.
+Qualification has no import aliases or visibility syntax of its own.
 
 Type parameters preserve generic relationships, for example
 `Identity :: fn<T: float>(item: T) -> (output: T) { ... }`. A function
@@ -719,9 +710,7 @@ has the same meaning. `team: Team from ancestor(ChildOf)` selects the nearest
 matching ancestor. Sources also accept `from self` and `from Targets`. Header
 filters can test `self.Frozen`, `Targets.Frozen` or
 `ancestor(ChildOf).Frozen`; `has(Targets)` tests relationship existence without
-repeating the root's body. Access is inferred from the body. See
-[query headers and relationship sources](runtime-authoring.md) for source
-selection, explicit relationship loops, and their lifetime restrictions.
+repeating the root's body. Access is inferred from the body.
 
 ### Shared-target reductions
 

@@ -755,8 +755,28 @@ publication contracts already live in the replacement: Studio's
 SHA-256 in `studio.json` and skips an unchanged pair, the engine release
 workflow publishes versioned packages, `docs/game-web-workflow.yml` deploys a
 game from them, and `chibi export --web` assembles a local site. Git history
-is the recovery path. Every other responsibility in
-`docs/toolchain-inventory.md` still waits for its replacement.
+is the recovery path.
+
+On 2026-10-19 the owner asked to start removing project-owned C, C++, Python,
+CMake, Make and shell wherever Chibi can own the work, and to do no work in C
+or stage zero that Chibi can do. The removal inventory in
+`docs/toolchain-inventory.md` now classifies every such file. Delete now: the
+in-tree browser editor's leftovers (`tools/configure_web.sh`,
+`tools/web_compiler.sh`, the root `CHIBI_COLLAB_URL` and the `tools/web_*`
+and collaboration-client copies Studio now owns) and the retired one-off
+probes (`tools/hrc_sparse_sweep.c`, `tools/compare_neon_frames.mjs`,
+`tools/png-check.mjs`). Replace now: the `compiler-sdk` and
+`package-enabled` probes of `tools/configure_inputs.py`, moving into
+`Build.chibi`. Waiting on a decision: `.github/scripts/` (the M5 owner
+confirms its hosted runs are finished), the CUT61 analysis scripts (owner
+review of the stale record), and game runtime installation (whether the
+`update-game-runtime` workflow outlived the retired game repositories).
+Everything else is blocked. Most packaging, dependency-cache and
+configuration-signature work waits on the same missing build-host
+primitives: file metadata, directory walks, binary copy, rename and remove,
+permissions, hashing, environment enumeration, locks and resource limits.
+The build graph waits on M6, the executables and runtime on a native backend,
+and engine modules on M9.
 
 Delete one responsibility at a time. Before deletion, name the replacement,
 enumerate every repository, installed-SDK, CI, release, and application caller,

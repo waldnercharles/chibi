@@ -65,6 +65,11 @@ make the compiler self-hosted.
 | C source formatting | `tools/clang-format.sh`, `.githooks/pre-commit`, CI | Keep external clang-format 22 while maintained C exists. `chibi fmt` replaces authored-source and asset formatting, not C formatting during migration. | Existing C format check and a separate canonical authored-format corpus. |
 | Blender worker | `tools/mesh_sdf/worker.py`, Blender-only `bpy` calls, and the worker's imported encoding support | Python may remain only for code that executes inside Blender because Blender requires its Python API. | Deterministic conversion, malformed geometry, metadata, work limits, and source provenance cases. |
 | Blender launcher and publication | `tools/mesh_sdf/convert.py` and ordinary-Python support in `tools/mesh_sdf/atlas.py` | Move subprocess, deadline, resource-limit, staging, hashing, validation, and publication policy to Chibi. Keep only the thin Blender worker and support it must import. | Timeout and process cleanup, memory/work limits, atomic destination publication, provenance, deterministic atlas bytes, and corrupt/partial output rejection. |
+| Stage-zero compiler | `src/language/` (including the generated Tree-sitter parser), the compiler parts of `src/authoring/`, `src/types/` and `src/execution/` | Stage one and stage two reproduce each other (M5) and the checksummed bootstrap artifact recovers the compiler from a clean checkout. Then the C compiler leaves the normal path and, after the recovery proof, the active tree. | `make test-bootstrap`, `make test-recovery`, the semantic fixture set on both stages, and a clean-checkout recovery with `cmake`, `clang` and `gcc` unavailable. |
+| Native executables and runtime | `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/`, `tools/chibi_ctl/` | Executables stay C until Chibi has a native backend that emits them (LLVM AOT, backend milestone 4 in `docs/self-hosting-build.md`). Their orchestration and policy (command dispatch, export assembly, migration, validation) move to installed `.chibi` modules first. | `test/tools/chibi_cli.c`, installed-SDK and relocated-SDK command runs, and matching bytecode/SLJIT/native semantics. |
+| First-party engine modules | `src/runtime/`, `src/render/`, `src/ui/`, `src/graph/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | M9: Chibi packages over narrow bindings to SDL, Cute, Box2D, Box3D, RmlUi, codecs and platform APIs. `src/ui/rml.cpp` and `test/draw_backend.cpp` stay as pass-through shims while their C++ libraries do. | Each module's existing deterministic fixtures, desktop and browser parity, and ownership tests at every binding. |
+| C regression and differential tests | `test/` pico_unit drivers and their `CMakeLists.txt` files, `tools/benchmark.c` | A test leaves with the C it tests. When a Chibi component replaces its C reference, its cases move to `@test` under `chibi test`. | The replacement's `chibi test` cases and the admitted aggregate that ran the C cases. |
+| Collaboration room service | `tools/collab/server/` (Node) | Needs a Chibi network service with HTTP and WebSocket bindings, or a move to `chibi-studio`, whose browser client is its only consumer. | `test/tools/collab.c` room, protocol and storage cases, and Studio collaboration against the service. |
 
 ## Installed Python surface
 
@@ -85,32 +90,85 @@ Remove an installed script only when the replacement is present in the installed
 SDK and its source-free consumer checks pass. A wrapper that still requires the
 engine checkout or Python has not crossed this gate.
 
-## Current project-owned script inventory
+## Removal inventory
 
-The current top-level migration set is:
+Every project-owned C, C++, Python, CMake, Make, shell and Node file outside
+`third_party/`, as of 2026-10-19. Each group names its ledger responsibility,
+its callers and one decision:
 
-```text
-tools/agent.py
-tools/dependency_package.py
-tools/configure_inputs.py
-tools/fetchcontent_cache.py
-tools/gpu_capabilities.py
-tools/install_game_runtime.py
-tools/kdl_asset.py
-tools/package_player.py
-tools/package_sdk.py
-tools/package_studio.py
-tools/quiet.py
-tools/test_policy.py
-tools/validation_plan.py
+- **Delete now**: nothing calls it, or its replacement already owns the
+  responsibility. Remove it with its stale documentation.
+- **Replace now**: Chibi and the build host can already do the work.
+- **Blocked**: names the missing Chibi capability, host binding or bootstrap
+  step.
+- **Keep**: an external application or library requires it.
+- **Owner decision**: deletable, but only after the named person confirms.
 
-tools/clang-format.sh
-tools/configure.sh
-tools/configure_native.sh
-tools/configure_web.sh
-tools/web_compiler.sh
-tools/web_env.sh
-```
+Several replacements wait on the same build-host gap. The private primitives
+read and write bounded text, create directories, run processes and report
+their output. They cannot read file metadata, list or walk directories, copy
+binary files, rename, remove or change permissions, hash, enumerate the
+environment, take an interprocess lock or limit a child's resources. Call
+these the **host file primitives** below.
+
+### Python
+
+| Files | Responsibility and callers | Decision |
+| --- | --- | --- |
+| `tools/test_policy.py` | Test policy. Every `make test*` target, root `CMakeLists.txt`, `AGENTS.md`, CI through Make, `.github/scripts/*.sh`. | **Blocked**: a Chibi supervisor must match its inherited shared deadline, signal forwarding, descendant cleanup, quarantine and admission tables, and must run before the first build. Explicitly retained until then. |
+| `tools/agent.py`, `tools/validation_plan.py`, `tools/gpu_capabilities.py` | Agent supervision. Makefile `agent-*` targets, `AGENTS.md`, `docs/agent-execution.md`, `test/tools/validation_plan.c`. | **Blocked** behind `test_policy.py`, whose admission tables they import. `gpu_capabilities.py` also needs a dynamic-library binding to probe Vulkan. |
+| `tools/configure_inputs.py` | Native configuration probes. `tools/toolchain/Build.chibi`, SDK install. | `compiler-sdk` and `package-enabled`: **Replace now**; they parse compiler output, `CMakeCache.txt` and `-D` arguments, which `Build.chibi` can do with today's primitives. `signature`: **Blocked** on the host file primitives (metadata, directory walk, environment, SHA-256). |
+| `tools/dependency_package.py`, `tools/fetchcontent_cache.py` | Dependency acquisition and cache. `Build.chibi`, `tools/configure.sh`, `cmake/dependency_package/`, `cmake/tests/desktop_dependencies/`, CI cache keys in `ci.yml`, `docs.yml` and `publish.yml`, `test/tools/build_toolchain.c`, `desktop_dependencies.c` and `package.c`, SDK install. | **Blocked**: M6 and the host file primitives, including the interprocess lock. |
+| `tools/package_sdk.py`, `tools/package_player.py`, `tools/package_studio.py` | SDK, player and Studio packaging. Makefile `package-*`, `install_game_runtime.py`, `test/tools/package.c` and `package_ownership.c`, SDK install. | **Blocked**: M6 and the host file primitives. |
+| `tools/install_game_runtime.py`, `tools/kdl_asset.py` | Game runtime installation into games registered in `.chibi/game-runtime.json`. Makefile `update-game-runtime`, `docs/native-package.md`, `sdk/README.md`, `docs/declarative-sdf-modeling.md`, `test/tools/package.c`, SDK install. | **Owner decision**: the standalone game repositories it served were retired on 2026-10-17 and `chibi export` is the distribution command. If the workflow is retired, delete it. Otherwise **Blocked** on Chibi KDL editing that preserves unrelated content, and on the host file primitives. |
+| `tools/quiet.py` | Build logs for every Makefile recipe (`QUIET`). | **Blocked**: it wraps configuration before any build host exists. Needs a prebuilt host or Make's retirement (M6). |
+| `tools/mesh_sdf/convert.py`, `tools/mesh_sdf/atlas.py` | Blender launcher and publication. Run by hand (`tools/mesh_sdf/README.md`). | **Blocked** on the host file primitives (binary output, hashing, rename, resource limits). |
+| `tools/mesh_sdf/worker.py` | Blender worker. `convert.py`. | **Keep**: runs inside Blender. |
+| `.github/scripts/transport-boundary-audit.py` | Hosted M5 ELF audit. The `.github/scripts/*.sh` helpers; cited as not run in the PLAN checkpoint. | **Owner decision**: no workflow in this repository runs it; delete once the M5 owner confirms its hosted runs are finished. |
+| `docs/studio-migration-roadmap/build_ledger.py` | Studio migration ledger generator. Its README and provenance JSON. | **Blocked**: the Studio migration is paused; this moves or retires with it. |
+| `docs/prototypes/studio/serve.py` and the prototype's JavaScript | Static server and code for the Studio design prototype. Its README; the prototype is cited by `docs/editor-ui-references.md` and `docs/studio-ui-authoring.md`. | **Blocked**: Studio-owned design reference; Studio migration is paused. |
+| `docs/research/cut61-iframe-profile/finish/analyze.py`, `docs/research/cut61-iframe-profile/run.py.txt` | Analysis of CUT61's historical capture, which policy forbids rerunning. Only their own record; nothing cites the record. | **Owner decision**: delete with the stale record; Git keeps the history. |
+
+### Shell
+
+| Files | Responsibility and callers | Decision |
+| --- | --- | --- |
+| `tools/configure.sh` | Stage-zero configuration and its SDK and web profiles. Makefile `package-sdk`, runtime SDK, web SDK and web player targets; `configure_native.sh`; `test/tools/package.c`. | **Blocked**: `Build.chibi` owns only the `native` and `tool-host` profiles. Move `sdk-native` and `sdk-web` into it (M6); the stage-zero path stays as recovery. |
+| `tools/configure_native.sh` | Cold-build recovery. Makefile `stage-zero-build`, used when no protocol-2 build host exists. | **Blocked**: the first build has no host. Needs a prebuilt host from the bootstrap artifact; stays as stage-zero recovery. |
+| `tools/configure_web.sh`, `tools/web_compiler.sh` | Configuration and compiler launcher for the in-tree browser editor. No callers since the Makefile's `web-configure` moved to Studio on 2026-10-08 (`aff61c28f`). | **Delete now**. |
+| `tools/web_env.sh` | Browser compiler isolation. Makefile web SDK, web player, Studio web and wasm-language configuration; `test/tools/package.c`. | **Blocked**: moves into `Build.chibi` with the web profile (M6). |
+| `tools/clang-format.sh`, `.githooks/pre-commit` | C formatting. Makefile `format` and `check-format`, CI, the pre-commit hook. | **Keep** while project C exists. |
+| `.github/scripts/*.sh` (five) | Hosted M5 validation helpers. No workflow in this repository; they expect a separate validation checkout. | **Owner decision**: delete once the M5 owner confirms. |
+
+### Make and CMake
+
+| Files | Responsibility and callers | Decision |
+| --- | --- | --- |
+| `Makefile` | Build, test, package and agent entry points. CI, `AGENTS.md`, documentation. | **Blocked**: M6 build graph and the test-policy replacement. Public targets give way to `chibi` commands. |
+| Root `CMakeLists.txt`, `cmake/*.cmake`, `sdk/`, component and test `CMakeLists.txt` | Internal build graph. Makefile, `Build.chibi`, `configure.sh`, CI. | **Blocked**: M6. The root `CHIBI_COLLAB_URL` cache variable is **Delete now**: only the retired in-tree browser editor read it. |
+| Installed `ChibiConfig.cmake` and `ChibiTargets.cmake` | CMake consumer interface. `chibi-studio`. | **Blocked**: kept while Studio builds through CMake. |
+| `cmake/tests/` | Fixtures for desktop dependencies, package ownership and generation. `test/tools/desktop_dependencies.c`, `package_ownership.c`, root `CMakeLists.txt`. | **Blocked**: leave with the CMake mechanism they test. |
+
+### C and C++
+
+| Files | Responsibility and callers | Decision |
+| --- | --- | --- |
+| `src/language/` | Stage-zero compiler. | **Blocked**: M5 completion and the clean-checkout recovery proof. Kept frozen as recovery until then. |
+| `src/host/`, `src/toolchain/`, `src/execution/`, `src/types/`, `tools/chibi_ctl/` | Executables, bytecode/SLJIT execution and the value ABI. | **Blocked**: Chibi emits no native executables yet (LLVM AOT). Their policy moves to installed `.chibi` modules first. |
+| `src/runtime/`, `src/render/`, `src/ui/`, `src/graph/`, `src/ecs/`, `src/assets/`, `src/authoring/`, `src/automation/`, `src/capabilities/`, `src/diagnostics/`, `src/platform/`, `src/support/`, `include/chibi/` | First-party engine modules and the public header. | **Blocked**: M9, which depends on M5 and M6. |
+| `src/ui/rml.cpp`, `test/draw_backend.cpp` | Pass-through shims to RmlUi and Cute's C++ API. | **Keep** while those libraries are used. |
+| `tools/reflect/` | Native reflection generator. `sdk/native.cmake`, Makefile reflect builds. | **Blocked**: its ledger gate. |
+| `test/`, `tools/benchmark.c` | C regression, differential and benchmark drivers. `make test-*`, CI. | **Blocked**: each leaves with the C it tests. |
+| `tools/hrc_sparse_sweep.c` | Probe for the September 2026 HRC sparse-storage study. Built by nothing; cited only by `docs/research/hrc-sparse-investigation.md`. | **Delete now**. |
+
+### Node and browser JavaScript
+
+| Files | Responsibility and callers | Decision |
+| --- | --- | --- |
+| `tools/web_*.js`, `tools/web_shell.html`, `tools/collab/client.js`, `tools/collab/storage.js` | The in-tree browser editor shell. `chibi-studio` builds from its own copies in `web/`, and `test/tools/web_storage.c` already reads Studio's copy. `web_workspace.js` served only the retired engine development server. No engine caller. | **Delete now**. |
+| `tools/collab/server/` | Collaboration room service. `test/tools/collab.c`, `docs/collaboration.md`, Studio's client. | **Blocked**: its ledger gate. |
+| `tools/compare_neon_frames.mjs`, `tools/png-check.mjs` | Frame-difference diagnostic for NeonSwarm, a game no longer in this repository. No callers. | **Delete now**. |
+| `docs/reviews/studio-ux-2026-10-02/performance/browser-sample.js` | Sampler for a finished Studio UX review. Only its own record. | **Owner decision**: delete with the stale record. |
 
 Only Python that Blender imports through `bpy` belongs to the Blender exception.
 `convert.py` runs under ordinary Python and is part of the migration set. Split

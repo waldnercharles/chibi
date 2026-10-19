@@ -627,6 +627,12 @@ TOOLS = {
     # after bootstrap. One shared60s including bootstrap and cleanup; no aggregate.
     'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--bounded-compiler-chibi'],
+    # One pico_unit case: the authored prepared writer over five fixed modules
+    # (its own, core:strings, syntax_diagnostics, package_paths and a sample) on
+    # both compiler backends, ten Write calls compared byte for byte with
+    # execution_prepared_write. One shared60s including bootstrap; no aggregate.
+    'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                      '--prepared-writer-chibi'],
     # Three cases:40 requests,80 authored calls capped at2m instructions each.
     # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
     # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,

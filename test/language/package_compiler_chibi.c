@@ -1464,21 +1464,6 @@ static char *arguments_json(const pin_value *args, size_t *length)
     av_doc_free(doc);
     return json;
 }
-/* Whether the host's projected result is the Compiled closure `expected`. */
-static bool projects(const compiler_host_result *projected, const unsigned char *expected, size_t length)
-{
-    yyjson_doc *doc = yyjson_read(projected->json, projected->length, YYJSON_READ_NOFLAG);
-    REQUIRE(doc);
-    yyjson_val *value = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
-    yyjson_val *bytes = yyjson_arr_get(yyjson_obj_get(value, "values"), 1);
-    bool same = yyjson_get_uint(yyjson_obj_get(value, "tag")) == tag(1, "Compiled") &&
-                yyjson_arr_size(bytes) == length;
-    for (size_t i = 0; same && i < length; i++) {
-        same = yyjson_get_uint(yyjson_arr_get(bytes, i)) == expected[i];
-    }
-    yyjson_doc_free(doc);
-    return same;
-}
 /* Stage zero prepares stage one, which compiles its own packages to a closure:
  * stage two. Stage two, loaded by the compiler host, compiles the same
  * packages to the same bytes. */
@@ -1499,25 +1484,28 @@ TEST_CASE(package_compiler_compiles_itself)
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, BEHAVIOR_SLJIT, error, sizeof error);
+    compiler_host_bytes again = { 0 };
     bool invoked = host &&
-                   compiler_host_invoke(
+                   compiler_host_invoke_bytes(
                        host,
-                       script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable"),
+                       script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
                        json,
                        json_length,
                        SELF_BUDGET,
-                       &result
+                       COMPILER_HOST_MAX_OUTPUT_BYTES,
+                       &again
                    );
     if (!invoked) {
         fprintf(
             stderr,
             "package compiler stage two: %s%s\n",
             host ? "" : error,
-            result.diagnostic
+            again.diagnostic
         );
     }
-    bool same = invoked && result.flow_status == FLOW_OK &&
-                projects(&result, stage_two, length);
+    bool same = invoked && again.flow_status == FLOW_OK &&
+                again.length == length && !memcmp(again.bytes, stage_two, length);
+    free(again.bytes);
     free(stage_two);
     free(json);
     REQUIRE(same);

@@ -1789,8 +1789,8 @@ artifact caps. The eight-module closure and runtime host limits are unchanged.
 
 One additional native catalog reproduces the preceding thirteen-result parser
 signature. One bounded bytecode decode of the actual regenerated closure must
-reject that incompatible ABI, preserve the host's 64 MiB aggregate decode
-budget and publish no collection or root. The current descriptor has fifteen
+reject that incompatible ABI, leave the aggregate decode budget it was given
+unchanged and publish no collection or root. The current descriptor has fifteen
 results, with the last two checked as named Boolean arrays and a distinct ABI. There is no
 callback invocation, source parse, child or compatibility alias in this check.
 The same ABI equality gate also rejects an old-signature artifact against the
@@ -1816,7 +1816,7 @@ Nine added tooling cases cover these finite binary operations:
   are compared. Exact selected-backend entry counts are checked without fallback.
 - Two direct calls return 256 bytes against a 255-byte limit and fail atomically;
   the 256-byte successes above cover the exact boundary. Two invalid API limits
-  (zero and `COMPILER_HOST_MAX_VALUES + 1`) reject before execution.
+  (zero and `COMPILER_HOST_MAX_OUTPUT_BYTES + 1`) reject before execution.
 - Two wrong return signatures reject before malformed JSON parsing; malformed
   JSON and wrong argument count add two more pre-execution rejections.
 - The reference-argument fixture adds one bytes-API rejection. The new result

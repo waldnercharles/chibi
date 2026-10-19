@@ -1072,3 +1072,16 @@ Compile :: pure fn(project: string, collection_names: string[], collection_paths
             }
     }
 }
+// Compile's closure, for a host that takes one byte[] result; empty when
+// Compile rejects the input, whose diagnostic Compile returns.
+CompileClosure :: pure fn(project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                          sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
+                          ports: Port[], identities: uint64[]) -> byte[] {
+    switch Compile(project, collection_names, collection_paths, paths, sources, target, abi, names, natives, ports,
+                   identities) {
+        case .Rejected(diagnostic):
+            return [];
+        case .Compiled(module, bytes):
+            return bytes;
+    }
+}

@@ -872,10 +872,15 @@ untyped literal a double. Array literals with no type expected take their
 first item's type, variadic natives such as `format_text` and natives with
 several results such as `compiler_json_string` work, and field assignment
 writes through stage zero's reference intrinsics, with written record and
-array parameters copied on entry. With these, stage one accepts the
-compiler's complete source set; a test that loads the closure it builds and
-checks that it compiles the same sources to the same bytes, stage one to
-stage two, follows.
+array parameters copied on entry. In-place array updates are recognized by
+capability identity, as in stage zero. With these, stage one compiles the
+compiler's complete source set, and the stage-two closure it builds, loaded by
+the compiler host, compiles the same sources to the same bytes
+(`make test-bootstrap`, a Release build, 18.6 s). The compiler host allows a
+compiler-sized closure: 256 MiB of decoded storage and record-layout work per
+load, and an 8 MiB `byte[]` result. Still open in this milestone: running the
+semantic fixture set with stage two, the stage-two compiler's 5.2 GB peak
+memory, and the checksummed bootstrap artifact with its version checks.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

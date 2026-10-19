@@ -57,9 +57,9 @@ compiler_host *compiler_host_load(
     }
     native_prepared_context context = { .native = host->native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    linker.decoded_bytes = COMPILER_HOST_MAX_LOAD_BYTES;
-    linker.layout_work = COMPILER_HOST_MAX_LOAD_BYTES;
-    size_t remaining = COMPILER_HOST_MAX_LOAD_BYTES;
+    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
     uint64_t root;
     host->packages = compiler_artifact_read(bytes, length, &linker, backend, &remaining, &root, error, error_size);
     if (!host->packages) {
@@ -344,13 +344,13 @@ static bool extract_bytes(const pin_value *value, size_t limit, invocation_resul
     if (array->element_type != PIN_U8 || array->record || array->type_name ||
         array->count < 0 || array->capacity < array->count ||
         (array->count && !array->items) || (size_t)array->count > limit ||
-        (size_t)array->capacity >
-            (COMPILER_HOST_MAX_BYTES - sizeof *array) / sizeof *array->items) {
+        (size_t)array->capacity > (COMPILER_HOST_MAX_CLOSURE_BYTES - sizeof *array) /
+                                      sizeof *array->items) {
         return false;
     }
     size_t length = (size_t)array->count;
     size_t represented = sizeof *array + (size_t)array->capacity * sizeof *array->items;
-    if (length > COMPILER_HOST_MAX_BYTES - represented) {
+    if (length > COMPILER_HOST_MAX_CLOSURE_BYTES - represented) {
         return false;
     }
     unsigned char *bytes = length ? xmalloc(length) : NULL;
@@ -594,7 +594,7 @@ bool compiler_host_invoke_bytes(
         return false;
     }
     *out = (compiler_host_bytes){ 0 };
-    if (!max_bytes || max_bytes > COMPILER_HOST_MAX_VALUES) {
+    if (!max_bytes || max_bytes > COMPILER_HOST_MAX_OUTPUT_BYTES) {
         message(out->diagnostic, sizeof out->diagnostic, "invalid compiler byte output limit");
         return false;
     }

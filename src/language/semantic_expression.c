@@ -178,22 +178,6 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
     return true;
 }
 
-/* Whether a number literal's digits are nonzero; its exponent does not
- * count. */
-static bool literal_nonzero(const char *text)
-{
-    text += *text == '-';
-    bool hexadecimal = text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
-    for (const char *at = hexadecimal ? text + 2 : text; *at; at++) {
-        if (!hexadecimal && (*at == 'e' || *at == 'E')) {
-            return false;
-        }
-        if (*at != '0' && *at != '.') {
-            return true;
-        }
-    }
-    return false;
-}
 static int number_constant(analyzer *a, TSNode node, script_type expected, bool negate)
 {
     expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
@@ -209,28 +193,19 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
         memmove(text + 1, text, size + 1);
         text[0] = '-';
     }
+    char *end;
+    errno = 0;
+    long double value = strtold(text, &end);
+    if (*end || !isfinite(value) || errno == ERANGE) {
+        script_analyzer_diagnostic(a, node, "Numeric literal must be finite");
+    }
+    result.kind = SCRIPT_EXPR_CONSTANT;
     bool enumeration = expected.storage == PIN_ENUM &&
                        expected.container == PIN_CONTAINER_SINGLE;
     result.type = (script_type_numeric(expected) || enumeration) &&
                           !(expected.flags & SCRIPT_TYPE_UNTYPED)
                     ? expected
                     : (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
-    char *end;
-    errno = 0;
-    long double value = strtold(text, &end);
-    bool out_of_range = errno == ERANGE;
-    if (result.type.storage == PIN_F32 || result.type.storage == PIN_F64) {
-        /* The double nearest the literal, never rounded twice through a wider
-         * long double, so every host reads the same bits. A nonzero literal
-         * that underflows to zero or a subnormal is out of range. */
-        double nearest = strtod(text, NULL);
-        value = nearest;
-        out_of_range = isfinite(nearest) && nearest != 0 && fabs(nearest) < DBL_MIN;
-        out_of_range = out_of_range || (nearest == 0 && literal_nonzero(text));
-    }
-    if (*end || !isfinite(value) || out_of_range) {
-        script_analyzer_diagnostic(a, node, "Numeric literal must be finite");
-    }
     if (enumeration && expected.nominal) {
         const script_catalog_type
             *type = script_catalog_type_by_id(a->catalog, expected.nominal);

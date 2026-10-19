@@ -1449,9 +1449,10 @@ static bool digits_nonzero(const char *text)
     }
     return false;
 }
-/* Stage zero's reading: the binary64 nearest the literal and the binary32
- * nearest that; a nonzero literal whose binary64 is infinite, zero or
- * subnormal is out of range. */
+/* The reading LiteralBits implements, which is stage zero's where long double
+ * is double: the binary64 nearest the literal and the binary32 nearest that;
+ * a nonzero literal whose binary64 is infinite, zero or subnormal is out of
+ * range. */
 static void literal_reading(const char *text, bool *finite, uint64_t *wide, bool *fits, uint64_t *narrow)
 {
     char *end;
@@ -1529,7 +1530,7 @@ static int long_spellings(char spellings[][2048], int capacity)
     snprintf(shifted + 801, sizeof spellings[0] - 801, "%s", "e-800");
     return count;
 }
-/* LiteralBits reads number literals of floating types as stage zero does:
+/* LiteralBits reads number literals of floating types by that reading:
  * the listed spellings on both compiler backends, with both signs on the
  * compiled one, and there also the long spellings and generated ones across
  * the binary64 range. */

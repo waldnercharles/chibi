@@ -2,8 +2,9 @@ package package_compiler
 
 import strings "core:strings"
 
-// Numeric literals of floating types, read as stage zero reads them: the
-// binary64 nearest the literal, and the binary32 nearest that. The reading
+// Numeric literals of floating types: the binary64 nearest the literal, and
+// the binary32 nearest that, as stage zero reads them where long double is
+// double. The reading
 // ports the slow path of Odin's core:strconv (decimal_to_float_bits over
 // core:strconv/decimal, itself Go's strconv): the literal becomes a
 // multiple-precision decimal that shifts by powers of two until its integer
@@ -15,8 +16,8 @@ import strings "core:strings"
 Decimal :: union {
     Value(digits: int[], count: int, point: int, trunc: bool) | Malformed
 }
-// A literal's bit patterns, or OutOfRange where stage zero reports that the
-// literal must be finite: overflow, and underflow to zero or a subnormal.
+// A literal's bit patterns, or OutOfRange for one that must be finite but is
+// not: overflow, and underflow to zero or a subnormal.
 // `float_fits` is false when the value exceeds the largest binary32.
 FloatBits :: union {
     Finite(double_bits: uint64, float_fits: bool, float_bits: uint64) | OutOfRange
@@ -433,8 +434,7 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
         }
     }
     if ((mantissa & (int64(1) << MantissaBits)) == 0) {
-        // Stage zero reports a result that underflows to zero or a subnormal
-        // as out of range.
+        // A result that underflows to zero or a subnormal is out of range.
         return FloatBits.OutOfRange;
     }
     fraction := mantissa & ((int64(1) << MantissaBits) - 1);

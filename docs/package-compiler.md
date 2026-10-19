@@ -179,11 +179,13 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
 literal that overflows, or a nonzero one whose binary64 is zero or subnormal,
 is out of range ("Numeric literal must be finite"), and the reading reports
-whether the value fits a binary32. Stage zero reads floating literals with
-`strtod` and applies the same rule itself, so the reading is the same on every
-host; it used to read them with `strtold`, which rounds twice where `long
-double` is wider than `double`, and left subnormal results to the C library's
-`errno`.
+whether the value fits a binary32. This reading is the same on every host and
+is the intended one. Stage zero calls `strtold`, narrows, and leaves subnormal
+results to the C library's `errno`; where `long double` is `double`, as on
+macOS arm64, that is the same reading. Where `long double` is wider, as on
+x86-64 Linux, stage zero rounds a few literals twice and judges values near
+the least normal by the C library. Stage zero is left as it is: it retires
+with the bootstrap.
 
 The reading ports the slow path of Odin's `core:strconv`
 (`decimal_to_float_bits` over `core:strconv/decimal`, from Go's `strconv`).
@@ -218,7 +220,7 @@ copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
 `tool language-package-compiler-chibi-literals` checks stage zero's build of
-`LiteralBits` against stage zero's own rule, computed with `strtod` (3,962
+`LiteralBits` against that rule, computed with `strtod` (3,962
 assertions in 17.7 s). On both compiler backends it reads 59 listed
 spellings: halfway cases, both ranges' ends, values that round up to the least
 normal binary64, binary64 subnormals, leading zeros and hexadecimal integers.

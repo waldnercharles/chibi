@@ -50,8 +50,6 @@ Port :: struct { storage: int; container: int; }
 TypeDecl :: struct {
     name: string; type_name: string; kind: int; package: int; first: int; count: int; size: int; parent: int;
 }
-// A package of the closure: its declared name and its identity.
-Unit :: struct { name: string; identity: string; }
 // A record field, with its byte offset, or a variant's payload field.
 TypeMember :: struct { name: string; storage: int; container: int; record: int; offset: int; }
 Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
@@ -446,17 +444,19 @@ LayoutHash :: pure fn(record: TypeDecl, fields: TypeMember[], target: Target) ->
     return hash;
 }
 
-// The prepared module of package `package`. Each body is a canonical
-// definition the runtime verifies and finalizes when it loads it. The module
-// imports the modules of `dependencies`, whose prepared bytes have the
-// fingerprints `fingerprints` lists by package, and requires the records of
-// every package `reach` marks: those it may hold a value of.
-Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], units: Unit[], package: int,
+// The prepared module of package `package`, whose identity, like every
+// package's, `package_identities` lists. Each body is a canonical definition
+// the runtime verifies and finalizes when it loads it. The module imports the
+// modules of `dependencies`, whose prepared bytes have the fingerprints
+// `fingerprints` lists by package, and requires the records of every package
+// `reach` marks: those it may hold a value of.
+Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package_identities: string[],
+                    package: int,
                     dependencies: int[], fingerprints: uint64[], reach: bool[], callables: Callable[],
                     params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
                     identities: uint64[], bindings: graph.Binding[], ops: Ops, target: Target,
                     abi: uint64) -> Assembled {
-    identity := units[package].identity;
+    identity := package_identities[package];
     wide: uint64[] = [0];
     values: writer.Value[] = [];
     ints: int[] = [];
@@ -482,8 +482,8 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
         layouts = array_add(layouts, int(0));
         tags = array_add(tags, int(0));
         // Types of packages this one does not reach have no value here.
-        reached := reach[package * length(units) + declared.package];
-        declaring := units[declared.package].identity;
+        reached := reach[package * length(package_identities) + declared.package];
+        declaring := package_identities[declared.package];
         if (reached && declared.kind == VariantDecl) {
             // Stage zero's tag: the union's ID in decimal, then the variant.
             union_id := binding.ID("package-symbol", format_text("{}:{}:{}", declaring, TypeKind, types[declared.parent].name));
@@ -510,7 +510,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     // Each dependency's module, as an import.
     imports: writer.Import[] = [];
     foreach (dependency in dependencies) {
-        wide = array_add(wide, binding.ID("module", units[dependency].identity));
+        wide = array_add(wide, binding.ID("module", package_identities[dependency]));
         wide = array_add(wide, fingerprints[dependency]);
         imported: writer.Import = {id: length(wide) - 2, fingerprint: length(wide) - 1};
         imports = array_add(imports, imported);
@@ -659,7 +659,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     } else {
                         imported := 0;
                         while (dependencies[imported] != callee.package) { imported += 1; }
-                        wide = array_add(wide, FunctionID(units[callee.package].identity, callee.name));
+                        wide = array_add(wide, FunctionID(package_identities[callee.package], callee.name));
                         // As the runtime writes it, so a dependency's fingerprint holds.
                         reference: writer.Reference = {imported: imported, own: 0, function: length(wide) - 1, role: 0};
                         references = array_add(references, reference);
@@ -734,10 +734,10 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], collecti
                 case .Rejected(error, cycle): return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, member_files, file_packages, order, edges, bindings):
                     count := length(packages);
-                    units: Unit[] = [];
+                    package_identities: string[] = [];
                     foreach (item in packages) {
-                        unit: Unit = {name: item.name, identity: documents[member_files[item.member_start]].identity};
-                        units = array_add(units, unit);
+                        package_identities = array_add(package_identities,
+                            documents[member_files[item.member_start]].identity);
                     }
                     callables: Callable[] = [];
                     params: Param[] = [];
@@ -774,19 +774,19 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], collecti
                                 types = declared_types;
                                 members = declared_members;
                         }
-                        switch Assemble(nodes, documents, units, package, dependencies, fingerprints, reach, callables,
+                        switch Assemble(nodes, documents, package_identities, package, dependencies, fingerprints, reach, callables,
                                         params, types, members, natives, ports, identities, bindings, ops, target, abi) {
                             case .Rejected(diagnostic): return Result.Rejected(diagnostic);
                             case .Written(bytes):
                                 fingerprints[package] = writer.Fingerprint(bytes);
-                                ids = array_add(ids, binding.ID("module", units[package].identity));
-                                module_names = array_add(module_names, units[package].identity);
+                                ids = array_add(ids, binding.ID("module", package_identities[package]));
+                                module_names = array_add(module_names, package_identities[package]);
                                 starts = array_add(starts, length(data));
                                 lengths = array_add(lengths, length(bytes));
                                 data = append(data, bytes);
                         }
                     }
-                    root := binding.ID("module", units[file_packages[0]].identity);
+                    root := binding.ID("module", package_identities[file_packages[0]]);
                     return Result.Compiled(root, writer.Closure(root, ids, module_names, data, starts, lengths));
             }
     }

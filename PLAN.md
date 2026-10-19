@@ -777,9 +777,9 @@ intrinsics with stage zero's tags. Packages import one another, including
 links to its imports by module ID and fingerprint, as stage zero's do.
 
 Stage one's own closure is 14 files of ten project packages and `core:strings`,
-about 4,600 lines. Besides imports, its sources need typed constants (77),
+about 4,700 lines. Besides imports, its sources need typed constants (77),
 `uint64`, `int64` and `byte` values and arrays with conversions and hex
-literals, field assignment (110), and the variadic `format_text` (32). Those
+literals, field assignment (110), and the variadic `format_text` (33). Those
 follow in that order, then the compiler's own sources. Compile speed is on the
 same path: stage one compiles about 85 lines a second on SLJIT in a Debug +
 ASan build, so its own closure would take about a minute. Debugger points and

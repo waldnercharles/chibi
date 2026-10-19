@@ -62,7 +62,8 @@ static const char UTIL_SOURCE
          "import base \"project:facts/base\"\n"
          "Point :: struct { x: int; y: int; }\n"
          "Split :: pure fn(n: int) -> base.Pair { return base.Halves(n); }\n"
-         "Shape :: union { Square(side: int) | Empty }\n"
+         "Shape :: union { Square(side: int) | Empty | Halved(pair: base.Pair) "
+         "}\n"
          "Twice :: pure fn(n: int) -> int { return n * 2; }\n"
          "Area :: pure fn(p: Point) -> int { return p.x * p.y; }\n"
          "Corner :: pure fn(n: int) -> Point { return {x: n, y: Twice(n)}; }\n"
@@ -70,8 +71,14 @@ static const char UTIL_SOURCE
          "    switch s {\n"
          "        case .Square(side): return side * side;\n"
          "        case .Empty: return 0;\n"
+         "        case .Halved(pair): return pair.a + pair.b;\n"
          "    }\n"
          "    return -1;\n"
+         "}\n"
+         "Total :: pure fn(xs: int[]) -> int {\n"
+         "    total: int = 0;\n"
+         "    foreach (x in xs) { total += x; }\n"
+         "    return total;\n"
          "}\n";
 /* A dependency small enough to keep the other import samples cheap. */
 static const char POINT_SOURCE[] = "package util\n"
@@ -82,6 +89,7 @@ static const sample samples[] = {
     { .name = "imports",
       .source = "package facts\n"
                 "import util \"project:facts/util\"\n"
+                "import base \"project:facts/base\"\n"
                 "import strings \"core:strings\"\n"
                 "Sum :: pure fn(a: int, b: int) -> int { return util.Twice(a) "
                 "+ b; }\n"
@@ -93,10 +101,12 @@ static const sample samples[] = {
                 "Shapes :: pure fn(n: int) -> int {\n"
                 "    square := util.Shape.Square(n);\n"
                 "    total := util.Measure(square) + "
-                "util.Measure(util.Shape.Empty);\n"
+                "util.Measure(util.Shape.Empty) + "
+                "util.Measure(util.Shape.Halved(base.Halves(n)));\n"
                 "    switch square {\n"
                 "        case .Square(side): total += side;\n"
                 "        case .Empty: total -= 1;\n"
+                "        case .Halved(pair): total -= pair.a;\n"
                 "    }\n"
                 "    return total;\n"
                 "}\n"
@@ -117,17 +127,20 @@ static const sample samples[] = {
                 "Halves :: pure fn(n: int) -> int {\n"
                 "    pair := util.Split(n);\n"
                 "    return pair.a * 10 + pair.b;\n"
-                "}\n",
+                "}\n"
+                "Diamond :: pure fn(n: int) -> int { return base.Halves(n).a + "
+                "util.Total([n, n, 1]); }\n",
       .files = { { "facts/util/Util.chibi", UTIL_SOURCE },
                  { "facts/base/Base.chibi", BASE_SOURCE },
                  { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE } },
       .calls = { { "Sum", "[3,4]", "[10]" },
                  { "Pair", "[3]", "[18]" },
-                 { "Shapes", "[3]", "[12]" },
+                 { "Shapes", "[3]", "[15]" },
                  { "Points", "[2]", "[[{\"x\":2,\"y\":4},{\"x\":1,\"y\":2}]]" },
                  { "Label", "[\"abc\"]", "[2]" },
                  { "Both", "[2]", "[604]" },
-                 { "Halves", "[7]", "[34]" } } },
+                 { "Halves", "[7]", "[34]" },
+                 { "Diamond", "[5]", "[13]" } } },
     { .name = "unknown imported type",
       .source = "package facts\nimport util \"project:facts/util\"\n"
                 "One :: pure fn(p: util.Missing) -> int { return 1; }",
@@ -146,6 +159,22 @@ static const sample samples[] = {
                 "}\n",
       .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
       .calls = { { "Local", "[5]", "[15]" } } },
+    { .name = "hidden alias call",
+      .source = "package facts\nimport util \"project:facts/util\"\n"
+                "One :: pure fn(n: int) -> int { util := n; other := "
+                "util.Corner(n); return other.x; }",
+      .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
+      .message = "call needs a function name",
+      .line = 3,
+      .column = 53 },
+    { .name = "hidden alias type",
+      .source = "package facts\nimport util \"project:facts/util\"\n"
+                "One :: pure fn(n: int) -> int { util := n; p: util.Point = "
+                "{x: 1, y: 2}; return p.x; }",
+      .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
+      .message = "local type is not supported yet",
+      .line = 3,
+      .column = 47 },
     { .name = "unknown imported function",
       .source = "package facts\nimport util \"project:facts/util\"\n"
                 "One :: pure fn() -> int { return util.Missing(1); }",

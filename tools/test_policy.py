@@ -633,10 +633,11 @@ TOOLS = {
     # execution_prepared_write. One shared60s including bootstrap; no aggregate.
     'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--prepared-writer-chibi'],
-    # One pico_unit case: the authored package compiler over fixed scalar sample
-    # packages on both compiler backends; each accepted closure loads in a fresh
-    # runtime host and runs on bytecode and SLJIT, and stage zero's build of the
-    # same package agrees. Rejections check message and position. shared60s.
+    # One pico_unit case: the authored package compiler over fixed samples of
+    # one to four packages, core:strings among them, on both compiler backends;
+    # each accepted closure loads in a fresh runtime host and runs on bytecode
+    # and SLJIT, and stage zero's build of the same packages agrees. Rejections
+    # check message and position. About 35s of one shared60s.
     'language-package-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--package-compiler-chibi'],
     # Three cases:40 requests,80 authored calls capped at2m instructions each.

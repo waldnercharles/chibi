@@ -112,7 +112,9 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             declared := Field(forest, item.node, "type");
             if (declared >= 0) {
                 resolved := ReadType(forest, text, types, bindings, callable.package, document, declared);
-                if (resolved.storage == 0) { return Fail(forest, declared, document, "local type is not supported yet"); }
+                if (resolved.storage == 0 || HidesAlias(forest, text, names, declared)) {
+                    return Fail(forest, declared, document, "local type is not supported yet");
+                }
                 expected = Expect(value, resolved.storage, resolved.container, resolved.record);
             }
         } else if (kind == "return_statement") {
@@ -698,7 +700,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         }
         callee_name := Text(forest, text, name_node);
         found := FindCallable(callables, home, callee_name);
-        if (found < 0 && home != package) {
+        if (found < 0 && name_node != callee) {
             return Fail(forest, callee, document, format_text("Unknown function '{}'", Text(forest, text, callee)));
         }
         native := -1;

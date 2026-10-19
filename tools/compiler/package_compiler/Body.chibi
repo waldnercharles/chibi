@@ -243,6 +243,11 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
     }
     return found;
 }
+// Whether a local hides the import alias that qualifies `type`'s name.
+HidesAlias :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Name[], type: int) -> bool {
+    first := FirstMember(forest, Field(forest, type, "name"));
+    return NextMember(forest, first) >= 0 && Lookup(names, NameText(forest, text, first)) >= 0;
+}
 // The union `U` names when `node` is a member expression `U.Variant`, or
 // `alias.U.Variant` for a union of an imported package, and no local hides U
 // or the alias; -1 otherwise.

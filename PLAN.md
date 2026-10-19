@@ -903,11 +903,12 @@ array parameters copied on entry. In-place array updates are recognized by
 capability identity, as in stage zero. With these, stage one compiles the
 compiler's complete source set, and the stage-two closure it builds, loaded by
 the compiler host, compiles the same sources to the same bytes
-(`make test-bootstrap`, a Release build, 18.6 s). The compiler host allows a
+and every sample as stage one does (`make test-bootstrap`, a Release build,
+about 30 s). The compiler host allows a
 compiler-sized closure: 256 MiB of decoded storage per load, 256 Mi units of
-record-layout work per module, and a 16 MiB `byte[]` result. Still open in this milestone: running the
-semantic fixture set with stage two, the stage-two compiler's 5.2 GB peak
-memory, and the checksummed bootstrap artifact with its version checks.
+record-layout work per module, and a 16 MiB `byte[]` result. Still open in this milestone: the stage-two
+compiler's 5 GB peak memory footprint, rebuilding a checked game, and the
+checksummed bootstrap artifact with its version checks.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

@@ -215,8 +215,11 @@ and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
 one, which compiles the compiler's complete source set, 14 files in 11
 packages, to a 6.2 MB closure: stage two. The compiler host loads stage two
 and runs its `CompileClosure` on the same sources and arguments, as JSON, and
-the bytes must equal stage one's. The run takes 18.6 s and peaks at 5.2 GB of
-resident memory (macOS arm64, 2026-10-19). Under Debug and the sanitizers one
+the bytes must equal stage one's. Stage two then compiles every sample, and
+each `Compile` result, closure or rejection, must project to the same JSON as
+stage one's; the existing selectors check stage one's against stage zero and
+run its closures on bytecode and SLJIT. The run takes about 30 s, with a peak
+memory footprint of about 5 GB (macOS arm64, 2026-10-19). Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
 

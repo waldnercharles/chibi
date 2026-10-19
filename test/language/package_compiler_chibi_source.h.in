@@ -17,7 +17,13 @@ static const char PACKAGE_COMPILER_STEPS_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_ST
 static const char PACKAGE_COMPILER_TREE_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_TREE_BYTES@ 0 };
 
 #define PACKAGE_COMPILER_SOURCE(PATH, VALUE) { PATH, VALUE, sizeof VALUE - 1 }
+/* The package compiler's files first: Compile's root package is the first
+ * file's. */
 #define PACKAGE_COMPILER_SOURCE_INPUTS \
+    PACKAGE_COMPILER_SOURCE("package_compiler/Compile.chibi", PACKAGE_COMPILER_COMPILE_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("package_compiler/Body.chibi", PACKAGE_COMPILER_BODY_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("package_compiler/Steps.chibi", PACKAGE_COMPILER_STEPS_SOURCE), \
+    PACKAGE_COMPILER_SOURCE("package_compiler/Tree.chibi", PACKAGE_COMPILER_TREE_SOURCE), \
     PACKAGE_COMPILER_SOURCE("syntax_diagnostics/Diagnostics.chibi", SYNTAX_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE), \
     PACKAGE_COMPILER_SOURCE("source_snapshot/Snapshot.chibi", PACKAGE_SNAPSHOT_CHIBI_SOURCE), \
@@ -27,10 +33,6 @@ static const char PACKAGE_COMPILER_TREE_SOURCE[] = { @CHIBI_PACKAGE_COMPILER_TRE
     PACKAGE_COMPILER_SOURCE("package_graph/Graph.chibi", PACKAGE_GRAPH_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("package_paths/Paths.chibi", PACKAGE_PATHS_CHIBI_SOURCE), \
     PACKAGE_COMPILER_SOURCE("lexical_binding/Binding.chibi", LEXICAL_BINDING_CHIBI_SOURCE), \
-    PACKAGE_COMPILER_SOURCE("prepared_writer/Writer.chibi", PREPARED_WRITER_CHIBI_SOURCE), \
-    PACKAGE_COMPILER_SOURCE("package_compiler/Compile.chibi", PACKAGE_COMPILER_COMPILE_SOURCE), \
-    PACKAGE_COMPILER_SOURCE("package_compiler/Body.chibi", PACKAGE_COMPILER_BODY_SOURCE), \
-    PACKAGE_COMPILER_SOURCE("package_compiler/Steps.chibi", PACKAGE_COMPILER_STEPS_SOURCE), \
-    PACKAGE_COMPILER_SOURCE("package_compiler/Tree.chibi", PACKAGE_COMPILER_TREE_SOURCE)
+    PACKAGE_COMPILER_SOURCE("prepared_writer/Writer.chibi", PREPARED_WRITER_CHIBI_SOURCE)
 
 #endif

@@ -10,6 +10,7 @@
 #include "runtime/native_capabilities.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
+#include "support/asset_json.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_artifact.h"
@@ -18,6 +19,7 @@
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 #include "types/union.h"
+#include "types/value_document.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -35,7 +37,9 @@ static const char PACKAGE[] = "project:package_compiler";
 enum
 {
     CALLS = 10,
+    ARGUMENTS = 11,
     COMPILE_BUDGET = 20000000,
+    SELF_BUDGET = 2000000000,
     TARGET_BUDGET = 100000
 };
 /* A NULL expected result means the call must fail. */
@@ -1131,23 +1135,25 @@ static int sample_inputs(const sample *s, source_package_input inputs[3])
     }
     return count;
 }
-static bool compile(int b, const sample *s, pin_value *out)
+static pin_value files(const source_package_input *inputs, int count, bool sources)
+{
+    pin_array *array = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
+    for (int i = 0; i < count; i++) {
+        array->items[i] = text(sources ? inputs[i].text : inputs[i].path);
+    }
+    return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
+}
+/* Compile's arguments for `inputs`: the project, the core collection, the
+ * files, this host's target and the natives it links. */
+static bool arguments(int b, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
 {
     const char *collection_names[] = { "core" };
     const char *collection_paths[] = { "/sdk/core" };
-    source_package_input inputs[3];
-    int count = sample_inputs(s, inputs);
-    const char *paths[3], *sources[3];
-    for (int i = 0; i < count; i++) {
-        paths[i] = inputs[i].path;
-        sources[i] = inputs[i].text;
-    }
-    pin_value args[11];
     args[0] = text("/project");
     args[1] = strings(collection_names, 1);
     args[2] = strings(collection_paths, 1);
-    args[3] = strings(paths, count);
-    args[4] = strings(sources, count);
+    args[3] = files(inputs, count, false);
+    args[4] = files(inputs, count, true);
     const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
     REQUIRE(record);
     args[5] = (pin_value){ .type = PIN_STRUCT,
@@ -1176,9 +1182,13 @@ static bool compile(int b, const sample *s, pin_value *out)
     }
     args[7] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
     REQUIRE(natives(b, &args[8]));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 11, COMPILE_BUDGET, &detached, out)
-    );
+    return true;
+}
+static bool compile(int b, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
+{
+    pin_value args[ARGUMENTS];
+    REQUIRE(arguments(b, inputs, count, args));
+    REQUIRE(compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, ARGUMENTS, budget, &detached, out));
     return true;
 }
 static uint64_t function_id(const char *name)
@@ -1270,6 +1280,17 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     REQUIRE(valid);
     return true;
 }
+/* The closure of a Compiled result. */
+static unsigned char *closure_bytes(const pin_union *value, size_t *length)
+{
+    const pin_array *array = value->values[1].ptr;
+    *length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(*length);
+    for (size_t i = 0; i < *length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
+    return bytes;
+}
 static bool run_samples(bool types)
 {
     REQUIRE(prepare());
@@ -1279,8 +1300,10 @@ static bool run_samples(bool types)
             if (s->types != types) {
                 continue;
             }
+            source_package_input inputs[3];
+            int count = sample_inputs(s, inputs);
             pin_value out;
-            REQUIRE(compile(b, s, &out));
+            REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
             const pin_union *value = out.ptr;
             REQUIRE(out.type == PIN_UNION && value);
             if (s->message) {
@@ -1324,12 +1347,8 @@ static bool run_samples(bool types)
                 );
             }
             REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
-            const pin_array *array = value->values[1].ptr;
-            size_t length = (size_t)array->count;
-            unsigned char *bytes = xmalloc(length);
-            for (size_t k = 0; k < length; k++) {
-                bytes[k] = array->items[k].u8;
-            }
+            size_t length;
+            unsigned char *bytes = closure_bytes(value, &length);
             arena_free(&detached);
             unsigned char *expected = NULL;
             size_t expected_length = 0;
@@ -1355,6 +1374,75 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
     return run_samples(true);
 }
+/* Compile's arguments as the compiler host takes them; malloc-owned. */
+static char *arguments_json(const pin_value *args, size_t *length)
+{
+    av_doc *doc = av_doc_new();
+    av_value *array = av_arr(doc);
+    for (int i = 0; i < ARGUMENTS; i++) {
+        av_value *value = pin_value_to_document(doc, &args[i]);
+        assert(value);
+        av_arr_append(array, value);
+    }
+    yyjson_mut_doc *encoded = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(encoded, av_to_json(encoded, array));
+    char *json = yyjson_mut_write(encoded, YYJSON_WRITE_NOFLAG, length);
+    yyjson_mut_doc_free(encoded);
+    av_doc_free(doc);
+    return json;
+}
+/* Whether the host's projected result is the Compiled closure `expected`. */
+static bool projects(const compiler_host_result *projected, const unsigned char *expected, size_t length)
+{
+    yyjson_doc *doc = yyjson_read(projected->json, projected->length, YYJSON_READ_NOFLAG);
+    REQUIRE(doc);
+    yyjson_val *value = yyjson_arr_get(yyjson_doc_get_root(doc), 0);
+    yyjson_val *bytes = yyjson_arr_get(yyjson_obj_get(value, "values"), 1);
+    bool same = yyjson_get_uint(yyjson_obj_get(value, "tag")) == tag(1, "Compiled") &&
+                yyjson_arr_size(bytes) == length;
+    for (size_t i = 0; same && i < length; i++) {
+        same = yyjson_get_uint(yyjson_arr_get(bytes, i)) == expected[i];
+    }
+    yyjson_doc_free(doc);
+    return same;
+}
+/* Stage zero prepares stage one, which compiles its own packages to a closure:
+ * stage two. Stage two, loaded by the compiler host, compiles the same
+ * packages to the same bytes. */
+TEST_CASE(package_compiler_compiles_itself)
+{
+    REQUIRE(prepare());
+    const source_package_input inputs[] = { PACKAGE_COMPILER_SOURCE_INPUTS };
+    pin_value args[ARGUMENTS], out;
+    REQUIRE(arguments(1, inputs, (int)(sizeof inputs / sizeof *inputs), args));
+    REQUIRE(
+        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, SELF_BUDGET, &detached, &out)
+    );
+    const pin_union *value = out.ptr;
+    REQUIRE(out.type == PIN_UNION && value->tag == tag(1, "Compiled") && value->count == 2);
+    size_t length, json_length;
+    unsigned char *stage_two = closure_bytes(value, &length);
+    char *json = arguments_json(args, &json_length);
+    arena_free(&detached);
+    char error[256];
+    host = compiler_host_load(stage_two, length, BEHAVIOR_SLJIT, error, sizeof error);
+    bool invoked = host && compiler_host_invoke(
+                               host,
+                               script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable"),
+                               json,
+                               json_length,
+                               SELF_BUDGET,
+                               &result
+                           );
+    if (!invoked) {
+        fprintf(stderr, "package compiler stage two: %s%s\n", host ? "" : error, result.diagnostic);
+    }
+    bool same = invoked && result.flow_status == FLOW_OK && projects(&result, stage_two, length);
+    free(stage_two);
+    free(json);
+    REQUIRE(same);
+    return true;
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -1365,5 +1453,11 @@ void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_bootstrap()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compiles_itself);
     pu_clear_setup();
 }

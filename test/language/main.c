@@ -161,6 +161,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--package-compiler-chibi");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_bootstrap = argc == 2 &&
+                                            !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
     bool scalar_lowering_chibi = argc == 2 &&
                                  !strcmp(argv[1], "--scalar-lowering-chibi");
     bool lexical_binding_chibi = argc == 2 &&
@@ -233,7 +235,8 @@ int main(int argc, char **argv)
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
          !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
-         !package_compiler_chibi_types && !lexical_binding_chibi &&
+         !package_compiler_chibi_types && !package_compiler_chibi_bootstrap &&
+         !lexical_binding_chibi &&
          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
          !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
@@ -258,7 +261,7 @@ int main(int argc, char **argv)
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--scalar-lowering-chibi | --bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
-            "--package-compiler-chibi-types | "
+            "--package-compiler-chibi-types | --package-compiler-chibi-bootstrap | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -418,6 +421,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
         test_language_package_compiler_chibi_types();
+    } else if (package_compiler_chibi_bootstrap) {
+        test_language_package_compiler_chibi_bootstrap();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

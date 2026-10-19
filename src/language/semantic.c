@@ -29,13 +29,16 @@ static script_analysis *analyze(
     const script_catalog *catalog,
     bool declarations,
     const char *key,
-    bool complete
+    bool complete,
+    const script_specialization_request *requests,
+    int request_count,
+    bool migration
 )
 {
     assert(syntax && syntax->tree && catalog);
     script_syntax *recovered = script_analyzer_recovery_syntax(syntax);
     if (recovered) {
-        script_analysis *out = analyze(recovered, catalog, declarations, key, false);
+        script_analysis *out = analyze(recovered, catalog, declarations, key, false, requests, request_count, migration);
         script_analyzer_recovery_restore(out, syntax);
         script_syntax_free(recovered);
         return out;
@@ -53,7 +56,10 @@ static script_analysis *analyze(
                    .out = out,
                    .scope = -1,
                    .function = -1,
-                   .declarations_only = declarations };
+                   .declarations_only = declarations,
+                   .requested = requests,
+                   .requested_count = request_count,
+                   .migration_import = migration };
     a.catalog_view = *catalog;
     for (int i = 0; i < catalog->type_count; i++) {
         apush(a.catalog_types, catalog->types[i]);
@@ -92,7 +98,7 @@ static script_analysis *analyze(
         TSNode body = script_analyzer_field(program, "body");
         a.scope = script_analyzer_scope_new(&a, body);
         int self = -1;
-        if (out->kind != SCRIPT_PROGRAM_LIBRARY) {
+        {
             script_symbol owner = { .id = script_catalog_id("owner", out->identity),
                                     .name = xstrdup("self"),
                                     .kind = SCRIPT_GLOBAL,
@@ -169,6 +175,7 @@ static script_analysis *analyze(
             asetlen(out->diagnostics, reported);
         }
     }
+    script_analyzer_generic_materialize(&a);
     if (!found) {
         script_analyzer_diagnostic(&a, root, "Source has no executable declaration");
     }
@@ -190,7 +197,6 @@ static script_analysis *analyze(
         }
         out->functions[i].parameter_count = acount(out->functions[i].parameters);
         out->functions[i].result_count = acount(out->functions[i].results);
-        out->functions[i].type_parameter_count = acount(out->functions[i].type_parameters);
     }
     out->symbol_count = acount(out->symbols);
     out->use_count = acount(out->uses);
@@ -213,11 +219,12 @@ static script_analysis *analyze(
     afree(a.narrowed);
     afree(a.catalog_types);
     afree(a.constant_proofs);
+    script_analyzer_generic_free(&a);
     return out;
 }
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, false, NULL, true);
+    return analyze(syntax, catalog, false, NULL, true, NULL, 0, false);
 }
 script_analysis *script_analyze_document(
     const script_syntax *syntax,
@@ -226,11 +233,34 @@ script_analysis *script_analyze_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, false, key, true);
+    return analyze(syntax, catalog, false, key, true, NULL, 0, false);
+}
+script_analysis *script_analyze_document_requested(
+    const script_syntax *syntax,
+    const script_catalog *catalog,
+    const char *key,
+    const script_specialization_request *requests,
+    int count
+)
+{
+    assert(key && key[0] && count >= 0 && (!count || requests));
+    return analyze(syntax, catalog, false, key, true, requests, count, false);
+}
+script_analysis *script_analyze_migration_document(
+    const script_syntax *syntax,
+    const script_catalog *catalog,
+    const char *key,
+    const script_specialization_request *requests,
+    int count,
+    bool declarations
+)
+{
+    assert(key && key[0] && count >= 0 && (!count || requests));
+    return analyze(syntax, catalog, declarations, key, true, requests, count, true);
 }
 script_analysis *script_declarations(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, true, NULL, true);
+    return analyze(syntax, catalog, true, NULL, true, NULL, 0, false);
 }
 script_analysis *script_declarations_document(
     const script_syntax *syntax,
@@ -239,7 +269,7 @@ script_analysis *script_declarations_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, true, key, true);
+    return analyze(syntax, catalog, true, key, true, NULL, 0, false);
 }
 void script_analysis_free(script_analysis *out)
 {
@@ -256,6 +286,7 @@ void script_analysis_free(script_analysis *out)
     for (int i = 0; i < acount(out->expressions); i++) {
         script_expression *expression = &out->expressions[i];
         if (expression->kind == SCRIPT_EXPR_CONSTANT && !expression->constant_snapshot &&
+            expression->constant.container == PIN_CONTAINER_SINGLE &&
             (expression->constant.type == PIN_STR ||
              expression->constant.type == PIN_NAME)) {
             free((void *)expression->constant.str);
@@ -271,7 +302,6 @@ void script_analysis_free(script_analysis *out)
         afree(out->functions[i].parameters);
         afree(out->functions[i].results);
         free(out->functions[i].entry);
-        afree(out->functions[i].type_parameters);
     }
     for (int i = 0; i < acount(out->queries); i++) {
         afree(out->queries[i].children);
@@ -289,6 +319,9 @@ void script_analysis_free(script_analysis *out)
     afree(out->queries);
     afree(out->bindings);
     afree(out->types);
+    afree(out->templates);
+    afree(out->requests);
+    afree(out->specializations);
     afree(out->diagnostics);
     afree(out->warnings);
     arena_free(&out->constants);

@@ -12,7 +12,7 @@
    project (in this repository or chibi-studio) would load wrong or fail to
    load and a step in project_migrate.c would rewrite it; see the first rule
    in AGENTS.md for what needs no bump. */
-#define CHIBI_PROJECT_VERSION 24
+#define CHIBI_PROJECT_VERSION 26
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10
 
@@ -35,11 +35,49 @@ typedef struct
     chibi_application application;
 } chibi_project;
 
-/* Resolve a project directory, its project.kdl, or a legacy content directory. */
+/* Resolve a project directory, its project.kdl, or a legacy content directory.
+ * This document-only API runs structural migrations, not catalog-dependent
+ * executable normalization. Hosts that load source must use
+ * authoring_project_open with their explicit native table instead. Metadata
+ * discovery should use chibi_project_inspect without advancing the manifest. */
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size);
+/* An authoring host may finish catalog-dependent source migration after every
+ * document step succeeds and before the manifest is replaced. Failure leaves
+ * the manifest at its old version so the idempotent upgrade can be retried.
+ * Inputs and user data are borrowed only during this call. The low document
+ * package has no compiler/native registry dependency. */
+typedef int (*chibi_project_migration_fn)(
+    const char *content,
+    const char *start_scene,
+    int from,
+    void *user,
+    char *error,
+    size_t size
+);
+int chibi_project_open_migrating(
+    chibi_project *,
+    const char *,
+    chibi_project_migration_fn,
+    void *user,
+    char *,
+    size_t
+);
+/* The same migration and manifest/content validation for explicitly selected
+ * assets. Unlike opening a launchable project, no start scene is required. */
+int chibi_project_open_content_migrating(
+    chibi_project *,
+    const char *,
+    chibi_project_migration_fn,
+    void *user,
+    char *,
+    size_t
+);
 /* chibi_project_open without upgrading: a project saved by an earlier build
  * fails, naming --migrate. */
 int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size);
+/* Manifest-only inspection for the compiler launcher. Accepts supported older
+ * manifests without upgrading their sources; never use it to load runtime data. */
+int chibi_project_inspect(chibi_project *, const char *, char *, size_t);
 /* The owned path of the nearest directory at or above `start` that holds
  * project.kdl, or NULL when none does. */
 char *chibi_project_find(const char *start);
@@ -49,9 +87,11 @@ char *chibi_project_find(const char *start);
  * exists, and otherwise the storage error. */
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size);
 void chibi_project_free(chibi_project *project);
-/* Upgrades the project at `path` to CHIBI_PROJECT_VERSION in place. Returns
+/* Structural document-only upgrade; executable hosts use authoring_project_migrate.
+ * Upgrades the project at `path` to CHIBI_PROJECT_VERSION in place. Returns
  * the number of version steps applied, or -1 with `error` set. */
 int chibi_project_migrate(const char *path, char *error, size_t error_size);
+int chibi_project_migrate_finalized(const char *, chibi_project_migration_fn, void *user, char *, size_t);
 
 /* The owned path of the folder the project at directory `root` keeps its
  * content in: the one its manifest names, joined to `root`, else

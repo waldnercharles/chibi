@@ -155,7 +155,21 @@ static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind
                            ? ":callable"
                        : result_parameter ? kind == SCRIPT_LOCAL ? ":local" : ":result"
                                           : "";
-    snprintf(identity, size, "%s:%d:%s%s", program, a->scope, name, domain);
+    if (a->specialization) {
+        size_t needed = strlen(name) + strlen(domain) + 64;
+        identity = xrealloc(identity, needed);
+        snprintf(
+            identity,
+            needed,
+            "%llu:%d:%s%s",
+            (unsigned long long)a->specialization,
+            script_analyzer_range(node).start,
+            name,
+            domain
+        );
+    } else {
+        snprintf(identity, size, "%s:%d:%s%s", program, a->scope, name, domain);
+    }
     symbol.id = script_catalog_id("symbol", identity);
     free(identity);
     apush(a->out->symbols, symbol);
@@ -361,10 +375,70 @@ script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *sour
     free(name);
     return optional_storage(a, type);
 }
+script_type script_analyzer_collection_type(analyzer *a, pin_container container, script_type key, script_type value)
+{
+    char identity[128];
+    snprintf(
+        identity,
+        sizeof identity,
+        "%d:%llu:%llu",
+        container,
+        (unsigned long long)script_type_tag(key),
+        (unsigned long long)script_type_tag(value)
+    );
+    uint64_t id = script_catalog_id("collection-type", identity);
+    script_type type = container == PIN_CONTAINER_MAP
+                         ? (script_type){ .storage = PIN_UNION,
+                                          .container = container,
+                                          .collection = id }
+                         : value;
+    type.container = container;
+    type.collection = id;
+    if (!script_catalog_type_by_id(a->catalog, id)) {
+        char name[160];
+        snprintf(name, sizeof name, "__collection_%llu", (unsigned long long)id);
+        size_t bytes = strlen(name) + 1;
+        char *owned = arena_alloc(&a->out->constants, bytes);
+        memcpy(owned, name, bytes);
+        script_analyzer_publish_type(
+            a,
+            (script_catalog_type){ .id = id,
+                                   .name = owned,
+                                   .type = type,
+                                   .size = sizeof(void *),
+                                   .internal = true,
+                                   .container = container,
+                                   .key_type = key,
+                                   .element_type = value }
+        );
+    }
+    return type;
+}
+
+static script_type type_traits(analyzer *a, TSNode node, script_type type)
+{
+    for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        if (script_analyzer_text_is(a, child, "ref")) {
+            type.flags |= SCRIPT_TYPE_REFERENCE;
+        } else if (script_analyzer_text_is(a, child, "?")) {
+            type.flags |= SCRIPT_TYPE_OPTIONAL;
+        } else if (script_analyzer_text_is(a, child, "[") || script_analyzer_text_is(a, child, "[]")) {
+            if (type.collection || type.container != PIN_CONTAINER_SINGLE) {
+                type = script_analyzer_collection_type(a, PIN_CONTAINER_ARRAY, (script_type){ 0 }, type);
+            }
+            type.container = PIN_CONTAINER_ARRAY;
+        }
+    }
+    return optional_storage(a, type);
+}
 script_type script_analyzer_type_node(analyzer *a, TSNode node)
 {
     if (ts_node_is_null(node)) {
         return (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
+    }
+    if (script_analyzer_is(node, "type_application")) {
+        return script_analyzer_generic_type(a, node);
     }
     if (script_analyzer_is(node, "type")) {
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
@@ -372,16 +446,46 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
             if (script_analyzer_is(child, "union_type")) {
                 return script_analyzer_type_node(a, child);
             }
+            if (script_analyzer_is(child, "type_application")) {
+                return type_traits(a, node, script_analyzer_generic_type(a, child));
+            }
         }
         TSNode name_node = script_analyzer_field(node, "name"),
                arguments = script_analyzer_field(node, "arguments");
+        if (script_analyzer_is(name_node, "type_binder")) {
+            name_node = script_analyzer_field(name_node, "name");
+        }
         char *name = script_analyzer_name_copy(a, name_node);
         bool collection = !strcmp(name, "array") || !strcmp(name, "set") ||
                           !strcmp(name, "map");
         bool nominal = !strcmp(name, "struct") || !strcmp(name, "enum") ||
                        !strcmp(name, "handle");
         script_type type;
-        if (!strcmp(name, "task") && !ts_node_is_null(arguments)) {
+        if (!strcmp(name, "Map")) {
+            int count = (int)script_analyzer_named_count(arguments);
+            if (!count) {
+                type = (script_type){ .storage = PIN_UNION,
+                                      .container = PIN_CONTAINER_MAP,
+                                      .flags = SCRIPT_TYPE_UNTYPED };
+            } else if (count != 2) {
+                script_analyzer_diagnostic(a, node, "Map requires key and value types");
+                type = script_analyzer_bad_type();
+            } else {
+                script_type key = script_analyzer_type_node(a, ts_node_named_child(arguments, 0));
+                script_type value = script_analyzer_type_node(a, ts_node_named_child(arguments, 1));
+                bool supported = key.container == PIN_CONTAINER_SINGLE &&
+                                 !(key.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK |
+                                                SCRIPT_TYPE_UNION)) &&
+                                 (key.storage == PIN_BOOL ||
+                                  (key.storage >= PIN_I8 && key.storage <= PIN_F64) ||
+                                  key.storage == PIN_STR || key.storage == PIN_NAME ||
+                                  key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
+                if (!supported) {
+                    script_analyzer_diagnostic(a, node, "Unsupported Map key type");
+                }
+                type = script_analyzer_collection_type(a, PIN_CONTAINER_MAP, key, value);
+            }
+        } else if (!strcmp(name, "task") && !ts_node_is_null(arguments)) {
             if (script_analyzer_named_count(arguments) != 1) {
                 script_analyzer_diagnostic(a, node, "task requires one result type");
                 type = script_analyzer_bad_type();
@@ -390,7 +494,9 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                 type = script_analyzer_task_type(a, result, 0);
             }
         } else if (collection || nominal) {
-            TSNode argument = ts_node_named_child(arguments, 0);
+            TSNode argument = ts_node_is_null(arguments)
+                                ? (TSNode){ 0 }
+                                : ts_node_named_child(arguments, 0);
             if (ts_node_is_null(argument)) {
                 script_analyzer_diagnostic(a, node, "Type '%s' requires a type argument", name);
                 type = script_analyzer_bad_type();
@@ -398,9 +504,16 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                 type = script_analyzer_type_node(a, argument);
             }
             if (collection) {
-                type.container = !strcmp(name, "set") ? PIN_CONTAINER_SET
-                               : !strcmp(name, "map") ? PIN_CONTAINER_MAP
-                                                      : PIN_CONTAINER_ARRAY;
+                pin_container container = !strcmp(name, "set") ? PIN_CONTAINER_SET
+                                        : !strcmp(name, "map") ? PIN_CONTAINER_MAP
+                                                               : PIN_CONTAINER_ARRAY;
+                if (!strcmp(name, "map")) {
+                    script_analyzer_diagnostic(a, node, "Use Map<K, V> for associative maps");
+                }
+                type = type.collection || type.container != PIN_CONTAINER_SINGLE
+                         ? script_analyzer_collection_type(a, container, (script_type){ 0 }, type)
+                         : type;
+                type.container = container;
             } else if (!strcmp(name, "enum")) {
                 type.storage = PIN_ENUM;
             } else if (!strcmp(name, "handle")) {
@@ -408,6 +521,18 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
             }
         } else {
             type = script_builtin_type(name);
+            char *dot = strchr(name, '.');
+            if (dot) {
+                *dot = '\0';
+                int owner = script_analyzer_lookup_name(a, name);
+                *dot = '.';
+                compile_value member;
+                if (owner >= 0 && a->out->symbols[owner].kind == SCRIPT_TYPE &&
+                    script_analyzer_generic_member(a, a->out->symbols[owner].type, dot + 1, &member) &&
+                    member.is_type) {
+                    type = member.type;
+                }
+            }
             int symbol = script_analyzer_lookup_name(a, name);
             if (symbol >= 0 && (a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER ||
                                 a->out->symbols[symbol].kind == SCRIPT_TYPE)) {
@@ -436,18 +561,8 @@ script_type script_analyzer_type_node(analyzer *a, TSNode node)
                 type_use(a, name_node, generic ? symbol : -1, generic ? 0 : type.nominal);
             }
         }
-        for (uint32_t i = 0; i < script_analyzer_child_count(node); i++) {
-            TSNode child = ts_node_child(node, i);
-            if (script_analyzer_text_is(a, child, "ref")) {
-                type.flags |= SCRIPT_TYPE_REFERENCE;
-            } else if (script_analyzer_text_is(a, child, "?")) {
-                type.flags |= SCRIPT_TYPE_OPTIONAL;
-            } else if (script_analyzer_text_is(a, child, "[") || script_analyzer_text_is(a, child, "[]")) {
-                type.container = PIN_CONTAINER_ARRAY;
-            }
-        }
         free(name);
-        return optional_storage(a, type);
+        return type_traits(a, node, type);
     }
     if (script_analyzer_is(node, "union_type")) {
         script_type *members = NULL;
@@ -547,6 +662,7 @@ static bool compile_time_value(const analyzer *a, int index, int depth, int *ste
                     compile_time_value(a, value->right, depth + 1, steps, scalar);
             break;
         case SCRIPT_EXPR_ARRAY:
+        case SCRIPT_EXPR_MAP:
         case SCRIPT_EXPR_STRUCT:
         case SCRIPT_EXPR_UNION:
             valid = true;
@@ -600,20 +716,21 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     script_type expected = record->type;
     TSNode node = a->initializers[index].value;
     int value;
-    if (ts_node_is_null(node) && starts_empty(expected)) {
+    if (ts_node_is_null(node) && starts_empty(expected) &&
+        !(expected.flags & SCRIPT_TYPE_UNTYPED)) {
         value = script_analyzer_expr_add(
             a,
-            (script_expression){ .kind = expected.container != PIN_CONTAINER_SINGLE
-                                           ? SCRIPT_EXPR_ARRAY
-                                           : SCRIPT_EXPR_CONSTANT,
-                                 .type = expected,
-                                 .constant = { .type = expected.storage,
-                                               .container = expected.container },
-                                 .range = record->declaration,
-                                 .symbol = -1,
-                                 .left = -1,
-                                 .right = -1,
-                                 .entry = -1 }
+            (script_expression){
+                .kind = expected.container == PIN_CONTAINER_MAP ? SCRIPT_EXPR_MAP
+                      : expected.container != PIN_CONTAINER_SINGLE ? SCRIPT_EXPR_ARRAY
+                                                                   : SCRIPT_EXPR_CONSTANT,
+                .type = expected,
+                .constant = { .type = expected.storage, .container = expected.container },
+                .range = record->declaration,
+                .symbol = -1,
+                .left = -1,
+                .right = -1,
+                .entry = -1 }
         );
     } else if (ts_node_is_null(node)) {
         script_analyzer_diagnostic(
@@ -649,6 +766,11 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
             script_analyzer_expr_type(a, value)
         );
     }
+    if (record->kind == SCRIPT_SHARED_STATE &&
+        script_type_contains_tasks(a->catalog, record->type)) {
+        /* A task belongs to the entity that started it. */
+        script_analyzer_diagnostic(a, node, "System-owned retained bindings cannot contain tasks; keep task handles in coroutine locals");
+    }
     if (record->kind == SCRIPT_ACTION && a->out->expressions[value].result_count) {
         record->type = (script_type){ .storage = PIN_STRUCT,
                                       .nominal = record->capability,
@@ -665,6 +787,56 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
         script_analyzer_expr_effects(a, value)) {
         script_analyzer_diagnostic(a, a->initializers[index].value, "State defaults must be constant and deterministic");
     }
+}
+static bool contains_task(const script_catalog *catalog, script_type type, uint64_t *path, int depth)
+{
+    if (type.storage == PIN_TASK || (type.flags & SCRIPT_TYPE_TASK)) {
+        return true;
+    }
+    if (depth == SCRIPT_MAX_DEPTH) {
+        return true;
+    }
+    path[depth] = 0;
+    if (type.container >= PIN_CONTAINER_ARRAY) {
+        if (type.container == PIN_CONTAINER_MAP &&
+            contains_task(catalog, script_catalog_key_type(catalog, type), path, depth + 1)) {
+            return true;
+        }
+        return contains_task(catalog, script_catalog_element_type(catalog, type), path, depth + 1);
+    }
+    const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
+    if (!record) {
+        return false;
+    }
+    for (int i = 0; i < depth; i++) {
+        if (path[i] == record->id) {
+            return false;
+        }
+    }
+    path[depth] = record->id;
+    for (int i = 0; i < record->field_count; i++) {
+        if (contains_task(catalog, record->fields[i].type, path, depth + 1)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < record->variant_count; i++) {
+        const script_catalog_variant *variant = &record->variants[i];
+        if (!variant->tagged &&
+            contains_task(catalog, variant->type, path, depth + 1)) {
+            return true;
+        }
+        for (int j = 0; j < variant->field_count; j++) {
+            if (contains_task(catalog, variant->fields[j].type, path, depth + 1)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+bool script_type_contains_tasks(const script_catalog *catalog, script_type type)
+{
+    uint64_t path[SCRIPT_MAX_DEPTH] = { 0 };
+    return contains_task(catalog, type, path, 0);
 }
 script_operator script_analyzer_operator_node(analyzer *a, TSNode node)
 {

@@ -9,6 +9,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -149,6 +150,7 @@ static int snapshot(int input, const node_host_call *call, int flag)
     return result;
 }
 
+/* Address the first scalar payload in either physical representation. */
 static int first_item(int array)
 {
     int items = value(
@@ -158,18 +160,59 @@ static int first_item(int array)
                                          .offset = offsetof(pin_array, items) },
         true
     );
+    int data = value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = array,
+                                         .offset = offsetof(pin_array, data) },
+        true
+    );
+    int stride = value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = array,
+                                         .offset = offsetof(pin_array, stride) },
+        false
+    );
     int zero = value(
         (behavior_function_instruction){ .op = BF_CONSTANT,
-                                         .type = PIN_I32,
-                                         .value = { .type = PIN_I32 } },
+                                         .type = BF_POINTER_TYPE,
+                                         .value = { .type = BF_POINTER_TYPE } },
+        false
+    );
+    int packed = value(
+        (
+            behavior_function_instruction
+        ){ .op = BF_NE, .type = BF_POINTER_TYPE, .left = stride, .right = zero },
+        false
+    );
+    int base = value(
+        (behavior_function_instruction){ .op = BF_SELECT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = packed,
+                                         .right = data,
+                                         .target = items },
+        true
+    );
+    int boxed_offset = value(
+        (behavior_function_instruction){
+            .op = BF_CONSTANT,
+            .type = BF_POINTER_TYPE,
+            .value = { .type = BF_POINTER_TYPE, .u64 = offsetof(pin_value, d) } },
+        false
+    );
+    int offset = value(
+        (behavior_function_instruction){ .op = BF_SELECT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = packed,
+                                         .right = zero,
+                                         .target = boxed_offset },
         false
     );
     return value(
-        (behavior_function_instruction){ .op = BF_INDEX,
-                                         .type = BF_POINTER_TYPE,
-                                         .left = items,
-                                         .right = zero,
-                                         .offset = sizeof(pin_value) },
+        (
+            behavior_function_instruction
+        ){ .op = BF_ADD, .type = BF_POINTER_TYPE, .left = base, .right = offset },
         true
     );
 }
@@ -281,11 +324,12 @@ static bool fixture(int kind)
                                                   .left = replacement });
         } else if (kind == RAW_WRITE || kind == HOST_ALIAS) {
             int item = kind == RAW_WRITE ? first_item(original) : host_address(0);
-            emit((behavior_function_instruction){ .op = BF_WRITE,
-                                                  .type = PIN_F64,
-                                                  .left = replacement,
-                                                  .right = item,
-                                                  .offset = offsetof(pin_value, d) });
+            emit((behavior_function_instruction){
+                .op = BF_WRITE,
+                .type = PIN_F64,
+                .left = replacement,
+                .right = item,
+                .offset = kind == RAW_WRITE ? 0 : offsetof(pin_value, d) });
         } else {
             emit((behavior_function_instruction){
                 .op = kind == VARIABLE_ALIAS ? BF_STORE : BF_RESULT,
@@ -342,10 +386,9 @@ static bool fixture(int kind)
         } else {
             int item = first_item(held);
             result = value(
-                (behavior_function_instruction){ .op = BF_LOAD,
-                                                 .type = PIN_F64,
-                                                 .left = item,
-                                                 .offset = offsetof(pin_value, d) },
+                (
+                    behavior_function_instruction
+                ){ .op = BF_LOAD, .type = PIN_F64, .left = item, .offset = 0 },
                 false
             );
         }
@@ -494,14 +537,9 @@ static void mutate_at_call(const behavior_function *, behavior_function_context 
 
 TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 {
-    REQUIRE(authored(
-        "library Borrow {"
-        "Root :: fn (input: double[]) -> double { copy := input; return "
-        "Forward(copy); }"
-        "Forward :: fn (input: double[]) -> double { return Sum(input); }"
-        "Sum :: fn (input: double[]) -> double { total := 0.0; "
-        "for value in input { total += value; } return total; } }"
-    ));
+    REQUIRE(
+        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Forward(copy); }Forward :: (input: double[]) -> double { return Sum(input); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+    );
     REQUIRE(function->readonly_collections);
     REQUIRE(guarded() > 0);
     for (int i = 0; i < execution_module_function_count(module); i++) {
@@ -535,13 +573,9 @@ TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
 
 TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 {
-    REQUIRE(authored(
-        "library Borrow {"
-        "Root :: pure (input: double[]) -> double { copy := input; return "
-        "Sum(copy) + Sum(copy); }"
-        "Sum :: pure (input: double[]) -> double { total := 0.0; "
-        "for value in input { total += value; } return total; } }"
-    ));
+    REQUIRE(
+        authored("Borrow :: library {Root :: (input: double[]) -> double { copy := input; return Sum(copy) + Sum(copy); }Sum :: (input: double[]) -> double { total := 0.0; for value in input { total += value; } return total; } }")
+    );
     REQUIRE(function->readonly_collections);
     for (int backend = 0; backend < 2; backend++) {
         pin_value item = { .type = PIN_F64, .d = 7 }, output = item;
@@ -565,18 +599,17 @@ TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
 TEST_CASE(borrow_call_contract_rejects_escape_mutation_suspend_and_recursion)
 {
     const char *sources[] = {
-        ("library Borrow { Root :: pure (input: double[]) -> double[] { return "
-         "Keep(input); }"
-         "Keep :: pure (input: double[]) -> double[] { return input; } }"),
-        ("library Borrow { Root :: pure (input: double[]) -> double { return "
-         "Change(input); }"
-         "Change :: pure (input: double[]) -> double { input[0] = 99; return "
-         "input[0]; } }"),
-        ("library Borrow { Root :: fn (input: double[]) -> double { return "
-         "await Wait(input); }"
-         "Wait :: fn (input: double[]) -> double { yield; return input[0]; } }"),
-        ("library Borrow { Root :: pure (input: double[]) -> double { "
-         "depth_limit 8; return Root(input); } }")
+        ("Borrow :: library { Root :: (input: double[]) -> double[] { return "
+         "Keep(input); }Keep :: (input: double[]) -> double[] { return input; "
+         "} }"),
+        ("Borrow :: library { Root :: (input: double[]) -> double { return "
+         "Change(input); }Change :: (input: double[]) -> double { input[0] = "
+         "99; return input[0]; } }"),
+        ("Borrow :: library { Root :: (input: double[]) -> double { return "
+         "await Wait(input); }Wait :: (input: double[]) -> double { yield; "
+         "return input[0]; } }"),
+        ("Borrow :: library { Root :: (input: double[]) -> double { return "
+         "Root(input); } }")
     };
     for (int i = 0; i < 4; i++) {
         cleanup();
@@ -612,6 +645,10 @@ TEST_CASE(borrow_helper_pause_and_wait_retain_arguments_before_resuming)
                 child->arguments[0].ptr !=
                 context.data->values[function->calls[0].first].ptr
             );
+            const pin_array *retained = child->arguments[0].ptr;
+            REQUIRE(pin_array_valid(retained));
+            REQUIRE(retained->stride == sizeof(double) && !retained->items);
+            REQUIRE(pin_array_get(retained, 0).d == 7);
             item.d = 99;
             pause = false;
             context.source_pause = NULL;
@@ -649,12 +686,9 @@ TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
 
 TEST_CASE(borrow_call_guards_program_state_headers_before_commit)
 {
-    REQUIRE(authored(
-        "behavior Borrow { scalar: double = 7;"
-        "Root :: fn (input: double[]) -> double { copy := input; scalar = 99; "
-        "Touch(); return copy[0]; }"
-        "Touch :: fn () -> double { return 0; } }"
-    ));
+    REQUIRE(
+        authored("Borrow :: behavior { scalar: double = 7;Root :: (input: double[]) -> double { copy := input; scalar = 99; Touch(); return copy[0]; }Touch :: () -> double { return 0; } }")
+    );
     REQUIRE(function->readonly_collections && guarded() > 0);
     uint64_t state = 0;
     for (int i = 0; i < analysis->symbol_count; i++) {
@@ -700,7 +734,7 @@ TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
                                               .name = "Run",
                                               .kind = SCRIPT_CAPABILITY_EVENT };
     const script_catalog catalog = { .capabilities = &event, .capability_count = 1 };
-    syntax = script_parse("behavior Borrow { values: double[]=[]; total: double=0; on Run { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
+    syntax = script_parse("Borrow :: behavior { values: double[]=[]; total: double=0; on Run { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);
@@ -793,8 +827,8 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
             );
             if (variant == 3) {
                 pin_array *retained = context.data->values[result_bank].ptr;
-                REQUIRE(retained->items[0].str != item.str);
-                REQUIRE(!strcmp(retained->items[0].str, item.str));
+                REQUIRE(pin_array_get(retained, 0).str != item.str);
+                REQUIRE(!strcmp(pin_array_get(retained, 0).str, item.str));
             }
         }
     }
@@ -883,7 +917,7 @@ TEST_CASE(borrow_rejects_mutation_identity_headers_escape_and_opaque_calls)
                 REQUIRE(!output.b);
             } else if (kind == ESCAPE) {
                 REQUIRE(output.ptr && output.ptr != input.ptr);
-                REQUIRE(((pin_array *)output.ptr)->items[0].d == 7);
+                REQUIRE(pin_array_get(output.ptr, 0).d == 7);
             } else {
                 REQUIRE(output.d == (kind == RAW_WRITE ? 7 : 1));
             }
@@ -935,7 +969,7 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
     cleanup();
     const script_catalog catalog = { 0 };
     const script_lower_bindings bindings = { 0 };
-    syntax = script_parse("library Borrow { Count :: pure (values:double[])->double { total:=0.0; for value in values { total+=1; } return total; } }");
+    syntax = script_parse("Borrow :: library { Count :: (values:double[])->double { total:=0.0; for value in values { total+=1; } return total; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);

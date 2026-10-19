@@ -1,4 +1,4 @@
-behavior "ReplayInput" {
+ReplayInput :: behavior {
     on Fire {
         self.Velocity = {
             x: 1.0,

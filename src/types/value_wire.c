@@ -4,6 +4,7 @@
 #include "support/xalloc.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
 #include "types/scalar.h"
 #include "types/trace.h"
@@ -297,7 +298,8 @@ static void tagged_value(value_codec *c, pin_value *v, unsigned depth)
         }
     }
 }
-static void structure(value_codec *c, pin_value *v, unsigned depth)
+static void value_into(value_codec *, pin_value *, unsigned, const pin_value *);
+static void structure(value_codec *c, pin_value *v, unsigned depth, void *destination)
 {
     execution_wire *w = c->wire;
     const type_desc *type = pin_value_type(v);
@@ -322,7 +324,8 @@ static void structure(value_codec *c, pin_value *v, unsigned depth)
     if (w->error) {
         return;
     }
-    if (fields != type->field_count) {
+    bool owned_header = c->resolve && !v->record && !present && fields == 0;
+    if (fields != type->field_count && !owned_header) {
         fail(w, "Prepared struct field count differs from linked type");
         return;
     }
@@ -337,12 +340,12 @@ static void structure(value_codec *c, pin_value *v, unsigned depth)
         return;
     }
     if (w->reading) {
-        v->ptr = execution_wire_allocate(w, type->size);
+        v->ptr = destination ? destination : execution_wire_allocate(w, type->size);
         if (!v->ptr) {
             return;
         }
         memset(v->ptr, 0, type->size);
-        if (v->record) {
+        if (v->record && !destination) {
             pin_arena_trace_struct(w->storage, v->ptr, type);
         }
     }
@@ -356,7 +359,10 @@ static void structure(value_codec *c, pin_value *v, unsigned depth)
         if (!w->reading) {
             pin_read_field(v->ptr, field, &member);
         }
-        value(c, &member, depth + 1);
+        pin_value target = { .type = field->type,
+                             .type_name = field->type_name,
+                             .ptr = (unsigned char *)v->ptr + field->offset };
+        value_into(c, &member, depth + 1, w->reading && field->type == PIN_STRUCT ? &target : NULL);
         if (w->error) {
             return;
         }
@@ -368,6 +374,76 @@ static void structure(value_codec *c, pin_value *v, unsigned depth)
         }
         if (w->reading) {
             pin_write_field(v->ptr, field, member);
+        }
+    }
+}
+static void map_collection(value_codec *c, pin_value *v, unsigned depth)
+{
+    execution_wire *w = c->wire;
+    if (v->type != PIN_UNION || v->record) {
+        fail(w, "Prepared Map requires associative value storage");
+        return;
+    }
+    pin_map *map = w->reading ? NULL : v->ptr;
+    bool present = map != NULL;
+    execution_wire_bool(w, &present);
+    if (w->error) {
+        return;
+    }
+    if (!present) {
+        if (w->reading) {
+            v->ptr = NULL;
+        }
+        return;
+    }
+    int count = w->reading ? 0 : map->count;
+    if (!w->reading && count > 0 && !map->entries) {
+        fail(w, "Prepared Map has no entries storage");
+        return;
+    }
+    execution_wire_count(w, &count, 6);
+    if (w->error) {
+        return;
+    }
+    if (w->reading) {
+        map = execution_wire_allocate(w, sizeof *map);
+        if (!map) {
+            return;
+        }
+        *map = (pin_map){ 0 };
+        map->entries = execution_wire_allocate(w, (size_t)count * sizeof *map->entries);
+        if (count && !map->entries) {
+            return;
+        }
+        if (count) {
+            memset(map->entries, 0, (size_t)count * sizeof *map->entries);
+        }
+        pin_map_trace_storage(w->storage, map);
+        v->ptr = map;
+    }
+    value(c, &map->key_type, depth + 1);
+    value(c, &map->value_type, depth + 1);
+    if (w->error || !pin_map_key_supported(map->key_type)) {
+        fail(w, "Prepared Map key type is unsupported");
+        return;
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        pin_map_entry entry = w->reading ? (pin_map_entry){ 0 } : map->entries[i];
+        value(c, &entry.key, depth + 1);
+        value(c, &entry.value, depth + 1);
+        if (w->error) {
+            return;
+        }
+        if (!pin_map_entry_valid(map, &entry.key, &entry.value)) {
+            fail(w, "Prepared Map entry differs from its key/value types");
+            return;
+        }
+        if (w->reading) {
+            if (pin_map_find(map, &entry.key) >= 0) {
+                fail(w, "Prepared Map contains duplicate keys");
+                return;
+            }
+            map->entries[map->count++] = entry;
         }
     }
 }
@@ -392,47 +468,101 @@ static void collection(value_codec *c, pin_value *v, unsigned depth)
         return;
     }
     if (w->reading) {
-        size_t bytes = sizeof *array + (size_t)count * sizeof(pin_value);
-        array = execution_wire_allocate(w, bytes);
+        array = execution_wire_allocate(w, sizeof *array);
         if (!array) {
             return;
         }
-        *array = (pin_array){ .element_type = v->type,
-                              .type_name = v->type_name,
-                              .record = v->record,
-                              .count = count,
-                              .capacity = count,
-                              .items = (pin_value *)(array + 1) };
-        memset(array->items, 0, (size_t)count * sizeof *array->items);
+        *array = (pin_array){
+            .element_type = v->type,
+            .type_name = v->type_name,
+            .record = v->record,
+            .count = count,
+            .capacity = count,
+            .stride = v->type_name && !strncmp(v->type_name, "__collection_", 13)
+                        ? 0
+                        : pin_array_element_stride(v->type, v->type_name, v->record)
+        };
+        if (array->stride && (size_t)count > EXECUTION_WIRE_MAX_BYTES / array->stride) {
+            fail(w, "Prepared decoded storage limit exceeded");
+            return;
+        }
+        size_t bytes = (size_t)count *
+                       (array->stride ? array->stride : sizeof(pin_value));
+        void *payload = count ? execution_wire_allocate(w, bytes) : NULL;
+        if (count && !payload) {
+            return;
+        }
+        if (array->stride) {
+            array->data = payload;
+        } else {
+            array->items = payload;
+        }
+        if (bytes) {
+            memset(payload, 0, bytes);
+        }
         pin_arena_trace_array(w->storage, array);
         v->ptr = array;
     } else if (
         array->element_type != v->type ||
         !same_name(array->type_name, v->type_name) || array->capacity < count ||
-        (count && !array->items) || !pin_record_same(array->record, v->record)
+        !pin_array_valid(array) || !pin_record_same(array->record, v->record)
     ) {
         fail(w, "Prepared collection schema differs from its value");
         return;
     }
+    pin_value element_shape = { 0 };
+    bool descriptor = !array->stride && !v->record && v->type_name &&
+                      !strncmp(v->type_name, "__collection_", 13);
     for (int i = 0; i < count && !w->error; i++) {
-        pin_value item = w->reading ? (pin_value){ 0 } : array->items[i];
-        value(c, &item, depth + 1);
-        if (w->reading) {
-            array->items[i] = item;
-        }
+        pin_value item = w->reading ? (pin_value){ 0 } : pin_array_get(array, i);
+        pin_value target = { .type = v->type,
+                             .type_name = v->type_name,
+                             .record = v->record,
+                             .ptr = array->stride && v->type == PIN_STRUCT
+                                      ? pin_array_data(array, i)
+                                      : NULL };
+        value_into(c, &item, depth + 1, w->reading && target.ptr ? &target : NULL);
         if (w->error) {
             return;
         }
-        if (array->items[i].type != v->type ||
-            array->items[i].container != PIN_CONTAINER_SINGLE ||
-            !same_name(array->items[i].type_name, v->type_name) ||
-            !pin_record_same(array->items[i].record, v->record)) {
+        if (w->reading && array->stride && item.type == PIN_STRUCT && !item.ptr) {
+            pin_value *items = execution_wire_allocate(w, (size_t)count * sizeof *items);
+            if (!items) {
+                return;
+            }
+            /* Existing inline values keep pointing into the raw allocation;
+             * boxed storage is needed only to retain the null element. */
+            for (int j = 0; j < count; j++) {
+                items[j] = pin_array_get(array, j);
+            }
+            array->items = items;
+            array->data = NULL;
+            array->stride = 0;
+        }
+        bool nested = !array->stride && item.container != PIN_CONTAINER_SINGLE;
+        bool nested_descriptor = nested && !v->record && v->type_name &&
+                                 !strncmp(v->type_name, "__collection_", 13);
+        if (descriptor && i &&
+            (item.container != element_shape.container ||
+             !same_name(item.type_name, element_shape.type_name) ||
+             !pin_record_same(item.record, element_shape.record))) {
+            fail(w, "Prepared nested collection headers differ");
+            return;
+        }
+        if (descriptor && !i) {
+            element_shape = item;
+        }
+        if (item.type != v->type ||
+            (!nested && item.container != PIN_CONTAINER_SINGLE) ||
+            (!nested && !same_name(item.type_name, v->type_name)) ||
+            (!nested_descriptor && !pin_record_same(item.record, v->record)) ||
+            (w->reading && pin_array_set(array, i, &item))) {
             fail(w, "Prepared collection item differs from declared type");
             return;
         }
     }
 }
-static void value(value_codec *c, pin_value *v, unsigned depth)
+static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_value *destination)
 {
     execution_wire *w = c->wire;
     if (!w->reading && v->record && !c->resolve) {
@@ -501,12 +631,22 @@ static void value(value_codec *c, pin_value *v, unsigned depth)
         fail(w, "Prepared enum type is unavailable");
         return;
     }
+    if (destination && (v->type != destination->type || v->container != PIN_CONTAINER_SINGLE ||
+                        !same_name(v->type_name, destination->type_name) ||
+                        !pin_record_same(v->record, destination->record))) {
+        fail(w, "Prepared inline value differs from its destination type");
+        return;
+    }
+    if (container == PIN_CONTAINER_MAP) {
+        map_collection(c, v, depth);
+        return;
+    }
     if (container != PIN_CONTAINER_SINGLE) {
         collection(c, v, depth);
         return;
     }
     if (tag == PIN_STRUCT) {
-        structure(c, v, depth);
+        structure(c, v, depth, destination ? destination->ptr : NULL);
         return;
     }
     if (tag == PIN_UNION) {
@@ -563,6 +703,10 @@ static void value(value_codec *c, pin_value *v, unsigned depth)
         decoded.type_name = v->type_name;
         *v = decoded;
     }
+}
+static void value(value_codec *c, pin_value *v, unsigned depth)
+{
+    value_into(c, v, depth, NULL);
 }
 void execution_wire_value(execution_wire *w, pin_value *v)
 {

@@ -237,7 +237,7 @@ void source_view_describe_variable(source_projection *p, node *n, const script_s
                       ? "this entity's state"
                       : "this behavior instance's";
             break;
-        case SCRIPT_SHARED_STATE: scope = "this system's shared"; break;
+        case SCRIPT_SHARED_STATE: scope = "this system registration's"; break;
         case SCRIPT_PARAMETER: scope = "this call's parameter"; break;
         case SCRIPT_RESULT: scope = "this call's result"; break;
         case SCRIPT_LOCAL: break;

@@ -3,7 +3,7 @@
 
 /* Payload and semantic changes still require a version change even when the
  * stable instruction names and ordinals (checked separately) are unchanged. */
-#define EXECUTION_PREPARED_VERSION 14
+#define EXECUTION_PREPARED_VERSION 17
 #include "execution/host.h"
 #include "execution/module.h"
 #include "types/type.h"

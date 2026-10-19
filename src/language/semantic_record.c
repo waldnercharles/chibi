@@ -6,6 +6,20 @@
 #include <stdlib.h>
 #include <string.h>
 
+bool script_analyzer_record_field(analyzer *a, TSNode node, script_type type, const char *name, type_field *shape)
+{
+    const script_catalog_type *nominal = script_catalog_type_by_id(a->catalog, type.nominal);
+    *shape = (type_field){ .name = name,
+                           .type = type.storage,
+                           .type_name = nominal ? nominal->name : NULL };
+    if (type.container != PIN_CONTAINER_SINGLE || type.collection ||
+        (type.flags & ~(SCRIPT_TYPE_LITERAL | SCRIPT_TYPE_UNTYPED))) {
+        script_analyzer_diagnostic(a, node, "Record fields require concrete nonoptional value layouts; collections and references are not supported");
+        return false;
+    }
+    return true; /* pin_record_create validates scalar/native nested physical layouts. */
+}
+
 static const char *own(analyzer *a, const char *text)
 {
     size_t bytes = strlen(text) + 1;
@@ -15,9 +29,13 @@ static const char *own(analyzer *a, const char *text)
 }
 void script_analyzer_record_types(analyzer *a, TSNode body)
 {
+    script_analyzer_generic_prepare(a, body);
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
         TSNode node = ts_node_named_child(body, i);
         if (!script_analyzer_is(node, "record_declaration")) {
+            continue;
+        }
+        if (!ts_node_is_null(script_analyzer_field(node, "parameters"))) {
             continue;
         }
         if (a->out->kind != SCRIPT_PROGRAM_LIBRARY || a->function >= 0) {
@@ -58,6 +76,9 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
         if (!script_analyzer_is(node, "record_declaration")) {
             continue;
         }
+        if (!ts_node_is_null(script_analyzer_field(node, "parameters"))) {
+            continue;
+        }
         int symbol = script_analyzer_lookup(a, script_analyzer_field(node, "name"));
         const script_catalog_type *found = symbol < 0
                                              ? NULL
@@ -88,13 +109,8 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                 .writable = true
             };
             free(name);
-            if (!*field.name || field.type.nominal || field.type.flags ||
-                field.type.container != PIN_CONTAINER_SINGLE ||
-                (field.type.storage != PIN_STR && field.type.storage != PIN_I32 &&
-                 field.type.storage != PIN_BOOL)) {
-                script_analyzer_diagnostic(a, member, "Record fields require nonoptional string, int or bool values");
-                valid = false;
-            }
+            type_field layout;
+            valid &= script_analyzer_record_field(a, member, field.type, field.name, &layout);
             for (int k = 0; k < acount(fields); k++) {
                 if (!strcmp(fields[k].name, field.name)) {
                     script_analyzer_diagnostic(
@@ -126,7 +142,7 @@ void script_analyzer_record_fields(analyzer *a, TSNode body)
                 }
             }
             apush(fields, field);
-            apush(shape, ((type_field){ .name = field.name, .type = field.type.storage }));
+            apush(shape, layout);
         }
         const pin_record *record = valid ? pin_record_create(
                                                &a->out->constants,

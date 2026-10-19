@@ -7,6 +7,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
 
 #include <assert.h>
@@ -88,7 +89,7 @@ bool behavior_function_builder_kind(
     behavior_value_kind kind
 )
 {
-    if (index < 0 || kind < BEHAVIOR_VALUE || kind > BEHAVIOR_REFERENCE) {
+    if (index < 0 || kind < BEHAVIOR_VALUE || kind > BEHAVIOR_STRING_CURSOR) {
         return false;
     }
     behavior_function *f = b->function;
@@ -216,6 +217,12 @@ int behavior_function_builder_host(
 {
     assert(argument_count >= 0 && result_count >= 0);
     behavior_function *f = b->function;
+    /* Relationship reads need the execution world even when the function never
+     * accesses an ordinary component column. This flag also publishes the
+     * required ecs.world service and survives prepared-function serialization. */
+    if (call == &EXECUTION_query_target_call || call == &EXECUTION_query_source_call) {
+        f->component_access = true;
+    }
     int index = acount(f->host_calls), first = acount(f->data_values);
     for (int i = 0; i < argument_count; i++) {
         data_value(f, arguments[i]);
@@ -610,17 +617,14 @@ static const char *verify_instruction(const behavior_function *f, int pc)
         CHECK(SLOT(i->left, i->type), "invalid arithmetic left type");
         CHECK(i->op == BF_NEG || i->op == BF_ABS || SLOT(i->right, i->type), "invalid arithmetic right type");
         bool floating = i->type == PIN_F32 || i->type == PIN_F64;
-        bool signed_integer = i->type == PIN_I32 || i->type == PIN_I64;
-        bool unsigned_integer = i->type == PIN_U32 || i->type == PIN_U64;
+        bool integer = i->type >= PIN_I8 && i->type <= PIN_U64;
         CHECK(
-            floating || signed_integer ||
-                (unsigned_integer && (i->op == BF_ADD || i->op == BF_MUL ||
-                                      i->op == BF_EQ || i->op == BF_NE)) ||
+            floating || integer ||
                 (scalar_type(i->type) && (i->op == BF_EQ || i->op == BF_NE)),
             "unsupported arithmetic type"
         );
-        CHECK(i->op != BF_MOD || signed_integer, "MOD requires a signed integer");
-        if ((i->op == BF_DIV || i->op == BF_MOD) && signed_integer && i->target >= 0) {
+        CHECK(i->op != BF_MOD || integer, "MOD requires an integer");
+        if ((i->op == BF_DIV || i->op == BF_MOD) && integer && i->target >= 0) {
             CHECK(index_valid(i->target, acount(f->slots)) && SLOT(i->target, i->type), "invalid division secondary result");
         }
         return NULL;
@@ -1058,7 +1062,19 @@ static bool value_type_valid(pin_value value)
     if (value.record && (value.type != PIN_STRUCT || !pin_record_valid(value.record))) {
         return false;
     }
+    /* Nested collections carry each element's complete header, including its
+     * record layout. The outer descriptor is not itself a scalar record. */
+    if (!value.record &&
+        (value.container == PIN_CONTAINER_ARRAY || value.container == PIN_CONTAINER_SET) &&
+        value.type_name && !strncmp(value.type_name, "__collection_", 13)) {
+        return true;
+    }
     return value.type != PIN_STRUCT || pin_value_type(&value);
+}
+static bool map_bank(pin_value value)
+{
+    return value.type == PIN_UNION && value.container == PIN_CONTAINER_MAP &&
+           !value.record && value.type_name;
 }
 /* Intrinsic callbacks consume physical value banks, not authored signatures.
  * Validate their ABI before a producer or decoded definition can execute them. */
@@ -1074,12 +1090,58 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
 #define INPUT(index, type) scalar_bank(values[index].initial, type)
 #define OUTPUT(type) scalar_bank(output, type)
     switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        case EXECUTION_INTRINSIC_STRING_CURSOR:
+            return count == 1 && INPUT(0, PIN_STR) && OUTPUT(BF_POINTER_TYPE);
+        case EXECUTION_INTRINSIC_STRING_BYTES:
+            return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_I32);
+        case EXECUTION_INTRINSIC_STRING_ITEM:
+        case EXECUTION_INTRINSIC_STRING_NEXT:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
+                   OUTPUT(
+                       (id & UINT64_C(0xffffffff)) == EXECUTION_INTRINSIC_STRING_ITEM
+                           ? PIN_STR
+                           : PIN_I32
+                   );
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
             return count == 2 && OUTPUT(PIN_BOOL) &&
-                   values[0].initial.type == PIN_STRUCT &&
-                   values[0].initial.container == PIN_CONTAINER_SINGLE &&
-                   values[0].initial.record &&
+                   (map_bank(values[0].initial) ||
+                    (values[0].initial.type == PIN_STRUCT &&
+                     values[0].initial.container == PIN_CONTAINER_SINGLE &&
+                     values[0].initial.record)) &&
                    same_type(values[0].initial, values[1].initial);
+        case EXECUTION_INTRINSIC_MAP_MAKE:
+            if (count < 3 || !(count & 1) || !map_bank(output) ||
+                !same_type(values[0].initial, output) ||
+                !pin_map_key_supported(values[1].initial) ||
+                !value_type_valid(values[2].initial)) {
+                return false;
+            }
+            for (int i = 3; i < count; i += 2) {
+                if (!same_type(values[i].initial, values[1].initial) ||
+                    !same_type(values[i + 1].initial, values[2].initial)) {
+                    return false;
+                }
+            }
+            return true;
+        case EXECUTION_INTRINSIC_MAP_GET:
+            return count == 2 && map_bank(values[0].initial) &&
+                   pin_map_key_supported(values[1].initial) &&
+                   value_type_valid(output);
+        case EXECUTION_INTRINSIC_MAP_HAS:
+            return count == 2 && map_bank(values[0].initial) &&
+                   pin_map_key_supported(values[1].initial) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_MAP_REMOVE:
+            return count == 2 && map_bank(values[0].initial) &&
+                   pin_map_key_supported(values[1].initial) &&
+                   same_type(values[0].initial, output);
+        case EXECUTION_INTRINSIC_MAP_ITEM:
+            return count == 3 && map_bank(values[0].initial) && INPUT(1, PIN_I32) &&
+                   INPUT(2, PIN_BOOL) && value_type_valid(output);
+        case EXECUTION_INTRINSIC_REFERENCE_KEY:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
+                   value_type_valid(values[1].initial) &&
+                   pin_map_key_supported(values[2].initial) &&
+                   OUTPUT(BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_SNAPSHOT:
             return count == 1 && same_type(values[0].initial, output);
         case EXECUTION_INTRINSIC_UNION_MAKE:
@@ -1106,12 +1168,20 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             }
             return !values[3].initial.b || OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_CONSTRUCT:
-            if (count < 1 || !same_type(values[0].initial, output)) {
+            if (count < 1 || output.container == PIN_CONTAINER_MAP ||
+                !same_type(values[0].initial, output)) {
                 return false;
             }
             if (output.container != PIN_CONTAINER_SINGLE) {
                 pin_value element = output;
                 element.container = PIN_CONTAINER_SINGLE;
+                if (count > 1 && output.type_name &&
+                    !strncmp(output.type_name, "__collection_", 13)) {
+                    element = values[1].initial;
+                    if (element.type != output.type || !value_type_valid(element)) {
+                        return false;
+                    }
+                }
                 for (int i = 1; i < count; i++) {
                     if (!same_type(values[i].initial, element)) {
                         return false;
@@ -1197,7 +1267,7 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
 }
 static bool value_kind_valid(behavior_value_kind kind, pin_value initial)
 {
-    return kind >= BEHAVIOR_VALUE && kind <= BEHAVIOR_REFERENCE &&
+    return kind >= BEHAVIOR_VALUE && kind <= BEHAVIOR_STRING_CURSOR &&
            (kind == BEHAVIOR_VALUE || ((scalar_bank(initial, BF_POINTER_TYPE) ||
                                         scalar_bank(initial, PIN_UNION)) &&
                                        !initial.u64));
@@ -1312,7 +1382,7 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
             } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
                 CHECK_KIND(output == BEHAVIOR_ADDRESS);
             } else {
-                CHECK_KIND(output != BEHAVIOR_REFERENCE);
+                CHECK_KIND(output == BEHAVIOR_VALUE || output == BEHAVIOR_ADDRESS);
                 CHECK_KIND(
                     output != BEHAVIOR_ADDRESS || i->type == BF_POINTER_TYPE ||
                     i->type == PIN_UNION
@@ -1337,7 +1407,7 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
         }
         case BF_ADD:
             CHECK_KIND(KIND(i->right) == BEHAVIOR_VALUE);
-            CHECK_KIND(KIND(i->left) != BEHAVIOR_REFERENCE);
+            CHECK_KIND(KIND(i->left) == BEHAVIOR_VALUE || KIND(i->left) == BEHAVIOR_ADDRESS);
             if (KIND(i->left) == BEHAVIOR_ADDRESS) {
                 CHECK_KIND(i->type == BF_POINTER_TYPE);
                 output = BEHAVIOR_ADDRESS;
@@ -1373,7 +1443,7 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
             CHECK_KIND(KIND(i->left) == BEHAVIOR_VALUE && KIND(i->right) == BEHAVIOR_ADDRESS);
             break;
         case BF_STRING_EQUAL:
-            CHECK_KIND(KIND(i->left) != BEHAVIOR_REFERENCE && KIND(i->right) != BEHAVIOR_REFERENCE);
+            CHECK_KIND(KIND(i->left) <= BEHAVIOR_ADDRESS && KIND(i->right) <= BEHAVIOR_ADDRESS);
             CHECK_KIND(
                 KIND(i->left) != BEHAVIOR_VALUE ||
                 behavior_scalar_string(f->slots[i->left])
@@ -1483,7 +1553,7 @@ static const char *verify_kinds(const behavior_function *f)
     }
     for (int i = 0; i < acount(f->slots); i++) {
         behavior_value_kind kind = f->slot_kinds[i];
-        if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_REFERENCE ||
+        if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_STRING_CURSOR ||
             (kind != BEHAVIOR_VALUE && f->slots[i] != BF_POINTER_TYPE &&
              f->slots[i] != PIN_UNION)) {
             return "invalid slot provenance";
@@ -1499,6 +1569,11 @@ static const char *verify_kinds(const behavior_function *f)
                                            f->command_result_kinds };
     for (int bank = 0; bank < 4; bank++) {
         for (int i = 0; i < acount(kinds[bank]); i++) {
+            /* Cursors belong to this invocation, never to callable/event
+             * ingress, results, tasks or external command payloads. */
+            if (kinds[bank][i] == BEHAVIOR_STRING_CURSOR) {
+                return "string cursor cannot cross an invocation boundary";
+            }
             if (!value_kind_valid(kinds[bank][i], banks[bank][i])) {
                 return "invalid signature or command provenance";
             }
@@ -1535,7 +1610,13 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
         behavior_value_kind expected = BEHAVIOR_VALUE;
         if (i == 0) {
             switch (id) {
+                case EXECUTION_INTRINSIC_STRING_BYTES:
+                case EXECUTION_INTRINSIC_STRING_ITEM:
+                case EXECUTION_INTRINSIC_STRING_NEXT:
+                    expected = BEHAVIOR_STRING_CURSOR;
+                    break;
                 case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+                case EXECUTION_INTRINSIC_REFERENCE_KEY:
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                 case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
@@ -1566,7 +1647,12 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
             return false;
         }
     }
-    return result == (id == EXECUTION_INTRINSIC_REFERENCE_MAKE || id == EXECUTION_INTRINSIC_REFERENCE_FIELD
+    if (id == EXECUTION_INTRINSIC_STRING_CURSOR) {
+        return result == BEHAVIOR_STRING_CURSOR;
+    }
+    return result == (id == EXECUTION_INTRINSIC_REFERENCE_MAKE ||
+                              id == EXECUTION_INTRINSIC_REFERENCE_FIELD ||
+                              id == EXECUTION_INTRINSIC_REFERENCE_KEY
                           ? BEHAVIOR_REFERENCE
                           : BEHAVIOR_VALUE);
 }

@@ -133,8 +133,9 @@ static bool check_rows(const pin_value *value, int count, const arena *owner)
         value->type_name == value->record->type.name
     );
     for (int i = 0; i < count; i++) {
-        REQUIRE(array->items[i].record == array->record);
-        REQUIRE(check_row(&array->items[i], i, owner));
+        REQUIRE(pin_array_get(array, i).record == array->record);
+        pin_value item = pin_array_get(array, i);
+        REQUIRE(check_row(&item, i, owner));
     }
     return true;
 }
@@ -184,7 +185,7 @@ TEST_CASE(record_globals_owned_values)
     arguments[0].str = "rows";
     arguments[1] = array;
     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set_array));
-    pin_read_field(((pin_array *)array.ptr)->items[0].ptr, &record->type.fields[0], &text);
+    pin_read_field(pin_array_data(array.ptr, 0), &record->type.fields[0], &text);
     ((char *)text.str)[0] = 'X';
     REQUIRE(check_rows(&set_array, 3, &invocation));
     arena_free(&producer);

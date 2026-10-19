@@ -1,3 +1,441 @@
+# Chibi language and typed-runtime redesign
+
+## Exact-head review follow-up, 2026-10-18
+
+Codex review of checkpoint `1bad2ce0d` found that generic text formatting treated
+Map payloads as arrays. The formatter now handles Maps before the array branch
+and reports their actual entry count. A fixed native callback regression covers
+one populated Map, one allocated empty Map and one null Map; existing array and
+scalar controls are unchanged. It failed before the fix and now passes all three
+formatting cases (45 assertions, 0.098 s). Independent source/workload review
+cleared the minimal fix and unchanged 60-second invocation limits.
+
+The five complete native groups passed again on the corrected implementation:
+language 506 cases / 29.880 s; native 627 / 36.540 s; materials 110 / 39.994 s;
+projects 84 / 35.836 s; tooling 134 / 23.920 s. The only workload addition is the
+single fixed formatting case with four assertions. Production build profiles,
+assertions, sanitizers, deadlines and quarantines are unchanged. Evidence is in
+`/workspace/language420-build-current/map-fix-validation.json`.
+
+The clean `1bad2ce0d` native SDK and paired Studio build, CPU checks and four-frame
+source-edit check passed before this finding; those remain prior-candidate
+results. Refreshing the SDK and paired pin, installed consumers, Studio acceptance,
+Wasm/browser, serial web and final exact-head review remains required before
+landing. The following reconciliation record describes the earlier checkpoint.
+
+## Current-main reconciliation, 2026-10-18
+
+This checkpoint merges PR420 `a699f2804` (including PR437) with main
+`6ea2221c9` (including PR434, PR435, PR436 and PR438), preserving history.
+Package/import syntax, CR formatting, inferred string arrays, owned scene
+snapshots, counted rows, and current field/terrain/radiance capabilities remain
+present. The private exact-number core stays inactive in the frontend; no
+new default precision, exact-cast or promotion policy is selected. PR407 remains
+excluded. Parser outputs use main's recorded Tree-sitter 0.25.10 generator.
+
+The paired controller migrated and formatted environment-authoring, Terrain Lab
+and Studio source with their metadata. All manifests are version 26; existing
+stale sidecars remain unchanged. Three existing Environment KDL declarations
+now explicitly serialize the fog bounds their loader already applied; fog stays
+disabled. The thirteen-project canonicality check and both separately selected
+engine project checks passed.
+
+Independent review and focused regressions repaired empty semantic binding
+sorts, generic record display-name versus source-identity conflicts, and packed
+record decoding into collectable arenas. Both codecs now register a struct
+tracer only for a separately allocated payload; the packed array retains its
+rows and owned descriptor. Negative controls reproduced the nullable-sort UBSan
+failures and both packed-row arena assertions before their fixes. Existing strict
+record identity/default checks and standalone/boxed ownership cases remain.
+Current-language unary fixtures and handwritten prepared-field metadata were
+updated to their already approved contracts without weakening assertions.
+
+The reviewed implementation/asset tree before this documentation update is
+`3449d5a4e90c2d0af4c66d23779e70ad6e2e07d0`. Engine-linked native Debug
+drivers retain assertions and ASan/UBSan; the standalone tooling driver retains
+assertions without sanitizers. Project checks use the paired Release controller.
+Configuration/build time is separate. Each complete group and selected standalone
+used the unchanged production 60-second supervisor through the existing routes
+underlying the Make targets; no quarantined suite was split or reconstructed.
+
+| Current local check | Result |
+| --- | --- |
+| Native group | Pass, 32.493 s |
+| Materials group | Pass, 36.806 s |
+| Projects group | Pass, 36.377 s |
+| Language group | Pass, 505 cases, 28.656 s |
+| Tooling/process group | Pass, 134 cases, 24.252 s |
+| Query/generics, package syntax, build workflow, inferred arrays, root state | Pass |
+| Record publication, values, semantic, runtime, prepared, document, state, compatibility and services | Pass |
+| Generated-C aliases, counted rows and record export | Pass |
+| Historical declaration migration and thirteen-project canonicality | Pass |
+| clang-format 22 and whitespace | Pass, 19.807 s for formatting |
+
+Native/language groups preceded only the three behavior-preserving KDL
+serializations; their production/test sources and language corpus are unchanged.
+Local logs and exact binary/source hashes are retained in
+`/workspace/language420-build-current`; independent source, workload and delta
+reviews are in `/workspace/language420-source/recovery-20261018`.
+
+The clean-commit SDK packages, installed consumers, paired Studio71 engine pin
+and native acceptance, Wasm/browser checks, serial web build and final exact-head
+review remain pending. No current SDK publication, merge or deployment is claimed.
+Studio's migrated source tree is `2423ed3d75a3babd728065da1e3a7f9db44e75f7`
+before updating its engine pin. All 212 extracted consumer hashes match.
+Full native/render/Studio suites remain quarantined and are not passed. Disabled
+engine CI supplies no passing evidence; required server rules still apply.
+
+## Historical implementation records
+
+All results, artifact identities and authorization descriptions below refer to
+their dated earlier checkpoints. They do not substitute for current validation.
+
+Approved to begin on 2026-10-16. Base: `origin/main` at `525f91b5a`.
+All five stages are implemented in isolated engine and Studio worktrees on
+`codex/language-redesign-20261016`. The reviewed implementation is published as
+engine PR #420 and Studio PR #71. The primary checkouts and their existing edits
+are untouched. Neither PR is merged or deployed.
+
+## Current-main integration, approved 2026-10-16
+
+The user approved public Studio publication, resolving engine conflicts with
+main, rerunning relevant checks and pushing the verified fixes. The engine
+candidate merges main `6e26b84be` into reviewed redesign commit `32a001739`
+without rewriting its published history. Studio remains at `0eb068bc` and
+consumes the paired SDK.
+
+The merge preserves main's counted-row construction and owned scene snapshots
+together with the redesign's packed/nullable arrays. SDK and test registrations
+retain both contracts. Incoming source fixtures use canonical name-first syntax
+and representation-neutral reads. A bounded packed-seed, counted-row, canonical
+nullable-add and collection regression covers their interaction. Independent
+review found no remaining issue in the merged execution paths, ownership and
+selected workloads. Native builds also required an explicit direct-entry
+function-pointer cast and the Darwin `mkdtemp` header in incoming tests.
+
+Validation uses the five admitted native/materials/projects/language/tooling
+groups, standalone scene-snapshot reads and generated C, Wasm and bounded Chrome
+drivers, and packaged SDK/Studio compilation. Full native/render/Studio suites
+remain quarantined. Build time remains separate from each 60-second test budget.
+
+| Current integration check | Result |
+| --- | --- |
+| Native group, ASan/UBSan driver | Pass, 21.076 s |
+| Materials group | Pass, 27.743 s |
+| Projects group, Release controller | Pass, 24.007 s |
+| Language group | Pass, 497 cases, 20.315 s |
+| Tooling/process group, Python 3.12 | Pass, 130 cases, 27.004 s |
+| Standalone scene-snapshot reads | Pass, 3 cases/610 assertions, 1.311 s |
+| Generated-C aliases and counted-row fallback | Pass, 1 case each, 1.369 s and 2.227 s |
+| Wasm group | Pass, 299 cases, 2.607 s |
+| Ten-selector Chrome C driver | Pass, including 8 counted-row and 2 Outliner cases, 2.079 s |
+| Native/Wasm builds, packaged SDK and installed Studio consumer | Pass |
+| clang-format 22 and whitespace | Pass |
+
+Evidence is in `.chibi/evidence/language-redesign-merge/`. The tested source tree
+was `246b5eb6ddc6c8ead63e59657d3bb7e8a1399aa9`; subsequent changes only update
+this evidence and point historical Studio language planning to current syntax.
+Desktop SDK build ID:
+`9f6df0dabe329f4046211c971ffcfc8443fe98451431181cd79f1dcdf720eb22`.
+This integration did not repeat rendered Studio acceptance or the Studio web
+build; those earlier results remain scoped to the previous reviewed pair.
+Leak detection is not claimed. Neither PR is merged or deployed.
+
+## Final review and commit, approved 2026-10-16
+
+Review the complete engine and Studio candidates against their pinned bases,
+including new files. Fix verified correctness and consistency issues, add bounded
+regressions, then commit the combined implementation in each owning repository.
+This approval does not include push, merge or deployment.
+
+- [x] Review language semantics, generics, typed storage, execution ownership,
+      prepared modules, source assets, migrations, authoring and Studio together.
+- [x] Fix confirmed findings and validate the combined candidate with the admitted
+      native, materials, project, language and tooling groups. Check relevant
+      Wasm paths, installed SDK consumption, Studio source editing and web build.
+- [x] Verify formatting, fixture canonicality and consumer manifests; record exact
+      source trees and evidence before creating the engine and Studio commits.
+
+The review covers the whole engine candidate against `525f91b5a` and the Studio
+candidate against `07dccf7b5`, including new files. Confirmed fixes include:
+
+- Respect authored callables that share a Map intrinsic name; infer writes through
+  indexed retained/ref bindings; require a Map initializer for inferred Map types.
+- Preserve generic type modifiers, skip comments in compile-time parameter counts,
+  and keep imported compile-time parameters immutable. Treat nested collection
+  descriptors separately from their elements' record layouts in watch metadata,
+  prepared values and document projection.
+- Validate Map result/reference schemas, trace document-array payloads, preserve
+  nested native record identity, and box nullable packed-record updates correctly.
+- Cache transitive retained-task metadata over import DAGs; trace tasks in nested
+  boxed collections and Maps; validate present union/native-record task payloads.
+- Refuse inline/extraction operations that would change retained storage identity;
+  preserve unrelated members during legacy native-name migration and reject unsafe
+  generated accessor names without dereferencing missing identifiers.
+- Enforce symbolic asset references and stable relationship identities; detect
+  source/KDL prototype collisions and resolve controller assets by declaration name.
+- Refresh Studio's clean transitive prototype dependents after source changes,
+  preserve dirty dependents, and invalidate source validation after relationship
+  registration changes.
+
+Regression fixtures were corrected where they used unsupported declaration
+placement or obsolete per-match retention. The extra-declaration review finding
+was narrowed: the grammar already rejected extra roots; the reader now reports
+malformed declarations consistently regardless of parser recovery shape.
+
+Current review evidence is in `.chibi/evidence/language-redesign-review/`.
+Full native/render/Studio verification remains quarantined; bounded admissions
+do not certify those suites. Tooling checks require a modern Python interpreter;
+the reviewed run uses Python 3.12 rather than macOS's system Python 3.9.
+
+Final local validation (configuration/build time excluded from test deadlines):
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Native group, ASan/UBSan driver | Pass, 26.606 s | `native-complete.log` |
+| Materials group | Pass, 34.889 s | `materials.log` |
+| Projects group, Release controller | Pass, 25.001 s | `projects-complete.log` |
+| Language group | Pass, 21.404 s | `language-final-tree.log` |
+| Tooling/process group | Pass, 130 cases, 29.227 s | `tools-complete.log` |
+| Query, Maps, iteration and generics | Pass, 56 cases, 1.163 s | `generic-final-iteration1.log` |
+| Packed arrays/numerics and generated C | Pass, 13 and 1 cases | `row-array.log`, `c-export-alias.log` |
+| Wasm group and eight-selector Chrome driver | Pass, 5.382 and 2.184 s | `wasm-complete.log`, `wasm-browser-complete.log` |
+| Native/Wasm builds and installed SDK/Studio consumer | Pass | `build-complete.log`, `wasm-build-complete.log`, `sdk-package-complete.log`, `studio-build-final.log` |
+| Studio source editing, undo/redo and dependency reload | Pass, four hidden frames, 2.952 s | `studio-source-edit-final.log` |
+| Studio web build | Pass; no additional browser UI interaction claim | `web-build-final.log` |
+| All thirteen checked-in fixture projects | Canonical, 1.924 s | `fixture-format-final.log` |
+| clang-format 22, whitespace and extraction hashes | Pass | `format-final-tree.log`; all 23 changed extracted Studio files match their manifest |
+
+The final installed desktop SDK build ID is
+`9115b188f215420bd47dd4fecaeb671a1617feea6f5c21a65d29df0be58954ed`.
+The paired engine/Studio source tree IDs and local commit IDs are recorded in
+the review evidence directory. No push, merge or deployment is part of this
+delivery. Queryable embedded components remain deferred. The prepared-schema
+limitation for erased empty task schemas described below remains explicit.
+
+## Retained ownership simplification, approved 2026-10-16
+
+The user approved this follow-up after the five-stage candidate. Implementation
+and bounded validation are complete in the same isolated candidates.
+
+Summary: `retain` belongs privately to the enclosing behavior attachment or
+system registration. Remove `retain(system)`. Ordinary coroutine locals remain
+independent for each query match and survive suspension until that invocation
+finishes. Longer-lived entity data belongs in components.
+
+Context and system impact: the compiler distinguishes `SCRIPT_STATE`
+from `SCRIPT_SHARED_STATE`, and execution chooses instance or program storage
+from the lowered state descriptor. Keep that internal ownership distinction,
+derive it from the enclosing program rather than an authored suffix, and apply
+the same owner to imported-library retained state. Query-row identity, activation
+frames, suspension, cancellation and ordinary locals remain separate. Shared
+storage is allocated before matches exist and survives row removal. Behavior
+attachments and independent system registrations must remain isolated.
+
+Approach: change the authoritative declaration/owner classification and existing
+storage paths, not coroutine scheduling or an automatic component-generation
+layer. Keep task handles in invocation-local storage when their ownership cannot
+safely span query rows. Preserve retained values on compatible nonrestart reload,
+and reset them on explicit restart. Do not silently reinterpret historical
+per-row data in a migration that claims to preserve behavior.
+
+Changes:
+
+- [x] Update semantic ownership, runtime/import storage and lifecycle handling.
+- [x] Remove the grammar suffix and all current formatter/intelligence producers;
+      retain internal storage metadata needed by compiled execution.
+- [x] Reconcile historical migrations, authored fixtures and prepared provenance;
+      bump project format only if an actual supported project requires rewriting.
+- [x] Document private retention, coroutine-local lifetime and component state.
+- [x] Add ownership and coroutine regressions, update affected old expectations,
+      and review the integrated change.
+
+Verification: build the existing native test drivers with ASan/UBSan; run admitted
+syntax/semantic/format/navigation, source-edit, runtime/query/publication and
+migration selectors under the unchanged production 60-second supervisor. Cover
+two behavior attachments, two system registrations, multiple query matches,
+row removal/reentry and zero rows, helper/import state, independent locals across
+waits, cancellation, and reload/restart. Run relevant Wasm/prepared checks if their
+shared contracts change. No full render or Studio suite, commit, push or merge.
+
+Implemented in `semantic_declaration.c`, `semantic_context.c`, `lower.c`,
+`execution/program.c` and the prepared module schema. Imported libraries inherit
+registration ownership before storage allocation. Grammar, formatting, completion,
+navigation and source-edit paths emit only plain `retain`. Coroutine activation
+and scheduling remain unchanged. Component-backed tests replace old per-entity
+retained counters where that was their intended lifetime.
+
+Project version remains 26 because the affected system declarations occur only
+in tests, not in checked-in projects. Historical migration converts explicit old
+system-owned retention, but refuses implicit or explicit per-match system state
+with a source diagnostic before writing files. Hand-made candidate-version-26
+projects need a manual ownership review. Prepared schema is now 17, up from 16
+in the prior candidate; old artifacts must be rebuilt.
+
+Evidence is in `.chibi/evidence/retained-ownership/`. Native builds use ASan/UBSan.
+Each test command used the unchanged production supervisor's 60-second ceiling.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Syntax and semantics | Pass, 19 and 49 cases | `language.log`, `language-semantic-final.log` |
+| Format, navigation, source editing | Pass, 47, 32 and 17 cases | `language-format.log`, `language-navigation.log`, `source-edit.log` |
+| Runtime, query and publication | Pass, 134, 54 and 4 cases | `language-program-final.log`, `language-query-program-final.log`, `language-publication-final.log` |
+| Imported ownership and task restrictions | Pass, 15 cases | `language-modules-final.log` |
+| Prepared producer/runtime-only handoff | Pass, 8 writer, 13 reader and 1 handoff cases | `language-prepared-final.log` |
+| Source query rows, systems and scheduling | Pass, 6, 11 and 4 cases | `source-query-rows.log`, `source-systems.log`, `system-schedule-final.log` |
+| Wasm runtime, query, publication and modules | Pass, 134, 54, 4 and 15 cases | `wasm-program.log`, `wasm-query-program.log`, `wasm-publication.log`, `wasm-modules.log` |
+| Native/Wasm builds, SDK package and Studio consumer build | Pass | `native-build-final.log`, `wasm-build-final.log`, `sdk-package.log`, `studio-build.log` |
+| Changed C files, clang-format 22; diff whitespace | Pass | `format-check.log`, `diff-check.log` |
+
+The longest selected test command took 7.726 seconds. Wasm checks ran in Node;
+this increment did not repeat browser, rendered UI or GPU acceptance. Full render
+and Studio suites remain quarantined. Independent reviews covered migration and
+authoring, runtime ownership, and prepared task metadata.
+The SDK package for that retained-ownership snapshot was
+`5859cc8862371d54f57ac2da73dcd804346523d0ca7dda391439133ae6eb9b43`.
+
+The compiler checks complete authored types for retained task handles. Prepared
+validation also rejects task schemas visible in runtime values, including empty
+maps. A forged false task flag with deeper schema erased by a null payload or an
+empty outer container is not independently detectable without carrying more
+schema. This is not a claim of complete hostile-artifact schema verification.
+
+## Agreed direction
+
+- Name-first declarations and `name: Type`; use identifiers for language symbols.
+- Consistent `Name :: component`, `Name :: prototype` and `Name :: system(...)`.
+- Remove named `fn`, redundant `foreach`, graph-export-only call spellings and
+  inert `await` where the compiler proves equivalence. Infer effects where safe.
+- Name-first retention: `visits: retain int = 0` or inferred `visits: retain = 0`.
+  Ownership follows the behavior instance or system registration. This qualifies
+  binding storage, not the type of values copied or passed to functions.
+- Real associative `Map<K, V>`, with `Map` or complete inference when the
+  initializer/context supplies the types. Arrays retain `[]` literals.
+- Authored components, prototype composition/default overrides and typed
+  relationship declaration, initial links, mutation and query integration.
+- Jai-style argument-bound polymorphism and general compile-time type/value
+  programming, validated through units rather than only hardcoded unit rules.
+- End-to-end typed arithmetic, packed eligible collections and operation-specific
+  loop optimization for all suitable scalar/vector/plain types. Do not silently
+  enable fast math, reorder reductions or change numeric default precision.
+- Queryable embedded components are a later extension. They require explicit
+  aliasing, membership and conflict rules, without duplicating component data.
+
+## Completed implementation
+
+1. **Complete: retained bindings.** Name-first `retain` replaces explicit `state`
+   and `shared`. The follow-up above makes it private to a behavior attachment or
+   system registration and removes the intermediate `retain(system)` spelling.
+2. **Complete: unified declarations and source cleanup.** Identifier-only symbols,
+   name-first declarations, system parameters, per-invocation system locals,
+   optional function arrows, inferred effects, typed asset references, global
+   runtime depth, source producers/refactorings and versioned migrations.
+3. **Complete: containers and polymorphism.** Associative maps, deterministic
+   iteration, indexed/string/reference loops, `$T` specialization, imported
+   templates and compile-time type/value procedures, including authored units.
+4. **Complete: authored assets and relationships.** Source components, prototype
+   composition and overrides, typed relationships, initial links and staged
+   mutation, query integration, serialization and Studio source editing.
+5. **Complete: typed storage and execution.** Layout-selected packed arrays,
+   typed arithmetic and eligible loop/borrow paths across VM, SLJIT, Wasm and
+   generated C, with bounded correctness and storage/performance measurements.
+
+## Implemented contracts
+
+- Version 26 uses `Name :: kind`, mandatory `system(...)`, and identifier-only
+  symbols. Ordinary system-body declarations are per-invocation locals; migration
+  refuses old per-match system state for an explicit ownership decision. Functions
+  accept an optional `=>` before a brace body. Purity is inferred. Per-source depth limits are deliberately
+  unified under the shared default of 64, including former 0/unlimited and 32.
+- Maps keep full key and value type identities, including nested collections.
+  Lookup of an absent key fails; `map_has` guards it. Assignment upserts, replacement
+  preserves position, and removal/reinsertion appends. Iteration snapshots insertion
+  order; equality compares associations independently of order. Duplicate literal
+  keys fail when provable; dynamic duplicate keys keep the last value at the first
+  position. Empty literals require a concrete contextual type.
+- `$T` binders specialize authored functions from arguments. Generic structs take
+  compile-time type/value parameters; ordinary effect-free procedures may construct
+  types in compile-time contexts. No required `comptime` procedure keyword or
+  compiler-hardcoded units rules. Imported templates preserve source ownership.
+  The documented evaluator supports scalar/type values, helper calls, locals,
+  assignments, `if` and `while`; it does not interpret arbitrary runtime code,
+  arrays, `for`, closures or native calls. Limits are 65,536 steps, 128 calls and
+  256 nested expressions/statements, separate from runtime call depth 64.
+- `Elite :: prototype(Enemy, Armored)` composes bases in existing include order and
+  applies sparse component overrides. `Targets :: relationship { ... }` declares
+  traits. Initial `links: { Targets: child.enemy }` resolve actual instance-local
+  entities. Typed pair mutation uses the existing ECS staging/deletion rules.
+  `has_pair` observes committed state. Remove then re-add requires a commit
+  boundary; the fixture and native regression exercise both sides of that boundary.
+- Packed arrays have one physical representation, selected from their element
+  layout. Boxed compatibility builders may remain at native API boundaries, but
+  runtime snapshots pack eligible elements directly. Maps are separate containers.
+  Shared IR and borrowing proofs support typed payloads without unconditional
+  copy regressions. Default numeric precision and reduction order stay unchanged.
+  Managed or nullable elements retain the boxed fallback; maps have separate
+  storage. [Language documentation](docs/code-language.md) states exact eligibility.
+- Project version is 26; prepared schema is 17. All 13 fixture projects were
+  migrated and pass canonical formatting. Historical migration inputs remain
+  historical. Bundled Studio projects upgrade automatically on opening.
+- Studio uses the installed SDK for static prototype/relationship editing,
+  completion, syntax highlighting, typed validation, save/undo/redo and scene
+  refresh. Invalid drafts preserve last-valid content. New relationship schemas
+  register in both scene and preview worlds; changing/deleting live schemas
+  requires reopening. Static asset navigation is not claimed.
+
+## Earlier five-stage evidence, before the retention follow-up
+
+All test runs use the production supervisor's unchanged 60-second ceiling.
+Configuration and builds are separate. Evidence is retained under
+`.chibi/evidence/language-redesign/` rather than the rolling build-log directory.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Native ASan/UBSan controller, compiler and test drivers | Pass | `native-build.log` |
+| Release controller; Wasm driver | Pass | `release-build.log`, `wasm-build.log` |
+| Language group | Pass, 20.880s; program 134 cases, navigation 32, source assets 23 | `language-group.log` |
+| Native group | Pass, 23.291s, including staged relationship mutation | `native-group.log` |
+| Project group | Pass, 23.900s; all 19 feature scenes, four frames each | `projects-group.log` |
+| Wasm group | Pass, 2.503s | `wasm-group.log` |
+| Actual Chrome Wasm | Pass, 3.114s; execution, program, publication, packed arrays, modules and queries | `wasm-browser.log` |
+| Native query/packed-array selectors | Pass, 54 and 12 cases | `query-program.log`, `row-array.log` |
+| Component writes, including private used-result ABI | Pass, 15 cases each on native and Wasm | `component-write.log`, `wasm-component-write.log` |
+| Generated-C parity | Pass, 6,965 assertions, 1.936s | `c-export-alias.log` |
+| SDK package and Studio build/acceptance build | Pass, installed public SDK boundary | `sdk-build.log`, `studio-build.log`, `studio-acceptance-build.log` |
+| Bounded Studio source edit | Pass, 3.894s; four frames, edit/undo/redo, static validation and live relationship registration | `studio-source-edit.log` |
+| Fixture canonicality and C formatting | Pass, all 13 projects | `fixture-format-check.log`, `check-format.log` |
+
+The SDK package for that earlier snapshot was
+`6504402215fea1305a2753ee5564c7a7b4544b85f734bd8a801bbb9aa3169308`.
+Studio's base is `07dccf7`; both candidates use the branch named above. Source
+and compile-command audits verify the public installed-SDK boundary, and Studio's
+consumer hashes/include inventory matched that snapshot. Independent reviews cover
+grammar/migrations, ownership and prepared provenance, typed component access,
+asset registration, editor persistence and the final staged-mutation fixture.
+
+The packed benchmark compares ten numeric types, 64 elements and 16 trials per
+mode. Packed payloads use 64/128/256/512 bytes by element width versus 2,560 bytes
+for the boxed payload on this native build (40-byte descriptor for either).
+These are bounded measurements, not a claim of universal vector/record speedups,
+SIMD gains, GPU performance or changed numeric precision.
+
+Full rendering and full Studio suites remain quarantined, not passed. The Studio
+check is source-edit acceptance, not comprehensive pointer/tab or rendered-player
+acceptance. Three intentionally incomplete baseline fixture projects still refer
+to absent `HealthBehavior`, undeclared `Repair`, or absent `ArenaEnemyShard`;
+these omissions were verified in base `525f91b5a` and were not filled with invented
+assets. Their formatter checks pass; standalone compilation of all 13 is not claimed.
+
+Queryable embedded components remain the explicitly deferred extension, outside
+these five completed stages. Temporary migration/evidence-generation scratch was
+moved to Trash and is recoverable; review worktrees, build artifacts and durable
+evidence are retained.
+At that earlier checkpoint, no commit, push, merge or deployment had been
+performed. The final-review section above supersedes its delivery status. Earlier
+plans below are historical.
+
+## Main branch historical checkpoint (before redesign integration)
+
 # 3D terrain and screen light, 2026-10-17
 
 The Voidweaver basalt study's reusable engine work is on main: live 3D

@@ -1,0 +1,667 @@
+#include "authoring/native_bindings.h"
+#include "backend.h"
+#include "execution/module.h"
+#include "execution/status.h"
+#include "language/lower.h"
+#include "runtime/arrays.h"
+#include "runtime/math_native.h"
+#include "support/arena.h"
+#include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
+#include "types/record.h"
+#include "types/scalar.h"
+#include "types/trace.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+enum
+{
+    ELEMENTS = 64,
+    TRIALS = 16
+};
+static arena producer, storage;
+static script_syntax *syntax;
+static script_analysis *analysis;
+static execution_module *module;
+static native_capabilities *natives;
+static behavior_function_context context;
+static behavior_function_activation activation;
+
+static void cleanup()
+{
+    behavior_function_release_host(&context);
+    behavior_function_activation_free(&activation);
+    execution_module_free(module);
+    native_capabilities_free(natives);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    arena_free(&producer);
+    arena_free(&storage);
+    context = (behavior_function_context){ 0 };
+    activation = (behavior_function_activation){ 0 };
+    module = NULL;
+    natives = NULL;
+    analysis = NULL;
+    syntax = NULL;
+}
+static pin_value scalar(pin_type type, int n)
+{
+    pin_value value = { .type = type };
+    switch (type) {
+        case PIN_BOOL: value.b = n != 0; break;
+        case PIN_I8: value.i8 = n; break;
+        case PIN_U8: value.u8 = n; break;
+        case PIN_I16: value.i16 = n; break;
+        case PIN_U16: value.u16 = n; break;
+        case PIN_I32: value.i = n; break;
+        case PIN_U32: value.u = n; break;
+        case PIN_I64: value.i64 = n; break;
+        case PIN_U64:
+        case PIN_HANDLE: value.u64 = n; break;
+        case PIN_F32: value.f = n; break;
+        case PIN_F64: value.d = n; break;
+        case PIN_ENUM: value.e = n; break;
+        default: assert(false);
+    }
+    return value;
+}
+TEST_CASE(packed_scalars_preserve_values_widths_and_snapshot_ownership)
+{
+    const pin_type types[] = { PIN_BOOL, PIN_I8,     PIN_U8,  PIN_I16, PIN_U16,
+                               PIN_I32,  PIN_U32,    PIN_I64, PIN_U64, PIN_F32,
+                               PIN_F64,  PIN_HANDLE, PIN_ENUM };
+    arena_init_collectable(&storage);
+    for (size_t t = 0; t < sizeof types / sizeof *types; t++) {
+        pin_value values[] = { scalar(types[t], 1),
+                               scalar(types[t], 2),
+                               scalar(types[t], 3) };
+        const char *name = types[t] == PIN_HANDLE ? "ecs.entity"
+                         : types[t] == PIN_ENUM   ? "PackedChoice"
+                                                  : NULL;
+        for (int i = 0; i < 3; i++) {
+            values[i].type_name = name;
+        }
+        pin_array source = { .element_type = types[t],
+                             .type_name = name,
+                             .count = 3,
+                             .capacity = 3,
+                             .items = values };
+        pin_array *copy = pin_array_snapshot_to_arena(&storage, &source);
+        REQUIRE(copy && pin_array_valid(copy) && !copy->items);
+        REQUIRE(copy->stride == behavior_scalar_size(types[t]));
+        REQUIRE(pin_array_storage_bytes(copy) == 3 * behavior_scalar_size(types[t]));
+        pin_value expected = values[0];
+        values[0] = scalar(types[t], 9);
+        pin_value first = pin_array_get(copy, 0);
+        REQUIRE(pin_value_equal(&first, &expected));
+        pin_array_swap(copy, 0, 2);
+        first = pin_array_get(copy, 2);
+        REQUIRE(pin_value_equal(&first, &expected));
+        arena_collection collection;
+        arena *arenas[] = { &storage };
+        arena_collect_begin(&collection, arenas, 1);
+        arena_collect_mark(&collection, copy);
+        arena_collect_end(&collection);
+        first = pin_array_get(copy, 2);
+        REQUIRE(pin_value_equal(&first, &expected));
+    }
+    return true;
+}
+TEST_CASE(packed_record_updates_box_compatible_null_elements)
+{
+    const type_field field = { .name = "count", .type = PIN_I32 };
+    const pin_record *record = pin_record_create(&producer, "NullableRow", 419, &field, 1);
+    REQUIRE(record);
+    int32_t count = 23;
+    pin_value row = { .type = PIN_STRUCT,
+                      .type_name = record->type.name,
+                      .record = record,
+                      .ptr = &count };
+    pin_array source = { .element_type = PIN_STRUCT,
+                         .type_name = record->type.name,
+                         .record = record,
+                         .count = 1,
+                         .capacity = 1,
+                         .items = &row };
+    arena_init_collectable(&storage);
+    pin_array *packed = pin_array_snapshot_to_arena(&storage, &source);
+    REQUIRE(packed && packed->stride);
+    pin_value array = { .type = PIN_STRUCT,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .type_name = packed->type_name,
+                        .record = packed->record,
+                        .ptr = packed };
+    pin_value null = row;
+    null.ptr = NULL;
+    pin_value add[] = { array, null };
+    pin_value update[] = { array, { .type = PIN_I32 }, null };
+    pin_value results[] = { native_array_add(add, 2, &storage),
+                            native_array_insert(update, 3, &storage),
+                            native_array_set_elem(update, 3, &storage) };
+    arena_free(&producer);
+    arena_collection collection;
+    arena *arenas[] = { &storage };
+    arena_collect_begin(&collection, arenas, 1);
+    for (int i = 0; i < 3; i++) {
+        pin_value_trace(&results[i], arena_collect_mark, &collection);
+    }
+    arena_collect_end(&collection);
+    for (int i = 0; i < 3; i++) {
+        const pin_array *result = results[i].ptr;
+        REQUIRE(result && pin_array_valid(result) && !result->stride);
+        REQUIRE(result->count == (i == 2 ? 1 : 2));
+        pin_value item = pin_array_get(result, i == 0 ? 1 : 0);
+        REQUIRE(item.type == PIN_STRUCT && !item.ptr);
+        if (i != 2) {
+            item = pin_array_get(result, i == 0 ? 0 : 1);
+            pin_value value;
+            pin_read_field(item.ptr, &item.record->type.fields[0], &value);
+            REQUIRE(value.i == 23);
+        }
+    }
+    return true;
+}
+TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks)
+{
+    const type_field fields[] = {
+        { .name = "x", .type = PIN_F32 },
+        { .name = "y", .type = PIN_F32 },
+        { .name = "count", .type = PIN_I64 },
+        { .name = "owner", .type = PIN_HANDLE, .type_name = "ecs.entity" }
+    };
+    const pin_record *record = pin_record_create(&producer, "PackedRow", 401, fields, 4);
+    REQUIRE(record && pin_record_valid(record));
+    pin_value values[2];
+    for (int i = 0; i < 2; i++) {
+        values[i] = (pin_value){ .type = PIN_STRUCT,
+                                 .type_name = record->type.name,
+                                 .record = record,
+                                 .ptr = arena_alloc(&producer, record->type.size) };
+        memset(values[i].ptr, 0, record->type.size);
+        for (int f = 0; f < 4; f++) {
+            pin_value value = scalar(fields[f].type, i + f + 1);
+            value.type_name = fields[f].type_name;
+            pin_write_field(values[i].ptr, &record->type.fields[f], value);
+        }
+    }
+    pin_array source = { .element_type = PIN_STRUCT,
+                         .type_name = record->type.name,
+                         .record = record,
+                         .count = 2,
+                         .capacity = 2,
+                         .items = values };
+    arena_init_collectable(&storage);
+    pin_array *packed = pin_array_snapshot_to_arena(&storage, &source);
+    REQUIRE(packed && packed->stride == record->type.size && !packed->items);
+    values[1].ptr = NULL;
+    pin_array *nullable = pin_array_snapshot_to_arena(&storage, &source);
+    REQUIRE(nullable && !nullable->stride && nullable->items);
+    const type_field text_field = { .name = "text", .type = PIN_STR };
+    const pin_record *managed = pin_record_create(&producer, "ManagedRow", 402, &text_field, 1);
+    REQUIRE(managed);
+    pin_value text = { .type = PIN_STRUCT,
+                       .type_name = managed->type.name,
+                       .record = managed,
+                       .ptr = arena_alloc(&producer, managed->type.size) };
+    pin_write_field(text.ptr, &managed->type.fields[0], (pin_value){ .type = PIN_STR, .str = "owned" });
+    pin_array texts = { .element_type = PIN_STRUCT,
+                        .type_name = managed->type.name,
+                        .record = managed,
+                        .count = 1,
+                        .capacity = 1,
+                        .items = &text };
+    pin_array *kept = pin_array_snapshot_to_arena(&storage, &texts);
+    REQUIRE(kept && !kept->stride);
+    arena_free(&producer);
+    arena_collection collection;
+    arena *arenas[] = { &storage };
+    arena_collect_begin(&collection, arenas, 1);
+    arena_collect_mark(&collection, packed);
+    arena_collect_mark(&collection, nullable);
+    arena_collect_mark(&collection, kept);
+    arena_collect_end(&collection);
+    pin_value row = pin_array_get(packed, 1), member;
+    pin_read_field(row.ptr, &row.record->type.fields[2], &member);
+    REQUIRE(member.type == PIN_I64 && member.i64 == 4);
+    row = pin_array_get(nullable, 1);
+    REQUIRE(!row.ptr && pin_record_valid(row.record));
+    row = pin_array_get(kept, 0);
+    pin_read_field(row.ptr, &row.record->type.fields[0], &member);
+    REQUIRE(member.type == PIN_STR && !strcmp(member.str, "owned"));
+    return true;
+}
+static double now()
+{
+    struct timespec time;
+    int status = clock_gettime(CLOCK_MONOTONIC, &time);
+    assert(!status);
+    return time.tv_sec + time.tv_nsec * 1e-9;
+}
+static const behavior_function *compile_source(const char *source, behavior_backend backend)
+{
+    char error[256];
+    const script_catalog empty = { 0 };
+    const script_catalog *catalog = natives ? native_capabilities_catalog(natives)
+                                            : &empty;
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, catalog);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "packed semantic: %s\n", analysis->diagnostics[i].message);
+    }
+    if (!analysis->valid) {
+        return NULL;
+    }
+    const script_lower_bindings bindings = natives
+                                             ? authoring_native_bindings(natives)
+                                             : (script_lower_bindings){ 0 };
+    execution_module_plan *plan = script_lower(analysis, catalog, &bindings);
+    for (int i = 0; plan && i < plan->diagnostic_count; i++) {
+        fprintf(stderr, "packed lower: %s\n", plan->diagnostics[i].message);
+    }
+    if (!plan || !plan->valid) {
+        execution_module_plan_free(plan);
+        return NULL;
+    }
+    module = execution_module_finish(&plan, backend, error, sizeof error);
+    execution_module_plan_free(plan);
+    if (!module) {
+        fprintf(stderr, "packed publish: %s\n", error);
+        return NULL;
+    }
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        execution_module_function_info function = execution_module_function_at(module, i);
+        if (execution_module_function_count(module) == 1) {
+            return function.body;
+        }
+        for (int j = 0; j < analysis->function_count; j++) {
+            int symbol = analysis->functions[j].symbol;
+            if (symbol >= 0 && analysis->symbols[symbol].id == function.id &&
+                !strcmp(analysis->symbols[symbol].name, "Fold")) {
+                return function.body;
+            }
+        }
+    }
+    return NULL;
+}
+static const behavior_function *compile(pin_type type, behavior_backend backend)
+{
+    char source[384];
+    const char *name = script_scalar_name(type);
+    snprintf(
+        source,
+        sizeof source,
+        "Packed :: library { Sum :: (values:%s[]) -> %s { total:%s=0; "
+        "for value in values { total += value; } return total; } }",
+        name,
+        name,
+        name
+    );
+    return compile_source(source, backend);
+}
+static bool integer_case(
+    pin_type type,
+    behavior_backend backend,
+    const char *operation,
+    uint64_t left,
+    uint64_t right,
+    uint64_t expected,
+    bool comparison,
+    bool fails
+)
+{
+    char source[384];
+    const char *name = script_scalar_name(type);
+    snprintf(
+        source,
+        sizeof source,
+        "Packed :: library { Edge :: (a:%s,b:%s) -> %s { return a %s b; } }",
+        name,
+        name,
+        comparison ? "bool" : name,
+        operation
+    );
+    const behavior_function *function = compile_source(source, backend);
+    if (!function) {
+        return false;
+    }
+    pin_value arguments[] = { behavior_scalar_from_bits(type, left),
+                              behavior_scalar_from_bits(type, right) };
+    pin_value result = { .type = comparison ? PIN_BOOL : type };
+    context = (behavior_function_context){ .arguments = arguments,
+                                           .argument_count = 2,
+                                           .results = &result,
+                                           .activation = &activation,
+                                           .budget = 10000 };
+    behavior_function_bind_storage(&context, &storage);
+    if (!behavior_function_bind(function, &context, NULL, 0)) {
+        return false;
+    }
+    int status = behavior_function_run(function, &context, backend != BEHAVIOR_BYTECODE);
+    bool valid = fails ? status == FLOW_ERR_INVALID_GRAPH
+                       : status == FLOW_OK &&
+                             (comparison ? result.b == (expected != 0)
+                                         : behavior_scalar_bits(result) ==
+                                               behavior_scalar_bits(
+                                                   behavior_scalar_from_bits(type, expected)
+                                               ));
+    if (!valid) {
+        fprintf(
+            stderr,
+            "integer edge backend=%s type=%s op=%s status=%d\n",
+            behavior_backend_name(backend),
+            name,
+            operation,
+            status
+        );
+    }
+    cleanup();
+    return valid;
+}
+TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends)
+{
+    const pin_type types[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16,
+                               PIN_I32, PIN_U32, PIN_I64, PIN_U64 };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (size_t t = 0; t < sizeof types / sizeof *types; t++) {
+            pin_type type = types[t];
+            unsigned bits = (unsigned)behavior_scalar_size(type) * 8;
+            uint64_t mask = UINT64_MAX >> (64 - bits);
+            uint64_t high = UINT64_C(1) << (bits - 1);
+            bool sign = behavior_scalar_signed(type);
+            REQUIRE(integer_case(type, backends[b], "+", mask, 1, 0, false, false));
+            REQUIRE(integer_case(type, backends[b], "-", 0, 1, mask, false, false));
+            REQUIRE(integer_case(type, backends[b], "*", high + 1, 3, high + 3, false, false));
+            REQUIRE(integer_case(type, backends[b], "<", high, 1, sign, true, false));
+            REQUIRE(
+                integer_case(type, backends[b], "/", mask - 1, 2, sign ? mask : (mask - 1) / 2, false, false)
+            );
+            REQUIRE(integer_case(type, backends[b], "%", mask, 2, sign ? mask : 1, false, false));
+            REQUIRE(integer_case(type, backends[b], "/", high, 0, 0, false, true));
+            REQUIRE(integer_case(type, backends[b], "%", high, 0, 0, false, true));
+            if (sign) {
+                REQUIRE(integer_case(type, backends[b], "/", high, mask, 0, false, true));
+                REQUIRE(integer_case(type, backends[b], "%", high, mask, 0, false, true));
+            }
+        }
+    }
+    return true;
+}
+TEST_CASE(typed_integer_large_constant_folding_is_exact)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        const behavior_function *function = compile_source(
+            "Packed :: library { Inner :: (a:uint64,b:uint64) -> uint64 { "
+            "return (a+b)*3; } Fold :: () -> uint64 { "
+            "return Inner(9007199254740993,9007199254740991); } }",
+            backends[b]
+        );
+        REQUIRE(function);
+        /* Authored calls suspend the parent while the callee executes. Their
+         * public invocation contract requires saved activation values. */
+        behavior_function_activation_init(function, &activation);
+        pin_value result = { .type = PIN_U64 };
+        context = (behavior_function_context){ .results = &result,
+                                               .activation = &activation,
+                                               .budget = 10000 };
+        behavior_function_bind_storage(&context, &storage);
+        REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+        REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+        REQUIRE(result.u64 == UINT64_C(54043195528445952));
+        cleanup();
+    }
+    return true;
+}
+TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder)
+{
+    const struct
+    {
+        pin_type type;
+        const char *maximum;
+        uint64_t expected;
+    } cases[] = { { PIN_I8, "127", UINT64_C(128) },
+                  { PIN_U8, "255", 0 },
+                  { PIN_I16, "32767", UINT64_C(32768) },
+                  { PIN_U16, "65535", 0 },
+                  { PIN_I32, "2147483647", UINT64_C(2147483648) },
+                  { PIN_U32, "4294967295", 0 },
+                  { PIN_I64, "9223372036854775807", UINT64_C(9223372036854775808) },
+                  { PIN_U64, "18446744073709551615", 0 },
+                  { PIN_F32, NULL, 0 },
+                  { PIN_F64, NULL, 0 } };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (size_t c = 0; c < sizeof cases / sizeof *cases; c++) {
+            char source[384];
+            pin_type type = cases[c].type;
+            const char *name = script_scalar_name(type);
+            if (type == PIN_F32 || type == PIN_F64) {
+                snprintf(
+                    source,
+                    sizeof source,
+                    "Packed :: library { Wrap :: () -> %s { return "
+                    "cast<%s>(5.5) %% cast<%s>(2); } Value :: Wrap(); "
+                    "Fold :: () -> %s { return Value; } }",
+                    name,
+                    name,
+                    name,
+                    name
+                );
+            } else {
+                snprintf(
+                    source,
+                    sizeof source,
+                    "Packed :: library { Wrap :: () -> %s { return "
+                    "cast<%s>(%s) + cast<%s>(1); } Value :: Wrap(); "
+                    "Fold :: () -> %s { return Value; } }",
+                    name,
+                    name,
+                    cases[c].maximum,
+                    name,
+                    name
+                );
+            }
+            const behavior_function *function = compile_source(source, backends[b]);
+            REQUIRE(function);
+            pin_value expected = type == PIN_F32
+                                   ? (pin_value){ .type = PIN_F32, .f = 1.5f }
+                               : type == PIN_F64
+                                   ? (pin_value){ .type = PIN_F64, .d = 1.5 }
+                                   : behavior_scalar_from_bits(type, cases[c].expected);
+            bool found = false;
+            for (int i = 0; i < analysis->symbol_count; i++) {
+                const script_symbol *symbol = &analysis->symbols[i];
+                if (symbol->kind == SCRIPT_CONSTANT &&
+                    symbol->initializer >= 0 && !strcmp(symbol->name, "Value")) {
+                    REQUIRE(analysis->expressions[symbol->initializer].kind == SCRIPT_EXPR_CONSTANT);
+                    REQUIRE(pin_value_equal(
+                        &analysis->expressions[symbol->initializer].constant,
+                        &expected
+                    ));
+                    found = true;
+                }
+            }
+            REQUIRE(found);
+            uint64_t wrap = 0;
+            for (int i = 0; i < analysis->function_count; i++) {
+                int symbol = analysis->functions[i].symbol;
+                if (symbol >= 0 && !strcmp(analysis->symbols[symbol].name, "Wrap")) {
+                    wrap = analysis->symbols[symbol].id;
+                }
+            }
+            REQUIRE(wrap);
+            pin_value result = { .type = type };
+            context = (behavior_function_context){ .results = &result,
+                                                   .activation = &activation,
+                                                   .budget = 10000 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+            REQUIRE(pin_value_equal(&result, &expected));
+            behavior_function_release_host(&context);
+            behavior_function_activation_free(&activation);
+            arena_free(&storage);
+            function = NULL;
+            for (int i = 0; i < execution_module_function_count(module); i++) {
+                execution_module_function_info candidate = execution_module_function_at(module, i);
+                if (candidate.id == wrap) {
+                    function = candidate.body;
+                }
+            }
+            REQUIRE(function);
+            result = (pin_value){ .type = type };
+            context = (behavior_function_context){ .results = &result,
+                                                   .activation = &activation,
+                                                   .budget = 10000 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+            REQUIRE(pin_value_equal(&result, &expected));
+            cleanup();
+        }
+    }
+    return true;
+}
+TEST_CASE(float_math_stays_float_and_default_math_stays_double)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int narrow = 0; narrow < 2; narrow++) {
+            char error[256];
+            natives = native_capabilities_from_definition_packs(
+                NULL,
+                0,
+                &NATIVE_MATH_DEFINITION_PACK,
+                1,
+                error,
+                sizeof error
+            );
+            REQUIRE(natives);
+            const behavior_function *function = compile_source(
+                narrow ? "Packed :: library { Math :: (value:float) -> float { "
+                         "return "
+                         "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
+                         "0.5); } }"
+                       : "Packed :: library { Math :: () -> double { return "
+                         "sqrt(2); } }",
+                backends[b]
+            );
+            REQUIRE(function);
+            int calls = 0;
+            for (int i = 0; i < analysis->expression_count; i++) {
+                const script_expression *expression = &analysis->expressions[i];
+                if (expression->kind != SCRIPT_EXPR_CALL || !expression->capability) {
+                    continue;
+                }
+                const script_catalog_capability *capability = script_catalog_capability_by_id(
+                    native_capabilities_catalog(natives),
+                    expression->capability
+                );
+                REQUIRE(capability && capability->result_count == 1);
+                REQUIRE(capability->results[0].type.storage == (narrow ? PIN_F32 : PIN_F64));
+                calls++;
+            }
+            REQUIRE(calls == (narrow ? 4 : 1));
+            pin_value value = { .type = PIN_F32, .f = 2 },
+                      result = { .type = narrow ? PIN_F32 : PIN_F64 };
+            context = (behavior_function_context){ .arguments = narrow ? &value : NULL,
+                                                   .argument_count = narrow,
+                                                   .results = &result,
+                                                   .activation = &activation,
+                                                   .budget = 10000 };
+            behavior_function_bind_storage(&context, &storage);
+            REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+            REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+            if (narrow) {
+                float expected = sqrtf(2) + cos_sin_compute(2).s;
+                expected += powf(2, 2);
+                expected += 2;
+                REQUIRE(result.type == PIN_F32 && result.f == expected);
+            } else {
+                REQUIRE(result.type == PIN_F64 && result.d == sqrt(2));
+            }
+            cleanup();
+        }
+    }
+    return true;
+}
+TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths)
+{
+    const pin_type types[] = { PIN_I8,  PIN_U8,  PIN_I16, PIN_U16, PIN_I32,
+                               PIN_U32, PIN_I64, PIN_U64, PIN_F32, PIN_F64 };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (size_t t = 0; t < sizeof types / sizeof *types; t++) {
+            const behavior_function *function = compile(types[t], backends[b]);
+            REQUIRE(function);
+            pin_value values[ELEMENTS];
+            for (int i = 0; i < ELEMENTS; i++) {
+                values[i] = scalar(types[t], 1);
+            }
+            pin_array boxed = { .element_type = types[t],
+                                .count = ELEMENTS,
+                                .capacity = ELEMENTS,
+                                .items = values };
+            pin_array *packed = pin_array_snapshot_to_arena(&producer, &boxed);
+            REQUIRE(packed && packed->stride);
+            double seconds[2];
+            for (int representation = 0; representation < 2; representation++) {
+                pin_value argument = { .type = types[t],
+                                       .container = PIN_CONTAINER_ARRAY,
+                                       .ptr = representation ? packed : &boxed };
+                pin_value result = scalar(types[t], 0),
+                          expected = scalar(types[t], ELEMENTS);
+                context = (behavior_function_context){ .arguments = &argument,
+                                                       .argument_count = 1,
+                                                       .results = &result,
+                                                       .activation = &activation,
+                                                       .budget = 100000 };
+                behavior_function_bind_storage(&context, &storage);
+                REQUIRE(behavior_function_bind(function, &context, NULL, 0));
+                double begin = now();
+                for (int trial = 0; trial < TRIALS; trial++) {
+                    REQUIRE(behavior_function_run(function, &context, b != 0) == FLOW_OK);
+                    REQUIRE(pin_value_equal(&result, &expected));
+                }
+                seconds[representation] = now() - begin;
+                behavior_function_release_host(&context);
+                behavior_function_activation_free(&activation);
+                context = (behavior_function_context){ 0 };
+                activation = (behavior_function_activation){ 0 };
+                arena_free(&storage);
+            }
+            printf(
+                "packed-loop backend=%s type=%s elements=%d trials=%d "
+                "boxed_bytes=%zu packed_bytes=%zu boxed_seconds=%.6f "
+                "packed_seconds=%.6f\n",
+                behavior_backend_name(backends[b]),
+                script_scalar_name(types[t]),
+                ELEMENTS,
+                TRIALS,
+                pin_array_storage_bytes(&boxed),
+                pin_array_storage_bytes(packed),
+                seconds[0],
+                seconds[1]
+            );
+            cleanup();
+        }
+    }
+    return true;
+}
+void test_language_packed()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(packed_record_updates_box_compatible_null_elements);
+    RUN_TEST_CASE(packed_scalars_preserve_values_widths_and_snapshot_ownership);
+    RUN_TEST_CASE(packed_records_own_layouts_and_keep_nullable_and_managed_fallbacks);
+    RUN_TEST_CASE(packed_authored_loops_match_boxed_input_across_numeric_widths);
+    RUN_TEST_CASE(typed_integer_edges_match_vm_and_compiled_backends);
+    RUN_TEST_CASE(typed_integer_large_constant_folding_is_exact);
+    RUN_TEST_CASE(typed_compile_time_values_preserve_width_and_float_remainder);
+    RUN_TEST_CASE(float_math_stays_float_and_default_math_stays_double);
+    pu_clear_setup();
+}

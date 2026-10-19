@@ -25,8 +25,8 @@ static bool has_completion(const asset_source_completions *choices, const char *
  * property completion remains independently covered below. */
 TEST_CASE(asset_source_navigates_event_payloads)
 {
-    const char
-        *text = "behavior Payload { on Tick(dt) { first:=dt; second:=dt; } }";
+    const char *
+        text = "Payload :: behavior { on Tick(dt) { first:=dt; second:=dt; } }";
     const script_catalog_parameter payload = { .name = "DeltaSeconds",
                                                .type = { .storage = PIN_F32 } };
     const script_catalog_capability event = { .id = 100,

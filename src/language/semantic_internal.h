@@ -2,6 +2,7 @@
 #define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 
 #include "language/semantic.h"
+#include "types/type.h"
 
 #define SCRIPT_MAX_DEPTH 256
 
@@ -51,6 +52,21 @@ typedef struct
     unsigned generation;
     int depth;
 } constant_proof;
+typedef script_compile_value compile_value;
+typedef script_compile_binding compile_binding;
+typedef struct
+{
+    TSNode node;
+    int symbol, scope;
+    bool record, type_result;
+} generic_template;
+typedef struct
+{
+    int template, function;
+    uint64_t nominal;
+    compile_binding *bindings;
+    int *constant_arguments;
+} generic_instance;
 typedef struct
 {
     const script_syntax *syntax;
@@ -63,10 +79,59 @@ typedef struct
     narrowing *narrowed;
     constant_proof *constant_proofs;
     unsigned constant_generation;
+    generic_template *templates;
+    generic_instance *instances;
+    bool instantiating;
+    int compile_depth;
+    int compile_expression_depth;
+    int compile_statement_depth;
+    bool compile_failed;
+    pin_type compile_numeric, compile_result;
+    int *compile_readonly;
+    uint64_t specialization;
+    const script_specialization_request *requested;
+    int requested_count;
+    int pending_specializations;
     TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
-    bool declarations_only;
+    bool declarations_only, migration_import;
 } analyzer;
+
+bool script_analyzer_generic_declare(analyzer *, TSNode);
+void script_analyzer_generic_prepare(analyzer *, TSNode);
+int script_analyzer_generic_call(analyzer *, TSNode, int symbol, int **arguments);
+bool script_analyzer_generic_alias(analyzer *, TSNode);
+script_type script_analyzer_generic_type(analyzer *, TSNode);
+bool script_analyzer_compile_expression(analyzer *, TSNode, compile_binding *, compile_value *, int *budget);
+bool script_analyzer_compile_call(analyzer *, TSNode, compile_binding *, compile_value *, int *budget);
+bool script_analyzer_compile_as(analyzer *, TSNode, compile_binding *, pin_type, compile_value *, int *);
+bool script_analyzer_generic_apply(analyzer *, TSNode, compile_binding *, compile_value *, int *budget);
+bool script_analyzer_generic_member(analyzer *, script_type, const char *, compile_value *);
+void script_analyzer_generic_free(analyzer *);
+void script_analyzer_generic_materialize(analyzer *);
+bool script_analyzer_record_field(analyzer *, TSNode, script_type, const char *, type_field *);
+void script_analyzer_generic_export(analyzer *, TSNode, int symbol);
+bool script_analyzer_generic_import_call(
+    analyzer *,
+    TSNode,
+    const char *,
+    int *expression,
+    const script_catalog_capability **capability,
+    int **arguments
+);
+bool script_analyzer_generic_import_compile(analyzer *, TSNode, compile_binding *, compile_value *, int *);
+bool script_analyzer_compile_procedure(
+    analyzer *,
+    TSNode,
+    int scope,
+    compile_binding *,
+    compile_value *,
+    int *
+);
+const char *script_analyzer_constant_operation(script_operator, pin_value, pin_value, pin_type, pin_value *);
+
+bool script_analyzer_synchronous_await(const analyzer *, TSNode);
+bool script_analyzer_readonly_callable(const analyzer *, int);
 
 script_syntax *script_analyzer_recovery_syntax(const script_syntax *);
 void script_analyzer_recovery_restore(script_analysis *, const script_syntax *);
@@ -92,6 +157,7 @@ const script_expression *script_analyzer_result_source(const analyzer *, int exp
 void script_analyzer_require_values(analyzer *, TSNode, int target, int value);
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source);
 script_type script_analyzer_type_node(analyzer *a, TSNode node);
+script_type script_analyzer_collection_type(analyzer *, pin_container, script_type key, script_type value);
 script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
 void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
@@ -114,11 +180,13 @@ int script_analyzer_authored_parameter_index(
     const char *name
 );
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
+int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
+script_expression script_analyzer_number_literal(analyzer *, TSNode, script_type expected, bool negate);
 int script_analyzer_statement_add(analyzer *a, script_statement statement);
 void script_analyzer_union_results(analyzer *a, int function, TSNode body);
 void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool truth);

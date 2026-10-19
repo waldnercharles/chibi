@@ -1,59 +1,59 @@
-behavior "ArenaShardBehavior" {
-    state Age: float = 0.0
-    state "Pitch Rate": float = 0.0
-    state "Roll Rate": float = 0.0
-    state Lift: float = 0.0
-    state "Birth Scale": float = 1.0
-    action age_2 = set_variable<"Age">(state."Age" + delta_time())
+ArenaShardBehavior :: behavior {
+    Age: float = 0.0
+    Pitch_Rate: float = 0.0
+    Roll_Rate: float = 0.0
+    Lift: float = 0.0
+    Birth_Scale: float = 1.0
+    action age_2 = set_variable<Age>(Age + delta_time())
     on Tick {
         age_2()
     }
     after age_2 {
-        if greater_or_equal("Age Phase"(age_2.Value, delta_time()), 1.0) {
+        if Age_Phase(age_2.Value, delta_time()) >= 1.0 {
             destroy_entity(self)
         } else {
-            await "Advance Shard Motion"(delta_time(), age_2.Value)
+            await Advance_Shard_Motion(delta_time(), age_2.Value)
         }
     }
     on Begin {
-        await "Initialize Shard"(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
+        await Initialize_Shard(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
-    "Age Phase" :: pure fn<T0: float, T1: float, T2: float>(Age: T0 = 0.0, Delta: T1 = 0.0) -> (Result: T2 = 0.0) {
+    Age_Phase :: (Age: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
         return (entry.Age + entry.Delta) / real(0.55)
     }
-    "Fade" :: pure fn<T0: float, T1: double>(Normalized: T0 = 0.0) -> (Result: T1 = 0.0) {
+    Fade :: (Normalized: float = 0.0) -> (Result: double = 0.0) {
         return (real(1.0) - entry) * (real(1.0) - entry)
     }
-    "Position X" :: pure fn<T0: float, T1: float, T2: float, T3: float>(PositionX: T0 = 0.0, VelocityX: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
+    Position_X :: (PositionX: float = 0.0, VelocityX: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
         return entry.PositionX + entry.VelocityX * entry.Delta
     }
-    "Position Y" :: pure fn<T0: float, T1: float, T2: float, T3: float>(PositionY: T0 = 0.0, VelocityY: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
+    Position_Y :: (PositionY: float = 0.0, VelocityY: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
         return entry.PositionY + entry.VelocityY * entry.Delta
     }
-    "Pitch" :: pure fn<T0: float, T1: float, T2: float, T3: float>(Pitch: T0 = 0.0, PitchRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
+    Pitch :: (Pitch: float = 0.0, PitchRate: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
         return entry.Pitch + entry.PitchRate * entry.Delta
     }
-    "Roll" :: pure fn<T0: float, T1: float, T2: float, T3: float>(Roll: T0 = 0.0, RollRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
+    Roll :: (Roll: float = 0.0, RollRate: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {
         return entry.Roll + entry.RollRate * entry.Delta
     }
-    "Initialize Shard" :: fn(scale: float = 0.0, "Pitch Rate": double = 0.0, "Roll Rate": double = 0.0, Lift: double = 0.0) {
+    Initialize_Shard :: (scale: float = 0.0, Pitch_Rate: double = 0.0, Roll_Rate: double = 0.0, Lift: double = 0.0) {
         after entry {
-            state."Birth Scale" = entry.scale
-            state."Pitch Rate" = entry."Pitch Rate"
-            state."Roll Rate" = entry."Roll Rate"
-            state."Lift" = entry.Lift
+            Birth_Scale = entry.scale
+            state.Pitch_Rate = entry.Pitch_Rate
+            state.Roll_Rate = entry.Roll_Rate
+            state.Lift = entry.Lift
             return
         }
     }
-    "Advance Shard Motion" :: fn(Seconds: float = 0.0, Age: float = 0.0) {
+    Advance_Shard_Motion :: (Seconds: float = 0.0, Age: float = 0.0) {
         after entry {
-            self.Transform.x = "Position X"(self.Transform.x, self.Velocity.x, entry.Seconds)
-            self.Transform.y = "Position Y"(self.Transform.y, self.Velocity.y, entry.Seconds)
-            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, state."Pitch Rate", entry.Seconds)
-            self.VisualTransform.roll = Roll(self.VisualTransform.roll, state."Roll Rate", entry.Seconds)
-            self.VisualTransform.scale = state."Birth Scale" * Fade("Age Phase"(entry.Age, entry.Seconds))
-            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(state."Lift" * entry.Seconds)
-            state."Lift" = state."Lift" - multiply(entry.Seconds, B: plain double = 90.0)
+            self.Transform.x = Position_X(self.Transform.x, self.Velocity.x, entry.Seconds)
+            self.Transform.y = Position_Y(self.Transform.y, self.Velocity.y, entry.Seconds)
+            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, Pitch_Rate, entry.Seconds)
+            self.VisualTransform.roll = Roll(self.VisualTransform.roll, Roll_Rate, entry.Seconds)
+            self.VisualTransform.scale = Birth_Scale * Fade(Age_Phase(entry.Age, entry.Seconds))
+            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(Lift * entry.Seconds)
+            Lift = Lift - multiply(entry.Seconds, B: plain double = 90.0)
             return
         }
     }

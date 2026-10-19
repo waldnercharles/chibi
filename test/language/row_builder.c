@@ -27,7 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Seven fixed counted-construction cases. Exact workload and observations are
+/* Eight fixed counted-construction cases. Exact workload and observations are
  * independently admitted before execution. Private plan/helper inspection is
  * deliberate: no test-only public API or runtime flag is introduced. */
 static arena producer, storage;
@@ -217,6 +217,7 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
     REQUIRE(a && arena_contains(&storage, a));
     REQUIRE(a->count == count && a->element_type == PIN_STRUCT);
     REQUIRE(a->record == value->record && a->type_name == value->type_name);
+    REQUIRE(!a->stride); /* These rows contain managed strings. */
     REQUIRE(!count || arena_contains(&storage, a->items));
     for (int i = 0; i < count; i++) {
         REQUIRE(a->items[i].record == a->record);
@@ -236,7 +237,7 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
 #define LOOP                                                                   \
     "rows:Row[]=[]; i:int=0; while i<count { " MAKE_ROW                        \
     "rows=array_add(rows,row); i=i+1; } "
-static const char eligible[] = "library Rows { " ROW
+static const char eligible[] = "Rows :: library { " ROW
                                "Build::(count:int,text:string)->Row[] { " LOOP
                                "return rows; } }";
 static const behavior_function *body()
@@ -560,17 +561,17 @@ TEST_CASE(row_builder_eligible_projection)
 TEST_CASE(row_builder_static_fallback)
 {
     static const char *sources[] = {
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; "
         "prefix:Row[]=[]; i:int=0; while i<count { " MAKE_ROW
         "rows=array_add(rows,row); if i==0 {prefix=rows;} i=i+1;} "
         "rows[0].key=\"changed\";return prefix;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { " LOOP
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { " LOOP
         "rows[0].depth=37;return rows;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { "
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { "
         "rows:Row[]=[];i:int=0;while i<count { " MAKE_ROW
         "rows=array_add(rows,row);if i==1 {break;}i=i+1;}return rows;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { "
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { "
         "rows:Row[]=[];i:int=0;while i<count { " MAKE_ROW
         "rows=array_add(rows,row);i=i+2;}return rows;} }"
     };
@@ -705,14 +706,14 @@ static int observe(void *user, behavior_function_context *ctx, const behavior_so
 TEST_CASE(row_builder_error_order)
 {
     static const char *sources[] = {
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string,indices:int[])->Row[] { "
         "rows:Row[]=[];i:int=0;while i<count { "
         "row:Row={key:text,label:text,icon:text,prototype:text,drop:text,depth:"
         "indices[i]+5,behaviors:i+6,active:i%2==0,marked:i%2==1,hidden:i%2==0,"
         "locked:i%2==1,renaming:i%2==0};rows=array_add(rows,row);i=i+1;}return "
         "rows;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { "
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { "
         "rows:Row[]=[];i:int=0;while i<count { "
         "row:Row={key:text,label:text,icon:text,"
         "prototype:text,drop:text,depth:5+1/"
@@ -786,6 +787,60 @@ TEST_CASE(row_builder_error_order)
             }
         }
     }
+    return true;
+}
+TEST_CASE(row_builder_accepts_packed_seed_and_preserves_canonical_nullable_add)
+{
+    const type_field field = { .name = "value", .type = PIN_I32 };
+    const pin_record *record = pin_record_create(&producer, "Packed.BuilderRow", 541, &field, 1);
+    REQUIRE(record);
+    arena_init_collectable(&storage);
+    pin_array shape = { .element_type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record };
+    pin_array *empty = pin_array_snapshot_like(&storage, &shape, 0);
+    REQUIRE(empty && empty->stride && pin_array_valid(empty));
+    pin_value prefix = { .type = PIN_STRUCT,
+                         .container = PIN_CONTAINER_ARRAY,
+                         .type_name = empty->type_name,
+                         .record = empty->record,
+                         .ptr = empty };
+    int32_t number = 23;
+    pin_value value = { .type = PIN_STRUCT,
+                        .type_name = record->type.name,
+                        .record = record,
+                        .ptr = &number };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(!pin_array_build_row(&storage, &prefix, &value, 2, &prefix));
+    }
+    const pin_array *built = prefix.ptr;
+    REQUIRE(built && !built->stride && built->count == 2);
+    pin_value arguments[] = { prefix, value }, packed;
+    REQUIRE(!pin_array_add_call(&storage, arguments, 2, &packed));
+    REQUIRE(((pin_array *)packed.ptr)->stride && ((pin_array *)packed.ptr)->count == 3);
+    arguments[0] = packed;
+    arguments[1].ptr = NULL;
+    pin_value nullable;
+    REQUIRE(!pin_array_add_call(&storage, arguments, 2, &nullable));
+    number = 99;
+    arena_free(&producer);
+    arena_collection collection;
+    arena *arenas[] = { &storage };
+    arena_collect_begin(&collection, arenas, 1);
+    pin_value_trace(&prefix, arena_collect_mark, &collection);
+    pin_value_trace(&nullable, arena_collect_mark, &collection);
+    arena_collect_end(&collection);
+    const pin_array *result = nullable.ptr;
+    REQUIRE(result && !result->stride && result->count == 4 && pin_array_valid(result));
+    for (int i = 0; i < 3; i++) {
+        pin_value row = pin_array_get(result, i), member;
+        pin_read_field(row.ptr, &row.record->type.fields[0], &member);
+        REQUIRE(member.i == 23);
+    }
+    REQUIRE(!pin_array_get(result, 3).ptr && built->count == 2);
+    pin_value row = pin_array_get(built, 0), member;
+    pin_read_field(row.ptr, &row.record->type.fields[0], &member);
+    REQUIRE(member.i == 23);
     return true;
 }
 TEST_CASE(row_builder_roots_and_repetition)
@@ -869,7 +924,7 @@ TEST_CASE(row_builder_roots_and_repetition)
 static bool compile_observed(behavior_backend backend)
 {
     REQUIRE(catalog());
-    REQUIRE(analyze("library Rows { " ROW " }", native_capabilities_catalog(native)));
+    REQUIRE(analyze("Rows :: library { " ROW " }", native_capabilities_catalog(native)));
     REQUIRE(analysis->type_count == 1);
     static const script_catalog_parameter parameters[] = {
         { .name = "count", .type = { .storage = PIN_I32 } },
@@ -901,7 +956,7 @@ static bool compile_observed(behavior_backend backend)
     script_syntax_free(syntax);
     syntax = NULL;
     static const char
-        source[] = "behavior Project { on Build(count,text) { "
+        source[] = "Project :: behavior { on Build(count,text) { "
                    "rows:Rows.Row[]=[];i:int=0;while i<count { "
                    "row:Rows.Row={key:text,label:text,icon:text,prototype:text,"
                    "drop:text,depth:i+5,behaviors:i+6,active:i%2==0,marked:i%2="
@@ -1162,6 +1217,7 @@ void test_language_row_builder()
     RUN_TEST_CASE(row_builder_entry_guard);
     RUN_TEST_CASE(row_builder_error_order);
     RUN_TEST_CASE(row_builder_roots_and_repetition);
+    RUN_TEST_CASE(row_builder_accepts_packed_seed_and_preserves_canonical_nullable_add);
     RUN_TEST_CASE(row_builder_inspected_program);
     RUN_TEST_CASE(row_builder_prepared_rebinding);
 }

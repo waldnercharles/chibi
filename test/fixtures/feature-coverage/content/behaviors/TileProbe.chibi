@@ -1,4 +1,4 @@
-behavior TileProbe {
+TileProbe :: behavior {
     on Tick(dt) {
         origin := self.GlobalTransform2D.position
         frame := tilemap_frame_at(self, origin + vec2(4, 4))

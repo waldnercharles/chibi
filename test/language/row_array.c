@@ -170,8 +170,9 @@ static bool check_array(const pin_value *value, int count, const char *shared_te
     REQUIRE(a->count == count && a->element_type == PIN_STRUCT);
     REQUIRE(a->record == value->record && a->type_name == value->type_name);
     for (int i = 0; i < count; i++) {
-        REQUIRE(a->items[i].record == a->record);
-        REQUIRE(check_row(&a->items[i], i, shared_text, &storage));
+        REQUIRE(pin_array_get(a, i).record == a->record);
+        pin_value item = pin_array_get(a, i);
+        REQUIRE(check_row(&item, i, shared_text, &storage));
     }
     return true;
 }
@@ -448,7 +449,17 @@ static bool compile(const char *source, behavior_backend backend)
     script_lower_bindings bindings = authoring_native_bindings(native);
     syntax = script_parse(source);
     for (int i = 0; i < syntax->diagnostic_count; i++) {
-        fprintf(stderr, "row-array parse: %s\n", syntax->diagnostics[i].message);
+        const script_diagnostic *d = &syntax->diagnostics[i];
+        fprintf(
+            stderr,
+            "row-array parse %d:%d [%d,%d): %s: %.64s\n",
+            d->range.line,
+            d->range.column,
+            d->range.start,
+            d->range.end,
+            d->message,
+            source + d->range.start
+        );
     }
     REQUIRE(!syntax->diagnostic_count);
     analysis = script_analyze(syntax, catalog);
@@ -561,11 +572,11 @@ TEST_CASE(row_array_authored_construction)
                                               { 0, 315, 1800, 15840 } };
     static const uint64_t headers[][4] = { { 4, 21, 69, 261 }, { 4, 24, 93, 549 } };
     static const char *sources[] = {
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
         "rows=array_add(rows,row); i=i+1; } return rows; } }",
-        "library Rows { " ROW
+        "Rows :: library { " ROW
         "Build::(count:int,text:string)->Row[] { rows:Row[]=[]; i:int=0; "
         "while i<count { " MAKE_ROW
         "rows=append(rows,[row]); i=i+1; } return rows; } }",
@@ -599,7 +610,7 @@ TEST_CASE(row_array_authored_construction)
 TEST_CASE(row_array_authored_retained_prefix)
 {
     static const char source
-        [] = "library Rows { " ROW "Keep::(count:int,text:string)->Row[] { "
+        [] = "Rows :: library { " ROW "Keep::(count:int,text:string)->Row[] { "
              "rows:Row[]=[]; prefix:Row[]=[]; i:int=0; "
              "while i<count { " MAKE_ROW
              "rows=array_add(rows,row); if i==0 { prefix=rows; } i=i+1; } "

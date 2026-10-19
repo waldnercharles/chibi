@@ -37,13 +37,13 @@
     "rows=array_add(rows,row); i=i+1; } "
 static const char
     *sources[] = {
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { " LOOP
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { " LOOP
         "return rows;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { "
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { "
         "rows:Row[]=[];prefix:Row[]=[];i:int=0;while i<count { " MAKE_ROW
         "rows=array_add(rows,row);if i==0 "
         "{prefix=rows;}i=i+1;}rows[0].key=\"changed\";return prefix;} }",
-        "library Rows { " ROW "Build::(count:int,text:string)->Row[] { " LOOP "return rows;} Wrap::(count:int,text:string)->Row[] {return Build(count,text);} }"
+        "Rows :: library { " ROW "Build::(count:int,text:string)->Row[] { " LOOP "return rows;} Wrap::(count:int,text:string)->Row[] {return Build(count,text);} }"
     };
 static execution_module *modules[3];
 static const behavior_function *functions[3];
@@ -200,6 +200,7 @@ static bool check(const pin_value *value, int count, arena *owner)
         a->type_name == value->type_name
     );
     REQUIRE(arena_contains(owner, a) && (!count || arena_contains(owner, a->items)));
+    REQUIRE(!a->stride); /* These rows contain managed strings. */
     for (int i = 0; i < count; i++) {
         const pin_value *row = &a->items[i];
         REQUIRE(

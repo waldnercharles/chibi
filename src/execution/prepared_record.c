@@ -75,6 +75,19 @@ static size_t validate(prepared_context *c, const pin_record *record)
             return 0;
         }
         names += next;
+        const char *extra[] = { record->type.fields[i].type_name,
+                                record->type.fields[i].unit };
+        for (int j = 0; j < 2; j++) {
+            if (!extra[j]) {
+                continue;
+            }
+            next = name_bytes(c, extra[j]);
+            if (!next || next > SIZE_MAX - names) {
+                c->wire.error = "invalid prepared authored field metadata";
+                return 0;
+            }
+            names += next;
+        }
     }
     size_t cost = validation_work(c, record->type.field_count, names);
     if (!cost || !work(c, cost) || !pin_record_valid(record)) {
@@ -174,21 +187,40 @@ static void record_type(prepared_context *c, execution_type_requirement *v, int 
     size_t names = cache->name_bytes;
     for (int i = 0; i < count && !w->error; i++) {
         const char *name = w->reading ? NULL : v->record->type.fields[i].name;
+        const char *type_name = w->reading ? NULL : v->record->type.fields[i].type_name;
+        const char *unit = w->reading ? NULL : v->record->type.fields[i].unit;
         int kind = w->reading ? 0 : v->record->type.fields[i].type;
         execution_wire_string(w, &name);
         execution_wire_int(w, &kind);
+        execution_wire_string(w, &type_name);
+        execution_wire_string(w, &unit);
         if (w->error) {
             break;
         }
         size_t bytes = name_bytes(c, name);
         if (!name || !*name || !bytes || bytes > SIZE_MAX - names ||
-            (kind != PIN_STR && kind != PIN_I32 && kind != PIN_BOOL)) {
+            !((kind >= PIN_BOOL && kind <= PIN_ENUM) && kind != PIN_FLOW)) {
             w->error = "invalid prepared authored field";
             break;
         }
         names += bytes;
+        const char *extra[] = { type_name, unit };
+        for (int j = 0; j < 2; j++) {
+            if (!extra[j]) {
+                continue;
+            }
+            bytes = name_bytes(c, extra[j]);
+            if (!bytes || bytes > SIZE_MAX - names) {
+                w->error = "invalid prepared authored field metadata";
+                break;
+            }
+            names += bytes;
+        }
         if (w->reading) {
-            fields[i] = (type_field){ .name = name, .type = kind };
+            fields[i] = (type_field){ .name = name,
+                                      .type = kind,
+                                      .type_name = type_name,
+                                      .unit = unit };
         }
     }
     if (w->error || !w->reading) {
@@ -294,6 +326,14 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
     if (w->error) {
         return NULL;
     }
+    /* Collection descriptor names identify semantic key/element shapes, not
+     * a reflected scalar/record requirement. Their nested values resolve
+     * their own nominal requirements through the value codec. */
+    if (!authored && v->container != PIN_CONTAINER_SINGLE &&
+        (v->type == PIN_UNION ||
+         (v->type_name && !strncmp(v->type_name, "__collection_", 13)))) {
+        return NULL;
+    }
     if (authored && (v->type != PIN_STRUCT || !v->type_name)) {
         w->error = "invalid prepared authored header";
         return NULL;
@@ -357,6 +397,43 @@ static const pin_record *resolve(execution_wire *w, void *user, const pin_value 
 }
 void prepared_value(prepared_context *c, pin_value *v)
 {
+    execution_wire *w = &c->wire;
+    /* A retired native catalog is not needed to save a payload-free header.
+     * Its finalized module requirement supplies the storage/layout proof;
+     * reading still requires and validates the linked native descriptor. */
+    if (!w->reading && !w->error && v->type == PIN_STRUCT &&
+        v->container == PIN_CONTAINER_SINGLE && !v->record && !v->ptr && v->type_name) {
+        int index = requirement(c, v);
+        if (index < 0) {
+            return;
+        }
+        const execution_type_requirement *type = &c->plan->types[index];
+        const type_desc *native = pin_value_type(v);
+        if (type->record || !type->id || !type->layout || !type->size ||
+            type->size > EXECUTION_WIRE_MAX_BYTES ||
+            (native && (native->size != type->size ||
+                        type_layout_hash(native) != type->layout))) {
+            w->error = "prepared native header lacks a stable layout "
+                       "requirement";
+            return;
+        }
+        if (++w->records > EXECUTION_WIRE_MAX_RECORDS) {
+            w->error = "Prepared value nesting or record limit exceeded";
+            return;
+        }
+        int tag = PIN_STRUCT, container = PIN_CONTAINER_SINGLE, fields = 0;
+        bool authored = false, present = false;
+        uint64_t layout = type->layout;
+        const char *name = v->type_name;
+        execution_wire_int(w, &tag);
+        execution_wire_int(w, &container);
+        execution_wire_string(w, &name);
+        execution_wire_bool(w, &authored);
+        execution_wire_u64(w, &layout);
+        execution_wire_bool(w, &present);
+        execution_wire_count(w, &fields, 0);
+        return;
+    }
     execution_wire_value_owned(&c->wire, v, resolve, c);
 }
 static bool header_work(prepared_context *c, pin_value value)

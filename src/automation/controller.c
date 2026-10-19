@@ -22,11 +22,13 @@
 #include "authoring/mesh_prepare.h"
 #include "authoring/native_prototype.h"
 #include "authoring/preview_source.h"
+#include "authoring/project_open.h"
 #include "authoring/project_prepare.h"
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
 #include "authoring/sound_prepare.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
@@ -130,6 +132,7 @@ typedef enum
     ASSET_GRAPH,
     ASSET_SYSTEM,
     ASSET_PROTOTYPE,
+    ASSET_RELATIONSHIP,
     ASSET_SCENE,
     ASSET_EDITOR,
     ASSET_UI,
@@ -155,12 +158,25 @@ static const asset_family ASSET_FAMILIES[] = {
     { "field", "fields", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_FIELD },
     { "shader-library", "shader-libraries", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
     { "system", "systems", CODE_ASSET_EXTENSION, ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
-    { "prototype", "prototypes", DECLARATIVE_ASSET_EXTENSION, ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
+    { "prototype", "prototypes", CODE_ASSET_EXTENSION, ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
+    { "relationship", "relationships", CODE_ASSET_EXTENSION, ASSET_RELATIONSHIP, REFERENCE_ASSET_RELATIONSHIP },
     { "scene", "scenes", DECLARATIVE_ASSET_EXTENSION, ASSET_SCENE, REFERENCE_ASSET_SCENE },
     { "editor", "editor", DECLARATIVE_ASSET_EXTENSION, ASSET_EDITOR, REFERENCE_ASSET_KIND_COUNT },
     { "ui", "ui", UI_MARKUP_EXTENSION, ASSET_UI, REFERENCE_ASSET_UI },
     { "scenario", "scenarios", DECLARATIVE_ASSET_EXTENSION, ASSET_SCENARIO, REFERENCE_ASSET_KIND_COUNT },
 };
+
+static bool source_program_family(const asset_family *family)
+{
+    return (family->loader == ASSET_GRAPH || family->loader == ASSET_SYSTEM) &&
+           !strcmp(family->extension, CODE_ASSET_EXTENSION);
+}
+static bool code_filename(const char *path)
+{
+    size_t size = strlen(path);
+    return size > 6 && !strcmp(path + size - 6, CODE_ASSET_EXTENSION);
+}
+static ecs_relationship_desc **PROJECT_RELATIONSHIPS;
 
 typedef struct
 {
@@ -306,8 +322,8 @@ static const contract_field CONTRACT_NEW_PROJECT[] = {
 };
 static const contract_field CONTRACT_NEW_ASSET[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "kind", "string", true, "scene, prototype, behavior, event, system, library, material, shape, field, shader-library or model." },
-    { "name", "string", true, "Asset name: a letter, then letters, digits, - and _." },
+    { "kind", "string", true, "scene, prototype, relationship, behavior, event, system, library, material, shape, field, shader-library or model." },
+    { "name", "string", true, "Asset name: a letter, then letters, digits, - and _. Source declarations require a non-reserved identifier without -." },
 };
 static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
@@ -953,8 +969,13 @@ static int load_asset(
 static prototype_registry project_registry()
 {
     ecs_component_catalog catalog = project_components();
-    return (prototype_registry){ .components = catalog.components,
-                                 .component_count = catalog.component_count };
+    return (
+        prototype_registry
+    ){ .components = catalog.components,
+       .component_count = catalog.component_count,
+       .relationships = (const ecs_relationship_desc *const *)PROJECT_RELATIONSHIPS,
+       .relationship_count = acount(PROJECT_RELATIONSHIPS),
+       .decode = authoring_prototype_document_read };
 }
 
 static const ecs_component_desc *automation_query_component(const char *name, void *)
@@ -994,8 +1015,11 @@ static bool valid_asset_filename(const asset_family *family, const char *filenam
         return false;
     }
     size_t length = strlen(filename), extension = strlen(family->extension);
-    return length > extension &&
-           !strcmp(filename + length - extension, family->extension);
+    return (length > extension &&
+            !strcmp(filename + length - extension, family->extension)) ||
+           (family->loader == ASSET_PROTOTYPE &&
+            ((length > 4 && !strcmp(filename + length - 4, ".kdl")) ||
+             code_filename(filename)));
 }
 
 /* Sets `ref`'s file name to `name`, with its family's extension unless it
@@ -1004,7 +1028,9 @@ static const char *name_asset_file(asset_ref *ref, const char *name)
 {
     const char *extension = ref->family->extension;
     size_t length = strlen(name), suffix = strlen(extension);
-    if (length >= suffix && !strcmp(name + length - suffix, extension)) {
+    if ((length >= suffix && !strcmp(name + length - suffix, extension)) ||
+        (ref->family->loader == ASSET_PROTOTYPE &&
+         ((length > 4 && !strcmp(name + length - 4, ".kdl")) || code_filename(name)))) {
         if (!valid_asset_filename(ref->family, name) || length >= sizeof ref->filename) {
             return "asset name is invalid";
         }
@@ -1282,19 +1308,60 @@ static struct
     char *root, *content;
 } PROJECT;
 
+static int open_authored_project(chibi_project *, const char *, char *, size_t);
+
 /* Reads where the project at `root` keeps its content for the request that
  * follows; false with why in `error` when its manifest is malformed. */
-static bool open_content(const char *root, char *error, size_t error_size)
+static bool open_content_mode(const char *root, bool metadata, char *error, size_t error_size)
 {
-    char *content = chibi_project_content(root, error, error_size);
-    if (!content) {
+    char *content;
+    if (metadata) {
+        /* Metadata reads the content location without opening/migrating the
+         * project. Validation reports other manifest errors in its result. */
+        content = chibi_project_content(root, error, error_size);
+        if (!content) {
+            return false;
+        }
+    } else {
+        chibi_project opened = { 0 };
+        native_capabilities *native = authoring_application_catalog_new(
+            studio_project_is(root),
+            error,
+            error_size
+        );
+        int status = native
+                       ? authoring_project_open_content(&opened, root, native, error, error_size)
+                       : -1;
+        native_capabilities_free(native);
+        if (status) {
+            return false;
+        }
+        content = xstrdup(opened.content);
+        chibi_project_free(&opened);
+    }
+    ecs_relationship_desc **relationships = NULL;
+    if (!authoring_relationship_declarations_load(content, &relationships, error, error_size)) {
+        for (int i = 0; i < acount(relationships); i++) {
+            authoring_relationship_source_free(relationships[i]);
+        }
+        afree(relationships);
+        free(content);
         return false;
     }
+    for (int i = 0; i < acount(PROJECT_RELATIONSHIPS); i++) {
+        authoring_relationship_source_free(PROJECT_RELATIONSHIPS[i]);
+    }
+    afree(PROJECT_RELATIONSHIPS);
+    PROJECT_RELATIONSHIPS = relationships;
     free(PROJECT.root);
     free(PROJECT.content);
     PROJECT.root = xstrdup(root);
     PROJECT.content = content;
     return true;
+}
+static bool open_content(const char *root, char *error, size_t error_size)
+{
+    return open_content_mode(root, false, error, error_size);
 }
 
 const char *chibi_automation_content(const char *root)
@@ -1388,17 +1455,25 @@ static char *asset_name_from_filename(const char *filename)
     return name;
 }
 
-/* An asset's name: the one a prototype declares, which is how the player
- * finds it, and otherwise its file name before the extension. A prototype
- * that declares none is named by its file, where its error is reported. */
+/* Prototypes and relationships use their declared identities, as the runtime
+ * catalog does. Invalid declarations fall back to their diagnostic file name. */
 static char *asset_name(const asset_family *family, const char *filename, const char *text)
 {
     if (family->loader == ASSET_PROTOTYPE) {
         char error[160];
-        av_doc *document = av_doc_read(text, error, sizeof error);
+        av_doc *document = authoring_prototype_document_read(text, NULL, error, sizeof error);
         const char *declared = av_get_str(av_obj_get(av_doc_root(document), "name"));
         char *name = declared && declared[0] ? xstrdup(declared) : NULL;
         av_doc_free(document);
+        if (name) {
+            return name;
+        }
+    }
+    if (family->loader == ASSET_RELATIONSHIP) {
+        char error[160];
+        ecs_relationship_desc *desc = authoring_relationship_source_read(text, error, sizeof error);
+        char *name = desc ? xstrdup(desc->name) : NULL;
+        authoring_relationship_source_free(desc);
         if (name) {
             return name;
         }
@@ -1691,6 +1766,16 @@ static bool links_family(const asset_family *family)
            !strcmp(family->kind, "event") || !strcmp(family->kind, "model");
 }
 
+static int open_authored_project(chibi_project *project, const char *path, char *error, size_t size)
+{
+    native_capabilities
+        *native = authoring_application_catalog_new(studio_project_is(path), error, size);
+    int result = native ? authoring_project_open(project, path, native, error, size)
+                        : -1;
+    native_capabilities_free(native);
+    return result;
+}
+
 static authoring_language_catalog *source_native_catalog(const char *root, char *error, size_t size)
 {
     native_capabilities
@@ -1853,7 +1938,7 @@ static void catalog_validate_asset(
 )
 {
     const asset_family *family = asset->asset.family;
-    if (!strcmp(family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(family)) {
         const authoring_source *source = NULL;
         for (int i = 0; links->sources && i < authoring_sources_count(links->sources);
              i++) {
@@ -1911,6 +1996,14 @@ static void catalog_validate_asset(
             compile_report_free(&report);
         }
         behavior_asset_free(behavior);
+    } else if (family->loader == ASSET_RELATIONSHIP) {
+        char error[256] = { 0 };
+        ecs_relationship_desc *relationship = authoring_relationship_source_read(json, error, sizeof error);
+        if (!relationship) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
+        }
+        authoring_relationship_source_free(relationship);
     } else if (family->loader == ASSET_PROTOTYPE) {
         prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
@@ -2028,7 +2121,7 @@ static void catalog_add_content(
     const char *page
 )
 {
-    if (!strcmp(asset->asset.family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(asset->asset.family)) {
         return;
     }
     char error[256];
@@ -2079,6 +2172,7 @@ static void catalog_add_content(
             reference_index_add_ui(index, asset->reference, text);
             return;
         case ASSET_EDITOR:
+        case ASSET_RELATIONSHIP:
         case ASSET_SCENARIO: return;
     }
 }
@@ -2221,6 +2315,42 @@ static yyjson_doc *parse_project_asset_text(const char *, const char *text)
 
 static yyjson_doc *parse_project_asset_path(const char *root, const char *relative, const char *text)
 {
+    bool prototype_source = strstr(relative, "prototypes/") && code_filename(relative);
+    bool relationship_source = strstr(relative, "relationships/") &&
+                               code_filename(relative);
+    if (prototype_source || relationship_source) {
+        char error[256] = { 0 };
+        av_doc *values = NULL;
+        if (prototype_source) {
+            prototype_registry registry = project_registry();
+            values = authoring_prototype_source_read(text, &registry, error, sizeof error);
+        } else {
+            ecs_relationship_desc *desc = authoring_relationship_source_read(text, error, sizeof error);
+            if (desc) {
+                values = av_doc_new();
+                av_value *value = av_obj(values);
+                av_doc_set_root(values, value);
+                av_obj_add_str(values, value, "name", desc->name);
+                av_obj_add_bool(values, value, "exclusive", !!(desc->traits & ECS_REL_EXCLUSIVE));
+                av_obj_add_bool(values, value, "acyclic", !!(desc->traits & ECS_REL_ACYCLIC));
+                av_obj_add_bool(values, value, "traversable", !!(desc->traits & ECS_REL_TRAVERSABLE));
+                av_obj_add_str(
+                    values,
+                    value,
+                    "on_delete_target",
+                    desc->on_delete_target == ECS_CLEANUP_DELETE  ? "Delete"
+                    : desc->on_delete_target == ECS_CLEANUP_PANIC ? "Panic"
+                                                                  : "Remove"
+                );
+                authoring_relationship_source_free(desc);
+            }
+        }
+        char *json = values ? av_json_write(av_doc_root(values)) : NULL;
+        yyjson_doc *document = json ? yyjson_read(json, strlen(json), 0) : NULL;
+        free(json);
+        av_doc_free(values);
+        return document;
+    }
     const char *extension = strrchr(relative, '.');
     if (!extension || strcmp(extension, CODE_ASSET_EXTENSION)) {
         return parse_project_asset_text(root, text);
@@ -2426,7 +2556,7 @@ static int analyze_project_source(
     asset_ref ref = { 0 };
     char ignored[256] = "";
     bool bound = !resolve_asset_ref(request, &ref, ignored, sizeof ignored) &&
-                 !strcmp(ref.family->extension, CODE_ASSET_EXTENSION);
+                 source_program_family(ref.family);
     char *path = content_path(root, bound ? ref.relative : "content/behaviors/__draft.chibi");
     source_catalog_edit edit = { .path = path, .text = text };
     source_catalog *catalog = source_catalog_edited(
@@ -2752,7 +2882,7 @@ static int load_catalog_asset(
         return 0;
     }
     yyjson_doc *document = NULL;
-    if (!strcmp(entry->family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(entry->family)) {
         for (int i = 0; links->sources && i < authoring_sources_count(links->sources);
              i++) {
             const authoring_source *source = authoring_sources_at(links->sources, i);
@@ -2777,7 +2907,7 @@ static int load_catalog_asset(
             break;
         }
     } else {
-        document = parse_project_asset_text(root, json);
+        document = parse_project_asset_path(root, entry->relative, json);
     }
     if (!document) {
         asset->valid = false;
@@ -3373,32 +3503,16 @@ static bool catalog_lists(const source_catalog *catalog, const char *path, const
     return false;
 }
 
-/* Claims a listing of `message` at `path` that no earlier diagnostic claimed. */
-static bool catalog_claim(const source_catalog *catalog, bool *claimed, const char *path, const char *message)
-{
-    for (int i = 0; i < source_catalog_diagnostic_count(catalog); i++) {
-        if (!claimed[i] &&
-            catalog_names(source_catalog_diagnostic_at(catalog, i), path, message)) {
-            claimed[i] = true;
-            return true;
-        }
-    }
-    return false;
-}
-
 /* Marks the asset's own diagnostics validate_project leaves out: catalog
- * fallout, and each error the declaration catalog lists again with its line,
- * one for each listing. The caller frees the result. */
+ * fallout and consequences of an error already reported at its declaration.
+ * The declaration diagnostics retain their original source locations. */
 static bool *catalog_omitted(const source_catalog *catalog, const catalog_asset *asset, const char *path)
 {
-    bool *claimed = xcalloc((size_t)source_catalog_diagnostic_count(catalog) + 1, sizeof *claimed);
     bool *omitted = xcalloc((size_t)acount(asset->diagnostics) + 1, sizeof *omitted);
     for (int i = 0; i < acount(asset->diagnostics); i++) {
         const char *message = asset->diagnostics[i].message;
-        omitted[i] = catalog_fallout(message) ||
-                     catalog_claim(catalog, claimed, path, message);
+        omitted[i] = catalog_fallout(message) || catalog_lists(catalog, path, message);
     }
-    free(claimed);
     return omitted;
 }
 
@@ -4882,7 +4996,7 @@ static int handle_import_sky(const char *root, yyjson_val *request, response *re
     }
     chibi_project project = { 0 };
     char error[512] = { 0 };
-    char *key = chibi_project_open(&project, root, error, sizeof error) == 0
+    char *key = open_authored_project(&project, root, error, sizeof error) == 0
                   ? image_prepare_sky_import(project.content, source, destination, error, sizeof error)
                   : NULL;
     chibi_project_free(&project);
@@ -4942,7 +5056,7 @@ static int handle_import_model(const char *root, yyjson_val *request, response *
     }
     chibi_project project = { 0 };
     model_import_report report = { 0 };
-    bool imported = chibi_project_open(&project, root, error, sizeof error) == 0 &&
+    bool imported = open_authored_project(&project, root, error, sizeof error) == 0 &&
                     model_import(project.content, source, name, &report, error, sizeof error);
     chibi_project_free(&project);
     if (!imported) {
@@ -5739,9 +5853,10 @@ static int load_asset(
     size_t error_size
 )
 {
-    /* A prototype's name need not be one a file could take. */
+    /* Declared identities need not match their files. */
     const asset_family *family = family_by_kind(request_string(request, "kind"));
-    if (!request_string(request, "path") && family && family->loader == ASSET_PROTOTYPE) {
+    if (!request_string(request, "path") && family &&
+        (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_RELATIONSHIP)) {
         const char *name = request_string(request, "name");
         return load_named_asset(root, family, name, ref, json, bytes, hash, error, error_size);
     }
@@ -5753,9 +5868,8 @@ static int load_asset(
     return read_asset_file(root, ref, json, bytes, hash, error, error_size);
 }
 
-/* The prototype that declares `name` when the file named after it doesn't.
- * Two that declare it are refused, as the player refuses them. */
-static int find_prototype(
+/* Search all declared identities so a same-named file cannot hide a duplicate. */
+static int find_declared_asset(
     const char *root,
     const char *name,
     asset_ref *ref,
@@ -5770,7 +5884,7 @@ static int find_prototype(
     int found = verify_asset_directory(root, family, error, error_size);
     if (found <= 0) {
         if (!found) {
-            set_errorf(error, error_size, "no prototype is named '%s'", name);
+            snprintf(error, error_size, "no %s is named '%s'", family->kind, name);
         }
         return found < 0 ? CHIBI_AUTOMATION_IO_ERROR : CHIBI_AUTOMATION_NOT_FOUND;
     }
@@ -5831,9 +5945,10 @@ static int find_prototype(
             snprintf(
                 error,
                 error_size,
-                "%s and %s both declare the prototype '%s'",
+                "%s and %s both declare the %s '%s'",
                 ref->relative,
                 candidate.relative,
+                family->kind,
                 name
             );
             free(text);
@@ -5854,13 +5969,12 @@ static int find_prototype(
     }
     closedir(directory);
     if (status == CHIBI_AUTOMATION_NOT_FOUND) {
-        set_errorf(error, error_size, "no prototype is named '%s'", name);
+        snprintf(error, error_size, "no %s is named '%s'", family->kind, name);
     }
     return status;
 }
 
-/* An asset by name. A prototype's name is the one it declares, as the
- * player finds it, so it need not name a file; its file usually bears it. */
+/* Prototypes and relationships resolve by declaration, other assets by file. */
 static int load_named_asset(
     const char *root,
     const asset_family *family,
@@ -5880,25 +5994,19 @@ static int load_named_asset(
     memset(ref, 0, sizeof *ref);
     ref->family = family;
     *json = NULL;
-    bool prototype = family->loader == ASSET_PROTOTYPE;
+    bool declared = family->loader == ASSET_PROTOTYPE ||
+                    family->loader == ASSET_RELATIONSHIP;
+    if (declared) {
+        return find_declared_asset(root, name, ref, json, bytes, hash, error, error_size);
+    }
     const char *refused = strchr(name, '/') || strchr(name, '\\') || strstr(name, "..")
                             ? "asset name is invalid"
                             : name_asset_file(ref, name);
-    if (refused && !prototype) {
+    if (refused) {
         return set_error(error, error_size, refused), CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    if (!refused) {
-        snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
-        int status = read_asset_file(root, ref, json, bytes, hash, error, error_size);
-        bool found = status == CHIBI_AUTOMATION_OK && !strcmp(ref->name, name);
-        if (!prototype || found ||
-            (status != CHIBI_AUTOMATION_OK && status != CHIBI_AUTOMATION_NOT_FOUND)) {
-            return status;
-        }
-        free(*json);
-        *json = NULL;
-    }
-    return find_prototype(root, name, ref, json, bytes, hash, error, error_size);
+    snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
+    return read_asset_file(root, ref, json, bytes, hash, error, error_size);
 }
 
 static bool save_code_metadata(const char *path, const char *text, const char *metadata)
@@ -5952,12 +6060,9 @@ static char *canonical_source(
             identity = entry->identity;
         }
     }
-    char *minimal = identity
-                      ? authoring_source_minimize(text, source_catalog_view(sources), identity)
-                      : xstrdup(text);
-    script_syntax *shortened = script_parse(minimal);
-    free(minimal);
-    char *saved = authoring_source_format(shortened, error, error_size);
+    char *saved = identity
+                    ? authoring_source_canonical(text, source_catalog_view(sources), identity, error, error_size)
+                    : authoring_source_format(source, error, error_size);
     if (saved) {
         size_t length = strlen(path) + sizeof ".meta";
         char *sidecar_path = xmalloc(length);
@@ -5975,7 +6080,6 @@ static char *canonical_source(
         }
         free(sidecar);
     }
-    script_syntax_free(shortened);
     script_syntax_free(source);
     return saved;
 }
@@ -6026,7 +6130,14 @@ static char *canonical_asset(
             prototype *authored = resolved
                                     ? prototype_load_authored(json, &registry, error, error_size)
                                     : NULL;
-            char *text = authored ? prototype_save(authored) : NULL;
+            char *text = NULL;
+            if (authored && code_filename(path)) {
+                script_syntax *syntax = script_parse(json);
+                text = authoring_source_format(syntax, error, error_size);
+                script_syntax_free(syntax);
+            } else if (authored) {
+                text = prototype_save(authored);
+            }
             prototype_free(authored);
             prototype_free(resolved);
             prototype_includes_free(&includes);
@@ -6048,6 +6159,17 @@ static char *canonical_asset(
             scenario_document *scenario = scenario_document_load(json, error, error_size);
             char *text = scenario ? scenario_document_save(scenario) : NULL;
             scenario_document_free(scenario);
+            return text;
+        }
+        case ASSET_RELATIONSHIP: {
+            ecs_relationship_desc *desc = authoring_relationship_source_read(json, error, error_size);
+            if (!desc) {
+                return NULL;
+            }
+            authoring_relationship_source_free(desc);
+            script_syntax *syntax = script_parse(json);
+            char *text = authoring_source_format(syntax, error, error_size);
+            script_syntax_free(syntax);
             return text;
         }
         case ASSET_UI: break; /* markup, kept as written */
@@ -6201,7 +6323,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *text = json
                        ? canonical_asset(root, sources, entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
-        if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
+        if (text && !code_filename(path)) {
             char *disk = asset_text_to_disk(text, error, sizeof error);
             free(text);
             text = disk;
@@ -6308,7 +6430,7 @@ static int read_asset_complete(
         set_error(error, error_size, "completion position is outside asset source");
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    if (!strcmp(ref->family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(ref->family)) {
         yyjson_mut_doc *candidate = yyjson_mut_doc_new(NULL);
         yyjson_mut_val *request_value = yyjson_mut_obj(candidate);
         yyjson_mut_doc_set_root(candidate, request_value);
@@ -6343,6 +6465,63 @@ static int read_asset_complete(
         yyjson_doc_free(immutable);
         yyjson_mut_doc_free(candidate);
         return status;
+    }
+    if (code_filename(ref->relative) && (ref->family->loader == ASSET_PROTOTYPE ||
+                                         ref->family->loader == ASSET_RELATIONSHIP)) {
+        authoring_language_catalog *native = source_native_catalog(root, error, error_size);
+        if (!native) {
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        char *path = content_path(root, ref->relative);
+        const source_catalog_edit edit = { .path = path, .text = text };
+        source_catalog *project = source_catalog_edited(
+            chibi_automation_content(root),
+            authoring_language_catalog_view(native),
+            &edit,
+            1
+        );
+        script_syntax *syntax = script_parse(text);
+        authoring_completions completions = { 0 };
+        authoring_asset_source_complete(syntax, project, (int)offset, &completions);
+        yyjson_mut_val *list = yyjson_mut_obj_add_arr(result->doc, value, "completions");
+        for (int i = 0; i < completions.count; i++) {
+            const authoring_completion *completion = &completions.items[i];
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, list);
+            yyjson_mut_obj_add_strcpy(result->doc, item, "label", completion->label);
+            yyjson_mut_obj_add_strcpy(
+                result->doc,
+                item,
+                "kind",
+                completion->kind == AUTHORING_COMPLETE_FIELD ? "field" : "type"
+            );
+            yyjson_mut_obj_add_strcpy(result->doc, item, "detail", completion->detail);
+            yyjson_mut_obj_add_strcpy(result->doc, item, "insert", completion->insert);
+            yyjson_mut_obj_add_int(result->doc, item, "start", completions.range.start);
+            yyjson_mut_obj_add_int(result->doc, item, "end", completions.range.end);
+        }
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_add_arr(result->doc, value, "diagnostics");
+        for (int i = 0; i < syntax->diagnostic_count; i++) {
+            yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, diagnostics);
+            source_range_json(result->doc, item, syntax->diagnostics[i].range);
+            yyjson_mut_obj_add_strcpy(
+                result->doc,
+                item,
+                "message",
+                syntax->diagnostics[i].message
+            );
+        }
+        yyjson_mut_obj_add_bool(
+            result->doc,
+            value,
+            "valid",
+            !syntax->diagnostic_count && !source_catalog_diagnostic_count(project)
+        );
+        authoring_completions_free(&completions);
+        script_syntax_free(syntax);
+        source_catalog_free(project);
+        authoring_language_catalog_free(native);
+        free(path);
+        return CHIBI_AUTOMATION_OK;
     }
     asset_entry *entries = NULL;
     if (enumerate_assets(root, &entries, error, error_size)) {
@@ -6437,7 +6616,7 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "source", json);
-    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(ref.family)) {
         char *path = content_path(root, ref.relative);
         size_t length = strlen(path) + 6;
         char *sidecar = xmalloc(length);
@@ -6618,7 +6797,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         response_error(result, exit_code, status, error);
         return -1;
     }
-    if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
+    if (source_program_family(ref.family)) {
         int validated = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
         yyjson_mut_val *source_result = yyjson_mut_obj_get(result->root, "result");
         yyjson_mut_val *source_diagnostics = yyjson_mut_obj_get(source_result, "diagnostics");
@@ -6669,6 +6848,13 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             compile_report_free(&report);
             behavior_asset_free(asset);
         }
+    } else if (ref.family->loader == ASSET_RELATIONSHIP) {
+        ecs_relationship_desc *relationship = authoring_relationship_source_read(json, error, sizeof error);
+        if (!relationship) {
+            errors = 1;
+            add_load_diagnostic(result->doc, diagnostics, error);
+        }
+        authoring_relationship_source_free(relationship);
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
         prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
@@ -6972,6 +7158,57 @@ static source_catalog *declaration_catalog(const char *root, char *error, size_t
     return catalog;
 }
 
+/* Keep the loader's concrete cause instead of adding catalog fallout for the
+ * same legacy declaration. Unreferenced catalog errors remain visible. */
+static bool declaration_explained(
+    const source_catalog_diagnostic *diagnostic,
+    const catalog_asset *asset,
+    const char (*dependency_errors)[256],
+    int count
+)
+{
+    for (int i = 0; i < acount(asset->diagnostics); i++) {
+        const catalog_diagnostic *load = &asset->diagnostics[i];
+        const char *prefix = "prototype include ", *suffix = " is unavailable";
+        size_t length = strlen(load->message), head = strlen(prefix),
+               tail = strlen(suffix);
+        if (!strcmp(load->rule_name, "LOAD") && length > head + tail &&
+            !strncmp(load->message, prefix, head) &&
+            !strcmp(load->message + length - tail, suffix)) {
+            char expected[192];
+            int written = snprintf(
+                expected,
+                sizeof expected,
+                "Unknown prototype '%.*s'",
+                (int)(length - head - tail),
+                load->message + head
+            );
+            if (written > 0 && written < (int)sizeof expected &&
+                !strcmp(diagnostic->message, expected)) {
+                return true;
+            }
+        }
+    }
+    if (!strcmp(diagnostic->message, "Duplicate project capability identity")) {
+        size_t size = strlen(asset->asset.family->kind) + strlen(asset->name) + 32;
+        char *cause = xmalloc(size);
+        snprintf(
+            cause,
+            size,
+            "both declare the %s '%s'",
+            asset->asset.family->kind,
+            asset->name
+        );
+        bool found = false;
+        for (int i = 0; i < count; i++) {
+            found |= strstr(dependency_errors[i], cause) != NULL;
+        }
+        free(cause);
+        return found;
+    }
+    return false;
+}
+
 static int handle_validate_project(const char *root, response *result, int *exit_code)
 {
     catalog_asset *assets = NULL;
@@ -7001,6 +7238,33 @@ static int handle_validate_project(const char *root, response *result, int *exit
     }
     int warnings = 0;
     yyjson_mut_val *problems = yyjson_mut_obj_add_arr(doc, value, "problems");
+    int asset_count = acount(assets);
+    char (*dependency_errors)[256] = xcalloc((size_t)asset_count + 1, sizeof *dependency_errors);
+    bool *dependencies_valid = xcalloc((size_t)asset_count + 1, sizeof *dependencies_valid);
+    for (int i = 0; i < asset_count; i++) {
+        char *path = content_path(root, assets[i].asset.relative);
+        dependencies_valid[i] = validate_asset_dependencies(
+                                    root,
+                                    &assets[i],
+                                    dependency_errors[i],
+                                    sizeof dependency_errors[i]
+                                ) == CHIBI_AUTOMATION_OK ||
+                                catalog_fallout(dependency_errors[i]) ||
+                                catalog_lists(catalog, path, dependency_errors[i]);
+        free(path);
+    }
+    bool *explained = xcalloc((size_t)declarations + 1, sizeof *explained);
+    for (int j = 0; j < declarations; j++) {
+        const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
+        for (int i = 0; diagnostic->path && i < asset_count; i++) {
+            char *path = content_path(root, assets[i].asset.relative);
+            if (!strcmp(diagnostic->path, path)) {
+                explained[j] = declaration_explained(diagnostic, &assets[i], dependency_errors, asset_count);
+                placed[j] = explained[j];
+            }
+            free(path);
+        }
+    }
     for (int i = 0; i < acount(assets); i++) {
         const catalog_asset *asset = &assets[i];
         error[0] = '\0';
@@ -7013,16 +7277,14 @@ static int handle_validate_project(const char *root, response *result, int *exit
         for (int j = 0; j < acount(asset->diagnostics); j++) {
             asset_errors -= omitted[j];
         }
-        bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
-                                CHIBI_AUTOMATION_OK &&
-                            !catalog_fallout(error) &&
-                            !catalog_lists(catalog, path, error);
+        bool dependencies = !dependencies_valid[i];
+        snprintf(error, sizeof error, "%s", dependency_errors[i]);
         /* Kept apart until the asset turns out to have problems. */
         yyjson_mut_val *ui = yyjson_mut_arr(doc);
         asset_errors += validate_catalog_ui(root, asset, doc, ui);
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
-            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+            if (!explained[j] && diagnostic->path && !strcmp(diagnostic->path, path)) {
                 placed[j] = true;
                 asset_errors++;
             }
@@ -7046,7 +7308,7 @@ static int handle_validate_project(const char *root, response *result, int *exit
         yyjson_mut_val *diagnostics = yyjson_mut_obj_get(object, "diagnostics");
         for (int j = 0; j < declarations; j++) {
             const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
-            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+            if (!explained[j] && diagnostic->path && !strcmp(diagnostic->path, path)) {
                 add_range_diagnostic(doc, diagnostics, diagnostic);
             }
         }
@@ -7066,6 +7328,9 @@ static int handle_validate_project(const char *root, response *result, int *exit
         }
     }
     free(placed);
+    free(explained);
+    free(dependencies_valid);
+    free(dependency_errors);
     source_catalog_free(catalog);
     /* Preparation, which checks the sounds too, runs only once nothing else
        is wrong, since it stops at the first problem and would repeat one
@@ -7111,7 +7376,7 @@ static int handle_new_project(yyjson_val *request, response *result, int *exit_c
         response_error(result, exit_code, scaffold_status(), error);
         return -1;
     }
-    if (chibi_project_open(&project, path, error, sizeof error) != 0) {
+    if (open_authored_project(&project, path, error, sizeof error) != 0) {
         response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
         return -1;
     }
@@ -7404,7 +7669,8 @@ static uint64_t scenario_world_hash(const ecs_world *world)
 static char *scenario_prototype_text(const char *text, uint64_t hash)
 {
     char error[256];
-    av_doc *document = av_doc_read(text, error, sizeof error);
+    prototype_registry registry = project_registry();
+    av_doc *document = authoring_prototype_document_read(text, &registry, error, sizeof error);
     if (!document) {
         return NULL;
     }
@@ -12959,7 +13225,9 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     declared_components *declared = NULL;
     if (root) {
         char error[512] = { 0 };
-        if (!open_content(root, error, sizeof error) ||
+        bool metadata = !strcmp(operation, "validate_project") ||
+                        !strcmp(operation, "status");
+        if (!open_content_mode(root, metadata, error, sizeof error) ||
             !load_declared(root, &declared, error, sizeof error)) {
             response_error(&result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
             free(root);

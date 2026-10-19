@@ -194,7 +194,7 @@ TEST_CASE(record_legacy_array_callbacks)
                 REQUIRE(!value->record);
                 const pin_array *array = value->ptr;
                 REQUIRE(array && arena_contains(&results, array));
-                REQUIRE(arena_contains(&results, array->items));
+                REQUIRE(!array->count || arena_contains(&results, pin_array_data(array, 0)));
                 REQUIRE(array->count == counts[operation] && array->element_type == kinds[kind]);
                 REQUIRE(!array->record);
                 if (kinds[kind] == PIN_STRUCT) {
@@ -204,7 +204,8 @@ TEST_CASE(record_legacy_array_callbacks)
                     REQUIRE(arena_contains(&results, array->type_name));
                 }
                 for (int i = 0; i < array->count; i++) {
-                    REQUIRE(check_item(&array->items[i], kinds[kind], expected[operation][i]));
+                    pin_value item = pin_array_get(array, i);
+                    REQUIRE(check_item(&item, kinds[kind], expected[operation][i]));
                 }
             }
         }

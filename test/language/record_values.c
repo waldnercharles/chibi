@@ -165,9 +165,10 @@ TEST_CASE(record_array_ownership)
         size_t expected = record->bytes + sizeof(pin_array) +
                           (size_t)count * sizeof(pin_value);
         for (int i = 0; i < count; i++) {
-            REQUIRE(copy->items[i].record == copy->record);
-            REQUIRE(copy->items[i].type_name == copy->type_name);
-            REQUIRE(pin_value_equal(&rows[i], &copy->items[i]));
+            REQUIRE(pin_array_get(copy, i).record == copy->record);
+            REQUIRE(pin_array_get(copy, i).type_name == copy->type_name);
+            pin_value item = pin_array_get(copy, i);
+            REQUIRE(pin_value_equal(&rows[i], &item));
             expected += record->type.size + row_text_bytes(&rows[i]);
         }
         size_t bytes, capacity;
@@ -177,8 +178,8 @@ TEST_CASE(record_array_ownership)
         arena_usage(&owned, &bytes, &capacity);
         REQUIRE(bytes == expected);
         if (count) {
-            pin_value again;
-            REQUIRE(!pin_value_snapshot_to_arena(&owned, &again, &copy->items[0]));
+            pin_value again, item = pin_array_get(copy, 0);
+            REQUIRE(!pin_value_snapshot_to_arena(&owned, &again, &item));
             REQUIRE(again.record == copy->record);
         }
         arena_free(&owned);
@@ -354,14 +355,15 @@ TEST_CASE(record_array_checked_changes)
     REQUIRE(((pin_array *)output.ptr)->count == 1);
     REQUIRE(((pin_array *)output.ptr)->record == output.record);
     REQUIRE(!NATIVE_ARRAY_slice_CALL.value(&owned, inputs, 3, &output));
-    REQUIRE(pin_value_equal(&((pin_array *)output.ptr)->items[0], &values[1]));
+    pin_value sliced = pin_array_get(output.ptr, 0);
+    REQUIRE(pin_value_equal(&sliced, &values[1]));
     REQUIRE(!NATIVE_ARRAY_clear_CALL.value(&owned, inputs, 1, &output));
     REQUIRE(((pin_array *)output.ptr)->count == 0 && output.record);
     inputs[1] = values[2];
     REQUIRE(!NATIVE_ARRAY_add_CALL.value(&owned, inputs, 2, &output));
     REQUIRE(((pin_array *)output.ptr)->count == 3);
     for (int i = 0; i < 3; i++) {
-        REQUIRE(((pin_array *)output.ptr)->items[i].record == output.record);
+        REQUIRE(pin_array_get(output.ptr, i).record == output.record);
     }
     REQUIRE(array.count == 2);
     return true;

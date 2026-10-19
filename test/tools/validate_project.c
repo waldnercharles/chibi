@@ -47,6 +47,14 @@ static void write_file(const char *relative, const char *text)
     path(file, sizeof file, relative);
     tool_write(file, text);
 }
+/* A legacy-loader fixture replaces the authored prototype the scaffold made. */
+static bool remove_authored_prototype(const char *name)
+{
+    char relative[128], file[256];
+    snprintf(relative, sizeof relative, "game/content/prototypes/%s.chibi", name);
+    path(file, sizeof file, relative);
+    return unlink(file) == 0;
+}
 
 /* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
  * output as $1, for at most `allowed` seconds; returns its exit status and
@@ -310,6 +318,7 @@ TEST_CASE(missing_ui_documents_are_reported)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Menu\"}") == 0
     );
+    REQUIRE(remove_authored_prototype("Menu"));
     write_file("game/content/prototypes/Menu.kdl", "name \"Menu\"\ncomponents {\n    Ui document=\"../ui/Hud\"\n}\n");
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Menu\" prototype=\"Menu\"\n}\n");
     REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
@@ -352,7 +361,7 @@ TEST_CASE(catalog_errors_are_reported_once)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Broken\"}") == 0
     );
-    write_file("game/content/behaviors/Broken.chibi", "behavior Broken\n\nfn update( {\n");
+    write_file("game/content/behaviors/Broken.chibi", "Broken :: behavior\n\nupdate :: ( {\n");
     REQUIRE(validate() != 0 && errors() == 2);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
     REQUIRE(yyjson_arr_size(diagnostics) == 2);
@@ -364,10 +373,20 @@ TEST_CASE(catalog_errors_are_reported_once)
     }
 
     /* The catalog lists the declaration's unknown type, not the cast's. */
-    write_file("game/content/behaviors/Broken.chibi", "behavior \"Broken\" {\n    state a: Foo = 0\n    on Tick {\n        a = cast<Foo>(a)\n    }\n}\n");
-    REQUIRE(validate() != 0 && errors() == 2);
+    write_file(
+        "game/content/behaviors/Broken.chibi",
+        "Broken :: behavior {\n"
+        "    a: retain Foo = 0\n"
+        "    on Tick {\n"
+        "        a = cast<Foo>(a)\n"
+        "    }\n"
+        "}\n"
+    );
+    REQUIRE(validate() != 0 && errors() == 1);
     diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
-    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    REQUIRE(yyjson_arr_size(diagnostics) == 1);
+    REQUIRE(!strcmp(first_message(diagnostics), "Unknown type 'Foo'"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get_first(diagnostics), "line")) == 2);
     return true;
 }
 
@@ -545,9 +564,9 @@ TEST_CASE(scenarios_load_graph_assets)
 }
 
 static const char *const
-    SHAPES_LIBRARY = "library \"Shapes\" {\n"
-                     "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = "
-                     "0.0) -> (Value: float = 0.0) {\n"
+    SHAPES_LIBRARY = "Shapes :: library {\n"
+                     "    Disc :: (X: float = 0.0, Y: float = 0.0) -> (Value: "
+                     "float = 0.0) {\n"
                      "        return field_circle(entry.X, entry.Y, 40.0)\n"
                      "    }\n"
                      "}\n";
@@ -630,7 +649,11 @@ TEST_CASE(fields_call_source_libraries)
     REQUIRE(unlink(collision) == 0);
     REQUIRE(validate() == 0 && errors() == 0);
     /* Without the function, the field's call has nothing to resolve. */
-    write_file("game/content/libraries/Shapes.chibi", "library \"Shapes\" {\n}\n");
+    write_file(
+        "game/content/libraries/Shapes.chibi",
+        "Shapes :: library {\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0 && errors() == 1);
     yyjson_val *problem = yyjson_arr_get(result("problems"), 0);
     const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
@@ -653,6 +676,7 @@ TEST_CASE(particle_shader_bindings_resolve_library_functions)
     REQUIRE(source);
     write_file("game/content/shader-libraries/RainParticles.kdl", source);
     free(source);
+    REQUIRE(remove_authored_prototype("Rain"));
     write_file(
         "game/content/prototypes/Rain.kdl",
         "name \"Rain\"\ncomponents {\n"
@@ -1055,14 +1079,14 @@ TEST_CASE(manifest_content_folder_is_used)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hero\"}") == 0
     );
-    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hero.kdl"));
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hero.chibi"));
     char hero[256];
-    path(hero, sizeof hero, "game/assets/prototypes/Hero.kdl");
+    path(hero, sizeof hero, "game/assets/prototypes/Hero.chibi");
     REQUIRE(access(hero, F_OK) == 0);
-    write_file("game/assets/prototypes/Hero.kdl", "name \"Hero\"\ncomponents {\n  Transform x=1 y=2\n}\n");
+    write_file("game/assets/prototypes/Hero.chibi", "Hero :: prototype { Transform { x: 1, y: 2 } }\n");
     write_file("game/assets/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hero\" prototype=\"Hero\"\n}\n");
     REQUIRE(
-        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/Hero.kdl\"}") ==
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/Hero.chibi\"}") ==
         0
     );
     REQUIRE(yyjson_get_int(result("components")) == 1);
@@ -1101,8 +1125,11 @@ TEST_CASE(manifest_content_folder_is_used)
     snprintf(old, sizeof old, "version 1%s", strchr(text, '\n'));
     free(text);
     tool_write(manifest, old);
-    ctl(true, "{\"contract\":1,\"operation\":\"status\"}");
+    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"status\"}") == 0);
     REQUIRE(reads(yyjson_get_str(result("content_root")), "assets"));
+    text = tool_read(manifest);
+    REQUIRE(text && !strcmp(text, old));
+    free(text);
     return true;
 }
 
@@ -1116,7 +1143,14 @@ TEST_CASE(scenes_run_under_their_own_name)
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Again\"}") == 0
     );
-    write_file("game/content/behaviors/Again.chibi", "behavior \"Again\" {\n    on Tick {\n        reload_scene()\n    }\n}\n");
+    write_file(
+        "game/content/behaviors/Again.chibi",
+        "Again :: behavior {\n"
+        "    on Tick {\n"
+        "        reload_scene()\n"
+        "    }\n"
+        "}\n"
+    );
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Again\"\n    }\n}\n");
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start.kdl\",\"frames\":2}") ==
@@ -1434,8 +1468,18 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     REQUIRE(mkdir(folder, 0700) == 0);
     path(folder, sizeof folder, "game/content/systems");
     REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
-    write_file("game/content/components/Charge.chibi", "// Stored energy.\ncomponent Charge{level : 0 .. 100 charge\nrate:charge / s}\n");
-    write_file("game/content/systems/Recharge.chibi", "system Recharge(charge: Charge) {\n    charge.level += charge.rate * dt\n}\n");
+    write_file(
+        "game/content/components/Charge.chibi",
+        "// Stored energy.\n"
+        "Charge :: component{level : 0 .. 100 charge\n"
+        "rate:charge / s}\n"
+    );
+    write_file(
+        "game/content/systems/Recharge.chibi",
+        "Recharge :: system(charge: Charge) {\n"
+        "    charge.level += charge.rate * dt\n"
+        "}\n"
+    );
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
     /* chibi_ctl formats component sources with the rest of the content. */
     REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
@@ -1444,7 +1488,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     bool canonical = reads(
         formatted,
         "// Stored energy.\n"
-        "component Charge {\n"
+        "Charge :: component {\n"
         "    level: 0..100 charge\n"
         "    rate: charge/s\n"
         "}\n"
@@ -1455,7 +1499,7 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     char outside[256], link_path[256];
     path(outside, sizeof outside, "Outside.chibi");
     path(link_path, sizeof link_path, "game/content/components/Outside.chibi");
-    const char *loose = "component Outside{x:float}\n";
+    const char *loose = "Outside :: component{x:float}\n";
     write_file("Outside.chibi", loose);
     REQUIRE(symlink(outside, link_path) == 0);
     format(NULL);
@@ -1464,15 +1508,36 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     free(kept);
     REQUIRE(untouched && unlink(link_path) == 0);
     /* A field's mistake is reported where it is. */
-    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: flaot\n}\n");
+    write_file(
+        "game/content/components/Charge.chibi",
+        "Charge :: component {\n"
+        "    level: flaot\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0);
     REQUIRE(strstr(failure(), "Charge.chibi: 2:12: Unknown type or unit 'flaot'"));
-    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n    job: task\n}\n");
+    write_file(
+        "game/content/components/Charge.chibi",
+        "Charge :: component {\n"
+        "    level: float\n"
+        "    job: task\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0);
     REQUIRE(strstr(failure(), "Charge.chibi: 3:5: A component field cannot hold a task"));
     /* A project may not declare a component the engine already has. */
-    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n}\n");
-    write_file("game/content/components/Transform.chibi", "component Transform {\n    x: float\n}\n");
+    write_file(
+        "game/content/components/Charge.chibi",
+        "Charge :: component {\n"
+        "    level: float\n"
+        "}\n"
+    );
+    write_file(
+        "game/content/components/Transform.chibi",
+        "Transform :: component {\n"
+        "    x: float\n"
+        "}\n"
+    );
     REQUIRE(validate() != 0);
     REQUIRE(strstr(failure(), "Transform.chibi: the name is already an engine type"));
     return true;
@@ -1485,11 +1550,17 @@ TEST_CASE(unit_mismatches_are_errors)
     REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
     path(folder, sizeof folder, "game/content/systems");
     REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
-    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: charge/s\n}\n");
+    write_file(
+        "game/content/components/Charge.chibi",
+        "Charge :: component {\n"
+        "    level: 0..100 charge\n"
+        "    rate: charge/s\n"
+        "}\n"
+    );
     /* Declared units, the engine's reflected units and dt's seconds. */
     write_file(
         "game/content/systems/Measure.chibi",
-        "system Measure(charge: Charge, movement: Movement, collider: "
+        "Measure :: system(charge: Charge, movement: Movement, collider: "
         "Collider) {\n"
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
@@ -1522,7 +1593,13 @@ TEST_CASE(unit_mismatches_are_errors)
     REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
     REQUIRE(yyjson_get_int(yyjson_obj_get(first, "column")) == 5);
     /* One chibi_ctl sees a unit change that leaves the layout as it was. */
-    write_file("Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: 0..10 charge\n}\n");
+    write_file(
+        "Charge.chibi",
+        "Charge :: component {\n"
+        "    level: 0..100 charge\n"
+        "    rate: 0..10 charge\n"
+        "}\n"
+    );
     write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");
     REQUIRE(
         run("{ cat request.json; until grep -q contract \"$1\"; do sleep 0.02; "
@@ -1546,8 +1623,18 @@ TEST_CASE(scenarios_hold_input_actions)
         ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Jumper\"}") == 0
     );
     write_file("game/content/input.kdl", "Jump {\n    (array)sources \"Mouse Left\"\n}\n");
+    REQUIRE(remove_authored_prototype("Dot"));
     write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)Transform\n}\n");
-    write_file("game/content/behaviors/Jumper.chibi", "behavior Jumper {\n    on Tick {\n        if input.Jump.held {\n            self.Transform = vec2(7, 0)\n        }\n    }\n}\n");
+    write_file(
+        "game/content/behaviors/Jumper.chibi",
+        "Jumper :: behavior {\n"
+        "    on Tick {\n"
+        "        if input.Jump.held {\n"
+        "            self.Transform = vec2(7, 0)\n"
+        "        }\n"
+        "    }\n"
+        "}\n"
+    );
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Jumper\"\n    }\n}\n");
     /* 1 is CONTROL_MOUSE_LEFT, the first Control. */
     const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
@@ -1579,12 +1666,16 @@ TEST_CASE(scenarios_hold_controller_slots)
     write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
     write_file(
         "game/content/behaviors/Controls.chibi",
-        "behavior Controls {\n on Tick {\n x := 0\n"
+        "Controls :: behavior {\n"
+        " on Tick {\n"
+        " x := 0\n"
         " if input.Left.held { x += 1 }\n"
         " if input.Confirm.held { x += 10 }\n"
         " if controller_connected(0) { x += 100 }\n"
         " if controller_connected(1) { x += 1000 }\n"
-        " self.Transform = vec2(x, 0)\n }\n}\n"
+        " self.Transform = vec2(x, 0)\n"
+        " }\n"
+        "}\n"
     );
     write_file(
         "game/content/scenes/Start.kdl",
@@ -1645,12 +1736,14 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
     write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
     write_file(
         "game/content/behaviors/Pointer.chibi",
-        "behavior Pointer { on Tick {\n"
-        " ray := get_pointer_ray()\n x := -1.0\n"
+        "Pointer :: behavior { on Tick {\n"
+        " ray := get_pointer_ray()\n"
+        " x := -1.0\n"
         " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"
         " request := await open_url(\"https://example.org/\")\n"
         " if request.Accepted { x = 10000.0 }\n"
-        " self.Transform = vec2(x, 0)\n } }\n"
+        " self.Transform = vec2(x, 0)\n"
+        " } }\n"
     );
     write_file(
         "game/content/scenes/Start.kdl",

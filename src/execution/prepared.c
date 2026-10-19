@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/union.h"
 
 #include <float.h>
@@ -245,6 +246,16 @@ static uint64_t context_abi()
                               offsetof(pin_array, count),
                               offsetof(pin_array, capacity),
                               offsetof(pin_array, items),
+                              offsetof(pin_array, data),
+                              offsetof(pin_array, stride),
+                              sizeof(pin_map),
+                              offsetof(pin_map, key_type),
+                              offsetof(pin_map, value_type),
+                              offsetof(pin_map, count),
+                              offsetof(pin_map, entries),
+                              sizeof(pin_map_entry),
+                              offsetof(pin_map_entry, key),
+                              offsetof(pin_map_entry, value),
                               sizeof(behavior_variable_storage),
                               offsetof(behavior_variable_storage, data),
                               offsetof(behavior_variable_storage, type_name),
@@ -471,6 +482,7 @@ static void payload(prepared_context *c)
         U64(p->states[index].id);
         VALUE(p->states[index].initial);
         BOOL(p->states[index].shared);
+        BOOL(p->states[index].contains_tasks);
     });
     ARRAY(functions, function_count, {
         execution_module_function *v = &p->functions[index];

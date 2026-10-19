@@ -1,5 +1,6 @@
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "ecs/ecs.h"
 #include "execution/status.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -55,10 +56,9 @@ static void cleanup()
     clear();
     rmdir(root);
 }
-static void prepare(int collection, const input *inputs, int count, bool reverse, behavior_backend backend)
+static source_catalog *snapshot(const input *inputs, int count, bool reverse)
 {
     assert(count > 0 && count <= MAX_SOURCES);
-    assert(collection >= 0 && collection < MAX_COLLECTIONS && !collections[collection]);
     char paths[MAX_SOURCES][256];
     source_catalog_edit edits[MAX_SOURCES];
     for (int i = 0; i < count; i++) {
@@ -66,8 +66,16 @@ static void prepare(int collection, const input *inputs, int count, bool reverse
         snprintf(paths[i], sizeof paths[i], "%s/%s", root, inputs[at].path);
         edits[i] = (source_catalog_edit){ .path = paths[i], .text = inputs[at].text };
     }
-    source_catalog *snapshot = source_catalog_replaced(root, &catalog, edits, count);
-    collections[collection] = authoring_sources_prepare_catalog(snapshot, &bindings, backend);
+    return source_catalog_replaced(root, &catalog, edits, count);
+}
+static void prepare(int collection, const input *inputs, int count, bool reverse, behavior_backend backend)
+{
+    assert(collection >= 0 && collection < MAX_COLLECTIONS && !collections[collection]);
+    collections[collection] = authoring_sources_prepare_catalog(
+        snapshot(inputs, count, reverse),
+        &bindings,
+        backend
+    );
 }
 static const authoring_source *source(int collection, const char *name)
 {
@@ -159,22 +167,13 @@ static bool run(
 TEST_CASE(modules_scroll_update_matches_inline_local_and_qualified_helpers)
 {
     static const input inputs[] = {
-        { "libraries/z/Scroll.chibi", "library Scroll { " STEP " }" },
-        { "libraries/a/Other.chibi",
-          "library Other { "
-          "Step :: (offset: number, cells: number, advance: number, most: "
-          "number) "
-          "-> number { return -100; } }" },
-        { "behaviors/Inline.chibi",
-          "behavior Inline { offset: number = 0; "
-          "on Tick(cells) { offset += cells * 2; if offset < 0 { offset = 0; } "
-          "if offset > 6 { offset = 6; } } }" },
+        { "libraries/z/Scroll.chibi", "Scroll :: library { " STEP " }" },
+        { "libraries/a/Other.chibi", "Other :: library { Step :: (offset: number, cells: number, advance: number, most: number) -> number { return -100; } }" },
+        { "behaviors/Inline.chibi", "Inline :: behavior { offset: number = 0; on Tick(cells) { offset += cells * 2; if offset < 0 { offset = 0; } if offset > 6 { offset = 6; } } }" },
         { "behaviors/Local.chibi",
-          "behavior Local { offset: number = 0; " STEP
+          "Local :: behavior { offset: number = 0; " STEP
           "on Tick(cells) { offset = Step(offset, cells, 2, 6); } }" },
-        { "behaviors/Imported.chibi",
-          "behavior Imported { offset: number = 0; "
-          "on Tick(cells) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
+        { "behaviors/Imported.chibi", "Imported :: behavior { offset: number = 0; on Tick(cells) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
     };
     static const double amounts[] = { 1, 4, -1, -20 };
     static const double expected[] = { 2, 6, 4, 0 };
@@ -210,11 +209,10 @@ TEST_CASE(modules_scroll_update_matches_inline_local_and_qualified_helpers)
 TEST_CASE(modules_unqualified_same_spelled_helpers_are_ambiguous)
 {
     static const input inputs[] = {
-        { "libraries/Left.chibi", "library Left { Step :: () -> number { return 1; } }" },
-        { "libraries/Right.chibi", "library Right { Step :: () -> number { return 2; } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Step(); } }" }
+        { "libraries/Left.chibi", "Left :: library { Step :: () -> number { return 1; } }" },
+        { "libraries/Right.chibi",
+          "Right :: library { Step :: () -> number { return 2; } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -229,11 +227,10 @@ TEST_CASE(modules_unqualified_same_spelled_helpers_are_ambiguous)
 TEST_CASE(modules_duplicate_qualified_helpers_cannot_publish_by_path_order)
 {
     static const input inputs[] = {
-        { "libraries/First.chibi", "library Same { Step :: () -> number { return 1; } }" },
-        { "libraries/Second.chibi", "library Same { Step :: () -> number { return 2; } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Same.Step(); } }" }
+        { "libraries/First.chibi", "Same :: library { Step :: () -> number { return 1; } }" },
+        { "libraries/Second.chibi",
+          "Same :: library { Step :: () -> number { return 2; } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Same.Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -258,12 +255,10 @@ TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations)
 {
     static const input inputs[] = {
         { "libraries/Left.chibi",
-          "library Left { Step :: () -> number { return Right.Step(); } }" },
+          "Left :: library { Step :: () -> number { return Right.Step(); } }" },
         { "libraries/Right.chibi",
-          "library Right { Step :: () -> number { return Left.Step(); } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Left.Step(); } }" }
+          "Right :: library { Step :: () -> number { return Left.Step(); } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Left.Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -282,12 +277,8 @@ TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations)
 TEST_CASE(modules_library_state_is_not_an_exported_value)
 {
     static const input inputs[] = {
-        { "libraries/Store.chibi",
-          "library Store { secret: number = 11; "
-          "Read :: () -> number { return secret; } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Store.secret; } }" }
+        { "libraries/Store.chibi", "Store :: library { secret: number = 11; Read :: () -> number { return secret; } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Store.secret; } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 2, order, BEHAVIOR_BYTECODE);
@@ -308,13 +299,12 @@ TEST_CASE(modules_library_state_is_not_an_exported_value)
 TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies)
 {
     const input inputs[] = {
-        { "libraries/Store.chibi", "library Store { Read :: () -> number { return 3; } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Store.Read(); } }" }
+        { "libraries/Store.chibi",
+          "Store :: library { Read :: () -> number { return 3; } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Store.Read(); } }" }
     };
     input other[2] = { inputs[0], inputs[1] };
-    other[0].text = "library Store { Read :: () -> number { return 7; } }";
+    other[0].text = "Store :: library { Read :: () -> number { return 7; } }";
     static const double amounts[] = { 0 }, first[] = { 3 }, second[] = { 7 };
     for (int b = 0; b < 2; b++) {
         REQUIRE(behavior_backend_available(backends[b]));
@@ -339,16 +329,8 @@ TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies)
 TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope)
 {
     static const input inputs[] = {
-        { "libraries/Scoped.chibi",
-          "library Scoped { "
-          "First :: () { Helper :: () -> number { return 2; } return Helper(); "
-          "} "
-          "Second :: () { Helper :: () -> number { return 3; } return "
-          "Helper(); } }" },
-        { "behaviors/Caller.chibi",
-          "behavior Caller { offset: number = 0; "
-          "on Tick(cells) { offset = Scoped.First() * 10 + Scoped.Second(); } "
-          "}" }
+        { "libraries/Scoped.chibi", "Scoped :: library { First :: () { Helper :: () -> number { return 2; } return Helper(); } Second :: () { Helper :: () -> number { return 3; } return Helper(); } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Scoped.First() * 10 + Scoped.Second(); } }" }
     };
     static const double amounts[] = { 0 }, expected[] = { 23 };
     for (int b = 0; b < 2; b++) {
@@ -389,6 +371,463 @@ TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope)
     return true;
 }
 
+static const input generic_inputs[] = {
+    { "libraries/Units.chibi",
+      "Units :: library { "
+      "Quantity :: struct($DataType: Type, $Length: int, $Time: int) { amount: "
+      "DataType } "
+      "ProductType :: (A: Type, B: Type) -> Type { return Quantity(A.DataType, "
+      "A.Length + B.Length, A.Time + B.Time) } "
+      "Identity :: (value: $T) -> T { return value } "
+      "Factorial :: (n: int) -> int { if n <= 1 { return 1 } return n * "
+      "Factorial(n - 1) } }" },
+    { "libraries/Operations.chibi",
+      "Operations :: library { "
+      "Multiply :: (a: $A, b: $B) -> Units.ProductType(A, B) { "
+      "result: Units.ProductType(A, B) = {amount: a.amount * b.amount}; return "
+      "result } "
+      "Scale :: (value: $T, $N: int) -> T { Factor :: Units.Factorial(4); "
+      "return Units.Identity(value) * N + Factor } }" },
+    { "behaviors/Caller.chibi",
+      "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+      "speed: Units.Quantity(double, 1, -1) = {amount: 6}; "
+      "time: Units.Quantity(double, 0, 1) = {amount: 2}; "
+      "distance := Operations.Multiply(speed, time); "
+      "offset = distance.amount + Operations.Scale(cells, 2) } }" },
+};
+
+TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_types)
+{
+    static const input inputs[] = {
+        { "libraries/Numbers.chibi",
+          "Numbers :: library { Identity :: (value: $T) -> T { return value } "
+          "Factorial :: (n: int) -> int { if n <= 1 { return 1 } "
+          "return n * Factorial(n - 1) } }" },
+        { "libraries/Operations.chibi",
+          "Operations :: library { Scale :: (value: $T, $N: int) -> T { "
+          "Factor :: Numbers.Factorial(4); "
+          "return Numbers.Identity(value) * N + Factor } }" },
+        { "behaviors/Caller.chibi",
+          "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+          "offset = Operations.Scale(cells, 2) } }" },
+    };
+    static const double amounts[] = { 2 }, expected[] = { 28 };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 3, false, backends[backend]);
+        REQUIRE(valid(0));
+        REQUIRE(run(0, "Caller", backends[backend], amounts, expected, 1));
+        clear();
+    }
+    return true;
+}
+
+TEST_CASE(modules_empty_compile_bindings_materialize)
+{
+    static const input inputs[] = {
+        { "libraries/Flags.chibi",
+          "Flags :: library { Enabled :: () -> bool { return true } }" },
+        { "behaviors/Caller.chibi",
+          "Caller :: behavior { Value :: Flags.Enabled(); offset:number=0; "
+          "on Tick(cells) { if Value { offset=cells } } }" },
+    };
+    static const double amounts[] = { 2 }, expected[] = { 2 };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 2, false, backends[backend]);
+        REQUIRE(valid(0));
+        const authoring_source *caller = source(0, "Caller");
+        REQUIRE(caller);
+        const script_analysis *a = caller->analysis;
+        REQUIRE(a->request_count == 1);
+        const script_specialization_request *request = &a->requests[0];
+        REQUIRE(request->evaluate);
+        REQUIRE(!request->binding_count && !request->bindings);
+        const script_catalog *view = authoring_sources_catalog(collections[0]);
+        bool found = false;
+        for (int i = 0; i < view->specialization_count; i++) {
+            const script_catalog_specialization *s = &view->specializations[i];
+            if (s->id != request->id) {
+                continue;
+            }
+            REQUIRE(s->template_id == request->template_id);
+            REQUIRE(!s->binding_count);
+            REQUIRE(!s->executable && !s->result.is_type);
+            REQUIRE(s->result.value.type == PIN_BOOL && s->result.value.b);
+            found = true;
+        }
+        REQUIRE(found);
+        REQUIRE(run(0, "Caller", backends[backend], amounts, expected, 1));
+        clear();
+    }
+    return true;
+}
+
+TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse)
+{
+    static const input inputs[] = {
+        { "libraries/Numbers.chibi",
+          "Numbers :: library { Double :: (value: double) -> double { "
+          "return value * 2 } }" },
+        { "libraries/Operations.chibi",
+          "Operations :: library { Scale :: (value: $T, $Gain: double) -> T { "
+          "Offset :: Numbers.Double(Gain); return value * Gain + Offset } }" },
+        { "behaviors/Caller.chibi",
+          "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+          "offset = Operations.Scale(cells, 1.5) + "
+          "Operations.Scale(cells, 1.5) } }" },
+    };
+    static const double amounts[] = { 2 }, expected[] = { 12 };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 3, false, backends[backend]);
+        REQUIRE(valid(0));
+        collections[1] = authoring_sources_prepare_incremental(
+            snapshot(inputs, 3, true),
+            &bindings,
+            backends[backend],
+            collections[0]
+        );
+        REQUIRE(valid(1));
+        REQUIRE(authoring_sources_reused(collections[1]) == 3);
+        REQUIRE(run(1, "Caller", backends[backend], amounts, expected, 1));
+        clear();
+    }
+    return true;
+}
+
+TEST_CASE(modules_float_specialization_metadata_compares_exact_ieee_bits)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/behaviors/Caller.chibi", root);
+    const source_catalog_edit edit = { .path = path, .text = "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = cells } }" };
+    const uint64_t doubles[] = { UINT64_C(0),
+                                 UINT64_C(0x8000000000000000),
+                                 UINT64_C(0x7ff8000000000001),
+                                 UINT64_C(0x7ff8000000000002) };
+    const uint32_t floats[] = { UINT32_C(0),
+                                UINT32_C(0x80000000),
+                                UINT32_C(0x7fc00001),
+                                UINT32_C(0x7fc00002) };
+    for (int width = 0; width < 2; width++) {
+        for (int left = 0; left < 4; left++) {
+            for (int right = 0; right < 4; right++) {
+                script_catalog_specialization a = { .id = 1, .template_id = 2 },
+                                              b = a;
+                a.result.value.type = b.result.value.type = width ? PIN_F64 : PIN_F32;
+                if (width) {
+                    memcpy(
+                        &a.result.value.d,
+                        &doubles[left],
+                        sizeof a.result.value.d
+                    );
+                    memcpy(
+                        &b.result.value.d,
+                        &doubles[right],
+                        sizeof b.result.value.d
+                    );
+                } else {
+                    memcpy(
+                        &a.result.value.f,
+                        &floats[left],
+                        sizeof a.result.value.f
+                    );
+                    memcpy(
+                        &b.result.value.f,
+                        &floats[right],
+                        sizeof b.result.value.f
+                    );
+                }
+                script_catalog x = catalog, y = catalog;
+                x.specializations = &a;
+                y.specializations = &b;
+                x.specialization_count = y.specialization_count = 1;
+                collections[0] = authoring_sources_prepare_catalog(
+                    source_catalog_replaced(root, &x, &edit, 1),
+                    &bindings,
+                    BEHAVIOR_BYTECODE
+                );
+                REQUIRE(valid(0));
+                collections[1] = authoring_sources_prepare_incremental(
+                    source_catalog_replaced(root, &y, &edit, 1),
+                    &bindings,
+                    BEHAVIOR_BYTECODE,
+                    collections[0]
+                );
+                REQUIRE(valid(1));
+                REQUIRE(authoring_sources_reused(collections[1]) == (left == right ? 1 : 0));
+                clear();
+            }
+        }
+    }
+    return true;
+}
+
+TEST_CASE(modules_imported_templates_keep_owner_types_bodies_and_nested_requests)
+{
+    static const double amounts[] = { 2 }, expected[] = { 40 };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int order = 0; order < 2; order++) {
+            prepare(0, generic_inputs, 3, order, backends[backend]);
+            REQUIRE(valid(0));
+            REQUIRE(run(0, "Caller", backends[backend], amounts, expected, 1));
+            const script_catalog *view = authoring_sources_catalog(collections[0]);
+            REQUIRE(view->template_count >= 6 && view->specialization_count >= 6);
+            const authoring_source *units = source(0, "Units");
+            REQUIRE(units && strcmp(units->analysis->identity, units->analysis->name));
+            bool record = false, factorial = false;
+            for (int i = 0; i < view->type_count; i++) {
+                const script_catalog_type *type = &view->types[i];
+                if (type->authored_record) {
+                    REQUIRE(type->field_count == 1 && type->size == sizeof(double));
+                    REQUIRE(!strcmp(type->fields[0].name, "amount"));
+                    const script_catalog_type *declared = NULL;
+                    for (int j = 0; j < units->analysis->type_count; j++) {
+                        if (units->analysis->types[j].id == type->id) {
+                            declared = &units->analysis->types[j];
+                            break;
+                        }
+                    }
+                    REQUIRE(declared);
+                    REQUIRE(!strcmp(declared->name, type->name));
+                    REQUIRE(!strcmp(declared->source_name, type->source_name));
+                    record = true;
+                }
+            }
+            for (int i = 0; i < view->specialization_count; i++) {
+                const script_catalog_specialization *instance = &view->specializations[i];
+                if (!instance->executable && !instance->result.is_type &&
+                    instance->result.value.type == PIN_I32 &&
+                    instance->result.value.i == 24) {
+                    factorial = true;
+                }
+                if (!instance->executable) {
+                    continue;
+                }
+                const authoring_source *owner = NULL;
+                for (int t = 0; t < view->template_count; t++) {
+                    if (view->templates[t].id == instance->template_id) {
+                        const char *identity = view->templates[t].owner;
+                        for (int d = 0; d < authoring_sources_count(collections[0]);
+                             d++) {
+                            const authoring_source
+                                *candidate = authoring_sources_at(collections[0], d);
+                            if (!strcmp(candidate->analysis->identity, identity)) {
+                                owner = candidate;
+                            }
+                        }
+                    }
+                }
+                REQUIRE(owner && owner->analysis->kind == SCRIPT_PROGRAM_LIBRARY);
+                bool published = false;
+                for (int f = 0; f < execution_module_function_count(owner->module);
+                     f++) {
+                    execution_module_function_info
+                        function = execution_module_function_at(owner->module, f);
+                    published |= function.id == instance->id && function.body;
+                }
+                REQUIRE(published);
+            }
+            REQUIRE(record && factorial);
+            const authoring_source *caller = source(0, "Caller");
+            for (int i = 0; i < caller->analysis->function_count; i++) {
+                int symbol = caller->analysis->functions[i].symbol;
+                REQUIRE(
+                    symbol < 0 ||
+                    (strcmp(caller->analysis->symbols[symbol].name, "Multiply") &&
+                     strcmp(caller->analysis->symbols[symbol].name, "Scale") &&
+                     strcmp(caller->analysis->symbols[symbol].name, "Identity"))
+                );
+            }
+            clear();
+        }
+    }
+    return true;
+}
+
+TEST_CASE(modules_imported_template_body_edits_invalidate_linked_generations)
+{
+    static const double amounts[] = { 2 }, before[] = { 40 }, after[] = { 136 };
+    input edited[3] = { generic_inputs[0], generic_inputs[1], generic_inputs[2] };
+    edited[0]
+        .text = "Units :: library { "
+                "Quantity :: struct($DataType: Type, $Length: int, $Time: int) "
+                "{ amount: DataType } "
+                "ProductType :: (A: Type, B: Type) -> Type { return "
+                "Quantity(A.DataType, A.Length + B.Length, A.Time + B.Time) } "
+                "Identity :: (value: $T) -> T { return value } "
+                "Factorial :: (n: int) -> int { if n <= 1 { return 5 } return "
+                "n * Factorial(n - 1) } }";
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, generic_inputs, 3, false, backends[backend]);
+        REQUIRE(valid(0));
+        collections[1] = authoring_sources_prepare_incremental(
+            snapshot(edited, 3, true),
+            &bindings,
+            backends[backend],
+            collections[0]
+        );
+        REQUIRE(valid(1));
+        REQUIRE(authoring_sources_reused(collections[1]) == 0);
+        REQUIRE(run(0, "Caller", backends[backend], amounts, before, 1));
+        REQUIRE(run(1, "Caller", backends[backend], amounts, after, 1));
+        clear();
+    }
+    return true;
+}
+
+TEST_CASE(modules_failed_imported_requests_publish_no_concrete_generation)
+{
+    static const input inputs[] = {
+        { "libraries/Bad.chibi",
+          "Bad :: library { Broken :: (value: $T) -> int { return true } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Bad.Broken(cast<int>(1)) } }" },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 2, false, backends[backend]);
+        REQUIRE(!authoring_sources_valid(collections[0]));
+        const script_catalog *view = authoring_sources_catalog(collections[0]);
+        REQUIRE(view->specialization_count == 0);
+        REQUIRE(!source(0, "Caller")->module);
+        bool owner_diagnostic = false;
+        for (int i = 0;
+             i < authoring_sources_catalog_diagnostic_count(collections[0]);
+             i++) {
+            const source_catalog_diagnostic *
+                diagnostic = authoring_sources_catalog_diagnostic_at(collections[0], i);
+            owner_diagnostic |= strstr(diagnostic->path, "Bad.chibi") &&
+                                diagnostic->range.start > 0;
+        }
+        REQUIRE(owner_diagnostic);
+        clear();
+    }
+    return true;
+}
+
+TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
+{
+    const input inputs[] = {
+        { "libraries/Store.chibi", "Store :: library { value:int=0; Next::()->int { calls:retain int=0; value+=1; calls+=1; return value+calls; } }" },
+        { "systems/Counter.chibi", "Counter :: system() { observed:retain int=0; observed=Store.Next(); }" },
+        { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick(cells) { observed=Store.Next(); } }" },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare(0, inputs, 3, false, backends[backend]);
+        REQUIRE(valid(0));
+        const authoring_source *counter = source(0, "Counter"),
+                               *reader = source(0, "Reader");
+        uint64_t counter_value = 0, reader_value = 0;
+        for (int i = 0; i < counter->analysis->symbol_count; i++) {
+            const script_symbol *s = &counter->analysis->symbols[i];
+            if (s->kind == SCRIPT_SHARED_STATE && !strcmp(s->name, "observed")) {
+                counter_value = s->id;
+            }
+        }
+        for (int i = 0; i < reader->analysis->symbol_count; i++) {
+            const script_symbol *s = &reader->analysis->symbols[i];
+            if (s->kind == SCRIPT_STATE && !strcmp(s->name, "observed")) {
+                reader_value = s->id;
+            }
+        }
+        REQUIRE(counter_value && reader_value);
+        ecs_world *world = ecs_world_new();
+        ecs_entity a = ecs_world_create_entity(world),
+                   b = ecs_world_create_entity(world);
+        program = execution_program_new(counter->module, world, NULL);
+        REQUIRE(program && execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *row = execution_program_instance(program, ecs_entity_to_u64(a));
+        REQUIRE(row && execution_instance_state(row, counter_value)->i == 4);
+        execution_program *other = execution_program_new(counter->module, world, NULL);
+        REQUIRE(other && execution_program_step(other, 0, 0, 1000) == FLOW_OK);
+        execution_instance *isolated = execution_program_instance(other, ecs_entity_to_u64(a));
+        REQUIRE(isolated && execution_instance_state(isolated, counter_value)->i == 4);
+        execution_program_free(other);
+        REQUIRE(!ecs_world_destroy_entity(world, a) && !ecs_world_destroy_entity(world, b));
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_replace(program, counter->module, false) == FLOW_OK);
+        a = ecs_world_create_entity(world);
+        REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
+        row = execution_program_instance(program, ecs_entity_to_u64(a));
+        REQUIRE(row && execution_instance_state(row, counter_value)->i == 6);
+        REQUIRE(execution_program_replace(program, counter->module, true) == FLOW_OK);
+        REQUIRE(execution_program_step(program, 3, 0, 1000) == FLOW_OK);
+        row = execution_program_instance(program, ecs_entity_to_u64(a));
+        REQUIRE(row && execution_instance_state(row, counter_value)->i == 2);
+        execution_program_free(program);
+        program = execution_program_new(reader->module, world, NULL);
+        REQUIRE(program);
+        execution_instance *first = execution_program_attach(program, ecs_entity_to_u64(a));
+        b = ecs_world_create_entity(world);
+        execution_instance *second = execution_program_attach(program, ecs_entity_to_u64(b));
+        const pin_value amount = { .type = PIN_F64 };
+        REQUIRE(first && second);
+        REQUIRE(execution_instance_dispatch(first, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_dispatch(second, tick.id, &amount, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_state(first, reader_value)->i == 2);
+        REQUIRE(execution_instance_state(second, reader_value)->i == 2);
+        execution_program_free(program);
+        program = NULL;
+        ecs_world_free(world);
+        clear();
+    }
+    return true;
+}
+TEST_CASE(modules_systems_reject_task_state_in_imported_libraries)
+{
+    const char *types[] = { "task", "task[]", "Map<string, task>", "Map<string, task[]>[]" };
+    for (size_t i = 0; i < sizeof types / sizeof *types; i++) {
+        char library[256];
+        snprintf(library, sizeof library, "Store :: library { pending:retain %s; Read::()->int { return 1; } }", types[i]);
+        const input inputs[] = {
+            { "libraries/Store.chibi", library },
+            { "systems/Counter.chibi", "Counter :: system() { observed:retain int=0; observed=Store.Read(); }" },
+            { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick(cells) { observed=Store.Read(); } }" },
+        };
+        prepare(0, inputs, 3, false, BEHAVIOR_BYTECODE);
+        if (!source(0, "Store")->valid || !source(0, "Reader")->valid) {
+            fprintf(stderr, "retained task library type: %s\n", types[i]);
+            valid(0);
+        }
+        REQUIRE(source(0, "Store")->valid && source(0, "Reader")->valid);
+        REQUIRE(!source(0, "Counter")->valid);
+        REQUIRE(diagnostic(source(0, "Counter"), "cannot contain tasks"));
+        clear();
+    }
+    return true;
+}
+TEST_CASE(modules_compile_time_parameters_preserve_constant_mutability)
+{
+    const input inputs[] = {
+        { "libraries/Math.chibi", "Math :: library { Advance :: (/* value */ N:int)->int { N+=1; return N; } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { Value :: Math.Advance(1); observed:int=Value; }" },
+    };
+    prepare(0, inputs, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0));
+    bool result = false;
+    const script_analysis *analysis = source(0, "Caller")->analysis;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        if (symbol->kind == SCRIPT_CONSTANT && !strcmp(symbol->name, "Value")) {
+            const pin_value value = analysis->expressions[symbol->initializer].constant;
+            result = value.type == PIN_I32 && value.i == 2;
+        }
+    }
+    REQUIRE(result);
+    clear();
+    input invalid[] = { inputs[0], inputs[1] };
+    invalid[0].text = "Math :: library { Advance :: ($N:int)->int { N+=1; "
+                      "return N; } }";
+    prepare(0, invalid, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(!authoring_sources_valid(collections[0]));
+    bool rejected = false;
+    for (int i = 0; i < authoring_sources_catalog_diagnostic_count(collections[0]);
+         i++) {
+        const source_catalog_diagnostic
+            *d = authoring_sources_catalog_diagnostic_at(collections[0], i);
+        rejected |= strstr(d->message, "assignment cannot change a constant binding") !=
+                    NULL;
+    }
+    REQUIRE(rejected);
+    REQUIRE(!source(0, "Caller")->module);
+    return true;
+}
 void test_language_modules()
 {
     pu_setup(setup, cleanup);
@@ -399,4 +838,14 @@ void test_language_modules()
     RUN_TEST_CASE(modules_library_state_is_not_an_exported_value);
     RUN_TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies);
     RUN_TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope);
+    RUN_TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_types);
+    RUN_TEST_CASE(modules_empty_compile_bindings_materialize);
+    RUN_TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse);
+    RUN_TEST_CASE(modules_float_specialization_metadata_compares_exact_ieee_bits);
+    RUN_TEST_CASE(modules_imported_templates_keep_owner_types_bodies_and_nested_requests);
+    RUN_TEST_CASE(modules_imported_template_body_edits_invalidate_linked_generations);
+    RUN_TEST_CASE(modules_failed_imported_requests_publish_no_concrete_generation);
+    RUN_TEST_CASE(modules_retained_library_state_inherits_consuming_owner);
+    RUN_TEST_CASE(modules_systems_reject_task_state_in_imported_libraries);
+    RUN_TEST_CASE(modules_compile_time_parameters_preserve_constant_mutability);
 }

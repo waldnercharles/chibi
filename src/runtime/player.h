@@ -100,11 +100,14 @@ typedef struct
  * leaves caller generations untouched. Descriptors/callback code/user contexts
  * still outlive the player. */
 player *player_new(const player_spec *, char *error, size_t size);
+/* Destroys the entire owned world, including entities outside the current
+ * scene; Panic links cannot veto this whole-world teardown. Call between
+ * frames, with no active ECS query or source dispatch. */
 void player_free(player *);
 world *player_world(const player *);
 const scene_instance *player_scene(const player *);
-/* Destroys every entity, resets the engine's per-scene state and starts the
- * named scene; time, input and committed saves go on. Call it between frames,
- * as scene_flow_take asks. An unknown name changes nothing; any other
- * failure leaves an empty world, and the host should stop. */
+/* Releases the current scene, resets per-scene state and starts the named
+ * scene; time, input and committed saves go on. Call between frames, as
+ * scene_flow_take asks. An unknown name or refused release changes nothing.
+ * Later failures can leave no current scene, and the host should stop. */
 bool player_load_scene(player *, const char *name, char *error, size_t size);

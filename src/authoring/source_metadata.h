@@ -18,5 +18,15 @@ char *authoring_source_metadata_remap(
     const script_syntax *before,
     const script_syntax *after
 );
+/* Migration-only remapping from an exact composed byte-origin map, containing
+ * strlen(before->text)+1 entries. Replaced anchors may collapse onto the
+ * surviving replacement token; all old and resulting anchors must start tokens.
+ * Stale, malformed or unrepresentable metadata returns NULL. */
+char *authoring_source_metadata_remap_positions(
+    const char *json,
+    const script_syntax *before,
+    const script_syntax *after,
+    const int *positions
+);
 
 #endif

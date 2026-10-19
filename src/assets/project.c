@@ -468,6 +468,8 @@ static int upgrade(
     const char *content,
     const char *start_scene,
     int from,
+    chibi_project_migration_fn finalize,
+    void *user,
     char *error,
     size_t error_size
 )
@@ -487,6 +489,10 @@ static int upgrade(
             free(text);
             return -1;
         }
+    }
+    if (finalize && finalize(content, start_scene, from, user, error, error_size)) {
+        free(text);
+        return -1;
     }
     size_t size = strlen(text) + 32;
     char *updated = xmalloc(size);
@@ -539,7 +545,13 @@ void chibi_project_free(chibi_project *project)
     *project = (chibi_project){ 0 };
 }
 
-int chibi_project_migrate(const char *path, char *error, size_t error_size)
+int chibi_project_migrate_finalized(
+    const char *path,
+    chibi_project_migration_fn finalize,
+    void *user,
+    char *error,
+    size_t error_size
+)
 {
     chibi_project project = { 0 };
     char *manifest = NULL;
@@ -555,11 +567,15 @@ int chibi_project_migrate(const char *path, char *error, size_t error_size)
     if (status) {
         return -1;
     }
-    if (chibi_project_open(&project, path, error, error_size)) {
+    if (chibi_project_open_migrating(&project, path, finalize, user, error, error_size)) {
         return -1;
     }
     chibi_project_free(&project);
     return CHIBI_PROJECT_VERSION - from;
+}
+int chibi_project_migrate(const char *path, char *error, size_t error_size)
+{
+    return chibi_project_migrate_finalized(path, NULL, NULL, error, error_size);
 }
 char *chibi_project_find(const char *start)
 {
@@ -582,7 +598,23 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
-static int open_project(chibi_project *project, const char *path, bool migrate, char *error, size_t error_size)
+typedef enum
+{
+    PROJECT_READ_CURRENT,
+    PROJECT_MIGRATE_FULL,
+    PROJECT_INSPECT_CURRENT_OR_OLD,
+    PROJECT_MIGRATE_CONTENT,
+} project_open_mode;
+
+static int open_project(
+    chibi_project *project,
+    const char *path,
+    project_open_mode mode,
+    chibi_project_migration_fn finalize,
+    void *user,
+    char *error,
+    size_t error_size
+)
 {
     if (!project) {
         set_error(error, error_size, "Project output is required");
@@ -638,7 +670,7 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
         free(manifest);
         return -1;
     }
-    if (!migrate && version < CHIBI_PROJECT_VERSION) {
+    if (mode == PROJECT_READ_CURRENT && version < CHIBI_PROJECT_VERSION) {
         snprintf(error, error_size, "Project version %d is older than %d; run chibi_ctl --project-root <root> --migrate", version, CHIBI_PROJECT_VERSION);
         chibi_project_free(project);
         free(input);
@@ -657,9 +689,10 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
     free(input);
     char *absolute_content = absolute_path(content_path);
     char *start_scene = start_scene_path(project, absolute_content);
-    if (absolute_content && is_directory(absolute_content) &&
+    if ((mode == PROJECT_MIGRATE_FULL || mode == PROJECT_MIGRATE_CONTENT) &&
+        absolute_content && is_directory(absolute_content) &&
         version < CHIBI_PROJECT_VERSION &&
-        upgrade(manifest, absolute_content, start_scene, version, error, error_size)) {
+        upgrade(manifest, absolute_content, start_scene, version, finalize, user, error, error_size)) {
         free(absolute_content);
         absolute_content = NULL;
         version = -1;
@@ -691,7 +724,7 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
     if (!project->name) {
         project->name = basename_copy(project->root);
     }
-    if (!project->start_scene) {
+    if (mode != PROJECT_MIGRATE_CONTENT && !project->start_scene) {
         set_errorf(error, error_size, "Project has no start scene: %s", project->root);
         chibi_project_free(project);
         return -1;
@@ -704,12 +737,39 @@ static int open_project(chibi_project *project, const char *path, bool migrate, 
 
 int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
 {
-    return open_project(project, path, true, error, error_size);
+    return open_project(project, path, PROJECT_MIGRATE_FULL, NULL, NULL, error, error_size);
+}
+int chibi_project_open_migrating(
+    chibi_project *project,
+    const char *path,
+    chibi_project_migration_fn finalize,
+    void *user,
+    char *error,
+    size_t error_size
+)
+{
+    return open_project(project, path, PROJECT_MIGRATE_FULL, finalize, user, error, error_size);
 }
 
 int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
 {
-    return open_project(project, path, false, error, error_size);
+    return open_project(project, path, PROJECT_READ_CURRENT, NULL, NULL, error, error_size);
+}
+int chibi_project_open_content_migrating(
+    chibi_project *project,
+    const char *path,
+    chibi_project_migration_fn finalize,
+    void *user,
+    char *error,
+    size_t error_size
+)
+{
+    return open_project(project, path, PROJECT_MIGRATE_CONTENT, finalize, user, error, error_size);
+}
+
+int chibi_project_inspect(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, PROJECT_INSPECT_CURRENT_OR_OLD, NULL, NULL, error, error_size);
 }
 
 char *chibi_project_content(const char *root, char *error, size_t error_size)

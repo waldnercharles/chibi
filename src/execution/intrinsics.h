@@ -36,16 +36,29 @@ typedef enum
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
     EXECUTION_INTRINSIC_VALUE_EQUAL = 26,
+    EXECUTION_INTRINSIC_MAP_MAKE = 30,
+    EXECUTION_INTRINSIC_MAP_GET = 31,
+    EXECUTION_INTRINSIC_MAP_HAS = 32,
+    EXECUTION_INTRINSIC_MAP_REMOVE = 33,
+    EXECUTION_INTRINSIC_MAP_ITEM = 34,
+    EXECUTION_INTRINSIC_REFERENCE_KEY = 35,
+    EXECUTION_INTRINSIC_STRING_BYTES = 40,
+    EXECUTION_INTRINSIC_STRING_ITEM = 41,
+    EXECUTION_INTRINSIC_STRING_NEXT = 42,
+    EXECUTION_INTRINSIC_STRING_CURSOR = 43,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
+extern const node_host_call EXECUTION_string_bytes_call, EXECUTION_string_item_call,
+    EXECUTION_string_next_call, EXECUTION_string_cursor_call;
 extern const node_host_call EXECUTION_construct_call;
 extern const node_host_call EXECUTION_value_equal_call;
 extern const node_host_call EXECUTION_union_make_call,
     EXECUTION_union_test_call, EXECUTION_union_get_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
+extern const node_host_call EXECUTION_reference_key_call;
 extern const node_host_call EXECUTION_reference_read_call;
 extern const node_host_call EXECUTION_reference_write_call;
 extern const node_host_call EXECUTION_reference_reduce_call;

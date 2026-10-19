@@ -984,9 +984,9 @@ TEST_CASE(field_links_source_library)
 TEST_CASE(field_source_library_keeps_parameter_defaults)
 {
     const char
-        *text = "library \"Discs\" {\n"
-                "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = 0.0, "
-                "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
+        *text = "Discs :: library {\n"
+                "    Disc :: (X: float = 0.0, Y: float = 0.0, Radius: float = "
+                "40.0) -> (Value: float = 0.0) {\n"
                 "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
                 "    }\n"
                 "}\n";
@@ -1019,18 +1019,15 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
 TEST_CASE(field_source_library_calls_follow_names)
 {
     static const char *sources[] = {
-        "library \"Values\" {"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(X: float = 10.0, Y: float = 3.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
-        "\"Difference\" :: pure fn(Y: float = 30.0, X: float = 100.0) "
-        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
-        "library \"Values\" {"
-        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
-        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 } }",
+        "Values :: library {Other :: () -> (Value: float) { return 111.0 "
+        "}Difference :: (X: float = 10.0, Y: float = 3.0) -> (Value: float) { "
+        "return field_subtract(entry.X, entry.Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 }Difference :: (Y: "
+        "float = 30.0, X: float = 100.0) -> (Value: float) { return "
+        "field_subtract(entry.X, entry.Y) } }",
+        "Values :: library {Inserted :: () -> (Value: float) { return 999.0 "
+        "}Other :: () -> (Value: float) { return 111.0 } }",
     };
     test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
     behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
@@ -1179,12 +1176,12 @@ TEST_CASE(field_source_library_calls_every_field_node)
     };
     REQUIRE(CALLS == FIELD_OP_COUNT - 1);
     char text[8192];
-    int length = snprintf(text, sizeof text, "library \"Nodes\" {\n");
+    int length = snprintf(text, sizeof text, "Nodes :: library {\n");
     for (int i = 0; i < CALLS; i++) {
         length += snprintf(
             text + length,
             sizeof text - (size_t)length,
-            "    \"Node%d\" :: pure fn() -> (Value: float) { return %s }\n",
+            "    Node%d :: () -> (Value: float) { return %s }\n",
             i,
             NODE_CALLS[i].call
         );
@@ -1241,35 +1238,35 @@ TEST_CASE(field_source_library_functions_call_functions)
 {
     const source_catalog_edit sources[] = {
         { .path = "content/libraries/Cave.chibi",
-          .text = "library \"Cave\" {\n"
-                  "\"Rock\" :: pure fn(X: float = 0.0, Y: float = 0.0)\n"
+          .text = "Cave :: library {\n"
+                  "Rock :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
-                  "    return field_negate(\"Shapes\".Pair(entry.X, entry.Y))\n"
+                  "    return field_negate(Shapes.Pair(entry.X, entry.Y))\n"
                   "}\n"
-                  "\"Bad\" :: pure fn(X: float = 0.0) -> (Value: float) {\n"
-                  "    return field_abs(\"Shapes\".Twice(entry.X))\n"
+                  "Bad :: (X: float = 0.0) -> (Value: float) {\n"
+                  "    return field_abs(Shapes.Twice(entry.X))\n"
                   "}\n"
                   "}\n" },
         { .path = "content/libraries/Shapes.chibi",
-          .text = "library \"Shapes\" {\n"
-                  "\"Pair\" :: pure fn(X: float = 0.0, Y: float = 0.0)\n"
+          .text = "Shapes :: library {\n"
+                  "Pair :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
                   "    return field_min(\n"
                   "        Disc(field_subtract(entry.X, 3.0), entry.Y),\n"
                   "        Ring(entry.X, entry.Y))\n"
                   "}\n"
-                  "\"Disc\" :: pure fn(X: float = 0.0, Y: float = 0.0,\n"
+                  "Disc :: (X: float = 0.0, Y: float = 0.0,\n"
                   "    Radius: float = 4.0) -> (Value: float) {\n"
                   "    return field_circle(entry.X, entry.Y, entry.Radius)\n"
                   "}\n"
-                  "\"Ring\" :: pure fn(X: float = 0.0, Y: float = 0.0)\n"
+                  "Ring :: (X: float = 0.0, Y: float = 0.0)\n"
                   "    -> (Value: float) {\n"
                   "    return field_abs(Disc(entry.X, entry.Y, 2.0))\n"
                   "}\n"
-                  "\"Loop\" :: pure fn(X: float = 0.0) -> (Value: float) {\n"
+                  "Loop :: (X: float = 0.0) -> (Value: float) {\n"
                   "    return field_abs(Loop(entry.X))\n"
                   "}\n"
-                  "\"Twice\" :: pure fn(X: float = 0.0) -> (Value: float) {\n"
+                  "Twice :: (X: float = 0.0) -> (Value: float) {\n"
                   "    return entry.X * 2.0\n"
                   "}\n"
                   "}\n" },
@@ -1447,9 +1444,9 @@ TEST_CASE(field_source_library_hot_apply)
     REQUIRE(definition->dirty && definition->unsaved);
     REQUIRE(behavior_asset_equal(definition->working, saved_draft));
 
-    char *renamed = strstr(text, "\"Islands\"");
+    char *renamed = strstr(text, "Islands ::");
     REQUIRE(renamed);
-    memcpy(renamed, "\"Isles\"  ", 9);
+    memcpy(renamed, "Isles  ", 7);
     REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
     REQUIRE(preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(strstr(error, "missing library function"));

@@ -1003,8 +1003,12 @@ nothing may write through a value derived from an argument, state or context,
 update such a value in place, or write through a reference to it, and the
 definition may not store state, send commands, start tasks or suspend. Natives
 must declare pure or world-read access. Copying a parameter into a local and
-changing the local is allowed. A helper that reads a table therefore costs the
-same however large the table is. Debugging keeps the copies.
+changing the local is allowed, and so is assigning fields of the helper's own
+records, text from its arguments included: strings are immutable, so storing
+the caller's text leaves the storage the helper's own. Only reading such bytes
+back as an address, which no lowering emits, makes the helper copy. A helper
+that reads a table therefore costs the same however large the table is.
+Debugging keeps the copies.
 
 Preview source preparation reuses unchanged analysis and executable generations
 through `authoring_sources_prepare_incremental`. Exact source identity/text,

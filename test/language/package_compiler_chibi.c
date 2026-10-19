@@ -6,6 +6,9 @@
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "package_compiler_chibi_source.h"
+#include "runtime/arrays_definition.h"
+#include "runtime/native_capabilities.h"
+#include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -23,17 +26,18 @@
 #include <string.h>
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
- * package to a closure. A fresh runtime host loads it and calls every function
- * on bytecode and SLJIT, and stage zero's own closure of the same package must
- * give the same JSON result. Rejections report their exact message and
- * position. */
+ * package to a closure against the natives the compiler host links. A fresh
+ * runtime host loads it and calls every function on bytecode and SLJIT, and
+ * stage zero's own closure of the same package must give the same JSON
+ * result. Rejections report their exact message and position. */
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
-    CALLS = 6,
+    CALLS = 10,
     COMPILE_BUDGET = 20000000,
     TARGET_BUDGET = 100000
 };
+/* A NULL expected result means the call must fail. */
 typedef struct
 {
     const char *function, *arguments, *expected;
@@ -132,6 +136,65 @@ static const sample samples[] = {
                 "p.second; }",
       .calls = { { "Make", "[1]", "[{\"first\":1,\"second\":2}]" },
                  { "Total", "[{\"first\":2,\"second\":3}]", "[5]" } } },
+    { .name = "arrays",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Squares :: pure fn(n: int) -> int[] {\n"
+                "    out: int[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { out = array_add(out, i * i); i += 1; }\n"
+                "    return out;\n}\n"
+                "Total :: pure fn(xs: int[]) -> int {\n"
+                "    sum: int = 0;\n"
+                "    foreach (x in xs) { if (x == 4) { continue; } sum += x; "
+                "}\n"
+                "    return sum;\n}\n"
+                "Edit :: pure fn() -> int {\n"
+                "    xs: int[] = [1, 2, 3];\n    xs[1] = 20;\n    xs[2] += 5;\n"
+                "    copy := xs;\n    more: int[] = [7, 8];\n    xs = "
+                "append(xs, more);\n"
+                "    return xs[1] + xs[2] + length(xs) * 100 + length(copy) * "
+                "1000;\n}\n"
+                "Points :: pure fn(n: int) -> Point[] {\n"
+                "    ps: Point[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { p: Point = {x: i, y: i * 2}; ps = "
+                "array_add(ps, p); i += 1; }\n"
+                "    return ps;\n}\n"
+                "SumY :: pure fn(ps: Point[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    foreach (p in ps) { total += p.y; if (total > 100) { "
+                "break; } }\n"
+                "    return total + ps[0].x;\n}\n"
+                "Words :: pure fn() -> string[] {\n"
+                "    ws: string[] = [\"a\", \"b\", \"c\"];\n    return "
+                "slice(ws, 1, 2);\n}\n"
+                "Counts :: pure fn(n: int) -> int { return length(Squares(n)) "
+                "+ Total(Squares(n)); }\n"
+                "Pick :: pure fn(xs: int[], i: int) -> int { return xs[i]; }\n"
+                "Index :: pure fn(i: int) -> int { return i; }\n"
+                "Nested :: pure fn(ps: Point[]) -> int {\n"
+                "    total: int = 0;\n    ws: string[] = [\"a\", \"bb\"];\n"
+                "    foreach (p in ps) {\n        if (p.x == 0) { continue; }\n"
+                "        foreach (w in ws) { if (w == \"a\") { continue; } "
+                "total += p.x * 10; }\n    }\n"
+                "    counts: int[] = [0, 0, 0];\n    counts[Index(2)] += 7;\n"
+                "    return total + counts[2];\n}",
+      .calls = { { "Squares", "[4]", "[[0,1,4,9]]" },
+                 { "Total", "[[0,1,4,9]]", "[10]" },
+                 { "Edit", "[]", "[3528]" },
+                 { "Points", "[3]", "[[{\"x\":0,\"y\":0},{\"x\":1,\"y\":2},{\"x\":2,\"y\":4}]]" },
+                 { "SumY", "[[{\"x\":5,\"y\":1},{\"x\":0,\"y\":2}]]", "[8]" },
+                 { "Words", "[]", "[[\"b\",\"c\"]]" },
+                 { "Counts", "[3]", "[4]" },
+                 { "Pick", "[[1,2],2]", NULL },
+                 { "Nested",
+                   "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
+                   "[57]" } } },
+    { .name = "bounds",
+      .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
+                "return xs[i]; }",
+      .calls = { { "Pick", "[[1,2],1]", "[2]" },
+                 { "Pick", "[[1,2],-1]", NULL },
+                 { "Pick", "[[],0]", NULL } } },
     { .name = "unknown name",
       .source = "package facts\nAnswer :: pure fn() -> int { return missing; }",
       .message = "Unknown name 'missing'",
@@ -184,6 +247,47 @@ static const sample samples[] = {
       .message = "call has no value",
       .line = 3,
       .column = 27 },
+    { .name = "untyped array",
+      .source = "package facts\nOne :: pure fn() -> int { xs := [1]; return 0; "
+                "}",
+      .message = "Array literal needs an explicit array type",
+      .line = 2,
+      .column = 33 },
+    { .name = "unknown function",
+      .source = "package facts\nOne :: pure fn() -> int { return Missing(1); }",
+      .message = "Unknown function 'Missing'",
+      .line = 2,
+      .column = 34 },
+    { .name = "index type",
+      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { return "
+                "xs[true]; }",
+      .message = "index needs an int",
+      .line = 2,
+      .column = 46 },
+    { .name = "foreach scalar",
+      .source = "package facts\nOne :: pure fn(n: int) -> int { foreach (x in "
+                "n) { } return 0; }",
+      .message = "foreach needs an array",
+      .line = 2,
+      .column = 47 },
+    { .name = "parameter element",
+      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { xs[0] = 1; "
+                "return 0; }",
+      .message = "element assignment needs a local array",
+      .line = 2,
+      .column = 36 },
+    { .name = "variadic native",
+      .source = "package facts\nOne :: pure fn() -> string { return "
+                "format_text(\"{}\", 1); }",
+      .message = "native 'format_text' is not supported yet",
+      .line = 2,
+      .column = 37 },
+    { .name = "inferred mismatch",
+      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { ys := "
+                "array_add(xs, true); return length(ys); }",
+      .message = "argument differs from its parameter type",
+      .line = 2,
+      .column = 42 },
     { .name = "duplicate field",
       .source = "package facts\nPair :: struct { a: int; a: bool; }",
       .message = "Duplicate field 'a'",
@@ -201,6 +305,9 @@ enum
     SAMPLES = sizeof samples / sizeof *samples
 };
 static compiler_fixture fixture, oracle;
+static native_capabilities *linked;
+/* Compile's native tables per compiler backend, built once from `linked`. */
+static pin_value linked_tables[2][3];
 static arena input, detached;
 static compiler_host *host;
 static compiler_host_result result;
@@ -209,6 +316,9 @@ static void cleanup()
 {
     compiler_fixture_free(&fixture);
     compiler_fixture_free(&oracle);
+    native_capabilities_free(linked);
+    linked = NULL;
+    memset(linked_tables, 0, sizeof linked_tables);
     arena_free(&input);
     arena_free(&detached);
     compiler_host_free(host);
@@ -236,6 +346,116 @@ static bool put(pin_value *row, const char *name, int value)
     const type_field *field = pin_type_field_path(pin_value_type(row), name);
     REQUIRE(field && field->type == PIN_I32);
     pin_write_field(row->ptr, field, (pin_value){ .type = PIN_I32, .i = value });
+    return true;
+}
+static bool put_value(pin_value *row, const char *name, pin_value value)
+{
+    const type_field *field = pin_type_field_path(pin_value_type(row), name);
+    REQUIRE(field && field->type == value.type);
+    pin_write_field(row->ptr, field, value);
+    return true;
+}
+static pin_value row(int b, const char *name)
+{
+    const pin_record *shape = compiler_fixture_record(&fixture, b, PACKAGE, name, &input);
+    assert(shape);
+    pin_value v = { .type = PIN_STRUCT,
+                    .ptr = arena_alloc(&input, shape->type.size),
+                    .record = shape,
+                    .type_name = shape->type.name };
+    memset(v.ptr, 0, shape->type.size);
+    return v;
+}
+static pin_value rows(const pin_value *items, int count, pin_type type, const pin_record *shape)
+{
+    pin_array *
+        array = pin_array_snapshot_allocate(&input, type, shape ? shape->type.name : NULL, count);
+    array->record = shape;
+    for (int i = 0; i < count; i++) {
+        array->items[i] = items[i];
+    }
+    return (pin_value){ .type = type,
+                        .container = PIN_CONTAINER_ARRAY,
+                        .ptr = array,
+                        .record = shape,
+                        .type_name = shape ? shape->type.name : NULL };
+}
+/* A port's storage as Compile takes it: 0 for a type the call infers, -1 for
+ * one the compiler cannot pass. */
+static int port_storage(script_type type)
+{
+    unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
+    if (type.flags & SCRIPT_TYPE_UNTYPED) {
+        return type.flags & ~inferred ? -1 : 0;
+    }
+    return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
+                                                                  : (int)type.storage;
+}
+/* The data functions the compiler host links: no flow, outcomes or
+ * suspension. */
+static bool natives(int b, pin_value *out)
+{
+    if (linked_tables[b][0].ptr) {
+        memcpy(out, linked_tables[b], sizeof linked_tables[b]);
+        return true;
+    }
+    if (!linked) {
+        const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                                 NATIVE_ARRAY_DEFINITION_PACK,
+                                                 COMPILER_JSON_DEFINITION_PACK,
+                                                 COMPILER_SYNTAX_DEFINITION_PACK };
+        char error[256];
+        linked = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+        REQUIRE(linked);
+    }
+    const script_catalog *catalog = native_capabilities_catalog(linked);
+    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind != SCRIPT_CAPABILITY_FUNCTION ||
+            c->flow.kind != SCRIPT_FLOW_ACCESS_NONE || c->outcome_count ||
+            (c->effects & SCRIPT_EFFECT_SUSPEND)) {
+            continue;
+        }
+        pin_value function = row(b, "Native");
+        REQUIRE(put_value(&function, "name", text(c->name)));
+        REQUIRE(put(&function, "first", acount(ports)));
+        REQUIRE(put(&function, "parameters", c->parameter_count));
+        REQUIRE(put(&function, "results", c->result_count));
+        REQUIRE(put_value(
+            &function,
+            "variadic",
+            (pin_value){ .type = PIN_BOOL, .b = c->variadic || c->variadic_optional }
+        ));
+        apush(functions, function);
+        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
+            script_type type = j < c->parameter_count
+                                 ? c->parameters[j].type
+                                 : c->results[j - c->parameter_count].type;
+            pin_value port = row(b, "Port");
+            REQUIRE(put(&port, "storage", port_storage(type)));
+            REQUIRE(put(&port, "container", (int)type.container));
+            apush(ports, port);
+        }
+        apush(identities, ((pin_value){ .type = PIN_U64, .u64 = c->id }));
+        apush(
+            identities,
+            ((pin_value){ .type = PIN_U64,
+                          .u64 = script_catalog_capability_abi(catalog, c) })
+        );
+    }
+    out[0] = rows(
+        functions,
+        acount(functions),
+        PIN_STRUCT,
+        functions ? functions[0].record : NULL
+    );
+    out[1] = rows(ports, acount(ports), PIN_STRUCT, ports ? ports[0].record : NULL);
+    out[2] = rows(identities, acount(identities), PIN_U64, NULL);
+    memcpy(linked_tables[b], out, sizeof linked_tables[b]);
+    afree(functions);
+    afree(ports);
+    afree(identities);
     return true;
 }
 static bool get(const pin_value *row, const char *name, pin_value *out)
@@ -272,7 +492,7 @@ static bool prepare()
 static bool compile(int b, const sample *s, pin_value *out)
 {
     const char *paths[] = { "facts/Main.chibi" };
-    pin_value args[6];
+    pin_value args[9];
     args[0] = text("/project");
     args[1] = strings(paths, 1);
     args[2] = strings(&s->source, 1);
@@ -292,6 +512,10 @@ static bool compile(int b, const sample *s, pin_value *out)
     REQUIRE(put(&args[3], "container_offset", (int)offsetof(pin_value, container)));
     REQUIRE(put(&args[3], "name_offset", (int)offsetof(pin_value, type_name)));
     REQUIRE(put(&args[3], "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(&args[3], "count_offset", (int)offsetof(pin_array, count)));
+    REQUIRE(put(&args[3], "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(&args[3], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
+    REQUIRE(put(&args[3], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
     args[4] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int count = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
@@ -299,8 +523,9 @@ static bool compile(int b, const sample *s, pin_value *out)
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
     args[5] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+    REQUIRE(natives(b, &args[6]));
     REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 6, COMPILE_BUDGET, &detached, out)
+        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 9, COMPILE_BUDGET, &detached, out)
     );
     return true;
 }
@@ -326,25 +551,30 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
         TARGET_BUDGET,
         &result
     );
-    if (!valid || strcmp(result.json, call->expected)) {
+    bool passed = valid && result.flow_status == FLOW_OK;
+    bool expected = call->expected ? passed && !strcmp(result.json, call->expected)
+                                   : !passed;
+    if (!expected) {
         fprintf(
             stderr,
-            "package compiler run %s%s: %s %s\n",
+            "package compiler run %s%s: %d %s %s\n",
             call->function,
             call->arguments,
-            valid ? result.json : "",
+            result.flow_status,
+            valid && result.json ? result.json : "",
             result.diagnostic
         );
     }
-    REQUIRE(valid && result.flow_status == FLOW_OK && !strcmp(result.json, call->expected));
+    REQUIRE(expected);
     compiler_host_free(host);
     host = NULL;
     free(result.json);
     result = (compiler_host_result){ 0 };
     return true;
 }
-/* Stage zero's closure of the same package must give the same result. */
-static bool agree(const sample *s, const sample_call *call)
+/* Stage zero's closure of the same package, whose calls must give the same
+ * results. */
+static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
 {
     const source_package_input inputs[] = {
         { "facts/Main.chibi", s->source, strlen(s->source) }
@@ -354,16 +584,13 @@ static bool agree(const sample *s, const sample_call *call)
     const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
     REQUIRE(root && root->module);
     char error[256];
-    unsigned char *prepared = NULL, *closure = NULL;
-    size_t size = 0, length = 0;
+    unsigned char *prepared = NULL;
+    size_t size = 0;
     REQUIRE(execution_prepared_write(root->module, &prepared, &size, error, sizeof error));
     package_module row = { root->identity, execution_module_id(root->module), prepared, size };
-    bool written = compiler_artifact_write(&row, 1, row.id, &closure, &length, error, sizeof error);
+    bool written = compiler_artifact_write(&row, 1, row.id, closure, length, error, sizeof error);
     free(prepared);
     REQUIRE(written);
-    bool ran = run(closure, length, call, 0);
-    free(closure);
-    REQUIRE(ran);
     return true;
 }
 TEST_CASE(package_compiler_builds_runnable_packages)
@@ -424,19 +651,18 @@ TEST_CASE(package_compiler_builds_runnable_packages)
                 bytes[k] = array->items[k].u8;
             }
             arena_free(&detached);
-            for (int c = 0; c < CALLS && s->calls[c].function; c++) {
-                for (int backend = 0; backend < 2; backend++) {
-                    bool ran = run(bytes, length, &s->calls[c], backend);
-                    if (!ran) {
-                        free(bytes);
-                    }
-                    REQUIRE(ran);
+            unsigned char *expected = NULL;
+            size_t expected_length = 0;
+            bool ran = b || oracle_closure(s, &expected, &expected_length);
+            for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+                for (int backend = 0; ran && backend < 2; backend++) {
+                    ran = run(bytes, length, &s->calls[c], backend);
                 }
-                if (!b) {
-                    REQUIRE(agree(s, &s->calls[c]));
-                }
+                ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
             }
             free(bytes);
+            free(expected);
+            REQUIRE(ran);
         }
     }
     return true;

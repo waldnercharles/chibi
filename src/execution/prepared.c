@@ -941,12 +941,14 @@ execution_module *execution_prepared_read_budget(
     if (!w->error && prepared_records_finalize(&c)) {
         preparation_budget(&c);
     }
+    /* The verifier's own diagnostic, kept for the reader's message. */
+    char verification[256] = "";
     if (!w->error) {
         for (int i = count - 1; i >= 0; i--) {
             size_t before = arena_storage_bytes(&c.functions[i]->owned);
             size_t limit = *remaining > SIZE_MAX - before ? SIZE_MAX
                                                           : before + *remaining;
-            if (!behavior_function_prepare_definition(c.functions[i], limit, error, size)) {
+            if (!behavior_function_prepare_definition(c.functions[i], limit, verification, sizeof verification)) {
                 w->error = "prepared definition verification failed";
                 break;
             }
@@ -975,7 +977,7 @@ execution_module *execution_prepared_read_budget(
     if (!m) {
         *remaining = initial;
         if (w->error && size) {
-            snprintf(error, size, "%s", w->error);
+            snprintf(error, size, *verification ? "%s: %s" : "%s", w->error, verification);
         }
         if (c.plan) {
             discard_functions(&c);

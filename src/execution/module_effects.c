@@ -1613,16 +1613,21 @@ enum
     SHARE_CONTEXT = -4,
     SHARE_PASSES = 64
 };
+/* Text is immutable, so storing the caller's text in an own cell or record
+ * leaves that storage the definition's own: `texts` marks such cells and
+ * `text_memory` storage the analysis cannot place. Only reading those bytes
+ * back as an address could reach the caller, so such a read is tainted.
+ * `referenced` marks the cells a value reference may write. */
 typedef struct
 {
     const behavior_function *f;
-    bool *slots, *cells, *locals;
+    bool *slots, *cells, *locals, *texts, *referenced;
     /* Per slot: the cell or context it addresses; per cell: the address it
      * holds, or for references the root cell they write. */
     int *addresses, *contents;
     /* Small nonnegative integer constants a slot or cell holds. */
     int *literals, *cell_literals;
-    bool memory, results, unsafe, changed;
+    bool memory, results, text_memory, unsafe, changed;
 } share_flow;
 
 static bool pointer_value(pin_value v, behavior_value_kind kind)
@@ -1630,6 +1635,10 @@ static bool pointer_value(pin_value v, behavior_value_kind kind)
     return kind != BEHAVIOR_VALUE || v.container != PIN_CONTAINER_SINGLE ||
            v.type == BF_POINTER_TYPE || v.type == PIN_STRUCT ||
            v.type == PIN_STR || v.type == PIN_NAME || v.type == PIN_UNION;
+}
+static bool text_type(pin_type type)
+{
+    return type == PIN_STR || type == PIN_NAME;
 }
 static bool pointer_slot(const behavior_function *f, int slot)
 {
@@ -1691,6 +1700,37 @@ static bool share_load(const share_flow *s, int address_slot)
     }
     return s->memory || share_any_cell(s);
 }
+/* Whether an address may read the caller's text as a pointer. */
+static bool share_text(const share_flow *s, int address_slot)
+{
+    int address = s->addresses[address_slot];
+    if (address >= 0) {
+        return s->texts[address];
+    }
+    if (address == SHARE_CONTEXT || address == SHARE_RESULTS) {
+        return false;
+    }
+    if (s->text_memory) {
+        return true;
+    }
+    for (int cell = 0; cell < acount(s->f->data_values); cell++) {
+        if (s->texts[cell]) {
+            return true;
+        }
+    }
+    return false;
+}
+/* A write through a value reference may change any cell such a reference
+ * roots, so none of them keeps a known address or literal. */
+static void share_forget_referenced(share_flow *s, int written)
+{
+    for (int cell = 0; cell < acount(s->f->data_values); cell++) {
+        if (cell == written || (written < 0 && s->referenced[cell])) {
+            share_set(s, &s->contents[cell], SHARE_UNKNOWN);
+            share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
+        }
+    }
+}
 /* An address derived from `base` reaches what the base can reach. */
 static bool share_derived(const share_flow *s, int base)
 {
@@ -1721,10 +1761,12 @@ static void share_host(share_flow *s, int pc)
 {
     const behavior_function *f = s->f;
     const behavior_function_host_call *host = &f->host_calls[f->instructions[pc].target];
-    bool inputs = false;
+    bool inputs = false, text = false;
     for (int cell = host->first; cell < host->result_first; cell++) {
         inputs |= share_cell(s, cell);
+        text |= s->texts[cell];
     }
+    share_taint(s, &s->text_memory, text);
     bool output = inputs;
     int root = SHARE_UNKNOWN;
     uint64_t id = intrinsic(host);
@@ -1755,29 +1797,48 @@ static void share_host(share_flow *s, int pc)
                 root = share_target(s, host->first + 4);
                 output = root < 0 || s->contents[host->first] != SHARE_CONTEXT ||
                          s->cell_literals[host->first + 2] != LANGUAGE_REFERENCE_VALUE;
+                if (root >= 0) {
+                    share_taint(s, &s->referenced[root], true);
+                }
                 break;
             case EXECUTION_INTRINSIC_REFERENCE_WRITE: {
+                /* Text the value cell holds marked `texts`, not its taint, and
+                 * the text input above records where it went. */
                 int written = s->contents[host->first];
                 bool value = share_cell(s, host->first + 1);
                 s->unsafe |= share_cell(s, host->first) || (written < 0 && value);
                 if (written >= 0) {
                     share_taint(s, &s->cells[written], value);
                 }
+                share_forget_referenced(s, written);
                 output = false;
                 break;
             }
             case EXECUTION_INTRINSIC_ARRAY_PUSH:
             case EXECUTION_INTRINSIC_ARRAY_STORE:
-            case EXECUTION_INTRINSIC_ARRAY_EXTEND:
-                s->unsafe |= share_target(s, host->first) < 0;
+            case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+                int target = share_target(s, host->first);
+                s->unsafe |= target < 0;
+                if (target >= 0) {
+                    share_set(s, &s->contents[target], SHARE_UNKNOWN);
+                    share_set(s, &s->cell_literals[target], SHARE_UNKNOWN);
+                }
                 output = false;
                 break;
+            }
             default: s->unsafe = true; break;
         }
     }
     for (int k = 0; k < host->result_count; k++) {
         int cell = host->result_first + k;
         share_taint(s, &s->cells[cell], output);
+        /* A text result may be the caller's text; others hold fresh storage
+         * the text entered, which `text_memory` covers. */
+        share_taint(
+            s,
+            &s->texts[cell],
+            text && text_type(f->data_values[cell].initial.type)
+        );
         share_set(s, &s->contents[cell], root);
         share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
     }
@@ -1860,23 +1921,26 @@ static void share_instruction(share_flow *s, int pc)
         }
         case BF_LOAD:
         case BF_READ:
-            share_define(s, out, share_load(s, i->left), SHARE_UNKNOWN, SHARE_UNKNOWN);
+            share_define(s, out, share_load(s, i->left) || share_text(s, i->left), SHARE_UNKNOWN, SHARE_UNKNOWN);
             break;
         case BF_WRITE: {
             int address = s->addresses[i->right];
-            bool value = s->slots[i->left];
+            bool text = text_type(i->type) && s->slots[i->left];
+            bool value = s->slots[i->left] && !text;
             s->unsafe |= s->slots[i->right];
             if (address == SHARE_CONTEXT) {
                 /* Only the scalar exit and outcome fields, as a return writes. */
                 s->unsafe |= !control_write(i, (origin){ .context = true });
             } else if (address >= 0) {
                 share_taint(s, &s->cells[address], value);
+                share_taint(s, &s->texts[address], text);
                 share_set(s, &s->contents[address], s->addresses[i->left]);
                 share_set(s, &s->cell_literals[address], s->literals[i->left]);
             } else if (address == SHARE_RESULTS) {
-                share_taint(s, &s->results, value);
+                share_taint(s, &s->results, value || text);
             } else {
                 share_scatter(s, value);
+                share_taint(s, &s->text_memory, text);
             }
             break;
         }
@@ -1986,10 +2050,21 @@ static bool share_local(const behavior_function *f)
     s.slots = xcalloc((size_t)slots + 1, sizeof *s.slots);
     s.cells = xcalloc((size_t)cells + 1, sizeof *s.cells);
     s.locals = xcalloc((size_t)locals + 1, sizeof *s.locals);
+    s.texts = xcalloc((size_t)cells + 1, sizeof *s.texts);
+    s.referenced = xcalloc((size_t)cells + 1, sizeof *s.referenced);
     s.addresses = share_column(slots);
     s.literals = share_column(slots);
     s.contents = share_column(cells);
     s.cell_literals = share_column(cells);
+    /* A cell no instruction writes keeps its initial value, as reference
+     * kinds do; writes merge with it. */
+    for (int cell = 0; cell < cells; cell++) {
+        pin_value initial = f->data_values[cell].initial;
+        if (initial.type == PIN_I32 &&
+            initial.container == PIN_CONTAINER_SINGLE && initial.i >= 0) {
+            s.cell_literals[cell] = initial.i;
+        }
+    }
     int passes = 0;
     do {
         s.changed = false;
@@ -2001,6 +2076,8 @@ static bool share_local(const behavior_function *f)
     free(s.slots);
     free(s.cells);
     free(s.locals);
+    free(s.texts);
+    free(s.referenced);
     free(s.addresses);
     free(s.literals);
     free(s.contents);

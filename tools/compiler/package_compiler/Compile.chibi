@@ -71,6 +71,7 @@ BoolStorage: int : 1;
 IntStorage: int : 6;
 WordStorage: int : 9;
 TextStorage: int : 13;
+HandleStorage: int : 14;
 StructStorage: int : 15;
 UnionStorage: int : 18;
 RecordDecl: int : 0;

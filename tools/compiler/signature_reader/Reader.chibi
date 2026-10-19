@@ -509,7 +509,7 @@ Signature :: pure fn(environment: Environment, tree: Tree, node: int, scope: int
     if (Kind(tree, node, "type")) {
         switch Name(tree, Field(tree, node, "name"), document) { case .Name(name, prefix):
             named_type := false;
-            found := -1;
+            found: int = -1;
             switch environment { case .Tables(names, constructor_tables, pointer_size):
                 switch names { case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                            identity, package_scope, has_native, has_documents, entity_id):

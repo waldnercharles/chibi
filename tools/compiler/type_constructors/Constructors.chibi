@@ -80,7 +80,7 @@ Select :: pure fn(selection: Selections, value: named.Value, catalog_type: int, 
 SelectMember :: pure fn(environment: Environment, selection: Selections, value: named.Value, member: int) -> Selections {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
-            nested := -1;
+            nested: int = -1;
             if ((flags & 256) != 0 && (flags & 2048) == 0 && container == 0) {
                 nested = FindDefinition(environment, nominal);
             }
@@ -180,7 +180,7 @@ Task :: pure fn(environment: Environment, result: int, function: uint64) -> Plan
                     0, false, variants, fields, outputIDs, diagnostics);
             }
             if ((types[result].flags & 8) != 0) {
-                capability := -1;
+                capability: int = -1;
                 index: int = 0;
                 while (index < length(capabilities) && capability < 0) {
                     if (named.IDAt(ids, capabilities[index].id_slot) == function) { capability = index; }
@@ -194,7 +194,7 @@ Task :: pure fn(environment: Environment, result: int, function: uint64) -> Plan
                         index += 1;
                     }
                 } else {
-                    function_index := -1;
+                    function_index: int = -1;
                     index = 0;
                     while (index < length(functions) && function_index < 0) {
                         candidate := functions[index];
@@ -224,7 +224,7 @@ Await :: pure fn(environment: Environment, success: int, request: Request) -> Pl
         case .Tables(types, ids, definitions, variants, capabilities, functions, symbols, results):
             value := named.TypeAt(types, ids, success);
             cancelled := (types[success].flags & 512) != 0;
-            definition := -1;
+            definition: int = -1;
             if ((types[success].flags & 256) != 0) { definition = FindDefinition(environment, named.IDAt(ids, types[success].nominal_slot)); }
             if (definition >= 0) {
                 index: int = 0;

@@ -23,6 +23,9 @@
 #include "types/value_document.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <float.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1116,12 +1119,12 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     pin_read_field(row->ptr, field, out);
     return true;
 }
-static uint64_t tag(int b, const char *variant)
+static uint64_t variant_tag(int b, const char *union_name, const char *variant)
 {
     const authoring_package *owner = compiler_fixture_package(&fixture, b, PACKAGE);
     const script_catalog_type *type = script_catalog_type_by_id(
         owner->exports->metadata,
-        compiler_fixture_export(&fixture, b, PACKAGE, "Result")
+        compiler_fixture_export(&fixture, b, PACKAGE, union_name)
     );
     for (int i = 0; type && i < type->variant_count; i++) {
         if (!strcmp(type->variants[i].name, variant)) {
@@ -1129,6 +1132,10 @@ static uint64_t tag(int b, const char *variant)
         }
     }
     return 0;
+}
+static uint64_t tag(int b, const char *variant)
+{
+    return variant_tag(b, "Result", variant);
 }
 static bool prepare()
 {
@@ -1363,9 +1370,157 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
     host = NULL;
     return true;
 }
+/* Literals whose binary64 and binary32 readings LiteralBits must agree on:
+ * exact and halfway values, the ends of both ranges, long and hexadecimal
+ * spellings. */
+static const char *const literal_spellings[] = {
+    "0",
+    "0.0",
+    "000",
+    "1",
+    "007.5",
+    "0.5",
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.001",
+    "384.0",
+    "1e10",
+    "1e22",
+    "1e23",
+    "3.14159265358979323846264338327950288",
+    "123456789012345678901234567890",
+    "9007199254740992",
+    "9007199254740993",
+    "9007199254740995",
+    "18446744073709551615",
+    "1.00000000000000011102230246251565404236316680908203125",
+    "1.00000000000000011102230246251565404236316680908203124",
+    "1.00000000000000011102230246251565404236316680908203126",
+    "1.000000059604644775390625",
+    "1.000000059604644775390624",
+    "1.7976931348623157e308",
+    "1.7976931348623158e308",
+    "1.7976931348623159e308",
+    "1e308",
+    "1e309",
+    "2.2250738585072014e-308",
+    "2.2250738585072011e-308",
+    "4.9e-324",
+    "1e-400",
+    "3.4028234663852886e38",
+    "3.4028235e38",
+    "3.4028235677973366e38",
+    "3.4028236e38",
+    "1.17549435e-38",
+    "1.4e-45",
+    "1e-46",
+    "1e-30",
+    "0x0",
+    "0x1F",
+    "0x10000000000001",
+    "0x1FFFFFFFFFFFFF",
+    "0x20000000000001",
+    "0x8000000000000000",
+    "0xFFFFFFFFFFFFFFFF",
+    "1e0",
+    "1E+2",
+    "25e-1",
+    "0.000000000000000000001",
+    "100000000000000000000000000000000000000000000000000",
+    "1.5e300",
+    "6.02214076e23",
+};
+/* The C library's reading, the binary64 nearest the literal and the binary32
+ * nearest that, which is stage zero's wherever long double is double. */
+static void literal_reading(const char *text, bool *finite, uint64_t *wide, bool *fits, uint64_t *narrow)
+{
+    char *end;
+    errno = 0;
+    double value = strtod(text, &end);
+    *finite = !*end && isfinite(value) && errno != ERANGE;
+    memcpy(wide, &value, sizeof *wide);
+    *fits = fabs(value) <= FLT_MAX;
+    float single = (float)value;
+    uint32_t bits;
+    memcpy(&bits, &single, sizeof bits);
+    *narrow = bits;
+}
+static bool literal_agrees(const char *spelling, bool negative)
+{
+    char text[512];
+    snprintf(text, sizeof text, "%s%s", negative ? "-" : "", spelling);
+    bool finite, fits;
+    uint64_t wide, narrow;
+    literal_reading(text, &finite, &wide, &fits, &narrow);
+    pin_value args[] = { (pin_value){ .type = PIN_STR, .str = spelling },
+                         (pin_value){ .type = PIN_BOOL, .b = negative } };
+    pin_value out;
+    REQUIRE(
+        compiler_fixture_call(&fixture, 1, PACKAGE, "LiteralBits", args, 2, COMPILE_BUDGET, &detached, &out)
+    );
+    const pin_union *value = out.ptr;
+    bool read = value->tag == variant_tag(1, "FloatBits", "Finite");
+    bool same = read == finite;
+    if (same && read) {
+        same = value->values[0].u64 == wide && value->values[1].b == fits &&
+               (!fits || value->values[2].u64 == narrow);
+    }
+    if (!same) {
+        fprintf(
+            stderr,
+            "package compiler literal %s: expected %d %016llx %d %08llx, read "
+            "%d %016llx %d %08llx\n",
+            text,
+            finite,
+            (unsigned long long)wide,
+            fits,
+            (unsigned long long)narrow,
+            read,
+            read ? (unsigned long long)value->values[0].u64 : 0ull,
+            read && value->values[1].b,
+            read ? (unsigned long long)value->values[2].u64 : 0ull
+        );
+    }
+    arena_free(&detached);
+    return same;
+}
+/* LiteralBits reads number literals of floating types as the C library does:
+ * the listed spellings, both signs, and generated ones across the binary64
+ * range. */
+static bool literals_agree()
+{
+    for (int i = 0; i < (int)(sizeof literal_spellings / sizeof *literal_spellings);
+         i++) {
+        REQUIRE(literal_agrees(literal_spellings[i], false));
+        REQUIRE(literal_agrees(literal_spellings[i], true));
+    }
+    uint32_t state = 12345;
+    for (int i = 0; i < 120; i++) {
+        char spelling[96];
+        int length = 0;
+        state = state * 1103515245u + 12345u;
+        int digits = 1 + (int)(state >> 16) % 19;
+        for (int d = 0; d < digits; d++) {
+            state = state * 1103515245u + 12345u;
+            spelling[length++] = (char)('0' + (state >> 16) % 10);
+            if (d == digits / 2 && (state & 1)) {
+                spelling[length++] = '.';
+            }
+        }
+        state = state * 1103515245u + 12345u;
+        int exponent = (int)((state >> 8) % 640) - 330;
+        length += snprintf(spelling + length, sizeof spelling - (size_t)length, "e%d", exponent);
+        REQUIRE(literal_agrees(spelling, false));
+    }
+    return true;
+}
 static bool run_samples(bool types)
 {
     REQUIRE(prepare());
+    if (!types) {
+        REQUIRE(literals_agree());
+    }
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < (int)SAMPLES; i++) {
             const sample *s = &samples[i];

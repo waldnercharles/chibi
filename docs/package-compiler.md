@@ -175,14 +175,26 @@ Each package is its own module, assembled dependencies first:
 Runtime sources record each instruction's origin. Debugger points and watches
 are not emitted yet; they must be before stage one becomes the normal compiler.
 
+`Number.chibi` reads number literals of floating types as stage zero does:
+the binary64 nearest the literal, and the binary32 nearest that binary64.
+Stage zero calls `strtold` and narrows; where `long double` is `double`, as on
+macOS arm64, that is the same. The reading ports the slow path of Odin's
+`core:strconv` (`decimal_to_float_bits` over `core:strconv/decimal`, from Go's
+`strconv`). The literal becomes a decimal of up to 800 digits that shifts by
+powers of two until its integer part is the mantissa rounded half to even,
+using only integer arithmetic. Odin's table of powers of five for left shifts
+is replaced by computing the carry's digits directly. As stage zero's
+`strtold` does, the reading reports overflow, and underflow to zero or a
+subnormal, as out of range, and it reports whether the value fits a binary32.
+
 ## Test
 
 Two selectors compile 85 samples on both compiler backends, each under its
 own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (9,788 assertions in
-  27.4 s);
+  arrays, strings and natives, every rejection, and the floating literal
+  readings (12,959 assertions in 29.7 s);
 - `tool language-package-compiler-chibi-types`: unions, imports, constants,
   patterns, scopes, integer types and inferred arrays (3,039 assertions in
   28.6 s).
@@ -197,6 +209,12 @@ local array in place: doubling the count at most doubles the values it copies.
 Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
+
+`LiteralBits`, stage zero's build of it, must read 56 listed spellings, with
+both signs, and 120 generated ones across the binary64 range exactly as the C
+library's `strtod` and a narrowing to float do. The listed spellings cover
+halfway cases, both ranges' ends, binary64 subnormals, leading zeros and
+hexadecimal integers.
 
 Compiling is slow. In this build, compiling all the samples takes about 17 s
 of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT

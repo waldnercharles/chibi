@@ -725,11 +725,14 @@ The bounded authored package compiler (PR #449,
 `tools/compiler/bounded_compiler`) now runs. Stage zero prepares its 18-file
 closure, and the authored `Compile` entry turns one-function source packages
 into CHIBICLO artifacts. Those artifacts run on bytecode and SLJIT. On macOS,
-`language-bounded-compiler-chibi` passes 42 sources on both compiler backends,
-with 28 accepted payloads and 56 target runs, in 15.9 s. The expression subset
-is deliberately small (see `docs/bounded-authored-compiler.md`). The inner
-CHIBIPRE payload still comes from the native finalizer, so this is not stage
-one or stage two.
+`language-bounded-compiler-chibi` passes 43 sources on both compiler backends,
+with 28 accepted payloads and 56 target runs. The expression subset is
+deliberately small (see `docs/bounded-authored-compiler.md`). Since PR #454 the
+compiler also writes its own CHIBIPRE module and CHIBICLO closure through the
+authored prepared writer, so only the raw parser is native after bootstrap.
+The runtime verifies and finalizes the unoptimized definition on load; the
+target supplies its header ABI and instruction ordinals. The native scalar
+finalizer is gone. One scalar function is not stage one or stage two.
 
 Self-hosting needs arrays that grow in linear time, and they did not. Every
 `array_add` copied the whole array and every element write snapshotted the
@@ -752,7 +755,7 @@ every byte on both compiler backends. Its `Fingerprint` and `Closure` match the
 native fingerprint and CHIBICLO writer. A call copies record-array arguments
 and checks every item of a borrowed scalar array, so the writer keeps its
 tables in one function; stage-one code must do the same until borrowing covers
-records. Nothing calls the writer in production yet.
+records. The bounded compiler is its first caller.
 
 The following evidence belongs to the unchanged prior compiler checkpoint:
 

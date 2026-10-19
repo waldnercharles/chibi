@@ -8,6 +8,7 @@
 #include "package_paths_chibi_source.h"
 #include "package_routes_chibi_source.h"
 #include "package_snapshot_chibi_source.h"
+#include "prepared_writer_chibi_source.h"
 #include "package_syntax_chibi_source.h"
 #include "scalar_lowering_chibi_source.h"
 #include "signature_reader_chibi_source.h"
@@ -17,7 +18,7 @@
 
 static const char BOUNDED_COMPILE_SOURCE[] = { @CHIBI_BOUNDED_COMPILE_BYTES@ 0 };
 static const char BOUNDED_EXPRESSION_SOURCE[] = { @CHIBI_BOUNDED_EXPRESSION_BYTES@ 0 };
-static const char BOUNDED_ARTIFACT_SOURCE[] = { @CHIBI_BOUNDED_ARTIFACT_BYTES@ 0 };
+static const char BOUNDED_PREPARE_SOURCE[] = { @CHIBI_BOUNDED_PREPARE_BYTES@ 0 };
 
 #define BOUNDED_SOURCE(PATH, VALUE) { PATH, VALUE, sizeof VALUE - 1 }
 #define BOUNDED_COMPILER_SOURCE_INPUTS \
@@ -36,8 +37,9 @@ static const char BOUNDED_ARTIFACT_SOURCE[] = { @CHIBI_BOUNDED_ARTIFACT_BYTES@ 0
     BOUNDED_SOURCE("package_graph/Graph.chibi", PACKAGE_GRAPH_CHIBI_SOURCE), \
     BOUNDED_SOURCE("package_paths/Paths.chibi", PACKAGE_PATHS_CHIBI_SOURCE), \
     BOUNDED_SOURCE("scalar_lowering/Lower.chibi", SCALAR_LOWERING_CHIBI_SOURCE), \
+    BOUNDED_SOURCE("prepared_writer/Writer.chibi", PREPARED_WRITER_CHIBI_SOURCE), \
     BOUNDED_SOURCE("bounded_compiler/Compile.chibi", BOUNDED_COMPILE_SOURCE), \
     BOUNDED_SOURCE("bounded_compiler/Expression.chibi", BOUNDED_EXPRESSION_SOURCE), \
-    BOUNDED_SOURCE("bounded_compiler/Artifact.chibi", BOUNDED_ARTIFACT_SOURCE)
+    BOUNDED_SOURCE("bounded_compiler/Prepare.chibi", BOUNDED_PREPARE_SOURCE)
 
 #endif

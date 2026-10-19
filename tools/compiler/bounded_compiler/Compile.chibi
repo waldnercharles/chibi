@@ -9,12 +9,12 @@ import named "project:named_binding"
 import constructors "project:type_constructors"
 import lower "project:scalar_lowering"
 import syntax "project:syntax_diagnostics"
+import writer "project:prepared_writer"
 import strings "core:strings"
 
 // An explicit package source snapshot is the complete input. No native source
-// analyzer, package preparer or old compiler is reachable from this entry.
-// Stage zero still builds this compiler closure, and the private prepared
-// payload capability still owns native verification/finalization/inner encoding.
+// analyzer, package preparer, finalizer or old compiler is reachable from this
+// entry; only the raw parser is native. Stage zero still builds this closure.
 Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
     Compiled(module: uint64, function_id: uint64, bytes: byte[])
@@ -101,7 +101,8 @@ ReadSignature :: pure fn(environment: reader.Environment, tree: reader.Tree, nod
 }
 
 CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
-                           identity: string, keys: string[], abi: lower.Target) -> Result {
+                           identity: string, keys: string[], abi: lower.Target,
+                           prepared_abi: uint64, opcodes: int[]) -> Result {
     if (!DirectToken(tree, function, "pure") || reader.Field(tree, function, "type_parameters") >= 0) {
         return SourceFailure(tree, function, document, "bounded compiler requires a nongeneric pure function");
     }
@@ -174,21 +175,22 @@ CompileFunction :: pure fn(tree: reader.Tree, function: int, document: int,
                     return SourceFailure(tree, expression, document, diagnostics[0].message);
                 case .Ready(target, variable_ids, defaults, results, slots, locals, origins, documents, code):
                     module := binding.ID("module", identity);
-                    // A narrow producer capability receives only the authored
-                    // plan, IDs and signature. It never receives source text.
-                    prepared := compiler_prepared_scalar(plan, module, function_id, name, result_storage);
-                    if (prepared.diagnostic != "") {
-                        return SourceFailure(tree, function, document, prepared.diagnostic);
-                    }
-                    if (length(prepared.bytes) == 0 || length(prepared.bytes) > 65536) {
+                    prepared := Prepare(plan, module, function_id, name, prepared_abi, opcodes);
+                    if (length(prepared) == 0 || length(prepared) > 65536) {
                         return SourceFailure(tree, function, document, "bounded prepared payload exceeds its output limit");
                     }
-                    return Result.Compiled(module, function_id, Artifact(identity, module, prepared.bytes));
+                    ids: uint64[] = [module];
+                    names: string[] = [identity];
+                    starts: int[] = [0];
+                    lengths: int[] = [length(prepared)];
+                    return Result.Compiled(module, function_id,
+                        writer.Closure(module, ids, names, prepared, starts, lengths));
             }
     }
 }
 
-CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target) -> Result {
+CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target,
+                          prepared_abi: uint64, opcodes: int[]) -> Result {
     switch source {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
@@ -237,17 +239,22 @@ CompileSnapshot :: pure fn(source: snapshot.Result, abi: lower.Target) -> Result
             switch analysis.TreeForDocument(source, document) {
                 case .Missing: return InputFailure(document, "bounded compiler lost its retained source tree");
                 case .Parsed(tree, root):
-                    return CompileFunction(tree, function, document, documents[document].identity, keys, abi);
+                    return CompileFunction(tree, function, document, documents[document].identity,
+                        keys, abi, prepared_abi, opcodes);
             }
     }
 }
 
-Compile :: pure fn(project: string, paths: string[], sources: string[], abi: lower.Target) -> Result {
+// `prepared_abi` is the target's prepared header ABI, and `opcodes` the
+// instruction each scalar wire opcode names on it.
+Compile :: pure fn(project: string, paths: string[], sources: string[], abi: lower.Target,
+                   prepared_abi: uint64, opcodes: int[]) -> Result {
     if (length(paths) < 1 || length(paths) > 3 || length(sources) != length(paths)) {
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }
     if (strings.ByteLength(project) == 0 || strings.ByteLength(project) > 240 ||
-        abi.schema != 1 || abi.prepared != 15 || (abi.pointer_storage != 7 && abi.pointer_storage != 9)) {
+        abi.schema != 1 || abi.prepared != 15 || (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
+        prepared_abi == 0 || length(opcodes) != WireOpcodes) {
         return InputFailure(-1, "unsupported bounded compiler root or target");
     }
     inputs: snapshot.Input[] = [];
@@ -266,5 +273,5 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], abi: low
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
         has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
     collections: routes.Collection[] = [];
-    return CompileSnapshot(snapshot.Build(options, collections, inputs, sizes), abi);
+    return CompileSnapshot(snapshot.Build(options, collections, inputs, sizes), abi, prepared_abi, opcodes);
 }

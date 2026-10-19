@@ -2,9 +2,9 @@
 
 `tools/compiler/prepared_writer` is the Chibi source of the prepared-module
 encoder (CHIBIPRE format 15) and the executable closure container (CHIBICLO
-version 1). Stage one will write its artifacts with it. Today it is checked
-against the native writers; nothing calls it in production, and the bounded
-compiler still takes its payload from the native finalizer.
+version 1). Stage one will write its artifacts with it. It is checked against
+the native writers, and the bounded compiler writes its modules and closures
+with it (`docs/bounded-authored-compiler.md`).
 
 ## Model
 

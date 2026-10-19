@@ -2,15 +2,16 @@
 
 ## Status and dependency order
 
-This M5 increment runs. On macOS arm64 (Debug, ASan/UBSan, 2026-10-18),
-`tool language-bounded-compiler-chibi` passes its one case with 36,739
-assertions in 15.9 s under the production 60-second supervisor. Stage zero
-prepares the compiler closure with 124 bytecode bootstrap entries. The authored
-compiler then handles 42 sources on each compiler backend (84 calls, 76 raw
-parses, seven bridge rejections), produces 28 accepted payloads, and runs the
+This M5 increment runs, and everything after the raw parser is authored: the
+compiler writes its prepared module and closure itself. On macOS arm64 (Debug,
+ASan/UBSan, 2026-10-19), `tool language-bounded-compiler-chibi` passes its one
+case with 36,657 assertions in 12.3 s under the production 60-second
+supervisor. Stage zero prepares the 19-file compiler closure with 186 bytecode
+bootstrap entries. The authored compiler then handles 43 sources on each
+compiler backend (86 calls, 76 raw parses), accepts 14 per backend, and runs the
 generated artifacts 56 times across the bytecode and SLJIT targets. Linux is
-unmeasured. It does not complete M5 and is not stage one, stage two or a
-self-hosting result.
+unmeasured. The subset is one scalar function, so this is not stage one, stage
+two or a self-hosting result.
 
 It builds on the merged raw-syntax ABI and binary handoff (PR445),
 snapshot-to-reader composition (PR446), scalar lowering (PR447) and `T(value)`
@@ -27,7 +28,10 @@ membership.
 
 `tools/compiler/bounded_compiler` is an ordinary three-file Chibi package. Its
 entry is `Compile(project: string, paths: string[], sources: string[],
-abi: scalar_lowering.Target) -> Result`.
+abi: scalar_lowering.Target, prepared_abi: uint64, opcodes: int[]) -> Result`.
+`prepared_abi` is the target's prepared header ABI (`execution_prepared_abi`),
+which hashes C layouts, and `opcodes` gives the prepared instruction each of
+the 29 scalar wire opcodes names on that target (`scalar_lowering_opcode`).
 
 The caller supplies the complete explicit package source snapshot as owned
 strings. There is no disk discovery, imported-source callback or hidden native
@@ -84,15 +88,15 @@ width-wrapping runtime semantics.
 4. Existing authored signature_reader and lexical_binding process the accepted
    header. Chibi ReadExpression builds Bool/I32 typed rows from source nodes.
 5. `scalar_lowering.Lower` constructs the bounded instruction plan. Unsupported
-   target facts and invalid typed rows reject before the payload capability.
-6. The private producer primitive receives only that plan, authored IDs, entry
-   text and scalar result storage. The native scalar decoder replays it; existing
-   builder verification, optimization/finalization and prepared serialization
-   produce one inner CHIBIPRE version-15 module.
-7. Artifact.chibi constructs the complete one-module CHIBICLO version-1 envelope,
-   including magic, root/module identity, counts, lengths, name and payload. All
-   envelope words are authored little-endian encoding. The inner payload is
-   bounded to 65,536 bytes; the envelope is bounded to 65,832 bytes.
+   target facts and invalid typed rows reject before preparation.
+6. `Prepare.chibi` turns the plan into a `prepared_writer` module: the plan's
+   slots, kinds, locals and instructions with their origins, one empty frame,
+   the result signature and one authored entry. `prepared_writer.Write` encodes
+   it as CHIBIPRE version 15. Nothing is optimized; the runtime verifies and
+   finalizes the definition when it loads it, as for any prepared module.
+7. `prepared_writer.Closure` wraps it in a one-module CHIBICLO version-1
+   envelope. The inner payload is bounded to 65,536 bytes; the envelope is
+   bounded to 65,832 bytes.
 8. `Result.Compiled` returns full-width module/entry IDs and owned bytes. A
    fresh compiler_host API instance can validate/load those resulting bytes and
    invoke the declared zero-argument function on bytecode or SLJIT.
@@ -103,29 +107,17 @@ Results and diagnostics are ordinary owned invocation data.
 
 ## Explicit native boundary and remaining work
 
-`compiler_prepared_scalar(plan, module, function, entry, result_storage)` is a
-private producer-only primitive. Its immutable service supplies the trusted
-scalar_lowering.Plan.Ready tag from bootstrap metadata. It never accepts source
-text, syntax trees, typed semantic IR, package preparation requests or an old
-compiler callback. It returns one inner prepared byte array and a diagnostic.
-The native core verifies zero arguments/state, one ordinary declared scalar
-result and the existing plan schema. It does not select opcodes or assemble
-the package envelope.
+The raw Tree-sitter parser and JSON primitives are the only native calls. The
+native scalar finalizer (`compiler_prepared_scalar`) and its test fixture are
+gone. The target facts (`prepared_abi`, `opcodes`) are inputs because Chibi
+cannot see C layouts or enum ordinals.
 
-The native finalizer, module publication and inner serializer remain declared
-transitional compiler dependencies. This increment authors the source frontend,
-lowering control and outer artifact policy; it does not claim that all compiler
-artifact construction has moved to Chibi.
-
-The existing runtime-only chibi-compiler-host is unchanged. Neither the new
-producer files nor frontend/writer dependencies are added to its link inputs or
-catalog. The compiler closure itself currently requires the private producer
-fixture and cannot run in that runtime-only host. Stage zero prepares the
-compiler implementation files only; the tests then pass user-source strings to
-the authored Compile entry. Only the generated user artifact is handed to the
-runtime-only host. A supported isolated producer product, complete compiler
-language coverage, authored inner encoding, bootstrap compatibility checks and
-stage-one/stage-two compilation of the complete compiler remain open work.
+The existing runtime-only chibi-compiler-host is unchanged. Stage zero prepares
+the compiler implementation files only; the tests then pass user-source strings
+to the authored Compile entry. Only the generated user artifact is handed to
+the runtime-only host. Complete compiler language coverage, bootstrap
+compatibility checks and stage-one/stage-two compilation of the complete
+compiler remain open work.
 
 No public command, language grammar, project schema, project version, installed
 SDK export or migration changes. No old compiler/recovery path is removed.
@@ -134,14 +126,13 @@ SDK export or migration changes. No old compiler/recovery path is removed.
 
 The separate C pico_unit suite must prepare only the declared compiler closure,
 check successful and rejected complete sources on both compiler backends,
-assert zero payload calls for source rejection, compare deterministic artifact
+compare deterministic artifact
 bytes across backends and repeats, retire source/producer ownership, then load
 and run every accepted artifact through both target backends. These are fresh
 host API instances in the same test process; they do not establish a separate
 runtime-only executable-process result. It must also
 verify byte limits, precise signed literals, wrapped arithmetic, meaningful
-changed-source output, malformed native declarations and incompatible target
-facts. Counters report attempted work even on failure.
+changed-source output and incompatible target facts. Counters report attempted work even on failure.
 
 Finite source counts, request/callback/parser bounds, output storage and target
 invocation counts belong to the exact candidate admission report. Build timing

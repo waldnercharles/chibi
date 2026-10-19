@@ -604,10 +604,14 @@ endif()
 if(TARGET chibi-compile AND TARGET chibi-player)
     add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"
         "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
-    foreach(header export process)
+    foreach(header export process serve)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
     endforeach()
+    # chibi web serves an export on loopback; Windows has no server yet.
+    if(NOT WIN32)
+        target_sources(chibi PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
+    endif()
     target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)

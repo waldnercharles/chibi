@@ -104,10 +104,10 @@ until the Chibi build program owns them. There is no `serve` command; browser
 development is `web`. Asset import and schema migration stay with the owning
 asset or project workflow instead of becoming permanent top-level commands.
 
-The unnamed `chibi [PROJECT] [PLAYER OPTIONS]` run form is a temporary migration
-alias. Named commands take precedence, so a project directory named `build` or
-`run` must be passed as `./build` or `./run`. Remove the alias after checked-in
-callers and onboarding use `chibi run`.
+The unnamed `chibi [PROJECT] [PLAYER OPTIONS]` run form was a temporary
+migration alias. It was removed on 2026-10-19, once no checked-in caller,
+Studio (which runs only `chibi export`) or supported project used it; `chibi`
+without a command prints its usage, and an unknown command fails.
 
 ### Language and package ownership
 
@@ -588,8 +588,15 @@ each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
 `chibi_ctl --format` now calls the same module. Package trees are not
 formatted yet: the source formatter still rewrites package syntax such as
-`case .Variant` and continued arguments wrongly. `web` and moving `export`
-behind Chibi modules remain.
+`case .Variant` and continued arguments wrongly. `chibi web [PROJECT] --player
+PLAYER [--port PORT]` exports the browser site into a `mkdtemp` folder under
+`TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
+launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or
+SIGHUP, and then removes that folder; a busy port or failed export leaves
+nothing behind. The server answers only requests whose Host is this computer,
+against DNS rebinding, and gives each connection ten seconds. Like a static
+host it sends no cross-origin isolation headers: with them the non-threaded
+browser player aborts in WebGPU. Windows does not serve yet. Moving `export` behind Chibi modules remains.
 
 Implement commands through shared modules, not separate scripts:
 
@@ -610,9 +617,9 @@ Implement commands through shared modules, not separate scripts:
   prints the URL, serves until interruption, and removes only its owned temporary
   files. `export --web` remains non-serving.
 
-Remove the unnamed run alias only after repository, Studio, and supported project
-callers use `chibi run`. Every command needs help, exit-status, installed-SDK, build-tree,
-missing-capability, and failure-path coverage.
+The unnamed run alias is removed (see "Stable command interface"). Every command
+needs help, exit-status, installed-SDK, build-tree, missing-capability, and
+failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 

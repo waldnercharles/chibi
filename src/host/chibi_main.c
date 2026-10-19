@@ -1,6 +1,9 @@
 #include "assets/project.h"
 #include "host/export.h"
 #include "host/process.h"
+#ifndef _WIN32
+#include "host/serve.h"
+#endif
 #include "support/file_io.h"
 #include "support/xalloc.h"
 
@@ -42,9 +45,10 @@ extern char **environ;
  * chibi fmt [--check] [PROJECT...]: rewrites each project's assets in their
  * canonical form, or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
- * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
- * folder, or a static site for browsers. */
+ * folder, or a static site for browsers.
+ * chibi web [PROJECT] --player PLAYER [--port PORT]: exports the static site
+ * into a temporary folder and serves it on loopback until interrupted. */
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
@@ -154,8 +158,7 @@ static bool changed_since(const char *directory, int64_t since)
 static int usage(const char *program)
 {
     printf(
-        "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
-        "       %s version\n"
+        "Usage: %s version\n"
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
@@ -163,6 +166,7 @@ static int usage(const char *program)
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
+        "       %s web [PROJECT] --player PLAYER [--port PORT]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
         "version prints the SDK, build, compiler and artifact-format "
@@ -181,14 +185,17 @@ static int usage(const char *program)
         "only package files.\n"
         "fmt rewrites each project's sources and KDL assets as their savers\n"
         "write them; --check writes nothing and fails when one would change.\n"
-        "run prepares and starts the player; the unnamed form is equivalent.\n"
+        "run prepares and starts the player.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
         "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
         "folder with an .exe on Windows, and a folder with a .desktop entry\n"
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
-        "--archive also writes DIR.tar.gz.\n",
+        "--archive also writes DIR.tar.gz.\n"
+        "web exports the browser site into a temporary folder, serves it at\n"
+        "http://127.0.0.1:PORT/ (8000 by default; 0 picks a free port) until\n"
+        "interrupted, then removes the folder. Windows does not serve yet.\n",
         program,
         program,
         program,
@@ -364,6 +371,120 @@ static int export_game(int argc, char **argv)
     free(bin);
     chibi_project_free(&project);
     return exported ? 0 : 1;
+}
+
+#ifndef _WIN32
+static volatile sig_atomic_t stop_serving;
+
+static void stop_web(int)
+{
+    stop_serving = 1;
+}
+
+/* A loopback port: 0 asks for any free one. */
+static bool port_number(const char *text, int *port)
+{
+    char *end;
+    long value = strtol(text, &end, 10);
+    *port = (int)value;
+    return *text && !*end && value >= 0 && value <= 65535;
+}
+
+/* Exports the site into a temporary folder it owns and serves it until
+ * SIGINT, SIGTERM or SIGHUP, then removes the folder. A signal during the
+ * export ends the command once the export does. */
+static int serve_site(chibi_export_spec *spec, int port)
+{
+    struct sigaction stop = { .sa_handler = stop_web };
+    sigemptyset(&stop.sa_mask);
+    const int signals[] = { SIGINT, SIGTERM, SIGHUP };
+    for (size_t i = 0; i < sizeof signals / sizeof *signals; i++) {
+        sigaction(signals[i], &stop, NULL);
+    }
+    int bound = 0, server = chibi_serve_listen(port, &bound);
+    if (server < 0) {
+        fprintf(stderr, "Cannot listen on 127.0.0.1:%d: %s\n", port, strerror(errno));
+        return 1;
+    }
+    const char *base = getenv("TMPDIR");
+    base = base && base[0] ? base : "/tmp";
+    char *temporary = join(base, "chibi-web-XXXXXX");
+    if (!mkdtemp(temporary)) {
+        fprintf(stderr, "Cannot create a temporary folder in %s: %s\n", base, strerror(errno));
+        free(temporary);
+        close(server);
+        return 1;
+    }
+    char *site = join(temporary, "site");
+    spec->output = site;
+    bool exported = chibi_export(spec);
+    if (exported && !stop_serving) {
+        printf("Serving %s at http://127.0.0.1:%d/\nPress Ctrl+C to stop.\n", site, bound);
+        fflush(stdout);
+        chibi_serve(server, site, &stop_serving);
+    } else {
+        close(server);
+    }
+    bool removed = chibi_remove_tree(temporary);
+    if (!removed) {
+        fprintf(stderr, "Could not remove %s\n", temporary);
+    }
+    free(site);
+    free(temporary);
+    return exported && removed ? 0 : 1;
+}
+#endif
+
+/* chibi web [PROJECT] --player PLAYER [--port PORT]: chibi export --web into a
+ * folder of its own, served on loopback while it runs. */
+static int web_game(int argc, char **argv)
+{
+#ifdef _WIN32
+    (void)argc;
+    (void)argv;
+    fprintf(stderr, "chibi web cannot serve on Windows yet; use chibi export --web.\n");
+    return 2;
+#else
+    const char *requested = NULL, *player = NULL;
+    int port = 8000;
+    bool ported = false;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (!strcmp(argv[i], "--player") && i + 1 < argc && !player) {
+            player = argv[++i];
+        } else if (!strcmp(argv[i], "--port") && i + 1 < argc && !ported && port_number(argv[i + 1], &port)) {
+            ported = true;
+            i++;
+        } else if (argv[i][0] != '-' && !requested) {
+            requested = argv[i];
+        } else {
+            fprintf(stderr, "Invalid web option: %s; use --help.\n", argv[i]);
+            return 2;
+        }
+    }
+    if (!player || !player[0]) {
+        fprintf(stderr, "web needs --player PLAYER, the browser player's folder\n");
+        return 2;
+    }
+    chibi_project project = { 0 };
+    if (!open_project(&project, requested, true)) {
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    chibi_export_spec spec = { .project = project.root,
+                               .name = project.name,
+                               .title = project.application.title,
+                               .icon = project.application.icon,
+                               .bin = bin,
+                               .web = player,
+                               .layout = CHIBI_EXPORT_WEB };
+    int status = serve_site(&spec, port);
+    free(bin);
+    chibi_project_free(&project);
+    return status;
+#endif
 }
 
 static int project_command(const char *requested, int player_argc, char **player_argv, bool play)
@@ -868,6 +989,9 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "export")) {
         return export_game(argc, argv);
     }
+    if (argc > 1 && !strcmp(argv[1], "web")) {
+        return web_game(argc, argv);
+    }
     if (argc > 1 && !strcmp(argv[1], "build")) {
         return build_game(argc, argv);
     }
@@ -883,6 +1007,10 @@ int main(int argc, char **argv)
     if (argc > 1 && !strcmp(argv[1], "run")) {
         return run_game(argc, argv);
     }
-    int first = argc > 1 && argv[1][0] != '-' ? 2 : 1;
-    return project_command(first == 2 ? argv[1] : NULL, argc - first, argv + first, true);
+    if (argc > 1) {
+        fprintf(stderr, "Unknown command: %s; use --help.\n", argv[1]);
+        return 2;
+    }
+    usage(argv[0]);
+    return 2;
 }

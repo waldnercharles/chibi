@@ -287,6 +287,26 @@ Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
     }
     return false;
 }
+// Whether the `is` expression `node` is an if or while condition, alone or
+// joined by `&&` and parentheses, where its bindings may hold the payload.
+BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    at := node;
+    parent := forest[at].parent;
+    while (parent >= 0) {
+        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
+            return Field(forest, parent, "condition") == at;
+        }
+        if (Is(forest, parent, "binary_expression")) {
+            operator := Text(forest, text, Field(forest, parent, "operator"));
+            if (operator != "&&" && operator != "and") { return false; }
+        } else if (!Is(forest, parent, "parenthesized_expression")) {
+            return false;
+        }
+        at = parent;
+        parent = forest[at].parent;
+    }
+    return false;
+}
 // The next switch arm after `node` among its siblings, -1 when none.
 NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
     at := NextMember(forest, node);
@@ -400,11 +420,15 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "if_statement" || kind == "while_statement") {
             stepped = false;
+            // Bindings of the condition's patterns last through the consequence
+            // or body; the work item keeps where they start in `c`.
             if (item.phase == 0) {
                 head := length(code);
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
                 next = array_add(next, Visit(Field(forest, item.node, "condition")));
-                next = array_add(next, Resume(item.node, 1, head, 0));
+                resume := Resume(item.node, 1, head, 0);
+                resume.c = length(names);
+                next = array_add(next, resume);
             } else if (item.phase == 1) {
                 value_top -= 1;
                 condition := values[value_top];
@@ -422,8 +446,11 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     loops = array_add(loops, loop);
                 }
                 next = array_add(next, Visit(Field(forest, item.node, field)));
-                next = array_add(next, Resume(item.node, 2, item.a, length(code) - 1));
+                resume := Resume(item.node, 2, item.a, length(code) - 1);
+                resume.c = item.c;
+                next = array_add(next, resume);
             } else if (item.phase == 2) {
+                names = slice(names, 0, item.c);
                 alternative := Field(forest, item.node, "alternative");
                 if (kind == "while_statement") {
                     code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, item.a, node));
@@ -599,7 +626,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     if (count != 0 && count != types[variant].count) {
                         return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
                     }
-                    step = ArmStep(forest, text, types, members, current.subject, variant, bindings, ops, target, at, node);
+                    step = MatchStep(forest, text, types, members, current.subject, -1, variant, bindings, true, false,
+                        ops, target, at, node);
                 }
                 next = array_add(next, Visit(Field(forest, item.a, "body")));
                 next = array_add(next, Resume(item.node, 3, item.a, 0));
@@ -690,6 +718,12 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+        } else if (kind == "is_expression" && item.phase == 0) {
+            stepped = false;
+            next = array_add(next, Visit(Field(forest, item.node, "value")));
+            next = array_add(next, Resume(item.node, 1, 0, 0));
+        } else if (kind == "is_expression") {
+            step = IsStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else {
             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
         }

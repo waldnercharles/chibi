@@ -327,6 +327,58 @@ static const sample samples[] = {
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
                  { "Scale", "[]", "[200]" } } },
+    { .name = "patterns",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Value :: union { Int(n: int) | Text(s: string) | Pair(a: int, "
+                "b: int) | Spot(at: Point) | Nothing }\n"
+                "Make :: pure fn(k: int) -> Value {\n"
+                "    if (k == 0) { return Value.Int(5); }\n"
+                "    if (k == 1) { return Value.Text(\"hey\"); }\n"
+                "    if (k == 2) { return Value.Pair(3, 4); }\n"
+                "    if (k == 3) { return Value.Pair(4, 3); }\n"
+                "    return Value.Nothing;\n}\n"
+                "Score :: pure fn(k: int) -> int {\n"
+                "    v := Make(k);\n"
+                "    if (v is .Int(n)) { return n; }\n"
+                "    if (v is .Pair(a, b) && a < b) { return a * 10 + b; }\n"
+                "    if (v is not .Nothing && !(v is .Text)) { return -1; }\n"
+                "    if ((v is .Text(s)) && s == \"hey\") { return 100; } else "
+                "{ return 0; }\n"
+                "    return -2;\n}\n"
+                "Kind :: pure fn(k: int) -> int {\n"
+                "    v := Make(k);\n"
+                "    if (v is .Int(n)) { return n; } else if (v is .Pair(a, "
+                "b)) { return a + b; } else { return -5; }\n"
+                "    return 0;\n}\n"
+                "Count :: pure fn() -> int {\n"
+                "    v := Make(2);\n"
+                "    total: int = 0;\n"
+                "    while (v is .Pair(a, b) && a < 10) { total += a; v = "
+                "Value.Pair(a + b, b); }\n"
+                "    return total;\n}\n"
+                "Walk :: pure fn() -> int {\n"
+                "    start: Point = {x: 0, y: 1};\n"
+                "    v := Value.Spot(start);\n"
+                "    total: int = 0;\n"
+                "    while (v is .Spot(at) and at.x < 3) {\n"
+                "        total += at.x * 10 + at.y;\n"
+                "        next: Point = {x: at.x + 1, y: at.y};\n"
+                "        v = Value.Spot(next);\n"
+                "    }\n"
+                "    return total;\n}\n"
+                "Empty :: pure fn(k: int) -> bool { return Make(k) is "
+                ".Nothing; }",
+      .calls = { { "Score", "[0]", "[5]" },
+                 { "Score", "[1]", "[100]" },
+                 { "Score", "[2]", "[34]" },
+                 { "Score", "[3]", "[-1]" },
+                 { "Score", "[4]", "[0]" },
+                 { "Kind", "[2]", "[7]" },
+                 { "Kind", "[4]", "[-5]" },
+                 { "Count", "[]", "[10]" },
+                 { "Walk", "[]", "[33]" },
+                 { "Empty", "[4]", "[true]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -501,6 +553,45 @@ static const sample samples[] = {
       .message = "assignment needs a local name",
       .line = 3,
       .column = 27 },
+    { .name = "binding outside condition",
+      .source = "package facts\nU :: union { A(x: int) | B }\nOne :: pure "
+                "fn(u: U) -> bool { return u is .A(x); }",
+      .message = "Pattern bindings require a matching if, while or switch arm",
+      .line = 3,
+      .column = 47 },
+    { .name = "negated binding",
+      .source = "package facts\nU :: union { A(x: int) | B }\n"
+                "One :: pure fn(u: U) -> int { if (u is not .A(x)) { return 1; "
+                "} return 0; }",
+      .message = "Pattern bindings require a matching if, while or switch arm",
+      .line = 3,
+      .column = 47 },
+    { .name = "alternative binding",
+      .source = "package facts\nU :: union { A(x: int) | B }\n"
+                "One :: pure fn(u: U) -> int { if (u is .A(x) || false) { "
+                "return 1; } return 0; }",
+      .message = "Pattern bindings require a matching if, while or switch arm",
+      .line = 3,
+      .column = 43 },
+    { .name = "binding in else",
+      .source = "package facts\nU :: union { A(x: int) | B }\n"
+                "One :: pure fn(u: U) -> int { if (u is .A(x)) { return x; } "
+                "else { return x; } }",
+      .message = "Unknown name 'x'",
+      .line = 3,
+      .column = 75 },
+    { .name = "is scalar",
+      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(n: int) "
+                "-> bool { return n is .A; }",
+      .message = "is needs a union value",
+      .line = 3,
+      .column = 41 },
+    { .name = "is unknown variant",
+      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
+                "bool { return u is .C; }",
+      .message = "Unknown union variant 'C'",
+      .line = 3,
+      .column = 44 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",

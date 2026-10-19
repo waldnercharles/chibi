@@ -68,8 +68,22 @@ chibi_artifact_format(sky chibi_image_catalog runtime/images/sky.c runtime/image
 chibi_artifact_format(parts chibi_visual_catalog render/scene3d_parts.c render/scene3d_parts.h RENDER_PARTS_PREPARED_VERSION VALUE_WIRE)
 chibi_artifact_format(shader_values chibi_visual_catalog render/shader_values.c render/shader_catalog.h SHADER_VALUES_PREPARED_VERSION)
 # The build identity document. Every install, and the engine's build tree for
-# its launcher, carries it as share/chibi/engine.json for chibi version; SDK
-# packaging replaces it with the same document and a build ID.
+# its launcher, carries it as share/chibi/engine.json for chibi version and
+# doctor; SDK packaging replaces it with the same document and a build ID. It
+# records the platform and execution backends the SDK was built for.
+set(CHIBI_IDENTITY_BACKENDS "\"bytecode\"")
+# Every processor the build targets: a macOS universal build names several.
+if(CMAKE_OSX_ARCHITECTURES)
+    list(JOIN CMAKE_OSX_ARCHITECTURES "\", \"" CHIBI_IDENTITY_PROCESSORS)
+else()
+    set(CHIBI_IDENTITY_PROCESSORS "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+if(CHIBI_ENABLE_SJLIT)
+    string(APPEND CHIBI_IDENTITY_BACKENDS ", \"sljit\"")
+endif()
+if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    string(APPEND CHIBI_IDENTITY_BACKENDS ", \"wasm\"")
+endif()
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json"
-    "{\"sdk_version\": \"${CHIBI_SDK_VERSION}\", \"project_version\": ${CHIBI_PROJECT_FORMAT}, \"artifact_formats\": {\n${CHIBI_ARTIFACT_FORMAT_RECORDS}\n}}\n")
+    "{\"sdk_version\": \"${CHIBI_SDK_VERSION}\", \"system\": \"${CMAKE_SYSTEM_NAME}\", \"processors\": [\"${CHIBI_IDENTITY_PROCESSORS}\"], \"backends\": [${CHIBI_IDENTITY_BACKENDS}], \"project_version\": ${CHIBI_PROJECT_FORMAT}, \"artifact_formats\": {\n${CHIBI_ARTIFACT_FORMAT_RECORDS}\n}}\n")
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json" DESTINATION share/chibi RENAME engine.json)

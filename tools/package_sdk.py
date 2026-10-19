@@ -415,8 +415,8 @@ def build_identity(build, cache):
     formats = metadata.get('artifact_formats')
     if not isinstance(formats, dict) or 'execution' not in formats:
         raise ValueError('Configured artifact format requirements are missing; reconfigure first')
-    configured = {'sdk_version': sdk_version, 'project_version': version, 'artifact_formats': formats,
-                  'sha256': hashlib.sha256(metadata_bytes).hexdigest()}
+    configured = {'document': metadata, 'sdk_version': sdk_version, 'project_version': version,
+                  'artifact_formats': formats, 'sha256': hashlib.sha256(metadata_bytes).hexdigest()}
     commands_file = build / 'compile_commands.json'
     if not commands_file.is_file():
         raise ValueError('Packaging requires CMAKE_EXPORT_COMPILE_COMMANDS=ON')
@@ -575,11 +575,8 @@ def engine_manifest(stage, compiled):
     # The configured build identity document, with the engine identity, which
     # describes the compiled inputs and archives. Package identity is computed
     # later from installed files, including this manifest.
-    configured = compiled['configured_engine']
-    manifest = {'manifest_format': 1, 'build_id': canonical_digest(compiled),
-                'sdk_version': configured['sdk_version'],
-                'project_version': configured['project_version'],
-                'artifact_formats': configured['artifact_formats']}
+    manifest = {**compiled['configured_engine']['document'], 'manifest_format': 1,
+                'build_id': canonical_digest(compiled)}
     path = stage / 'share/chibi/engine.json'
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + '\n')

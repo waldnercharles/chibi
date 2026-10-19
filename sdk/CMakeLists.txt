@@ -25,7 +25,10 @@ string(REGEX REPLACE ".* ([0-9]+)$" "\\1" CHIBI_PROJECT_FORMAT "${project_versio
 if(NOT CHIBI_PROJECT_FORMAT MATCHES "^[0-9]+$")
     message(FATAL_ERROR "Missing owning project format version")
 endif()
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json" "{\"project_version\": ${CHIBI_PROJECT_FORMAT}}\n")
+# The build identity document. Build trees keep it as share/chibi/engine.json
+# for chibi version, and SDK packaging installs it there with a build ID.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json"
+    "{\"sdk_version\": \"${CHIBI_SDK_VERSION}\", \"project_version\": ${CHIBI_PROJECT_FORMAT}}\n")
 set(CHIBI_SDK_HEADER_ROOT "${CMAKE_CURRENT_BINARY_DIR}/public")
 option(CHIBI_SDK_BUILD_COMPILER "Build language, compiler and source authoring packages" ON)
 option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF)

@@ -42,6 +42,6 @@ endif()
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/src/owned.c" source_hash)
 file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/src/owned.h" header_hash)
 file(WRITE "${CMAKE_BINARY_DIR}/chibi_engine_metadata.json"
-    "{\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1,\"source\":\"src/owned.c\",\"header\":\"src/owned.h\",\"sha256\":\"${source_hash}\",\"header_sha256\":\"${header_hash}\"}}}\n")
+    "{\"sdk_version\":\"0.1.0\",\"project_version\":1,\"artifact_formats\":{\"execution\":{\"version\":1,\"source\":\"src/owned.c\",\"header\":\"src/owned.h\",\"sha256\":\"${source_hash}\",\"header_sha256\":\"${header_hash}\"}}}\n")
 include("${CHIBI_ROOT}/sdk/package_targets.cmake")
 chibi_package_targets()

@@ -68,4 +68,4 @@ chibi_artifact_format(sky chibi_image_catalog runtime/images/sky.c runtime/image
 chibi_artifact_format(parts chibi_visual_catalog render/scene3d_parts.c render/scene3d_parts.h RENDER_PARTS_PREPARED_VERSION VALUE_WIRE)
 chibi_artifact_format(shader_values chibi_visual_catalog render/shader_values.c render/shader_catalog.h SHADER_VALUES_PREPARED_VERSION)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/chibi_engine_metadata.json"
-    "{\"project_version\": ${CHIBI_PROJECT_FORMAT}, \"artifact_formats\": {\n${CHIBI_ARTIFACT_FORMAT_RECORDS}\n}}\n")
+    "{\"sdk_version\": \"${CHIBI_SDK_VERSION}\", \"project_version\": ${CHIBI_PROJECT_FORMAT}, \"artifact_formats\": {\n${CHIBI_ARTIFACT_FORMAT_RECORDS}\n}}\n")

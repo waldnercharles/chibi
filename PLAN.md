@@ -596,7 +596,16 @@ SIGHUP, and then removes that folder; a busy port or failed export leaves
 nothing behind. The server answers only requests whose Host is this computer,
 against DNS rebinding, and gives each connection ten seconds. Like a static
 host it sends no cross-origin isolation headers: with them the non-threaded
-browser player aborts in WebGPU. Windows does not serve yet. Moving `export` behind Chibi modules remains.
+browser player aborts in WebGPU. Windows does not serve yet.
+
+Coverage: `chibi-cli` runs each command against the build tree, a fake compiler
+and player, and a fake browser player, including help, exit status, failure
+paths and missing capabilities (no compiler, no core collection, no browser
+player, a busy port). `chibi-cli-installed` runs the packaged SDK's own
+launcher on `version`, `doctor`, `check`, `fmt`, `build`, a native `export` and
+`test`; `run` and `web` stay with the build-tree cases, which start no player
+window. The unnamed run alias is gone. Moving `export` behind Chibi modules is
+M6's build-graph work, and `chibi doc` arrives with M8.
 
 Implement commands through shared modules, not separate scripts:
 

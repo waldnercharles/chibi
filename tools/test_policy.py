@@ -220,6 +220,10 @@ TOOLS = {
     # tiny authored projects, no network. About 6s Debug + ASan of one shared 60s.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
+    # The packaged SDK's launcher in place (make package-sdk first): three cases,
+    # one tiny project and package tree, one native export; no player frames.
+    'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                            '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
     # Fixed POSIX process/VM/SLJIT cases over one controlled worker and disposable
     # root. Bounded capture, short cancellation/timeout cases; no engine builds.
     'build-process': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),

@@ -941,6 +941,31 @@ TEST_CASE(web_fails_without_leaving_a_folder)
     return true;
 }
 
+/* Without its compiler, each command that needs one says so and fails
+ * rather than pretending the project is fine. */
+TEST_CASE(commands_fail_without_the_compiler)
+{
+    char program[256], aside[256], output[256];
+    path(program, "bin/chibi-compile");
+    path(aside, "bin/chibi-compile.aside");
+    path(output, "missing.log");
+    REQUIRE(!rename(program, aside));
+    const char *commands[][4] = {
+        { launcher, "check", "game with spaces", NULL },
+        { launcher, "build", "game with spaces", NULL },
+        { launcher, "fmt", "game with spaces", NULL },
+        { launcher, "test", "game with spaces", NULL },
+    };
+    bool failed = true;
+    for (size_t i = 0; i < sizeof commands / sizeof *commands; i++) {
+        failed = failed && tool_run(commands[i], root, output) != 0 &&
+                 file_has("missing.log", "chibi-compile");
+    }
+    REQUIRE(!rename(aside, program));
+    REQUIRE(failed);
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -967,5 +992,88 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
+    RUN_TEST_CASE(commands_fail_without_the_compiler);
+    tool_remove_tree(root);
+}
+
+/* An installed SDK, run in place: identity, diagnosis, and each project and
+ * package command on fresh fixtures, with its own compiler and core
+ * collection. */
+TEST_CASE(installed_identity_and_doctor)
+{
+    char output[256];
+    path(output, "installed.log");
+    const char *version[] = { launcher, "version", NULL };
+    REQUIRE(tool_run(version, root, output) == 0);
+    REQUIRE(file_has("installed.log", "chibi ") && !file_has("installed.log", "build: unpackaged"));
+    const char *doctor[] = { launcher, "doctor", NULL };
+    REQUIRE(tool_run(doctor, root, output) == 0);
+    REQUIRE(file_has("installed.log", "\ncompiler: supported ("));
+    REQUIRE(file_has("installed.log", "\nplayer: supported ("));
+    return true;
+}
+
+TEST_CASE(installed_project_commands)
+{
+    project("installed", CHIBI_PROJECT_VERSION);
+    char game[256], output[256], site[256];
+    path(game, "installed");
+    path(output, "installed.log");
+    const char *check[] = { launcher, "check", game, NULL };
+    REQUIRE(tool_run(check, root, output) == 0);
+    REQUIRE(!exists("installed/.chibi"));
+    const char *format[] = { launcher, "fmt", "--check", game, NULL };
+    REQUIRE(tool_run(format, root, output) == 0);
+    write_file("installed/content/scenes/Start.kdl", MESSY_SCENE);
+    REQUIRE(tool_run(format, root, output) == 1);
+    const char *rewrite[] = { launcher, "fmt", game, NULL };
+    REQUIRE(tool_run(rewrite, root, output) == 0 && tool_run(format, root, output) == 0);
+    const char *build[] = { launcher, "build", game, NULL };
+    REQUIRE(tool_run(build, root, output) == 0);
+    REQUIRE(exists("installed/.chibi/build/game.chibip"));
+    path(site, "exported");
+    const char *export[] = { launcher, "export", game, "--output", site, NULL };
+    REQUIRE(tool_run_within(export, root, output, 30) == 0);
+#ifdef __APPLE__
+    REQUIRE(exists("exported.app/Contents/Resources/game.chibip"));
+#else
+    REQUIRE(exists("exported/data/game.chibip"));
+#endif
+    return true;
+}
+
+TEST_CASE(installed_package_tests)
+{
+    const char *directories[] = { "packages", "packages/facts" };
+    for (int i = 0; i < 2; i++) {
+        directory(directories[i]);
+    }
+    write_file("packages/facts/Facts.chibi", FACTS);
+    char tree[256], output[256];
+    path(tree, "packages");
+    path(output, "installed.log");
+    const char *run[] = { launcher, "test", tree, NULL };
+    REQUIRE(tool_run(run, root, output) == 1);
+    REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
+    REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+    return true;
+}
+
+void test_tool_chibi_cli_installed(const char *binary)
+{
+    strcpy(root, "/tmp/chibi-installed-XXXXXX");
+    assert(mkdtemp(root));
+    char *resolved = realpath(root, NULL);
+    assert(resolved && strlen(resolved) < sizeof root);
+    strcpy(root, resolved);
+    free(resolved);
+    char *program = realpath(binary, NULL);
+    assert(program && strlen(program) < sizeof launcher);
+    strcpy(launcher, program);
+    free(program);
+    path(log_path, "output.log");
+    RUN_TEST_CASE(installed_identity_and_doctor);
+    RUN_TEST_CASE(installed_project_commands);
+    RUN_TEST_CASE(installed_package_tests);
     tool_remove_tree(root);
 }

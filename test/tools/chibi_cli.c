@@ -328,20 +328,29 @@ static bool file_has(const char *relative, const char *text)
     return found;
 }
 
-/* An identity document for this host, or `system`, with `backends`. */
-static void identity(const char *system, const char *backends)
+/* An identity document for this host, or for `system`, with `backends`;
+ * `platform` false leaves the platform out. */
+static void identity(const char *system, const char *backends, bool platform)
 {
     struct utsname host;
     assert(!uname(&host));
-    char document[1024];
+    char named[256] = "", document[1024];
+    if (platform) {
+        snprintf(
+            named,
+            sizeof named,
+            "\"system\": \"%s\", \"processors\": [\"%s\"], ",
+            system ? system : host.sysname,
+            host.machine
+        );
+    }
     snprintf(
         document,
         sizeof document,
-        "{\"sdk_version\": \"9.8.7\", \"system\": \"%s\", \"processor\": "
-        "\"%s\", \"backends\": [%s], \"project_version\": 25, "
-        "\"artifact_formats\": {\"execution\": {\"version\": 15}}}\n",
-        system ? system : host.sysname,
-        host.machine,
+        "{\"sdk_version\": \"9.8.7\", %s\"backends\": [%s], "
+        "\"project_version\": 25, \"artifact_formats\": {\"execution\": "
+        "{\"version\": 15}}}\n",
+        named,
         backends
     );
     write_file("share/chibi/engine.json", document);
@@ -352,7 +361,9 @@ static int doctor(const char *extra, const char *web, const char *programs)
 {
     char output[256], saved[4096];
     path(output, "doctor.log");
-    snprintf(saved, sizeof saved, "%s", getenv("PATH"));
+    const char *previous = getenv("PATH");
+    assert(previous && strlen(previous) < sizeof saved);
+    snprintf(saved, sizeof saved, "%s", previous);
     setenv("PATH", programs, 1);
     const char *args[] = { launcher, "doctor", extra, web, NULL };
     int status = tool_run(args, root, output);
@@ -375,7 +386,7 @@ TEST_CASE(doctor_reports_each_capability)
     snprintf(tools, sizeof tools, "/usr/bin:/bin");
     snprintf(programs, sizeof programs, "%s:/usr/bin:/bin", bin);
 
-    identity(NULL, "\"bytecode\", \"sljit\"");
+    identity(NULL, "\"bytecode\", \"sljit\"", true);
     REQUIRE(doctor(NULL, NULL, tools) == 0);
     REQUIRE(file_has("doctor.log", "sdk: supported (chibi 9.8.7, build unpackaged)\n"));
     snprintf(expected, sizeof expected, "compiler: supported (%s/bin/chibi-compile)\n", root);
@@ -386,16 +397,21 @@ TEST_CASE(doctor_reports_each_capability)
     REQUIRE(file_has("doctor.log", "native backend: supported (SLJIT)\n"));
     REQUIRE(file_has("doctor.log", "browser export: unavailable ("));
 
-    identity(NULL, "\"bytecode\"");
+    identity(NULL, "\"bytecode\"", true);
     REQUIRE(doctor(NULL, NULL, tools) == 0);
     REQUIRE(
         file_has("doctor.log", "native backend: unavailable (built for the bytecode interpreter only)\n")
     );
 
-    identity("Plan9", "\"bytecode\"");
+    /* A platform mismatch is reported; whether the SDK runs is the compiler's
+     * and player's question. */
+    identity("Plan9", "\"bytecode\"", true);
+    REQUIRE(doctor(NULL, NULL, tools) == 0);
+    REQUIRE(file_has("doctor.log", "platform: unavailable (built for Plan9 "));
+    identity(NULL, "\"bytecode\"", false);
     REQUIRE(doctor(NULL, NULL, tools) == 1);
-    REQUIRE(file_has("doctor.log", "platform: broken (built for Plan9 "));
-    identity(NULL, "\"bytecode\"");
+    REQUIRE(file_has("doctor.log", "platform: broken (the build identity names no platform)\n"));
+    identity(NULL, "\"bytecode\"", true);
 
     write_file("fail", "");
     REQUIRE(doctor(NULL, NULL, tools) == 1);
@@ -425,6 +441,10 @@ TEST_CASE(doctor_reports_each_capability)
     REQUIRE(file_has("doctor.log", expected));
     write_file("web/chibi-player.wasm", "");
     write_file("web/compiler/chibi-compile.js", "");
+    REQUIRE(doctor("--web", web, programs) == 1);
+    snprintf(expected, sizeof expected, "browser export: broken (%s lacks compiler/chibi-compile.wasm)\n", web);
+    REQUIRE(file_has("doctor.log", expected));
+    write_file("web/compiler/chibi-compile.wasm", "");
     REQUIRE(doctor("--web", web, programs) == 0);
     snprintf(expected, sizeof expected, "browser export: supported (%s with %s/node)\n", web, bin);
     REQUIRE(file_has("doctor.log", expected));

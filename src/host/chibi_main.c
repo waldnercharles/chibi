@@ -15,8 +15,14 @@
 #include <time.h>
 #include <unistd.h>
 #include <yyjson.h>
-#ifndef _WIN32
+#ifdef _WIN32
+/* The Windows runtime's access takes only existence, write and read modes. */
+#define RUNNABLE F_OK
+#define READABLE 4
+#else
 #include <sys/utsname.h>
+#define RUNNABLE X_OK
+#define READABLE R_OK
 extern char **environ;
 #endif
 #ifdef _WIN32
@@ -511,7 +517,7 @@ static bool report(const char *name, capability state, const char *detail)
 /* A sibling program is supported when its --help runs and succeeds. */
 static capability runs(const char *program, char *detail, size_t size)
 {
-    if (access(program, X_OK)) {
+    if (access(program, RUNNABLE)) {
         snprintf(detail, size, "missing %s", program);
         return CAPABILITY_BROKEN;
     }
@@ -521,7 +527,7 @@ static capability runs(const char *program, char *detail, size_t size)
     chibi_process_capture_result result = chibi_process_capture(
         program,
         argv,
-        ".",
+        "/",
         (const char *const *)environ,
         chibi_process_now() + 10,
         NULL,
@@ -554,7 +560,9 @@ static char *find_program(const char *name)
         directory[length] = 0;
         char *program = join(directory, name);
         free(directory);
-        if (length && !access(program, X_OK)) {
+        struct stat info;
+        if (length && !access(program, RUNNABLE) && !stat(program, &info) &&
+            S_ISREG(info.st_mode)) {
             return program;
         }
         free(program);
@@ -574,10 +582,11 @@ static capability browser(const char *player, char *detail, size_t size)
     static const char *const files[] = { "index.html",
                                          "chibi-player.js",
                                          "chibi-player.wasm",
-                                         "compiler/chibi-compile.js" };
+                                         "compiler/chibi-compile.js",
+                                         "compiler/chibi-compile.wasm" };
     for (size_t i = 0; i < sizeof files / sizeof *files; i++) {
         char *file = join(player, files[i]);
-        bool missing = access(file, R_OK) != 0;
+        bool missing = access(file, READABLE) != 0;
         free(file);
         if (missing) {
             snprintf(detail, size, "%s lacks %s", player, files[i]);
@@ -598,23 +607,43 @@ static capability browser(const char *player, char *detail, size_t size)
 static capability platform(yyjson_doc *identity, char *detail, size_t size)
 {
     const char *system = identity_text(identity, "system");
-    const char *processor = identity_text(identity, "processor");
+    yyjson_val *processors = yyjson_obj_get(yyjson_doc_get_root(identity), "processors");
 #ifdef _WIN32
     const char *host = "Windows", *machine = getenv("PROCESSOR_ARCHITECTURE");
 #else
     struct utsname name;
     bool named = uname(&name) == 0;
-    const char *host = named ? name.sysname : "", *machine = named ? name.machine : "";
+    const char *host = named ? name.sysname : "",
+               *machine = named ? name.machine : NULL;
 #endif
-    if (!system || !processor) {
+    if (!system || !yyjson_arr_size(processors)) {
         snprintf(detail, size, "the build identity names no platform");
         return CAPABILITY_BROKEN;
     }
-    if (!machine || strcmp(system, host) || strcmp(processor, machine)) {
-        snprintf(detail, size, "built for %s %s, running on %s %s", system, processor, host, machine ? machine : "");
-        return CAPABILITY_BROKEN;
+    size_t index, count;
+    yyjson_val *processor;
+    bool native = false;
+    yyjson_arr_foreach(processors, index, count, processor)
+    {
+        native = native || (machine && yyjson_equals_str(processor, machine));
     }
-    snprintf(detail, size, "%s %s", system, processor);
+    const char *first = yyjson_get_str(yyjson_arr_get_first(processors));
+    /* The compiler and player checks decide whether the SDK runs here; a
+     * mismatch only means emulation or another build's identity. */
+    if (!native || strcmp(system, host)) {
+        snprintf(
+            detail,
+            size,
+            "built for %s %s%s, running on %s %s",
+            system,
+            first ? first : "",
+            count > 1 ? " and others" : "",
+            host,
+            machine ? machine : "an unknown processor"
+        );
+        return CAPABILITY_UNAVAILABLE;
+    }
+    snprintf(detail, size, "%s %s", system, machine);
     return CAPABILITY_SUPPORTED;
 }
 

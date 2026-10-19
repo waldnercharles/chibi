@@ -241,8 +241,8 @@ are retired; the minimal suite does not establish their former coverage.
 the SDK version, the platform and execution backends it was built for, the
 project format and each prepared artifact format with its owning sources'
 hashes, as configuring generates them, plus the build ID SDK packaging derives
-from the compiled inputs and archives. `chibi doctor` checks the platform and
-backends against the host. The package manifest
+from the compiled inputs and archives. `chibi doctor` compares the platform with
+the host and reports the backends. The package manifest
 records the payload's file hashes, platform and source revision.
 Distribution builds have no resource fallback to the engine checkout.
 `CHIBI_RESOURCE_DIR` can explicitly override the resource directory;

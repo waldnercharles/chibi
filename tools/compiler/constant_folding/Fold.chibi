@@ -4,7 +4,11 @@ import ir "project:constant_ir"
 import proof "project:constant_admissibility"
 import scalar "project:constant_scalar"
 
-Frame :: struct { expression: int; depth: int; phase: int; }
+Frame :: struct {
+    expression: int;
+    depth: int;
+    phase: int;
+}
 
 FrameValue :: pure fn(expression: int, depth: int) -> Frame {
     return {expression: expression, depth: depth, phase: 0};
@@ -33,12 +37,20 @@ Numeric :: pure fn(type: ir.Type) -> bool {
 }
 ArithmeticStorage :: pure fn(left: ir.Type, right: ir.Type) -> int {
     if ((left.flags & ir.Untyped) != 0) {
-        if ((right.flags & ir.Untyped) == 0) { return right.storage; }
+        if ((right.flags & ir.Untyped) == 0) {
+            return right.storage;
+        }
         return 11;
     }
-    if ((right.flags & ir.Untyped) != 0) { return left.storage; }
-    if (left.storage == 11 || right.storage == 11) { return 11; }
-    if (left.storage == 10 || right.storage == 10) { return 10; }
+    if ((right.flags & ir.Untyped) != 0) {
+        return left.storage;
+    }
+    if (left.storage == 11 || right.storage == 11) {
+        return 11;
+    }
+    if (left.storage == 10 || right.storage == 10) {
+        return 10;
+    }
     return scalar.CommonInteger(left.storage, right.storage);
 }
 StringStorage :: pure fn(storage: int) -> bool {
@@ -48,7 +60,7 @@ StringStorage :: pure fn(storage: int) -> bool {
 // Evaluation revisits shared expressions. Only admissibility memoizes proofs:
 // caching values here would change which programs exceed the fixed step limit.
 Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                     literals: scalar.Value[], expression: int) -> scalar.Result {
+                    literals: scalar.Value[], expression: int) -> scalar.Result {
     frames := Frames(257);
     lefts := Values(257);
     frames[0] = FrameValue(expression, 0);
@@ -68,9 +80,12 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
                 if (current.kind == ir.Cast) {
                     converted := scalar.Convert(value, types[current.type].storage, current.conversion);
                     switch converted {
-                        case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
-                        case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
-                        case .Accepted(item): value = item;
+                        case .Rejected:
+                            return scalar.Result.Failed("unsupported scalar constant conversion");
+                        case .Unfit:
+                            return scalar.Result.Failed("constant does not fit its conversion");
+                        case .Accepted(item):
+                            value = item;
                     }
                     top -= 1;
                     continue;
@@ -78,8 +93,10 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
                 if (current.kind == ir.Unary) {
                     operated := scalar.Operation(current.op, value, scalar.Value.Bool(false), types[current.type].storage);
                     switch operated {
-                        case .Failed(message): return operated;
-                        case .Folded(item): value = item;
+                        case .Failed(message):
+                            return operated;
+                        case .Folded(item):
+                            value = item;
                     }
                     top -= 1;
                     continue;
@@ -115,15 +132,21 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
                 storage := ArithmeticStorage(leftType, rightType);
                 convertedLeft := scalar.Convert(left, storage, 0);
                 switch convertedLeft {
-                    case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
-                    case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
-                    case .Accepted(item): left = item;
+                    case .Rejected:
+                        return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit:
+                        return scalar.Result.Failed("constant does not fit its conversion");
+                    case .Accepted(item):
+                        left = item;
                 }
                 convertedRight := scalar.Convert(right, storage, 0);
                 switch convertedRight {
-                    case .Rejected: return scalar.Result.Failed("unsupported scalar constant conversion");
-                    case .Unfit: return scalar.Result.Failed("constant does not fit its conversion");
-                    case .Accepted(item): right = item;
+                    case .Rejected:
+                        return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit:
+                        return scalar.Result.Failed("constant does not fit its conversion");
+                    case .Accepted(item):
+                        right = item;
                 }
             } else if (scalar.Storage(left) != scalar.Storage(right) &&
                        !(StringStorage(scalar.Storage(left)) && StringStorage(scalar.Storage(right)))) {
@@ -131,8 +154,10 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
             }
             operated := scalar.Operation(current.op, left, right, types[current.type].storage);
             switch operated {
-                case .Failed(message): return operated;
-                case .Folded(item): value = item;
+                case .Failed(message):
+                    return operated;
+                case .Folded(item):
+                    value = item;
             }
             top -= 1;
             continue;
@@ -141,7 +166,9 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
             return scalar.Result.Failed("constant evaluation exceeds its bounded budget");
         }
         steps -= 1;
-        if (steps < 0) { return scalar.Result.Failed("constant evaluation exceeds its bounded budget"); }
+        if (steps < 0) {
+            return scalar.Result.Failed("constant evaluation exceeds its bounded budget");
+        }
         current := expressions[frame.expression];
         type := types[current.type];
         if (type.container != ir.Single || (type.flags & ~(ir.Untyped | ir.Literal)) != 0 ||
@@ -176,22 +203,27 @@ Evaluate :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.
 // narrower than operands). Arbitrary cross-family C union byte interpretations
 // are not an input format for this compiler component.
 Fold :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                 arguments: ir.Argument[], literals: scalar.Value[],
-                 expression: int, expected_storage: int) -> scalar.Result {
+                arguments: ir.Argument[], literals: scalar.Value[],
+                expression: int, expected_storage: int) -> scalar.Result {
     checked := proof.Check(expressions, types, symbols, arguments,
                            {expression: expression, steps: 65536, scalar: true, has_steps: true});
     switch checked {
         case .Checked(allowed, remaining, depths):
-            if (!allowed) { return scalar.Result.Failed("requires bounded compile-time values and operators"); }
+            if (!allowed) {
+                return scalar.Result.Failed("requires bounded compile-time values and operators");
+            }
     }
     evaluated := Evaluate(expressions, types, symbols, literals, expression);
     switch evaluated {
-        case .Failed(message): return evaluated;
+        case .Failed(message):
+            return evaluated;
         case .Folded(value):
             converted := scalar.Convert(value, expected_storage, 0);
             switch converted {
-                case .Accepted(item): return scalar.Result.Folded(item);
-                case: return scalar.Result.Failed("incompatible scalar constant result");
+                case .Accepted(item):
+                    return scalar.Result.Folded(item);
+                case:
+                    return scalar.Result.Failed("incompatible scalar constant result");
             }
     }
 }

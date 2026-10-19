@@ -2,9 +2,16 @@ package unit_algebra
 
 import text "core:strings"
 
-Term :: struct { name: string; power: int; }
-Unit :: union { Value(kind: int, terms: Term[]) }
-ProductResult :: union { Product(value: Unit, overflow: bool) }
+Term :: struct {
+    name: string;
+    power: int;
+}
+Unit :: union {
+    Value(kind: int, terms: Term[])
+}
+ProductResult :: union {
+    Product(value: Unit, overflow: bool)
+}
 
 Unknown: int : 0;
 Literal: int : 1;
@@ -20,14 +27,18 @@ Empty :: pure fn(kind: int) -> Unit {
 Letter :: pure fn(byte: int) -> bool {
     return (byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) || byte == 95;
 }
-Digit :: pure fn(byte: int) -> bool { return byte >= 48 && byte <= 57; }
+Digit :: pure fn(byte: int) -> bool {
+    return byte >= 48 && byte <= 57;
+}
 Starts :: pure fn(value: string, at: int, prefix: string) -> bool {
     return text.Slice(value, at, text.ByteLength(prefix)) == prefix;
 }
 Find :: pure fn(terms: Term[], name: string) -> int {
     index: int = 0;
     while (index < length(terms)) {
-        if (terms[index].name == name) { return index; }
+        if (terms[index].name == name) {
+            return index;
+        }
         index += 1;
     }
     return index;
@@ -52,16 +63,22 @@ MultiplyTerm :: pure fn(value: Unit, term: Term) -> ProductResult {
                 }
                 return ProductResult.Product(Unit.Value(kind, terms), false);
             }
-            if (length(terms) == MaxTerms) { return ProductResult.Product(Empty(Unknown), true); }
+            if (length(terms) == MaxTerms) {
+                return ProductResult.Product(Empty(Unknown), true);
+            }
             return ProductResult.Product(Unit.Value(kind, array_add(terms, term)), false);
     }
 }
 
 // Presence keeps a missing annotation distinct from an empty malformed one.
 Parse :: pure fn(present: bool, value: string) -> Unit {
-    if (!present) { return Empty(Unknown); }
+    if (!present) {
+        return Empty(Unknown);
+    }
     size := text.ByteLength(value);
-    if (size == 0) { return Empty(Invalid); }
+    if (size == 0) {
+        return Empty(Invalid);
+    }
     result := Empty(Known);
     sign: int = 1;
     at: int = 0;
@@ -71,8 +88,12 @@ Parse :: pure fn(present: bool, value: string) -> Unit {
         if (byte == 49) {
             at += 1;
         } else {
-            if (!Letter(byte)) { return Empty(Invalid); }
-            while (Letter(text.ByteAt(value, at)) || Digit(text.ByteAt(value, at))) { at += 1; }
+            if (!Letter(byte)) {
+                return Empty(Invalid);
+            }
+            while (Letter(text.ByteAt(value, at)) || Digit(text.ByteAt(value, at))) {
+                at += 1;
+            }
         }
         name := text.Slice(value, first, at - first);
         power: int = 1;
@@ -83,18 +104,30 @@ Parse :: pure fn(present: bool, value: string) -> Unit {
                 negative = text.ByteAt(value, at) == 45;
                 at += 1;
             }
-            if (!Digit(text.ByteAt(value, at))) { return Empty(Invalid); }
+            if (!Digit(text.ByteAt(value, at))) {
+                return Empty(Invalid);
+            }
             power = 0;
             while (Digit(text.ByteAt(value, at))) {
                 digit := text.ByteAt(value, at) - 48;
-                if (power > (MaxPower - digit) / 10) { return Empty(Invalid); }
+                if (power > (MaxPower - digit) / 10) {
+                    return Empty(Invalid);
+                }
                 power = power * 10 + digit;
                 at += 1;
             }
-            if (power == 0) { return Empty(Invalid); }
-            if (negative) { power = -power; }
+            if (power == 0) {
+                return Empty(Invalid);
+            }
+            if (negative) {
+                power = -power;
+            }
         } else if (Starts(value, at, "²") || Starts(value, at, "³")) {
-            if (Starts(value, at, "²")) { power = 2; } else { power = 3; }
+            if (Starts(value, at, "²")) {
+                power = 2;
+            } else {
+                power = 3;
+            }
             at += 2;
         }
         power *= sign;
@@ -102,7 +135,9 @@ Parse :: pure fn(present: bool, value: string) -> Unit {
             term: Term = {name: name, power: power};
             switch MultiplyTerm(result, term) {
                 case .Product(next, overflow):
-                    if (overflow) { return Empty(Invalid); }
+                    if (overflow) {
+                        return Empty(Invalid);
+                    }
                     result = next;
             }
         }
@@ -116,7 +151,9 @@ Parse :: pure fn(present: bool, value: string) -> Unit {
         } else {
             return result;
         }
-        if (at == size) { return Empty(Invalid); }
+        if (at == size) {
+            return Empty(Invalid);
+        }
     }
     return result;
 }
@@ -126,10 +163,14 @@ Same :: pure fn(left: Unit, right: Unit) -> bool {
         case .Value(leftKind, a):
             switch right {
                 case .Value(rightKind, b):
-                    if (length(a) != length(b)) { return false; }
+                    if (length(a) != length(b)) {
+                        return false;
+                    }
                     foreach (term in a) {
                         index := Find(b, term.name);
-                        if (index == length(b) || term.power != b[index].power) { return false; }
+                        if (index == length(b) || term.power != b[index].power) {
+                            return false;
+                        }
                     }
                     return true;
             }
@@ -151,7 +192,9 @@ Product :: pure fn(left: Unit, right: Unit, sign: int) -> ProductResult {
                         scaled: Term = {name: term.name, power: term.power * sign};
                         switch MultiplyTerm(result, scaled) {
                             case .Product(next, overflow):
-                                if (overflow) { return ProductResult.Product(Empty(Unknown), true); }
+                                if (overflow) {
+                                    return ProductResult.Product(Empty(Unknown), true);
+                                }
                                 result = next;
                         }
                     }
@@ -166,10 +209,16 @@ Append :: pure fn(value: string, part: string, size: int) -> string {
 }
 AppendTerm :: pure fn(value: string, term: Term, size: int) -> string {
     power := term.power;
-    if (power < 0) { power = -power; }
+    if (power < 0) {
+        power = -power;
+    }
     result := Append(value, term.name, size);
-    if (power == 2) { return Append(result, "²", size); }
-    if (power == 3) { return Append(result, "³", size); }
+    if (power == 2) {
+        return Append(result, "²", size);
+    }
+    if (power == 3) {
+        return Append(result, "³", size);
+    }
     if (power > 3) {
         result = Append(result, "^", size);
         result = Append(result, format_text("{}", power), size);
@@ -179,31 +228,47 @@ AppendTerm :: pure fn(value: string, term: Term, size: int) -> string {
 WholeCharacters :: pure fn(value: string) -> string {
     end := text.ByteLength(value);
     lead := end;
-    while (lead > 0 && (text.ByteAt(value, lead - 1) & 192) == 128) { lead -= 1; }
-    if (lead == 0) { return value; }
+    while (lead > 0 && (text.ByteAt(value, lead - 1) & 192) == 128) {
+        lead -= 1;
+    }
+    if (lead == 0) {
+        return value;
+    }
     first := text.ByteAt(value, lead - 1);
     size: int = 4;
-    if (first < 128) { size = 1; }
-    else if (first < 224) { size = 2; }
-    else if (first < 240) { size = 3; }
-    if (end - (lead - 1) < size) { return text.Slice(value, 0, lead - 1); }
+    if (first < 128) {
+        size = 1;
+    } else if (first < 224) {
+        size = 2;
+    } else if (first < 240) {
+        size = 3;
+    }
+    if (end - (lead - 1) < size) {
+        return text.Slice(value, 0, lead - 1);
+    }
     return value;
 }
 // size is positive and includes the trailing NUL in the C representation.
 Format :: pure fn(value: Unit, size: int) -> string {
     switch value {
         case .Value(kind, terms):
-            if (kind != Known) { return text.Slice("?", 0, size - 1); }
+            if (kind != Known) {
+                return text.Slice("?", 0, size - 1);
+            }
             result := "";
             numerator := false;
             foreach (term in terms) {
                 if (term.power > 0) {
-                    if (numerator) { result = Append(result, "·", size); }
+                    if (numerator) {
+                        result = Append(result, "·", size);
+                    }
                     result = AppendTerm(result, term, size);
                     numerator = true;
                 }
             }
-            if (!numerator) { result = Append(result, "1", size); }
+            if (!numerator) {
+                result = Append(result, "1", size);
+            }
             foreach (term in terms) {
                 if (term.power < 0) {
                     result = Append(result, "/", size);

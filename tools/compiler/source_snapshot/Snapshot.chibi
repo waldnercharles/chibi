@@ -17,8 +17,19 @@ Options :: struct {
     file_count: int;
     collection_count: int;
 }
-Input :: struct { path: string; text: string; has_path: bool; has_text: bool; }
-Range :: struct { start: int; end: int; line: int; column: int; document: int; }
+Input :: struct {
+    path: string;
+    text: string;
+    has_path: bool;
+    has_text: bool;
+}
+Range :: struct {
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
 SnapshotNode :: struct {
     kind: string;
     start: int;
@@ -134,21 +145,37 @@ ValidUTF8 :: pure fn(text: string) -> bool {
     while (index < size) {
         byte := strings.ByteAt(text, index);
         index += 1;
-        if (byte < 128) { continue; }
+        if (byte < 128) {
+            continue;
+        }
         count: int = -1;
-        if (byte >= 194 && byte <= 223) { count = 1; }
-        if (byte >= 224 && byte <= 239) { count = 2; }
-        if (byte >= 240 && byte <= 244) { count = 3; }
-        if (count < 0 || count > size - index) { return false; }
+        if (byte >= 194 && byte <= 223) {
+            count = 1;
+        }
+        if (byte >= 224 && byte <= 239) {
+            count = 2;
+        }
+        if (byte >= 240 && byte <= 244) {
+            count = 3;
+        }
+        if (count < 0 || count > size - index) {
+            return false;
+        }
         value := byte & (127 >> (count + 1));
         minimum: int = 128;
-        if (count == 2) { minimum = 2048; }
-        if (count == 3) { minimum = 65536; }
+        if (count == 2) {
+            minimum = 2048;
+        }
+        if (count == 3) {
+            minimum = 65536;
+        }
         part: int = 0;
         while (part < count) {
             next := strings.ByteAt(text, index);
             index += 1;
-            if ((next & 192) != 128) { return false; }
+            if ((next & 192) != 128) {
+                return false;
+            }
             value = (value << 6) | (next & 63);
             part += 1;
         }
@@ -166,7 +193,9 @@ Retained :: pure fn(input: Input) -> Document {
             has_key: false, has_syntax: false, has_header: false};
 }
 Rebase :: pure fn(link: int, offset: int) -> int {
-    if (link < 0) { return link; }
+    if (link < 0) {
+        return link;
+    }
     return link + offset;
 }
 Node :: pure fn(node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
@@ -206,13 +235,27 @@ GraphFailure :: pure fn(error: graph.Error, cycle: int[], documents: Document[],
         related = HeaderRange(documents[error.related_file]);
     }
     message := "Invalid package graph";
-    if (error.code == graph.DuplicateFile) { message = "Duplicate package file"; }
-    if (error.code == graph.HeaderMismatch) { message = "Package sibling headers differ"; }
-    if (error.code == graph.DuplicateName) { message = "Duplicate package name"; }
-    if (error.code == graph.Missing) { message = "Imported package is missing from the snapshot"; }
-    if (error.code == graph.ImportName) { message = "Invalid import binding name"; }
-    if (error.code == graph.DuplicateImport) { message = "Duplicate file-local import binding"; }
-    if (error.code == graph.Cycle) { message = "Package import cycle"; }
+    if (error.code == graph.DuplicateFile) {
+        message = "Duplicate package file";
+    }
+    if (error.code == graph.HeaderMismatch) {
+        message = "Package sibling headers differ";
+    }
+    if (error.code == graph.DuplicateName) {
+        message = "Duplicate package name";
+    }
+    if (error.code == graph.Missing) {
+        message = "Imported package is missing from the snapshot";
+    }
+    if (error.code == graph.ImportName) {
+        message = "Invalid import binding name";
+    }
+    if (error.code == graph.DuplicateImport) {
+        message = "Duplicate file-local import binding";
+    }
+    if (error.code == graph.Cycle) {
+        message = "Package import cycle";
+    }
     return Result.Rejected(Diagnostic(range, message), related, error, cycle, documents, nodes, imports);
 }
 
@@ -232,8 +275,10 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
     rootSet := routes.RootSet(options.project, options.has_project,
                               slice(collections, 0, options.collection_count));
     switch rootSet {
-        case .Rejected(diagnostic): return Reject(diagnostic, documents, nodes, imports);
-        case .Accepted(items): roots = items;
+        case .Rejected(diagnostic):
+            return Reject(diagnostic, documents, nodes, imports);
+        case .Accepted(items):
+            roots = items;
     }
     files: graph.File[] = [];
     pending: extract.Import[] = [];
@@ -258,7 +303,8 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
         documents = array_add(documents, document);
         routed := routes.FileRoute(roots, input.path, input.has_path, file);
         switch routed {
-            case .Rejected(diagnostic): return Reject(diagnostic, documents, nodes, imports);
+            case .Rejected(diagnostic):
+                return Reject(diagnostic, documents, nodes, imports);
             case .Accepted(item):
                 document.path = item.path;
                 document.directory = item.directory;
@@ -289,7 +335,8 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
                 documents[file] = document;
                 extracted := extract.Extract(localNodes, fields, input.text, root, file, document.path, document.directory);
                 switch extracted {
-                    case .Rejected(diagnostic): return Reject(Stamp(diagnostic, file), documents, nodes, imports);
+                    case .Rejected(diagnostic):
+                        return Reject(Stamp(diagnostic, file), documents, nodes, imports);
                     case .Accepted(descriptor, items):
                         document.header_start = descriptor.header_start;
                         document.header_end = descriptor.header_end;
@@ -301,7 +348,9 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
                         files = array_add(files, graphFile);
                         pendingStarts = array_add(pendingStarts, length(pending));
                         pendingCounts = array_add(pendingCounts, length(items));
-                        foreach (item in items) { pending = array_add(pending, item); }
+                        foreach (item in items) {
+                            pending = array_add(pending, item);
+                        }
                 }
         }
         documents[file] = document;
@@ -328,11 +377,12 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
             };
             routed := routes.ImportRoute(roots, request);
             switch routed {
-                case .Rejected(diagnostic): return Reject(diagnostic, documents, nodes, imports);
+                case .Rejected(diagnostic):
+                    return Reject(diagnostic, documents, nodes, imports);
                 case .Accepted(directory):
                     imports = array_add(imports, Resolved(imported, directory));
                     graphImport: graph.Import = {file: imported.file, directory: directory,
-                                                alias: imported.alias, explicit_alias: imported.explicit_alias};
+                                                 alias: imported.alias, explicit_alias: imported.explicit_alias};
                     graphImports = array_add(graphImports, graphImport);
             }
             document.import_count += 1;
@@ -343,7 +393,8 @@ Build :: pure fn(options: Options, collections: routes.Collection[], inputs: Inp
     }
     built := graph.Build(files, graphImports);
     switch built {
-        case .Rejected(error, cycle): return GraphFailure(error, cycle, documents, nodes, imports);
+        case .Rejected(error, cycle):
+            return GraphFailure(error, cycle, documents, nodes, imports);
         case .Accepted(packages, members, filePackages, order, edges, bindings):
             return Result.Accepted(roots, documents, nodes, imports, built);
     }

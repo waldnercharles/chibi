@@ -18,8 +18,17 @@ Version: int : 15;
 // struct fields, union payloads and array items are values[first, first + count),
 // after the value itself. An absent struct still records its field count.
 Value :: struct {
-    tag: int; container: int; type_name: string; has_type_name: bool; authored: bool;
-    wide: int; text: string; has_text: bool; present: bool; first: int; count: int;
+    tag: int;
+    container: int;
+    type_name: string;
+    has_type_name: bool;
+    authored: bool;
+    wide: int;
+    text: string;
+    has_text: bool;
+    present: bool;
+    first: int;
+    count: int;
 }
 // Pin types the encoder distinguishes.
 FlowTag: int : 0;
@@ -28,46 +37,139 @@ UnionTag: int : 18;
 NameTag: int : 12;
 TextTag: int : 13;
 
-Field :: struct { name: string; kind: int; }
+Field :: struct {
+    name: string;
+    kind: int;
+}
 // An authored record requirement lists its fields; others resolve by identity.
 Requirement :: struct {
-    id: int; layout: int; storage: int; name: string; size: int;
-    authored: bool; first: int; count: int;
+    id: int;
+    layout: int;
+    storage: int;
+    name: string;
+    size: int;
+    authored: bool;
+    first: int;
+    count: int;
 }
-Import :: struct { id: int; fingerprint: int; }
+Import :: struct {
+    id: int;
+    fingerprint: int;
+}
 // A function reference: own `index` in this module, or `function` (a wide id)
 // in import `imported`. Null references have neither.
-Reference :: struct { imported: int; own: int; function: int; role: int; }
-Source :: struct {
-    graph: int; call: int; parent: int; asset: string; has_asset: bool;
-    start: int; end: int; line: int; column: int;
+Reference :: struct {
+    imported: int;
+    own: int;
+    function: int;
+    role: int;
 }
-Frame :: struct { source: int; depth: int; resume: int; source_index: int; stack: int; }
-Root :: struct { bank: int; index: int; shape: int; }
+Source :: struct {
+    graph: int;
+    call: int;
+    parent: int;
+    asset: string;
+    has_asset: bool;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+}
+Frame :: struct {
+    source: int;
+    depth: int;
+    resume: int;
+    source_index: int;
+    stack: int;
+}
+Root :: struct {
+    bank: int;
+    index: int;
+    shape: int;
+}
 Instruction :: struct {
-    op: int; type: int; output: int; left: int; right: int; target: int;
-    frame: int; source: int; stack: int; pin: int; offset: int; indirect: bool;
-    component_index: int; node: int; value: int; layout: int; message: string;
+    op: int;
+    type: int;
+    output: int;
+    left: int;
+    right: int;
+    target: int;
+    frame: int;
+    source: int;
+    stack: int;
+    pin: int;
+    offset: int;
+    indirect: bool;
+    component_index: int;
+    node: int;
+    value: int;
+    layout: int;
+    message: string;
     has_message: bool;
 }
 Local :: struct {
-    kind: int; initial: int; frame: int; node: int; pin: int; offset: int;
-    parameter: bool; array_default: bool; data_index: int;
+    kind: int;
+    initial: int;
+    frame: int;
+    node: int;
+    pin: int;
+    offset: int;
+    parameter: bool;
+    array_default: bool;
+    data_index: int;
 }
-Parameter :: struct { initial: int; frame: int; pin: int; }
-ResultLayout :: struct { index: int; name: string; }
-Data :: struct { kind: int; initial: int; size: int; }
+Parameter :: struct {
+    initial: int;
+    frame: int;
+    pin: int;
+}
+ResultLayout :: struct {
+    index: int;
+    name: string;
+}
+Data :: struct {
+    kind: int;
+    initial: int;
+    size: int;
+}
 Host :: struct {
-    capability: int; abi: int; first: int; result_first: int; result_count: int;
-    outcome_first: int; outcome_count: int;
+    capability: int;
+    abi: int;
+    first: int;
+    result_first: int;
+    result_count: int;
+    outcome_first: int;
+    outcome_count: int;
 }
-Call :: struct { function: int; first: int; count: int; result_first: int; result_count: int; task: bool; }
+Call :: struct {
+    function: int;
+    first: int;
+    count: int;
+    result_first: int;
+    result_count: int;
+    task: bool;
+}
 Point :: struct {
-    occurrence: int; meaning: int; start: int; end: int; line: int; column: int;
-    kind: int; completion: bool;
+    occurrence: int;
+    meaning: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    kind: int;
+    completion: bool;
 }
-Watch :: struct { origin: int; initial: int; ordinal: int; output: bool; reference: bool; }
-Span :: struct { first: int; count: int; }
+Watch :: struct {
+    origin: int;
+    initial: int;
+    ordinal: int;
+    output: bool;
+    reference: bool;
+}
+Span :: struct {
+    first: int;
+    count: int;
+}
 // Per-function tables, in spans[function.spans + table]. Kinds and slots are
 // ints; defaults and roots name values; sources and stacks share `sources`.
 ArgumentDefaults: int : 0;
@@ -93,17 +195,35 @@ SourcePoints: int : 19;
 SourceWatches: int : 20;
 Tables: int : 21;
 Function :: struct {
-    argument_count: int; result_count: int; variable_count: int;
-    root_steps: int; child_budget: int; depth_bound: int; pure_depth_limit: int;
-    breakpoints: bool; batchable: bool; managed: bool; custom_lowering: bool;
-    checkpoints: bool; pin_watches: bool; watch_size: int;
-    component_bindings: bool; component_access: bool; spans: int;
+    argument_count: int;
+    result_count: int;
+    variable_count: int;
+    root_steps: int;
+    child_budget: int;
+    depth_bound: int;
+    pure_depth_limit: int;
+    breakpoints: bool;
+    batchable: bool;
+    managed: bool;
+    custom_lowering: bool;
+    checkpoints: bool;
+    pin_watches: bool;
+    watch_size: int;
+    component_bindings: bool;
+    component_access: bool;
+    spans: int;
 }
 // A module function entry: no event, observer, action or captures. `body`
 // and `subscription` index `references`.
 Entry :: struct {
-    id: int; kind: int; entry_name: string; has_entry: bool; continuation_wait: bool;
-    effects: int; body: int; subscription: int;
+    id: int;
+    kind: int;
+    entry_name: string;
+    has_entry: bool;
+    continuation_wait: bool;
+    effects: int;
+    body: int;
+    subscription: int;
 }
 Module :: union {
     Tables(id: uint64, owner_type: uint64, abi: uint64, wide: uint64[], values: Value[], ints: int[],
@@ -122,7 +242,9 @@ U64 :: pure fn(value: uint64) -> byte[] {
         low := rest & 127;
         rest = rest >> 7;
         more = rest != 0;
-        if (more) { low = low | 128; }
+        if (more) {
+            low = low | 128;
+        }
         bytes = array_add(bytes, byte(wrap: low));
     }
     return bytes;
@@ -133,12 +255,16 @@ Int :: pure fn(value: int) -> byte[] {
     return U64(uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63));
 }
 Bool :: pure fn(value: bool) -> byte[] {
-    if (value) { return U64(1); }
+    if (value) {
+        return U64(1);
+    }
     return U64(0);
 }
 // Absent text is 0; otherwise its byte length plus one, then its bytes.
 Text :: pure fn(value: string, present: bool) -> byte[] {
-    if (!present) { return U64(0); }
+    if (!present) {
+        return U64(0);
+    }
     size := strings.ByteLength(value);
     bytes := U64(uint64(size + 1));
     index: int = 0;
@@ -150,7 +276,9 @@ Text :: pure fn(value: string, present: bool) -> byte[] {
 }
 Zeros :: pure fn(count: int) -> byte[] {
     bytes: byte[] = [];
-    while (length(bytes) < count) { bytes = array_add(bytes, byte(0)); }
+    while (length(bytes) < count) {
+        bytes = array_add(bytes, byte(0));
+    }
     return bytes;
 }
 // A value's own bytes; its nested values follow them. `bits` is its wide entry.
@@ -161,7 +289,9 @@ ValueHead :: pure fn(v: Value, bits: uint64) -> byte[] {
     bytes = append(bytes, Bool(v.authored));
     if (v.container != 0) {
         bytes = append(bytes, Bool(v.present));
-        if (!v.present) { return bytes; }
+        if (!v.present) {
+            return bytes;
+        }
         return append(bytes, Int(v.count));
     }
     if (v.tag == StructTag) {
@@ -171,7 +301,9 @@ ValueHead :: pure fn(v: Value, bits: uint64) -> byte[] {
     }
     if (v.tag == UnionTag) {
         bytes = append(bytes, Bool(v.present));
-        if (!v.present) { return bytes; }
+        if (!v.present) {
+            return bytes;
+        }
         bytes = append(bytes, U64(bits));
         return append(bytes, Int(v.count));
     }
@@ -183,7 +315,9 @@ ValueHead :: pure fn(v: Value, bits: uint64) -> byte[] {
 // How many nested values follow a value's own bytes.
 Nested :: pure fn(v: Value) -> int {
     aggregate := v.container != 0 || v.tag == StructTag || v.tag == UnionTag;
-    if (aggregate && v.present) { return v.count; }
+    if (aggregate && v.present) {
+        return v.count;
+    }
     return 0;
 }
 // A zero flow value, as an empty observer type is written.
@@ -435,9 +569,13 @@ Write :: pure fn(module: Module) -> byte[] {
                         index += 1;
                     }
                     // Queries, commands and their banks follow host calls; calls follow them.
-                    if (table == Hosts) { bytes = append(bytes, Zeros(6)); }
+                    if (table == Hosts) {
+                        bytes = append(bytes, Zeros(6));
+                    }
                     // Components, component writes and state selections follow definitions.
-                    if (table == Definitions) { bytes = append(bytes, Zeros(3)); }
+                    if (table == Definitions) {
+                        bytes = append(bytes, Zeros(3));
+                    }
                     table += 1;
                 }
                 // Points, watches and edges are debugger tables this module has none of.
@@ -467,7 +605,9 @@ Fingerprint :: pure fn(bytes: byte[]) -> uint64 {
     foreach (item in bytes) {
         hash = (hash ^ uint64(item)) * 1099511628211;
     }
-    if (hash == 0) { return 1; }
+    if (hash == 0) {
+        return 1;
+    }
     return hash;
 }
 

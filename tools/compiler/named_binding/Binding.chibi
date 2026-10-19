@@ -7,7 +7,13 @@ import strings "core:strings"
 // All tables contain analyzer/catalog facts. A negative ID slot denotes zero;
 // symbol_types is aligned with the lexical symbol table. Nonnegative indices
 // and spans retain the owning analyzer's structural invariants.
-Type :: struct { storage: int; container: int; flags: int; nominal_slot: int; parameter_slot: int; }
+Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    nominal_slot: int;
+    parameter_slot: int;
+}
 Entry :: struct {
     name: string;
     source_name: string;
@@ -27,10 +33,33 @@ Import :: struct {
     export_count: int;
     has_alias: bool;
 }
-Export :: struct { name: string; kind: int; id_slot: int; }
-Use :: struct { kind: int; symbol: int; member_slot: int; start: int; end: int; line: int; column: int; document: int; }
-Request :: struct { text: string; scope: int; start: int; end: int; line: int; column: int; document: int; }
-TypeUse :: union { Absent | Reference(symbol: int, member: uint64, start: int, end: int, line: int, column: int, document: int) }
+Export :: struct {
+    name: string;
+    kind: int;
+    id_slot: int;
+}
+Use :: struct {
+    kind: int;
+    symbol: int;
+    member_slot: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+Request :: struct {
+    text: string;
+    scope: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+TypeUse :: union {
+    Absent | Reference(symbol: int, member: uint64, start: int, end: int, line: int, column: int, document: int)
+}
 Resolution :: union {
     Resolved(storage: int, container: int, flags: int, nominal: uint64,
              parameter: uint64, use: TypeUse, diagnostics: syntax.Diagnostic[])
@@ -41,10 +70,14 @@ Environment :: union {
            imports: Import[], exports: Export[], uses: Use[], identity: string,
            package_scope: int, has_native: bool, has_documents: bool, entity_id: uint64)
 }
-Value :: union { Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64) }
+Value :: union {
+    Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64)
+}
 
 IDAt :: pure fn(ids: uint64[], slot: int) -> uint64 {
-    if (slot < 0) { return 0; }
+    if (slot < 0) {
+        return 0;
+    }
     return ids[slot];
 }
 TypeAt :: pure fn(types: Type[], ids: uint64[], index: int) -> Value {
@@ -60,21 +93,39 @@ Builtin :: pure fn(name: string) -> Value {
                        "int64", "uint64", "float", "double", "name", "string", "handle", "struct", "enum"];
     index: int = 0;
     while (index < length(names)) {
-        if (names[index] == name) { return Value.Typed(index, 0, 0, 0, 0); }
+        if (names[index] == name) {
+            return Value.Typed(index, 0, 0, 0, 0);
+        }
         index += 1;
     }
-    if (name == "number") { return Value.Typed(11, 0, 0, 0, 0); }
-    if (name == "exec" || name == "flow") { return Value.Typed(0, 0, 0, 0, 0); }
-    if (name == "entity") { return Value.Typed(14, 0, 0, binding.ID("type", "ecs.entity"), 0); }
-    if (name == "task") { return Value.Typed(17, 0, 64, 0, 0); }
-    if (name == "any") { return Value.Typed(0, 0, 16, 0, 0); }
+    if (name == "number") {
+        return Value.Typed(11, 0, 0, 0, 0);
+    }
+    if (name == "exec" || name == "flow") {
+        return Value.Typed(0, 0, 0, 0, 0);
+    }
+    if (name == "entity") {
+        return Value.Typed(14, 0, 0, binding.ID("type", "ecs.entity"), 0);
+    }
+    if (name == "task") {
+        return Value.Typed(17, 0, 64, 0, 0);
+    }
+    if (name == "any") {
+        return Value.Typed(0, 0, 16, 0, 0);
+    }
     return Value.Typed(0, 0, 1, 0, 0);
 }
 Bad :: pure fn(value: Value) -> bool {
-    switch value { case .Typed(storage, container, flags, nominal, parameter): return (flags & 1) != 0; }
+    switch value {
+        case .Typed(storage, container, flags, nominal, parameter):
+            return (flags & 1) != 0;
+    }
 }
 WithNominal :: pure fn(value: Value, id: uint64) -> Value {
-    switch value { case .Typed(storage, container, flags, nominal, parameter): return Value.Typed(storage, container, flags, id, parameter); }
+    switch value {
+        case .Typed(storage, container, flags, nominal, parameter):
+            return Value.Typed(storage, container, flags, id, parameter);
+    }
 }
 
 // Catalog spelling compatibility is byte based: ASCII case plus ignored
@@ -89,8 +140,12 @@ Next :: pure fn(text: string, index: int) -> int {
     return current;
 }
 FoldByte :: pure fn(byte: int) -> int {
-    if (byte < 0) { return 0; }
-    if (byte >= 65 && byte <= 90) { return byte + 32; }
+    if (byte < 0) {
+        return 0;
+    }
+    if (byte >= 65 && byte <= 90) {
+        return byte + 32;
+    }
     return byte;
 }
 Matches :: pure fn(left: string, right: string) -> bool {
@@ -101,8 +156,12 @@ Matches :: pure fn(left: string, right: string) -> bool {
         b = Next(right, b);
         x := FoldByte(strings.ByteAt(left, a));
         y := FoldByte(strings.ByteAt(right, b));
-        if (x != y) { return false; }
-        if (x == 0) { return true; }
+        if (x != y) {
+            return false;
+        }
+        if (x == 0) {
+            return true;
+        }
         a += 1;
         b += 1;
     }
@@ -112,7 +171,9 @@ ShortName :: pure fn(name: string) -> string {
     index: int = 0;
     count := strings.ByteLength(name);
     while (index < count) {
-        if (strings.ByteAt(name, index) == 46) { start = index + 1; }
+        if (strings.ByteAt(name, index) == 46) {
+            start = index + 1;
+        }
         index += 1;
     }
     return strings.Slice(name, start, count - start);
@@ -123,12 +184,18 @@ FindCatalog :: pure fn(entries: Entry[], name: string) -> int {
     while (index < length(entries)) {
         item := entries[index];
         if (!item.internal) {
-            if (item.name == name) { return index; }
+            if (item.name == name) {
+                return index;
+            }
             if (Matches(item.name, name) || Matches(ShortName(item.name), name) ||
                 (item.has_source_name && Matches(item.source_name, name)) ||
                 (item.has_key && Matches(item.key, name))) {
-                if (found >= 0) { found = -2; }
-                if (found != -2) { found = index; }
+                if (found >= 0) {
+                    found = -2;
+                }
+                if (found != -2) {
+                    found = index;
+                }
             }
         }
         index += 1;
@@ -138,7 +205,9 @@ FindCatalog :: pure fn(entries: Entry[], name: string) -> int {
 TypeIndex :: pure fn(entries: Entry[], ids: uint64[], id: uint64) -> int {
     index: int = 0;
     while (index < length(entries)) {
-        if (IDAt(ids, entries[index].id_slot) == id) { return index; }
+        if (IDAt(ids, entries[index].id_slot) == id) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -147,21 +216,31 @@ Namespace :: pure fn(environment: Environment, scope: int, document: int, name: 
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                      identity, package_scope, has_native, has_documents, entity_id):
-            if (!has_documents) { return -1; }
+            if (!has_documents) {
+                return -1;
+            }
             dot: int = 0;
             count := strings.ByteLength(name);
-            while (dot < count && strings.ByteAt(name, dot) != 46) { dot += 1; }
-            if (dot == 0 || dot == count) { return -1; }
+            while (dot < count && strings.ByteAt(name, dot) != 46) {
+                dot += 1;
+            }
+            if (dot == 0 || dot == count) {
+                return -1;
+            }
             alias := strings.Slice(name, 0, dot);
             index: int = 0;
             while (index < length(imports)) {
                 imported := imports[index];
                 if (imported.document == document && imported.has_alias && imported.alias == alias && alias != "_") {
                     local := binding.FindName(lexical, scope, alias);
-                    if (local < 0) { local = binding.FindCallable(lexical, scope, alias); }
+                    if (local < 0) {
+                        local = binding.FindCallable(lexical, scope, alias);
+                    }
                     switch lexical {
                         case .Tables(scopes, symbols, functions, lexical_ids, keys):
-                            if (local >= 0 && symbols[local].scope > package_scope) { return -1; }
+                            if (local >= 0 && symbols[local].scope > package_scope) {
+                                return -1;
+                            }
                     }
                     return index;
                 }
@@ -177,7 +256,9 @@ FindType :: pure fn(environment: Environment, scope: int, document: int, name: s
                      identity, package_scope, has_native, has_documents, entity_id):
             if (importedIndex >= 0) {
                 dot: int = 0;
-                while (strings.ByteAt(name, dot) != 46) { dot += 1; }
+                while (strings.ByteAt(name, dot) != 46) {
+                    dot += 1;
+                }
                 member := strings.Slice(name, dot + 1, strings.ByteLength(name) - dot - 1);
                 imported := imports[importedIndex];
                 if (imported.identity == identity) {
@@ -205,17 +286,27 @@ FindType :: pure fn(environment: Environment, scope: int, document: int, name: s
                 }
                 return -1;
             }
-            if (!has_native) { return FindCatalog(merged, name); }
+            if (!has_native) {
+                return FindCatalog(merged, name);
+            }
             found := FindCatalog(own, name);
-            if (found >= 0) { return TypeIndex(merged, ids, IDAt(ids, own[found].id_slot)); }
-            if (found == -2) { return found; }
+            if (found >= 0) {
+                return TypeIndex(merged, ids, IDAt(ids, own[found].id_slot));
+            }
+            if (found == -2) {
+                return found;
+            }
             found = FindCatalog(native, name);
-            if (found >= 0) { return TypeIndex(merged, ids, IDAt(ids, native[found].id_slot)); }
+            if (found >= 0) {
+                return TypeIndex(merged, ids, IDAt(ids, native[found].id_slot));
+            }
             return found;
     }
 }
 UseAt :: pure fn(environment: Environment, request: Request, symbol: int, nominal: uint64) -> TypeUse {
-    if (symbol < 0 && nominal == 0) { return TypeUse.Absent; }
+    if (symbol < 0 && nominal == 0) {
+        return TypeUse.Absent;
+    }
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                      identity, package_scope, has_native, has_documents, entity_id):
@@ -234,16 +325,26 @@ Complete :: pure fn(environment: Environment, request: Request, value: Value, sy
         case .Typed(storage, original_container, original_flags, nominal, parameter):
             container := original_container;
             flags := original_flags | added_flags;
-            if (forced_container >= 0) { container = forced_container; }
+            if (forced_container >= 0) {
+                container = forced_container;
+            }
             foreach (token in tokens) {
-                if (token == "ref") { flags = flags | 4; }
-                if (token == "?") { flags = flags | 2; }
-                if (token == "[" || token == "[]") { container = 1; }
+                if (token == "ref") {
+                    flags = flags | 4;
+                }
+                if (token == "?") {
+                    flags = flags | 2;
+                }
+                if (token == "[" || token == "[]") {
+                    container = 1;
+                }
             }
             use := TypeUse.Absent;
             if ((flags & 1) == 0) {
                 useNominal := nominal;
-                if (symbol >= 0) { useNominal = 0; }
+                if (symbol >= 0) {
+                    useNominal = 0;
+                }
                 use = UseAt(environment, request, symbol, useNominal);
             }
             if ((flags & 2) != 0) {
@@ -251,7 +352,9 @@ Complete :: pure fn(environment: Environment, request: Request, value: Value, sy
                     case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                                  identity, package_scope, has_native, has_documents, entity_id):
                         found := TypeIndex(merged, ids, nominal);
-                        if (found < 0 || !merged[found].component) { flags = flags | 2048; }
+                        if (found < 0 || !merged[found].component) {
+                            flags = flags | 2048;
+                        }
                 }
             }
             return Resolution.Resolved(storage, container, flags, nominal, parameter, use, diagnostics);
@@ -281,7 +384,9 @@ BindName :: pure fn(environment: Environment, request: Request, name: string,
                     value = WithNominal(TypeAt(types, ids, merged[found].type), IDAt(ids, merged[found].id_slot));
                 } else {
                     message_prefix := "Unknown";
-                    if (found == -2) { message_prefix = "Ambiguous"; }
+                    if (found == -2) {
+                        message_prefix = "Ambiguous";
+                    }
                     diagnostic: syntax.Diagnostic = {
                         start: request.start, end: request.end, line: request.line,
                         column: request.column, document: request.document,
@@ -290,11 +395,15 @@ BindName :: pure fn(environment: Environment, request: Request, name: string,
                     diagnostics = array_add(diagnostics, diagnostic);
                 }
             }
-            if (name == "entity" && entity_id != 0) { value = WithNominal(value, entity_id); }
+            if (name == "entity" && entity_id != 0) {
+                value = WithNominal(value, entity_id);
+            }
             useSymbol: int = -1;
             switch lexical {
                 case .Tables(scopes, symbols, functions, lexical_ids, keys):
-                    if (symbol >= 0 && symbols[symbol].kind == 12) { useSymbol = symbol; }
+                    if (symbol >= 0 && symbols[symbol].kind == 12) {
+                        useSymbol = symbol;
+                    }
             }
             return Complete(environment, request, value, useSymbol, diagnostics, tokens, forced_container, added_flags);
     }
@@ -359,7 +468,9 @@ Text :: pure fn(environment: Environment, request: Request) -> Resolution {
         decoded := compiler_json_string(name);
         // Legacy fallback copies the decoded C-string prefix, including when
         // JSON contains NUL. Parsed-name validation is a different entry path.
-        if (decoded.valid) { name = decoded.value; }
+        if (decoded.valid) {
+            name = decoded.value;
+        }
     }
     tokens: string[] = [];
     return BindName(environment, request, name, false, tokens, container, flags);

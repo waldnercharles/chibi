@@ -10,13 +10,15 @@ WireOpcodes: int : 29;
 
 Empty :: pure fn() -> writer.Value {
     return {tag: 0, container: 0, type_name: "", has_type_name: false, authored: false,
-        wide: 0, text: "", has_text: false, present: false, first: 0, count: 0};
+            wide: 0, text: "", has_text: false, present: false, first: 0, count: 0};
 }
 NoSource :: pure fn() -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false,
-        start: 0, end: 0, line: 0, column: 0};
+            start: 0, end: 0, line: 0, column: 0};
 }
-Range :: pure fn(first: int, count: int) -> writer.Span { return {first: first, count: count}; }
+Range :: pure fn(first: int, count: int) -> writer.Span {
+    return {first: first, count: count};
+}
 Reference :: pure fn(own: int) -> writer.Reference {
     return {imported: -1, own: own, function: 0, role: 0};
 }
@@ -61,22 +63,28 @@ Prepare :: pure fn(plan: lower.Plan, module: uint64, function: uint64, name: str
             }
             spans = array_add(spans, Range(0, length(results)));
             spans = array_add(spans, Range(length(ints), length(results)));
-            foreach (item in results) { ints = array_add(ints, int(0)); }
+            foreach (item in results) {
+                ints = array_add(ints, int(0));
+            }
             spans = array_add(spans, Range(length(results), length(defaults)));
             spans = array_add(spans, Range(length(ints), length(slots)));
-            foreach (item in slots) { ints = array_add(ints, item.storage); }
+            foreach (item in slots) {
+                ints = array_add(ints, item.storage);
+            }
             spans = array_add(spans, Range(length(ints), length(slots)));
-            foreach (item in slots) { ints = array_add(ints, item.kind); }
+            foreach (item in slots) {
+                ints = array_add(ints, item.kind);
+            }
             spans = array_add(spans, Range(0, 0));
 
             instructions: writer.Instruction[] = [];
             value_at := length(results) + length(defaults) + length(locals);
             foreach (item in code) {
                 instruction: writer.Instruction = {op: opcodes[item.op], type: item.storage,
-                    output: item.output, left: item.left, right: item.right, target: item.target,
-                    frame: 0, source: item.source, stack: -1, pin: 0, offset: item.offset,
-                    indirect: false, component_index: 0, node: 0, value: value_at, layout: 0,
-                    message: "", has_message: false};
+                                                   output: item.output, left: item.left, right: item.right, target: item.target,
+                                                   frame: 0, source: item.source, stack: -1, pin: 0, offset: item.offset,
+                                                   indirect: false, component_index: 0, node: 0, value: value_at, layout: 0,
+                                                   message: "", has_message: false};
                 instructions = array_add(instructions, instruction);
                 value_at += 1;
             }
@@ -86,7 +94,7 @@ Prepare :: pure fn(plan: lower.Plan, module: uint64, function: uint64, name: str
             value_at = length(results) + length(defaults);
             foreach (item in locals) {
                 local: writer.Local = {kind: item.kind, initial: value_at, frame: 0, node: 0,
-                    pin: 0, offset: 0, parameter: false, array_default: false, data_index: 0};
+                                       pin: 0, offset: 0, parameter: false, array_default: false, data_index: 0};
                 prepared_locals = array_add(prepared_locals, local);
                 value_at += 1;
             }
@@ -110,17 +118,19 @@ Prepare :: pure fn(plan: lower.Plan, module: uint64, function: uint64, name: str
             frames: writer.Frame[] = [frame];
             spans = array_add(spans, Range(0, 1));
             spans = array_add(spans, Range(1, length(sources) - 1));
-            while (length(spans) < writer.Tables) { spans = array_add(spans, Range(0, 0)); }
+            while (length(spans) < writer.Tables) {
+                spans = array_add(spans, Range(0, 0));
+            }
 
             head: writer.Function = {argument_count: 0, result_count: length(results),
-                variable_count: length(defaults), root_steps: 0, child_budget: 0,
-                depth_bound: 0, pure_depth_limit: 0, breakpoints: false, batchable: false,
-                managed: false, custom_lowering: false, checkpoints: false, pin_watches: false,
-                watch_size: 0, component_bindings: false, component_access: false, spans: 0};
+                                     variable_count: length(defaults), root_steps: 0, child_budget: 0,
+                                     depth_bound: 0, pure_depth_limit: 0, breakpoints: false, batchable: false,
+                                     managed: false, custom_lowering: false, checkpoints: false, pin_watches: false,
+                                     watch_size: 0, component_bindings: false, component_access: false, spans: 0};
             functions: writer.Function[] = [head];
             references: writer.Reference[] = [Reference(0), Reference(-1)];
             callable: writer.Entry = {id: 1, kind: 0, entry_name: name, has_entry: true,
-                continuation_wait: false, effects: 0, body: 0, subscription: 1};
+                                      continuation_wait: false, effects: 0, body: 0, subscription: 1};
             entries: writer.Entry[] = [callable];
             requirements: writer.Requirement[] = [];
             fields: writer.Field[] = [];
@@ -134,8 +144,8 @@ Prepare :: pure fn(plan: lower.Plan, module: uint64, function: uint64, name: str
             points: writer.Point[] = [];
             watches: writer.Watch[] = [];
             return writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints,
-                requirements, fields, imports, functions, spans, roots, instructions,
-                prepared_locals, parameters, frames, sources, layouts, data, hosts, calls,
-                references, points, watches, entries));
+                                                     requirements, fields, imports, functions, spans, roots, instructions,
+                                                     prepared_locals, parameters, frames, sources, layouts, data, hosts, calls,
+                                                     references, points, watches, entries));
     }
 }

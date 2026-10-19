@@ -5,7 +5,12 @@ package constant_ir
 // obey the same invariants as the analyzer's owned expression graph.
 // Scalar folding also requires type-correct operator result families and
 // literal storage. Admissibility does not validate arbitrary hand-built IR.
-Type :: struct { storage: int; container: int; flags: int; has_nominal: bool; }
+Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    has_nominal: bool;
+}
 Expression :: struct {
     kind: int;
     op: int;
@@ -19,8 +24,13 @@ Expression :: struct {
     effects: int;
     conversion: int; // Cast range policy: 0 exact, 1 wrap, 2 clamp.
 }
-Symbol :: struct { kind: int; initializer: int; }
-Argument :: struct { value: int; }
+Symbol :: struct {
+    kind: int;
+    initializer: int;
+}
+Argument :: struct {
+    value: int;
+}
 
 // Enum and bit-mask values retain the existing semantic and value ABI.
 Constant: int : 1;

@@ -16,51 +16,142 @@ import strings "core:strings"
 // width, the byte offsets of a value header's and an array's members, and the
 // failure kinds a host call and a failed assertion report.
 Target :: struct {
-    pointer_storage: int; pointer_size: int; value_size: int; payload_offset: int; results_offset: int;
-    type_offset: int; container_offset: int; name_offset: int; record_offset: int; count_offset: int;
-    items_offset: int; data_failure: int; argument_failure: int;
+    pointer_storage: int;
+    pointer_size: int;
+    value_size: int;
+    payload_offset: int;
+    results_offset: int;
+    type_offset: int;
+    container_offset: int;
+    name_offset: int;
+    record_offset: int;
+    count_offset: int;
+    items_offset: int;
+    data_failure: int;
+    argument_failure: int;
 }
 // Prepared instructions this compiler emits, as ordinals on the target.
 Ops :: struct {
-    constant: int; argument: int; local: int; save: int; context: int; array: int; host_slot: int;
-    string_equal: int; index: int; load: int; write: int; result: int; host_call: int; invoke: int;
-    guard: int; check: int; branch_if: int; jump: int; finish: int; end: int; add: int; sub: int; mul: int;
-    div: int; mod: int; neg: int; bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int;
-    shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int; cast: int;
+    constant: int;
+    argument: int;
+    local: int;
+    save: int;
+    context: int;
+    array: int;
+    host_slot: int;
+    string_equal: int;
+    index: int;
+    load: int;
+    write: int;
+    result: int;
+    host_call: int;
+    invoke: int;
+    guard: int;
+    check: int;
+    branch_if: int;
+    jump: int;
+    finish: int;
+    end: int;
+    add: int;
+    sub: int;
+    mul: int;
+    div: int;
+    mod: int;
+    neg: int;
+    bit_and: int;
+    bit_or: int;
+    bit_xor: int;
+    bit_not: int;
+    shl: int;
+    shr: int;
+    lt: int;
+    le: int;
+    gt: int;
+    ge: int;
+    eq: int;
+    ne: int;
+    cast: int;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
-ValueType :: struct { storage: int; container: int; record: int; }
+ValueType :: struct {
+    storage: int;
+    container: int;
+    record: int;
+}
 // A function of package `package`; its parameters are params[first, first + count).
 Callable :: struct {
-    name: string; package: int; document: int; node: int; first: int; count: int; result: int;
-    result_container: int; result_record: int;
+    name: string;
+    package: int;
+    document: int;
+    node: int;
+    first: int;
+    count: int;
+    result: int;
+    result_container: int;
+    result_record: int;
 }
-Param :: struct { name: string; storage: int; container: int; record: int; }
+Param :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    record: int;
+}
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
 // results); its ID and ABI are identities[2 * index] and [2 * index + 1]. A
 // variadic native's last parameter takes any number of arguments, none
 // included.
-Native :: struct { name: string; first: int; parameters: int; results: int; variadic: bool; }
+Native :: struct {
+    name: string;
+    first: int;
+    parameters: int;
+    results: int;
+    variadic: bool;
+}
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; AnyPort takes each argument's own type, and
 // UnsupportedPort is a type this compiler cannot pass.
-Port :: struct { name: string; storage: int; container: int; }
+Port :: struct {
+    name: string;
+    storage: int;
+    container: int;
+}
 AnyPort: int : -2;
 UnsupportedPort: int : -1;
 // A declared type. A record's fields and a variant's payload are
 // members[first, first + count); a union's variants are types[first, first +
 // count), and each variant names its union as `parent`.
 TypeDecl :: struct {
-    name: string; type_name: string; package: int; kind: int; first: int; count: int; size: int; parent: int;
+    name: string;
+    type_name: string;
+    package: int;
+    kind: int;
+    first: int;
+    count: int;
+    size: int;
+    parent: int;
 }
 // A record field, with its byte offset, or a variant's payload field.
-TypeMember :: struct { name: string; storage: int; container: int; record: int; offset: int; }
-Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
+TypeMember :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    record: int;
+    offset: int;
+}
+Result :: union {
+    Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
+}
 // A package constant: an integer literal of an integer type, its 64 bits,
 // sign-extended for signed types, as `high` and `low` halves.
-ConstDecl :: struct { name: string; package: int; storage: int; high: int; low: int; }
+ConstDecl :: struct {
+    name: string;
+    package: int;
+    storage: int;
+    high: int;
+    low: int;
+}
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Collected(callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
@@ -86,7 +177,9 @@ IntrinsicBase: uint64 : 0x4348494900000000;
 Ordinal :: pure fn(names: string[], name: string) -> int {
     index: int = 0;
     while (index < length(names)) {
-        if (names[index] == name) { return index; }
+        if (names[index] == name) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -95,53 +188,69 @@ Ordinal :: pure fn(names: string[], name: string) -> int {
 Position :: pure fn(items: int[], value: int) -> int {
     index: int = 0;
     while (index < length(items)) {
-        if (items[index] == value) { return index; }
+        if (items[index] == value) {
+            return index;
+        }
         index += 1;
     }
     return -1;
 }
 ResolveOps :: pure fn(names: string[]) -> Ops {
     return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
-        local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
-        array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
-        string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
-        load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
-        host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
-        check: Ordinal(names, "CHECK"),
-        branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
-        end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
-        mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
-        neg: Ordinal(names, "NEG"), bit_and: Ordinal(names, "BIT_AND"), bit_or: Ordinal(names, "BIT_OR"),
-        bit_xor: Ordinal(names, "BIT_XOR"), bit_not: Ordinal(names, "BIT_NOT"), shl: Ordinal(names, "SHL"),
-        shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
-        gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
-        cast: Ordinal(names, "CAST")};
+            local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
+            array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
+            string_equal: Ordinal(names, "STRING_EQUAL"), index: Ordinal(names, "INDEX"),
+            load: Ordinal(names, "LOAD"), write: Ordinal(names, "WRITE"), result: Ordinal(names, "RESULT"),
+            host_call: Ordinal(names, "HOST_CALL"), invoke: Ordinal(names, "INVOKE"), guard: Ordinal(names, "ASSERT"),
+            check: Ordinal(names, "CHECK"),
+            branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
+            end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
+            mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
+            neg: Ordinal(names, "NEG"), bit_and: Ordinal(names, "BIT_AND"), bit_or: Ordinal(names, "BIT_OR"),
+            bit_xor: Ordinal(names, "BIT_XOR"), bit_not: Ordinal(names, "BIT_NOT"), shl: Ordinal(names, "SHL"),
+            shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
+            gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
+            cast: Ordinal(names, "CAST")};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: pure fn(ops: Ops) -> bool {
     used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.array,
-        ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
-        ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
-        ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
-        ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast];
+                   ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
+                   ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
+                   ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
+                   ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast];
     foreach (op in used) {
-        if (op < 0) { return false; }
+        if (op < 0) {
+            return false;
+        }
     }
     return true;
 }
 // The storage of a scalar type: one a record field may hold, or byte, int64
 // or uint64; 0 for any other.
 ScalarStorage :: pure fn(text: string) -> int {
-    if (text == "byte") { return ByteStorage; }
-    if (text == "int64") { return Int64Storage; }
-    if (text == "uint64") { return WordStorage; }
+    if (text == "byte") {
+        return ByteStorage;
+    }
+    if (text == "int64") {
+        return Int64Storage;
+    }
+    if (text == "uint64") {
+        return WordStorage;
+    }
     return FieldStorage(text);
 }
 // The storage of a type a record field may hold, 0 for any other.
 FieldStorage :: pure fn(text: string) -> int {
-    if (text == "int") { return IntStorage; }
-    if (text == "bool") { return BoolStorage; }
-    if (text == "string") { return TextStorage; }
+    if (text == "int") {
+        return IntStorage;
+    }
+    if (text == "bool") {
+        return BoolStorage;
+    }
+    if (text == "string") {
+        return TextStorage;
+    }
     return 0;
 }
 // The record or union of `package` named `name`, -1 when none.
@@ -149,7 +258,9 @@ FindType :: pure fn(types: TypeDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(types)) {
         declared := types[index];
-        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) { return index; }
+        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -158,7 +269,9 @@ FindType :: pure fn(types: TypeDecl[], package: int, name: string) -> int {
 FindConstant :: pure fn(constants: ConstDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(constants)) {
-        if (constants[index].package == package && constants[index].name == name) { return index; }
+        if (constants[index].package == package && constants[index].name == name) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -170,7 +283,7 @@ Aliases :: pure fn(links: graph.Binding[], file: int) -> Name[] {
     foreach (link in links) {
         if (link.file == file) {
             alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
-                record: -1, writable: false};
+                           record: -1, writable: false};
             aliases = array_add(aliases, alias);
         }
     }
@@ -180,7 +293,9 @@ Aliases :: pure fn(links: graph.Binding[], file: int) -> Name[] {
 FindVariant :: pure fn(types: TypeDecl[], of: int, name: string) -> int {
     at := types[of].first;
     while (at < types[of].first + types[of].count) {
-        if (types[at].name == name) { return at; }
+        if (types[at].name == name) {
+            return at;
+        }
         at += 1;
     }
     return -1;
@@ -198,10 +313,14 @@ ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDe
     container: int = 0;
     child := forest[node].first_child;
     while (child >= 0) {
-        if (!forest[child].is_extra && forest[child].kind == "[") { container += 1; }
+        if (!forest[child].is_extra && forest[child].kind == "[") {
+            container += 1;
+        }
         child = forest[child].next_sibling;
     }
-    if (container > 1) { return none; }
+    if (container > 1) {
+        return none;
+    }
     first := FirstMember(forest, Field(forest, node, "name"));
     name := NameText(forest, text, first);
     home := package;
@@ -209,24 +328,36 @@ ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDe
     if (part >= 0) {
         home = QualifierOf(forest, text, names, package, first);
         name = NameText(forest, text, part);
-        if (home < 0 || NextMember(forest, part) >= 0) { return none; }
+        if (home < 0 || NextMember(forest, part) >= 0) {
+            return none;
+        }
     } else if (ScalarStorage(name) != 0) {
         return {storage: ScalarStorage(name), container: container, record: -1};
     }
     declared := FindType(types, home, name);
-    if (declared < 0) { return none; }
-    if (types[declared].kind == UnionDecl) { return {storage: UnionStorage, container: container, record: declared}; }
+    if (declared < 0) {
+        return none;
+    }
+    if (types[declared].kind == UnionDecl) {
+        return {storage: UnionStorage, container: container, record: declared};
+    }
     return {storage: StructStorage, container: container, record: declared};
 }
 // Field width, which is also its alignment, as the runtime lays records out.
 FieldSize :: pure fn(storage: int, target: Target) -> int {
-    if (storage == TextStorage) { return target.pointer_size; }
-    if (storage == IntStorage) { return 4; }
+    if (storage == TextStorage) {
+        return target.pointer_size;
+    }
+    if (storage == IntStorage) {
+        return 4;
+    }
     return 1;
 }
 AlignTo :: pure fn(size: int, alignment: int) -> int {
     rest := size % alignment;
-    if (rest == 0) { return size; }
+    if (rest == 0) {
+        return size;
+    }
     return size + alignment - rest;
 }
 InputFailure :: pure fn(document: int, message: string) -> Result {
@@ -247,8 +378,9 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
     foreach (package in order) {
         files := slice(files_of, packages[package].member_start, packages[package].member_count);
         switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
-            params, types, members, constants) {
-            case .Failed(diagnostic): return Declarations.Failed(diagnostic);
+                              params, types, members, constants) {
+            case .Failed(diagnostic):
+                return Declarations.Failed(diagnostic);
             case .Collected(more_callables, more_params, more_types, more_members, more_constants):
                 callables = more_callables;
                 params = more_params;
@@ -262,7 +394,7 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0 ||
                  FindConstant(constants, package, link.name) >= 0)) {
                 return Declarations.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
-                    "Package import alias conflicts with a package declaration"));
+                                                               "Package import alias conflicts with a package declaration"));
             }
         }
     }
@@ -289,7 +421,7 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
                 declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
-                    kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1};
+                                      kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -301,15 +433,15 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                         if (Is(forest, variant, "union_variant")) {
                             if (Field(forest, variant, "literal") >= 0) {
                                 return Declarations.Failed(Diagnose(forest, variant, file,
-                                    "literal union alternatives are not supported yet"));
+                                                                    "literal union alternatives are not supported yet"));
                             }
                             variant_name := NameText(forest, text, Field(forest, variant, "name"));
                             if (FindVariant(types, holder, variant_name) >= 0) {
                                 return Declarations.Failed(Diagnose(forest, variant, file,
-                                    format_text("Duplicate union alternative '{}'", variant_name)));
+                                                                    format_text("Duplicate union alternative '{}'", variant_name)));
                             }
                             alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
-                                kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder};
+                                                     kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder};
                             types = array_add(types, alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -329,13 +461,13 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                         storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
                         if (storage == 0 || Field(forest, item, "value") >= 0) {
                             return Declarations.Failed(Diagnose(forest, item, file,
-                                "record field needs an int, bool or string type and no default"));
+                                                                "record field needs an int, bool or string type and no default"));
                         }
                         at := declared.first;
                         while (at < length(members)) {
                             if (members[at].name == field_name) {
                                 return Declarations.Failed(Diagnose(forest, item, file,
-                                    format_text("Duplicate field '{}'", field_name)));
+                                                                    format_text("Duplicate field '{}'", field_name)));
                             }
                             at += 1;
                         }
@@ -344,7 +476,9 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size};
                         members = array_add(members, field);
                         size += width;
-                        if (width > alignment) { alignment = width; }
+                        if (width > alignment) {
+                            alignment = width;
+                        }
                         item = NextMember(forest, item);
                     }
                     if (length(members) == declared.first) {
@@ -379,7 +513,7 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
                             field: TypeMember = {name: NameText(forest, text, Field(forest, parameter, "name")),
-                                storage: payload.storage, container: payload.container, record: payload.record, offset: 0};
+                                                 storage: payload.storage, container: payload.container, record: payload.record, offset: 0};
                             members = array_add(members, field);
                             parameter = NextMember(forest, parameter);
                         }
@@ -419,7 +553,7 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                         return Declarations.Failed(Diagnose(forest, Field(forest, parameter, "name"), file, "Invalid string or embedded NUL"));
                     }
                     param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                        record: declared.record};
+                                    record: declared.record};
                     params = array_add(params, param);
                     parameter = NextMember(forest, parameter);
                 }
@@ -432,8 +566,8 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                     }
                 }
                 callable: Callable = {name: name, package: package, document: file, node: member, first: first,
-                    count: length(params) - first, result: result.storage, result_container: result.container,
-                    result_record: result.record};
+                                      count: length(params) - first, result: result.storage, result_container: result.container,
+                                      result_record: result.record};
                 callables = array_add(callables, callable);
             } else if (Is(forest, member, "constant_declaration")) {
                 name := NameText(forest, text, Field(forest, member, "name"));
@@ -449,7 +583,7 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                 declared := Field(forest, member, "type");
                 if (declared < 0) {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                        "an untyped number is a double; give the constant an integer type"));
+                                                        "an untyped number is a double; give the constant an integer type"));
                 }
                 if (declared >= 0) {
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
@@ -461,15 +595,15 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                 switch ParseNumber(forest, text, Field(forest, member, "value")) {
                     case .Invalid:
                         return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                            "constant value must be an integer literal"));
+                                                            "constant value must be an integer literal"));
                     case .Number(negative, magnitude):
                         if (!Fits(negative, magnitude, storage)) {
                             return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                                format_text("Numeric literal is outside the range of {}", TypeName(storage))));
+                                                                format_text("Numeric literal is outside the range of {}", TypeName(storage))));
                         }
                         bits := Bits(negative, magnitude);
                         constant: ConstDecl = {name: name, package: package, storage: storage, high: High(bits),
-                            low: Low(bits)};
+                                               low: Low(bits)};
                         constants = array_add(constants, constant);
                 }
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
@@ -484,7 +618,7 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
 
 ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
     return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
-        wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
+            wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
 }
 // The header of an absent value of a type. A record names its layout; an
 // array of records, like a record, names its type.
@@ -499,16 +633,22 @@ Header :: pure fn(storage: int, container: int, record: int, types: TypeDecl[], 
         }
         return value;
     }
-    if (storage != StructStorage) { return ScalarValue(storage, 0); }
+    if (storage != StructStorage) {
+        return ScalarValue(storage, 0);
+    }
     return {tag: StructStorage, container: 0, type_name: types[record].type_name, has_type_name: true,
-        authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
-        count: types[record].count};
+            authored: true, wide: layouts[record], text: "", has_text: false, present: false, first: 0,
+            count: types[record].count};
 }
 NoSource :: pure fn() -> writer.Source {
     return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
 }
-Range :: pure fn(first: int, count: int) -> writer.Span { return {first: first, count: count}; }
-Own :: pure fn(index: int) -> writer.Reference { return {imported: -1, own: index, function: 0, role: 0}; }
+Range :: pure fn(first: int, count: int) -> writer.Span {
+    return {first: first, count: count};
+}
+Own :: pure fn(index: int) -> writer.Reference {
+    return {imported: -1, own: index, function: 0, role: 0};
+}
 // FNV-1a over `count` little-endian bytes of `value`, as the runtime hashes
 // layouts.
 HashBytes :: pure fn(hash: uint64, value: uint64, count: int) -> uint64 {
@@ -588,9 +728,10 @@ Link :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
     lengths := resize([int(0)], length(packages));
     foreach (package in order) {
         switch Assemble(forest, documents, package, package_names, package_ids, fingerprints,
-            Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
-            natives, ports, identities, ops, target, abi) {
-            case .Rejected(diagnostic): return Result.Rejected(diagnostic);
+                        Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
+                        natives, ports, identities, ops, target, abi) {
+            case .Rejected(diagnostic):
+                return Result.Rejected(diagnostic);
             case .Compiled(module, bytes):
                 fingerprints[package] = writer.Fingerprint(bytes);
                 starts[package] = length(data);
@@ -599,7 +740,7 @@ Link :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[],
         }
     }
     return Result.Compiled(package_ids[root],
-        writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
+                           writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
 }
 // The prepared module of package `package`; its bytes are the Compiled
 // result's. Each body is a canonical definition the runtime verifies and
@@ -636,21 +777,23 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     foreach (declared in types) {
         layouts = array_add(layouts, int(0));
         tags = array_add(tags, int(0));
-        if (!reachable[declared.package]) { continue; }
+        if (!reachable[declared.package]) {
+            continue;
+        }
         if (declared.kind == VariantDecl) {
             // Stage zero's tag: the union's ID in decimal, then the variant.
             union_id := binding.ID("package-symbol",
-                format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
+                                   format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
             wide = array_add(wide, binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
             tags[length(tags) - 1] = length(wide) - 1;
         } else if (declared.kind == RecordDecl) {
             wide = array_add(wide, binding.ID("package-symbol",
-                format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
+                                              format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
             wide = array_add(wide, LayoutHash(declared, members, target));
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
-                name: declared.type_name, size: declared.size, authored: true, first: length(fields),
-                count: declared.count};
+                                               name: declared.type_name, size: declared.size, authored: true, first: length(fields),
+                                               count: declared.count};
             requirements = array_add(requirements, requirement);
             at := declared.first;
             while (at < declared.first + declared.count) {
@@ -664,7 +807,9 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     wide = array_add(wide, uint64(1));
     // A package's functions are contiguous; the module numbers them from 0.
     first_own: int = 0;
-    while (first_own < length(callables) && callables[first_own].package != package) { first_own += 1; }
+    while (first_own < length(callables) && callables[first_own].package != package) {
+        first_own += 1;
+    }
     // The packages this module calls into, each an import row.
     imported: int[] = [];
     imports: writer.Import[] = [];
@@ -672,9 +817,10 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            types, members, constants, natives, ports, identities, Aliases(links, callable.document), index, ops, target);
+                           types, members, constants, natives, ports, identities, Aliases(links, callable.document), index, ops, target);
         switch tables {
-            case .Failed(diagnostic): return Result.Rejected(diagnostic);
+            case .Failed(diagnostic):
+                return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
                 base := length(spans);
                 // Argument defaults and kinds.
@@ -687,22 +833,33 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 }
                 spans = array_add(spans, Range(length(ints), callable.count));
                 at = 0;
-                while (at < callable.count) { ints = array_add(ints, int(0)); at += 1; }
+                while (at < callable.count) {
+                    ints = array_add(ints, int(0));
+                    at += 1;
+                }
                 // Result defaults and kinds.
                 result_count: int = 0;
-                if (callable.result != 0) { result_count = 1; }
+                if (callable.result != 0) {
+                    result_count = 1;
+                }
                 spans = array_add(spans, Range(length(values), result_count));
                 if (result_count != 0) {
                     values = array_add(values, Header(callable.result, callable.result_container, callable.result_record,
-                        types, layouts));
+                                                      types, layouts));
                 }
                 spans = array_add(spans, Range(length(ints), result_count));
-                if (result_count != 0) { ints = array_add(ints, int(0)); }
+                if (result_count != 0) {
+                    ints = array_add(ints, int(0));
+                }
                 spans = array_add(spans, Range(0, 0));
                 spans = array_add(spans, Range(length(ints), length(body_slots)));
-                foreach (slot in body_slots) { ints = array_add(ints, slot.storage); }
+                foreach (slot in body_slots) {
+                    ints = array_add(ints, slot.storage);
+                }
                 spans = array_add(spans, Range(length(ints), length(body_slots)));
-                foreach (slot in body_slots) { ints = array_add(ints, slot.kind); }
+                foreach (slot in body_slots) {
+                    ints = array_add(ints, slot.kind);
+                }
                 // Record and array pointers each slot may hold while the function waits.
                 spans = array_add(spans, Range(length(roots), length(body_roots)));
                 foreach (root in body_roots) {
@@ -726,9 +883,9 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     }
                     values = array_add(values, value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
-                        left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
-                        stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
-                        value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
+                                               left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
+                                               stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
+                                               value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
                     instructions = array_add(instructions, row);
                     pc += 1;
                 }
@@ -736,7 +893,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 foreach (storage in body_locals) {
                     values = array_add(values, ScalarValue(storage, 0));
                     local: writer.Local = {kind: 0, initial: length(values) - 1, frame: 0, node: 0, pin: 0,
-                        offset: 0, parameter: false, array_default: false, data_index: 0};
+                                           offset: 0, parameter: false, array_default: false, data_index: 0};
                     locals = array_add(locals, local);
                 }
                 spans = array_add(spans, Range(length(parameters), callable.count));
@@ -774,7 +931,9 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 foreach (cell in body_cells) {
                     value := Header(cell.storage, cell.container, cell.record, types, layouts);
                     size: int = 0;
-                    if (cell.storage == StructStorage && cell.container == 0) { size = types[cell.record].size; }
+                    if (cell.storage == StructStorage && cell.container == 0) {
+                        size = types[cell.record].size;
+                    }
                     if (cell.variant >= 0) {
                         value.wide = tags[cell.variant];
                     } else if (cell.constant != 0) {
@@ -797,8 +956,8 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                         wide = array_add(wide, IntrinsicBase | uint64(host.intrinsic));
                     }
                     row: writer.Host = {capability: capability, abi: host_abi, first: host.first,
-                        result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
-                        outcome_count: 0};
+                                        result_first: host.result_first, result_count: host.result_count, outcome_first: 0,
+                                        outcome_count: 0};
                     hosts = array_add(hosts, row);
                 }
                 spans = array_add(spans, Range(length(calls), length(body_calls)));
@@ -817,29 +976,31 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                             row = length(imports) - 1;
                         }
                         wide = array_add(wide, binding.ID("package-symbol",
-                            format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
+                                                          format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
                         foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
                         references = array_add(references, foreign);
                     }
                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
-                        count: invocation.count, result_first: invocation.result_first,
-                        result_count: invocation.result_count, task: false};
+                                         count: invocation.count, result_first: invocation.result_first,
+                                         result_count: invocation.result_count, task: false};
                     calls = array_add(calls, call);
                 }
-                while (length(spans) < base + writer.Tables) { spans = array_add(spans, Range(0, 0)); }
+                while (length(spans) < base + writer.Tables) {
+                    spans = array_add(spans, Range(0, 0));
+                }
                 head: writer.Function = {argument_count: callable.count, result_count: result_count,
-                    variable_count: 0, root_steps: 0, child_budget: 0, depth_bound: 0, pure_depth_limit: 0,
-                    breakpoints: false, batchable: false, managed: false, custom_lowering: false,
-                    checkpoints: false, pin_watches: false, watch_size: 0, component_bindings: false,
-                    component_access: false, spans: base};
+                                         variable_count: 0, root_steps: 0, child_budget: 0, depth_bound: 0, pure_depth_limit: 0,
+                                         breakpoints: false, batchable: false, managed: false, custom_lowering: false,
+                                         checkpoints: false, pin_watches: false, watch_size: 0, component_bindings: false,
+                                         component_access: false, spans: base};
                 functions = array_add(functions, head);
                 wide = array_add(wide, binding.ID("package-symbol",
-                    format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
+                                                  format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
                 references = array_add(references, Own(index - first_own));
                 references = array_add(references, Own(-1));
                 exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
-                    continuation_wait: false, effects: 0, body: length(references) - 2,
-                    subscription: length(references) - 1};
+                                          continuation_wait: false, effects: 0, body: length(references) - 2,
+                                          subscription: length(references) - 1};
                 entries = array_add(entries, exported);
         }
         index += 1;
@@ -848,8 +1009,8 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
     return Result.Compiled(module, writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
-        fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
-        layouts_table, data, hosts, calls, references, points, watches, entries)));
+                                                                     fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
+                                                                     layouts_table, data, hosts, calls, references, points, watches, entries)));
 }
 
 // `paths` and `sources` are the files of every package, `paths[0]` one of the
@@ -876,7 +1037,7 @@ Compile :: pure fn(project: string, collection_names: string[], collection_paths
     index: int = 0;
     while (index < length(collection_names)) {
         collection: routes.Collection = {name: collection_names[index], path: collection_paths[index], has_name: true,
-            has_path: true};
+                                         has_path: true};
         collections = array_add(collections, collection);
         index += 1;
     }
@@ -890,21 +1051,23 @@ Compile :: pure fn(project: string, collection_names: string[], collection_paths
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
-        has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),
-        collection_count: length(collections)};
+                                 has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),
+                                 collection_count: length(collections)};
     switch snapshot.Build(options, collections, inputs, sizes) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
         case .Accepted(roots, documents, nodes, imports, built):
             switch built {
-                case .Rejected(error, cycle): return InputFailure(-1, "package graph is invalid");
+                case .Rejected(error, cycle):
+                    return InputFailure(-1, "package graph is invalid");
                 case .Accepted(packages, files_of, file_packages, order, edges, links):
                     switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
-                        case .Failed(diagnostic): return Result.Rejected(diagnostic);
+                        case .Failed(diagnostic):
+                            return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
-                                callables, params, types, members, constants, natives, ports, identities, ops, target,
-                                abi);
+                                        callables, params, types, members, constants, natives, ports, identities, ops, target,
+                                        abi);
                     }
             }
     }

@@ -2,14 +2,15 @@ package package_compiler
 
 import snapshot "project:source_snapshot"
 import routes "project:package_routes"
+import graph "project:package_graph"
 import binding "project:lexical_binding"
 import syntax "project:syntax_diagnostics"
 import writer "project:prepared_writer"
 import strings "core:strings"
 
-// Compiles one package of functions, records and unions to a prepared
-// closure. Stage zero builds this compiler; everything after the raw parser is
-// authored.
+// Compiles packages of functions, records and unions, and the packages they
+// import, to a prepared closure. Stage zero builds this compiler; everything
+// after the raw parser is authored.
 
 // Facts of the runtime this compiler targets, which Chibi cannot see: pointer
 // width, the byte offsets of a value header's and an array's members, and the
@@ -30,9 +31,10 @@ Ops :: struct {
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
 ValueType :: struct { storage: int; container: int; record: int; }
+// A function of package `package`; its parameters are params[first, first + count).
 Callable :: struct {
-    name: string; document: int; node: int; first: int; count: int; result: int; result_container: int;
-    result_record: int;
+    name: string; package: int; document: int; node: int; first: int; count: int; result: int;
+    result_container: int; result_record: int;
 }
 Param :: struct { name: string; storage: int; container: int; record: int; }
 // A native function the target links, as its catalog describes it. Its
@@ -45,7 +47,9 @@ Port :: struct { storage: int; container: int; }
 // A declared type. A record's fields and a variant's payload are
 // members[first, first + count); a union's variants are types[first, first +
 // count), and each variant names its union as `parent`.
-TypeDecl :: struct { name: string; type_name: string; kind: int; first: int; count: int; size: int; parent: int; }
+TypeDecl :: struct {
+    name: string; type_name: string; package: int; kind: int; first: int; count: int; size: int; parent: int;
+}
 // A record field, with its byte offset, or a variant's payload field.
 TypeMember :: struct { name: string; storage: int; container: int; record: int; offset: int; }
 Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
@@ -73,6 +77,15 @@ Ordinal :: pure fn(names: string[], name: string) -> int {
     index: int = 0;
     while (index < length(names)) {
         if (names[index] == name) { return index; }
+        index += 1;
+    }
+    return -1;
+}
+// The index of `value` in `items`, -1 when absent.
+Position :: pure fn(items: int[], value: int) -> int {
+    index: int = 0;
+    while (index < length(items)) {
+        if (items[index] == value) { return index; }
         index += 1;
     }
     return -1;
@@ -112,14 +125,28 @@ FieldStorage :: pure fn(text: string) -> int {
     if (text == "string") { return TextStorage; }
     return 0;
 }
-// The record or union of this package named `name`, -1 when none.
-FindType :: pure fn(types: TypeDecl[], name: string) -> int {
+// The record or union of `package` named `name`, -1 when none.
+FindType :: pure fn(types: TypeDecl[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(types)) {
-        if (types[index].kind != VariantDecl && types[index].name == name) { return index; }
+        declared := types[index];
+        if (declared.package == package && declared.kind != VariantDecl && declared.name == name) { return index; }
         index += 1;
     }
     return -1;
+}
+// The import aliases of file `file`, each a name for the package it imports,
+// from the graph's bindings. They are the outermost names of its functions.
+Aliases :: pure fn(links: graph.Binding[], file: int) -> Name[] {
+    aliases: Name[] = [];
+    foreach (link in links) {
+        if (link.file == file) {
+            alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
+                record: -1, writable: false};
+            aliases = array_add(aliases, alias);
+        }
+    }
+    return aliases;
 }
 // The variant `name` of union types[of], -1 when none.
 FindVariant :: pure fn(types: TypeDecl[], of: int, name: string) -> int {
@@ -130,9 +157,11 @@ FindVariant :: pure fn(types: TypeDecl[], of: int, name: string) -> int {
     }
     return -1;
 }
-// The type a `type` node names: a field type, a record or union of this
-// package, or an array of one; storage 0 for any other.
-ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], node: int) -> ValueType {
+// The type a `type` node names: a field type, a record or union of package
+// `package` or, qualified by an alias in `names`, of an imported one, or an
+// array of one; storage 0 for any other.
+ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                    node: int) -> ValueType {
     none: ValueType = {storage: 0, container: 0, record: -1};
     if (!Is(forest, node, "type") || Field(forest, node, "trait") >= 0 || Field(forest, node, "arguments") >= 0 ||
         HasToken(forest, node, "?")) {
@@ -145,11 +174,19 @@ ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDe
         child = forest[child].next_sibling;
     }
     if (container > 1) { return none; }
-    name := NameText(forest, text, FirstMember(forest, Field(forest, node, "name")));
-    storage := FieldStorage(name);
-    if (storage != 0) { return {storage: storage, container: container, record: -1}; }
-    declared := FindType(types, name);
-    if (declared < 0 || NextMember(forest, FirstMember(forest, Field(forest, node, "name"))) >= 0) { return none; }
+    first := FirstMember(forest, Field(forest, node, "name"));
+    name := NameText(forest, text, first);
+    home := package;
+    part := NextMember(forest, first);
+    if (part >= 0) {
+        home = QualifierOf(forest, text, names, package, first);
+        name = NameText(forest, text, part);
+        if (home < 0 || NextMember(forest, part) >= 0) { return none; }
+    } else if (FieldStorage(name) != 0) {
+        return {storage: FieldStorage(name), container: container, record: -1};
+    }
+    declared := FindType(types, home, name);
+    if (declared < 0) { return none; }
     if (types[declared].kind == UnionDecl) { return {storage: UnionStorage, container: container, record: declared}; }
     return {storage: StructStorage, container: container, record: declared};
 }
@@ -169,14 +206,43 @@ InputFailure :: pure fn(document: int, message: string) -> Result {
     return Result.Rejected(diagnostic);
 }
 
-// Every record, union and function of one package, in file and source
-// order. Types come first, so any signature or payload may name any type.
-Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
-                   package_name: string, target: Target) -> Declarations {
+// Every record, union and function of each package, dependencies first, so
+// a package's declarations follow those of every package it imports.
+Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                   files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
+                   target: Target) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
     types: TypeDecl[] = [];
     members: TypeMember[] = [];
+    foreach (package in order) {
+        files := slice(files_of, packages[package].member_start, packages[package].member_count);
+        switch DeclarePackage(forest, documents, files, package, packages[package].name, links, target, callables,
+            params, types, members) {
+            case .Failed(diagnostic): return Declarations.Failed(diagnostic);
+            case .Collected(more_callables, more_params, more_types, more_members):
+                callables = more_callables;
+                params = more_params;
+                types = more_types;
+                members = more_members;
+        }
+        // An import alias may not name a declaration of its package.
+        foreach (link in links) {
+            if (Position(files, link.file) >= 0 &&
+                (FindType(types, package, link.name) >= 0 || FindCallable(callables, package, link.name) >= 0)) {
+                return Declarations.Failed(snapshot.Diagnostic(snapshot.ImportRange(imports[link.import_index]),
+                    "Package import alias conflicts with a package declaration"));
+            }
+        }
+    }
+    return Declarations.Collected(callables, params, types, members);
+}
+// Adds package `package`'s records, unions and functions, in file and source
+// order. Types come first, so any signature or payload may name any type.
+DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
+                          package: int, package_name: string, links: graph.Binding[], target: Target,
+                          callables: Callable[], params: Param[], types: TypeDecl[],
+                          members: TypeMember[]) -> Declarations {
     foreach (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
@@ -187,11 +253,11 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 if (name == "") {
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
                 }
-                if (FindType(types, name) >= 0) {
+                if (FindType(types, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), kind: RecordDecl,
-                    first: length(members), count: 0, size: 0, parent: -1};
+                declared: TypeDecl = {name: name, type_name: format_text("{}.{}", package_name, name), package: package,
+                    kind: RecordDecl, first: length(members), count: 0, size: 0, parent: -1};
                 if (!record) {
                     // Variants follow their union; their payloads resolve below.
                     declared.kind = UnionDecl;
@@ -210,8 +276,8 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                                 return Declarations.Failed(Diagnose(forest, variant, file,
                                     format_text("Duplicate union alternative '{}'", variant_name)));
                             }
-                            alternative: TypeDecl = {name: variant_name, type_name: "", kind: VariantDecl, first: 0,
-                                count: 0, size: 0, parent: holder};
+                            alternative: TypeDecl = {name: variant_name, type_name: "", package: package,
+                                kind: VariantDecl, first: 0, count: 0, size: 0, parent: holder};
                             types = array_add(types, alternative);
                             grown := types[holder];
                             grown.count += 1;
@@ -263,10 +329,11 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
     // Payloads may name any type, so they resolve once every type is known.
     foreach (file in files) {
         text := documents[file].text;
+        aliases := Aliases(links, file);
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
             if (Is(forest, member, "union_declaration")) {
-                holder := FindType(types, NameText(forest, text, Field(forest, member, "name")));
+                holder := FindType(types, package, NameText(forest, text, Field(forest, member, "name")));
                 variant := FirstMember(forest, member);
                 while (variant >= 0) {
                     if (Is(forest, variant, "union_variant")) {
@@ -275,7 +342,7 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         alternative.first = length(members);
                         parameter := FirstMember(forest, Field(forest, variant, "parameters"));
                         while (parameter >= 0) {
-                            payload := ReadType(forest, text, types, Field(forest, parameter, "type"));
+                            payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
                             if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
@@ -295,6 +362,7 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
     }
     foreach (file in files) {
         text := documents[file].text;
+        aliases := Aliases(links, file);
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
             if (Is(forest, member, "function_declaration")) {
@@ -303,13 +371,13 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                     return Declarations.Failed(Diagnose(forest, Field(forest, member, "name"), file, "Invalid string or embedded NUL"));
                 }
                 // Types and functions share the package scope.
-                if (FindCallable(callables, name) >= 0 || FindType(types, name) >= 0) {
+                if (FindCallable(callables, package, name) >= 0 || FindType(types, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
                 first := length(params);
                 parameter := FirstMember(forest, Field(forest, member, "parameters"));
                 while (parameter >= 0) {
-                    declared := ReadType(forest, text, types, Field(forest, parameter, "type"));
+                    declared := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
                     if (declared.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, parameter, file, "parameter type is not supported yet"));
                     }
@@ -325,17 +393,17 @@ Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document
                 result: ValueType = {storage: 0, container: 0, record: -1};
                 results := Field(forest, member, "results");
                 if (results >= 0) {
-                    result = ReadType(forest, text, types, results);
+                    result = ReadType(forest, text, types, aliases, package, results);
                     if (result.storage == 0) {
                         return Declarations.Failed(Diagnose(forest, results, file, "result type is not supported yet"));
                     }
                 }
-                callable: Callable = {name: name, document: file, node: member, first: first,
+                callable: Callable = {name: name, package: package, document: file, node: member, first: first,
                     count: length(params) - first, result: result.storage, result_container: result.container,
                     result_record: result.record};
                 callables = array_add(callables, callable);
-            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "record_declaration") &&
-                       !Is(forest, member, "union_declaration")) {
+            } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
+                       !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
             }
             member = NextMember(forest, member);
@@ -412,12 +480,66 @@ LayoutHash :: pure fn(record: TypeDecl, fields: TypeMember[], target: Target) ->
     return hash;
 }
 
-// The prepared module of a package. Each body is a canonical definition the
-// runtime verifies and finalizes when it loads it.
-Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], identity: string,
-                    module: uint64, callables: Callable[], params: Param[], types: TypeDecl[],
-                    members: TypeMember[], natives: Native[], ports: Port[], identities: uint64[],
-                    ops: Ops, target: Target, abi: uint64) -> Result {
+// Whether each of `count` packages is `package` or one it imports, directly
+// or through others.
+Reachable :: pure fn(edges: graph.Edge[], count: int, package: int) -> bool[] {
+    seen := resize([false], count);
+    seen[package] = true;
+    pending: int[] = [package];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        foreach (edge in edges) {
+            if (edge.from == at && !seen[edge.to]) {
+                seen[edge.to] = true;
+                pending = array_add(pending, edge.to);
+            }
+        }
+    }
+    return seen;
+}
+// The closure of every package, each a prepared module, rooted at package
+// `root`. Dependencies come first, so an importer has every module it imports.
+Link :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
+                callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[],
+                ports: Port[], identities: uint64[], ops: Ops, target: Target, abi: uint64) -> Result {
+    // Each package's identity and module ID, and the fingerprint of its module.
+    package_names: string[] = [];
+    package_ids: uint64[] = [];
+    foreach (listed in packages) {
+        package_names = array_add(package_names, documents[files_of[listed.member_start]].identity);
+        package_ids = array_add(package_ids, binding.ID("module", package_names[length(package_names) - 1]));
+    }
+    fingerprints := resize([uint64(0)], length(packages));
+    data: byte[] = [];
+    starts := resize([int(0)], length(packages));
+    lengths := resize([int(0)], length(packages));
+    foreach (package in order) {
+        switch Assemble(forest, documents, package, package_names, package_ids, fingerprints,
+            Reachable(edges, length(packages), package), links, callables, params, types, members, natives, ports,
+            identities, ops, target, abi) {
+            case .Rejected(diagnostic): return Result.Rejected(diagnostic);
+            case .Compiled(module, bytes):
+                fingerprints[package] = writer.Fingerprint(bytes);
+                starts[package] = length(data);
+                lengths[package] = length(bytes);
+                data = append(data, bytes);
+        }
+    }
+    return Result.Compiled(package_ids[root],
+        writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
+}
+// The prepared module of package `package`; its bytes are the Compiled
+// result's. Each body is a canonical definition the runtime verifies and
+// finalizes when it loads it.
+Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int,
+                    package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+                    links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
+                    members: TypeMember[], natives: Native[], ports: Port[], identities: uint64[], ops: Ops,
+                    target: Target, abi: uint64) -> Result {
+    identity := package_names[package];
+    module := package_ids[package];
     wide: uint64[] = [0];
     values: writer.Value[] = [];
     ints: int[] = [];
@@ -436,19 +558,23 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     entries: writer.Entry[] = [];
     requirements: writer.Requirement[] = [];
     fields: writer.Field[] = [];
-    // Each record's layout and each variant's tag, as indices into `wide`.
+    // Each record's layout and each variant's tag, as indices into `wide`, for
+    // the types of this package and those it reaches; no others can occur.
     layouts: int[] = [];
     tags: int[] = [];
     foreach (declared in types) {
         layouts = array_add(layouts, int(0));
         tags = array_add(tags, int(0));
+        if (!reachable[declared.package]) { continue; }
         if (declared.kind == VariantDecl) {
             // Stage zero's tag: the union's ID in decimal, then the variant.
-            union_id := binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, types[declared.parent].name));
+            union_id := binding.ID("package-symbol",
+                format_text("{}:{}:{}", package_names[declared.package], TypeKind, types[declared.parent].name));
             wide = array_add(wide, binding.ID("union-variant", format_text("{}:{}", union_id, declared.name)));
             tags[length(tags) - 1] = length(wide) - 1;
         } else if (declared.kind == RecordDecl) {
-            wide = array_add(wide, binding.ID("package-symbol", format_text("{}:{}:{}", identity, TypeKind, declared.name)));
+            wide = array_add(wide, binding.ID("package-symbol",
+                format_text("{}:{}:{}", package_names[declared.package], TypeKind, declared.name)));
             wide = array_add(wide, LayoutHash(declared, members, target));
             layouts[length(layouts) - 1] = length(wide) - 1;
             requirement: writer.Requirement = {id: length(wide) - 2, layout: length(wide) - 1, storage: StructStorage,
@@ -465,11 +591,17 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
     }
     abi_one := length(wide);
     wide = array_add(wide, uint64(1));
-    index: int = 0;
-    while (index < length(callables)) {
+    // A package's functions are contiguous; the module numbers them from 0.
+    first_own: int = 0;
+    while (first_own < length(callables) && callables[first_own].package != package) { first_own += 1; }
+    // The packages this module calls into, each an import row.
+    imported: int[] = [];
+    imports: writer.Import[] = [];
+    index := first_own;
+    while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-            types, members, natives, ports, index, ops, target);
+            types, members, natives, ports, Aliases(links, callable.document), index, ops, target);
         switch tables {
             case .Failed(diagnostic): return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
@@ -600,7 +732,24 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 }
                 spans = array_add(spans, Range(length(calls), length(body_calls)));
                 foreach (invocation in body_calls) {
-                    references = array_add(references, Own(invocation.callee));
+                    callee := callables[invocation.callee];
+                    if (callee.package == package) {
+                        references = array_add(references, Own(invocation.callee - first_own));
+                    } else {
+                        row := Position(imported, callee.package);
+                        if (row < 0) {
+                            imported = array_add(imported, callee.package);
+                            wide = array_add(wide, package_ids[callee.package]);
+                            wide = array_add(wide, fingerprints[callee.package]);
+                            dependency: writer.Import = {id: length(wide) - 2, fingerprint: length(wide) - 1};
+                            imports = array_add(imports, dependency);
+                            row = length(imports) - 1;
+                        }
+                        wide = array_add(wide, binding.ID("package-symbol",
+                            format_text("{}:{}:{}:callable", package_names[callee.package], FunctionKind, callee.name)));
+                        foreign: writer.Reference = {imported: row, own: 0, function: length(wide) - 1, role: 0};
+                        references = array_add(references, foreign);
+                    }
                     call: writer.Call = {function: length(references) - 1, first: invocation.first,
                         count: invocation.count, result_first: invocation.result_first,
                         result_count: invocation.result_count, task: false};
@@ -615,7 +764,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                 functions = array_add(functions, head);
                 wide = array_add(wide, binding.ID("package-symbol",
                     format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
-                references = array_add(references, Own(index));
+                references = array_add(references, Own(index - first_own));
                 references = array_add(references, Own(-1));
                 exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
                     continuation_wait: false, effects: 0, body: length(references) - 2,
@@ -624,24 +773,22 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
         }
         index += 1;
     }
-    imports: writer.Import[] = [];
     layouts_table: writer.ResultLayout[] = [];
     points: writer.Point[] = [];
     watches: writer.Watch[] = [];
-    prepared := writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
+    return Result.Compiled(module, writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
         fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
-        layouts_table, data, hosts, calls, references, points, watches, entries));
-    ids: uint64[] = [module];
-    names: string[] = [identity];
-    starts: int[] = [0];
-    lengths: int[] = [length(prepared)];
-    return Result.Compiled(module, writer.Closure(module, ids, names, prepared, starts, lengths));
+        layouts_table, data, hosts, calls, references, points, watches, entries)));
 }
 
-// `abi` is the target's prepared header ABI, `names` its instruction names in
-// ordinal order, and `natives` the native functions it links.
-Compile :: pure fn(project: string, paths: string[], sources: string[], target: Target,
-                   abi: uint64, names: string[], natives: Native[], ports: Port[], identities: uint64[]) -> Result {
+// `paths` and `sources` are the files of every package, `paths[0]` one of the
+// root package's; `project` and each named collection are roots that paths
+// and imports resolve against. `abi` is the target's prepared header ABI,
+// `names` its instruction names in ordinal order, and `natives` the native
+// functions it links.
+Compile :: pure fn(project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                   sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
+                   identities: uint64[]) -> Result {
     ops := ResolveOps(names);
     complete := length(identities) == 2 * length(natives);
     foreach (native_row in natives) {
@@ -650,12 +797,21 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], target: 
             complete = false;
         }
     }
-    if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources)) {
+    if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
+        length(collection_names) != length(collection_paths)) {
         return InputFailure(-1, "unsupported compiler input or target");
+    }
+    collections: routes.Collection[] = [];
+    index: int = 0;
+    while (index < length(collection_names)) {
+        collection: routes.Collection = {name: collection_names[index], path: collection_paths[index], has_name: true,
+            has_path: true};
+        collections = array_add(collections, collection);
+        index += 1;
     }
     inputs: snapshot.Input[] = [];
     sizes: uint64[] = [];
-    index: int = 0;
+    index = 0;
     while (index < length(paths)) {
         input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
         inputs = array_add(inputs, input);
@@ -663,23 +819,19 @@ Compile :: pure fn(project: string, paths: string[], sources: string[], target: 
         index += 1;
     }
     options: snapshot.Options = {project: project, has_project: true, has_options: true,
-        has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
-    collections: routes.Collection[] = [];
+        has_files: true, has_collections: length(collections) != 0, file_count: length(inputs),
+        collection_count: length(collections)};
     switch snapshot.Build(options, collections, inputs, sizes) {
         case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
             return Result.Rejected(diagnostic);
-        case .Accepted(roots, documents, nodes, imports, graph):
-            if (length(imports) != 0) { return InputFailure(imports[0].file, "imports are not supported yet"); }
-            switch graph {
+        case .Accepted(roots, documents, nodes, imports, built):
+            switch built {
                 case .Rejected(error, cycle): return InputFailure(-1, "package graph is invalid");
-                case .Accepted(packages, members, file_packages, order, edges, bindings):
-                    if (length(packages) != 1) { return InputFailure(-1, "one package is supported yet"); }
-                    files := slice(members, packages[0].member_start, packages[0].member_count);
-                    switch Declare(nodes, documents, files, packages[0].name, target) {
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
                         case .Failed(diagnostic): return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members):
-                            identity := documents[files[0]].identity;
-                            return Assemble(nodes, documents, identity, binding.ID("module", identity),
+                            return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
                                 callables, params, types, members, natives, ports, identities, ops, target, abi);
                     }
             }

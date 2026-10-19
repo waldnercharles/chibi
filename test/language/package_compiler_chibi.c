@@ -26,10 +26,11 @@
 #include <string.h>
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
- * package to a closure against the natives the compiler host links. A fresh
- * runtime host loads it and calls every function on bytecode and SLJIT, and
- * stage zero's own closure of the same package must give the same JSON
- * result. Rejections report their exact message and position. */
+ * package, with the packages it imports, to a closure against the natives the
+ * compiler host links. A fresh runtime host loads it and calls every function
+ * on bytecode and SLJIT, and stage zero's own closure of the same packages
+ * must give the same JSON result. Rejections report their exact message and
+ * position. */
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
@@ -42,9 +43,12 @@ typedef struct
 {
     const char *function, *arguments, *expected;
 } sample_call;
+/* `source` is package facts; `library` is package lib when present, and
+ * `core` adds core:strings. */
 typedef struct
 {
-    const char *name, *source;
+    const char *name, *source, *library;
+    bool core;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
@@ -251,6 +255,55 @@ static const sample samples[] = {
                  { "Make", "[2]", "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
                  { "Make", "[3]", "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
                  { "Make", "[4]", "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
+    { .name = "imports",
+      .source = "package facts\n"
+                "import lib \"project:lib\"\n"
+                "import strings \"core:strings\"\n"
+                "Total :: pure fn(n: int) -> int { return lib.Twice(n) + "
+                "lib.Sum(lib.Make(n, 3)); }\n"
+                "Local :: pure fn() -> int { p: lib.Point = {x: 2, y: 5}; "
+                "return lib.Sum(p) + p.x; }\n"
+                "Shapes :: pure fn() -> int {\n"
+                "    return lib.Size(lib.Shape.Dot(lib.Make(1, 2))) + "
+                "lib.Size(lib.Shape.Line(7)) * 10 +\n"
+                "        lib.Size(lib.Shape.Nothing);\n}\n"
+                "Match :: pure fn(n: int) -> int {\n"
+                "    shape := lib.Shape.Line(n);\n"
+                "    switch shape { case .Line(size): return size; case: "
+                "return 0; }\n"
+                "    return -1;\n}\n"
+                "Measure :: pure fn(s: string) -> int {\n"
+                "    return strings.ByteLength(s) * 10 + strings.Compare(s, "
+                "\"m\") + lib.Width(s) * 100;\n}\n"
+                "Echo :: pure fn(p: lib.Point) -> lib.Point { return p; }\n"
+                "Points :: pure fn(n: int) -> lib.Point[] { points: "
+                "lib.Point[] = [lib.Make(n, n)]; return points; }",
+      .library = "package lib\n"
+                 "import text \"core:strings\"\n"
+                 "Point :: struct { x: int; y: int; }\n"
+                 "Shape :: union { Dot(at: Point) | Line(size: int) | Nothing "
+                 "}\n"
+                 "Make :: pure fn(x: int, y: int) -> Point { p: Point = {x: x, "
+                 "y: y}; return p; }\n"
+                 "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
+                 "Twice :: pure fn(n: int) -> int { return Helper(n) * 2; }\n"
+                 "Helper :: pure fn(n: int) -> int { return n + 1; }\n"
+                 "Width :: pure fn(s: string) -> int { return "
+                 "text.ByteLength(s); }\n"
+                 "Size :: pure fn(shape: Shape) -> int {\n"
+                 "    switch shape {\n"
+                 "        case .Dot(at): return Sum(at);\n"
+                 "        case .Line(size): return size;\n"
+                 "        case .Nothing: return 0;\n"
+                 "    }\n    return -1;\n}",
+      .core = true,
+      .calls = { { "Total", "[4]", "[17]" },
+                 { "Local", "[]", "[9]" },
+                 { "Shapes", "[]", "[73]" },
+                 { "Match", "[6]", "[6]" },
+                 { "Measure", "[\"zebra\"]", "[551]" },
+                 { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
+                 { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -382,6 +435,27 @@ static const sample samples[] = {
       .message = "variant 'A' needs its payload",
       .line = 3,
       .column = 32 },
+    { .name = "unknown imported function",
+      .source = "package facts\nimport lib \"project:lib\"\nOne :: pure fn() "
+                "-> int { return lib.Missing(1); }",
+      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .message = "Unknown function 'Missing'",
+      .line = 3,
+      .column = 38 },
+    { .name = "alias conflict",
+      .source = "package facts\nimport lib \"project:lib\"\nlib :: pure fn() "
+                "-> int { return 1; }",
+      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .message = "Package import alias conflicts with a package declaration",
+      .line = 2,
+      .column = 1 },
+    { .name = "alias value",
+      .source = "package facts\nimport lib \"project:lib\"\nOne :: pure fn() "
+                "-> int { return lib; }",
+      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .message = "Unknown name 'lib'",
+      .line = 3,
+      .column = 34 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
@@ -603,43 +677,75 @@ static bool prepare()
     );
     return true;
 }
+/* The sample's files: package facts, then lib and core:strings when it
+ * uses them. */
+static int sample_inputs(const sample *s, source_package_input inputs[3])
+{
+    int count = 0;
+    inputs[count++] = (source_package_input){ "facts/Main.chibi",
+                                              s->source,
+                                              strlen(s->source) };
+    if (s->library) {
+        inputs[count++] = (source_package_input){ "lib/Lib.chibi",
+                                                  s->library,
+                                                  strlen(s->library) };
+    }
+    if (s->core) {
+        inputs[count++] = (source_package_input){
+            "/sdk/core/strings/Strings.chibi",
+            CORE_STRINGS_SOURCE,
+            sizeof CORE_STRINGS_SOURCE - 1
+        };
+    }
+    return count;
+}
 static bool compile(int b, const sample *s, pin_value *out)
 {
-    const char *paths[] = { "facts/Main.chibi" };
-    pin_value args[9];
+    const char *collection_names[] = { "core" };
+    const char *collection_paths[] = { "/sdk/core" };
+    source_package_input inputs[3];
+    int count = sample_inputs(s, inputs);
+    const char *paths[3], *sources[3];
+    for (int i = 0; i < count; i++) {
+        paths[i] = inputs[i].path;
+        sources[i] = inputs[i].text;
+    }
+    pin_value args[11];
     args[0] = text("/project");
-    args[1] = strings(paths, 1);
-    args[2] = strings(&s->source, 1);
+    args[1] = strings(collection_names, 1);
+    args[2] = strings(collection_paths, 1);
+    args[3] = strings(paths, count);
+    args[4] = strings(sources, count);
     const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
     REQUIRE(record);
-    args[3] = (pin_value){ .type = PIN_STRUCT,
+    args[5] = (pin_value){ .type = PIN_STRUCT,
                            .ptr = arena_alloc(&input, record->type.size),
                            .record = record,
                            .type_name = record->type.name };
-    memset(args[3].ptr, 0, record->type.size);
-    REQUIRE(put(&args[3], "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(&args[3], "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(&args[3], "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(&args[3], "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(&args[3], "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(put(&args[3], "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(&args[3], "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(&args[3], "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(&args[3], "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(&args[3], "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(&args[3], "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(&args[3], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(&args[3], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    args[4] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
-    int count = execution_prepared_instruction_count();
-    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
-    for (int i = 0; i < count; i++) {
+    memset(args[5].ptr, 0, record->type.size);
+    REQUIRE(put(&args[5], "pointer_storage", BF_POINTER_TYPE));
+    REQUIRE(put(&args[5], "pointer_size", (int)sizeof(void *)));
+    REQUIRE(put(&args[5], "value_size", (int)sizeof(pin_value)));
+    REQUIRE(put(&args[5], "payload_offset", (int)offsetof(pin_value, d)));
+    REQUIRE(put(&args[5], "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(put(&args[5], "type_offset", (int)offsetof(pin_value, type)));
+    REQUIRE(put(&args[5], "container_offset", (int)offsetof(pin_value, container)));
+    REQUIRE(put(&args[5], "name_offset", (int)offsetof(pin_value, type_name)));
+    REQUIRE(put(&args[5], "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(&args[5], "count_offset", (int)offsetof(pin_array, count)));
+    REQUIRE(put(&args[5], "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(&args[5], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
+    REQUIRE(put(&args[5], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    args[6] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
+    int instructions = execution_prepared_instruction_count();
+    pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
+    for (int i = 0; i < instructions; i++) {
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
-    args[5] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, &args[6]));
+    args[7] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+    REQUIRE(natives(b, &args[8]));
     REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 9, COMPILE_BUDGET, &detached, out)
+        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 11, COMPILE_BUDGET, &detached, out)
     );
     return true;
 }
@@ -686,25 +792,47 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     result = (compiler_host_result){ 0 };
     return true;
 }
-/* Stage zero's closure of the same package, whose calls must give the same
+/* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
 {
-    const source_package_input inputs[] = {
-        { "facts/Main.chibi", s->source, strlen(s->source) }
-    };
+    source_package_input inputs[3];
+    int count = sample_inputs(s, inputs);
     compiler_fixture_free(&oracle);
-    REQUIRE(compiler_fixture_prepare(&oracle, inputs, 1));
-    const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
-    REQUIRE(root && root->module);
+    REQUIRE(compiler_fixture_prepare(&oracle, inputs, count));
+    const authoring_packages *owner = oracle.owners[0];
+    package_module rows[3];
+    REQUIRE(authoring_packages_count(owner) <= 3);
+    int written = 0;
     char error[256];
-    unsigned char *prepared = NULL;
-    size_t size = 0;
-    REQUIRE(execution_prepared_write(root->module, &prepared, &size, error, sizeof error));
-    package_module row = { root->identity, execution_module_id(root->module), prepared, size };
-    bool written = compiler_artifact_write(&row, 1, row.id, closure, length, error, sizeof error);
-    free(prepared);
-    REQUIRE(written);
+    bool valid = true;
+    for (int p = 0; valid && p < authoring_packages_count(owner); p++) {
+        const authoring_package *package = authoring_packages_at(owner, p);
+        unsigned char *prepared = NULL;
+        size_t size = 0;
+        valid = package->module &&
+                execution_prepared_write(package->module, &prepared, &size, error, sizeof error);
+        rows[written++] = (package_module){ package->identity,
+                                            valid ? execution_module_id(package->module)
+                                                  : 0,
+                                            prepared,
+                                            size };
+    }
+    const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
+    valid = valid && root &&
+            compiler_artifact_write(
+                rows,
+                written,
+                execution_module_id(root->module),
+                closure,
+                length,
+                error,
+                sizeof error
+            );
+    for (int i = 0; i < written; i++) {
+        free((void *)rows[i].data);
+    }
+    REQUIRE(valid);
     return true;
 }
 TEST_CASE(package_compiler_builds_runnable_packages)

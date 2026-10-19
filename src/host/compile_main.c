@@ -52,16 +52,22 @@ type_catalog_pack type_catalog_pack_at(int index)
 }
 static int usage(const char *program)
 {
-    fprintf(stderr, "Usage: %s --project-root PATH --output FILE [--scene PATH]\n", program);
+    fprintf(stderr, "Usage: %s --project-root PATH (--output FILE | --check) [--scene PATH]\n", program);
     return 2;
 }
+/* --check prepares the project without migrating it or writing anything. */
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL;
+    bool check = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
             return 0;
+        }
+        if (!strcmp(argv[i], "--check") && !check) {
+            check = true;
+            continue;
         }
         if (i + 1 == argc) {
             return usage(argv[0]);
@@ -80,7 +86,7 @@ int main(int argc, char **argv)
         }
         return usage(argv[0]);
     }
-    if (!project || !*project || !output || !*output) {
+    if (!project || !*project || check == (output != NULL) || (output && !*output)) {
         return usage(argv[0]);
     }
     return authoring_project_compile(project, scene, output);

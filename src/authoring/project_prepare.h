@@ -10,6 +10,8 @@ typedef struct
     native_capabilities *native;
     ecs_component_catalog components;
     unsigned modules;
+    /* Read the project as it is: an older project fails instead of migrating. */
+    bool read_only;
 } authoring_project_options;
 typedef struct
 {

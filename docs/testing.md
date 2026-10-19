@@ -1187,15 +1187,18 @@ is outside the language aggregate. Windows retains the explicit unsupported
 filesystem adapter; buffer-based package APIs are unaffected. Source registration
 records no execution result.
 
-`python3 tools/test_policy.py tool language-package-core` selects four fixed
+`python3 tools/test_policy.py tool language-package-core` selects seven fixed
 C cases using the actual shipped `core:strings` source and pure text/array packs.
 It covers unsigned bytes, slice bounds and ownership, lexical ordering, ASCII
-identifiers, basename extraction, generic native arrays, binding-generation
-invalidation and retained modules on bytecode and SLJIT. Twelve preparations
-supply 24 files and 12 imports, with at most 24 package visits before reuse and
-66 direct calls, each with a 10,000-instruction budget. At most three owners
-and three-element arrays are live; core source is below 16 KiB and the app below
-2 KiB. There is no filesystem, process, service or GPU work. Installed consumers
+identifiers, basename extraction, the byte procedures ported from Odin's
+`core:strings` against Odin's documented results and edge cases (search,
+counting, case, trimming, cutting, repetition, splitting, joining, replacement
+and partition), generic native arrays, binding-generation invalidation and
+retained modules on bytecode and SLJIT. Eighteen preparations supply 36 files
+and 18 imports, with at most 36 package visits before reuse and 378 direct
+calls, each with a 10,000-instruction budget. At most three owners and
+three-element arrays are live; core source is below 16 KiB and the app below
+4 KiB. There is no filesystem, process, service or GPU work. Installed consumers
 embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.

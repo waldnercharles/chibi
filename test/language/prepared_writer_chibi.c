@@ -24,8 +24,9 @@
 /* The authored prepared writer must reproduce execution_prepared_write byte
  * for byte. One fixture prepares the writer with a fixed corpus; every corpus
  * module is marshalled into the authored model and written on bytecode and the
- * compiled backend. The writer's own 1.3 MiB module takes 38 s on bytecode
- * under ASan, so it is written on the compiled backend only. */
+ * compiled backend. Modules above 512 KiB, the writer's own 1.3 MiB and
+ * core:strings' 0.8 MiB, take 38 s and 22 s on bytecode under ASan, so they are
+ * written on the compiled backend only. */
 static const char PACKAGE[] = "project:prepared_writer";
 static const char SAMPLE[] =
     "package sample\n"
@@ -67,7 +68,8 @@ enum
 {
     CORPUS_COUNT = sizeof CORPUS / sizeof *CORPUS,
     TABLES = 21,
-    BUDGET = 200000000
+    BUDGET = 200000000,
+    BYTECODE_MODULE_LIMIT = 512 * 1024
 };
 static compiler_fixture fixture;
 static arena input;
@@ -728,7 +730,7 @@ TEST_CASE(prepared_writer_reproduces_native_modules)
 {
     REQUIRE(prepare_corpus());
     for (int b = 0; b < 2; b++) {
-        for (int c = !b; c < CORPUS_COUNT; c++) {
+        for (int c = 0; c < CORPUS_COUNT; c++) {
             const authoring_package *package = compiler_fixture_package(&fixture, b, CORPUS[c]);
             REQUIRE(package && package->module);
             unsigned char *expected = NULL;
@@ -737,6 +739,10 @@ TEST_CASE(prepared_writer_reproduces_native_modules)
             REQUIRE(
                 execution_prepared_write(package->module, &expected, &length, error, sizeof error)
             );
+            if (!b && length > BYTECODE_MODULE_LIMIT) {
+                free(expected);
+                continue;
+            }
             model m = { .backend = b };
             pin_value module;
             REQUIRE(marshal(&m, package->module, header_abi(expected), &module));

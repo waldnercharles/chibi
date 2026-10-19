@@ -18,8 +18,15 @@ Start with `authoring_format_defaults()` and override the fields you need:
 
 A null options pointer selects the defaults. Invalid widths return an error;
 they are never clamped or silently replaced. The existing
-`authoring_source_format` entry point delegates to these defaults and keeps its
-successful output byte-for-byte unchanged.
+`authoring_source_format` entry point delegates to these defaults.
+
+A line that continues an expression keeps its break and gets a computed margin.
+Inside a bracket that ends its line, it indents one level past that line.
+Inside a bracket followed by an item, it aligns with that item, as in
+`return Pair(first,` followed by `second)` under `first`. A continued operand of
+a binary expression outside such a bracket aligns with the expression's first
+operand. With `use_tabs`, the margin uses one tab per indentation level and
+spaces for the rest of the alignment.
 
 Positive widths flatten groups that fit at their actual starting column. Longer
 argument lists, parameter lists, arrays and records break after the opening

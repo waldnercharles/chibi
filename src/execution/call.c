@@ -10,7 +10,10 @@
 
 #include <stdlib.h>
 
+/* Spare frames a settled stack keeps for its next run, and the larger set a
+ * running stack keeps so its hot callees reuse their frames. */
 #define CALL_CACHE_BYTES (64 * 1024)
+#define CALL_RUN_CACHE_BYTES (8 * 1024 * 1024)
 
 typedef struct invocation_frame
 {
@@ -31,9 +34,9 @@ struct behavior_function_calls
     /* Frames have stable addresses. A growing pointer array never invalidates
      * context.parent or arguments retained by a pending host operation. */
     invocation_frame **frames;
-    /* Completed frames, matched by immutable function generation. Their whole
-     * retained allocation set, `spare_bytes`, is bounded and never forms a
-     * live value root. */
+    /* Completed frames, matched by immutable function generation, from most to
+     * least recently retired. Their whole retained allocation set,
+     * `spare_bytes`, is bounded and never forms a live value root. */
     invocation_frame *spare;
     size_t spare_bytes;
     int result;
@@ -92,6 +95,27 @@ void behavior_function_calls_reset(struct behavior_function_calls *calls)
     }
 }
 
+/* The stack's own allocation: its header and frame vector. */
+static size_t calls_fixed_bytes(const struct behavior_function_calls *calls)
+{
+    return sizeof *calls + sizeof(dyna_hdr) +
+           (size_t)acap(calls->frames) * sizeof *calls->frames;
+}
+/* Frees the least recently retired spares until they and the stack fit
+ * `budget`. */
+static void trim_spares(struct behavior_function_calls *calls, size_t budget)
+{
+    while (calls->spare && calls_fixed_bytes(calls) + calls->spare_bytes > budget) {
+        invocation_frame **oldest = &calls->spare;
+        while ((*oldest)->next) {
+            oldest = &(*oldest)->next;
+        }
+        calls->spare_bytes -= (*oldest)->bytes;
+        frame_free(*oldest, FLOW_OK);
+        *oldest = NULL;
+    }
+}
+
 static void frame_retire(struct behavior_function_calls *calls, invocation_frame *frame)
 {
     frame_leave(frame, FLOW_OK);
@@ -102,16 +126,14 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     /* Live frames are an execution requirement, not an idle-retention budget.
      * Count the reusable list and its vector capacity before adding this one. */
     frame->bytes = frame_bytes(frame);
-    size_t bytes = sizeof *calls + sizeof(dyna_hdr) +
-                   (size_t)acap(calls->frames) * sizeof *calls->frames +
-                   calls->spare_bytes + frame->bytes;
-    if (bytes > CALL_CACHE_BYTES) {
+    if (calls_fixed_bytes(calls) + frame->bytes > CALL_RUN_CACHE_BYTES) {
         frame_free(frame, FLOW_OK);
         return;
     }
     frame->next = calls->spare;
     calls->spare = frame;
     calls->spare_bytes += frame->bytes;
+    trim_spares(calls, CALL_RUN_CACHE_BYTES);
 }
 
 void behavior_function_calls_free(struct behavior_function_calls *calls)
@@ -142,6 +164,9 @@ void behavior_function_clear_calls(behavior_function_activation *activation)
 static int settle_calls(struct behavior_function_calls *calls, int result)
 {
     calls->result = result;
+    if (result >= 0) {
+        trim_spares(calls, CALL_CACHE_BYTES);
+    }
     if (result == FLOW_OK) {
         behavior_function_calls_reset(calls);
     }
@@ -250,7 +275,7 @@ static invocation_frame *frame_new(
     }
     if (!frame) {
         frame = xcalloc(1, sizeof *frame);
-        arena_init(&frame->storage, 4096);
+        arena_init(&frame->storage, 512);
     }
     frame->function = call.function;
     frame->invocation = call;

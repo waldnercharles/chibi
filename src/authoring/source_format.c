@@ -156,7 +156,7 @@ static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
-           unit_operator(n) ||
+           kind(n, "@") || unit_operator(n) ||
            (kind(p, "unary_expression") && !kind(n, "not") &&
             ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&

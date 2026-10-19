@@ -296,9 +296,11 @@ module.exports = grammar({
         ".",
         field("member", $._member_name),
       ),
+    // `@test` before a declaration marks it; analysis decides which names exist.
+    attribute: ($) => seq("@", field("name", $.identifier)),
     function_declaration: ($) =>
-      seq(field("name", $._name), "::", optional(K.pure), optional(K.fn),
-        $._callable_signature, optional(";")),
+      seq(repeat(field("attribute", $.attribute)), field("name", $._name), "::",
+        optional(K.pure), optional(K.fn), $._callable_signature, optional(";")),
     constant_declaration: ($) =>
       seq(field("name", $._name), choice("::", seq(":", field("type", $.type), ":")),
         field("value", $._expression), $._end),

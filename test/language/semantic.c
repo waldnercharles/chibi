@@ -798,6 +798,91 @@ TEST_CASE(language_discarded_pure_result_rejected)
     REQUIRE(analysis->valid);
     return true;
 }
+/* Analyzes `source` as the one file of package project:facts. */
+static void parse_package(const char *source)
+{
+    cleanup();
+    syntax = script_parse(source);
+    script_package_document document = { "/facts/main.chibi", "facts/main.chibi", syntax };
+    const script_package_options options = { .documents = &document,
+                                             .document_count = 1,
+                                             .identity = "project:facts",
+                                             .native = &catalog };
+    analysis = script_analyze_package(&options);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "package %d:%d: %s\n",
+            analysis->diagnostics[i].range.line,
+            analysis->diagnostics[i].range.column,
+            analysis->diagnostics[i].message
+        );
+    }
+}
+/* The names of the functions `@test` marks, joined by spaces. */
+static void tests_of(char *out, size_t size)
+{
+    out[0] = 0;
+    for (int i = 0; i < analysis->function_count; i++) {
+        if (analysis->functions[i].test) {
+            const char *name = analysis->symbols[analysis->functions[i].symbol].name;
+            snprintf(out + strlen(out), size - strlen(out), "%s%s", out[0] ? " " : "", name);
+        }
+    }
+}
+/* `@test` marks a package function that takes and returns nothing; another
+ * attribute, a repeated one, a misplaced test, one with a signature and one
+ * whose name the package already declares are rejected. */
+TEST_CASE(language_test_attribute_marks_package_functions)
+{
+    char tests[128];
+    parse_package(
+        "package facts\n@test\nAdds :: fn() { x := 1 + 1; }\nHelper :: fn() -> "
+        "int { return 1; }\n"
+        "@test Second :: fn(/* none */) { }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    tests_of(tests, sizeof tests);
+    REQUIRE(!strcmp(tests, "Adds Second"));
+    const struct
+    {
+        const char *source, *message;
+    } rejected[] = {
+        { "package facts\n@bench\nRuns :: fn() { }", "Unknown attribute '@bench'" },
+        { "package facts\n@test @test\nTwice :: fn() { }", "Duplicate attribute '@test'" },
+        { "package facts\n@test\nTakes :: fn(n: int) { }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nGives :: fn() -> int { return 1; }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nInfers :: fn() { return 1; }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\n@test\nGeneric :: fn<T: int>() { }",
+          "A @test function takes no parameters and returns nothing" },
+        { "package facts\nOuter :: fn() { @test Inner :: fn() { } Inner(); }",
+          "@test needs a package-level function" },
+        { "library Values { @test Inside :: fn() { } }",
+          "@test needs a package-level function" },
+        { "package facts\nSame :: fn() { }\n@test\nSame :: fn() { }",
+          "Duplicate declaration 'Same'" },
+        { "package facts\nSame :: 1;\n@test\nSame :: fn() { }",
+          "Duplicate declaration 'Same'" },
+    };
+    for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
+        if (!strncmp(rejected[i].source, "package", 7)) {
+            parse_package(rejected[i].source);
+        } else {
+            parse(rejected[i].source);
+        }
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid && diagnostic(rejected[i].message));
+        /* A misplaced or misshapen test is not marked; the analysis is
+         * invalid either way. */
+        tests_of(tests, sizeof tests);
+        REQUIRE(i < 2 || !tests[0]);
+    }
+    return true;
+}
 TEST_CASE(language_binding_cycle_rejected)
 {
     parse("behavior Bindings { bind self.Position.x = self.Position.y; bind self.Position.y = self.Position.x; }");
@@ -1785,5 +1870,6 @@ void test_language_semantic()
     RUN_TEST_CASE(language_units_reject_callable_mismatches);
     RUN_TEST_CASE(language_units_follow_native_signatures_and_task_results);
     RUN_TEST_CASE(language_units_reject_malformed_metadata_and_overflow);
+    RUN_TEST_CASE(language_test_attribute_marks_package_functions);
     pu_clear_setup();
 }

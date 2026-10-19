@@ -26,7 +26,7 @@ Ops :: struct {
     string_equal: int; index: int; load: int; write: int; result: int; host_call: int; invoke: int;
     guard: int; check: int; branch_if: int; jump: int; finish: int; end: int; add: int; sub: int; mul: int;
     div: int; mod: int; neg: int; bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int;
-    shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
+    shr: int; lt: int; le: int; gt: int; ge: int; eq: int; ne: int; cast: int;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -53,8 +53,9 @@ TypeDecl :: struct {
 // A record field, with its byte offset, or a variant's payload field.
 TypeMember :: struct { name: string; storage: int; container: int; record: int; offset: int; }
 Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
-// A package constant: an int literal.
-ConstDecl :: struct { name: string; package: int; value: int; }
+// A package constant: an integer literal of an integer type, its 64 bits,
+// sign-extended for signed types, as `high` and `low` halves.
+ConstDecl :: struct { name: string; package: int; storage: int; high: int; low: int; }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Collected(callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
@@ -107,7 +108,8 @@ ResolveOps :: pure fn(names: string[]) -> Ops {
         neg: Ordinal(names, "NEG"), bit_and: Ordinal(names, "BIT_AND"), bit_or: Ordinal(names, "BIT_OR"),
         bit_xor: Ordinal(names, "BIT_XOR"), bit_not: Ordinal(names, "BIT_NOT"), shl: Ordinal(names, "SHL"),
         shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
-        gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE")};
+        gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
+        cast: Ordinal(names, "CAST")};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: pure fn(ops: Ops) -> bool {
@@ -115,11 +117,19 @@ Complete :: pure fn(ops: Ops) -> bool {
         ops.host_slot, ops.string_equal, ops.index, ops.load, ops.write, ops.result, ops.host_call,
         ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
         ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
-        ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne];
+        ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast];
     foreach (op in used) {
         if (op < 0) { return false; }
     }
     return true;
+}
+// The storage of a scalar type: one a record field may hold, or byte, int64
+// or uint64; 0 for any other.
+ScalarStorage :: pure fn(text: string) -> int {
+    if (text == "byte") { return ByteStorage; }
+    if (text == "int64") { return Int64Storage; }
+    if (text == "uint64") { return WordStorage; }
+    return FieldStorage(text);
 }
 // The storage of a type a record field may hold, 0 for any other.
 FieldStorage :: pure fn(text: string) -> int {
@@ -146,22 +156,6 @@ FindConstant :: pure fn(constants: ConstDecl[], package: int, name: string) -> i
         index += 1;
     }
     return -1;
-}
-// The value of a constant's int literal, `-` allowed; a value outside int when
-// `node` is no such literal.
-ConstantValue :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> int64 {
-    outside: int64 = 2147483648;
-    if (Is(forest, node, "number")) {
-        value := Decimal(Text(forest, text, node));
-        if (value < 0) { return outside; }
-        return value;
-    }
-    operand := Field(forest, node, "operand");
-    if (!Is(forest, node, "unary_expression") || Text(forest, text, Field(forest, node, "operator")) != "-" ||
-        !Is(forest, operand, "number") || Decimal(Text(forest, text, operand)) < 0) {
-        return outside;
-    }
-    return -Decimal(Text(forest, text, operand));
 }
 // The import aliases of file `file`, each a name for the package it imports,
 // from the graph's bindings. They are the outermost names of its functions.
@@ -210,8 +204,8 @@ ReadType :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDe
         home = QualifierOf(forest, text, names, package, first);
         name = NameText(forest, text, part);
         if (home < 0 || NextMember(forest, part) >= 0) { return none; }
-    } else if (FieldStorage(name) != 0) {
-        return {storage: FieldStorage(name), container: container, record: -1};
+    } else if (ScalarStorage(name) != 0) {
+        return {storage: ScalarStorage(name), container: container, record: -1};
     }
     declared := FindType(types, home, name);
     if (declared < 0) { return none; }
@@ -444,20 +438,34 @@ DeclarePackage :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.D
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
+                // Stage zero makes an untyped constant a double.
+                storage := IntStorage;
                 declared := Field(forest, member, "type");
+                if (declared < 0) {
+                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                        "an untyped number is a double; give the constant an integer type"));
+                }
                 if (declared >= 0) {
                     constant_type := ReadType(forest, text, types, aliases, package, declared);
-                    if (constant_type.storage != IntStorage || constant_type.container != 0) {
+                    storage = constant_type.storage;
+                    if (!Integer(storage) || constant_type.container != 0) {
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
-                value := ConstantValue(forest, text, Field(forest, member, "value"));
-                if (value < -2147483648 || value > 2147483647) {
-                    return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
-                        "constant value must be an int literal"));
+                switch ParseNumber(forest, text, Field(forest, member, "value")) {
+                    case .Invalid:
+                        return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                            "constant value must be an integer literal"));
+                    case .Number(negative, magnitude):
+                        if (!Fits(negative, magnitude, storage)) {
+                            return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
+                                format_text("Numeric literal is outside the range of {}", TypeName(storage))));
+                        }
+                        bits := Bits(negative, magnitude);
+                        constant: ConstDecl = {name: name, package: package, storage: storage, high: High(bits),
+                            low: Low(bits)};
+                        constants = array_add(constants, constant);
                 }
-                constant: ConstDecl = {name: name, package: package, value: int(value)};
-                constants = array_add(constants, constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
                 return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
@@ -705,7 +713,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                         value.text = code.text;
                         value.has_text = true;
                     }
-                    bits := uint64(wrap: int64(code.payload));
+                    bits := Join(code.payload_high, code.payload);
                     if (bits != 0) {
                         value.wide = length(wide);
                         wide = array_add(wide, bits);
@@ -714,7 +722,7 @@ Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Documen
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
                         left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
                         stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
-                        value: length(values) - 1, layout: 0, message: "", has_message: false};
+                        value: length(values) - 1, layout: 0, message: code.message, has_message: code.has_message};
                     instructions = array_add(instructions, row);
                     pc += 1;
                 }

@@ -797,9 +797,13 @@ stage zero's value model: construct, snapshot and in-place array intrinsics,
 stage zero's record IDs and layout hashes, and value roots for suspended
 callers. Unions use the union-make, -test and -get intrinsics with stage zero's
 tags. Each package is a module whose import rows carry the fingerprints the
-runtime checks. Compiling the compiler's own sources stops first at a `uint64`
-payload in `prepared_writer`; `uint64` and conversions, natives with several
-results, then the rest of the compiler's sources follow. Debugger points and
+runtime checks. Integers are `int`, `byte`, `int64` and `uint64`, with literals
+typed by their use and checked, wrapping and clamping conversions; the
+compiler's own `x := -1` locals now declare `int`, since stage zero makes an
+untyped literal a double. Compiling
+the compiler's own sources now stops first at an array literal passed to a
+native in `package_graph`; array literals typed by their items, natives with
+several results, then the rest of the compiler's sources follow. Debugger points and
 watches are deferred until before stage one becomes the normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function

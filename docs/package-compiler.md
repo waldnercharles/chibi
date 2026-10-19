@@ -33,14 +33,27 @@ target supplies what Chibi cannot see:
 Packages of functions, records, unions and constants, and the packages they
 import:
 
-- `int`, `bool` and `string` values, records of those, unions whose variants
-  carry them, and arrays of any of these, as parameters, results and locals;
-  string literals and quoted names decode as JSON strings, as stage zero reads
-  them;
+- `int`, `bool` and `string` values, records of those, `byte`, `int64` and
+  `uint64` values, unions whose variants carry any of them, and arrays of any
+  of these, as parameters, results and locals; string literals and quoted
+  names decode as JSON strings, as stage zero reads them;
+- integer literals, decimal or hexadecimal, typed as stage zero types them: by
+  the declared local, assignment target, result, parameter, field, payload,
+  element or index, or by the other operand. A literal whose type nothing
+  gives, as in `x := 5`, is a double in stage zero, and stage one rejects it.
+  A literal outside its type, such as `byte` 256, is rejected;
+- `T(value)`, `T(wrap: value)` and `T(clamp: value)` for the integer types:
+  the checked form fails the call when the value does not fit, `wrap` keeps
+  its low bits and `clamp` saturates. Mixed integer operands widen to the type
+  that holds both, and local declarations, assignments to locals and returns
+  widen implicitly; `int` or `int64` with `uint64` needs a conversion;
 - local declarations, assignment and compound assignment; `if`/`else`,
   `while`, `foreach`, `break`, `continue` and `return`;
-- integer arithmetic, bitwise and comparison operators; string equality;
-  `!`, `&&` and `||` with short-circuit evaluation;
+- integer arithmetic, bitwise and comparison operators where the runtime
+  computes them: all of them for `int` and `int64`, only addition,
+  multiplication, equality and bit operations for `uint64`, and only equality
+  and bit operations for `byte`, as stage zero's verifier allows. String
+  equality, and `!`, `&&` and `||` with short-circuit evaluation;
 - struct and array literals, where the type is known from the declared local,
   the result or the parameter; field reads; bounds-checked element reads;
 - element assignment, compound included, and `xs = array_add(xs, x)` and
@@ -58,19 +71,24 @@ import:
   natives with one result or none, such as `length` and `slice`. A native's
   inferred ports take the one type its arguments give them, matched by name
   as the catalog matches names;
-- `int` constants whose value is an integer literal, `-` allowed, typed
-  (`Name: int : 5;`) or not (`Name :: 5;`). A use is the value itself; a local
-  hides a constant of the same name;
+- integer constants whose value is an integer literal, `-` allowed, with their
+  type (`Mask: uint64 : 0xFF;`). An untyped constant, `Name :: 5;`, is a
+  double in stage zero, and stage one rejects it. A use is the value itself;
+  a local hides a constant of the same name;
 - imports of `project:` and collection packages such as `core:strings`:
   `alias.F(...)` calls an imported function, `alias.C` reads an imported
   constant, and `alias.T` names an imported record or union in types,
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
-Anything else is rejected with its source position. Constants of other types
-or computed values, type patterns, record field defaults, field assignment,
-assigning record or array parameters, named payload arguments, literal
-variants, natives with several results or variadic ones, `uint64` and
-conversions come next.
+Anything else is rejected with its source position. Array literals typed by
+their items, floating and other integer types, implicit widening of call
+arguments, element stores, literal members, payloads and in-place natives,
+constants of other types or computed values, type patterns, record field
+defaults, field assignment, assigning record or array parameters, named
+payload arguments, literal variants, and natives with several results or
+variadic ones come next. One check stage zero makes at compile time happens
+at run time here: a checked conversion of a named constant that does not
+fit fails the call.
 Locals follow stage zero's scopes: blocks, switch arms, whose statements form
 a block, and if and while statements, which hold their condition's bindings.
 A name declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`,
@@ -136,9 +154,9 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 58 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 7,715 assertions in
-30.6 s). A sample is package `facts`, optionally with a
+`tool language-package-compiler-chibi` compiles 72 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 9,229 assertions in
+34.7 s under the supervisor). A sample is package `facts`, optionally with a
 `lib` package and `core:strings`. Every accepted closure loads in a fresh
 runtime host and runs on bytecode and SLJIT with JSON arguments, and stage
 zero's own closure of the same packages must return the same JSON; calls that

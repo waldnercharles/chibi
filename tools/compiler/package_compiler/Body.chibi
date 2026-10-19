@@ -16,13 +16,17 @@ import strings "core:strings"
 // grows past what the runtime's verifier admits.
 
 Slot :: struct { storage: int; kind: int; }
-// An instruction with the value a constant or header read carries and the
-// source range it lowers.
+// An instruction with the value a constant or header read carries, the
+// message a failing check reports and the source range it lowers. A scalar's
+// 64 bits, sign-extended for signed types, are `payload_high` and `payload`,
+// since records hold only int, bool and string fields.
 Code :: struct {
     op: int; type: int; output: int; left: int; right: int; target: int; offset: int;
-    value_storage: int; value_container: int; value_record: int; payload: int; text: string;
-    has_text: bool; start: int; end: int; line: int; column: int;
+    value_storage: int; value_container: int; value_record: int; payload: int; payload_high: int; text: string;
+    has_text: bool; message: string; has_message: bool; start: int; end: int; line: int; column: int;
 }
+// An integer literal's exact value, or none.
+Literal :: union { Number(negative: bool, magnitude: uint64) | Invalid }
 // A data cell's header type and kind. Some cells hold a constant payload: the
 // bits `constant`, or the tag of variant types[variant] when that is not -1.
 Cell :: struct { storage: int; container: int; record: int; constant: int; variant: int; kind: int; }
@@ -93,8 +97,9 @@ StorePhase: int : 4;
 Instruction :: pure fn(op: int, type: int, output: int, left: int, right: int, target: int,
                        item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
-        offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, text: "",
-        has_text: false, start: item.start, end: item.end, line: item.row + 1, column: item.column + 1};
+        offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
+        has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
+        column: item.column + 1};
 }
 Visit :: pure fn(node: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
@@ -130,18 +135,132 @@ SameType :: pure fn(storage: int, container: int, record: int, value: Value) -> 
 Single :: pure fn(value: Value, storage: int) -> bool {
     return value.storage == storage && value.container == 0;
 }
-// Decimal digits as an int, or -1 when they do not fit.
-Decimal :: pure fn(text: string) -> int64 {
-    value: int64 = 0;
+// The digit a hexadecimal character stands for, -1 for any other.
+HexDigit :: pure fn(character: int) -> int {
+    if (character >= 48 && character <= 57) { return character - 48; }
+    if (character >= 97 && character <= 102) { return character - 87; }
+    if (character >= 65 && character <= 70) { return character - 55; }
+    return -1;
+}
+// The value of a number literal, or of `-` on one; not valid for anything
+// else or beyond 64 bits. Only the operations the runtime allows on uint64
+// touch the magnitude: addition, multiplication and comparison for equality.
+ParseNumber :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> Literal {
+    invalid := Literal.Invalid;
+    digits := node;
+    negative := false;
+    if (Is(forest, node, "unary_expression")) {
+        if (Text(forest, text, Field(forest, node, "operator")) != "-") { return invalid; }
+        digits = Field(forest, node, "operand");
+        negative = true;
+    }
+    if (!Is(forest, digits, "number")) { return invalid; }
+    literal := Text(forest, text, digits);
+    size := strings.ByteLength(literal);
+    base: int = 10;
     index: int = 0;
-    while (index < strings.ByteLength(text)) {
-        digit := strings.ByteAt(text, index);
-        if (digit < 48 || digit > 57) { return -1; }
-        value = value * 10 + int64(digit - 48);
-        if (value > 2147483648) { return -1; }
+    if (size > 2 && strings.ByteAt(literal, 0) == 48 &&
+        (strings.ByteAt(literal, 1) == 120 || strings.ByteAt(literal, 1) == 88)) {
+        base = 16;
+        index = 2;
+    }
+    // At most 16 hexadecimal or 20 decimal significant digits; twenty decimal
+    // digits must not exceed the largest uint64.
+    first := -1;
+    magnitude: uint64 = 0;
+    while (index < size) {
+        digit := HexDigit(strings.ByteAt(literal, index));
+        if (digit < 0 || digit >= base) { return invalid; }
+        if (first < 0 && digit != 0) { first = index; }
+        magnitude = magnitude * uint64(base) + uint64(digit);
         index += 1;
     }
-    return value;
+    significant: int = 0;
+    if (first >= 0) { significant = size - first; }
+    if ((base == 16 && significant > 16) || significant > 20 ||
+        (significant == 20 && strings.Compare(strings.Slice(literal, first, 20), "18446744073709551615") > 0)) {
+        return invalid;
+    }
+    return Literal.Number(negative, magnitude);
+}
+ByteStorage: int : 3;
+Int64Storage: int : 8;
+// A value no instruction holds yet: an integer literal its use gives a type.
+NumberStorage: int : -3;
+// The integer types this compiler emits.
+Integer :: pure fn(storage: int) -> bool {
+    return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
+}
+TypeName :: pure fn(storage: int) -> string {
+    if (storage == ByteStorage) { return "byte"; }
+    if (storage == IntStorage) { return "int"; }
+    if (storage == Int64Storage) { return "int64"; }
+    return "uint64";
+}
+// Whether a literal's value fits an integer type.
+Fits :: pure fn(negative: bool, magnitude: uint64, storage: int) -> bool {
+    // Stage zero rejects any signed literal of an unsigned type, -0 included.
+    if (negative && (storage == ByteStorage || storage == WordStorage)) { return false; }
+    if (magnitude == 0) { return true; }
+    if (storage == ByteStorage) { return (magnitude >> 8) == 0; }
+    if (storage == IntStorage) { return (magnitude >> 31) == 0 || (negative && magnitude == 0x80000000); }
+    if (storage == Int64Storage) { return (magnitude >> 63) == 0 || (negative && magnitude == 0x8000000000000000); }
+    return !negative;
+}
+// A literal's bits in an integer type it fits, sign-extended when negative.
+Bits :: pure fn(negative: bool, magnitude: uint64) -> uint64 {
+    if (negative) { return ~magnitude + 1; }
+    return magnitude;
+}
+// The low and high 32 bits of a 64-bit pattern, and the pattern again.
+Low :: pure fn(bits: uint64) -> int { return int(wrap: bits & 0xFFFFFFFF); }
+High :: pure fn(bits: uint64) -> int { return int(wrap: bits >> 32); }
+Join :: pure fn(high: int, low: int) -> uint64 {
+    return (uint64(wrap: int64(high)) << 32) | (uint64(wrap: int64(low)) & 0xFFFFFFFF);
+}
+// The type both integer operands convert to without loss: the wider one, or
+// int for a byte and an int; -1 when there is none, as for a signed type with
+// uint64.
+CommonInteger :: pure fn(left: int, right: int) -> int {
+    if (left == right) { return left; }
+    if (left == ByteStorage) { return right; }
+    if (right == ByteStorage) { return left; }
+    if ((left == IntStorage && right == Int64Storage) || (left == Int64Storage && right == IntStorage)) {
+        return Int64Storage;
+    }
+    return -1;
+}
+// Whether an integer converts to another without loss, as stores do
+// implicitly.
+Widens :: pure fn(from: int, to: int) -> bool {
+    return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
+}
+// Whether the runtime computes `op` in an integer type: any comparison for
+// equality and bit operation, the rest for int and int64, and only addition
+// and multiplication for uint64.
+Computes :: pure fn(ops: Ops, op: int, storage: int) -> bool {
+    if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
+        op == ops.bit_not || op == ops.shl || op == ops.shr) {
+        return true;
+    }
+    if (storage == IntStorage || storage == Int64Storage) { return true; }
+    return storage == WordStorage && (op == ops.add || op == ops.mul);
+}
+// A constant of an integer or bool type.
+ConstantCode :: pure fn(ops: Ops, storage: int, bits: uint64, output: int, node: snapshot.SnapshotNode) -> Code {
+    constant := Instruction(ops.constant, storage, output, 0, 0, 0, node);
+    constant.value_storage = storage;
+    constant.payload = Low(bits);
+    constant.payload_high = High(bits);
+    return constant;
+}
+// A conversion to an integer type: `mode` 0 fails when the value does not
+// fit, 1 keeps its low bits and 2 saturates.
+CastCode :: pure fn(ops: Ops, storage: int, output: int, input: int, mode: int, node: snapshot.SnapshotNode) -> Code {
+    cast := Instruction(ops.cast, storage, output, input, 0, mode, node);
+    cast.message = format_text("Value does not fit in {}", TypeName(storage));
+    cast.has_message = true;
+    return cast;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
 BinaryOp :: pure fn(ops: Ops, operator: string) -> int {

@@ -112,6 +112,10 @@ type parameters and returns nothing:
 ```chibi
 package scoring
 
+Double :: pure fn(points: int) -> int {
+    return points * 2;
+}
+
 @test
 DoublesPoints :: fn() {
     expect(Double(3) == 6, "three doubles to six");
@@ -728,6 +732,9 @@ and writing the destination immediately:
 system Damage query projectile: Projectile {
     reduce projectile.Target.Health.Damage += projectile.Damage
 }
+```
+
+```chibi
 system Closest query candidate: Candidate {
     reduce min(candidate.Target.Threat.Distance, candidate.Distance)
 }

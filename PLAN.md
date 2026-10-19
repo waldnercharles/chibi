@@ -646,10 +646,14 @@ calls the generator on the natives that need no running game. A page's source
 must resolve, links included, to a regular file inside ROOT. The site is written
 into a fresh folder that then replaces `build/docs`, so the published folder
 never holds a partial site or a page the manifest no longer lists. `--serve`
-serves the result like `chibi web`. The manifest so far publishes the README, the
-language reference and the examples. The Testing, Packages, FAQ, Grammar and
-Toolchain pages, the generated package reference and grammar, checked examples,
-static assets and the Pages workflow remain.
+serves the result like `chibi web`. Examples are checked: every block fenced as
+`chibi` on a published page must parse, and one that is a whole package must
+analyze against the natives a test may call, or the build fails at the
+example's line. The manifest publishes the README (Overview), the language
+reference (Learn), the Testing guide, the examples, the FAQ and the Toolchain
+guide; the last three new pages live in `docs/guide`. The Packages and Grammar
+pages, generated from package comments and the grammar, static assets and the
+Pages workflow remain.
 
 Use one source of truth for prose and package comments. Create an explicit public
 manifest under `docs/` that names every Markdown page, generated grammar page,

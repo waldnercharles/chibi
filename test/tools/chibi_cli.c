@@ -1028,6 +1028,21 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", refused[i][2]));
         REQUIRE(file_has("site/build/docs/guide.html", "Back <a href=\"index.html\">home</a>."));
     }
+
+    /* A published chibi example must parse, and a whole package analyze. */
+    site_manifest("site/docs/site.kdl", "docs/guide.md", "guide.html");
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\npackage sample\nDouble :: pure fn(n: int) -> int "
+        "{\n"
+        "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 0);
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: fn() {\n    Missing();\n}\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\nsystem {\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", "docs/guide.md:4:"));
     char bare[256];
     path(bare, "bare");
     directory("bare");

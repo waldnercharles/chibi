@@ -536,7 +536,100 @@ typedef struct
 {
     const behavior_function *render, *head, *foot, *style;
     behavior_backend backend;
+    const script_catalog *catalog; /* Names a published example may use. */
 } docs_generator;
+
+/* Reports a diagnostic of an example that starts after line `fence` of the
+ * page `source`. */
+static void example_error(
+    const char *source,
+    int fence,
+    const script_diagnostic *diagnostic,
+    char *error,
+    size_t size
+)
+{
+    const script_range *at = &diagnostic->range;
+    snprintf(
+        error,
+        size,
+        "%s:%d:%d: example: %s",
+        source,
+        fence + at->line,
+        at->column,
+        diagnostic->message
+    );
+}
+
+/* One example: it parses, and a package also analyzes. */
+static bool check_example(
+    const char *source,
+    int fence,
+    const char *code,
+    const script_catalog *catalog,
+    char *error,
+    size_t size
+)
+{
+    script_syntax *syntax = script_parse(code);
+    bool valid = !syntax->diagnostic_count;
+    if (!valid) {
+        example_error(source, fence, &syntax->diagnostics[0], error, size);
+    }
+    if (valid && !strncmp(code, "package ", strlen("package "))) {
+        script_package_document document = { source, source, syntax };
+        const script_package_options options = { .documents = &document,
+                                                 .document_count = 1,
+                                                 .identity = "project:example",
+                                                 .native = catalog };
+        script_analysis *analysis = script_analyze_package(&options);
+        valid = !analysis->diagnostic_count;
+        if (!valid) {
+            example_error(source, fence, &analysis->diagnostics[0], error, size);
+        }
+        script_analysis_free(analysis);
+    }
+    script_syntax_free(syntax);
+    return valid;
+}
+
+/* Every example fenced as chibi on a page parses, and one that is a whole
+ * package also analyzes against the natives a test may call, so published
+ * examples stay true to the language. */
+static bool check_examples(
+    const char *source,
+    const char *text,
+    const script_catalog *catalog,
+    char *error,
+    size_t size
+)
+{
+    static const char FENCE[] = "```chibi";
+    int line = 1, fence = 0;
+    bool inside = false, valid = true;
+    char *code = NULL;
+    for (const char *at = text; valid && *at; line++) {
+        const char *end = strchr(at, '\n');
+        size_t length = end ? (size_t)(end - at) : strlen(at);
+        if (inside && !strncmp(at, "```", 3)) {
+            apush(code, '\0');
+            valid = check_example(source, fence, code, catalog, error, size);
+            asetlen(code, 0);
+            inside = false;
+        } else if (inside) {
+            for (size_t i = 0; i < length; i++) {
+                apush(code, at[i]);
+            }
+            apush(code, '\n');
+        } else if (length == strlen(FENCE) && !strncmp(at, FENCE, length)) {
+            fence = line;
+            inside = true;
+        }
+        at = end ? end + 1 : at + length;
+    }
+    afree(code);
+    return valid;
+}
 
 /* Closes a written file, saying why it could not be finished. */
 static bool finish(FILE *file, bool written, const char *name, char *error, size_t size)
@@ -564,6 +657,11 @@ static bool write_page(
     char *text = source ? file_read_text(source) : NULL;
     if (!text) {
         snprintf(error, size, "%s is not a readable file inside %s", page->source, root);
+        free(source);
+        return false;
+    }
+    if (!check_examples(page->source, text, generator->catalog, error, size)) {
+        free(text);
         free(source);
         return false;
     }
@@ -748,7 +846,8 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
             generator_function(packages, "project:site", "Head", 5),
             generator_function(packages, "project:site", "Foot", 0),
             generator_function(packages, "project:site", "Style", 0),
-            behavior_default_backend()
+            behavior_default_backend(),
+            native_capabilities_catalog(native)
         };
         assert(generator.render && generator.head && generator.foot && generator.style);
         valid = write_site(&generator, root, site, pages, error, sizeof error);

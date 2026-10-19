@@ -24,12 +24,42 @@ title "Chibi"
         }
     }
     - {
+        name "Testing"
+        (array)pages {
+            - {
+                title "Testing"
+                source "docs/guide/testing.md"
+                output "testing.html"
+            }
+        }
+    }
+    - {
         name "Examples"
         (array)pages {
             - {
                 title "Examples"
                 source "docs/examples.md"
                 output "examples.html"
+            }
+        }
+    }
+    - {
+        name "FAQ"
+        (array)pages {
+            - {
+                title "FAQ"
+                source "docs/guide/faq.md"
+                output "faq.html"
+            }
+        }
+    }
+    - {
+        name "Toolchain"
+        (array)pages {
+            - {
+                title "Toolchain"
+                source "docs/guide/toolchain.md"
+                output "toolchain.html"
             }
         }
     }

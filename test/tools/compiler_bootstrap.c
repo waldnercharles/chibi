@@ -253,6 +253,44 @@ TEST_CASE(bootstrap_rejects_another_target)
     return true;
 }
 
+/* With --published, the manifest must be the one bootstrap.kdl pins by its
+ * SHA-256, which the refusal names; a contract that pins none is refused. */
+TEST_CASE(bootstrap_published_needs_the_pinned_manifest)
+{
+    char folder_path[256];
+    contract(1, 1);
+    artifact("pinned", 1, 1, "abc", ABC_SHA256, NOTHING);
+    path(folder_path, "pinned");
+    const char *argv[] = { host_path,    "--bootstrap", folder_path,
+                           "--compiler", compiler,      "--core",
+                           core,         "--published", NULL };
+    REQUIRE(tool_run(argv, root, log_path) == 1 && log_has("bootstrap.kdl publishes no artifact"));
+    char text[256];
+    snprintf(text, sizeof text, "version 1\nminimum 1\npublished tag=\"t\" manifest=\"%064d\"\n", 0);
+    write_file("compiler/bootstrap.kdl", text);
+    REQUIRE(
+        tool_run(argv, root, log_path) == 1 &&
+        log_has("is not the published manifest bootstrap.kdl pins")
+    );
+    char *output = tool_read(log_path);
+    const char *found = output ? strstr(output, "with SHA-256 ") : NULL;
+    char digest[65] = { 0 };
+    if (found) {
+        memcpy(digest, found + strlen("with SHA-256 "), 64);
+    }
+    free(output);
+    REQUIRE(found);
+    snprintf(text, sizeof text, "version 1\nminimum 1\npublished tag=\"t\" manifest=\"%s\"\n", digest);
+    write_file("compiler/bootstrap.kdl", text);
+    REQUIRE(tool_run(argv, root, log_path) == 1 && log_has("does not record Compile's arguments"));
+    const char *seeded[] = { host_path,     "--bootstrap", folder_path,
+                             "--compiler",  compiler,      "--core",
+                             core,          "--seed",      folder_path,
+                             "--published", NULL };
+    REQUIRE(tool_run(seeded, root, log_path) == 1 && log_has("usage:"));
+    return true;
+}
+
 /* Writing needs a seed whose sources are the ones on disk, and writes
  * nothing otherwise. */
 TEST_CASE(bootstrap_write_checks_the_seed)
@@ -306,6 +344,7 @@ void test_tool_compiler_bootstrap(const char *producer, const char *host)
     RUN_TEST_CASE(bootstrap_checks_the_recorded_closure);
     RUN_TEST_CASE(bootstrap_reads_every_recorded_source);
     RUN_TEST_CASE(bootstrap_rejects_another_target);
+    RUN_TEST_CASE(bootstrap_published_needs_the_pinned_manifest);
     RUN_TEST_CASE(bootstrap_write_checks_the_seed);
     tool_remove_tree(root);
 }

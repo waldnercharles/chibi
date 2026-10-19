@@ -99,3 +99,20 @@ native_capabilities *host_native_default_catalog_new(
     afree(selected);
     return out;
 }
+native_capabilities *host_native_standalone_catalog_new(char *error, size_t size)
+{
+    const native_definition_pack packs[] = {
+        CORE_DEFINITION_PACK,
+        NATIVE_TEXT_DEFINITION_PACK,
+        NATIVE_ARRAY_DEFINITION_PACK,
+        NATIVE_VECTOR_DEFINITION_PACK,
+        NATIVE_MATH_DEFINITION_PACK,
+        NATIVE_ARITHMETIC_DEFINITION_PACK,
+        NATIVE_SELECTION_DEFINITION_PACK,
+        NATIVE_SET_DEFINITION_PACK,
+        NATIVE_COMPARISON_DEFINITION_PACK,
+        NATIVE_CONVERSION_DEFINITION_PACK,
+    };
+    int count = (int)(sizeof packs / sizeof *packs);
+    return native_capabilities_from_definition_packs(NULL, 0, packs, count, error, size);
+}

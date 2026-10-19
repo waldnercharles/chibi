@@ -331,15 +331,19 @@ pin_array *pin_array_snapshot_like(arena *a, const pin_array *src, int count)
     return dst;
 }
 /* Destination metadata is already validated/owned by the enclosing snapshot
- * or private construction proof. Still validate every original foreign row. */
+ * or private construction proof. Still validate every original foreign row's
+ * record, once per distinct record. */
 static int snapshot_items(arena *a, const pin_record *record, pin_value *out, const pin_value *items, int count)
 {
+    const pin_record *checked = record;
     for (int i = 0; i < count; i++) {
         const pin_value *value = &items[i];
-        if ((value->record != record && value->record &&
-             !pin_record_valid(value->record)) ||
-            !pin_record_same(record, value->record)) {
-            return -1;
+        if (value->record != checked) {
+            if ((value->record && !pin_record_valid(value->record)) ||
+                !pin_record_same(record, value->record)) {
+                return -1;
+            }
+            checked = value->record;
         }
         if (!record) {
             if (pin_value_snapshot_to_arena(a, &out[i], value)) {

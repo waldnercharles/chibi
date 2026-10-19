@@ -21,6 +21,8 @@ typedef struct invocation_frame
     behavior_data_storage *data;
     arena storage;
     bool entered;
+    /* What a spare frame retains, measured when it retired. */
+    size_t bytes;
     struct invocation_frame *next;
 } invocation_frame;
 
@@ -30,8 +32,10 @@ struct behavior_function_calls
      * context.parent or arguments retained by a pending host operation. */
     invocation_frame **frames;
     /* Completed frames, matched by immutable function generation. Their whole
-     * retained allocation set is bounded and never forms a live value root. */
+     * retained allocation set, `spare_bytes`, is bounded and never forms a
+     * live value root. */
     invocation_frame *spare;
+    size_t spare_bytes;
     int result;
 };
 
@@ -71,10 +75,7 @@ size_t behavior_function_calls_storage_bytes(const struct behavior_function_call
     for (int i = 0; i < acount(calls->frames); i++) {
         bytes += frame_bytes(calls->frames[i]);
     }
-    for (const invocation_frame *frame = calls->spare; frame; frame = frame->next) {
-        bytes += frame_bytes(frame);
-    }
-    return bytes;
+    return bytes + calls->spare_bytes;
 }
 void behavior_function_calls_reset(struct behavior_function_calls *calls)
 {
@@ -100,18 +101,17 @@ static void frame_retire(struct behavior_function_calls *calls, invocation_frame
     frame->invocation = (behavior_function_invocation){ 0 };
     /* Live frames are an execution requirement, not an idle-retention budget.
      * Count the reusable list and its vector capacity before adding this one. */
+    frame->bytes = frame_bytes(frame);
     size_t bytes = sizeof *calls + sizeof(dyna_hdr) +
                    (size_t)acap(calls->frames) * sizeof *calls->frames +
-                   frame_bytes(frame);
-    for (invocation_frame *spare = calls->spare; spare; spare = spare->next) {
-        bytes += frame_bytes(spare);
-    }
+                   calls->spare_bytes + frame->bytes;
     if (bytes > CALL_CACHE_BYTES) {
         frame_free(frame, FLOW_OK);
         return;
     }
     frame->next = calls->spare;
     calls->spare = frame;
+    calls->spare_bytes += frame->bytes;
 }
 
 void behavior_function_calls_free(struct behavior_function_calls *calls)
@@ -246,6 +246,7 @@ static invocation_frame *frame_new(
     if (frame) {
         *available = frame->next;
         frame->next = NULL;
+        calls->spare_bytes -= frame->bytes;
     }
     if (!frame) {
         frame = xcalloc(1, sizeof *frame);

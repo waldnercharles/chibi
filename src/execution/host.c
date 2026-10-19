@@ -62,10 +62,7 @@ size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
     ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
     bytes += VECTOR(data->values) + VECTOR(data->buffers) + VECTOR(data->calls);
 #undef VECTOR
-    for (int i = 0; i < acount(data->function->data_values); i++) {
-        bytes += data->function->data_values[i].size;
-    }
-    return bytes;
+    return bytes + data->buffer_bytes;
 }
 size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx)
 {
@@ -111,6 +108,7 @@ void behavior_function_prepare_data(
             void *buffer = v.size ? xcalloc(1, v.size) : NULL;
             if (v.size) {
                 v.initial.ptr = buffer;
+                data->buffer_bytes += v.size;
             }
             apush(data->values, v.initial);
             apush(data->buffers, buffer);

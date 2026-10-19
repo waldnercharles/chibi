@@ -343,6 +343,36 @@ TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention)
     }
     return true;
 }
+/* A helper called many times in one run reuses its spare frame each time:
+ * retention is counted once per retired frame, never drifting toward the
+ * budget, so later runs allocate nothing and keep the same cache size. */
+TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls)
+{
+    const char
+        *source = "behavior Cache { state total:double=0; "
+                  "Leaf :: fn(value:double)->double { return value + 1; } "
+                  "on Run(amount:double) { i:int=0; "
+                  "while i < 300 { total += Leaf(amount); i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(source, backends[backend]));
+        REQUIRE(run(0, 1, 0) == FLOW_OK && total(0, 600) && cached());
+        size_t bytes = execution_program_memory_usage(program).activation_cache_bytes;
+        for (int pass = 1; pass <= 3; pass++) {
+            xalloc_stats before, after;
+            xalloc_stats_get(&before);
+            int status = run(0, 1, pass);
+            xalloc_stats_get(&after);
+            REQUIRE(status == FLOW_OK && total(0, 600.0 * (pass + 1)) && cached());
+            REQUIRE(
+                after.calls == before.calls && after.requested_bytes == before.requested_bytes
+            );
+            REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == bytes);
+        }
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(activation_cache_keeps_waits_and_inspection_independent)
 {
     const char *source = "behavior Cache { state total:double=0; "
@@ -444,6 +474,7 @@ void test_language_activation_cache()
     RUN_TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work);
     RUN_TEST_CASE(activation_cache_releases_managed_calls_and_failed_runs);
     RUN_TEST_CASE(activation_cache_reuses_completed_payloads_with_bounded_retention);
+    RUN_TEST_CASE(activation_cache_reuses_helper_frames_across_many_calls);
     RUN_TEST_CASE(activation_cache_keeps_waits_and_inspection_independent);
     RUN_TEST_CASE(activation_cache_does_not_retain_oversized_argument_banks);
     pu_clear_setup();

@@ -96,7 +96,9 @@ closure of the same package must return the same JSON; calls that must fail,
 such as out-of-bounds reads, fail on all three. Rejections check the exact
 message and position.
 
-Compiling is slow: the arrays sample, about 40 lines, takes 1.8 s on SLJIT in
-this build. A profile shows the interpreter itself, per-call data-cell setup
-that scales with the callee's cells, and record layout validation on every
-record copy. These come before stage one compiles the compiler.
+Compiling is slow: the arrays sample, about 50 lines, takes 1.4 s on SLJIT and
+2.8 s on bytecode in this build. Retiring a call no longer re-measures every
+spare frame and its data cells, and an array copy checks each distinct record
+once, which cut compile time by about an eighth. The remaining cost is the
+interpreter itself, per-call setup of large frames, and one record layout check
+per record copy; they come before stage one compiles the compiler.

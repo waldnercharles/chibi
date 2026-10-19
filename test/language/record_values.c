@@ -298,6 +298,12 @@ TEST_CASE(record_identity_and_borrow)
     forged.record = split;
     REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &forged));
     REQUIRE(!memcmp(&output, &sentinel, sizeof output));
+    /* Rows check each distinct record: a valid row does not vouch for the next. */
+    pin_value mixed[2] = { input, forged };
+    bad_array.items = mixed;
+    bad_array.count = bad_array.capacity = 2;
+    REQUIRE(pin_value_snapshot_to_arena(&owned, &output, &bad_input));
+    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
     const type_field native_field = { .name = "number",
                                       .type = PIN_I32,
                                       .size = sizeof(int32_t) };

@@ -551,8 +551,13 @@ Step 5 is implemented for the package compiler on 2026-10-19:
 - `make test-recovery` runs that recovery from sources exported from HEAD in
   about 12 s: one compile, or two when the sources changed.
 
-The artifact is still a build output; where the clean-checkout recovery
-artifact is kept is still to be decided. See `docs/self-hosting-build.md`.
+At the owner's direction the clean-checkout artifact is published as a release
+asset, not checked in. The prerelease
+`compiler-bootstrap-1-d1c40f0d3c94` was built from revision `375459b4b`, and
+`tools/compiler/bootstrap.kdl` pins its manifest's SHA-256.
+`make bootstrap-recover` downloads that release with `gh` and recovers the
+compiler from it, about 11 s on macOS arm64. See
+`docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
 supported host configuration. Keep an explicit stage-zero recovery invocation

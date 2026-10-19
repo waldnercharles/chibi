@@ -274,7 +274,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact test-recovery test-short test-policy-inventory tools-build
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build
 agent-list:
 	@python3 tools/agent.py list
 
@@ -320,6 +320,13 @@ bootstrap-artifact:
 	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_ARTIFACT).seed)" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_ARTIFACT).seed" --revision "$$(git describe --always --dirty --abbrev=40)"
 	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed"
+
+# Recovers the compiler from the published artifact tools/compiler/bootstrap.kdl
+# pins: tools/toolchain/Bootstrap.chibi downloads the release with gh and has
+# the Release compiler host check its manifest against the pin and recover.
+bootstrap-recover:
+	@$(MAKE) build-release BUILD_TARGET='chibi-compiler-host chibi-build-host'
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --root "$(CURDIR)" --source tools/toolchain/Bootstrap.chibi --entry Recover --timeout-ms 300000 -- "$(abspath $(RELEASE_BUILD_DIR))/sdk/chibi-compiler-host" "$(abspath $(RELEASE_BUILD_DIR))/bootstrap-published"
 
 test-recovery: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

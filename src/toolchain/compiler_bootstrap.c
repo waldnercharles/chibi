@@ -172,8 +172,16 @@ static bool same(const unsigned char *a, size_t a_length, const unsigned char *b
     return a_length == b_length && !memcmp(a, b, a_length);
 }
 
-/* The sources' bootstrap version and the oldest version that compiles them. */
-static bool read_contract(const char *compiler, int *version, int *minimum, char *error, size_t size)
+/* The sources' bootstrap contract: their bootstrap version, the oldest
+ * version that compiles them and the SHA-256 of the published artifact's
+ * manifest, empty when none is published. */
+typedef struct
+{
+    int version, minimum;
+    char manifest[65];
+} contract;
+
+static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
 {
     char *path = join(compiler, CONTRACT_FILE);
     size_t length;
@@ -181,9 +189,12 @@ static bool read_contract(const char *compiler, int *version, int *minimum, char
     char reason[256] = "it cannot be read";
     av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
     av_value *root = doc ? av_doc_root(doc) : NULL;
-    *version = root ? av_get_int(av_obj_get(root, "version")) : 0;
-    *minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0;
-    bool valid = *minimum >= 1 && *minimum <= *version;
+    const char *pin = root ? av_get_str(av_obj_get(av_obj_get(root, "published"), "manifest"))
+                           : NULL;
+    *c = (contract){ root ? av_get_int(av_obj_get(root, "version")) : 0,
+                     root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
+    snprintf(c->manifest, sizeof c->manifest, "%s", pin && strlen(pin) == 64 ? pin : "");
+    bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {
         snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
     }
@@ -442,8 +453,7 @@ static yyjson_mut_val *record_sources(
 static yyjson_mut_doc *manifest(
     const compiler_bootstrap *b,
     const seed *s,
-    int version,
-    int minimum,
+    const contract *c,
     char *error,
     size_t size
 )
@@ -460,8 +470,8 @@ static yyjson_mut_doc *manifest(
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_int(doc, root, "format", BOOTSTRAP_FORMAT);
-    yyjson_mut_obj_add_int(doc, root, "version", version);
-    yyjson_mut_obj_add_int(doc, root, "minimum", minimum);
+    yyjson_mut_obj_add_int(doc, root, "version", c->version);
+    yyjson_mut_obj_add_int(doc, root, "minimum", c->minimum);
     yyjson_mut_obj_add_strcpy(doc, root, "revision", b->revision ? b->revision : "");
     yyjson_mut_obj_add_strcpy(doc, root, "entry", id);
     yyjson_mut_val *closure = yyjson_mut_obj_add_obj(doc, root, "closure");
@@ -485,11 +495,11 @@ static yyjson_mut_doc *manifest(
 
 bool compiler_bootstrap_write(const compiler_bootstrap *b, char *error, size_t size)
 {
-    int version, minimum;
+    contract c;
     seed s = { 0 };
-    bool valid = read_contract(b->compiler, &version, &minimum, error, size) &&
+    bool valid = read_contract(b->compiler, &c, error, size) &&
                  read_seed(b->seed, &s, error, size);
-    yyjson_mut_doc *doc = valid ? manifest(b, &s, version, minimum, error, size) : NULL;
+    yyjson_mut_doc *doc = valid ? manifest(b, &s, &c, error, size) : NULL;
     compiler_host *host = doc
                             ? compiler_host_load(s.closure, s.closure_length, BEHAVIOR_SLJIT, error, size)
                             : NULL;
@@ -526,6 +536,7 @@ typedef struct
     unsigned char *closure;
     size_t closure_length;
     char *text;
+    size_t text_length;
     yyjson_doc *doc;
     yyjson_val *root;
 } artifact;
@@ -543,10 +554,10 @@ static void free_artifact(artifact *a)
 static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a, char *error, size_t size)
 {
     char *path = join(b->folder, MANIFEST_FILE), *file = join(b->folder, CLOSURE_FILE);
-    size_t length = 0;
-    a->text = (char *)read_bytes(path, COMPILER_HOST_MAX_BYTES, &length);
-    a->doc = a->text ? yyjson_read(a->text, length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-                     : NULL;
+    a->text = (char *)read_bytes(path, COMPILER_HOST_MAX_BYTES, &a->text_length);
+    a->doc = a->text
+               ? yyjson_read(a->text, a->text_length, YYJSON_READ_ALLOW_INVALID_UNICODE)
+               : NULL;
     a->root = yyjson_doc_get_root(a->doc);
     a->closure = read_bytes(file, COMPILER_HOST_MAX_OUTPUT_BYTES, &a->closure_length);
     free(file);
@@ -596,6 +607,29 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
             a->closure ? a->closure_length : 0,
             digest,
             MANIFEST_FILE
+        );
+        return false;
+    }
+    return true;
+}
+
+/* Whether the artifact's manifest is the published one the contract pins. */
+static bool published_manifest(const contract *c, const artifact *a, char *error, size_t size)
+{
+    char digest[65];
+    sha256_hex((const unsigned char *)a->text, a->text_length, digest);
+    if (!c->manifest[0]) {
+        snprintf(error, size, "%s publishes no artifact", CONTRACT_FILE);
+        return false;
+    }
+    if (strcmp(digest, c->manifest)) {
+        snprintf(
+            error,
+            size,
+            "%s, with SHA-256 %s, is not the published manifest %s pins",
+            MANIFEST_FILE,
+            digest,
+            CONTRACT_FILE
         );
         return false;
     }
@@ -733,11 +767,13 @@ static bool recover(
 
 bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t size)
 {
-    int version, minimum, changed = 0;
+    contract c;
     artifact a = { 0 };
     size_t length = 0;
-    bool valid = read_contract(b->compiler, &version, &minimum, report, size) &&
-                 read_artifact(b, minimum, &a, report, size);
+    int changed = 0;
+    bool valid = read_contract(b->compiler, &c, report, size) &&
+                 read_artifact(b, c.minimum, &a, report, size) &&
+                 (!b->published || published_manifest(&c, &a, report, size));
     char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
                        : NULL;
     compiler_host *host = json

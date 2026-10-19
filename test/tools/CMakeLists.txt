@@ -380,7 +380,7 @@ endif()
 if(TARGET Chibi::model_authoring)
     target_sources(test_tools PRIVATE ../graph/packs.c ../graph/modeling.c ../graph/model_constructive.c
         ../graph/model_profiles.c ../graph/model_reuse.c ../graph/model_inspection.c
-        ../graph/model_sampled.c)
+        ../graph/model_sampled.c clay_fields.c)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
     # Models and materials in the renderer's shader catalog, and shader graphs
@@ -436,6 +436,15 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
+    if(TARGET Chibi::project_compilation AND TARGET Chibi::graph_catalog AND
+       TARGET Chibi::model_authoring AND TARGET Chibi::render)
+        # Authored controls use the production CPU resource publisher. Its
+        # current owner is render even though this case never opens a device.
+        target_sources(test_tools PRIVATE clay_lab.c)
+        target_link_libraries(test_tools PRIVATE Chibi::project_compilation
+            Chibi::graph_catalog Chibi::host_native_default Chibi::render)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_CLAY_LAB=1)
+    endif()
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
         add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c ../authoring/source_presentation.c
             ../runtime/system_schedule.c ../runtime/source_reductions.c scheduler_benchmark.c ../code_system_runtime.c ../authoring/source_edit.c

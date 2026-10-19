@@ -1,0 +1,4 @@
+version 26
+name "Clay Material Lab"
+content "content"
+start_scene "scenes/MaterialLab.kdl"

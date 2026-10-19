@@ -1,0 +1,6 @@
+// Same surface and tuning as neutral; only the linear pigment changes.
+ClayTerracotta :: prototype(ClayNeutral) {
+    Shader {
+        parameters: "(array)material.BaseColor 0.52 0.16 0.08\n"
+    }
+}

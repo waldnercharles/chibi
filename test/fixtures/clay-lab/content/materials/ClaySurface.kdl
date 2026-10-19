@@ -1,0 +1,121 @@
+version 3
+name "ClaySurface"
+domain "material"
+id_counter 2000
+description "Metallic-zero clay study. Object-attached curved fingerprint height and lower-frequency roughness vary independently; neither changes geometry or pigment."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - id=100 type="Shader ObjectPosition" x=0.0 y=0.0
+            - {
+                id 200
+                type "Shader Parameter"
+                x 0.0
+                y 240.0
+                reference_name "BaseColor"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.46 y=0.43 z=0.38
+                    }
+                }
+            }
+            - {
+                id 300
+                type "Shader Parameter"
+                x 0.0
+                y 420.0
+                reference_id 1
+                reference_name "Roughness"
+                outputs Value=0.68
+            }
+            - {
+                id 400
+                type "Shader Parameter"
+                x 0.0
+                y 600.0
+                reference_id 2
+                reference_name "Variation"
+                outputs Value=0.06
+            }
+            - {
+                id 500
+                type "Shader Parameter"
+                x 0.0
+                y 780.0
+                reference_id 3
+                reference_name "Fingerprints"
+                outputs Value=1.0
+            }
+            - {
+                id 600
+                type "Shader Parameter"
+                x 0.0
+                y 960.0
+                reference_id 4
+                reference_name "Spacing"
+                outputs Value=2.4
+            }
+            - {
+                id 700
+                type "Behavior Expression"
+                x 340.0
+                y 0.0
+                reference_name "0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))"
+                inputs {
+                    position id=701 type="struct" type_name="ShaderVec3"
+                    spacing id=702 type="float"
+                }
+                outputs {
+                    Result id=703 type="float"
+                }
+            }
+            - {
+                id 800
+                type "Behavior Expression"
+                x 340.0
+                y 420.0
+                reference_name "clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)"
+                inputs {
+                    position id=801 type="struct" type_name="ShaderVec3"
+                    roughness id=802 type="float"
+                    variation id=803 type="float"
+                }
+                outputs {
+                    Result id=804 type="float"
+                }
+            }
+            - {
+                id 900
+                type "Shader Bump"
+                x 700.0
+                y 0.0
+                inputs Distance=0.12
+            }
+            - {
+                id 1000
+                type "Shader Surface Output"
+                x 1040.0
+                y 240.0
+                inputs "Alpha Mode"=1
+            }
+        }
+        (array)edges {
+            - from="100.Value" to="700.position"
+            - from="100.Value" to="800.position"
+            - from="200.Value" to="1000.Base Color"
+            - from="300.Value" to="800.roughness"
+            - from="400.Value" to="800.variation"
+            - from="500.Value" to="900.Strength"
+            - from="600.Value" to="700.spacing"
+            - from="700.Result" to="900.Height"
+            - from="800.Result" to="1000.Roughness"
+            - from="900.Value" to="1000.Normal"
+        }
+    }
+    - id=1100 kind="function" math_expression="0.06 * sin(2 * pi * length(vec2(position.x + 5, position.z - 3)) / max(spacing, 0.5) + 0.8 * sin(position.y * 0.15))" expression_mode=1 entry_id=1101
+    - id=1200 kind="function" math_expression="clamp(roughness + variation * sin(position.x * 0.13) * sin(position.y * 0.17 + position.z * 0.11), 0.2, 0.9)" expression_mode=1 entry_id=1201
+}

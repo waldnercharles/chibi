@@ -1,0 +1,28 @@
+// Fixed planar HRC lighting, deliberately without feedback, bloom or adaptation.
+ClayStage :: prototype {
+    EngineSystem {
+        asset: "ApplyClay"
+    }
+    HRC2D {
+        resolution: 0.5,
+        adaptive: false,
+        target_fps: 60,
+        ambient: 0.3,
+        intensity: 1,
+        falloff: 1,
+        shadow_floor: 0.03,
+        radiance_hysteresis: 1,
+        bounce_hysteresis: 1,
+        feedback: false,
+        surface_radius: 24,
+        surface_mode: "Depth thickness",
+        surface_depth_radius: 320,
+        surface_depth_gain: 1,
+        surface_depth_quality: "Balanced",
+        surface_depth_visibility: "Bounded segments",
+        surface_thickness: 24,
+        surface_relief: 1.5,
+        surface_bevel: 1,
+        specular: 1
+    }
+}

@@ -1,0 +1,17 @@
+ClayView :: prototype {
+    Transform {
+        x: 0,
+        y: 0
+    }
+    Camera {
+        width: 320,
+        height: 180,
+        pitch: 0.35,
+        target_elevation: 12
+    }
+    SurfaceQuality {
+        resolution: "Full",
+        sdf_normal_mode: "Tetrahedral",
+        sdf_pixel_error: 0.25
+    }
+}

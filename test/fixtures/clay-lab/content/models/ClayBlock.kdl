@@ -1,0 +1,29 @@
+version 3
+name "ClayBlock"
+domain "model"
+id_counter 1000
+description "Rounded calibration block; half size (18,16,16), outer radius 4."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 100
+                type "Model Rounded Box"
+                x 0.0
+                y 0.0
+                inputs {
+                    "Half Size" {
+                        default x=18.0 y=16.0 z=16.0
+                    }
+                    Radius 4.0
+                }
+            }
+            - id=200 type="Model Output" x=300.0 y=0.0
+        }
+        (array)edges {
+            - from="100.Geometry" to="200.Geometry"
+        }
+    }
+}

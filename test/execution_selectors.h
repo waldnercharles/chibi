@@ -41,6 +41,10 @@ CHIBI_CPU_SELECTOR("--contact-benchmark")
 CHIBI_CPU_SELECTOR("--material-render")
 /* Model graphs compiled to distance programs, bounds and hit resolvers. */
 CHIBI_CPU_SELECTOR("--model-graphs")
+/* Eight in-memory model compiles and at most 413 scalar field evaluations. */
+CHIBI_CPU_SELECTOR("--clay-fields")
+/* One fixed authored project, eight specimens and 26 CPU simulation steps. */
+CHIBI_CPU_SELECTOR("--clay-lab")
 /* Models and materials in the renderer's shader catalog, without a window. */
 CHIBI_CPU_SELECTOR("--model-catalog")
 /* Appearance and mesh surface geometry, without a window. */

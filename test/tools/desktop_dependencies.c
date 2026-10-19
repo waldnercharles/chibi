@@ -173,6 +173,17 @@ TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition)
     return true;
 }
 
+TEST_CASE(vendor_warnings_preserve_instrumentation_and_restore_project_options)
+{
+    char producer[1024], build[1024];
+    path(producer, fixture, "warnings");
+    path(build, directory, "warnings");
+    const char *args[] = { "cmake", "-S",    producer, "-B", build,
+                           "-G",    "Ninja", root,     NULL };
+    REQUIRE(tool_run(args, directory, log_path) == 0);
+    return true;
+}
+
 void test_tool_desktop_dependencies()
 {
     strcpy(directory, "/tmp/chibi-desktop-dependencies-XXXXXX");
@@ -188,5 +199,6 @@ void test_tool_desktop_dependencies()
     RUN_TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail);
     RUN_TEST_CASE(cached_crypto_imports_preserve_provider_on_reconfigure);
     RUN_TEST_CASE(sdk_scheduler_avoids_duplicate_enkits_acquisition);
+    RUN_TEST_CASE(vendor_warnings_preserve_instrumentation_and_restore_project_options);
     tool_remove_tree(directory);
 }

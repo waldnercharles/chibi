@@ -216,13 +216,19 @@ static void reset_markers()
     }
 }
 
-TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
+TEST_CASE(cpu_routes_reach_exact_dispatcher)
 {
-    const char *selectors[] = {
-        "--material-destruction", "--material-fluids",     "--material-mpm",
-        "--material-thermal",     "--material-simulation", "--material-ecs",
-        "--material-render",      "--material-benchmark",  "--contact-benchmark"
-    };
+    const char *selectors[] = { "--material-destruction",
+                                "--material-fluids",
+                                "--material-mpm",
+                                "--material-thermal",
+                                "--material-simulation",
+                                "--material-ecs",
+                                "--material-render",
+                                "--material-benchmark",
+                                "--contact-benchmark",
+                                "--clay-fields",
+                                "--clay-lab" };
     for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
         REQUIRE(run("cpu-route", selectors[i]) == 0);
         char expected[128];
@@ -233,6 +239,7 @@ TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
         REQUIRE(exact);
     }
     REQUIRE(run("cpu-route", "--material-unknown") == 2);
+    REQUIRE(run("cpu-route", "--clay-unknown") == 2);
     REQUIRE(run("cpu-route", "--material-pixels") == 2);
     return true;
 }
@@ -746,7 +753,7 @@ void test_tool_test_policy()
     assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
-    RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
+    RUN_TEST_CASE(cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
     RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);

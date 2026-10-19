@@ -1,0 +1,14 @@
+// Publish only changed snapshots, never reauthor the model or material graph.
+ApplyClay :: system(settings: ClaySettings) {
+    if !settings.dirty {
+        return
+    }
+    if settings.has_form {
+        set_shape_parameter(self, "Form", cast<float>(settings.form))
+    }
+    set_material_parameter(self, "Fingerprints", cast<float>(settings.fingerprints))
+    set_material_parameter(self, "Roughness", cast<float>(settings.roughness))
+    set_material_parameter(self, "Variation", cast<float>(settings.variation))
+    set_material_parameter(self, "Spacing", cast<float>(settings.spacing))
+    settings.dirty = false
+}

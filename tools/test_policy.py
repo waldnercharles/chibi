@@ -104,6 +104,8 @@ NATIVE = {
     ('--preview-layout',): 'Preview world layout; 2 cases, CPU only; docs/testing.md',
     ('--fields',): 'Field graphs, sampling, cave fixtures, source-library linking/defaults, every field node and function-to-function calls, and publication rollback with retained drafts and name-stable source calls; 20 cases, CPU only; docs/testing.md',
     ('--model-graphs',): 'Model graphs compiled to distance programs, bounds, hit resolvers and sampled SDFs; 39 cases, in-memory, CPU only; docs/testing.md',
+    ('--clay-fields',): 'First supervised measurement: five fixed C field-contract cases, eight model compiles, eighteen bracket attempts and at most 413 scalar field evaluations; independent analytic references, CSG bounds, uniform scale, thin shell and residual limitation; no world/files/children/frames/GPU; shared60s; independent exact-source admission required; docs/clay-sdf-field-contract.md',
+    ('--clay-lab',): 'First supervised measurement: one authored project capped at 24 files/32 entries/depth3/128KiB, one BYTECODE player, eight specimens, 26 steps plus initial boundary, 208 snapshot pairs, 16 reflected test-input writes, eight row commits and 24 model validations; embedded resources <=16 records/1MiB and decoded <=8MiB; real CPU shader publication, no windows/GPU/children/network; standalone shared60s, independent exact-source admission required; docs/testing.md',
     ('--model-catalog',): 'Model parameters, material scope, validation, materials and surfaces in the shader catalog; 29 cases including live model registration, diagnostics and rename, CPU only; docs/testing.md',
     ('--render-geometry',): 'Appearance and mesh surface geometry, including finite scaled relief; 8 cases, CPU only; docs/testing.md',
     ('--arena',): 'The support arena allocator; 2 cases, CPU only; docs/testing.md',
@@ -134,6 +136,13 @@ NATIVE = {
     ('--source-presentation',): 'Independently reviewed twenty fixed source/palette cases and two component cases: tiny literal programs for ownership/layout, invalid drafts, callable scope/formulas, linear/branch/loop/await projection, Set/Get origins, Value-only setters, editable indexed/component receivers, natural handler completion and explicit End Event, named typed calls/clone/edit, pure single-result folding with watch/breakpoint/shared-use visibility, namespace field projection and keyed catalog generation, implicit empty entity/array declarations without fake Initial versus authored initializer, callable target resolution and owned hover descriptions, one eager named state-read snapshot, explicit and short-circuit effects; static palette and two in-memory component documents, CPU parse/analyze/projection only, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
 }
 TOOLS = {
+    # Standalone fixed-project maintenance, not a source test harness. Before
+    # either route, admit the exact clay-lab manifest and current project version
+    # (opening an old project can migrate even with --check). No frames or GPU.
+    'clay-format': [str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl')),
+                    '--project-root', str(ROOT / 'test/fixtures/clay-lab'), '--format'],
+    'clay-format-check': [str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl')),
+                          '--project-root', str(ROOT / 'test/fixtures/clay-lab'), '--format', '--check'],
     # Standalone only: fixed thirteen current-version fixture projects, CPU
     # source formatting checks, thirteen sequential children <=10s each under
     # one shared60s deadline; no migration, writes to assets, frames or GPU.
@@ -385,6 +394,8 @@ TOOLS = {
     # profiles, sweeps, anchors, parameters, hits, instanced references, inspection and sampled SDFs;
     # no files, world or GPU.
     'model-graphs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--model-graphs'],
+    'clay-fields': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--clay-fields'],
+    'clay-lab': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--clay-lab'],
     # Twenty-seven reviewed cases of models and materials in the renderer's shader catalog: runtime
     # parameters and their prepared texts, slot-scoped material parameters, saved-source validation,
     # material slots, hits and limits, surfaces, bounds and picking; one temporary folder, no GPU.

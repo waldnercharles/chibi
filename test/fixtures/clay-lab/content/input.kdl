@@ -1,0 +1,15 @@
+Form {
+    (array)sources "F"
+}
+Fingerprints {
+    (array)sources "G"
+}
+Variation {
+    (array)sources "V"
+}
+Oiliness {
+    (array)sources "O"
+}
+Reset {
+    (array)sources "R"
+}

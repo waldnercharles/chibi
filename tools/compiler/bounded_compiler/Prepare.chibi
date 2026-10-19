@@ -1,0 +1,141 @@
+package bounded_compiler
+
+import lower "project:scalar_lowering"
+import writer "project:prepared_writer"
+
+// The scalar lowering's wire opcodes, Constant through ShiftRight. The target
+// supplies the prepared instruction each one names, with the header ABI it
+// hashes, so a renumbered instruction set cannot be written silently.
+WireOpcodes: int : 29;
+
+Empty :: pure fn() -> writer.Value {
+    return {tag: 0, container: 0, type_name: "", has_type_name: false, authored: false,
+        wide: 0, text: "", has_text: false, present: false, first: 0, count: 0};
+}
+NoSource :: pure fn() -> writer.Source {
+    return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false,
+        start: 0, end: 0, line: 0, column: 0};
+}
+Range :: pure fn(first: int, count: int) -> writer.Span { return {first: first, count: count}; }
+Reference :: pure fn(own: int) -> writer.Reference {
+    return {imported: -1, own: own, function: 0, role: 0};
+}
+
+// One prepared module holding the plan's function. Its tables are the plan's
+// canonical definition; the runtime verifies and finalizes them when it loads
+// the module, so nothing is optimized here.
+Prepare :: pure fn(plan: lower.Plan, module: uint64, function: uint64, name: string,
+                   abi: uint64, opcodes: int[]) -> byte[] {
+    switch plan {
+        case .Rejected(diagnostics):
+            empty: byte[] = [];
+            return empty;
+        case .Ready(target, variable_ids, defaults, results, slots, locals, origins, documents, code):
+            // Wide entry 0 is the zero every absent payload names; 1 is the function.
+            wide: uint64[] = [0];
+            wide = array_add(wide, function);
+            values: writer.Value[] = [];
+            ints: int[] = [];
+            spans: writer.Span[] = [];
+            spans = array_add(spans, Range(0, 0));
+            spans = array_add(spans, Range(0, 0));
+            // Scalar literals: a value whose bits are a wide entry.
+            scalars: lower.Literal[] = append(results, defaults);
+            foreach (item in locals) {
+                literal: lower.Literal = {storage: item.storage, payload: item.payload};
+                scalars = array_add(scalars, literal);
+            }
+            foreach (item in code) {
+                literal: lower.Literal = {storage: item.value_storage, payload: item.payload};
+                scalars = array_add(scalars, literal);
+            }
+            foreach (item in scalars) {
+                value := Empty();
+                value.tag = item.storage;
+                bits := uint64(wrap: int64(item.payload));
+                if (bits != 0) {
+                    value.wide = length(wide);
+                    wide = array_add(wide, bits);
+                }
+                values = array_add(values, value);
+            }
+            spans = array_add(spans, Range(0, length(results)));
+            spans = array_add(spans, Range(length(ints), length(results)));
+            foreach (item in results) { ints = array_add(ints, int(0)); }
+            spans = array_add(spans, Range(length(results), length(defaults)));
+            spans = array_add(spans, Range(length(ints), length(slots)));
+            foreach (item in slots) { ints = array_add(ints, item.storage); }
+            spans = array_add(spans, Range(length(ints), length(slots)));
+            foreach (item in slots) { ints = array_add(ints, item.kind); }
+            spans = array_add(spans, Range(0, 0));
+
+            instructions: writer.Instruction[] = [];
+            value_at := length(results) + length(defaults) + length(locals);
+            foreach (item in code) {
+                instruction: writer.Instruction = {op: opcodes[item.op], type: item.storage,
+                    output: item.output, left: item.left, right: item.right, target: item.target,
+                    frame: 0, source: item.source, stack: -1, pin: 0, offset: item.offset,
+                    indirect: false, component_index: 0, node: 0, value: value_at, layout: 0,
+                    message: "", has_message: false};
+                instructions = array_add(instructions, instruction);
+                value_at += 1;
+            }
+            spans = array_add(spans, Range(0, length(instructions)));
+
+            prepared_locals: writer.Local[] = [];
+            value_at = length(results) + length(defaults);
+            foreach (item in locals) {
+                local: writer.Local = {kind: item.kind, initial: value_at, frame: 0, node: 0,
+                    pin: 0, offset: 0, parameter: false, array_default: false, data_index: 0};
+                prepared_locals = array_add(prepared_locals, local);
+                value_at += 1;
+            }
+            spans = array_add(spans, Range(0, length(prepared_locals)));
+            spans = array_add(spans, Range(0, 0));
+
+            // The single frame has an empty origin; every instruction's origin
+            // follows another empty source, at its pc plus one.
+            sources: writer.Source[] = [NoSource(), NoSource()];
+            foreach (item in origins) {
+                source := NoSource();
+                source.asset = documents[item.document];
+                source.has_asset = true;
+                source.start = item.start;
+                source.end = item.end;
+                source.line = item.line;
+                source.column = item.column;
+                sources = array_add(sources, source);
+            }
+            frame: writer.Frame = {source: 0, depth: 0, resume: 0, source_index: 0, stack: -1};
+            frames: writer.Frame[] = [frame];
+            spans = array_add(spans, Range(0, 1));
+            spans = array_add(spans, Range(1, length(sources) - 1));
+            while (length(spans) < writer.Tables) { spans = array_add(spans, Range(0, 0)); }
+
+            head: writer.Function = {argument_count: 0, result_count: length(results),
+                variable_count: length(defaults), root_steps: 0, child_budget: 0,
+                depth_bound: 0, pure_depth_limit: 0, breakpoints: false, batchable: false,
+                managed: false, custom_lowering: false, checkpoints: false, pin_watches: false,
+                watch_size: 0, component_bindings: false, component_access: false, spans: 0};
+            functions: writer.Function[] = [head];
+            references: writer.Reference[] = [Reference(0), Reference(-1)];
+            callable: writer.Entry = {id: 1, kind: 0, entry_name: name, has_entry: true,
+                continuation_wait: false, effects: 0, body: 0, subscription: 1};
+            entries: writer.Entry[] = [callable];
+            requirements: writer.Requirement[] = [];
+            fields: writer.Field[] = [];
+            imports: writer.Import[] = [];
+            roots: writer.Root[] = [];
+            parameters: writer.Parameter[] = [];
+            layouts: writer.ResultLayout[] = [];
+            data: writer.Data[] = [];
+            hosts: writer.Host[] = [];
+            calls: writer.Call[] = [];
+            points: writer.Point[] = [];
+            watches: writer.Watch[] = [];
+            return writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints,
+                requirements, fields, imports, functions, spans, roots, instructions,
+                prepared_locals, parameters, frames, sources, layouts, data, hosts, calls,
+                references, points, watches, entries));
+    }
+}

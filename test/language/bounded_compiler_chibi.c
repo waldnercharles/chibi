@@ -3,10 +3,10 @@
 #include "backend.h"
 #include "bounded_compiler_chibi_source.h"
 #include "compiler_fixture.h"
-#include "compiler_prepared_fixture.h"
 #include "execution/definition.h"
 #include "execution/module.h"
 #include "execution/prepared.h"
+#include "execution/scalar_lowering_plan.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "support/array.h"
@@ -14,7 +14,6 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
-#include "toolchain/compiler_prepared_scalar.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
 #include "types/union.h"
@@ -24,10 +23,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Bootstrap parses only the 18 shipped compiler/dependency files, never any
+/* Bootstrap parses only the 19 shipped compiler/dependency files, never any
  * CASE source below. The authored driver alone chooses semantic/lowering facts
- * from each user source. Its private raw
- * parser and prepared-payload callback are interposed only for work counting.
+ * from each user source and writes its prepared module and closure. Its
+ * private raw parser is interposed only for work counting.
  * One fixed corpus, two compiler backends, four compiler/target combinations;
  * no timing loops, subprocesses, runtime files, network, rendering or GPU.
  * One production shared 60-second deadline bounds the run. Context budgets
@@ -36,7 +35,7 @@
 enum
 {
     ACCEPTED = 14,
-    REJECTED = 28,
+    REJECTED = 29,
     CASES = ACCEPTED + REJECTED,
     SOURCE_CAP = 1024,
     PATH_CAP = 240,
@@ -55,7 +54,7 @@ typedef struct
     const char *sources[4];
     int path_count, source_count;
     const char *expected;
-    bool wrong_abi;
+    bool wrong_abi, short_opcodes;
 } request;
 static request cases[CASES];
 /* Each rejected case's exact diagnostic and 1-based line:column, in order. */
@@ -93,6 +92,7 @@ static const rejection rejections[REJECTED] = {
     { "unsupported bounded compiler root or target", 1, 1 },
     { "bounded source path or text exceeds its limit", 1, 1 },
     { "unsupported bounded compiler root or target", 1, 1 },
+    { "unsupported bounded compiler root or target", 1, 1 },
 };
 typedef struct
 {
@@ -104,24 +104,17 @@ typedef struct
 } saved;
 static saved outputs[2][CASES];
 static compiler_fixture fixture;
-static arena input, producer, detached, bridge_input;
-static pin_value call_result, bridge_plan;
-static compiler_prepared_scalar_declaration bridge_declaration;
-static uint64_t bridge_ready;
-static unsigned char *bridge_bytes;
-static size_t bridge_length;
-static int bridge_rejections;
+static arena input, producer, detached;
+static pin_value call_result;
 static behavior_run_counts bootstrap_counts;
 static behavior_function_context context;
 static behavior_function_activation activation;
-static service_binding *services;
-static compiler_prepared_fixture_service configuration;
-static node_host_call payload_call, syntax_call;
-static native_definition_binding payload_binding, syntax_binding;
+static node_host_call syntax_call;
+static native_definition_binding syntax_binding;
 static compiler_host *host;
 static compiler_host_result target;
 static unsigned char *load_bytes;
-static int compile_calls, payload_calls, raw_parses, target_runs, offered_files;
+static int compile_calls, raw_parses, target_runs, offered_files;
 static char padded[SOURCE_CAP + 1], oversized[SOURCE_CAP + 2];
 static char long_path[PATH_CAP + 2], expression24[192], expression25[192];
 static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -135,7 +128,6 @@ static void cleanup_call()
     arena_free(&producer);
     arena_free(&input);
     arena_free(&detached);
-    afree(services);
 }
 static void cleanup()
 {
@@ -146,10 +138,6 @@ static void cleanup()
     target = (compiler_host_result){ 0 };
     free(load_bytes);
     load_bytes = NULL;
-    free(bridge_bytes);
-    bridge_bytes = NULL;
-    arena_free(&bridge_input);
-    bridge_plan = (pin_value){ 0 };
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < CASES; i++) {
             free(outputs[b][i].bytes);
@@ -157,34 +145,6 @@ static void cleanup()
         }
     }
     compiler_fixture_free(&fixture);
-}
-static const char *observe_payload(
-    const behavior_function_context *ctx,
-    void *service,
-    const pin_value *arguments,
-    pin_value *results
-)
-{
-    payload_calls++;
-    if (!bridge_ready) {
-        if (pin_value_snapshot_to_arena(&bridge_input, &bridge_plan, &arguments[0])) {
-            return "Cannot retain bounded compiler plan for bridge rejection "
-                   "checks";
-        }
-        const compiler_prepared_fixture_service *config = service;
-        bridge_ready = config->ready_tag;
-        size_t bytes = strlen(arguments[3].str) + 1;
-        char *entry = arena_alloc(&bridge_input, bytes);
-        memcpy(entry, arguments[3].str, bytes);
-        bridge_declaration = (compiler_prepared_scalar_declaration){
-            .module = arguments[1].u64,
-            .function = arguments[2].u64,
-            .entry = entry,
-            .result = arguments[4].i
-        };
-    }
-    return COMPILER_PREPARED_FIXTURE_DEFINITION_PACK.bindings[0]
-        .implementation.call->context(ctx, service, arguments, results);
 }
 static const char *observe_syntax(
     const behavior_function_context *ctx,
@@ -278,6 +238,13 @@ static bool pack(int b, const request *r, pin_value *args)
     if (r->wrong_abi) {
         REQUIRE(put(&args[3], "prepared", integer(EXECUTION_PREPARED_VERSION + 1)));
     }
+    args[4] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
+    int count = SCALAR_LOWERING_OPCODES - r->short_opcodes;
+    pin_array *opcodes = pin_array_snapshot_allocate(&input, PIN_I32, NULL, count);
+    for (int i = 0; i < count; i++) {
+        opcodes->items[i] = integer((int)scalar_lowering_opcode(i));
+    }
+    args[5] = (pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = opcodes };
     return true;
 }
 static bool compile(int b, pin_value *args, pin_value *out)
@@ -306,15 +273,12 @@ static bool compile(int b, pin_value *args, pin_value *out)
     context = (behavior_function_context){
         .activation = behavior_function_resumable(function) ? &activation : NULL,
         .arguments = args,
-        .argument_count = 4,
+        .argument_count = 6,
         .results = &call_result,
         .budget = COMPILE_BUDGET
     };
     behavior_function_bind_storage(&context, &producer);
-    configuration.ready_tag = tag(b, "project:scalar_lowering", "Plan", "Ready");
-    REQUIRE(configuration.ready_tag);
-    apush(services, ((service_binding){ COMPILER_PREPARED_FIXTURE_SERVICE, &configuration }));
-    REQUIRE(behavior_function_bind(function, &context, services, 0));
+    REQUIRE(behavior_function_bind(function, &context, NULL, 0));
     behavior_run_scope runs = { 0 };
     behavior_run_scope_begin(&runs);
     compile_calls++;
@@ -356,7 +320,6 @@ static bool compile(int b, pin_value *args, pin_value *out)
     activation = (behavior_function_activation){ 0 };
     arena_free(&producer);
     arena_free(&input);
-    afree(services);
     return true;
 }
 static uint64_t little_endian(const unsigned char *bytes)
@@ -613,6 +576,8 @@ static bool corpus()
     cases[n++].paths[0] = long_path;
     single(n, "unsupported prepared ABI", VALID, NULL);
     cases[n++].wrong_abi = true;
+    single(n, "short opcode table", VALID, NULL);
+    cases[n++].short_opcodes = true;
     REQUIRE(n == CASES);
     size_t offered = 0;
     for (int i = 0; i < CASES; i++) {
@@ -627,118 +592,39 @@ static bool corpus()
     REQUIRE(offered <= 16 * 1024);
     return true;
 }
-static bool reject_bridge(
-    const pin_value *plan,
-    uint64_t ready,
-    const compiler_prepared_scalar_declaration *declaration,
-    const char *message
-)
-{
-    char error[192] = { 0 };
-    bridge_length = 17;
-    bridge_rejections++;
-    bool valid = compiler_prepared_scalar_write(
-        plan,
-        ready,
-        declaration,
-        &bridge_bytes,
-        &bridge_length,
-        error,
-        sizeof error
-    );
-    REQUIRE(!valid && !bridge_bytes && !bridge_length && !strcmp(error, message));
-    return true;
-}
-static bool reject_malformed_bridge_inputs()
-{
-    REQUIRE(bridge_ready && bridge_plan.type == PIN_UNION && bridge_plan.ptr);
-    REQUIRE(bridge_declaration.result == PIN_I32);
-    REQUIRE(reject_bridge(&bridge_plan, 0, &bridge_declaration, "invalid scalar callable declaration"));
-    compiler_prepared_scalar_declaration wrong = bridge_declaration;
-    wrong.result = PIN_BOOL;
-    REQUIRE(
-        reject_bridge(&bridge_plan, bridge_ready, &wrong, "scalar callable requires no arguments/state and one declared result")
-    );
-    wrong = bridge_declaration;
-    wrong.module = 0;
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
-    wrong = bridge_declaration;
-    wrong.function = 0;
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
-    wrong = bridge_declaration;
-    wrong.entry = "";
-    REQUIRE(reject_bridge(&bridge_plan, bridge_ready, &wrong, "invalid scalar callable declaration"));
-    pin_value invalid = integer(1);
-    REQUIRE(reject_bridge(&invalid, bridge_ready, &bridge_declaration, "scalar plan is not a union"));
-    pin_union *plan = bridge_plan.ptr;
-    REQUIRE(plan->count == 9);
-    pin_value old_ids = plan->values[1], old_defaults = plan->values[2];
-    pin_array *ids = pin_array_snapshot_allocate(&bridge_input, PIN_U64, NULL, 1);
-    ids->items[0] = (pin_value){ .type = PIN_U64, .u64 = 17 };
-    plan->values[1] = (pin_value){ .type = PIN_U64,
-                                   .container = PIN_CONTAINER_ARRAY,
-                                   .ptr = ids };
-    /* The existing zero I32 result header is also a valid variable default.
-     * Only the bridge's zero-state contract changes; do not fabricate a plan. */
-    plan->values[2] = plan->values[3];
-    bool rejected = reject_bridge(
-        &bridge_plan,
-        bridge_ready,
-        &bridge_declaration,
-        "scalar callable requires no arguments/state and one declared result"
-    );
-    plan->values[1] = old_ids;
-    plan->values[2] = old_defaults;
-    REQUIRE(rejected);
-    arena_free(&bridge_input);
-    bridge_plan = (pin_value){ 0 };
-    return true;
-}
 static bool prepare()
 {
     /* This table contains compiler implementation files only. User inputs are
      * not passed to source_package_snapshot_new/authoring_packages_prepare. */
     const source_package_input sources[] = { BOUNDED_COMPILER_SOURCE_INPUTS };
-    REQUIRE((int)(sizeof sources / sizeof sources[0]) == 18);
+    REQUIRE((int)(sizeof sources / sizeof sources[0]) == 19);
     size_t total = 0;
-    for (int i = 0; i < 18; i++) {
+    for (int i = 0; i < 19; i++) {
         REQUIRE(sources[i].size < 32768);
         total += sources[i].size;
     }
     REQUIRE(total < 256 * 1024);
-    REQUIRE(COMPILER_PREPARED_FIXTURE_DEFINITION_PACK.binding_count == 1);
-    REQUIRE(COMPILER_PREPARED_FIXTURE_DEFINITION_PACK.definition_count == 1);
     REQUIRE(COMPILER_SYNTAX_DEFINITION_PACK.binding_count == 1);
-    payload_binding = COMPILER_PREPARED_FIXTURE_DEFINITION_PACK.bindings[0];
     syntax_binding = COMPILER_SYNTAX_DEFINITION_PACK.bindings[0];
-    REQUIRE(
-        payload_binding.implementation.call &&
-        payload_binding.implementation.call->context
-    );
     REQUIRE(
         syntax_binding.implementation.call &&
         syntax_binding.implementation.call->context
     );
-    payload_call = *payload_binding.implementation.call;
     syntax_call = *syntax_binding.implementation.call;
-    payload_call.context = observe_payload;
     syntax_call.context = observe_syntax;
-    payload_binding.implementation.call = &payload_call;
     syntax_binding.implementation.call = &syntax_call;
     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
-                                       COMPILER_SYNTAX_DEFINITION_PACK,
-                                       COMPILER_PREPARED_FIXTURE_DEFINITION_PACK };
+                                       COMPILER_SYNTAX_DEFINITION_PACK };
     packs[1].bindings = &syntax_binding;
-    packs[2].bindings = &payload_binding;
     behavior_run_scope bootstrap = { 0 };
     behavior_run_scope_begin(&bootstrap);
-    bool prepared = compiler_fixture_prepare_packs(&fixture, sources, 18, packs, 3);
+    bool prepared = compiler_fixture_prepare_packs(&fixture, sources, 19, packs, 2);
     behavior_run_scope_end(&bootstrap);
     bootstrap_counts = bootstrap.counts;
     REQUIRE(prepared && !bootstrap_counts.overflow);
-    REQUIRE(authoring_packages_count(fixture.owners[0]) == 16);
-    REQUIRE(authoring_packages_count(fixture.owners[1]) == 16);
-    REQUIRE(!payload_calls && !raw_parses);
+    REQUIRE(authoring_packages_count(fixture.owners[0]) == 17);
+    REQUIRE(authoring_packages_count(fixture.owners[1]) == 17);
+    REQUIRE(!raw_parses);
     return true;
 }
 TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
@@ -756,13 +642,12 @@ TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
                 b,
                 cases[i].name
             );
-            pin_value args[4], result;
+            pin_value args[6], result;
             REQUIRE(pack(b, &cases[i], args));
-            int previous_calls = payload_calls, previous_parses = raw_parses;
+            int previous_parses = raw_parses;
             offered_files += cases[i].source_count;
             REQUIRE(compile(b, args, &result));
             REQUIRE(retain(b, i, &result));
-            REQUIRE(payload_calls - previous_calls == (i < ACCEPTED ? 1 : 0));
             REQUIRE(
                 raw_parses - previous_parses >= 0 &&
                 raw_parses - previous_parses <= cases[i].source_count
@@ -771,7 +656,6 @@ TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
         }
     }
     compiler_fixture_free(&fixture); /* No compiler/source/producer owner survives. */
-    REQUIRE(reject_malformed_bridge_inputs());
     for (int i = 0; i < CASES; i++) {
         if (i >= ACCEPTED) {
             const rejection *expected = &rejections[i - ACCEPTED];
@@ -802,30 +686,27 @@ TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures)
         outputs[0][0].length != outputs[0][2].length ||
         memcmp(outputs[0][0].bytes, outputs[0][2].bytes, outputs[0][0].length)
     );
-    REQUIRE(compile_calls == 2 * CASES && payload_calls == 2 * ACCEPTED);
-    REQUIRE(offered_files == 92 && raw_parses == 76);
-    REQUIRE(target_runs == 4 * ACCEPTED && bridge_rejections == 7);
+    REQUIRE(compile_calls == 2 * CASES);
+    REQUIRE(offered_files == 94 && raw_parses == 76);
+    REQUIRE(target_runs == 4 * ACCEPTED);
     return true;
 }
 void test_language_bounded_compiler_chibi()
 {
-    compile_calls = payload_calls = raw_parses = target_runs = offered_files = 0;
-    bridge_rejections = 0;
-    bridge_ready = 0;
+    compile_calls = raw_parses = target_runs = offered_files = 0;
     bootstrap_counts = (behavior_run_counts){ 0 };
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(bounded_authored_compiler_builds_detached_runnable_closures);
     pu_clear_setup();
     fprintf(
         stderr,
-        "bounded compiler attempted work: calls=%d payloads=%d raw_parses=%d "
-        "target_runs=%d offered_files=%d bridge_rejections=%d\n",
+        "bounded compiler attempted work: calls=%d raw_parses=%d "
+        "target_runs=%d "
+        "offered_files=%d\n",
         compile_calls,
-        payload_calls,
         raw_parses,
         target_runs,
-        offered_files,
-        bridge_rejections
+        offered_files
     );
     fprintf(
         stderr,

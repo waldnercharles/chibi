@@ -618,13 +618,13 @@ TOOLS = {
     # unchanged shared60s deadline including preparation/cleanup; no aggregate.
     'language-scalar-lowering-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--scalar-lowering-chibi'],
-    # One pico_unit case over the separate 18-source/16-package compiler fixture:
-    # 42 fixed source requests x2 compiler backends=84 calls; 14 accepted x2=28
-    # payload callbacks, 14x4=56 bytecode/SLJIT target entries. Seven direct
-    # malformed bridge inputs add no target execution. Sources<=1KiB (one
-    # over-limit specimen=1025), <=4 offered files, <=24 lowered rows. Compiler
-    # closure<256KiB, each<32KiB. No source reaches native semantic preparation
-    # after bootstrap. One shared60s including bootstrap and cleanup; no aggregate.
+    # One pico_unit case over the separate 19-source/17-package compiler fixture:
+    # 43 fixed source requests x2 compiler backends=86 calls; 14 accepted x2=28
+    # authored prepared modules, 14x4=56 bytecode/SLJIT target entries.
+    # Sources<=1KiB (one over-limit specimen=1025), <=4 offered files, <=24
+    # lowered rows. Compiler closure<256KiB, each<32KiB. No source reaches native
+    # semantic preparation or finalization after bootstrap. One shared60s
+    # including bootstrap and cleanup; no aggregate.
     'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--bounded-compiler-chibi'],
     # One pico_unit case: the authored prepared writer over five fixed modules

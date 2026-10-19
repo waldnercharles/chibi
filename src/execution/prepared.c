@@ -361,7 +361,7 @@ uint64_t prepared_abi(const char *const *names, int count)
     }
     return hash;
 }
-static void header(execution_wire *w)
+uint64_t execution_prepared_abi()
 {
     static const char *const names[] = {
 #define FUNCTION_NAME(op) [BF_##op] = #op,
@@ -370,7 +370,11 @@ static void header(execution_wire *w)
 #undef MATH_NAME
 #undef FUNCTION_NAME
     };
-    uint64_t expected_abi = prepared_abi(names, BF_END + 1);
+    return prepared_abi(names, BF_END + 1);
+}
+static void header(execution_wire *w)
+{
+    uint64_t expected_abi = execution_prepared_abi();
     uint64_t magic = PREPARED_MAGIC, version = EXECUTION_PREPARED_VERSION,
              pointer_size = sizeof(void *), abi = expected_abi;
     U64(magic);

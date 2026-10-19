@@ -84,13 +84,27 @@ loading remains unsupported; callers can still supply owned buffer snapshots.
 
 The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
 as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
-pure `ByteLength`, `ByteAt`, `Bytes`, `Slice`, `Compare`, `IsIdentifier` and
-`BaseName` functions use the text capability pack. Byte access returns unsigned
-0..255 or -1 outside the string. Each `ByteAt` call measures the string, so a
-loop over a long one is quadratic; `Bytes` returns every byte as an `int[]` in
-one pass, and indexing that array is constant time. Slice clamps its start/count and owns its result; byte
-ranges can split UTF-8 sequences. Compare orders unsigned bytes, IsIdentifier
-checks ASCII identifiers, and BaseName uses slash separators. Compiler packages
+pure functions use the text and array capability packs. `ByteLength`, `ByteAt`,
+`Bytes`, `Slice`, `Compare`, `IsIdentifier` and `BaseName` are the primitives:
+byte access returns unsigned 0..255 or -1 outside the string; each `ByteAt`
+call measures the string, so a loop over a long one is quadratic, and `Bytes`
+returns every byte as an `int[]` in one pass instead; Slice clamps its start/count and owns
+its result, byte ranges can split UTF-8 sequences, Compare orders unsigned
+bytes, IsIdentifier checks ASCII identifiers, and BaseName uses slash
+separators. The rest port Odin's `core:strings` over bytes: `Contains`,
+`ContainsAny`, `HasPrefix`, `HasSuffix`, `Index`, `LastIndex`, `IndexByte`,
+`LastIndexByte`, `IndexAny`, `LastIndexAny`, `Count`, `TruncateToByte`,
+`EqualFold`, `ToLower`, `ToUpper`, `IsAsciiSpace`, `Trim`, `TrimLeft`,
+`TrimRight`, `TrimSpace`, `TrimLeftSpace`, `TrimRightSpace`, `TrimPrefix`,
+`TrimSuffix`, `Cut`, `Split`, `SplitN`, `SplitAfter`, `SplitAfterN`,
+`SplitKeeping` (Odin's `_split`), `SplitLines`, `SplitLinesN`,
+`SplitLinesAfter`, `SplitLinesAfterN`, `SplitLinesKeeping`, `Fields`, `Join`,
+`Concatenate`, `Repeat`, `Replace`, `ReplaceAll`, `Remove`, `RemoveAll` and
+`Partition`, which returns a `Parts` record. Where Odin decodes runes, these
+compare, count and offset bytes: an empty separator splits into bytes, `Cut`
+takes byte offsets, cutsets are byte sets, and case and spaces are ASCII.
+`Repeat` returns an empty string for a count below 1 where Odin panics, and
+`Replace` returns only the string. Compiler packages
 also use the existing pure generic array capability pack. General authored
 generic specialization remains a separate language gap; core does not provide
 an imported generic array-wrapper API.

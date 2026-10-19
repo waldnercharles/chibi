@@ -3,6 +3,7 @@
 #include "authoring/native_bindings.h"
 #include "backend.h"
 #include "package_core_source.h"
+#include "runtime/arrays_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
@@ -74,9 +75,10 @@ static bool prepare(behavior_backend backend)
 {
     cleanup();
     native_definition_pack packs[] = { CORE_DEFINITION_PACK,
-                                       NATIVE_TEXT_DEFINITION_PACK };
+                                       NATIVE_TEXT_DEFINITION_PACK,
+                                       NATIVE_ARRAY_DEFINITION_PACK };
     char error[192];
-    table = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
+    table = native_capabilities_from_definition_packs(NULL, 0, packs, 3, error, sizeof error);
     REQUIRE(table);
     source_package_input files[] = {
         { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE, strlen(CORE_STRINGS_SOURCE) },

@@ -110,3 +110,120 @@ constants, so a lookup table is a local array built on every call
 
 Suggestion: stage one folds the constant expressions stage zero accepts, and
 constant arrays such as `Steps :: [1, 3, 6]`.
+
+## Strings are NUL-terminated and carry no length
+
+In `core:strings`, every `ByteAt` runs `strlen`, so each byte loop is
+quadratic, and every `Slice` copies, so Odin's `s = s[i+n:]` inside `Count`,
+`_split` and `replace` copies the rest of the string on each match. A string
+cannot hold a NUL byte, so Odin's `trim_null` has no use.
+
+- Odin, Go, Zig and Jai strings are a pointer and a length; `len(s)` and
+  `s[i]` are O(1) and `s[a:b]` is a view. Rust's `&str` and C++'s
+  `std::string_view` are the same pair; C# strings carry their length.
+
+Suggestion: strings that carry their length and may hold any byte, with
+slices that share the bytes once ownership allows it.
+
+## No narrow unsigned types or wrapping arithmetic
+
+Odin's Rabin-Karp `index` keeps a `u32` hash that wraps. `core:strings` keeps
+it in `int64` and masks every step:
+`h = (h * 16777619 + ByteAt(s, i) - pow * ByteAt(s, i - n)) & 0xFFFFFFFF`.
+`byte` itself has only equality and bit operations.
+
+- Odin, Go and C define unsigned overflow to wrap; Rust has
+  `wrapping_mul` and `Wrapping<u32>`; Zig has `+%`, `-%` and `*%` beside
+  checked `+`, `-` and `*`; C# wraps in `unchecked` code; Python and
+  JavaScript mask (`& 0xFFFFFFFF`, `Math.imul`, `>>> 0`).
+
+Suggestion: `u8`, `u16` and `u32` with full arithmetic, and Zig's wrapping
+operators so ordinary arithmetic stays checked.
+
+## Every top-level declaration is exported
+
+Odin's private `_split` became the exported `SplitKeeping`, and the shared
+line splitter the exported `SplitLinesKeeping`.
+
+- Odin has `@(private)` and `@(private="file")`; Jai `#scope_file` and
+  `#scope_module`; Rust, Zig and F# export only `pub` or public items; Go
+  exports capitalized names; C has `static`; C# `internal` and `private`;
+  TypeScript exports explicitly; Python marks private names with `_`.
+
+Suggestion: an `@private` attribute, beside `@test`, that keeps a declaration
+out of the package's exports and its reference page.
+
+## No way to build a string
+
+Concatenation is `format_text("{}{}", a, b)`, so `Join`, `Repeat`, `Replace`
+and `ToLower` copy everything built so far on each append. No conversion makes
+a string from a byte: `ToLower` slices its letter out of
+`"abcdefghijklmnopqrstuvwxyz"`.
+
+- Odin has `strings.Builder` and `string(bytes)`; Go `strings.Builder` and
+  `string(b)`; Rust `String::push_str` and `String::from_utf8`; Zig
+  `ArrayList(u8)`; C# `StringBuilder`; Python `"".join`; Ruby a mutable
+  `String#<<`.
+
+Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
+`s = append(s, t)` on a local string, as arrays already update in place.
+
+## A pure function cannot fail on purpose
+
+Odin's `repeat` panics on a negative count. `expect` is not `pure`, so
+`core:strings` returns an empty string instead and hides the caller's mistake;
+only a checked conversion or an out-of-bounds read fails a pure call.
+
+- Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
+  and `unreachable`; C `assert`; C# and F# throw.
+
+Suggestion: a pure `assert(condition, message)` that fails the call as a
+checked conversion does.
+
+## No runes
+
+`core:strings` works on bytes: `Cut` takes byte offsets, `EqualFold`,
+`ToLower`, `ToUpper` and the space trims are ASCII, and `Split(s, "")` splits
+into bytes. Odin's `rune_count`, `index_rune`, `reverse`, `expand_tabs`, the
+justify procedures and `levenshtein_distance` are not ported.
+
+- Odin has a `rune` type, `for r, i in s` that decodes UTF-8 and
+  `core:unicode/utf8`; Go ranges over a string's runes; Rust has `char` and
+  `s.chars()`; C# `Rune`; Python and Ruby strings are code points.
+
+Suggestion: a `rune` type and Odin's decoding `for r, i in s`, then a
+`core:utf8` package written in Chibi.
+
+## No procedure values
+
+Odin builds `trim_space` and `trim` on `trim_left_proc`, `index_proc` and
+`fields_proc`, which take a procedure. `core:strings` repeats each loop
+instead and leaves the `_proc` API out.
+
+- Odin passes non-capturing `proc` values; C function pointers; Zig function
+  types and `comptime` parameters; Rust `fn` pointers and closures; C#, F#,
+  TypeScript, Python and Ruby lambdas.
+
+Suggestion: non-capturing procedure values as `pure fn` parameters, as Odin's.
+
+## No reference parameters
+
+Odin's `split_iterator(s: ^string, sep)`, `split_lines_iterator` and
+`fields_iterator` advance the caller's string, so `core:strings` has no
+iterators.
+
+- Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
+  Ruby use generators.
+
+Suggestion: `ref` parameters of locals, or the iterator's state as a second
+result once functions return several.
+
+## No default parameter values
+
+Odin's `cut(s, rune_offset := 0, rune_length := 0)` is `Cut(s, offset, count)`
+with every argument required.
+
+- Odin, C#, C++, Python, TypeScript and Ruby default trailing parameters;
+  Rust and Zig don't.
+
+Suggestion: constant defaults for trailing parameters; low priority.

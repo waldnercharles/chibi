@@ -2,18 +2,13 @@
 
 A C23 scripting/compiler/runtime SDK with a separate Studio authoring application.
 
-The [architecture reference](docs/architecture.md) describes package boundaries,
-source authority, runtime lifetimes and deployment contracts.
-For implemented capabilities, remaining work, task ownership and the limits of
-the available validation, start at [current status](docs/status.md).
-To see a feature working, open one of the projects listed in
-[examples](docs/examples.md) in Studio.
+Start with the [language reference](docs/code-language.md) and the
+[toolchain guide](docs/guide/toolchain.md). To see a feature working, open one of
+the projects listed in [examples](docs/examples.md) in Studio.
 
-[Native product packages](docs/native-package.md) provide an installed compiler
-SDK, a separate Studio application, and a deployed player. Game repositories own
-authored content; the player consumes prepared artifacts and their declared
-resources. See [runtime authoring](docs/runtime-authoring.md) for exact SDK pins
-and installation into registered game workspaces.
+Native product packages provide an installed compiler SDK, a separate Studio
+application, and a deployed player. Game repositories own authored content; the
+player consumes prepared artifacts and their declared resources.
 
 ```sh
 make package-sdk       # native compiler + desktop authoring SDK in dist/sdk
@@ -161,9 +156,9 @@ dist/sdk/bin/chibi web ~/games/neon-swarm --player dist/web-player
 The site holds `index.html`, titled with the project's title, the player's
 `chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
 `files.json` lists. The page fetches those files before the game starts,
-so it needs a web server rather than a `file://` URL. Any static host works.
-[`docs/game-web-workflow.yml`](docs/game-web-workflow.yml) builds and publishes a
-game repository on GitHub Pages; copy it to the game's `.github/workflows/web.yml`.
+so it needs a web server rather than a `file://` URL. Any static host works;
+a game repository can publish on GitHub Pages with the game web workflow, which
+builds the site from published engine and editor packages.
 
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
@@ -252,18 +247,16 @@ implicitly shipped.
 
 `make web-serve` and `make web-threads-serve` use the external static server with
 isolation headers. It serves the installed browser bundle without mounting game
-source from disk. Browser publication is implemented: the engine's
-[release workflow](.github/workflows/publish.yml) supplies versioned packages,
+source from disk. Browser publication is implemented: the engine's release
+workflow supplies versioned packages,
 [Studio](https://github.com/waldnercharles/chibi-studio#automatic-browser-distribution)
-publishes the serial editor archive, and the
-[game web workflow](docs/game-web-workflow.yml) hosts a game's player and
-revision-specific `/dev/` workspace. Successful publication does not establish
-edit/save/reload, input or export acceptance in a browser. The
+publishes the serial editor archive, and the game web workflow hosts a game's
+player and revision-specific `/dev/` workspace. Successful publication does not
+establish edit/save/reload, input or export acceptance in a browser; the
 [serial browser report](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md)
-records those interactions on named revisions. See
-[current execution evidence and remaining work](docs/status.md#execution-evidence)
-for that distinction; threaded browser acceptance remains separate.
-Publication belongs to those workflows; the engine has no local publisher.
+records those interactions on named revisions, and threaded browser acceptance
+remains separate. Publication belongs to those workflows; the engine has no
+local publisher.
 
 ## Checks and authoring
 
@@ -284,13 +277,14 @@ quarantined; the retired `test_suite` wrappers reject rather than reconstructing
 old aggregates. Builds/configuration are timed separately. Public consumer checks
 and GPU routes run only with an admitted selector; use the policy inventory for
 current coverage. A passing package check establishes integrity, not rendered
-acceptance. See [testing policy](docs/testing.md#temporary-60-second-policy).
+acceptance.
 
 Author behaviors, libraries, and systems in `.chibi`; declarative assets use KDL.
 Studio projections and optional layout metadata do not replace executable source.
 Shared navigation, refactoring and inspection ship in SDK authoring packages and
-are consumed by Studio and the controller. Format/validate authored content
-through the controller; see [runtime authoring](docs/runtime-authoring.md).
+are consumed by Studio and the controller. Format authored content with
+`chibi fmt` and validate it with `chibi check`; the controller offers the same
+operations.
 
 ## Code map
 
@@ -315,6 +309,3 @@ through the controller; see [runtime authoring](docs/runtime-authoring.md).
 
 Public headers are owned by their installed targets. Private headers stay with
 the owning implementation; consumers never add the engine `src` root.
-
-See [the implementation tracker](PLAN.md) and
-[the native development workflow](docs/reload.md) for the acceptance checks and lifetime rules.

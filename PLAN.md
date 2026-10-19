@@ -668,9 +668,9 @@ guide. The manual `Documentation site` workflow
 the Pages artifact; it has no deploy job, which waits for the owner's review of
 that artifact. A pre-review of the artifact on 2026-10-19 found no local paths,
 credentials or links into private repositories (the linked `chibi-studio` is
-public). For the owner to decide: 25 links to unpublished documents render as
-plain text, so sentences such as the README's "See current execution evidence
-and remaining work" lose their target, and the Examples page names the
+public). At the owner's request the README, Examples and Learn pages were then
+rewritten so that no sentence leans on a link to an unpublished document (the
+site had dropped 25 such links to plain text), and Examples no longer names the
 archived private repositories. The site folder now gets the permissions
 `mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
 it. No published page uses an image yet, so the manifest has no

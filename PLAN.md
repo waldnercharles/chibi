@@ -647,13 +647,21 @@ must resolve, links included, to a regular file inside ROOT. The site is written
 into a fresh folder that then replaces `build/docs`, so the published folder
 never holds a partial site or a page the manifest no longer lists. `--serve`
 serves the result like `chibi web`. Examples are checked: every block fenced as
-`chibi` on a published page must parse, and one that is a whole package must
+`chibi` on a published Markdown page must parse, and one that is a whole package must
 analyze against the natives a test may call, or the build fails at the
-example's line. The manifest publishes the README (Overview), the language
-reference (Learn), the Testing guide, the examples, the FAQ and the Toolchain
-guide; the last three new pages live in `docs/guide`. The Packages and Grammar
-pages, generated from package comments and the grammar, static assets and the
-Pages workflow remain.
+example's line. A page can also be generated: `packages` with its
+`collection` lists every package folder's declarations, signatures and the
+comments above them (the generator's `reference` package), and `grammar`
+lists each rule of a Tree-sitter grammar's `rules` block with its comments
+(`grammar`). The site now has all eight sections: the README (Overview), the
+language reference (Learn), the Testing guide, the generated `core` reference
+(Packages), the examples, the FAQ, the generated Grammar and the Toolchain
+guide. The manual `Documentation site` workflow
+(`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
+the Pages artifact; it has no deploy job, which waits for the owner's review of
+that artifact. No published page uses an image yet, so the manifest has no
+static assets beyond the generated stylesheet; listing assets comes with the
+first page that needs one.
 
 Use one source of truth for prose and package comments. Create an explicit public
 manifest under `docs/` that names every Markdown page, generated grammar page,

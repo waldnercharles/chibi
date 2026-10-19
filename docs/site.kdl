@@ -34,6 +34,17 @@ title "Chibi"
         }
     }
     - {
+        name "Packages"
+        (array)pages {
+            - {
+                title "Core packages"
+                packages "packages/core"
+                collection "core"
+                output "packages.html"
+            }
+        }
+    }
+    - {
         name "Examples"
         (array)pages {
             - {
@@ -50,6 +61,16 @@ title "Chibi"
                 title "FAQ"
                 source "docs/guide/faq.md"
                 output "faq.html"
+            }
+        }
+    }
+    - {
+        name "Grammar"
+        (array)pages {
+            - {
+                title "Grammar"
+                grammar "src/language/grammar.js"
+                output "grammar.html"
             }
         }
     }

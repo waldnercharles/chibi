@@ -213,7 +213,7 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Seventeen finite CLI cases: launcher calls over fake sibling compiler,
+    # Eighteen finite CLI cases: launcher calls over fake sibling compiler,
     # player, node and browser player; the built launcher's version and doctor;
     # its real chibi-compile's --check, --test, --format and --docs on tiny
     # projects, package trees and sites; loopback serving for web and doc,
@@ -808,8 +808,9 @@ TOOLS = {
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
-    # Four C cases rendering fixed Markdown and navigation with the shipped site
-    # generator on two backends; 2,000,000-instruction budget per call; no files/processes.
+    # Six C cases rendering fixed Markdown, navigation, a package reference and a
+    # grammar with the shipped site generator on two backends; 2,000,000-instruction
+    # budget per call; no files/processes.
     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--docs-markdown'],
     # Two C cases, eight tests in two project packages per backend; one test

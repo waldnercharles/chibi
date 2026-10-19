@@ -1,0 +1,55 @@
+name: Documentation site
+
+# Builds the public site that docs/site.kdl lists and uploads it as the Pages
+# artifact. It does not deploy: review the artifact for private paths and
+# internal material before adding a deploy job.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-site-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CC: clang-18
+  CXX: clang++-18
+
+jobs:
+  site:
+    name: Build the documentation site
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 libclang-18-dev libclang-rt-18-dev \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+      - name: Identify dependency sources
+        id: deps
+        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
+      - name: Restore dependencies
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: native-deps-debug-release-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: native-deps-debug-release-${{ runner.os }}-clang18-
+      - name: Build chibi and chibi-compile
+        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Build the site
+        run: build/sdk/chibi doc
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/docs

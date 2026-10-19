@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Four cases on bytecode and the compiled backend. One preparation of the
- * shipped markdown and site packages with core:strings; each call renders or
- * lays out one page of at most a few hundred bytes with a
+/* Six cases on bytecode and the compiled backend. One preparation of the
+ * shipped site generator packages with core:strings per case; each call
+ * renders or lays out one page of at most a few hundred bytes with a
  * 2,000,000-instruction budget. No filesystem, processes or frames. */
 enum
 {
@@ -36,8 +36,12 @@ static bool prepare()
           DOCS_MARKDOWN_SOURCE,
           strlen(DOCS_MARKDOWN_SOURCE) },
         { "/compiler/site/Site.chibi", DOCS_SITE_SOURCE, strlen(DOCS_SITE_SOURCE) },
+        { "/compiler/reference/Reference.chibi",
+          DOCS_REFERENCE_SOURCE,
+          strlen(DOCS_REFERENCE_SOURCE) },
+        { "/compiler/grammar/Grammar.chibi", DOCS_GRAMMAR_SOURCE, strlen(DOCS_GRAMMAR_SOURCE) },
     };
-    REQUIRE(compiler_fixture_prepare(&fixture, files, 3));
+    REQUIRE(compiler_fixture_prepare(&fixture, files, 5));
     return true;
 }
 static pin_value text(const char *value)
@@ -243,6 +247,113 @@ TEST_CASE(docs_site_lays_out_navigation)
     return true;
 }
 
+/* The package reference lists each package once, with its import path, and
+ * each top-level declaration's signature, up to its body, with the comment
+ * written right above it. */
+TEST_CASE(docs_reference_lists_declarations)
+{
+    REQUIRE(prepare());
+    static const char *const paths[] = { "shapes/A.chibi", "shapes/B.chibi" };
+    static const char *const files[] = {
+        "package shapes",
+        "",
+        "// The area of a square.",
+        "Area :: pure fn(side: int,",
+        "                 scale: int) -> int {",
+        "    return side * side;",
+        "}",
+        "package shapes",
+        "Sides: int : 4;",
+        "// Not attached.",
+        "",
+        "Shape :: struct { sides: int; }",
+        "Greeting :: \"Hello {}\";",
+        "@test",
+        "Checks :: fn() {",
+        "}",
+        "@test Also :: fn() {}",
+        "Vec :: struct {",
+        "    // Horizontal.",
+        "    x: int;",
+        "}"
+    };
+    for (int b = 0; b < 2; b++) {
+        pin_value starts = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
+        pin_array *offsets = pin_array_snapshot_allocate(&input, PIN_I32, NULL, 2);
+        offsets->items[0] = (pin_value){ .type = PIN_I32, .i = 0 };
+        offsets->items[1] = (pin_value){ .type = PIN_I32, .i = 7 };
+        starts.ptr = offsets;
+        static const char *const none[] = { "README.md" };
+        pin_value arguments[] = { text("core"),     strings(paths, 2),
+                                  starts,           strings(files, 21),
+                                  text("packages"), strings(none, 1),
+                                  strings(none, 1) };
+        char *html = call(b, "project:reference", "Render", arguments, 7);
+        bool listed = html &&
+                      strstr(html, "<h1 id=\"the-core-packages\">The core packages</h1>") &&
+                      strstr(html, "<h2 id=\"shapes\">shapes</h2>\n<p>Import it as <code>core:shapes</code>.</p>") &&
+                      strstr(
+                          html,
+                          "<h3 id=\"area\">Area</h3>\n<pre><code "
+                          "class=\"language-chibi\">Area :: pure fn(side: "
+                          "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
+                          "area of a square.</p>"
+                      ) &&
+                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">Sides: int : 4;\n") &&
+                      strstr(html, "Shape :: struct { sides: int; }\n") &&
+                      strstr(html, "Greeting :: &quot;Hello {}&quot;;\n") &&
+                      !strstr(html, "Checks") && !strstr(html, "Also") &&
+                      strstr(html, "Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
+                      !strstr(html, "Not attached") &&
+                      !strstr(strstr(html, "<h2") + 3, "<h2");
+        if (!listed && html) {
+            fprintf(stderr, "reference:\n%s\n", html);
+        }
+        free(html);
+        REQUIRE(listed);
+    }
+    return true;
+}
+
+/* The grammar page shows each rule of the grammar's rules block with the
+ * comments above it, and nothing outside the block. */
+TEST_CASE(docs_grammar_lists_rules)
+{
+    REQUIRE(prepare());
+    static const char *const grammar[] = { "  word: ($) => $.identifier,",
+                                           "  rules: {",
+                                           "    // A file is one item.",
+                                           "    source_file: ($) =>",
+                                           "      seq($.item),",
+                                           "    _item: ($) => \"x\",",
+                                           "  },",
+                                           "  extras: ($) => []," };
+    static const char *const none[] = { "README.md" };
+    for (int b = 0; b < 2; b++) {
+        pin_value arguments[] = { strings(grammar, 8),
+                                  text("grammar.js"),
+                                  strings(none, 1),
+                                  strings(none, 1) };
+        char *html = call(b, "project:grammar", "Render", arguments, 4);
+        bool listed = html &&
+                      strstr(
+                          html,
+                          "<h3 id=\"source_file\">source_file</h3>\n<p>A file "
+                          "is one item.</p>\n"
+                          "<pre><code class=\"language-js\">source_file: ($) "
+                          "=&gt;\n  seq($.item),\n</code></pre>"
+                      ) &&
+                      strstr(html, "<h3 id=\"_item\">_item</h3>") &&
+                      !strstr(html, "word") && !strstr(html, "extras");
+        if (!listed && html) {
+            fprintf(stderr, "grammar:\n%s\n", html);
+        }
+        free(html);
+        REQUIRE(listed);
+    }
+    return true;
+}
+
 void test_language_docs_markdown()
 {
     pu_setup(NULL, cleanup);
@@ -250,5 +361,7 @@ void test_language_docs_markdown()
     RUN_TEST_CASE(docs_markdown_renders_tables);
     RUN_TEST_CASE(docs_markdown_maps_links_to_pages);
     RUN_TEST_CASE(docs_site_lays_out_navigation);
+    RUN_TEST_CASE(docs_reference_lists_declarations);
+    RUN_TEST_CASE(docs_grammar_lists_rules);
     pu_clear_setup();
 }

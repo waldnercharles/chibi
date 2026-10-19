@@ -1016,7 +1016,7 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     path(link, "site/docs/linked.md");
     REQUIRE(!symlink(outside, link));
     const char *refused[][3] = {
-        { "docs/guide.md", "../guide.html", "needs a title, a source and an .html output" },
+        { "docs/guide.md", "../guide.html", "needs a title, an .html output and one of source" },
         { "../outside.md", "guide.html", "../outside.md is not a readable file inside" },
         { "docs/linked.md", "guide.html", "docs/linked.md is not a readable file inside" },
         { "docs/missing.md", "guide.html", "docs/missing.md is not a readable file inside" },
@@ -1049,6 +1049,101 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     const char *none[] = { compiler, "--project-root", bare, "--docs", NULL };
     REQUIRE(tool_run(none, root, output) == 1);
     REQUIRE(file_has("docs.log", "cannot read the site manifest"));
+    return true;
+}
+
+/* A site with a Markdown page, a package reference and a grammar page; its
+ * reference page reads `packages` with `collection`, when given. */
+static void generated_site(const char *packages, const char *collection)
+{
+    char manifest[1024], reference[256] = "";
+    if (collection) {
+        snprintf(reference, sizeof reference, "                collection \"%s\"\n", collection);
+    }
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "title \"Generated\"\n(array)sections {\n    - {\n        name "
+        "\"Overview\"\n"
+        "        (array)pages {\n            - {\n                title "
+        "\"Home\"\n"
+        "                source \"README.md\"\n                output "
+        "\"index.html\"\n            }\n"
+        "            - {\n                title \"Packages\"\n                "
+        "packages \"%s\"\n%s"
+        "                output \"packages.html\"\n            }\n"
+        "            - {\n                title \"Grammar\"\n                "
+        "grammar \"grammar.js\"\n"
+        "                output \"grammar.html\"\n            }\n        }\n   "
+        " }\n}\n",
+        packages,
+        reference
+    );
+    write_file("generated/docs/site.kdl", manifest);
+}
+
+/* The real compiler's --docs generates a package reference from the
+ * packages of a folder and a grammar page from a grammar's rules. */
+TEST_CASE(compiler_docs_generates_reference_pages)
+{
+    const char *folders[] = { "generated", "generated/docs", "generated/lib", "generated/lib/shapes" };
+    for (size_t i = 0; i < sizeof folders / sizeof *folders; i++) {
+        directory(folders[i]);
+    }
+    write_file("generated/README.md", "# Home\n\nSee [the grammar](grammar.js).\n");
+    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four sides.\nSides: int : 4;\n");
+    write_file("generated/grammar.js", "  rules: {\n    // One item.\n    item: ($) => \"x\",\n  },\n");
+    generated_site("lib", "lib");
+    char site[256], output[256];
+    path(site, "generated");
+    path(output, "generated.log");
+    const char *docs[] = { compiler, "--project-root", site, "--docs", NULL };
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
+    REQUIRE(
+        file_has("generated/build/docs/packages.html", "Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
+    );
+    REQUIRE(
+        file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")
+    );
+    REQUIRE(
+        file_has("generated/build/docs/index.html", "See <a href=\"grammar.html\">the grammar</a>.")
+    );
+
+    generated_site("lib", NULL);
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("generated.log", "one of source, grammar or packages with its collection"));
+    generated_site("absent", "lib");
+    REQUIRE(
+        tool_run(docs, root, output) == 1 &&
+        file_has("generated.log", "absent is not a readable folder")
+    );
+    generated_site("../tests", "lib");
+    REQUIRE(
+        tool_run(docs, root, output) == 1 &&
+        file_has("generated.log", "../tests is not a readable folder")
+    );
+    char outside[256], link[256];
+    path(outside, "tests");
+    path(link, "generated/linked");
+    REQUIRE(!symlink(outside, link));
+    generated_site("linked", "lib");
+    REQUIRE(
+        tool_run(docs, root, output) == 1 &&
+        file_has("generated.log", "linked is not a readable folder")
+    );
+    directory("generated/empty");
+    generated_site("empty", "lib");
+    REQUIRE(
+        tool_run(docs, root, output) == 1 &&
+        file_has("generated.log", "empty holds no package files")
+    );
+    write_file("generated/grammar.js", "rules: {\n}\n");
+    generated_site("lib", "lib");
+    REQUIRE(
+        tool_run(docs, root, output) == 1 &&
+        file_has("generated.log", "grammar.js has no `  rules: {` block")
+    );
     return true;
 }
 
@@ -1163,6 +1258,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
     RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
+    RUN_TEST_CASE(compiler_docs_generates_reference_pages);
     RUN_TEST_CASE(doc_runs_the_compiler_docs);
     RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);

@@ -13,6 +13,7 @@
 #include "host/native_default.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -327,9 +328,17 @@ int authoring_project_test(const char *root, const char *core)
 /* Instructions one call of the site generator may run. */
 #define DOCS_BUDGET 1000000000u
 
+typedef enum
+{
+    DOCS_MARKDOWN, /* A Markdown page. */
+    DOCS_PACKAGES, /* The reference of the packages in a folder. */
+    DOCS_GRAMMAR,  /* The rules of a Tree-sitter grammar. */
+} docs_kind;
 typedef struct
 {
     const char *section, *title, *source, *output;
+    docs_kind kind;
+    const char *collection; /* The packages' import collection. */
 } docs_page;
 
 static char *join(const char *base, const char *name)
@@ -391,12 +400,30 @@ static bool read_site(const av_doc *doc, const char **site, docs_page **pages, c
         }
         for (size_t j = 0; j < av_arr_size(list); j++) {
             const av_value *entry = av_arr_get(list, j);
+            const char *markdown = av_get_str(av_obj_get(entry, "source"));
+            const char *packages = av_get_str(av_obj_get(entry, "packages"));
+            const char *grammar = av_get_str(av_obj_get(entry, "grammar"));
             docs_page page = { name,
                                av_get_str(av_obj_get(entry, "title")),
-                               av_get_str(av_obj_get(entry, "source")),
-                               av_get_str(av_obj_get(entry, "output")) };
-            if (!page.title || !page.source || !page.output || !page_name(page.output)) {
-                snprintf(error, size, "page %zu of %s needs a title, a source and an .html output", j + 1, name);
+                               markdown   ? markdown
+                               : packages ? packages
+                                          : grammar,
+                               av_get_str(av_obj_get(entry, "output")),
+                               markdown   ? DOCS_MARKDOWN
+                               : packages ? DOCS_PACKAGES
+                                          : DOCS_GRAMMAR,
+                               av_get_str(av_obj_get(entry, "collection")) };
+            if (!page.title || !page.output || !page_name(page.output) ||
+                !!markdown + !!packages + !!grammar != 1 ||
+                !packages != !page.collection) {
+                snprintf(
+                    error,
+                    size,
+                    "page %zu of %s needs a title, an .html output and one of "
+                    "source, grammar or packages with its collection",
+                    j + 1,
+                    name
+                );
                 return false;
             }
             for (int k = 0; k < acount(*pages); k++) {
@@ -511,30 +538,157 @@ static pin_value strings_value(arena *storage, int count)
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
 
-/* text's lines, without their line breaks, as a string[] argument whose
- * strings point into text, which this splits in place. */
-static pin_value lines_value(arena *storage, char *text)
+/* Appends text's lines, without their line breaks, to *lines; they point into
+ * text, which this splits in place. */
+static void split_lines(char *text, const char ***lines)
 {
-    int count = *text ? 1 : 0;
-    for (const char *c = text; *c; c++) {
-        count += *c == '\n' && c[1];
-    }
-    pin_value lines = strings_value(storage, count);
-    pin_array *array = lines.ptr;
-    for (int i = 0; i < count; i++) {
+    while (*text) {
         char *end = strchr(text, '\n');
         if (end) {
             *end = '\0';
         }
-        array->items[i] = text_value(text);
+        apush(*lines, text);
         text = end ? end + 1 : text + strlen(text);
     }
-    return lines;
+}
+
+/* lines as a string[] argument in storage. */
+static pin_value lines_value(arena *storage, const char **lines)
+{
+    pin_value value = strings_value(storage, acount(lines));
+    for (int i = 0; i < acount(lines); i++) {
+        ((pin_array *)value.ptr)->items[i] = text_value(lines[i]);
+    }
+    return value;
+}
+
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+/* The sorted names in folder of its subfolders, or of its regular files
+ * ending in extension; false when it cannot be read. */
+static bool folder_names(const char *folder, const char *extension, char ***names)
+{
+    DIR *dir = opendir(folder);
+    for (struct dirent *entry; dir && (entry = readdir(dir));) {
+        char *path = join(folder, entry->d_name);
+        struct stat info;
+        size_t length = strlen(entry->d_name),
+               suffix = extension ? strlen(extension) : 0;
+        bool wanted = entry->d_name[0] != '.' && !lstat(path, &info) &&
+                      (extension ? S_ISREG(info.st_mode) && length > suffix &&
+                                       !strcmp(entry->d_name + length - suffix, extension)
+                                 : S_ISDIR(info.st_mode));
+        if (wanted) {
+            apush(*names, xstrdup(entry->d_name));
+        }
+        free(path);
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    if (*names) {
+        qsort(*names, (size_t)acount(*names), sizeof **names, compare_names);
+    }
+    return dir != NULL;
+}
+
+static void free_names(char **names)
+{
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+}
+
+/* What renders a page's body: the files it reads, kept until the call that
+ * renders them runs, and that call's arguments in storage. */
+typedef struct
+{
+    arena storage;
+    char **texts;       /* Owned file texts, split into lines. */
+    char **paths;       /* Owned package file paths. */
+    const char **lines; /* Every line, pointing into texts. */
+    int *starts;        /* Where each package file's lines begin. */
+    const behavior_function *function;
+    pin_value arguments[7];
+    int count;
+} docs_body;
+
+static void free_body(docs_body *body)
+{
+    free_names(body->texts);
+    free_names(body->paths);
+    afree(body->lines);
+    afree(body->starts);
+    arena_free(&body->storage);
+}
+
+/* Reads a file inside root into body and splits it into lines; false with
+ * why. */
+static bool read_input(const char *root, const char *source, docs_body *body, char *error, size_t size)
+{
+    char *path = source_file(root, source);
+    char *text = path ? file_read_text(path) : NULL;
+    free(path);
+    if (!text) {
+        snprintf(error, size, "%s is not a readable file inside %s", source, root);
+        return false;
+    }
+    apush(body->texts, text);
+    return true;
+}
+
+/* Reads the .chibi files of each package folder in a folder inside root,
+ * sorted, into body; false with why, also for a folder with no package
+ * files. */
+static bool read_packages(const char *root, const char *source, docs_body *body, char *error, size_t size)
+{
+    char *joined = join(root, source);
+    char *folder = realpath(joined, NULL);
+    free(joined);
+    size_t length = strlen(root);
+    char **packages = NULL;
+    bool valid = folder && !strncmp(folder, root, length) &&
+                 folder[length] == '/' && folder_names(folder, NULL, &packages);
+    if (!valid) {
+        snprintf(error, size, "%s is not a readable folder inside %s", source, root);
+    }
+    for (int i = 0; valid && i < acount(packages); i++) {
+        char *package = join(folder, packages[i]);
+        char **files = NULL;
+        valid = folder_names(package, CODE_ASSET_EXTENSION, &files);
+        if (!valid) {
+            snprintf(error, size, "%s/%s is not a readable folder", source, packages[i]);
+        }
+        for (int j = 0; valid && j < acount(files); j++) {
+            char *relative = join(packages[i], files[j]);
+            char *within = join(source, relative);
+            apush(body->starts, acount(body->lines));
+            apush(body->paths, relative);
+            valid = read_input(root, within, body, error, size);
+            if (valid) {
+                split_lines(body->texts[acount(body->texts) - 1], &body->lines);
+            }
+            free(within);
+        }
+        free_names(files);
+        free(package);
+    }
+    if (valid && !acount(body->paths)) {
+        snprintf(error, size, "%s holds no package files", source);
+        valid = false;
+    }
+    free_names(packages);
+    free(folder);
+    return valid;
 }
 
 typedef struct
 {
-    const behavior_function *render, *head, *foot, *style;
+    const behavior_function *render, *head, *foot, *style, *reference, *grammar;
     behavior_backend backend;
     const script_catalog *catalog; /* Names a published example may use. */
 } docs_generator;
@@ -641,7 +795,70 @@ static bool finish(FILE *file, bool written, const char *name, char *error, size
     return written;
 }
 
-/* Writes one page into folder: the layout around its rendered source. */
+/* Reads what a page's body needs and sets up the call that renders it;
+ * false with why. */
+static bool page_body(
+    const docs_generator *generator,
+    const pin_value *map,
+    const char *root,
+    const docs_page *page,
+    docs_body *body,
+    char *error,
+    size_t size
+)
+{
+    if (page->kind == DOCS_PACKAGES) {
+        if (!read_packages(root, page->source, body, error, size)) {
+            return false;
+        }
+        int count = acount(body->paths);
+        pin_value paths = strings_value(&body->storage, count);
+        pin_array *starts = pin_array_snapshot_allocate(&body->storage, PIN_I32, NULL, count);
+        for (int i = 0; i < count; i++) {
+            ((pin_array *)paths.ptr)->items[i] = text_value(body->paths[i]);
+            starts->items[i] = (pin_value){ .type = PIN_I32, .i = body->starts[i] };
+        }
+        body->function = generator->reference;
+        body->arguments[0] = text_value(page->collection);
+        body->arguments[1] = paths;
+        body->arguments[2] = (pin_value){ .type = PIN_I32,
+                                          .container = PIN_CONTAINER_ARRAY,
+                                          .ptr = starts };
+        body->arguments[3] = lines_value(&body->storage, body->lines);
+        body->arguments[4] = text_value(page->source);
+        body->arguments[5] = map[4];
+        body->arguments[6] = map[3];
+        body->count = 7;
+        return true;
+    }
+    if (!read_input(root, page->source, body, error, size)) {
+        return false;
+    }
+    char *text = body->texts[0];
+    if (page->kind == DOCS_MARKDOWN &&
+        !check_examples(page->source, text, generator->catalog, error, size)) {
+        return false;
+    }
+    split_lines(text, &body->lines);
+    bool rules = false;
+    for (int i = 0; i < acount(body->lines); i++) {
+        rules = rules || !strcmp(body->lines[i], "  rules: {");
+    }
+    if (page->kind == DOCS_GRAMMAR && !rules) {
+        snprintf(error, size, "%s has no `  rules: {` block", page->source);
+        return false;
+    }
+    body->function = page->kind == DOCS_MARKDOWN ? generator->render
+                                                 : generator->grammar;
+    body->arguments[0] = lines_value(&body->storage, body->lines);
+    body->arguments[1] = text_value(page->source);
+    body->arguments[2] = map[4];
+    body->arguments[3] = map[3];
+    body->count = 4;
+    return true;
+}
+
+/* Writes one page into folder: the layout around its rendered body. */
 static bool write_page(
     const docs_generator *generator,
     const pin_value *map,
@@ -653,40 +870,32 @@ static bool write_page(
     size_t size
 )
 {
-    char *source = source_file(root, page->source);
-    char *text = source ? file_read_text(source) : NULL;
-    if (!text) {
-        snprintf(error, size, "%s is not a readable file inside %s", page->source, root);
-        free(source);
-        return false;
-    }
-    if (!check_examples(page->source, text, generator->catalog, error, size)) {
-        free(text);
-        free(source);
-        return false;
-    }
+    docs_body body = { 0 };
+    bool written = page_body(generator, map, root, page, &body, error, size);
     char *target = join(folder, page->output);
-    FILE *file = fopen(target, "wb");
-    if (!file) {
+    FILE *file = written ? fopen(target, "wb") : NULL;
+    if (written && !file) {
         snprintf(error, size, "cannot write %s: %s", target, strerror(errno));
     }
-    arena storage = { 0 };
     pin_value head[] = { map[0], map[1], map[2], map[3], { .type = PIN_I32, .i = index } };
-    pin_value render[] = { lines_value(&storage, text),
-                           text_value(page->source),
-                           map[4],
-                           map[3] };
-    bool written = file &&
-                   generate(generator->head, head, 5, generator->backend, file, page->output, error, size) &&
-                   generate(generator->render, render, 4, generator->backend, file, page->output, error, size) &&
-                   generate(generator->foot, NULL, 0, generator->backend, file, page->output, error, size);
+    written = file &&
+              generate(generator->head, head, 5, generator->backend, file, page->output, error, size) &&
+              generate(
+                  body.function,
+                  body.arguments,
+                  body.count,
+                  generator->backend,
+                  file,
+                  page->output,
+                  error,
+                  size
+              ) &&
+              generate(generator->foot, NULL, 0, generator->backend, file, page->output, error, size);
     if (file) {
         written = finish(file, written, page->output, error, size);
     }
-    arena_free(&storage);
     free(target);
-    free(text);
-    free(source);
+    free_body(&body);
     return written;
 }
 
@@ -846,10 +1055,15 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
             generator_function(packages, "project:site", "Head", 5),
             generator_function(packages, "project:site", "Foot", 0),
             generator_function(packages, "project:site", "Style", 0),
+            generator_function(packages, "project:reference", "Render", 7),
+            generator_function(packages, "project:grammar", "Render", 4),
             behavior_default_backend(),
             native_capabilities_catalog(native)
         };
-        assert(generator.render && generator.head && generator.foot && generator.style);
+        assert(
+            generator.render && generator.head && generator.foot &&
+            generator.style && generator.reference && generator.grammar
+        );
         valid = write_site(&generator, root, site, pages, error, sizeof error);
         if (!valid) {
             fprintf(stderr, "%s\n", error);

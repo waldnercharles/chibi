@@ -230,6 +230,9 @@ static bool run(
         .inspection_user = fixture->observe_failures ? &state->failure : NULL,
         .failure_observer = fixture->observe_failures ? observe_failure : NULL
     };
+    if (fixture->collectable) {
+        arena_init_collectable(&state->producer);
+    }
     behavior_function_bind_storage(&state->context, &state->producer);
     REQUIRE(behavior_function_bind(function, &state->context, NULL, 0));
     behavior_run_scope runs = { 0 };

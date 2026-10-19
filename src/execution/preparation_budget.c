@@ -138,7 +138,6 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
         }
         scratch = sum(scratch, product((size_t)f->host_calls[i].outcome_count, sizeof(uint64_t)));
     }
-    scratch = sum(scratch, behavior_function_row_preparation_bytes(f));
     return sum(retained, scratch);
 }
 

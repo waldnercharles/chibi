@@ -147,9 +147,9 @@ if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_I
     endforeach()
     configure_file(export_compiler.h.in
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/export_compiler.h" @ONLY)
-    set_source_files_properties(c_export.c record_c_export.c row_builder_c.c PROPERTIES
+    set_source_files_properties(c_export.c record_c_export.c PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_sources(test_tools PRIVATE c_export.c record_c_export.c row_builder_c.c)
+    target_sources(test_tools PRIVATE c_export.c record_c_export.c)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution Chibi::array_capabilities ${CMAKE_DL_LIBS})
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
 endif()

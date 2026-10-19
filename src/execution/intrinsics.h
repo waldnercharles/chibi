@@ -36,12 +36,21 @@ typedef enum
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
     EXECUTION_INTRINSIC_VALUE_EQUAL = 26,
+    EXECUTION_INTRINSIC_ARRAY_PUSH = 27,
+    EXECUTION_INTRINSIC_ARRAY_STORE = 28,
+    EXECUTION_INTRINSIC_ARRAY_EXTEND = 29,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
 extern const node_host_call EXECUTION_construct_call;
 extern const node_host_call EXECUTION_value_equal_call;
+/* In-place append, element write and extension of a local's own array:
+ * (header address, item), (header address, index, item) and (header address,
+ * items). Every store into a local snapshots, so no other value shares the
+ * array these update. */
+extern const node_host_call EXECUTION_array_push_call,
+    EXECUTION_array_store_call, EXECUTION_array_extend_call;
 extern const node_host_call EXECUTION_union_make_call,
     EXECUTION_union_test_call, EXECUTION_union_get_call;
 extern const node_host_call EXECUTION_reference_make_call;

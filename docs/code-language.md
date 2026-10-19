@@ -255,6 +255,11 @@ reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Collection natives such as `array_add` return a new value: write
 `hair = array_add(hair, h)`. A pure native called as a statement is an error.
+Arrays are values, so every store copies; a local or result array therefore
+owns its items. Appending to it with `xs = array_add(xs, x)` or
+`xs = append(xs, ys)`, or writing `xs[i] = x`, updates it in place, and building an array that way is linear, as
+with Odin's dynamic arrays. A write outside the array fails with "Array index out
+of range". Other values holding the array keep their copy.
 Runtime strings cannot contain embedded NUL bytes.
 
 Explicit scalar conversions call the type: `double(value)`, `float(value)` or

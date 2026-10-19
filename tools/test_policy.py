@@ -104,7 +104,7 @@ NATIVE = {
     ('--model-graphs',): 'Model graphs compiled to distance programs, bounds, hit resolvers and sampled SDFs; 39 cases, in-memory, CPU only; docs/testing.md',
     ('--model-catalog',): 'Model parameters, material scope, validation, materials and surfaces in the shader catalog; 29 cases including live model registration, diagnostics and rename, CPU only; docs/testing.md',
     ('--render-geometry',): 'Appearance and mesh surface geometry, including finite scaled relief; 8 cases, CPU only; docs/testing.md',
-    ('--arena',): 'The support arena allocator; 2 cases, CPU only; docs/testing.md',
+    ('--arena',): 'The support arena allocator; 3 cases, CPU only; docs/testing.md',
     ('--shader-graphs',): 'Shader graphs evaluated on the CPU and compiled to GLSL; 16 cases, CPU only; docs/testing.md',
     ('--shader-bake',): 'Bounded material channel baking; eight CPU cases, no files or GPU.',
     ('--material-bake',): 'Independently reviewed bounded CPU controller baking: tiny grids, three children under shared60s, no GPU.',
@@ -188,7 +188,8 @@ TOOLS = {
     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
-    # Two reviewed arena cases: aligned growth, block reuse after reset and a zero-initialized arena.
+    # Three reviewed arena cases: aligned growth, block reuse after reset, a zero-initialized arena
+    # and collectable values found by address.
     'arena': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--arena'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--system-schedule'],
@@ -817,9 +818,7 @@ TOOLS = {
     'language-record-prepared': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-prepared'],
     # Two fixed owned-input Outliner projection cases; also in language/Wasm groups.
     'language-outliner-projection': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--outliner-projection'],
-    # Seven fixed counted-row proof/fallback/lifetime cases; also in language/Wasm groups.
-    'language-row-builder': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-builder'],
-    # Five fixed row-array construction/alias/collection cases; also in language/Wasm groups.
+    # Six fixed row-array construction/alias/collection/in-place cases; also in language/Wasm groups.
     'language-row-array': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--row-array'],
     # Five fixed record execution/format cases; independent admission, no aggregate expansion.
     'language-record-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--record-runtime'],
@@ -853,8 +852,6 @@ TOOLS = {
                                   str(ROOT / os.environ.get('CHIBI_RECORD_RUNTIME_BUILD_DIR', 'build/test/record-runtime') / 'test_tools')],
     # One fixed record C-export case; ten calls and one compiler child; standalone.
     'record-c-export': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--record-c-export'],
-    # One fixed canonical generated-C row-builder case; also in compiler-enabled native-tools.
-    'row-builder-c': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--row-builder-c'],
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
@@ -870,13 +867,13 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
 # wasm-format shares the 40 fixed C cases/4490 assertions without a corpus,
 # including the 1726-assertion package separator case; remains standalone.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'row-builder', 'outliner-projection'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'modules', 'runtime-attribution', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
-             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-row-builder', 'wasm-outliner-projection'],
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -911,7 +908,7 @@ GROUPS = {
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
-                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-row-builder', 'language-outliner-projection'],
+                 'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')

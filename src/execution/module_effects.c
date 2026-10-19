@@ -400,6 +400,13 @@ static bool predicate_host(const behavior_function *f, int pc)
             origin kind = bank_origin(f, pc, host->first + 2, 0, &steps);
             return kind.constant && kind.bits != LANGUAGE_REFERENCE_STATE;
         }
+        case EXECUTION_INTRINSIC_ARRAY_PUSH:
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+            /* In-place updates write only the function's own local array. */
+            origin target = bank_origin(f, pc, host->first, 0, &steps);
+            return target.private && target.bank;
+        }
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
@@ -1417,6 +1424,11 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             return;
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             cost_add(c, f, pc, id, 0, COST_ALL, "Reference write can retain and copy the referenced root value");
+            return;
+        case EXECUTION_INTRINSIC_ARRAY_PUSH:
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            cost_add(c, f, pc, id, 0, allocate_copy, "In-place array update can grow storage and copy the item");
             return;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
             cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE, "Reduction retains a scalar contribution until system publication");

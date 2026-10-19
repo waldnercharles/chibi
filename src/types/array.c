@@ -10,6 +10,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,6 +48,25 @@ pin_array *pin_array_new(pin_type element_type, const char *type_name, int capac
     return array;
 }
 
+int pin_array_reserve_owned(arena *a, pin_array *array, int count)
+{
+    if (count <= array->capacity) {
+        return 0;
+    }
+    if (array->capacity > INT_MAX / 2) {
+        return -1;
+    }
+    int capacity = array->capacity ? array->capacity * 2 : 8;
+    capacity = capacity < count ? count : capacity;
+    pin_value *items = arena_alloc(a, (size_t)capacity * sizeof *items);
+    if (array->count) {
+        memcpy(items, array->items, (size_t)array->count * sizeof *items);
+    }
+    memset(items + array->count, 0, (size_t)(capacity - array->count) * sizeof *items);
+    array->items = items;
+    array->capacity = capacity;
+    return 0;
+}
 int pin_array_reserve(pin_array *array, int capacity)
 {
     if (!array || capacity < 0) {
@@ -352,6 +372,18 @@ int pin_array_snapshot_items(arena *a, const pin_record *record, pin_value *out,
     return snapshot_items(a, record, out, items, count);
 }
 
+int pin_array_snapshot_owned_items(
+    arena *a,
+    const pin_record *record,
+    pin_value *out,
+    const pin_value *items,
+    int count
+)
+{
+    assert(count >= 0 && (!count || (out && items)));
+    return snapshot_items(a, record, out, items, count);
+}
+
 pin_value pin_array_add(const pin_value *inputs, int count, arena *a)
 {
     (void)count;
@@ -391,56 +423,6 @@ const char *pin_array_add_call(arena *a, const pin_value *inputs, int count, pin
     *out = value;
     return NULL;
 }
-int pin_array_build_row(arena *a, const pin_value *prefix, const pin_value *row, int capacity, pin_value *out)
-{
-    const pin_array *source = prefix->ptr;
-    if (capacity <= 0 || (size_t)capacity > 65536 / sizeof(pin_value) ||
-        prefix->type != PIN_STRUCT || prefix->container != PIN_CONTAINER_ARRAY ||
-        !source || source->element_type != PIN_STRUCT || !source->record ||
-        source->count < 0 || source->count >= capacity) {
-        return -1;
-    }
-    if (!source->count &&
-        (!pin_record_valid(prefix->record) || !pin_record_valid(source->record))) {
-        return -1;
-    }
-    if (!pin_record_same(prefix->record, source->record) || !prefix->type_name ||
-        !source->type_name || strcmp(prefix->type_name, source->record->type.name) ||
-        strcmp(source->type_name, source->record->type.name)) {
-        return -1;
-    }
-    const pin_record *record = source->record;
-    pin_value *items = source->items;
-    if (!source->count) {
-        record = pin_record_snapshot(a, record);
-        if (!record) {
-            return -1;
-        }
-        items = arena_alloc(a, (size_t)capacity * sizeof *items);
-    } else if (source->capacity != capacity || !items) {
-        return -1;
-    }
-    pin_value item;
-    if (snapshot_items(a, record, &item, row, 1)) {
-        return -1;
-    }
-    pin_array *array = arena_alloc(a, sizeof *array);
-    *array = (pin_array){ .element_type = PIN_STRUCT,
-                          .type_name = record->type.name,
-                          .record = record,
-                          .count = source->count + 1,
-                          .capacity = capacity,
-                          .items = items };
-    items[source->count] = item;
-    pin_arena_trace_array(a, array);
-    *out = (pin_value){ .type = PIN_STRUCT,
-                        .container = PIN_CONTAINER_ARRAY,
-                        .type_name = record->type.name,
-                        .record = record,
-                        .ptr = array };
-    return 0;
-}
-
 pin_array *pin_array_snapshot_to_arena(arena *a, const pin_array *src)
 {
     if (!src || src->count < 0 || (src->count && !src->items) ||

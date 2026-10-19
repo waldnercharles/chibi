@@ -679,6 +679,9 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_STATE_TRANSITION:
                     case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
                     case EXECUTION_INTRINSIC_EVENT_READ:
+                    case EXECUTION_INTRINSIC_ARRAY_PUSH:
+                    case EXECUTION_INTRINSIC_ARRAY_STORE:
+                    case EXECUTION_INTRINSIC_ARRAY_EXTEND:
                         kind = BEHAVIOR_ADDRESS;
                         break;
                     default: break;
@@ -4580,6 +4583,115 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
+/* A writable local or result array kept in its own bank. Every store into it
+ * snapshots, so the local exclusively owns its items and may grow in place. */
+static bool owned_local_array(lower *l, int expression)
+{
+    const script_expression *e = &l->a->expressions[expression];
+    if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
+        return false;
+    }
+    const script_symbol *s = &l->a->symbols[e->symbol];
+    return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
+           s->type.container == PIN_CONTAINER_ARRAY && !s->boxed &&
+           !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
+                              SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
+           l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
+           !(l->captured && l->captured[e->symbol] >= 0);
+}
+static int argument_for(const script_expression *e, int parameter)
+{
+    for (int i = 0; i < e->argument_count; i++) {
+        if (e->arguments[i].parameter == parameter) {
+            return e->arguments[i].value;
+        }
+    }
+    return -1;
+}
+/* `xs = capability(xs, value)` for an array pack capability, named by its
+ * stable identity. The value must not write: the old path read `xs` first. */
+static bool self_call(lower *l, const script_expression *e, int symbol, const char *capability)
+{
+    if (e->kind != SCRIPT_EXPR_CALL || e->argument_count != 2 || e->right >= 0 ||
+        e->capability != script_catalog_id("capability", capability)) {
+        return false;
+    }
+    int array = argument_for(e, 0), value = argument_for(e, 1);
+    return array >= 0 && value >= 0 &&
+           l->a->expressions[array].kind == SCRIPT_EXPR_SYMBOL &&
+           l->a->expressions[array].symbol == symbol &&
+           !(l->a->expressions[value].effects & SCRIPT_EFFECT_WRITE);
+}
+/* `xs = array_add(xs, x)`, `xs = append(xs, ys)` and `xs[i] = x` on an owned
+ * local update its array in place, so building an array is linear rather
+ * than quadratic. */
+static bool in_place_array(lower *l, const script_statement *s)
+{
+    if (s->op != SCRIPT_OP_NONE) {
+        return false;
+    }
+    const script_expression *target = &l->a->expressions[s->expression],
+                            *rhs = &l->a->expressions[s->second];
+    bool owned = owned_local_array(l, s->expression);
+    bool push = owned && self_call(l, rhs, target->symbol, "Array Add");
+    bool extend = owned && self_call(l, rhs, target->symbol, "Append");
+    bool store = target->kind == SCRIPT_EXPR_INDEX &&
+                 owned_local_array(l, target->left);
+    if (!push && !extend && !store) {
+        return false;
+    }
+    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
+    script_type item = l->a->symbols[symbol].type;
+    if (!extend) {
+        item.container = PIN_CONTAINER_SINGLE;
+    }
+    pin_value headers[3] = { { .type = BF_POINTER_TYPE }, { .type = PIN_I32 } };
+    int slots[3], array = store ? -1 : argument_for(rhs, 0),
+                  value = store ? s->second : argument_for(rhs, 1),
+                  at = store ? 2 : 1;
+    /* The statement keeps the call's debugger points and watches, and the
+     * target's assignment point follows the value as store_symbol's does. */
+    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
+    if (store) {
+        slots[1] = int_slot(l, target->right, s->range);
+    } else {
+        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
+        debug_input(l, rhs, 0, expression(l, array), l->a->symbols[symbol].type);
+    }
+    slots[at] = convert(l, expression(l, value), l->a->expressions[value].type, item, s->range);
+    headers[at] = initial(l, item);
+    if (!store) {
+        debug_input(l, rhs, 1, slots[at], item);
+    }
+    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
+    /* The address follows every branch the index and value take, so effect
+     * analysis traces it straight to the local. */
+    slots[0] = value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = local_address(l, symbol) },
+        s->range
+    );
+    primitive(
+        l,
+        push     ? &EXECUTION_array_push_call
+        : extend ? &EXECUTION_array_extend_call
+                 : &EXECUTION_array_store_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        at + 1,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
+    if (!store) {
+        int result = expression_value(l, array);
+        value_root(l, BEHAVIOR_BANK_SLOT, result, rhs->type);
+        debug_watch(l, s->second, result, rhs->type, true, 0);
+    }
+    return true;
+}
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
@@ -4591,6 +4703,9 @@ static void assign(lower *l, const script_statement *s)
     if (l->a->expressions[index].kind == SCRIPT_EXPR_SYMBOL &&
         (l->a->expressions[index].type.flags & SCRIPT_TYPE_RESULTS)) {
         store_tuple(l, l->a->expressions[index].symbol, expression(l, s->second), s->second, s->range);
+        return;
+    }
+    if (in_place_array(l, s)) {
         return;
     }
     int saved_expression = l->target_expression,

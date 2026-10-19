@@ -2548,6 +2548,84 @@ TEST_CASE(program_integer_conversions_check_wrap_and_clamp)
     }
     return true;
 }
+/* A write outside a local's array fails at the assignment, as other writes do. */
+/* Suspending mid-build collects the payload while the local keeps its grown
+ * items: the collection keeps the current buffer and reclaims the outgrown
+ * ones, and the appends after the resume continue in place. */
+TEST_CASE(program_local_array_survives_collection_mid_build)
+{
+    const char
+        *source = "behavior Grow {\n"
+                  "  total: double = 0;\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    xs: double[] = [];\n"
+                  "    i: double = 0;\n"
+                  "    while (i < 200) { xs = array_add(xs, i); i += 1; }\n"
+                  "    await Delay(1);\n"
+                  "    while (i < 400) { xs = array_add(xs, i); i += 1; }\n"
+                  "    xs[0] = 1000;\n"
+                  "    total = xs[0] + xs[199] + xs[399] + length(xs);\n"
+                  "  }\n"
+                  "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t marks = arena_collect_marks();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        execution_memory_usage suspended = execution_program_memory_usage(program);
+        /* 200 items fill a 256-item buffer; the outgrown 8- to 128-item
+         * buffers would hold 248 more. */
+        REQUIRE(arena_collect_marks() > marks);
+        REQUIRE(suspended.payload_bytes >= 256 * sizeof(pin_value));
+        REQUIRE(suspended.payload_bytes < (256 + 248) * sizeof(pin_value));
+        REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "total", 1000 + 199 + 399 + 400));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_local_array_store_checks_its_range)
+{
+    const char *source = "behavior Store {\n"
+                         "  first: int = 0;\n"
+                         "  on Impulse(amount, enabled) {\n"
+                         "    xs: int[] = [];\n"
+                         "    xs = array_add(xs, int(1));\n"
+                         "    i: int = 0;\n"
+                         "    if (enabled) { i = 3; }\n"
+                         "    xs[i] = 5;\n"
+                         "    first = xs[0];\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARRAY_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = false } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "first", PIN_I32, 5));
+        args[1].b = true;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        int start = (int)(strstr(source, "xs[i] = 5") - source);
+        REQUIRE(failure && !strcmp(failure->message, "Array index out of range"));
+        REQUIRE(failure->start == start && failure->end == start + (int)strlen("xs[i] = 5;"));
+        execution_program_free(program);
+        program = NULL;
+    }
+    return true;
+}
 TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
 {
     const char *
@@ -7809,6 +7887,8 @@ void test_language_program()
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
+    RUN_TEST_CASE(program_local_array_store_checks_its_range);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
     RUN_TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage);
     RUN_TEST_CASE(program_source_float_width_conversion_preserves_native_input);

@@ -188,7 +188,6 @@ bool behavior_function_finalize(behavior_function *f, size_t arena_budget)
     }
     behavior_function_runtime_code(f);
     behavior_function_borrow_arrays(f);
-    behavior_function_row_builder(f);
     return true;
 }
 void behavior_function_activation_init(const behavior_function *f, behavior_function_activation *a)

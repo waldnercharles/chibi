@@ -1081,16 +1081,16 @@ make test-list
 
 The `language` and `wasm` groups list their admitted members explicitly in
 `tools/test_policy.py`; they do not include every standalone selector. Both
-include the five-case row-array construction, alias, rejection and collection
-regression and the seven-case counted-row builder proof, fallback and lifetime
-regression. Both also include the two-case Outliner selected-range projection
+include the six-case row-array construction, alias, rejection, collection and
+in-place local array regression (200,000 appends, 100,000 record appends,
+aliasing through copies, borrowed arguments, `foreach`, record items and union
+payloads, on both backends in ordinary and collectable storage).
+Both also include the two-case Outliner selected-range projection
 specimen: twelve-field policy over owned synthetic inputs, filtering/windows,
 full-width keys and detached ownership. Its two mechanical text bindings are
 test-local; it is not live Studio integration or a production text API.
-Compiler-enabled `native-tools` also includes the single generated-C
-builder fallback case with its bounded compiler child. Other focused record
-routes remain standalone, as do the dedicated
-Wasm formatter and root-state routes. Use `make test-list` to inspect the groups
+Other focused record routes remain standalone, as do the dedicated Wasm
+formatter and root-state routes. Use `make test-list` to inspect the groups
 and standalone routes; registering a route alone does not add it to a group.
 
 Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
@@ -2238,8 +2238,9 @@ and unit normals on every supported primitive. It passes 817 assertions in
 0.05 seconds under ASan/UBSan with leak checks.
 `arena` checks the support arena allocator: growth that keeps earlier
 allocations intact and aligned, a reset that hands back the retained blocks in
-order, and a zero-initialized arena. It passes 354 assertions in 0.06
-seconds.
+order, a zero-initialized arena, and collectable values found by address
+through the page index across sweeps and a reset. It passes 360 assertions in
+0.06 seconds.
 `shader-graphs` selects 15 shader graph cases on the CPU: planar and
 cylindrical mappings, bump and normal-map frames through part transforms and
 scaled seams, sampled and triplanar heights, triplanar axes, decal volumes,

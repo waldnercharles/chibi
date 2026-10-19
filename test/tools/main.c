@@ -38,7 +38,6 @@ void test_tool_execution_policy();
 #ifdef CHIBI_TEST_C_EXPORT
 void test_tool_c_export();
 void test_tool_record_c_export();
-void test_tool_row_builder_c();
 #endif
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
@@ -679,14 +678,11 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
     if (argc == 2 && (!strcmp(argv[1], "--c-export-alias") ||
-                      !strcmp(argv[1], "--record-c-export") ||
-                      !strcmp(argv[1], "--row-builder-c"))) {
+                      !strcmp(argv[1], "--record-c-export"))) {
 #ifdef CHIBI_TEST_C_EXPORT
         tool_init();
         pu_display_time(true);
-        if (!strcmp(argv[1], "--row-builder-c")) {
-            test_tool_row_builder_c();
-        } else if (!strcmp(argv[1], "--record-c-export")) {
+        if (!strcmp(argv[1], "--record-c-export")) {
             test_tool_record_c_export();
         } else {
             test_tool_c_export();
@@ -1023,7 +1019,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --package | "
             "--desktop-dependencies | --package-ownership | --unit | "
-            "--reflect-ranges | --c-export-alias | --row-builder-c | "
+            "--reflect-ranges | --c-export-alias | "
             "--ecs-query | "
             "--shader-bake | --material-bake chibi_ctl | --terrain-seams | "
             "--material-terrain-seams | --terrain-checkpoint | "
@@ -1430,7 +1426,6 @@ int main(int argc, char **argv)
         test_tool_publish();
 #ifdef CHIBI_TEST_C_EXPORT
         test_tool_c_export();
-        test_tool_row_builder_c();
 #endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();

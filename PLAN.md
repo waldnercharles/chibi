@@ -731,6 +731,16 @@ is deliberately small (see `docs/bounded-authored-compiler.md`). The inner
 CHIBIPRE payload still comes from the native finalizer, so this is not stage
 one or stage two.
 
+Self-hosting needs arrays that grow in linear time, and they did not. Every
+`array_add` copied the whole array and every element write snapshotted the
+root, so 16,000 appends took 14 s and 8,000 record appends 28 s. The 27
+compiler packages compile to 311 functions and 236,000 instructions, which
+stage one must build. Lowering now emits in-place `array_push`,
+`array_extend` and `array_store` intrinsics for a local or result array, which owns its items
+because every store copies. Capacity doubles like Odin's dynamic arrays, and
+16,000 record appends take 0.07 s on SLJIT. Parameters still alias the caller's
+array and keep the copying path. The counted-row builder this replaces is gone.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

@@ -203,7 +203,7 @@ Current integration constraints:
 | M4 | **Complete** | M3 | One real compiler component, package graph and ordering, ported to Chibi with differential fixtures. |
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
-| M7 | **Ready** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
+| M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | Blocked | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
@@ -555,6 +555,13 @@ failure behavior. Complete M6 only after native, runtime-only, browser, installe
 SDK, relocated SDK, and source-free consumer cases pass from the Chibi build.
 
 ### M7. Finish the stable command interface
+
+Status: in progress. `check` runs the build's compiler with `--check`, which
+prepares the project read-only: it neither migrates an older project nor writes
+an artifact. The `chibi-cli` fixture covers it in the build tree, through the
+launcher with a fake compiler and through the real `chibi-compile`; its
+installed-SDK and missing-compiler coverage remain. `version`, `doctor`, `fmt`,
+`test`, `web` and moving `export` behind Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

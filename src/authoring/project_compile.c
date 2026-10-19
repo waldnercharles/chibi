@@ -171,16 +171,19 @@ int authoring_project_compile(const char *project, const char *scene, const char
                                           .native = native,
                                           .components = { REGISTRY_COMPONENTS,
                                                           REGISTRY_COMPONENT_COUNT },
-                                          .modules = WORLD_MODULES_ALL };
+                                          .modules = WORLD_MODULES_ALL,
+                                          .read_only = !output };
     bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
     registry_set_packs(NULL, 0);
     authoring_graph_catalog_free(graphs);
     native_capabilities_free(native);
-    if (valid) {
+    if (valid && output) {
         valid = write_artifact(output, &artifact, error, sizeof error);
     }
-    if (valid) {
+    if (valid && output) {
         printf("Prepared project: %s (%zu bytes)\n", output, artifact.size);
+    } else if (valid) {
+        printf("Checked project: %s\n", project);
     } else {
         fprintf(stderr, "Project preparation failed: %s\n", error);
     }

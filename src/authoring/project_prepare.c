@@ -461,8 +461,10 @@ bool authoring_project_prepare(
     const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *start = NULL;
-    if (chibi_project_open(&project, options->project, error, size) ||
-        !application_title_valid(&project, error, size) ||
+    int opened = options->read_only
+                   ? chibi_project_read(&project, options->project, error, size)
+                   : chibi_project_open(&project, options->project, error, size);
+    if (opened || !application_title_valid(&project, error, size) ||
         !application_icon_read(&project, &icon, error, size)) {
         goto done;
     }

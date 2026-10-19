@@ -135,6 +135,137 @@ TEST_CASE(source_format_keeps_attributes_on_their_line)
     REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: fn() {}\n@test Second :: fn() {}\n"));
     return true;
 }
+TEST_CASE(source_format_spaces_variant_patterns)
+{
+    const char
+        *input = "package facts\n"
+                 "Shape :: union {\n"
+                 "    Circle(radius: int)\n"
+                 "    | Empty\n"
+                 "}\n"
+                 "Area :: fn(shape: Shape) -> int {\n"
+                 "    switch shape {\n"
+                 "        case .Circle(radius):\n"
+                 "            return radius;\n"
+                 "        case .Empty:\n"
+                 "            return 0;\n"
+                 "    }\n"
+                 "}\n"
+                 "Round :: fn(shape: Shape) -> bool {\n"
+                 "    return shape is .Circle(radius) && shape is not .Empty;\n"
+                 "}\n";
+    REQUIRE(format(input));
+    REQUIRE(!strcmp(text, input));
+    return true;
+}
+TEST_CASE(source_format_aligns_bracket_continuations)
+{
+    REQUIRE(format(
+        "package facts\n"
+        "Pair :: union {\n"
+        "    Both(first: int,\n"
+        "second: int)\n"
+        "    | Neither\n"
+        "}\n"
+        "Sum :: fn(first: int,\n"
+        "  second: int) -> int {\n"
+        "    if (first > 0 ||\n"
+        "second > 0) {\n"
+        "        return Add(first,\n"
+        "second);\n"
+        "    }\n"
+        "    switch Both(first, second) {\n"
+        "        case .Both(left,\n"
+        "right):\n"
+        "            return left;\n"
+        "    }\n"
+        "    point := {x: first,\n"
+        "y: second};\n"
+        "    return Add(first, Add(\n"
+        "second,\n"
+        "first\n"
+        "    ));\n"
+        "}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n"
+        "Pair :: union {\n"
+        "    Both(first: int,\n"
+        "         second: int)\n"
+        "    | Neither\n"
+        "}\n"
+        "Sum :: fn(first: int,\n"
+        "          second: int) -> int {\n"
+        "    if (first > 0 ||\n"
+        "        second > 0) {\n"
+        "        return Add(first,\n"
+        "                   second);\n"
+        "    }\n"
+        "    switch Both(first, second) {\n"
+        "        case .Both(left,\n"
+        "                   right):\n"
+        "            return left;\n"
+        "    }\n"
+        "    point := {x: first,\n"
+        "              y: second};\n"
+        "    return Add(first, Add(\n"
+        "        second,\n"
+        "        first\n"
+        "    ));\n"
+        "}\n"
+    ));
+    cleanup();
+    REQUIRE(configured(
+        "package facts\nSum :: fn(first: int, second: int) -> int {\n"
+        "return Add(first,\nsecond);\n}\n",
+        (authoring_format_options){ .indent_width = 4, .use_tabs = true }
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\nSum :: fn(first: int, second: int) -> int {\n"
+        "\treturn Add(first,\n\t           second);\n}\n"
+    ));
+    REQUIRE(map_reproduces_source());
+    return true;
+}
+TEST_CASE(source_format_aligns_operator_continuations)
+{
+    REQUIRE(format(
+        "package facts\n"
+        "Valid :: fn(first: int, second: int) -> bool {\n"
+        "    ready := first > 0 &&\n"
+        "second > 0;\n"
+        "    return ready ||\n"
+        "  first + second is int &&\n"
+        "            Check(first,\n"
+        "second);\n"
+        "}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n"
+        "Valid :: fn(first: int, second: int) -> bool {\n"
+        "    ready := first > 0 &&\n"
+        "             second > 0;\n"
+        "    return ready ||\n"
+        "           first + second is int &&\n"
+        "           Check(first,\n"
+        "                 second);\n"
+        "}\n"
+    ));
+    return true;
+}
+TEST_CASE(source_format_hugs_struct_braces)
+{
+    REQUIRE(format("package facts\nOrigin :: fn() -> Point {\n    return { x: 0,y: 0 };\n}\n"));
+    REQUIRE(strstr(text, "    return {x: 0, y: 0};\n"));
+    cleanup();
+    REQUIRE(format("behavior Demo{value:={ left:1 };empty:={ };}"));
+    REQUIRE(strstr(text, "    value := {left: 1};\n"));
+    REQUIRE(strstr(text, "    empty := {};\n"));
+    return true;
+}
 TEST_CASE(source_format_options_preserve_defaults)
 {
     const char *input = "behavior Demo{value:=[\n1,\n2];on Tick{value[0]+=1;}}";
@@ -1298,6 +1429,10 @@ void test_language_format()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
+    RUN_TEST_CASE(source_format_spaces_variant_patterns);
+    RUN_TEST_CASE(source_format_aligns_bracket_continuations);
+    RUN_TEST_CASE(source_format_aligns_operator_continuations);
+    RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

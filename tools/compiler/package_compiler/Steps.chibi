@@ -390,8 +390,8 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
 
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                     members: TypeMember[], names: Name[], package: int, values: Value[], top: int, item: Work,
-                     ops: Ops, target: Target, at: Bases) -> Step {
+                     members: TypeMember[], constants: ConstDecl[], names: Name[], package: int, values: Value[],
+                     top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
     code: Code[] = [];
@@ -436,6 +436,16 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
         constant.has_text = kind == "string";
         code = array_add(code, constant);
         produced = Typed(at.slot, storage, 0, -1);
+    } else if (item.phase == 0 && (kind == "identifier" || kind == "member_expression") &&
+               ConstantOf(forest, text, constants, names, package, item.node) >= 0) {
+        // A package constant is its value.
+        slot: Slot = {storage: IntStorage, kind: ValueKind};
+        slots = array_add(slots, slot);
+        constant := Instruction(ops.constant, IntStorage, at.slot, 0, 0, 0, node);
+        constant.value_storage = IntStorage;
+        constant.payload = constants[ConstantOf(forest, text, constants, names, package, item.node)].value;
+        code = array_add(code, constant);
+        produced = Typed(at.slot, IntStorage, 0, -1);
     } else if (kind == "identifier") {
         wanted := Text(forest, text, item.node);
         found := Lookup(names, wanted);

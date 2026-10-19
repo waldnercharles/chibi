@@ -137,7 +137,9 @@ python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:
 `chibi doc [ROOT]` writes the documentation site that `ROOT/docs/site.kdl`
 lists into `ROOT/build/docs`, with ROOT the working directory by default. The
 manifest names every published page, so nothing else under `docs/` reaches the
-site, and links to unpublished files keep only their text. `--serve` then
+site, and links to unpublished files keep only their text. Every example fenced
+as `chibi` must parse, and a whole package must also analyze, or the build
+fails at the example's line. `--serve` then
 serves the site at `http://127.0.0.1:8000/` until Ctrl+C (`--port` as for
 `web`). In this checkout, `build/sdk/chibi doc --serve` previews the engine's
 own documentation.

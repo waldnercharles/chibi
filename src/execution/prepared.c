@@ -8,6 +8,7 @@
 #include "types/catalog.h"
 #include "types/union.h"
 
+#include <assert.h>
 #include <float.h>
 #include <limits.h>
 #include <stdio.h>
@@ -361,16 +362,25 @@ uint64_t prepared_abi(const char *const *names, int count)
     }
     return hash;
 }
-uint64_t execution_prepared_abi()
-{
-    static const char *const names[] = {
+static const char *const instruction_names[] = {
 #define FUNCTION_NAME(op) [BF_##op] = #op,
 #define MATH_NAME(op, name, fn) FUNCTION_NAME(op)
-        BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
+    BEHAVIOR_FUNCTION_OPS(FUNCTION_NAME, MATH_NAME)
 #undef MATH_NAME
 #undef FUNCTION_NAME
-    };
-    return prepared_abi(names, BF_END + 1);
+};
+uint64_t execution_prepared_abi()
+{
+    return prepared_abi(instruction_names, BF_END + 1);
+}
+int execution_prepared_instruction_count()
+{
+    return BF_END + 1;
+}
+const char *execution_prepared_instruction_name(int ordinal)
+{
+    assert(ordinal >= 0 && ordinal <= BF_END);
+    return instruction_names[ordinal];
 }
 static void header(execution_wire *w)
 {

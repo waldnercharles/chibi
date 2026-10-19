@@ -287,6 +287,16 @@ Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
     }
     return false;
 }
+// Whether `name` is declared in the innermost scope, whose names start at
+// names[scope].
+Declared :: pure fn(names: Name[], scope: int, name: string) -> bool {
+    at := scope;
+    while (at < length(names)) {
+        if (names[at].name == name) { return true; }
+        at += 1;
+    }
+    return false;
+}
 // Whether the `is` expression `node` is an if or while condition, alone or
 // joined by `&&` and parentheses, where its bindings may hold the payload.
 BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
@@ -359,6 +369,9 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     switches: Switch[] = [];
     exits: int[] = [];
     covered: int[] = [];
+    // Where each open scope's names start: blocks, if and while statements,
+    // and switch arms.
+    scopes: int[] = [];
     work_top: int = 0;
     value_top: int = 0;
     // Scalar and string parameters move to locals, so assigning one needs no
@@ -415,8 +428,10 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     child = NextMember(forest, child);
                 }
                 next = array_add(next, Resume(item.node, 1, length(names), 0));
+                scopes = array_add(scopes, length(names));
             } else {
                 names = slice(names, 0, item.a);
+                scopes = slice(scopes, 0, length(scopes) - 1);
             }
         } else if (kind == "if_statement" || kind == "while_statement") {
             stepped = false;
@@ -429,6 +444,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 resume := Resume(item.node, 1, head, 0);
                 resume.c = length(names);
                 next = array_add(next, resume);
+                scopes = array_add(scopes, length(names));
             } else if (item.phase == 1) {
                 value_top -= 1;
                 condition := values[value_top];
@@ -451,6 +467,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 next = array_add(next, resume);
             } else if (item.phase == 2) {
                 names = slice(names, 0, item.c);
+                scopes = slice(scopes, 0, length(scopes) - 1);
                 alternative := Field(forest, item.node, "alternative");
                 if (kind == "while_statement") {
                     code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, item.a, node));
@@ -597,6 +614,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 current := switches[length(switches) - 1];
                 current.mark = length(names);
                 switches[length(switches) - 1] = current;
+                scopes = array_add(scopes, length(names));
                 pattern := Field(forest, item.a, "value");
                 if (pattern < 0) {
                     if (current.defaulted) { return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm")); }
@@ -626,8 +644,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                     if (count != 0 && count != types[variant].count) {
                         return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
                     }
-                    step = MatchStep(forest, text, types, members, current.subject, -1, variant, bindings, true, false,
-                        ops, target, at, node);
+                    step = MatchStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
+                        current.subject, -1, variant, bindings, true, false, ops, target, at, node);
                 }
                 next = array_add(next, Visit(Field(forest, item.a, "body")));
                 next = array_add(next, Resume(item.node, 3, item.a, 0));
@@ -645,6 +663,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 current.skip = -1;
                 switches[length(switches) - 1] = current;
                 names = slice(names, 0, current.mark);
+                scopes = slice(scopes, 0, length(scopes) - 1);
                 next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
             }
         } else if (kind == "break_statement" || kind == "continue_statement") {
@@ -705,8 +724,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, natives, names, callable.package, values,
-                value_top, function, item, ops, target, at);
+            step = StatementStep(forest, text, document, callables, types, natives, names, scopes[length(scopes) - 1],
+                callable.package, values, value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, types, members, constants, names, callable.package, values,
@@ -723,7 +742,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             next = array_add(next, Visit(Field(forest, item.node, "value")));
             next = array_add(next, Resume(item.node, 1, 0, 0));
         } else if (kind == "is_expression") {
-            step = IsStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
+            step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
+                item, ops, target, at);
         } else {
             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
         }

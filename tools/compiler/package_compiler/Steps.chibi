@@ -84,7 +84,8 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                         types: TypeDecl[], natives: Native[], names: Name[], package: int, values: Value[], top: int,
+                         types: TypeDecl[], natives: Native[], names: Name[], scope: int, package: int, values: Value[],
+                         top: int,
                          function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
     node := forest[item.node];
@@ -187,6 +188,9 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             }
             name := NameText(forest, text, Field(forest, item.node, "name"));
             if (name == "") { return Fail(forest, Field(forest, item.node, "name"), document, "Invalid string or embedded NUL"); }
+            if (Declared(names, scope, name)) {
+                return Fail(forest, Field(forest, item.node, "name"), document, format_text("Duplicate declaration '{}'", name));
+            }
             if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy.
                 retain = result;
@@ -1075,9 +1079,10 @@ ForeachStep :: pure fn(array: Value, ops: Ops, target: Target, at: Bases, node: 
 // the mark reports; an `is` expression produces the test, negated when
 // `negated`. Bindings are not writable, so record and array payloads are read
 // in place.
-MatchStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
-                     subject: int, from: int, variant: int, bindings: int, arm: bool, negated: bool, ops: Ops,
-                     target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+MatchStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                     members: TypeMember[], names: Name[], scope: int, subject: int, from: int, variant: int,
+                     bindings: int, arm: bool, negated: bool, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
     locals: int[] = [];
@@ -1163,6 +1168,9 @@ MatchStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeD
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + length(hosts) - 1,
             node));
         name := Text(forest, text, binding);
+        if (Declared(names, scope, name) || Lookup(bound, name) >= 0) {
+            return Fail(forest, binding, document, format_text("Duplicate declaration '{}'", name));
+        }
         if (Pointer(field.storage, field.container)) {
             view: Name = {name: name, place: CellPlace, index: first + 4, storage: field.storage,
                 container: field.container, record: field.record, writable: false};
@@ -1196,8 +1204,8 @@ MatchStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeD
 // allowed only in an if or while condition, as stage zero allows them; they
 // hold the payload where the test holds.
 IsStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
-                  members: TypeMember[], values: Value[], top: int, item: Work, ops: Ops, target: Target,
-                  at: Bases) -> Step {
+                  members: TypeMember[], names: Name[], scope: int, values: Value[], top: int, item: Work, ops: Ops,
+                  target: Target, at: Bases) -> Step {
     held := values[top - 1];
     if (!Single(held, UnionStorage)) {
         return Fail(forest, Field(forest, item.node, "value"), document, "is needs a union value");
@@ -1224,6 +1232,6 @@ IsStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, 
         return Fail(forest, FirstMember(forest, bindings), document,
             "Pattern bindings require a matching if, while or switch arm");
     }
-    return MatchStep(forest, text, types, members, -1, held.slot, variant, bindings, false, negated, ops, target, at,
-        forest[item.node]);
+    return MatchStep(forest, text, document, types, members, names, scope, -1, held.slot, variant, bindings, false,
+        negated, ops, target, at, forest[item.node]);
 }

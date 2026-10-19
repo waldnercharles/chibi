@@ -379,6 +379,18 @@ static const sample samples[] = {
                  { "Count", "[]", "[10]" },
                  { "Walk", "[]", "[33]" },
                  { "Empty", "[4]", "[true]" } } },
+    { .name = "shadowing",
+      .source = "package facts\n"
+                "Shadow :: pure fn(n: int) -> int {\n"
+                "    m := n + 1;\n"
+                "    total: int = m;\n"
+                "    if (m > 0) { total := 100; total += 1; }\n"
+                "    if (m > 1) { m := 5; total += m; }\n"
+                "    return total + m;\n}\n"
+                "U :: union { A(x: int) | B }\n"
+                "Arm :: pure fn() -> int { u := U.A(7); switch u { case .A(n): "
+                "n := 2; return n; case .B: return 0; } return -1; }",
+      .calls = { { "Shadow", "[3]", "[13]" }, { "Arm", "[]", "[2]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -592,6 +604,26 @@ static const sample samples[] = {
       .message = "Unknown union variant 'C'",
       .line = 3,
       .column = 44 },
+    { .name = "duplicate local",
+      .source = "package facts\nOne :: pure fn() -> int { x := 1; x := 2; "
+                "return x; }",
+      .message = "Duplicate declaration 'x'",
+      .line = 2,
+      .column = 35 },
+    { .name = "duplicate binding",
+      .source = "package facts\nU :: union { A(x: int, y: int) | B }\n"
+                "One :: pure fn(u: U) -> int { if (u is .A(n, n)) { return n; "
+                "} return 0; }",
+      .message = "Duplicate declaration 'n'",
+      .line = 3,
+      .column = 46 },
+    { .name = "duplicate condition binding",
+      .source = "package facts\nU :: union { A(x: int) | B }\n"
+                "One :: pure fn(u: U, v: U) -> int { if (u is .A(n) && v is "
+                ".A(n)) { return n; } return 0; }",
+      .message = "Duplicate declaration 'n'",
+      .line = 3,
+      .column = 63 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",

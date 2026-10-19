@@ -39,11 +39,16 @@ Callable :: struct {
 Param :: struct { name: string; storage: int; container: int; record: int; }
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
-// results); its ID and ABI are identities[2 * index] and [2 * index + 1].
+// results); its ID and ABI are identities[2 * index] and [2 * index + 1]. A
+// variadic native's last parameter takes any number of arguments, none
+// included.
 Native :: struct { name: string; first: int; parameters: int; results: int; variadic: bool; }
 // A native port. Storage 0 is a type the call infers, one type for every such
-// port of the native; storage -1 is a type this compiler cannot pass.
-Port :: struct { storage: int; container: int; }
+// port of the native; AnyPort takes each argument's own type, and
+// UnsupportedPort is a type this compiler cannot pass.
+Port :: struct { name: string; storage: int; container: int; }
+AnyPort: int : -2;
+UnsupportedPort: int : -1;
 // A declared type. A record's fields and a variant's payload are
 // members[first, first + count); a union's variants are types[first, first +
 // count), and each variant names its union as `parent`.

@@ -474,6 +474,33 @@ static const sample samples[] = {
                  { "Words", "[]", "[3]" },
                  { "Points", "[]", "[4]" },
                  { "Wide", "[]", "[257]" } } },
+    { .name = "formatting",
+      .source = "package facts\n"
+                "Label :: pure fn(n: int, name: string) -> string { return "
+                "format_text(\"{}:{}\", n, name); }\n"
+                "Plain :: pure fn() -> string { return format_text(\"plain\"); "
+                "}\n"
+                "Mixed :: pure fn(flag: bool) -> string { big: uint64 = "
+                "0xFFFFFFFFFFFFFFFF; return format_text(\"{} {} {}\", flag, "
+                "big, int64(-3)); }",
+      .calls = { { "Label", "[3,\"x\"]", "[\"3:x\"]" },
+                 { "Plain", "[]", "[\"plain\"]" },
+                 { "Mixed", "[true]", "[\"true 18446744073709551615 -3\"]" } } },
+    { .name = "native results",
+      .source = "package facts\n"
+                "Decode :: pure fn(literal: string) -> string {\n"
+                "    decoded := compiler_json_string(literal);\n"
+                "    if (!decoded.valid) { return \"?\"; }\n"
+                "    return format_text(\"{}/{}\", decoded.value, "
+                "decoded.byte_length);\n}\n"
+                "Valid :: pure fn(literal: string) -> bool { return "
+                "compiler_json_string(literal).Valid; }\n"
+                "Length :: pure fn(literal: string) -> int { return "
+                "compiler_json_string(literal).ByteLength; }",
+      .calls = { { "Decode", "[\"\\\"a\\\\u00e9\\\"\"]", "[\"a\303\251/3\"]" },
+                 { "Decode", "[\"bad\"]", "[\"?\"]" },
+                 { "Valid", "[\"\\\"x\\\"\"]", "[true]" },
+                 { "Length", "[\"\\\"abc\\\"\"]", "[3]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -562,12 +589,12 @@ static const sample samples[] = {
       .message = "element assignment needs a local array",
       .line = 2,
       .column = 36 },
-    { .name = "variadic native",
+    { .name = "untyped wildcard argument",
       .source = "package facts\nOne :: pure fn() -> string { return "
                 "format_text(\"{}\", 1); }",
-      .message = "native 'format_text' is not supported yet",
+      .message = "a number needs an integer type here",
       .line = 2,
-      .column = 37 },
+      .column = 55 },
     { .name = "inferred mismatch",
       .source = "package facts\nOne :: pure fn(xs: int[]) -> int { ys := "
                 "array_add(xs, true); return length(ys); }",
@@ -787,6 +814,19 @@ static const sample samples[] = {
       .message = "Empty arrays need an explicit element type",
       .line = 2,
       .column = 33 },
+    { .name = "results in an array",
+      .source = "package facts\nOne :: pure fn(s: string) -> bool { xs := "
+                "[compiler_json_string(s)]; return true; }",
+      .message = "array item has no value type",
+      .line = 2,
+      .column = 44 },
+    { .name = "results assignment",
+      .source = "package facts\nOne :: pure fn(s: string) -> bool { d := "
+                "compiler_json_string(s); d = "
+                "compiler_json_string(s); return d.valid; }",
+      .message = "assigning a native's several results is not supported yet",
+      .line = 2,
+      .column = 67 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
@@ -899,13 +939,17 @@ static pin_value rows(const pin_value *items, int count, pin_type type, const pi
                         .record = shape,
                         .type_name = shape ? shape->type.name : NULL };
 }
-/* A port's storage as Compile takes it: 0 for a type the call infers, -1 for
- * one the compiler cannot pass. */
+/* A port's storage as Compile takes it: a generic port's type is the one its
+ * call infers (0), a wildcard takes each argument's own type (-2), and -1 is
+ * a type the compiler cannot pass. */
 static int port_storage(script_type type)
 {
     unsigned inferred = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC;
     if (type.flags & SCRIPT_TYPE_UNTYPED) {
-        return type.flags & ~inferred ? -1 : 0;
+        if (type.flags & ~inferred) {
+            return -1;
+        }
+        return type.flags & SCRIPT_TYPE_GENERIC ? 0 : -2;
     }
     return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
                                                                   : (int)type.storage;
@@ -948,10 +992,12 @@ static bool natives(int b, pin_value *out)
         ));
         apush(functions, function);
         for (int j = 0; j < c->parameter_count + c->result_count; j++) {
-            script_type type = j < c->parameter_count
-                                 ? c->parameters[j].type
-                                 : c->results[j - c->parameter_count].type;
+            const script_catalog_parameter *declared = j < c->parameter_count
+                                                         ? &c->parameters[j]
+                                                         : &c->results[j - c->parameter_count];
+            script_type type = declared->type;
             pin_value port = row(b, "Port");
+            REQUIRE(put_value(&port, "name", text(declared->name ? declared->name : "")));
             REQUIRE(put(&port, "storage", port_storage(type)));
             REQUIRE(put(&port, "container", (int)type.container));
             apush(ports, port);
@@ -1130,7 +1176,10 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
     source_package_input inputs[3];
     int count = sample_inputs(s, inputs);
     compiler_fixture_free(&oracle);
-    REQUIRE(compiler_fixture_prepare(&oracle, inputs, count));
+    /* The natives the stage-one target links. */
+    native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
+                                       COMPILER_SYNTAX_DEFINITION_PACK };
+    REQUIRE(compiler_fixture_prepare_packs(&oracle, inputs, count, packs, 2));
     const authoring_packages *owner = oracle.owners[0];
     package_module rows[3];
     REQUIRE(authoring_packages_count(owner) <= 3);

@@ -815,9 +815,11 @@ runtime checks. Integers are `int`, `byte`, `int64` and `uint64`, with literals
 typed by their use and checked, wrapping and clamping conversions; the
 compiler's own `x := -1` locals now declare `int`, since stage zero makes an
 untyped literal a double. Array literals with no type expected take their
-first item's type. Compiling the compiler's own sources now stops first at
-`format_text`, a variadic native, in `package_paths`; variadic natives and
-natives with several results, then the rest of the compiler's sources follow.
+first item's type, variadic natives such as `format_text` and natives with
+several results such as `compiler_json_string` work. Compiling the compiler's
+own sources now stops first at a field assignment to a record parameter in
+`source_snapshot`; field assignment, then the rest of the compiler's sources
+follow.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

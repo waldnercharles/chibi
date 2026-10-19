@@ -186,9 +186,13 @@ Current integration constraints:
   empty-mesh fix. Preserve those changes when editing test policy or fixtures.
 - Engine PR #438 landed on main at `6ea2221c9`. This branch integrates its
   release-build correction for terrain-volume assertions.
-- Engine PR #420 is an open language and typed-runtime redesign. Recheck its
-  authoring commands, SDK manifests, language docs, plan, and test-policy
-  contracts before modifying those areas.
+- Engine PR #420, the language and typed-runtime redesign, merged into `main`
+  on 2026-10-19 at `07eb2abaa`. This branch has not integrated it yet. On
+  2026-10-19 a dry-run merge of `main` conflicted in 83 files, among them the
+  language core, prepared execution, SDK contracts and fixtures. `main` is at
+  project version 26 and this branch is at 25, and each side has its own
+  frozen v24 parser. The owner assigned that integration, and landing this
+  branch on `main`, to the self-hosting session.
 - Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
   contracts, commits, or dependencies as part of this work.
 

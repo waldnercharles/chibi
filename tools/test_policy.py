@@ -428,6 +428,9 @@ TOOLS = {
     # Transform hierarchy propagation: 2D and 3D composition, cascade order, moves and reparenting.
     'transforms': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--transforms'],
     'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ui-authoring'],
+    # Eight fixed pure source-edit cases; standalone, no aggregate expansion.
+    # Independent workload admission and exact installed-SDK identity required.
+    'source-prototype-edits': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--source-prototype-edits'],
     'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--prototype-document'],
     # Five reviewed bounded field cases, including atomic typed argument codec handoff.
     'field-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--field-runtime'],

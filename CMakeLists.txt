@@ -17,8 +17,6 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     add_link_options(-sSTACK_SIZE=1048576)
 endif()
 
-set(CHIBI_COLLAB_URL "" CACHE STRING "Public collaboration room service HTTP(S) URL")
-
 option(CHIBI_ENABLE_PERFORMANCE_TESTS
        "Run timing-sensitive performance checks in the test suite" OFF)
 

@@ -596,6 +596,129 @@ TEST_CASE(compiler_test_needs_the_core_collection)
     return true;
 }
 
+/* fmt hands each project, or the one at or above the working directory, to
+ * the compiler's --format, with --check when asked, and fails when one does;
+ * an older project is reported, not migrated. */
+TEST_CASE(fmt_formats_each_project)
+{
+    char file[256], expected[1024];
+    path(file, "fail");
+    unlink(file);
+    project("tidy", CHIBI_PROJECT_VERSION);
+    project("neat", CHIBI_PROJECT_VERSION);
+    const char *one[] = { launcher, "fmt", "tidy", NULL };
+    REQUIRE(tool_run(one, root, log_path) == 0);
+    snprintf(expected, sizeof expected, "--project-root\n%s/tidy\n--format\n", root);
+    REQUIRE(file_is("compile.args", expected));
+
+    char *before = contents("compiles");
+    const char *both[] = { launcher, "fmt", "--check", "tidy", "neat", NULL };
+    REQUIRE(tool_run(both, root, log_path) == 0);
+    snprintf(expected, sizeof expected, "%scompile\ncompile\n", before);
+    free(before);
+    REQUIRE(file_is("compiles", expected));
+    snprintf(expected, sizeof expected, "--project-root\n%s/neat\n--format\n--check\n", root);
+    REQUIRE(file_is("compile.args", expected));
+
+    char game[256];
+    path(game, "tidy/content");
+    const char *found[] = { launcher, "fmt", NULL };
+    REQUIRE(tool_run(found, game, log_path) == 0);
+    snprintf(expected, sizeof expected, "--project-root\n%s/tidy\n--format\n", root);
+    REQUIRE(file_is("compile.args", expected));
+
+    write_file("fail", "");
+    REQUIRE(tool_run(one, root, log_path) == 37);
+    REQUIRE(!unlink(file));
+    project("stale", CHIBI_PROJECT_VERSION - 1);
+    char *manifest = contents("stale/project.kdl");
+    const char *old[] = { launcher, "fmt", "stale", NULL };
+    REQUIRE(tool_run(old, root, log_path) == 2);
+    bool kept = file_is("stale/project.kdl", manifest);
+    free(manifest);
+    REQUIRE(kept);
+    const char *help[] = { launcher, "fmt", "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    const char *unknown[] = { launcher, "fmt", "--quick", NULL };
+    REQUIRE(tool_run(unknown, root, log_path) == 2);
+    return true;
+}
+
+static const char
+    MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
+static const char
+    MESSY_SOURCE[] = "behavior Spin {\n  angle: float = 0.0;\n"
+                     "  on Tick(dt) {   angle = angle + dt; }\n}\n";
+
+/* The real compiler's --format --check names the assets that are not
+ * canonical and changes nothing; --format rewrites them as their savers
+ * write them. It refuses prototypes that share a name, as the player does,
+ * and an older project, which it does not migrate. */
+TEST_CASE(compiler_format_rewrites_noncanonical_assets)
+{
+    project("messy", CHIBI_PROJECT_VERSION);
+    char directory[256], messy[256], output[256];
+    path(directory, "messy/content/behaviors");
+    REQUIRE(!mkdir(directory, 0700));
+    write_file("messy/content/scenes/Start.kdl", MESSY_SCENE);
+    write_file("messy/content/behaviors/Spin.chibi", MESSY_SOURCE);
+    path(messy, "messy");
+    path(output, "format.log");
+    const char *check[] = { compiler,   "--project-root", messy,
+                            "--format", "--check",        NULL };
+    REQUIRE(tool_run(check, root, output) == 1);
+    REQUIRE(file_has("format.log", "not canonical: content/behaviors/Spin.chibi\n"));
+    REQUIRE(file_has("format.log", "not canonical: content/scenes/Start.kdl\n"));
+    REQUIRE(file_is("messy/content/scenes/Start.kdl", MESSY_SCENE));
+    REQUIRE(file_is("messy/content/behaviors/Spin.chibi", MESSY_SOURCE));
+
+    const char *format[] = { compiler, "--project-root", messy, "--format", NULL };
+    REQUIRE(tool_run(format, root, output) == 0);
+    REQUIRE(file_has("format.log", "formatted content/scenes/Start.kdl\n"));
+    REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
+    REQUIRE(file_is(
+        "messy/content/behaviors/Spin.chibi",
+        "behavior Spin {\n    angle: float = 0.0\n    on Tick(dt) {\n"
+        "        angle = angle + dt\n    }\n}\n"
+    ));
+    REQUIRE(tool_run(check, root, output) == 0);
+
+    static const char
+        HULL[] = "name \"Hull\"\ncomponents {\n    (object)Transform\n}\n";
+    path(directory, "messy/content/prototypes");
+    REQUIRE(!mkdir(directory, 0700));
+    write_file("messy/content/prototypes/Hull.kdl", HULL);
+    REQUIRE(tool_run(check, root, output) == 0);
+    write_file("messy/content/prototypes/Copy.kdl", HULL);
+    REQUIRE(tool_run(check, root, output) == 1);
+    REQUIRE(file_has("format.log", "two prototypes declare Hull"));
+    char copy[256];
+    path(copy, "messy/content/prototypes/Copy.kdl");
+    REQUIRE(!unlink(copy));
+
+    project("messy-old", CHIBI_PROJECT_VERSION - 1);
+    write_file("messy-old/content/scenes/Start.kdl", MESSY_SCENE);
+    char older[256];
+    path(older, "messy-old");
+    const char *old[] = { compiler, "--project-root", older, "--format", NULL };
+    REQUIRE(tool_run(old, root, output) == 1);
+    REQUIRE(file_is("messy-old/content/scenes/Start.kdl", MESSY_SCENE));
+
+    char target[256];
+    path(target, "out/game.chibip");
+    const char *both[] = { compiler,   "--project-root", messy, "--format",
+                           "--output", target,           NULL };
+    REQUIRE(tool_run(both, root, output) == 2);
+    const char *tests[] = { compiler,   "--project-root", messy,
+                            "--format", "--test",         NULL };
+    REQUIRE(tool_run(tests, root, output) == 2);
+    const char *scene[] = { compiler,   "--project-root", messy,
+                            "--format", "--scene",        "x",
+                            NULL };
+    REQUIRE(tool_run(scene, root, output) == 2);
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -618,5 +741,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(test_runs_the_compiler_tests);
     RUN_TEST_CASE(compiler_test_reports_each_test);
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
+    RUN_TEST_CASE(fmt_formats_each_project);
+    RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
     tool_remove_tree(root);
 }

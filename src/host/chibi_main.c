@@ -39,6 +39,8 @@ extern char **environ;
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
+ * chibi fmt [--check] [PROJECT...]: rewrites each project's assets in their
+ * canonical form, or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
  * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
@@ -157,6 +159,7 @@ static int usage(const char *program)
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
+        "       %s fmt [--check] [PROJECT...]\n"
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
@@ -176,6 +179,8 @@ static int usage(const char *program)
         "test runs each @test function of the packages below ROOT, the\n"
         "working directory without one, and fails when one fails. ROOT holds\n"
         "only package files.\n"
+        "fmt rewrites each project's sources and KDL assets as their savers\n"
+        "write them; --check writes nothing and fails when one would change.\n"
         "run prepares and starts the player; the unnamed form is equivalent.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
@@ -184,6 +189,7 @@ static int usage(const char *program)
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
         "--archive also writes DIR.tar.gz.\n",
+        program,
         program,
         program,
         program,
@@ -749,6 +755,49 @@ static int build_game(int argc, char **argv)
     return status >= 0 ? status : project_command(requested, 0, NULL, false);
 }
 
+/* Has the compiler format the project at or above `requested`. */
+static int format_game(char *compiler, const char *requested, bool check)
+{
+    chibi_project project = { 0 };
+    if (!open_project(&project, requested, false)) {
+        return 2;
+    }
+    char *args[] = { compiler,   "--project-root",         project.root,
+                     "--format", check ? "--check" : NULL, NULL };
+    int status = chibi_process_run(args);
+    chibi_project_free(&project);
+    return status;
+}
+
+/* chibi fmt [--check] [PROJECT...]: the compiler formats each project, or
+ * the one at or above the working directory; nonzero when any fails. */
+static int format_games(int argc, char **argv)
+{
+    bool check = false;
+    int projects = 0;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (argv[i][0] == '-' && (strcmp(argv[i], "--check") || check)) {
+            fprintf(stderr, "Invalid fmt option; use --help.\n");
+            return 2;
+        }
+        check |= argv[i][0] == '-';
+        projects += argv[i][0] != '-';
+    }
+    char *bin = file_executable_dir();
+    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    int status = projects ? 0 : format_game(compiler, NULL, check);
+    for (int i = 2; i < argc; i++) {
+        int result = argv[i][0] == '-' ? 0 : format_game(compiler, argv[i], check);
+        status = result ? result : status;
+    }
+    free(compiler);
+    free(bin);
+    return status;
+}
+
 static int check_game(int argc, char **argv)
 {
     const char *requested = NULL;
@@ -827,6 +876,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "test")) {
         return test_packages(argc, argv);
+    }
+    if (argc > 1 && !strcmp(argv[1], "fmt")) {
+        return format_games(argc, argv);
     }
     if (argc > 1 && !strcmp(argv[1], "run")) {
         return run_game(argc, argv);

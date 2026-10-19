@@ -1351,6 +1351,10 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                 );
             } else if (bank >= 0 && (i->offset == offsetof(pin_value, type_name) || i->offset == offsetof(pin_value, record))) {
                 CHECK_KIND(KIND(i->left) == BEHAVIOR_ADDRESS);
+            } else if (bank >= 0) {
+                /* Snapshots and constructors copy by the runtime type and
+                 * container, which must stay the declared ones. */
+                return "data cell header field is not writable";
             }
             break;
         }

@@ -1186,6 +1186,240 @@ TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses)
     return true;
 }
 
+/* How a definition reaches the header it rewrites: the cell's own header
+ * address, one selected from two, the previous cell's moved one header along,
+ * or one stored in a cell and loaded back. */
+enum
+{
+    HEADER_DIRECT,
+    HEADER_SELECTED,
+    HEADER_NEIGHBOUR,
+    HEADER_RELOADED
+};
+/* The address `route` writes `cell`'s header field at `*offset` through. */
+static int header_route(int cell, int route, size_t *offset)
+{
+    int header = host_address(cell);
+    switch (route) {
+        case HEADER_SELECTED: {
+            int choice = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = PIN_BOOL,
+                                                 .value = { .type = PIN_BOOL } },
+                false
+            );
+            return value(
+                (behavior_function_instruction){ .op = BF_SELECT,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = choice,
+                                                 .right = header,
+                                                 .target = header },
+                true
+            );
+        }
+        case HEADER_NEIGHBOUR: {
+            int zero = value(
+                (behavior_function_instruction){ .op = BF_CONSTANT,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .value = { .type = BF_POINTER_TYPE } },
+                false
+            );
+            *offset += sizeof(pin_value);
+            return value(
+                (behavior_function_instruction){ .op = BF_ADD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = host_address(cell - 1),
+                                                 .right = zero },
+                true
+            );
+        }
+        case HEADER_RELOADED: {
+            pin_value pointer = { .type = BF_POINTER_TYPE };
+            int held = behavior_function_builder_values(builder, &pointer, 1);
+            assert(
+                behavior_function_builder_kind(builder, BEHAVIOR_BANK_DATA, held, BEHAVIOR_ADDRESS)
+            );
+            int address = host_address(held);
+            emit((behavior_function_instruction){ .op = BF_WRITE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .left = header,
+                                                  .right = address,
+                                                  .offset = offsetof(pin_value, d) });
+            return value(
+                (behavior_function_instruction){ .op = BF_LOAD,
+                                                 .type = BF_POINTER_TYPE,
+                                                 .left = address,
+                                                 .offset = offsetof(pin_value, d) },
+                true
+            );
+        }
+        default: return header;
+    }
+}
+static char retyped_error[256];
+/* The argument stored in a snapshot's input, which follows a scalar cell. The
+ * input's header field at `offset` then takes `header` through `route`, and
+ * the definition writes through the snapshot's output. */
+static bool retyped_snapshot(size_t offset, int header, int route)
+{
+    builder = behavior_function_builder_new();
+    pin_value output = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, &array_shape, 1, &output, 1, NULL, 0);
+    int argument = value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_ARGUMENT,
+                                         .value = array_shape },
+        true
+    );
+    pin_value scalar = { .type = PIN_F64 };
+    int neighbour = behavior_function_builder_values(builder, &scalar, 1);
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_snapshot_call,
+        &EXECUTION_value_access,
+        &array_shape,
+        1,
+        &array_shape,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_snapshot_call);
+    assert(behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id)));
+    int first = behavior_function_builder_host_first(builder, host);
+    assert(first == neighbour + 1);
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = argument,
+                                          .right = host_address(first),
+                                          .offset = offsetof(pin_value, d) });
+    int retype = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_I32,
+                                         .value = { .type = PIN_I32, .i = header } },
+        false
+    );
+    int address = header_route(first, route, &offset);
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_I32,
+                                          .left = retype,
+                                          .right = address,
+                                          .offset = offset });
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int copy = value(
+        (behavior_function_instruction){
+            .op = BF_LOAD,
+            .type = BF_POINTER_TYPE,
+            .left = host_address(behavior_function_builder_host_results(builder, host)),
+            .offset = offsetof(pin_value, d) },
+        true
+    );
+    int number = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 2 } },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_F64,
+                                          .left = number,
+                                          .right = copy,
+                                          .offset = offsetof(pin_array, count) });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = number });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, retyped_error, sizeof retyped_error);
+    return function != NULL;
+}
+/* A snapshot copies by its input's runtime header. Rewriting the input's
+ * container or type would make it copy the caller's array pointer as a
+ * scalar, so a definition may write only a cell's payload and names. */
+TEST_CASE(borrow_verifier_rejects_cell_header_rewrites)
+{
+    const struct
+    {
+        size_t offset;
+        int header;
+    } cases[] = { { offsetof(pin_value, container), PIN_CONTAINER_SINGLE },
+                  { offsetof(pin_value, type), BF_POINTER_TYPE } };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        cleanup();
+        REQUIRE(!retyped_snapshot(cases[i].offset, cases[i].header, HEADER_DIRECT));
+        REQUIRE(strstr(retyped_error, "data cell header field is not writable"));
+    }
+    return true;
+}
+/* A header address the verifier cannot attribute to one cell may still
+ * rewrite a header, after which a snapshot's output is not fresh. */
+TEST_CASE(borrow_argument_sharing_copies_after_unplaced_header_writes)
+{
+    for (int route = HEADER_SELECTED; route <= HEADER_RELOADED; route++) {
+        cleanup();
+        REQUIRE(retyped_snapshot(offsetof(pin_value, container), PIN_CONTAINER_SINGLE, route));
+        execution_prepare_argument_sharing(function);
+        REQUIRE(function->argument_sharing == BEHAVIOR_SHARING_COPY);
+    }
+    return true;
+}
+/* An authored return copies by the result's header. A callee that changes
+ * its result's container fails the return instead of handing back bits. */
+TEST_CASE(borrow_call_rejects_result_header_rewrites)
+{
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, NULL, 0, &array_shape, 1, NULL, 0);
+    int results = value(
+        (behavior_function_instruction){
+            .op = BF_CONTEXT,
+            .type = BF_POINTER_TYPE,
+            .offset = offsetof(behavior_function_context, results) },
+        true
+    );
+    int single = value(
+        (behavior_function_instruction){
+            .op = BF_CONSTANT,
+            .type = PIN_I32,
+            .value = { .type = PIN_I32, .i = PIN_CONTAINER_SINGLE } },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = PIN_I32,
+                                          .left = single,
+                                          .right = results,
+                                          .offset = offsetof(pin_value, container) });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    helper_function = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(helper_function && behavior_function_compile(helper_function));
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value scalar = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, NULL, 0, &scalar, 1, NULL, 0);
+    int call = behavior_function_builder_call(builder, helper_function, NULL, 0, &array_shape, 1);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    int number = value(
+        (behavior_function_instruction){ .op = BF_CONSTANT,
+                                         .type = PIN_F64,
+                                         .value = { .type = PIN_F64, .d = 1 } },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = number });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(function && behavior_function_compile(function));
+    for (int mode = 0; mode < 2; mode++) {
+        pin_value output = { .type = PIN_F64 };
+        REQUIRE(begin(NULL, 0, &output, NULL, mode) != FLOW_OK);
+        REQUIRE(
+            context.error_message &&
+            !strcmp(context.error_message, "function result differs from its declared type")
+        );
+    }
+    return true;
+}
+
 /* A value reference to `root`'s cell, made by a host whose cells the caller
  * may reach before the call: returns the host. */
 static int reference_host()
@@ -1457,6 +1691,9 @@ void test_language_borrow()
     RUN_TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code);
     RUN_TEST_CASE(borrow_argument_sharing_rejects_writes_through_caller_storage);
     RUN_TEST_CASE(borrow_argument_sharing_tracks_derived_and_selected_addresses);
+    RUN_TEST_CASE(borrow_verifier_rejects_cell_header_rewrites);
+    RUN_TEST_CASE(borrow_argument_sharing_copies_after_unplaced_header_writes);
+    RUN_TEST_CASE(borrow_call_rejects_result_header_rewrites);
     RUN_TEST_CASE(borrow_argument_sharing_tracks_reference_kinds);
     RUN_TEST_CASE(borrow_argument_sharing_passes_string_tables_without_copies);
     RUN_TEST_CASE(borrow_argument_sharing_allows_own_record_field_writes);

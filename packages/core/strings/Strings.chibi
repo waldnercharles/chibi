@@ -6,8 +6,14 @@ ByteLength :: pure fn(value: string) -> int {
 }
 
 // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
+// Each call measures the string, so a loop over a long one should read Bytes.
 ByteAt :: pure fn(value: string, index: int) -> int {
     return text_byte_at(value, index);
+}
+
+// Every byte of the string, from 0 to 255, read in one pass.
+Bytes :: pure fn(value: string) -> int[] {
+    return text_bytes(value);
 }
 
 // Start clamps to the string and count clamps to its remaining bytes.

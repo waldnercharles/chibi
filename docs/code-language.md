@@ -84,9 +84,11 @@ loading remains unsupported; callers can still supply owned buffer snapshots.
 
 The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
 as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
-pure `ByteLength`, `ByteAt`, `Slice`, `Compare`, `IsIdentifier` and `BaseName`
-functions use the text capability pack. Byte access returns unsigned 0..255 or
--1 outside the string. Slice clamps its start/count and owns its result; byte
+pure `ByteLength`, `ByteAt`, `Bytes`, `Slice`, `Compare`, `IsIdentifier` and
+`BaseName` functions use the text capability pack. Byte access returns unsigned
+0..255 or -1 outside the string. Each `ByteAt` call measures the string, so a
+loop over a long one is quadratic; `Bytes` returns every byte as an `int[]` in
+one pass, and indexing that array is constant time. Slice clamps its start/count and owns its result; byte
 ranges can split UTF-8 sequences. Compare orders unsigned bytes, IsIdentifier
 checks ASCII identifiers, and BaseName uses slash separators. Compiler packages
 also use the existing pure generic array capability pack. General authored

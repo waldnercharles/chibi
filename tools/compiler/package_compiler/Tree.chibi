@@ -48,6 +48,15 @@ Text :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> str
     if (node < 0) { return ""; }
     return strings.Slice(text, forest[node].start, forest[node].end - forest[node].start);
 }
+// A declared or member name. Quoted names decode as JSON strings, as stage
+// zero reads them; an invalid one, or one holding a NUL, reads as "".
+NameText :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
+    raw := Text(forest, text, node);
+    if (!Is(forest, node, "string")) { return raw; }
+    decoded := compiler_json_string(raw);
+    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) { return ""; }
+    return decoded.value;
+}
 Diagnose :: pure fn(forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> syntax.Diagnostic {
     item := forest[node];
     return {start: item.start, end: item.end, line: item.row + 1, column: item.column + 1,

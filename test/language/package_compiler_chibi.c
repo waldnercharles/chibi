@@ -2,12 +2,14 @@
 
 #include "compiler_fixture.h"
 #include "execution/definition.h"
+#include "execution/module.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
 #include "package_compiler_chibi_source.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "toolchain/compiler_artifact.h"
 #include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
@@ -22,11 +24,13 @@
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
  * package to a closure. A fresh runtime host loads it and calls every function
- * on bytecode and SLJIT, and stage zero's own build of the same package must
- * agree. Rejections report their exact message and position. */
+ * on bytecode and SLJIT, and stage zero's own closure of the same package must
+ * give the same JSON result. Rejections report their exact message and
+ * position. */
 static const char PACKAGE[] = "project:package_compiler";
 enum
 {
+    CALLS = 6,
     COMPILE_BUDGET = 20000000,
     TARGET_BUDGET = 100000
 };
@@ -37,7 +41,7 @@ typedef struct
 typedef struct
 {
     const char *name, *source;
-    sample_call calls[4];
+    sample_call calls[CALLS];
     const char *message;
     int line, column;
 } sample;
@@ -78,6 +82,56 @@ static const sample samples[] = {
                  { "Even", "[-4]", "[false]" },
                  { "Both", "[2,4]", "[true]" },
                  { "Both", "[3,3]", "[true]" } } },
+    { .name = "records",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; title: string; open: bool; "
+                "}\n"
+                "Make :: pure fn(x: int, y: int) -> Point {\n"
+                "    p: Point = {x: x, y: y, title: \"p\", open: x < y};\n"
+                "    return p;\n}\n"
+                "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
+                "Moved :: pure fn(p: Point, dx: int) -> Point {\n"
+                "    return {title: p.title, open: p.open, y: p.y, x: p.x + "
+                "dx};\n}\n"
+                "Total :: pure fn(n: int) -> int {\n"
+                "    acc: Point = {x: 0, y: 0, title: \"\", open: false};\n"
+                "    i: int = 0;\n"
+                "    while (i < n) { acc = Moved(acc, i); i += 1; }\n"
+                "    first := acc;\n    acc = Moved(acc, 100);\n"
+                "    return Sum(acc) + Sum(Make(1, 2)) + first.x;\n}",
+      .calls = { { "Make", "[1,2]", "[{\"x\":1,\"y\":2,\"title\":\"p\",\"open\":true}]" },
+                 { "Moved",
+                   "[{\"x\":1,\"y\":2,\"title\":\"q\",\"open\":false},5]",
+                   "[{\"x\":6,\"y\":2,\"title\":\"q\",\"open\":false}]" },
+                 { "Total", "[5]", "[123]" } } },
+    { .name = "strings",
+      .source = "package facts\n"
+                "Name :: pure fn(name: string) -> string {\n"
+                "    if (name == \"\") { return \"nobody\"; }\n    return "
+                "name;\n}\n"
+                "Same :: pure fn(a: string, b: string) -> bool { return a == b "
+                "&& !(a != b); }\n"
+                "Differ :: pure fn(a: string, b: string) -> bool { return a != "
+                "b; }\n"
+                "Quoted :: pure fn() -> string { text: string = "
+                "\"a\\\"b\\u0041\"; "
+                "return text; }",
+      .calls = { { "Name", "[\"\"]", "[\"nobody\"]" },
+                 { "Name", "[\"ada\"]", "[\"ada\"]" },
+                 { "Same", "[\"x\",\"x\"]", "[true]" },
+                 { "Same", "[\"x\",\"y\"]", "[false]" },
+                 { "Differ", "[\"x\",\"y\"]", "[true]" },
+                 { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    { .name = "quoted names",
+      .source = "package facts\n"
+                "Pair :: struct { \"first\": int; second: int; }\n"
+                "Make :: pure fn(\"n\": int) -> Pair {\n"
+                "    \"p\": Pair = {\"first\": n, second: n + 1};\n    return "
+                "p;\n}\n"
+                "Total :: pure fn(p: Pair) -> int { return p.\"first\" + "
+                "p.second; }",
+      .calls = { { "Make", "[1]", "[{\"first\":1,\"second\":2}]" },
+                 { "Total", "[{\"first\":2,\"second\":3}]", "[5]" } } },
     { .name = "unknown name",
       .source = "package facts\nAnswer :: pure fn() -> int { return missing; }",
       .message = "Unknown name 'missing'",
@@ -94,6 +148,53 @@ static const sample samples[] = {
       .message = "returned value differs from the result type",
       .line = 2,
       .column = 30 },
+    { .name = "untyped literal",
+      .source = "package facts\nPair :: struct { a: int; }\n"
+                "One :: pure fn() -> int { p := {a: 1}; return p.a; }",
+      .message = "Struct literal needs an explicit record type",
+      .line = 3,
+      .column = 32 },
+    { .name = "unknown field",
+      .source = "package facts\nPair :: struct { a: int; }\n"
+                "One :: pure fn(p: Pair) -> int { return p.b; }",
+      .message = "Unknown field 'b'",
+      .line = 3,
+      .column = 41 },
+    { .name = "missing field",
+      .source = "package facts\nPair :: struct { a: int; b: int; }\n"
+                "One :: pure fn() -> Pair { return {a: 1}; }",
+      .message = "Struct literal needs every field",
+      .line = 3,
+      .column = 35 },
+    { .name = "duplicate member",
+      .source = "package facts\nPair :: struct { a: int; b: int; }\n"
+                "One :: pure fn() -> Pair { return {a: 1, a: 2}; }",
+      .message = "Duplicate literal member 'a'",
+      .line = 3,
+      .column = 42 },
+    { .name = "shared scope",
+      .source = "package facts\nPoint :: struct { x: int; }\n"
+                "Point :: pure fn() -> int { return 1; }",
+      .message = "Duplicate declaration 'Point'",
+      .line = 3,
+      .column = 1 },
+    { .name = "no value",
+      .source = "package facts\nNothing :: pure fn() { }\n"
+                "One :: pure fn() -> int { x := Nothing(); return 0; }",
+      .message = "call has no value",
+      .line = 3,
+      .column = 27 },
+    { .name = "duplicate field",
+      .source = "package facts\nPair :: struct { a: int; a: bool; }",
+      .message = "Duplicate field 'a'",
+      .line = 2,
+      .column = 26 },
+    { .name = "embedded NUL",
+      .source = "package facts\nBad :: pure fn() -> string { return "
+                "\"a\\u0000b\"; }",
+      .message = "Invalid string or embedded NUL",
+      .line = 2,
+      .column = 37 },
 };
 enum
 {
@@ -183,9 +284,14 @@ static bool compile(int b, const sample *s, pin_value *out)
                            .type_name = record->type.name };
     memset(args[3].ptr, 0, record->type.size);
     REQUIRE(put(&args[3], "pointer_storage", BF_POINTER_TYPE));
+    REQUIRE(put(&args[3], "pointer_size", (int)sizeof(void *)));
     REQUIRE(put(&args[3], "value_size", (int)sizeof(pin_value)));
     REQUIRE(put(&args[3], "payload_offset", (int)offsetof(pin_value, d)));
     REQUIRE(put(&args[3], "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(put(&args[3], "type_offset", (int)offsetof(pin_value, type)));
+    REQUIRE(put(&args[3], "container_offset", (int)offsetof(pin_value, container)));
+    REQUIRE(put(&args[3], "name_offset", (int)offsetof(pin_value, type_name)));
+    REQUIRE(put(&args[3], "record_offset", (int)offsetof(pin_value, record)));
     args[4] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int count = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
@@ -237,7 +343,7 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     result = (compiler_host_result){ 0 };
     return true;
 }
-/* Stage zero builds the same package; its result must match. */
+/* Stage zero's closure of the same package must give the same result. */
 static bool agree(const sample *s, const sample_call *call)
 {
     const source_package_input inputs[] = {
@@ -245,27 +351,22 @@ static bool agree(const sample *s, const sample_call *call)
     };
     compiler_fixture_free(&oracle);
     REQUIRE(compiler_fixture_prepare(&oracle, inputs, 1));
-    /* JSON integer and bool arguments only. */
-    pin_value args[4];
-    int count = 0;
-    const char *at = call->arguments + 1;
-    while (*at && *at != ']') {
-        args[count++] = (pin_value){ .type = PIN_I32,
-                                     .i = (int)strtol(at, (char **)&at, 10) };
-        at += *at == ',';
-    }
-    pin_value out;
-    arena scratch = { 0 };
-    REQUIRE(
-        compiler_fixture_call(&oracle, 0, "project:facts", call->function, args, count, TARGET_BUDGET, &scratch, &out)
-    );
-    char text[64];
-    snprintf(text, sizeof text, out.type == PIN_BOOL ? (out.b ? "[true]" : "[false]") : "[%d]", out.i);
-    arena_free(&scratch);
-    REQUIRE(!strcmp(text, call->expected));
+    const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
+    REQUIRE(root && root->module);
+    char error[256];
+    unsigned char *prepared = NULL, *closure = NULL;
+    size_t size = 0, length = 0;
+    REQUIRE(execution_prepared_write(root->module, &prepared, &size, error, sizeof error));
+    package_module row = { root->identity, execution_module_id(root->module), prepared, size };
+    bool written = compiler_artifact_write(&row, 1, row.id, &closure, &length, error, sizeof error);
+    free(prepared);
+    REQUIRE(written);
+    bool ran = run(closure, length, call, 0);
+    free(closure);
+    REQUIRE(ran);
     return true;
 }
-TEST_CASE(package_compiler_builds_runnable_scalar_packages)
+TEST_CASE(package_compiler_builds_runnable_packages)
 {
     REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
@@ -302,13 +403,17 @@ TEST_CASE(package_compiler_builds_runnable_scalar_packages)
                 continue;
             }
             if (value->tag != tag(b, "Compiled")) {
-                pin_value message;
+                pin_value message, line, column;
                 get(&value->values[0], "message", &message);
+                get(&value->values[0], "line", &line);
+                get(&value->values[0], "column", &column);
                 fprintf(
                     stderr,
-                    "package compiler %s rejected: %s\n",
+                    "package compiler %s rejected: %s at %d:%d\n",
                     s->name,
-                    message.str
+                    message.str,
+                    line.i,
+                    column.i
                 );
             }
             REQUIRE(value->tag == tag(b, "Compiled") && value->count == 2);
@@ -319,7 +424,7 @@ TEST_CASE(package_compiler_builds_runnable_scalar_packages)
                 bytes[k] = array->items[k].u8;
             }
             arena_free(&detached);
-            for (int c = 0; c < 4 && s->calls[c].function; c++) {
+            for (int c = 0; c < CALLS && s->calls[c].function; c++) {
                 for (int backend = 0; backend < 2; backend++) {
                     bool ran = run(bytes, length, &s->calls[c], backend);
                     if (!ran) {
@@ -339,6 +444,6 @@ TEST_CASE(package_compiler_builds_runnable_scalar_packages)
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_builds_runnable_scalar_packages);
+    RUN_TEST_CASE(package_compiler_builds_runnable_packages);
     pu_clear_setup();
 }

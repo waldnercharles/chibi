@@ -84,7 +84,8 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                         types: TypeDecl[], members: TypeMember[], natives: Native[], names: Name[], scope: int, package: int, values: Value[],
+                         types: TypeDecl[], members: TypeMember[], natives: Native[], identities: uint64[], names: Name[],
+                         scope: int, package: int, values: Value[],
                          top: int,
                          function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
@@ -126,20 +127,17 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                     expected = Expect(value, binding.storage, binding.container, binding.record);
                     // `xs = array_add(xs, x)` and `xs = append(xs, ys)` on a
                     // local array update it in place.
-                    native: int = -1;
+                    update: int = -1;
                     if (operator == "") {
-                        native = InPlaceNative(forest, text, callables, natives, names, package, found, destination, value);
+                        update = InPlaceUpdate(forest, text, callables, natives, identities, names, package, found,
+                            destination, value);
                     }
-                    if (native >= 0) {
+                    if (update >= 0) {
                         argument := NextMember(forest, FirstMember(forest, Field(forest, value, "arguments")));
-                        extend: int = 0;
                         container: int = 0;
-                        if (natives[native].name == "Append") {
-                            extend = 1;
-                            container = ArrayContainer;
-                        }
+                        if (update == 1) { container = ArrayContainer; }
                         next = array_add(next, Expect(argument, binding.storage, container, binding.record));
-                        next = array_add(next, Resume(item.node, PushPhase, found, extend));
+                        next = array_add(next, Resume(item.node, PushPhase, found, update));
                         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                             NoValue(), retain, marks);
                     }

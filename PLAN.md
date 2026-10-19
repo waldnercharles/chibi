@@ -772,10 +772,18 @@ and calls of the natives the target links, to runnable closures that agree
 with stage zero, with no native step after the parser. Records and arrays use stage zero's value model: construct, snapshot
 and in-place array intrinsics, stage zero's record IDs and layout hashes, and
 value roots for suspended callers. Unions use the union-make, -test and -get
-intrinsics with stage zero's tags. Imports, `is` patterns, natives with several
-results and conversions follow, then the compiler's own sources. Debugger
-points and watches are deferred until before stage one becomes the normal
-compiler.
+intrinsics with stage zero's tags. Packages import one another, including
+`core:` collections: each compiles to its own module, dependencies first, and
+links to its imports by module ID and fingerprint, as stage zero's do.
+
+Stage one's own closure is 14 files of ten project packages and `core:strings`,
+about 4,600 lines. Besides imports, its sources need typed constants (77),
+`uint64`, `int64` and `byte` values and arrays with conversions and hex
+literals, field assignment (110), and the variadic `format_text` (32). Those
+follow in that order, then the compiler's own sources. Compile speed is on the
+same path: stage one compiles about 85 lines a second on SLJIT in a Debug +
+ASan build, so its own closure would take about a minute. Debugger points and
+watches are deferred until before stage one becomes the normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the

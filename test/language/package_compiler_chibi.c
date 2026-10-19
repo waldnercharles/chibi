@@ -34,6 +34,7 @@ static const char PACKAGE[] = "project:package_compiler";
 enum
 {
     CALLS = 10,
+    FILES = 3,
     COMPILE_BUDGET = 20000000,
     TARGET_BUDGET = 100000
 };
@@ -42,14 +43,116 @@ typedef struct
 {
     const char *function, *arguments, *expected;
 } sample_call;
+/* `source` is facts/Main.chibi; `files` adds other packages' files as path
+ * and source pairs. */
 typedef struct
 {
     const char *name, *source;
+    const char *files[FILES][2];
     sample_call calls[CALLS];
     const char *message;
     int line, column;
 } sample;
+static const char BASE_SOURCE[] = "package base\n"
+                                  "Pair :: struct { a: int; b: int; }\n"
+                                  "Halves :: pure fn(n: int) -> Pair { return "
+                                  "{a: n / 2, b: n - n / 2}; }\n";
+static const char UTIL_SOURCE
+    [] = "package util\n"
+         "import base \"project:facts/base\"\n"
+         "Point :: struct { x: int; y: int; }\n"
+         "Split :: pure fn(n: int) -> base.Pair { return base.Halves(n); }\n"
+         "Shape :: union { Square(side: int) | Empty }\n"
+         "Twice :: pure fn(n: int) -> int { return n * 2; }\n"
+         "Area :: pure fn(p: Point) -> int { return p.x * p.y; }\n"
+         "Corner :: pure fn(n: int) -> Point { return {x: n, y: Twice(n)}; }\n"
+         "Measure :: pure fn(s: Shape) -> int {\n"
+         "    switch s {\n"
+         "        case .Square(side): return side * side;\n"
+         "        case .Empty: return 0;\n"
+         "    }\n"
+         "    return -1;\n"
+         "}\n";
+/* A dependency small enough to keep the other import samples cheap. */
+static const char POINT_SOURCE[] = "package util\n"
+                                   "Point :: struct { x: int; y: int; }\n"
+                                   "Corner :: pure fn(n: int) -> Point { "
+                                   "return {x: n, y: n * 2}; }\n";
 static const sample samples[] = {
+    { .name = "imports",
+      .source = "package facts\n"
+                "import util \"project:facts/util\"\n"
+                "import strings \"core:strings\"\n"
+                "Sum :: pure fn(a: int, b: int) -> int { return util.Twice(a) "
+                "+ b; }\n"
+                "Pair :: pure fn(n: int) -> int {\n"
+                "    p: util.Point = {x: n, y: n + 1};\n"
+                "    corner := util.Corner(n);\n"
+                "    return util.Area(p) + corner.y;\n"
+                "}\n"
+                "Shapes :: pure fn(n: int) -> int {\n"
+                "    square := util.Shape.Square(n);\n"
+                "    total := util.Measure(square) + "
+                "util.Measure(util.Shape.Empty);\n"
+                "    switch square {\n"
+                "        case .Square(side): total += side;\n"
+                "        case .Empty: total -= 1;\n"
+                "    }\n"
+                "    return total;\n"
+                "}\n"
+                "Points :: pure fn(n: int) -> util.Point[] {\n"
+                "    points: util.Point[] = [util.Corner(n), {x: 1, y: 2}];\n"
+                "    return points;\n"
+                "}\n"
+                "Label :: pure fn(text: string) -> int { return "
+                "strings.ByteLength(text) + "
+                "strings.Compare(text, \"b\"); }\n"
+                "Point :: struct { x: int; }\n"
+                "Twice :: pure fn(n: int) -> int { return n * 3; }\n"
+                "Both :: pure fn(n: int) -> int {\n"
+                "    local: Point = {x: Twice(n)};\n"
+                "    other := util.Corner(n);\n"
+                "    return local.x * 100 + other.y;\n"
+                "}\n"
+                "Halves :: pure fn(n: int) -> int {\n"
+                "    pair := util.Split(n);\n"
+                "    return pair.a * 10 + pair.b;\n"
+                "}\n",
+      .files = { { "facts/util/Util.chibi", UTIL_SOURCE },
+                 { "facts/base/Base.chibi", BASE_SOURCE },
+                 { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE } },
+      .calls = { { "Sum", "[3,4]", "[10]" },
+                 { "Pair", "[3]", "[18]" },
+                 { "Shapes", "[3]", "[12]" },
+                 { "Points", "[2]", "[[{\"x\":2,\"y\":4},{\"x\":1,\"y\":2}]]" },
+                 { "Label", "[\"abc\"]", "[2]" },
+                 { "Both", "[2]", "[604]" },
+                 { "Halves", "[7]", "[34]" } } },
+    { .name = "unknown imported type",
+      .source = "package facts\nimport util \"project:facts/util\"\n"
+                "One :: pure fn(p: util.Missing) -> int { return 1; }",
+      .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
+      .message = "parameter type is not supported yet",
+      .line = 3,
+      .column = 16 },
+    { .name = "shadowed alias",
+      .source = "package facts\n"
+                "import util \"project:facts/util\"\n"
+                "Make :: pure fn(n: int) -> util.Point { return "
+                "util.Corner(n); }\n"
+                "Local :: pure fn(n: int) -> int {\n"
+                "    util := Make(n);\n"
+                "    return util.x + util.y;\n"
+                "}\n",
+      .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
+      .calls = { { "Local", "[5]", "[15]" } } },
+    { .name = "unknown imported function",
+      .source = "package facts\nimport util \"project:facts/util\"\n"
+                "One :: pure fn() -> int { return util.Missing(1); }",
+      .files = { { "facts/util/Util.chibi", POINT_SOURCE } },
+      .message = "Unknown function 'util.Missing'",
+      .line = 3,
+      .column = 34 },
     { .name = "constant",
       .source = "package facts\nAnswer :: pure fn() -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
@@ -603,43 +706,76 @@ static bool prepare()
     );
     return true;
 }
+/* A sample's files: facts/Main.chibi, then its other files. */
+static int sample_files(const sample *s, const char **paths, const char **sources)
+{
+    paths[0] = "facts/Main.chibi";
+    sources[0] = s->source;
+    int count = 1;
+    for (int i = 0; i < FILES && s->files[i][0]; i++) {
+        paths[count] = s->files[i][0];
+        sources[count++] = s->files[i][1];
+    }
+    return count;
+}
+/* The collection roots Compile resolves `core:` imports against. */
+static pin_value collections(int b)
+{
+    const pin_record *shape = compiler_fixture_record(&fixture, b, "project:package_routes", "Collection", &input);
+    assert(shape);
+    pin_value core = { .type = PIN_STRUCT,
+                       .ptr = arena_alloc(&input, shape->type.size),
+                       .record = shape,
+                       .type_name = shape->type.name };
+    memset(core.ptr, 0, shape->type.size);
+    pin_value present = { .type = PIN_BOOL, .b = true };
+    bool written = put_value(&core, "name", text("core")) &&
+                   put_value(&core, "path", text("/sdk/core")) &&
+                   put_value(&core, "has_name", present) &&
+                   put_value(&core, "has_path", present);
+    assert(written);
+    (void)written;
+    return rows(&core, 1, PIN_STRUCT, shape);
+}
 static bool compile(int b, const sample *s, pin_value *out)
 {
-    const char *paths[] = { "facts/Main.chibi" };
-    pin_value args[9];
+    const char *paths[FILES + 1], *sources[FILES + 1];
+    int files = sample_files(s, paths, sources);
+    pin_value args[10];
     args[0] = text("/project");
-    args[1] = strings(paths, 1);
-    args[2] = strings(&s->source, 1);
+    args[1] = strings(paths, files);
+    args[2] = strings(sources, files);
+    args[3] = collections(b);
     const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
     REQUIRE(record);
-    args[3] = (pin_value){ .type = PIN_STRUCT,
+    args[4] = (pin_value){ .type = PIN_STRUCT,
                            .ptr = arena_alloc(&input, record->type.size),
                            .record = record,
                            .type_name = record->type.name };
-    memset(args[3].ptr, 0, record->type.size);
-    REQUIRE(put(&args[3], "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(&args[3], "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(&args[3], "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(&args[3], "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(&args[3], "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(put(&args[3], "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(&args[3], "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(&args[3], "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(&args[3], "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(&args[3], "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(&args[3], "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(&args[3], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(&args[3], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    args[4] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
+    memset(args[4].ptr, 0, record->type.size);
+    REQUIRE(put(&args[4], "pointer_storage", BF_POINTER_TYPE));
+    REQUIRE(put(&args[4], "pointer_size", (int)sizeof(void *)));
+    REQUIRE(put(&args[4], "value_size", (int)sizeof(pin_value)));
+    REQUIRE(put(&args[4], "payload_offset", (int)offsetof(pin_value, d)));
+    REQUIRE(put(&args[4], "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(put(&args[4], "type_offset", (int)offsetof(pin_value, type)));
+    REQUIRE(put(&args[4], "container_offset", (int)offsetof(pin_value, container)));
+    REQUIRE(put(&args[4], "name_offset", (int)offsetof(pin_value, type_name)));
+    REQUIRE(put(&args[4], "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(&args[4], "count_offset", (int)offsetof(pin_array, count)));
+    REQUIRE(put(&args[4], "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(&args[4], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
+    REQUIRE(put(&args[4], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    args[5] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int count = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, count);
     for (int i = 0; i < count; i++) {
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
-    args[5] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, &args[6]));
+    args[6] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+    REQUIRE(natives(b, &args[7]));
     REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 9, COMPILE_BUDGET, &detached, out)
+        compiler_fixture_call(&fixture, b, PACKAGE, "Compile", args, 10, COMPILE_BUDGET, &detached, out)
     );
     return true;
 }
@@ -686,24 +822,51 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     result = (compiler_host_result){ 0 };
     return true;
 }
-/* Stage zero's closure of the same package, whose calls must give the same
+/* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
 {
-    const source_package_input inputs[] = {
-        { "facts/Main.chibi", s->source, strlen(s->source) }
-    };
+    const char *paths[FILES + 1], *sources[FILES + 1];
+    int files = sample_files(s, paths, sources);
+    source_package_input inputs[FILES + 1];
+    for (int i = 0; i < files; i++) {
+        inputs[i] = (source_package_input){ paths[i], sources[i], strlen(sources[i]) };
+    }
     compiler_fixture_free(&oracle);
-    REQUIRE(compiler_fixture_prepare(&oracle, inputs, 1));
+    REQUIRE(compiler_fixture_prepare(&oracle, inputs, files));
     const authoring_package *root = compiler_fixture_package(&oracle, 0, "project:facts");
     REQUIRE(root && root->module);
+    int count = authoring_packages_count(oracle.owners[0]);
+    REQUIRE(count <= FILES + 1);
+    package_module rows[FILES + 1];
+    unsigned char *prepared[FILES + 1] = { 0 };
+    bool written = true;
     char error[256];
-    unsigned char *prepared = NULL;
-    size_t size = 0;
-    REQUIRE(execution_prepared_write(root->module, &prepared, &size, error, sizeof error));
-    package_module row = { root->identity, execution_module_id(root->module), prepared, size };
-    bool written = compiler_artifact_write(&row, 1, row.id, closure, length, error, sizeof error);
-    free(prepared);
+    for (int i = 0; i < count; i++) {
+        const authoring_package *package = authoring_packages_at(oracle.owners[0], i);
+        size_t size = 0;
+        written = written &&
+                  execution_prepared_write(package->module, &prepared[i], &size, error, sizeof error);
+        rows[i] = (package_module){ package->identity,
+                                    execution_module_id(package->module),
+                                    prepared[i],
+                                    size };
+    }
+    written = written && compiler_artifact_write(
+                             rows,
+                             count,
+                             execution_module_id(root->module),
+                             closure,
+                             length,
+                             error,
+                             sizeof error
+                         );
+    for (int i = 0; i < count; i++) {
+        free(prepared[i]);
+    }
+    if (!written) {
+        fprintf(stderr, "package compiler oracle: %s\n", error);
+    }
     REQUIRE(written);
     return true;
 }

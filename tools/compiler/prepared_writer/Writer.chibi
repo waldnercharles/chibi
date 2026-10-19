@@ -36,7 +36,8 @@ Requirement :: struct {
 }
 Import :: struct { id: int; fingerprint: int; }
 // A function reference: own `index` in this module, or `function` (a wide id)
-// in import `imported`. Null references have neither.
+// in import `imported`, whose `own` the runtime writes as 0. Null references
+// have neither.
 Reference :: struct { imported: int; own: int; function: int; role: int; }
 Source :: struct {
     graph: int; call: int; parent: int; asset: string; has_asset: bool;

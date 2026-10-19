@@ -454,7 +454,7 @@ TEST_CASE(binary_result_limit_is_atomic)
         ));
         REQUIRE(byte_result.flow_status == FLOW_OK && byte_failure(b, true));
         if (!b) {
-            const size_t limits[] = { 0, COMPILER_HOST_MAX_VALUES + 1u };
+            const size_t limits[] = { 0, COMPILER_HOST_MAX_OUTPUT_BYTES + 1u };
             for (int i = 0; i < 2; i++) {
                 REQUIRE(
                     !compiler_host_invoke_bytes(loaded, binary_ids[0], "[", 1, 10000, limits[i], &byte_result)

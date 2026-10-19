@@ -35,12 +35,17 @@ static bool available(execution_wire *w, size_t bytes)
     }
     return true;
 }
+static size_t owned_limit(const execution_wire *w)
+{
+    return w->owned_limit ? w->owned_limit : EXECUTION_WIRE_MAX_BYTES;
+}
 void *execution_wire_allocate(execution_wire *w, size_t bytes)
 {
     if (w->error) {
         return NULL;
     }
-    if (!w->storage || bytes > EXECUTION_WIRE_MAX_BYTES - w->owned_bytes) {
+    if (!w->storage || w->owned_bytes > owned_limit(w) ||
+        bytes > owned_limit(w) - w->owned_bytes) {
         fail(w, "Prepared decoded storage limit exceeded");
         return NULL;
     }
@@ -584,8 +589,7 @@ bool execution_wire_reserve(execution_wire *w, size_t bytes)
     if (w->error) {
         return false;
     }
-    if (w->owned_bytes > EXECUTION_WIRE_MAX_BYTES ||
-        bytes > EXECUTION_WIRE_MAX_BYTES - w->owned_bytes) {
+    if (w->owned_bytes > owned_limit(w) || bytes > owned_limit(w) - w->owned_bytes) {
         w->error = "Prepared shader decoded storage limit";
         return false;
     }

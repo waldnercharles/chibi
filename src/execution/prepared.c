@@ -86,7 +86,8 @@ static bool write_depth(
     size_t *,
     uint64_t *,
     execution_wire *,
-    size_t *
+    size_t *,
+    size_t
 );
 static bool scratch_growth(execution_wire *budget, const void *values, size_t item, size_t *charged)
 {
@@ -147,7 +148,8 @@ static bool dependency_fingerprint(
             c->dependency_bytes,
             &hash,
             c->fingerprint_budget,
-            c->shared_record_work
+            c->shared_record_work,
+            c->record_work_limit
         )) {
         c->wire.error = error;
         return false;
@@ -712,7 +714,8 @@ static bool write_depth(
     size_t *dependency_bytes,
     uint64_t *hash,
     execution_wire *budget,
-    size_t *record_work
+    size_t *record_work,
+    size_t record_work_limit
 )
 {
     if (depth > EXECUTION_WIRE_MAX_DEPTH) {
@@ -723,7 +726,8 @@ static bool write_depth(
                            .dependencies = cache,
                            .dependency_bytes = dependency_bytes,
                            .fingerprint_budget = budget,
-                           .shared_record_work = record_work };
+                           .shared_record_work = record_work,
+                           .record_work_limit = record_work_limit };
     c.wire.storage = &c.plan->storage;
     c.wire.hash = hash;
     for (int i = 0; i < c.plan->function_count && !c.wire.error; i++) {
@@ -788,7 +792,7 @@ bool execution_prepared_write(
     size_t bytes = 0;
     size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
     execution_wire budget = { .storage_budget = &remaining };
-    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work);
+    bool success = write_depth(m, data, length, &reason, 0, &cache, &bytes, NULL, &budget, &record_work, 0);
     afree(cache);
     if (size) {
         snprintf(error, size, "%s", reason ? reason : "");
@@ -810,7 +814,7 @@ bool execution_prepared_measure(
     size_t remaining = EXECUTION_WIRE_MAX_BYTES, record_work = 0;
     execution_wire budget = { .storage_budget = &remaining };
     uint64_t hash = UINT64_C(14695981039346656037);
-    bool success = write_depth(m, NULL, length, &reason, 0, &cache, &bytes, &hash, &budget, &record_work);
+    bool success = write_depth(m, NULL, length, &reason, 0, &cache, &bytes, &hash, &budget, &record_work, 0);
     afree(cache);
     *fingerprint = success ? hash : 0;
     if (size) {
@@ -893,12 +897,14 @@ execution_module *execution_prepared_read_budget(
     prepared_context c = { .linker = linker,
                            .plan = execution_module_plan_new(),
                            .dependencies = &cache,
-                           .dependency_bytes = &dependency_bytes };
+                           .dependency_bytes = &dependency_bytes,
+                           .record_work_limit = linker ? linker->layout_work : 0 };
     c.wire = (execution_wire){ .data = (unsigned char *)data,
                                .size = length,
                                .reading = true,
                                .storage = &c.plan->storage,
-                               .storage_budget = remaining };
+                               .storage_budget = remaining,
+                               .owned_limit = linker ? linker->decoded_bytes : 0 };
     execution_wire *w = &c.wire;
     c.fingerprint_budget = w;
     c.shared_record_work = &c.record_work;

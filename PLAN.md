@@ -206,7 +206,7 @@ Current integration constraints:
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
 | M8 | Blocked | M3, M7, owner review | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
-| M10 | Blocked | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
+| M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
 M5 is the primary product goal. M7 through M9 may proceed in parallel only when
 they do not delay or destabilize the active bootstrap path.
@@ -666,7 +666,14 @@ language reference (Learn), the Testing guide, the generated `core` reference
 guide. The manual `Documentation site` workflow
 (`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
 the Pages artifact; it has no deploy job, which waits for the owner's review of
-that artifact. No published page uses an image yet, so the manifest has no
+that artifact. A pre-review of the artifact on 2026-10-19 found no local paths,
+credentials or links into private repositories (the linked `chibi-studio` is
+public). At the owner's request the README, Examples and Learn pages were then
+rewritten so that no sentence leans on a link to an unpublished document (the
+site had dropped 25 such links to plain text), and Examples no longer names the
+archived private repositories. The site folder now gets the permissions
+`mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
+it. No published page uses an image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
 
@@ -696,6 +703,18 @@ Keep Box2D for 2D and Box3D for 3D unless actual game requirements and measureme
 justify a separate physics migration.
 
 ### M10. Remove replaced implementations
+
+Status: in progress. The retired web publisher is gone (2026-10-19):
+`tools/publish_web.py`, `tools/package_web.py`, their `test/tools` cases and
+the disabled `make publish-web` stub. Its only callers were those tests and the
+stub; no workflow, SDK install, release or Studio path called it. Its
+publication contracts already live in the replacement: Studio's
+`publish.yml` records both repositories' commits and the editor archive's
+SHA-256 in `studio.json` and skips an unchanged pair, the engine release
+workflow publishes versioned packages, `docs/game-web-workflow.yml` deploys a
+game from them, and `chibi export --web` assembles a local site. Git history
+is the recovery path. Every other responsibility in
+`docs/toolchain-inventory.md` still waits for its replacement.
 
 Delete one responsibility at a time. Before deletion, name the replacement,
 enumerate every repository, installed-SDK, CI, release, and application caller,

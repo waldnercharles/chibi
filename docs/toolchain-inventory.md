@@ -65,7 +65,6 @@ make the compiler self-hosted.
 | C source formatting | `tools/clang-format.sh`, `.githooks/pre-commit`, CI | Keep external clang-format 22 while maintained C exists. `chibi fmt` replaces authored-source and asset formatting, not C formatting during migration. | Existing C format check and a separate canonical authored-format corpus. |
 | Blender worker | `tools/mesh_sdf/worker.py`, Blender-only `bpy` calls, and the worker's imported encoding support | Python may remain only for code that executes inside Blender because Blender requires its Python API. | Deterministic conversion, malformed geometry, metadata, work limits, and source provenance cases. |
 | Blender launcher and publication | `tools/mesh_sdf/convert.py` and ordinary-Python support in `tools/mesh_sdf/atlas.py` | Move subprocess, deadline, resource-limit, staging, hashing, validation, and publication policy to Chibi. Keep only the thin Blender worker and support it must import. | Timeout and process cleanup, memory/work limits, atomic destination publication, provenance, deterministic atlas bytes, and corrupt/partial output rejection. |
-| Retired web publisher | `tools/publish_web.py`, `tools/package_web.py`, `test/tools/publish.c` | Recheck all callers and open publishing work. Move still-current identity, corruption, and concurrency contracts into the replacement before deletion. | Required publication identity, corrupt input, concurrent publication, and disabled-caller checks. |
 
 ## Installed Python surface
 
@@ -101,8 +100,6 @@ tools/kdl_asset.py
 tools/package_player.py
 tools/package_sdk.py
 tools/package_studio.py
-tools/package_web.py
-tools/publish_web.py
 tools/quiet.py
 tools/test_policy.py
 tools/validation_plan.py

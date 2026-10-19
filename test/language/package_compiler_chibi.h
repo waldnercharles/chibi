@@ -2,5 +2,6 @@
 #define CHIBI_TEST_PACKAGE_COMPILER_CHIBI_H
 
 void test_language_package_compiler_chibi();
+void test_language_package_compiler_chibi_types();
 
 #endif

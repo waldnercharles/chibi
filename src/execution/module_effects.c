@@ -1604,7 +1604,10 @@ execution_cost_summary execution_module_costs(const execution_module *m)
  * update a tainted local in place, or write through a reference other than a
  * value reference to an own, untainted cell. Writes through addresses the
  * analysis cannot place forget what every cell holds. Values copied by
- * snapshots, constructors and authored returns are fresh. */
+ * snapshots, constructors and authored returns are fresh while the copied
+ * headers keep their declared types: the verifier rejects direct writes to a
+ * cell's type and container, a return checks its results' headers, and
+ * `retyped` covers the writes neither can place. */
 enum
 {
     SHARE_NONE = -2,
@@ -1617,17 +1620,20 @@ enum
  * leaves that storage the definition's own: `texts` marks such cells and
  * `text_memory` storage the analysis cannot place. Only reading those bytes
  * back as an address could reach the caller, so such a read is tainted.
- * `referenced` marks the cells a value reference may write. */
+ * `referenced` marks the cells a value reference may write. `headers` marks
+ * slots that may hold a cell's header address. `retyped` says a write may have
+ * changed a stored value's type or container, after which a copy may keep the
+ * bits of the pointer it copied. */
 typedef struct
 {
     const behavior_function *f;
-    bool *slots, *cells, *locals, *texts, *referenced;
+    bool *slots, *cells, *locals, *texts, *referenced, *headers;
     /* Per slot: the cell or context it addresses; per cell: the address it
      * holds, or for references the root cell they write. */
     int *addresses, *contents;
     /* Small nonnegative integer constants a slot or cell holds. */
     int *literals, *cell_literals;
-    bool memory, results, text_memory, unsafe, changed;
+    bool memory, results, text_memory, retyped, unsafe, changed;
 } share_flow;
 
 static bool pointer_value(pin_value v, behavior_value_kind kind)
@@ -1738,15 +1744,25 @@ static bool share_derived(const share_flow *s, int base)
     return s->slots[base] || address == SHARE_CONTEXT ||
            address == SHARE_RESULTS || (address >= 0 && s->cells[address]);
 }
-/* A write through an address the analysis cannot place may change any cell. */
+/* A write through an address the analysis cannot place may change any cell,
+ * its header included. */
 static void share_scatter(share_flow *s, bool tainted)
 {
     share_taint(s, &s->memory, tainted);
+    share_taint(s, &s->retyped, true);
     for (int cell = 0; cell < acount(s->f->data_values); cell++) {
         share_taint(s, &s->cells[cell], tainted);
         share_set(s, &s->contents[cell], SHARE_UNKNOWN);
         share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
     }
+}
+/* Header fields a write may change while the value keeps the type and
+ * container its copies follow. */
+static bool value_field(size_t offset)
+{
+    return offset == offsetof(pin_value, d) ||
+           offset == offsetof(pin_value, type_name) ||
+           offset == offsetof(pin_value, record);
 }
 /* The own, untainted cell whose address host argument `cell` holds, or -1. */
 static int share_target(const share_flow *s, int cell)
@@ -1779,10 +1795,14 @@ static void share_host(share_flow *s, int pc)
                      (access->flags & ~allowed) || host->call->action;
     } else {
         switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+            /* Copies follow the copied headers; a rewritten one may keep the
+             * bits of a pointer instead of copying what it points to. */
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
             case EXECUTION_INTRINSIC_UNION_MAKE:
             case EXECUTION_INTRINSIC_REFERENCE_READ:
+                output = s->retyped && inputs;
+                break;
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;
@@ -1833,11 +1853,12 @@ static void share_host(share_flow *s, int pc)
         int cell = host->result_first + k;
         share_taint(s, &s->cells[cell], output);
         /* A text result may be the caller's text; others hold fresh storage
-         * the text entered, which `text_memory` covers. */
+         * the text entered, which `text_memory` covers, unless a rewritten
+         * header copied the text's address. */
         share_taint(
             s,
             &s->texts[cell],
-            text && text_type(f->data_values[cell].initial.type)
+            text && (s->retyped || text_type(f->data_values[cell].initial.type))
         );
         share_set(s, &s->contents[cell], root);
         share_set(s, &s->cell_literals[cell], SHARE_UNKNOWN);
@@ -1897,6 +1918,7 @@ static void share_instruction(share_flow *s, int pc)
             break;
         case BF_HOST_SLOT:
             share_define(s, out, false, i->left, SHARE_UNKNOWN);
+            share_taint(s, &s->headers[out], !i->target);
             break;
         case BF_ADD:
         case BF_INDEX:
@@ -1917,6 +1939,7 @@ static void share_instruction(share_flow *s, int pc)
         case BF_SELECT: {
             int address = share_merge(s->addresses[i->right], s->addresses[i->target]);
             share_define(s, out, s->slots[i->right] || s->slots[i->target], address, SHARE_UNKNOWN);
+            share_taint(s, &s->headers[out], s->headers[i->right] || s->headers[i->target]);
             break;
         }
         case BF_LOAD:
@@ -1925,6 +1948,10 @@ static void share_instruction(share_flow *s, int pc)
             break;
         case BF_WRITE: {
             int address = s->addresses[i->right];
+            /* Through a cell's header, only the value and names stay in it. */
+            if (address >= 0 && s->headers[i->right] && !value_field(i->offset)) {
+                address = SHARE_UNKNOWN;
+            }
             bool text = text_type(i->type) && s->slots[i->left];
             bool value = s->slots[i->left] && !text;
             s->unsafe |= s->slots[i->right];
@@ -2052,6 +2079,7 @@ static bool share_local(const behavior_function *f)
     s.locals = xcalloc((size_t)locals + 1, sizeof *s.locals);
     s.texts = xcalloc((size_t)cells + 1, sizeof *s.texts);
     s.referenced = xcalloc((size_t)cells + 1, sizeof *s.referenced);
+    s.headers = xcalloc((size_t)slots + 1, sizeof *s.headers);
     s.addresses = share_column(slots);
     s.literals = share_column(slots);
     s.contents = share_column(cells);
@@ -2078,6 +2106,7 @@ static bool share_local(const behavior_function *f)
     free(s.locals);
     free(s.texts);
     free(s.referenced);
+    free(s.headers);
     free(s.addresses);
     free(s.literals);
     free(s.contents);

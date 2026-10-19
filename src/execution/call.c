@@ -387,6 +387,10 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     }
 }
 
+static bool same_header(const pin_value *value, const pin_value *declared)
+{
+    return value->type == declared->type && value->container == declared->container;
+}
 static int return_values(invocation_frame *frame, const behavior_function *parent_function)
 {
     behavior_function_context *context = &frame->context, *parent = context->parent;
@@ -400,6 +404,12 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
     }
     parent->returned_outcome = context->returned_outcome;
     for (int p = 0; p < call.result_count; p++) {
+        /* The copy follows the result's header, so a header that left the
+         * declared type could return a pointer's bits instead of a copy. */
+        if (p < frame->function->result_count &&
+            !same_header(&context->results[p], &frame->function->result_defaults[p])) {
+            return call_error(parent_function, parent, BEHAVIOR_FUNCTION_DATA, "function result differs from its declared type");
+        }
         if (pin_value_snapshot_to_arena(
                 parent->value_storage,
                 &parent->data->values[call.result_first + p],

@@ -3,5 +3,10 @@
 //   Raise it when the compiler gains a language feature.
 // minimum: the oldest bootstrap version that can compile these sources.
 //   Raise it, to at most version, only once the sources use such a feature.
+// published: the artifact recovery downloads, the release of repository with
+//   this tag, and the SHA-256 of its bootstrap.json, which records the
+//   closure's own. Publish a new one when minimum rises or this host's target
+//   changes; see docs/self-hosting-build.md.
 version 1
 minimum 1
+published repository="waldnercharles/chibi" tag="compiler-bootstrap-1-d1c40f0d3c94" manifest="40de87717e5d3ab9ef2f278a43b11ecb8dd50c64ab5de3fcc919b6a4a6693aef"

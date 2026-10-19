@@ -326,9 +326,31 @@ It then compiles the recorded sources from disk with the artifact:
 check takes one compile, about 7 s, or two when the sources changed, about
 14 s; the whole selector takes about 12 s.
 
-The artifact is a build output for one host configuration; it is neither checked
-in nor published. Where a recovery artifact for clean checkouts lives, in the
-repository or as a release asset, is still to be decided.
+The recovery artifact for clean checkouts is published, not checked in. It is
+a prerelease of this repository, tagged `compiler-bootstrap-VERSION-` followed
+by the start of the closure's SHA-256, with `compiler.chibip` and
+`bootstrap.json` as its assets. Studio only selects `engine-<commit>` tags, so
+it never mistakes one for an engine release. `tools/compiler/bootstrap.kdl`
+pins the published artifact with `published repository=... tag=...
+manifest=SHA256`. The manifest's own SHA-256 is pinned, and the manifest in
+turn pins the closure's.
+
+`make bootstrap-recover` runs `tools/toolchain/Bootstrap.chibi` in the build
+host. That program:
+1. downloads the release with `gh release download` into
+   `build-release/bootstrap-published`;
+2. runs `chibi-compiler-host --bootstrap ... --published`, which refuses a
+   manifest without the pinned SHA-256 before it loads anything.
+
+The repository is private, so `gh` must be signed in. This needs no stage zero
+and no compiler built from Chibi.
+
+To publish a new artifact, for example when `minimum` rises or the host's
+target changes:
+1. Run `make bootstrap-artifact` on a clean tree.
+2. Run `gh release create compiler-bootstrap-VERSION-PREFIX --prerelease
+   --target REVISION`, uploading both files.
+3. Update the pin in `bootstrap.kdl`.
 
 The final normal installed workflow remains subject to `PLAN.md`: it must
 compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables

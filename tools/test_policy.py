@@ -240,12 +240,14 @@ TOOLS = {
                          '--compiler-artifact',
                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
-    # Seven cases: the compiler host's bootstrap mode refuses bad options, a
+    # Eight cases: the compiler host's bootstrap mode refuses bad options, a
     # missing or invalid bootstrap.kdl, other formats, versions older than the
     # minimum, a closure its manifest does not record (four SHA-256 vectors),
-    # a missing source, a package that gained a file, another target and a
-    # seed whose sources are not on disk, all before any compile runs. About
-    # twenty host children on tiny folders, and one compiler-artifact producer.
+    # a missing source, a package that gained a file, another target, a
+    # manifest other than the published one bootstrap.kdl pins and a seed
+    # whose sources are not on disk, all before any compile runs. About
+    # twenty-five host children on tiny folders, and one compiler-artifact
+    # producer.
     'compiler-bootstrap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                            '--compiler-bootstrap',
                            str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

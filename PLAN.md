@@ -186,9 +186,13 @@ Current integration constraints:
   empty-mesh fix. Preserve those changes when editing test policy or fixtures.
 - Engine PR #438 landed on main at `6ea2221c9`. This branch integrates its
   release-build correction for terrain-volume assertions.
-- Engine PR #420 is an open language and typed-runtime redesign. Recheck its
-  authoring commands, SDK manifests, language docs, plan, and test-policy
-  contracts before modifying those areas.
+- Engine PR #420, the language and typed-runtime redesign, merged into `main`
+  on 2026-10-19 at `07eb2abaa`. This branch has not integrated it yet. On
+  2026-10-19 a dry-run merge of `main` conflicted in 83 files, among them the
+  language core, prepared execution, SDK contracts and fixtures. `main` is at
+  project version 26 and this branch is at 25, and each side has its own
+  frozen v24 parser. The owner assigned that integration, and landing this
+  branch on `main`, to the self-hosting session.
 - Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
   contracts, commits, or dependencies as part of this work.
 
@@ -551,8 +555,13 @@ Step 5 is implemented for the package compiler on 2026-10-19:
 - `make test-recovery` runs that recovery from sources exported from HEAD in
   about 12 s: one compile, or two when the sources changed.
 
-The artifact is still a build output; where the clean-checkout recovery
-artifact is kept is still to be decided. See `docs/self-hosting-build.md`.
+At the owner's direction the clean-checkout artifact is published as a release
+asset, not checked in. The prerelease
+`compiler-bootstrap-1-d1c40f0d3c94` was built from revision `375459b4b`, and
+`tools/compiler/bootstrap.kdl` pins its manifest's SHA-256.
+`make bootstrap-recover` downloads that release with `gh` and recovers the
+compiler from it, about 11 s on macOS arm64. See
+`docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
 supported host configuration. Keep an explicit stage-zero recovery invocation

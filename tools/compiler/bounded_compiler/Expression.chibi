@@ -9,37 +9,59 @@ ScalarExpression :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
     Accepted(expressions: lower.Expression[], literals: lower.Literal[], ranges: lower.Range[], result: int)
 }
-Decimal :: union { Parsed(value: int) | Invalid }
-ExpressionFrame :: struct { node: int; phase: int; left: int; expected: int; }
+Decimal :: union {
+    Parsed(value: int) | Invalid
+}
+ExpressionFrame :: struct {
+    node: int;
+    phase: int;
+    left: int;
+    expected: int;
+}
 
 // Accumulate in int64 so even signed minimum is exact. Other literal syntax
 // and implicit numeric promotion are outside this first source subset.
 DecimalValue :: pure fn(text: string, negative: bool) -> Decimal {
     size := strings.ByteLength(text);
-    if (size == 0) { return Decimal.Invalid; }
+    if (size == 0) {
+        return Decimal.Invalid;
+    }
     magnitude: int64 = 0;
     index: int = 0;
     while (index < size) {
         digit := strings.ByteAt(text, index) - 48;
-        if (digit < 0 || digit > 9) { return Decimal.Invalid; }
+        if (digit < 0 || digit > 9) {
+            return Decimal.Invalid;
+        }
         magnitude = magnitude * 10 + digit;
-        if (magnitude > 2147483648) { return Decimal.Invalid; }
+        if (magnitude > 2147483648) {
+            return Decimal.Invalid;
+        }
         index += 1;
     }
-    if (negative) { return Decimal.Parsed(int(-magnitude)); }
-    if (magnitude == 2147483648) { return Decimal.Invalid; }
+    if (negative) {
+        return Decimal.Parsed(int(-magnitude));
+    }
+    if (magnitude == 2147483648) {
+        return Decimal.Invalid;
+    }
     return Decimal.Parsed(int(magnitude));
 }
 
 // The one positional argument of a call, or -1.
 SoleArgument :: pure fn(tree: reader.Tree, call: int) -> int {
     arguments := reader.Field(tree, call, "arguments");
-    if (arguments < 0) { return -1; }
-    switch tree { case .Raw(nodes, fields, named_flags, extra_flags, text):
-        first := reader.NextMember(tree, nodes[arguments].first_child);
-        if (first < 0 || reader.Kind(tree, first, "named_argument") ||
-            reader.NextMember(tree, nodes[first].next_sibling) >= 0) { return -1; }
-        return first;
+    if (arguments < 0) {
+        return -1;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            first := reader.NextMember(tree, nodes[arguments].first_child);
+            if (first < 0 || reader.Kind(tree, first, "named_argument") ||
+                reader.NextMember(tree, nodes[first].next_sibling) >= 0) {
+                return -1;
+            }
+            return first;
     }
 }
 
@@ -50,20 +72,48 @@ ExpressionRange :: pure fn(tree: reader.Tree, node: int, document: int) -> lower
 }
 
 BinaryOperator :: pure fn(text: string) -> int {
-    if (text == "+") { return 1; }
-    if (text == "-") { return 2; }
-    if (text == "*") { return 3; }
-    if (text == "&&" || text == "and") { return 8; }
-    if (text == "||" || text == "or") { return 9; }
-    if (text == "==") { return 10; }
-    if (text == "!=") { return 11; }
-    if (text == "<") { return 12; }
-    if (text == "<=") { return 13; }
-    if (text == ">") { return 14; }
-    if (text == ">=") { return 15; }
-    if (text == "&") { return 16; }
-    if (text == "|") { return 17; }
-    if (text == "^") { return 18; }
+    if (text == "+") {
+        return 1;
+    }
+    if (text == "-") {
+        return 2;
+    }
+    if (text == "*") {
+        return 3;
+    }
+    if (text == "&&" || text == "and") {
+        return 8;
+    }
+    if (text == "||" || text == "or") {
+        return 9;
+    }
+    if (text == "==") {
+        return 10;
+    }
+    if (text == "!=") {
+        return 11;
+    }
+    if (text == "<") {
+        return 12;
+    }
+    if (text == "<=") {
+        return 13;
+    }
+    if (text == ">") {
+        return 14;
+    }
+    if (text == ">=") {
+        return 15;
+    }
+    if (text == "&") {
+        return 16;
+    }
+    if (text == "|") {
+        return 17;
+    }
+    if (text == "^") {
+        return 18;
+    }
     return -1;
 }
 
@@ -80,7 +130,9 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
     // resize cannot grow record arrays, so fill the fixed stack row by row.
     initial: ExpressionFrame = {node: root, phase: 0, left: -1, expected: expected};
     frames: ExpressionFrame[] = [];
-    while (length(frames) < 65) { frames = array_add(frames, initial); }
+    while (length(frames) < 65) {
+        frames = array_add(frames, initial);
+    }
     top: int = 0;
     visits: int = 0;
     value: int = -1;
@@ -89,9 +141,12 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
         frame := frames[top];
         node := frame.node;
         row: lower.Expression = {kind: 0, op: 0, left: -1, right: -1,
-            symbol: -1, type: -1, literal: -1, range: length(ranges)};
+                                 symbol: -1, type: -1, literal: -1, range: length(ranges)};
         if (returning) {
-            if (frame.phase == 1) { top -= 1; continue; }
+            if (frame.phase == 1) {
+                top -= 1;
+                continue;
+            }
             if (frame.phase == 4) {
                 frame.left = value;
                 frame.phase = 5;
@@ -105,18 +160,28 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
             row.left = value;
             row.type = expressions[value].type;
             if (frame.phase == 2) {
-                if (row.type != 1) { return ExpressionFailure(tree, node, document, "bounded compiler supports only identity int conversions"); }
+                if (row.type != 1) {
+                    return ExpressionFailure(tree, node, document, "bounded compiler supports only identity int conversions");
+                }
                 row.kind = 5;
             } else if (frame.phase == 3) {
                 row.kind = 3;
                 op := reader.Text(tree, reader.Field(tree, node, "operator"));
                 if (op == "!" || op == "not") {
-                    if (row.type != 0) { return ExpressionFailure(tree, node, document, "logical negation needs bool"); }
+                    if (row.type != 0) {
+                        return ExpressionFailure(tree, node, document, "logical negation needs bool");
+                    }
                     row.op = 7;
                 } else {
-                    if (row.type != 1) { return ExpressionFailure(tree, node, document, "integer unary operation needs int"); }
-                    if (op == "-") { row.op = 6; }
-                    if (op == "~") { row.op = 21; }
+                    if (row.type != 1) {
+                        return ExpressionFailure(tree, node, document, "integer unary operation needs int");
+                    }
+                    if (op == "-") {
+                        row.op = 6;
+                    }
+                    if (op == "~") {
+                        row.op = 21;
+                    }
                 }
             } else {
                 row.kind = 4;
@@ -124,14 +189,22 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
                 row.right = value;
                 row.op = BinaryOperator(reader.Text(tree, reader.Field(tree, node, "operator")));
                 left_type := expressions[row.left].type;
-                if (left_type != row.type) { return ExpressionFailure(tree, node, document, "bounded binary operands need the same scalar type"); }
+                if (left_type != row.type) {
+                    return ExpressionFailure(tree, node, document, "bounded binary operands need the same scalar type");
+                }
                 if (row.op == 8 || row.op == 9) {
-                    if (row.type != 0) { return ExpressionFailure(tree, node, document, "logical operation needs bool operands"); }
+                    if (row.type != 0) {
+                        return ExpressionFailure(tree, node, document, "logical operation needs bool operands");
+                    }
                 } else if (row.op == 10 || row.op == 11) {
                     row.type = 0;
                 } else {
-                    if (row.type != 1) { return ExpressionFailure(tree, node, document, "integer operation needs explicitly typed int operands"); }
-                    if (row.op >= 12 && row.op <= 15) { row.type = 0; }
+                    if (row.type != 1) {
+                        return ExpressionFailure(tree, node, document, "integer operation needs explicitly typed int operands");
+                    }
+                    if (row.op >= 12 && row.op <= 15) {
+                        row.type = 0;
+                    }
                 }
             }
         } else {
@@ -186,7 +259,9 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
                     frame.phase = 3;
                     frames[top] = frame;
                     child_expected := frame.expected;
-                    if (op == "!" || op == "not") { child_expected = 1; }
+                    if (op == "!" || op == "not") {
+                        child_expected = 1;
+                    }
                     child: ExpressionFrame = {node: operand, phase: 0, left: -1, expected: child_expected};
                     top += 1;
                     frames[top] = child;
@@ -203,15 +278,19 @@ ReadExpression :: pure fn(tree: reader.Tree, root: int, document: int, expected:
                     return ExpressionFailure(tree, node, document, "bounded integer operands need explicit int(value)");
                 }
                 switch DecimalValue(reader.Text(tree, literal_node), negative) {
-                    case .Invalid: return ExpressionFailure(tree, node, document, "bounded compiler needs a decimal literal in the int range");
-                    case .Parsed(number): literal.payload = number;
+                    case .Invalid:
+                        return ExpressionFailure(tree, node, document, "bounded compiler needs a decimal literal in the int range");
+                    case .Parsed(number):
+                        literal.payload = number;
                 }
                 literal.storage = 6;
                 row.type = 1;
             } else if (reader.Kind(tree, node, "boolean")) {
                 literal.storage = 1;
                 row.type = 0;
-                if (reader.Text(tree, node) == "true") { literal.payload = 1; }
+                if (reader.Text(tree, node) == "true") {
+                    literal.payload = 1;
+                }
             } else {
                 return ExpressionFailure(tree, node, document, "unsupported bounded expression");
             }

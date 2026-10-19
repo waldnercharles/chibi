@@ -3,72 +3,176 @@ package scalar_lowering
 // Private wire schema 1, pinned to the typed IR at 9bf6e275. No callbacks.
 // Flags are deliberately zero-only in this slice. State defaults are facts,
 // not evaluated here. Native target rows contain layout facts only.
-Type :: struct { storage: int; container: int; flags: int; nominal_slot: int; parameter_slot: int; }
-Expression :: struct { kind: int; op: int; left: int; right: int; symbol: int; type: int; literal: int; range: int; }
-Symbol :: struct { kind: int; id_slot: int; type: int; }
-Variable :: struct { id_slot: int; type: int; literal: int; }
-Result :: struct { expression: int; type: int; }
-Literal :: struct { storage: int; payload: int; }
-Range :: struct { start: int; end: int; line: int; column: int; document: int; }
-Target :: struct { schema: int; prepared: int; pointer_storage: int; value_size: int; payload_offset: int; results_offset: int; }
-Request :: union { Tables(types: Type[], expressions: Expression[], symbols: Symbol[],
-    variables: Variable[], results: Result[], literals: Literal[], ids: uint64[],
-    ranges: Range[], documents: string[], target: Target, range: int) }
-Slot :: struct { storage: int; kind: int; }
-Local :: struct { storage: int; payload: int; kind: int; }
-Instruction :: struct {
-    op: int; storage: int; output: int; left: int; right: int; target: int;
-    frame: int; source: int; stack: int; pin: int; offset: int;
-    indirect: bool; component: int; node_id: int; value_storage: int;
-    payload: int; layout: int; message: string;
+Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    nominal_slot: int;
+    parameter_slot: int;
 }
-Diagnostic :: struct { range: int; message: string; }
+Expression :: struct {
+    kind: int;
+    op: int;
+    left: int;
+    right: int;
+    symbol: int;
+    type: int;
+    literal: int;
+    range: int;
+}
+Symbol :: struct {
+    kind: int;
+    id_slot: int;
+    type: int;
+}
+Variable :: struct {
+    id_slot: int;
+    type: int;
+    literal: int;
+}
+Result :: struct {
+    expression: int;
+    type: int;
+}
+Literal :: struct {
+    storage: int;
+    payload: int;
+}
+Range :: struct {
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+Target :: struct {
+    schema: int;
+    prepared: int;
+    pointer_storage: int;
+    value_size: int;
+    payload_offset: int;
+    results_offset: int;
+}
+Request :: union {
+    Tables(types: Type[], expressions: Expression[], symbols: Symbol[],
+           variables: Variable[], results: Result[], literals: Literal[], ids: uint64[],
+           ranges: Range[], documents: string[], target: Target, range: int)
+}
+Slot :: struct {
+    storage: int;
+    kind: int;
+}
+Local :: struct {
+    storage: int;
+    payload: int;
+    kind: int;
+}
+Instruction :: struct {
+    op: int;
+    storage: int;
+    output: int;
+    left: int;
+    right: int;
+    target: int;
+    frame: int;
+    source: int;
+    stack: int;
+    pin: int;
+    offset: int;
+    indirect: bool;
+    component: int;
+    node_id: int;
+    value_storage: int;
+    payload: int;
+    layout: int;
+    message: string;
+}
+Diagnostic :: struct {
+    range: int;
+    message: string;
+}
 Plan :: union {
     Rejected(diagnostics: Diagnostic[])
     | Ready(target: Target, variable_ids: uint64[], defaults: Literal[], results: Literal[],
-          slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
+            slots: Slot[], locals: Local[], origins: Range[], documents: string[], code: Instruction[])
 }
-Emitter :: union { Emitted(slots: Slot[], locals: Local[], origins: Range[], code: Instruction[]) }
-Frame :: struct { expression: int; phase: int; left: int; local: int; branch_pc: int; skip: int; }
+Emitter :: union {
+    Emitted(slots: Slot[], locals: Local[], origins: Range[], code: Instruction[])
+}
+Frame :: struct {
+    expression: int;
+    phase: int;
+    left: int;
+    local: int;
+    branch_pc: int;
+    skip: int;
+}
 
 Boolean: int : 1;
 Integer: int : 6;
 // Private canonical opcodes. The native decoder translates these names one-to-one.
-Constant: int : 0; VariableRead: int : 1; LocalRead: int : 2;
-Context: int : 3; Index: int : 4; Write: int : 5;
-Save: int : 6; Branch: int : 7; Jump: int : 8;
-Return: int : 9; End: int : 10; Negate: int : 11;
-BitNot: int : 12; Add: int : 13; Subtract: int : 14;
-Multiply: int : 15; Divide: int : 16; Modulo: int : 17;
-Equal: int : 18; NotEqual: int : 19; Less: int : 20;
-LessEqual: int : 21; Greater: int : 22; GreaterEqual: int : 23;
-BitAnd: int : 24; BitOr: int : 25; BitXor: int : 26;
-ShiftLeft: int : 27; ShiftRight: int : 28;
+Constant: int : 0;
+VariableRead: int : 1;
+LocalRead: int : 2;
+Context: int : 3;
+Index: int : 4;
+Write: int : 5;
+Save: int : 6;
+Branch: int : 7;
+Jump: int : 8;
+Return: int : 9;
+End: int : 10;
+Negate: int : 11;
+BitNot: int : 12;
+Add: int : 13;
+Subtract: int : 14;
+Multiply: int : 15;
+Divide: int : 16;
+Modulo: int : 17;
+Equal: int : 18;
+NotEqual: int : 19;
+Less: int : 20;
+LessEqual: int : 21;
+Greater: int : 22;
+GreaterEqual: int : 23;
+BitAnd: int : 24;
+BitOr: int : 25;
+BitXor: int : 26;
+ShiftLeft: int : 27;
+ShiftRight: int : 28;
 
 Reject :: pure fn(range: int, message: string) -> Plan {
     diagnostics: Diagnostic[] = [];
     item: Diagnostic = {range: range, message: message};
     return Plan.Rejected(array_add(diagnostics, item));
 }
-ValidIndex :: pure fn(index: int, count: int) -> bool { return index >= 0 && index < count; }
+ValidIndex :: pure fn(index: int, count: int) -> bool {
+    return index >= 0 && index < count;
+}
 Scalar :: pure fn(type: Type) -> bool {
     return (type.storage == Boolean || type.storage == Integer) && type.container == 0 &&
            type.flags == 0 && type.nominal_slot == -1 && type.parameter_slot == -1;
 }
 ValidLiteral :: pure fn(item: Literal, storage: int) -> bool {
     return item.storage == storage && (storage == Integer ||
-           (storage == Boolean && (item.payload == 0 || item.payload == 1)));
+                                       (storage == Boolean && (item.payload == 0 || item.payload == 1)));
 }
 Opcode :: pure fn(op: int) -> int {
-    if (op >= 1 && op <= 5) { return Add + op - 1; }
-    if (op >= 10 && op <= 15) { return Equal + op - 10; }
-    if (op >= 16 && op <= 20) { return BitAnd + op - 16; }
+    if (op >= 1 && op <= 5) {
+        return Add + op - 1;
+    }
+    if (op >= 10 && op <= 15) {
+        return Equal + op - 10;
+    }
+    if (op >= 16 && op <= 20) {
+        return BitAnd + op - 16;
+    }
     return -1;
 }
 Code :: pure fn(op: int, storage: int, left: int, right: int, target: int) -> Instruction {
     return {op: op, storage: storage, output: 0, left: left, right: right, target: target,
-        frame: 0, source: 0, stack: -1, pin: 0, offset: 0, indirect: false, component: 0,
-        node_id: 0, value_storage: 0, payload: 0, layout: 0, message: ""};
+            frame: 0, source: 0, stack: -1, pin: 0, offset: 0, indirect: false, component: 0,
+            node_id: 0, value_storage: 0, payload: 0, layout: 0, message: ""};
 }
 ConstantCode :: pure fn(item: Literal) -> Instruction {
     code := Code(Constant, item.storage, 0, 0, 0);
@@ -101,13 +205,22 @@ Emit :: pure fn(output: Emitter, item: Instruction, origin: Range, storage: int,
     }
 }
 PC :: pure fn(output: Emitter) -> int {
-    switch output { case .Emitted(slots, locals, origins, code): return length(code); }
+    switch output {
+        case .Emitted(slots, locals, origins, code):
+            return length(code);
+    }
 }
 LastSlot :: pure fn(output: Emitter) -> int {
-    switch output { case .Emitted(slots, locals, origins, code): return length(slots) - 1; }
+    switch output {
+        case .Emitted(slots, locals, origins, code):
+            return length(slots) - 1;
+    }
 }
 LocalCount :: pure fn(output: Emitter) -> int {
-    switch output { case .Emitted(slots, locals, origins, code): return length(locals); }
+    switch output {
+        case .Emitted(slots, locals, origins, code):
+            return length(locals);
+    }
 }
 AddLocal :: pure fn(output: Emitter) -> Emitter {
     switch output {
@@ -158,12 +271,16 @@ Lower :: pure fn(request: Request) -> Plan {
             }
             index = 0;
             while (index < length(documents)) {
-                if (text_byte_length(documents[index]) > 240) { return Reject(request_range, "scalar lowering document is too long"); }
+                if (text_byte_length(documents[index]) > 240) {
+                    return Reject(request_range, "scalar lowering document is too long");
+                }
                 index += 1;
             }
             index = 0;
             while (index < length(types)) {
-                if (!Scalar(types[index])) { return Reject(request_range, "scalar lowering supports only ordinary Bool and I32 types"); }
+                if (!Scalar(types[index])) {
+                    return Reject(request_range, "scalar lowering supports only ordinary Bool and I32 types");
+                }
                 index += 1;
             }
             defaults: Literal[] = [];
@@ -181,7 +298,9 @@ Lower :: pure fn(request: Request) -> Plan {
                 }
                 earlier: int = 0;
                 while (earlier < index) {
-                    if (variable_ids[earlier] == identity) { return Reject(request_range, "duplicate scalar lowering variable identity"); }
+                    if (variable_ids[earlier] == identity) {
+                        return Reject(request_range, "duplicate scalar lowering variable identity");
+                    }
                     earlier += 1;
                 }
                 variable_ids = array_add(variable_ids, identity);
@@ -199,10 +318,14 @@ Lower :: pure fn(request: Request) -> Plan {
                 found: int = -1;
                 candidate: int = 0;
                 while (candidate < length(variable_ids)) {
-                    if (variable_ids[candidate] == ids[symbol.id_slot]) { found = candidate; }
+                    if (variable_ids[candidate] == ids[symbol.id_slot]) {
+                        found = candidate;
+                    }
                     candidate += 1;
                 }
-                if (found < 0) { return Reject(request_range, "scalar lowering state has no variable signature"); }
+                if (found < 0) {
+                    return Reject(request_range, "scalar lowering state has no variable signature");
+                }
                 if (types[symbol.type].storage != defaults[found].storage) {
                     return Reject(request_range, "scalar lowering state signature differs from its type");
                 }
@@ -219,39 +342,63 @@ Lower :: pure fn(request: Request) -> Plan {
                 }
                 storage: int = types[item.type].storage;
                 if (item.kind == 1) {
-                    if (!ValidIndex(item.literal, length(literals))) { return Reject(item.range, "invalid scalar lowering literal index"); }
-                    if (!ValidLiteral(literals[item.literal], storage)) { return Reject(item.range, "scalar lowering literal differs from its type"); }
+                    if (!ValidIndex(item.literal, length(literals))) {
+                        return Reject(item.range, "invalid scalar lowering literal index");
+                    }
+                    if (!ValidLiteral(literals[item.literal], storage)) {
+                        return Reject(item.range, "scalar lowering literal differs from its type");
+                    }
                 } else if (item.kind == 2) {
-                    if (!ValidIndex(item.symbol, length(symbols))) { return Reject(item.range, "invalid scalar lowering symbol index"); }
-                    if (types[symbols[item.symbol].type].storage != storage) { return Reject(item.range, "scalar lowering symbol differs from its type"); }
+                    if (!ValidIndex(item.symbol, length(symbols))) {
+                        return Reject(item.range, "invalid scalar lowering symbol index");
+                    }
+                    if (types[symbols[item.symbol].type].storage != storage) {
+                        return Reject(item.range, "scalar lowering symbol differs from its type");
+                    }
                 } else if (item.kind == 3 || item.kind == 4 || item.kind == 5) {
-                    if (!ValidIndex(item.left, length(expressions))) { return Reject(item.range, "invalid scalar lowering left operand"); }
+                    if (!ValidIndex(item.left, length(expressions))) {
+                        return Reject(item.range, "invalid scalar lowering left operand");
+                    }
                     child := expressions[item.left];
-                    if (!ValidIndex(child.type, length(types))) { return Reject(item.range, "invalid scalar lowering operand type"); }
+                    if (!ValidIndex(child.type, length(types))) {
+                        return Reject(item.range, "invalid scalar lowering operand type");
+                    }
                     left_storage: int = types[child.type].storage;
                     if (item.kind == 5 || (item.kind == 3 && item.op == 0)) {
-                        if (storage != left_storage) { return Reject(item.range, "scalar lowering admits identity conversions only"); }
+                        if (storage != left_storage) {
+                            return Reject(item.range, "scalar lowering admits identity conversions only");
+                        }
                     } else if (item.kind == 3) {
                         if (!((item.op == 6 || item.op == 21) && storage == Integer && left_storage == Integer) &&
                             !(item.op == 7 && storage == Boolean && left_storage == Boolean)) {
                             return Reject(item.range, "unsupported scalar lowering unary operator");
                         }
                     } else {
-                        if (!ValidIndex(item.right, length(expressions))) { return Reject(item.range, "invalid scalar lowering right operand"); }
+                        if (!ValidIndex(item.right, length(expressions))) {
+                            return Reject(item.range, "invalid scalar lowering right operand");
+                        }
                         right := expressions[item.right];
-                        if (!ValidIndex(right.type, length(types))) { return Reject(item.range, "invalid scalar lowering operand type"); }
-                        if (left_storage != types[right.type].storage) { return Reject(item.range, "scalar lowering admits identity conversions only"); }
+                        if (!ValidIndex(right.type, length(types))) {
+                            return Reject(item.range, "invalid scalar lowering operand type");
+                        }
+                        if (left_storage != types[right.type].storage) {
+                            return Reject(item.range, "scalar lowering admits identity conversions only");
+                        }
                         logical: bool = item.op == 8 || item.op == 9;
                         compare: bool = item.op >= 10 && item.op <= 15;
                         if (logical) {
-                            if (storage != Boolean || left_storage != Boolean) { return Reject(item.range, "scalar lowering logical operands must be Bool"); }
+                            if (storage != Boolean || left_storage != Boolean) {
+                                return Reject(item.range, "scalar lowering logical operands must be Bool");
+                            }
                         } else if (Opcode(item.op) < 0 ||
-                            (compare && (storage != Boolean || (item.op >= 12 && left_storage != Integer))) ||
-                            (!compare && (storage != Integer || left_storage != Integer))) {
+                                   (compare && (storage != Boolean || (item.op >= 12 && left_storage != Integer))) ||
+                                   (!compare && (storage != Integer || left_storage != Integer))) {
                             return Reject(item.range, "unsupported scalar lowering binary operator");
                         }
                     }
-                } else { return Reject(item.range, "unsupported scalar lowering expression kind"); }
+                } else {
+                    return Reject(item.range, "unsupported scalar lowering expression kind");
+                }
                 index += 1;
             }
             headers: Literal[] = [];
@@ -275,7 +422,10 @@ Lower :: pure fn(request: Request) -> Plan {
             output := Emitter.Emitted(slots, locals, origins, code);
             frames: Frame[] = [];
             index = 0;
-            while (index < 257) { frames = array_add(frames, NewFrame(-1)); index += 1; }
+            while (index < 257) {
+                frames = array_add(frames, NewFrame(-1));
+                index += 1;
+            }
             visits: int = 0;
             ordinal: int = 0;
             while (ordinal < length(results)) {
@@ -288,10 +438,15 @@ Lower :: pure fn(request: Request) -> Plan {
                     item := expressions[frame.expression];
                     place := ranges[item.range];
                     storage: int = types[item.type].storage;
-                    if (PC(output) > 248) { return Reject(item.range, "scalar lowering exceeds its instruction limit"); }
+                    if (PC(output) > 248) {
+                        return Reject(item.range, "scalar lowering exceeds its instruction limit");
+                    }
                     if (returning) {
                         if (frame.phase == 1) {
-                            if (item.kind == 5 || (item.kind == 3 && item.op == 0)) { top -= 1; continue; }
+                            if (item.kind == 5 || (item.kind == 3 && item.op == 0)) {
+                                top -= 1;
+                                continue;
+                            }
                             if (item.kind == 3) {
                                 if (item.op == 7) {
                                     zero: Literal = {storage: Boolean, payload: 0};
@@ -300,7 +455,9 @@ Lower :: pure fn(request: Request) -> Plan {
                                     output = Emit(output, Code(Equal, Boolean, value, zero_slot, 0), place, Boolean, 0);
                                 } else {
                                     op: int = Negate;
-                                    if (item.op == 21) { op = BitNot; }
+                                    if (item.op == 21) {
+                                        op = BitNot;
+                                    }
                                     output = Emit(output, Code(op, storage, value, 0, 0), place, storage, 0);
                                 }
                                 value = LastSlot(output);
@@ -330,7 +487,9 @@ Lower :: pure fn(request: Request) -> Plan {
                         if (item.op == 8 || item.op == 9) {
                             output = Emit(output, Code(Save, Boolean, value, 0, frame.local), place, 0, 0);
                             patch: int = frame.branch_pc;
-                            if (frame.skip >= 0) { patch = frame.skip; }
+                            if (frame.skip >= 0) {
+                                patch = frame.skip;
+                            }
                             output = Patch(output, patch, PC(output));
                             output = Emit(output, Code(LocalRead, Boolean, frame.local, 0, 0), place, Boolean, 0);
                         } else {
@@ -342,11 +501,17 @@ Lower :: pure fn(request: Request) -> Plan {
                         continue;
                     }
                     visits += 1;
-                    if (visits > 256 || top >= 256) { return Reject(item.range, "scalar lowering exceeds its traversal limit"); }
+                    if (visits > 256 || top >= 256) {
+                        return Reject(item.range, "scalar lowering exceeds its traversal limit");
+                    }
                     if (item.kind == 1 || item.kind == 2) {
                         instruction := Code(Constant, storage, 0, 0, 0);
-                        if (item.kind == 1) { instruction = ConstantCode(literals[item.literal]); }
-                        if (item.kind == 2) { instruction = Code(VariableRead, storage, symbol_variables[item.symbol], 0, 0); }
+                        if (item.kind == 1) {
+                            instruction = ConstantCode(literals[item.literal]);
+                        }
+                        if (item.kind == 2) {
+                            instruction = Code(VariableRead, storage, symbol_variables[item.symbol], 0, 0);
+                        }
                         output = Emit(output, instruction, place, storage, 0);
                         value = LastSlot(output);
                         returning = true;
@@ -377,11 +542,13 @@ Lower :: pure fn(request: Request) -> Plan {
             }
             output = Emit(output, Code(Return, 0, 0, 0, 0), ranges[request_range], 0, 0);
             output = Emit(output, Code(End, 0, 0, 0, 0), ranges[request_range], 0, 0);
-            if (PC(output) > 256) { return Reject(request_range, "scalar lowering exceeds its instruction limit"); }
+            if (PC(output) > 256) {
+                return Reject(request_range, "scalar lowering exceeds its instruction limit");
+            }
             switch output {
                 case .Emitted(final_slots, final_locals, final_origins, final_code):
                     return Plan.Ready(abi, variable_ids, defaults, headers,
-                        final_slots, final_locals, final_origins, documents, final_code);
+                                      final_slots, final_locals, final_origins, documents, final_code);
             }
     }
 }

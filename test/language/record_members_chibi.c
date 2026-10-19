@@ -714,7 +714,7 @@ static bool prepare()
         { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE, sizeof CORE_STRINGS_SOURCE - 1 }
     };
     for (int i = 0; i < COUNT(files); i++) {
-        REQUIRE(files[i].size < 32768);
+        REQUIRE(files[i].size < 48 * 1024);
     }
     REQUIRE(
         compiler_fixture_prepare_packs(&fixture, files, COUNT(files), &COMPILER_JSON_DEFINITION_PACK, 1)

@@ -880,7 +880,7 @@ TEST_CASE(callable_headers_register_raw_signatures)
     };
     REQUIRE(files[0].size < 65536);
     for (int i = 1; i < 8; i++) {
-        REQUIRE(files[i].size < 32768);
+        REQUIRE(files[i].size < 48 * 1024);
     }
     REQUIRE(compiler_fixture_prepare_packs(&fixture, files, 8, &COMPILER_JSON_DEFINITION_PACK, 1));
     calls = 0;

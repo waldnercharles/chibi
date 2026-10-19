@@ -45,16 +45,20 @@ Result :: union {
 FindField :: pure fn(nodes: syntax.Node[], fields: string[], node: int, name: string) -> int {
     child := nodes[node].first_child;
     while (child >= 0) {
-        if (fields[child] == name) { return child; }
+        if (fields[child] == name) {
+            return child;
+        }
         child = nodes[child].next_sibling;
     }
     return -1;
 }
 
 Extract :: pure fn(nodes: syntax.Node[], fields: string[], text: string,
-                  root: int, file: int, path: string, directory: string) -> Result {
+                   root: int, file: int, path: string, directory: string) -> Result {
     diagnostics := syntax.Diagnose(nodes, root);
-    if (length(diagnostics) > 0) { return Result.Rejected(diagnostics[0]); }
+    if (length(diagnostics) > 0) {
+        return Result.Rejected(diagnostics[0]);
+    }
 
     header := FindField(nodes, fields, root, "package");
     if (header < 0) {

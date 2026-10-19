@@ -6,11 +6,34 @@ import strings "core:strings"
 // canonical, names are identifiers other than _, files number at most 256, and
 // every import's file index refers to this input. Neither parsing nor disk IO
 // belongs to this component. Package indices preserve input discovery order.
-File :: struct { path: string; directory: string; name: string; }
-Import :: struct { file: int; directory: string; alias: string; explicit_alias: bool; }
-Package :: struct { directory: string; name: string; member_start: int; member_count: int; }
-Binding :: struct { name: string; file: int; target: int; import_index: int; }
-Edge :: struct { from: int; to: int; import_index: int; }
+File :: struct {
+    path: string;
+    directory: string;
+    name: string;
+}
+Import :: struct {
+    file: int;
+    directory: string;
+    alias: string;
+    explicit_alias: bool;
+}
+Package :: struct {
+    directory: string;
+    name: string;
+    member_start: int;
+    member_count: int;
+}
+Binding :: struct {
+    name: string;
+    file: int;
+    target: int;
+    import_index: int;
+}
+Edge :: struct {
+    from: int;
+    to: int;
+    import_index: int;
+}
 Error :: struct {
     code: int;
     file: int;
@@ -40,19 +63,31 @@ Failure :: pure fn(error: Error, cycle: int[]) -> Graph {
 }
 
 BindingCompare :: pure fn(left: Binding, right: Binding) -> int {
-    if (left.file < right.file) { return -1; }
-    if (left.file > right.file) { return 1; }
+    if (left.file < right.file) {
+        return -1;
+    }
+    if (left.file > right.file) {
+        return 1;
+    }
     names := strings.Compare(left.name, right.name);
-    if (names != 0) { return names; }
-    if (left.import_index < right.import_index) { return -1; }
-    if (left.import_index > right.import_index) { return 1; }
+    if (names != 0) {
+        return names;
+    }
+    if (left.import_index < right.import_index) {
+        return -1;
+    }
+    if (left.import_index > right.import_index) {
+        return 1;
+    }
     return 0;
 }
 
 // Merge sorting avoids repeated whole-array indexed rewrites of imported bindings.
 SortBindings :: pure fn(items: Binding[]) -> Binding[] {
     count := length(items);
-    if (count < 2) { return items; }
+    if (count < 2) {
+        return items;
+    }
     middle := count / 2;
     left := SortBindings(slice(items, 0, middle));
     right := SortBindings(slice(items, middle, count - middle));
@@ -97,7 +132,10 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         found: int = -1;
         j = 0;
         while (j < length(packages)) {
-            if (packages[j].directory == file.directory) { found = j; break; }
+            if (packages[j].directory == file.directory) {
+                found = j;
+                break;
+            }
             j += 1;
         }
         if (found >= 0 && packages[found].name != file.name) {
@@ -146,7 +184,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
                 }
                 j += 1;
             }
-            if (next < 0) { break; }
+            if (next < 0) {
+                break;
+            }
             selected[next] = true;
             members[offset] = next;
             offset += 1;
@@ -164,7 +204,10 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         target: int = -1;
         j: int = 0;
         while (j < length(packages)) {
-            if (packages[j].directory == imported.directory) { target = j; break; }
+            if (packages[j].directory == imported.directory) {
+                target = j;
+                break;
+            }
             j += 1;
         }
         if (target < 0) {
@@ -172,7 +215,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
                             related_file: -1, related_import: -1, cycle_count: 0}, cycle);
         }
         alias := imported.alias;
-        if (!imported.explicit_alias) { alias = strings.BaseName(imported.directory); }
+        if (!imported.explicit_alias) {
+            alias = strings.BaseName(imported.directory);
+        }
         blank := imported.explicit_alias && alias == "_";
         if (!strings.IsIdentifier(alias) || (!blank && alias == "_")) {
             return Failure({code: ImportName, file: imported.file, import_index: i,
@@ -185,7 +230,10 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         from := filePackages[imported.file];
         exists := false;
         foreach (edge in edges) {
-            if (edge.from == from && edge.to == target) { exists = true; break; }
+            if (edge.from == from && edge.to == target) {
+                exists = true;
+                break;
+            }
         }
         if (!exists) {
             edge: Edge = {from: from, to: target, import_index: i};
@@ -218,7 +266,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
     emitted := resize([false], count);
     order := resize([int(0)], count);
     foreach (edge in edges) {
-        if (edge.from != edge.to) { dependencies[edge.from] += 1; }
+        if (edge.from != edge.to) {
+            dependencies[edge.from] += 1;
+        }
     }
     ordinal: int = 0;
     while (ordinal < count) {
@@ -236,7 +286,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
             // Follow the C residual witness exactly: lowest residual index,
             // lexical outgoing target, then trim the acyclic prefix.
             current: int = 0;
-            while (emitted[current]) { current += 1; }
+            while (emitted[current]) {
+                current += 1;
+            }
             seen := resize([int(0)], count);
             path: int[] = [];
             while (seen[current] == 0) {
@@ -257,7 +309,10 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
             start := seen[current] - 1;
             cycleCount := length(path) - start;
             i = 0;
-            while (i < cycleCount) { cycle[i] = path[start + i]; i += 1; }
+            while (i < cycleCount) {
+                cycle[i] = path[start + i];
+                i += 1;
+            }
             first := cycle[0];
             last := cycle[cycleCount - 1];
             return Failure({code: Cycle, file: imports[first].file, import_index: first,
@@ -267,7 +322,9 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
         emitted[next] = true;
         order[ordinal] = next;
         foreach (edge in edges) {
-            if (edge.to == next && !emitted[edge.from]) { dependencies[edge.from] -= 1; }
+            if (edge.to == next && !emitted[edge.from]) {
+                dependencies[edge.from] -= 1;
+            }
         }
         ordinal += 1;
     }
@@ -277,36 +334,47 @@ Build :: pure fn(files: File[], imports: Import[]) -> Graph {
 // Like the C facade, indexed queries require accepted graphs and valid indices.
 Count :: pure fn(graph: Graph) -> int {
     switch graph {
-        case .Accepted(packages, members, files, order, edges, bindings): return length(packages);
-        case .Rejected(error, cycle): return 0;
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return length(packages);
+        case .Rejected(error, cycle):
+            return 0;
     }
 }
 PackageAt :: pure fn(graph: Graph, index: int) -> Package {
     switch graph {
-        case .Accepted(packages, members, files, order, edges, bindings): return packages[index];
-        case .Rejected(error, cycle): return {directory: "", name: "", member_start: 0, member_count: 0};
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return packages[index];
+        case .Rejected(error, cycle):
+            return {directory: "", name: "", member_start: 0, member_count: 0};
     }
 }
 FilePackage :: pure fn(graph: Graph, file: int) -> int {
     switch graph {
-        case .Accepted(packages, members, files, order, edges, bindings): return files[file];
-        case .Rejected(error, cycle): return -1;
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return files[file];
+        case .Rejected(error, cycle):
+            return -1;
     }
 }
 Order :: pure fn(graph: Graph, ordinal: int) -> int {
     switch graph {
-        case .Accepted(packages, members, files, order, edges, bindings): return order[ordinal];
-        case .Rejected(error, cycle): return -1;
+        case .Accepted(packages, members, files, order, edges, bindings):
+            return order[ordinal];
+        case .Rejected(error, cycle):
+            return -1;
     }
 }
 Dependency :: pure fn(graph: Graph, from: int, to: int) -> int {
     switch graph {
         case .Accepted(packages, members, files, order, edges, bindings):
             foreach (edge in edges) {
-                if (edge.from == from && edge.to == to) { return edge.import_index; }
+                if (edge.from == from && edge.to == to) {
+                    return edge.import_index;
+                }
             }
             return -1;
-        case .Rejected(error, cycle): return -1;
+        case .Rejected(error, cycle):
+            return -1;
     }
 }
 Lookup :: pure fn(graph: Graph, file: int, alias: string) -> int {
@@ -318,12 +386,23 @@ Lookup :: pure fn(graph: Graph, file: int, alias: string) -> int {
                 middle := lo + (hi - lo) / 2;
                 binding := bindings[middle];
                 compared := strings.Compare(alias, binding.name);
-                if (file < binding.file) { compared = -1; }
-                if (file > binding.file) { compared = 1; }
-                if (compared == 0) { return binding.target; }
-                if (compared < 0) { hi = middle; } else { lo = middle + 1; }
+                if (file < binding.file) {
+                    compared = -1;
+                }
+                if (file > binding.file) {
+                    compared = 1;
+                }
+                if (compared == 0) {
+                    return binding.target;
+                }
+                if (compared < 0) {
+                    hi = middle;
+                } else {
+                    lo = middle + 1;
+                }
             }
             return -1;
-        case .Rejected(error, cycle): return -1;
+        case .Rejected(error, cycle):
+            return -1;
     }
 }

@@ -6,17 +6,27 @@ import syntax "project:syntax_diagnostics"
 
 // This is a view of the existing reader tree, not another syntax representation.
 // Node references in later analysis are (package-local document, local node).
-DocumentTree :: union { Parsed(tree: reader.Tree, root: int) | Missing }
-DocumentMap :: union { Mapped(local_to_source_file: int[], source_file_to_local: int[]) | Missing }
+DocumentTree :: union {
+    Parsed(tree: reader.Tree, root: int) | Missing
+}
+DocumentMap :: union {
+    Mapped(local_to_source_file: int[], source_file_to_local: int[]) | Missing
+}
 
 LocalLink :: pure fn(link: int, node_start: int) -> int {
-    if (link < 0) { return link; }
+    if (link < 0) {
+        return link;
+    }
     return link - node_start;
 }
 RetainedTree :: pure fn(documents: snapshot.Document[], forest: snapshot.SnapshotNode[], source_file: int) -> DocumentTree {
-    if (source_file < 0 || source_file >= length(documents)) { return DocumentTree.Missing; }
+    if (source_file < 0 || source_file >= length(documents)) {
+        return DocumentTree.Missing;
+    }
     document := documents[source_file];
-    if (!document.has_syntax) { return DocumentTree.Missing; }
+    if (!document.has_syntax) {
+        return DocumentTree.Missing;
+    }
     nodes: syntax.Node[] = [];
     fields: string[] = [];
     named_flags: bool[] = [];
@@ -56,9 +66,12 @@ DocumentsForPackage :: pure fn(source: snapshot.Result, package_index: int) -> D
             return DocumentMap.Missing;
         case .Accepted(roots, documents, nodes, imports, graph):
             switch graph {
-                case .Rejected(error, cycle): return DocumentMap.Missing;
+                case .Rejected(error, cycle):
+                    return DocumentMap.Missing;
                 case .Accepted(packages, members, file_packages, order, edges, bindings):
-                    if (package_index < 0 || package_index >= length(packages)) { return DocumentMap.Missing; }
+                    if (package_index < 0 || package_index >= length(packages)) {
+                        return DocumentMap.Missing;
+                    }
                     selected := packages[package_index];
                     local_to_source_file: int[] = [];
                     source_file_to_local: int[] = [];

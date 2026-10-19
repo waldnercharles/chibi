@@ -2,9 +2,20 @@ package constant_admissibility
 
 import ir "project:constant_ir"
 
-Request :: struct { expression: int; steps: int; scalar: bool; has_steps: bool; }
-Proof :: union { Checked(allowed: bool, steps_remaining: int, depths: int[]) }
-Frame :: struct { expression: int; depth: int; next_arg: int; }
+Request :: struct {
+    expression: int;
+    steps: int;
+    scalar: bool;
+    has_steps: bool;
+}
+Proof :: union {
+    Checked(allowed: bool, steps_remaining: int, depths: int[])
+}
+Frame :: struct {
+    expression: int;
+    depth: int;
+    next_arg: int;
+}
 
 FrameValue :: pure fn(expression: int, depth: int) -> Frame {
     return {expression: expression, depth: depth, next_arg: 0};
@@ -20,24 +31,40 @@ Frames :: pure fn(count: int) -> Frame[] {
 }
 ScalarForm :: pure fn(expression: ir.Expression, type: ir.Type) -> bool {
     if (type.container != ir.Single || (type.flags & ~(ir.Untyped | ir.Literal)) != 0 ||
-        type.storage < ir.Boolean || type.storage > ir.String) { return false; }
+        type.storage < ir.Boolean || type.storage > ir.String) {
+        return false;
+    }
     return expression.kind == ir.Constant || expression.kind == ir.SymbolReference ||
            expression.kind == ir.Unary || expression.kind == ir.Binary || expression.kind == ir.Cast;
 }
 ChildCount :: pure fn(expression: ir.Expression) -> int {
     kind := expression.kind;
-    if (kind == ir.Constant || kind == ir.Nil) { return 0; }
-    if (kind == ir.SymbolReference || kind == ir.Unary || kind == ir.Cast || kind == ir.Member) { return 1; }
-    if (kind == ir.Binary || kind == ir.Index) { return 2; }
-    if (kind == ir.Array || kind == ir.Record || kind == ir.Union) { return expression.arg_count; }
+    if (kind == ir.Constant || kind == ir.Nil) {
+        return 0;
+    }
+    if (kind == ir.SymbolReference || kind == ir.Unary || kind == ir.Cast || kind == ir.Member) {
+        return 1;
+    }
+    if (kind == ir.Binary || kind == ir.Index) {
+        return 2;
+    }
+    if (kind == ir.Array || kind == ir.Record || kind == ir.Union) {
+        return expression.arg_count;
+    }
     return -1;
 }
 Child :: pure fn(expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], arguments: ir.Argument[]) -> int {
     kind := expression.kind;
-    if (kind == ir.SymbolReference) { return symbols[expression.symbol].initializer; }
-    if (kind == ir.Unary || kind == ir.Cast || kind == ir.Member) { return expression.left; }
+    if (kind == ir.SymbolReference) {
+        return symbols[expression.symbol].initializer;
+    }
+    if (kind == ir.Unary || kind == ir.Cast || kind == ir.Member) {
+        return expression.left;
+    }
     if (kind == ir.Binary || kind == ir.Index) {
-        if (ordinal == 0) { return expression.left; }
+        if (ordinal == 0) {
+            return expression.left;
+        }
         return expression.right;
     }
     return arguments[expression.arg_start + ordinal].value;
@@ -47,10 +74,13 @@ Child :: pure fn(expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], 
 // successful proof belongs to this query. A deeper successful proof may be
 // reused at a shallower visit, without consuming another step.
 Check :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                  arguments: ir.Argument[], request: Request) -> Proof {
+                 arguments: ir.Argument[], request: Request) -> Proof {
     depths := resize([int(0)], length(expressions));
     index: int = 0;
-    while (index < length(depths)) { depths[index] = -1; index += 1; }
+    while (index < length(depths)) {
+        depths[index] = -1;
+        index += 1;
+    }
     // The extra frame receives depth256, which is rejected before cache/budget.
     frames := Frames(257);
     frames[0] = FrameValue(request.expression, 0);
@@ -61,7 +91,10 @@ Check :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Sym
     while (top >= 0) {
         frame := frames[top];
         if (returning) {
-            if (!valid) { top -= 1; continue; }
+            if (!valid) {
+                top -= 1;
+                continue;
+            }
             expression := expressions[frame.expression];
             frame.next_arg += 1;
             if (frame.next_arg == ChildCount(expression)) {

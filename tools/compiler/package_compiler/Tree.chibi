@@ -16,7 +16,9 @@ Member :: pure fn(forest: snapshot.SnapshotNode[], link: int) -> int {
     return at;
 }
 FirstMember :: pure fn(forest: snapshot.SnapshotNode[], parent: int) -> int {
-    if (parent < 0) { return -1; }
+    if (parent < 0) {
+        return -1;
+    }
     return Member(forest, forest[parent].first_child);
 }
 NextMember :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
@@ -24,10 +26,14 @@ NextMember :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
 }
 // The child holding field `name`, named or not.
 Field :: pure fn(forest: snapshot.SnapshotNode[], node: int, name: string) -> int {
-    if (node < 0) { return -1; }
+    if (node < 0) {
+        return -1;
+    }
     child := forest[node].first_child;
     while (child >= 0) {
-        if (forest[child].field == name) { return child; }
+        if (forest[child].field == name) {
+            return child;
+        }
         child = forest[child].next_sibling;
     }
     return -1;
@@ -39,26 +45,34 @@ Is :: pure fn(forest: snapshot.SnapshotNode[], node: int, kind: string) -> bool 
 HasToken :: pure fn(forest: snapshot.SnapshotNode[], parent: int, token: string) -> bool {
     child := forest[parent].first_child;
     while (child >= 0) {
-        if (!forest[child].is_extra && forest[child].kind == token) { return true; }
+        if (!forest[child].is_extra && forest[child].kind == token) {
+            return true;
+        }
         child = forest[child].next_sibling;
     }
     return false;
 }
 Text :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
-    if (node < 0) { return ""; }
+    if (node < 0) {
+        return "";
+    }
     return strings.Slice(text, forest[node].start, forest[node].end - forest[node].start);
 }
 // A declared or member name. Quoted names decode as JSON strings, as stage
 // zero reads them; an invalid one, or one holding a NUL, reads as "".
 NameText :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
     raw := Text(forest, text, node);
-    if (!Is(forest, node, "string")) { return raw; }
+    if (!Is(forest, node, "string")) {
+        return raw;
+    }
     decoded := compiler_json_string(raw);
-    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) { return ""; }
+    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+        return "";
+    }
     return decoded.value;
 }
 Diagnose :: pure fn(forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> syntax.Diagnostic {
     item := forest[node];
     return {start: item.start, end: item.end, line: item.row + 1, column: item.column + 1,
-        document: document, message: message};
+            document: document, message: message};
 }

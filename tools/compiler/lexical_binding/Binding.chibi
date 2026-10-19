@@ -5,7 +5,15 @@ import strings "core:strings"
 
 // Borrowed tables become ordinary owned invocation values at the ABI boundary.
 // Indices and scope-parent chains retain the analyzer's structural invariants.
-Scope :: struct { parent: int; function: int; start: int; end: int; line: int; column: int; document: int; }
+Scope :: struct {
+    parent: int;
+    function: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
 Symbol :: struct {
     name: string;
     kind: int;
@@ -17,7 +25,10 @@ Symbol :: struct {
     column: int;
     document: int;
 }
-Function :: struct { symbol: int; scope: int; }
+Function :: struct {
+    symbol: int;
+    scope: int;
+}
 Environment :: union {
     Tables(scopes: Scope[], symbols: Symbol[], functions: Function[],
            ids: uint64[], document_keys: string[])
@@ -30,7 +41,15 @@ Context :: struct {
     has_identity: bool;
     has_documents: bool;
 }
-Request :: struct { name: string; kind: int; start: int; end: int; line: int; column: int; document: int; }
+Request :: struct {
+    name: string;
+    kind: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
 Declaration :: union {
     Appended(id: uint64, diagnostics: syntax.Diagnostic[])
     | Existing(symbol: int, diagnostics: syntax.Diagnostic[])
@@ -54,7 +73,9 @@ FindName :: pure fn(environment: Environment, scope: int, name: string) -> int {
                 while (index >= 0) {
                     symbol := symbols[index];
                     if (symbol.scope == current && symbol.kind != FunctionKind &&
-                        symbol.kind != MacroKind && symbol.name == name) { return index; }
+                        symbol.kind != MacroKind && symbol.name == name) {
+                        return index;
+                    }
                     index -= 1;
                 }
                 current = scopes[current].parent;
@@ -85,7 +106,9 @@ FindCallable :: pure fn(environment: Environment, scope: int, name: string) -> i
     found := FindName(environment, scope, name);
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
-            if (found >= 0 && symbols[found].kind == ActionKind) { return found; }
+            if (found >= 0 && symbols[found].kind == ActionKind) {
+                return found;
+            }
             current := scope;
             while (current >= 0) {
                 index := length(symbols) - 1;
@@ -131,7 +154,9 @@ ID :: pure fn(prefix: string, name: string) -> uint64 {
         hash = (hash ^ uint64(strings.ByteAt(name, index))) * prime;
         index += 1;
     }
-    if (hash == 0) { return 1; }
+    if (hash == 0) {
+        return 1;
+    }
     return hash;
 }
 SymbolID :: pure fn(environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {
@@ -140,10 +165,14 @@ SymbolID :: pure fn(environment: Environment, context: Context, request: Request
         suffix = ":callable";
     } else if (result_parameter) {
         suffix = ":result";
-        if (request.kind == LocalKind) { suffix = ":local"; }
+        if (request.kind == LocalKind) {
+            suffix = ":local";
+        }
     }
     program := "";
-    if (context.has_identity) { program = context.identity; }
+    if (context.has_identity) {
+        program = context.identity;
+    }
     if (context.has_documents && context.scope == context.package_scope) {
         return ID("package-symbol", format_text("{}:{}:{}{}", program, request.kind, request.name, suffix));
     }
@@ -154,7 +183,9 @@ SymbolID :: pure fn(environment: Environment, context: Context, request: Request
                 owner_id := ids[symbols[function.symbol].id_slot];
                 scope := scopes[context.scope];
                 start := scope.start;
-                if (context.scope == function.scope) { start = -1; }
+                if (context.scope == function.scope) {
+                    start = -1;
+                }
                 return ID("package-local", format_text("{}:{}:{}:{}:{}{}", owner_id, keys[scope.document],
                                                        start, request.kind, request.name, suffix));
             }

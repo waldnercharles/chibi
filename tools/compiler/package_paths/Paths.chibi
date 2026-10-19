@@ -20,32 +20,46 @@ Path :: union {
 
 Bounded :: pure fn(path: string) -> bool {
     size := strings.ByteLength(path);
-    if (size >= 4096) { return false; }
+    if (size >= 4096) {
+        return false;
+    }
     index: int = 0;
     while (index < size) {
-        if (strings.ByteAt(path, index) == 92) { return false; }
+        if (strings.ByteAt(path, index) == 92) {
+            return false;
+        }
         index += 1;
     }
     return true;
 }
 
 Within :: pure fn(root: string, path: string) -> bool {
-    if (root == "/") { return strings.ByteAt(path, 0) == 47; }
+    if (root == "/") {
+        return strings.ByteAt(path, 0) == 47;
+    }
     size := strings.ByteLength(root);
-    if (strings.Slice(path, 0, size) != root) { return false; }
+    if (strings.Slice(path, 0, size) != root) {
+        return false;
+    }
     next := strings.ByteAt(path, size);
     return next < 0 || next == 47;
 }
 
 Normalize :: pure fn(request: Request) -> Path {
-    if (!request.has_path || !Bounded(request.path)) { return Path.Invalid; }
+    if (!request.has_path || !Bounded(request.path)) {
+        return Path.Invalid;
+    }
     joined := request.path;
     if (strings.ByteAt(request.path, 0) != 47) {
-        if (!request.has_base) { return Path.Invalid; }
+        if (!request.has_base) {
+            return Path.Invalid;
+        }
         joined = format_text("{}/{}", request.base, request.path);
     }
     size := strings.ByteLength(joined);
-    if (size >= 4096) { return Path.Invalid; }
+    if (size >= 4096) {
+        return Path.Invalid;
+    }
 
     result := "/";
     starts := resize([int(0)], 2048);
@@ -57,10 +71,14 @@ Normalize :: pure fn(request: Request) -> Path {
             continue;
         }
         end := position;
-        while (end < size && strings.ByteAt(joined, end) != 47) { end += 1; }
+        while (end < size && strings.ByteAt(joined, end) != 47) {
+            end += 1;
+        }
         part := strings.Slice(joined, position, end - position);
         if (part == "..") {
-            if (depth == 0) { return Path.Invalid; }
+            if (depth == 0) {
+                return Path.Invalid;
+            }
             depth -= 1;
             result = strings.Slice(result, 0, starts[depth]);
             // Leaving and later re-entering the floor is still an escape.
@@ -78,6 +96,8 @@ Normalize :: pure fn(request: Request) -> Path {
         }
         position = end;
     }
-    if (request.has_floor && !Within(request.floor, result)) { return Path.Invalid; }
+    if (request.has_floor && !Within(request.floor, result)) {
+        return Path.Invalid;
+    }
     return Path.Normalized(result);
 }

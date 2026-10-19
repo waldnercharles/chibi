@@ -16,27 +16,73 @@ import strings "core:strings"
 // step (Steps.chibi) that returns only what it adds, so no one definition
 // grows past what the runtime's verifier admits.
 
-Slot :: struct { storage: int; kind: int; }
+Slot :: struct {
+    storage: int;
+    kind: int;
+}
 // An instruction with the value a constant or header read carries, the
 // message a failing check reports and the source range it lowers. A scalar's
 // 64 bits, sign-extended for signed types, are `payload_high` and `payload`,
 // since records hold only int, bool and string fields.
 Code :: struct {
-    op: int; type: int; output: int; left: int; right: int; target: int; offset: int;
-    value_storage: int; value_container: int; value_record: int; payload: int; payload_high: int; text: string;
-    has_text: bool; message: string; has_message: bool; start: int; end: int; line: int; column: int;
+    op: int;
+    type: int;
+    output: int;
+    left: int;
+    right: int;
+    target: int;
+    offset: int;
+    value_storage: int;
+    value_container: int;
+    value_record: int;
+    payload: int;
+    payload_high: int;
+    text: string;
+    has_text: bool;
+    message: string;
+    has_message: bool;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
 }
 // An integer literal's exact value, or none.
-Literal :: union { Number(negative: bool, magnitude: uint64) | Invalid }
+Literal :: union {
+    Number(negative: bool, magnitude: uint64) | Invalid
+}
 // A data cell's header type and kind. Some cells hold a constant payload: the
 // bits `constant`, or the tag of variant types[variant] when that is not -1.
-Cell :: struct { storage: int; container: int; record: int; constant: int; variant: int; kind: int; }
-Invocation :: struct { callee: int; first: int; count: int; result_first: int; result_count: int; }
+Cell :: struct {
+    storage: int;
+    container: int;
+    record: int;
+    constant: int;
+    variant: int;
+    kind: int;
+}
+Invocation :: struct {
+    callee: int;
+    first: int;
+    count: int;
+    result_first: int;
+    result_count: int;
+}
 // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
 // when `linked` is not -1.
-Host :: struct { intrinsic: int; linked: int; first: int; result_first: int; result_count: int; }
+Host :: struct {
+    intrinsic: int;
+    linked: int;
+    first: int;
+    result_first: int;
+    result_count: int;
+}
 // A slot holding a record or array pointer the collector must trace.
-Root :: struct { slot: int; storage: int; container: int; record: int; }
+Root :: struct {
+    slot: int;
+    storage: int;
+    container: int;
+    record: int;
+}
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Emitted(slots: Slot[], locals: int[], cells: Cell[], code: Code[], calls: Invocation[],
@@ -44,23 +90,68 @@ Body :: union {
 }
 // A scheduled visit. Storage, container and record are the type a literal at
 // `node` takes from its context; storage 0 means none.
-Work :: struct { node: int; phase: int; a: int; b: int; c: int; storage: int; container: int; record: int; }
-Value :: struct { slot: int; storage: int; container: int; record: int; }
+Work :: struct {
+    node: int;
+    phase: int;
+    a: int;
+    b: int;
+    c: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+Value :: struct {
+    slot: int;
+    storage: int;
+    container: int;
+    record: int;
+}
 // A name in scope: a locals-bank value, a record or array held in a data
 // cell, or a record or array parameter read in place. Pattern bindings are
 // not writable.
-Name :: struct { name: string; place: int; index: int; storage: int; container: int; record: int; writable: bool; }
+Name :: struct {
+    name: string;
+    place: int;
+    index: int;
+    storage: int;
+    container: int;
+    record: int;
+    writable: bool;
+}
 // A loop being emitted. A while loop's continues jump to `head`; a foreach
 // loop patches them to its increment, and owns its index local, the names to
 // drop and its exit jump, `leave`.
-Loop :: struct { head: int; first_break: int; first_continue: int; each: bool; index: int; mark: int; leave: int; }
+Loop :: struct {
+    head: int;
+    first_break: int;
+    first_continue: int;
+    each: bool;
+    index: int;
+    mark: int;
+    leave: int;
+}
 // A switch being emitted: the local holding its union, where its exit jumps
 // start in `exits` and its matched variants in `covered`, whether it has a
 // default arm, the pending jump past the current arm, and the names the arm's
 // bindings start at.
-Switch :: struct { subject: int; held: int; first_exit: int; first_cover: int; defaulted: bool; skip: int; mark: int; }
+Switch :: struct {
+    subject: int;
+    held: int;
+    first_exit: int;
+    first_cover: int;
+    defaulted: bool;
+    skip: int;
+    mark: int;
+}
 // The size of each table when a step starts.
-Bases :: struct { pc: int; slot: int; local: int; cell: int; host: int; call: int; }
+Bases :: struct {
+    pc: int;
+    slot: int;
+    local: int;
+    cell: int;
+    host: int;
+    call: int;
+}
 // What a step adds: instructions and table rows, names it binds, work it
 // schedules, how many values it pops, the value it produces, a value to copy
 // into a fresh cell, and positions it reports to EmitBody.
@@ -107,9 +198,9 @@ FieldPhase: int : 5;
 Instruction :: pure fn(op: int, type: int, output: int, left: int, right: int, target: int,
                        item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
-        offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
-        has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
-        column: item.column + 1};
+            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, payload_high: 0, text: "",
+            has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
+            column: item.column + 1};
 }
 Visit :: pure fn(node: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
@@ -120,7 +211,9 @@ Expect :: pure fn(node: int, storage: int, container: int, record: int) -> Work 
 Resume :: pure fn(node: int, phase: int, a: int, b: int) -> Work {
     return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
 }
-NoValue :: pure fn() -> Value { return {slot: -1, storage: 0, container: 0, record: -1}; }
+NoValue :: pure fn() -> Value {
+    return {slot: -1, storage: 0, container: 0, record: -1};
+}
 Typed :: pure fn(slot: int, storage: int, container: int, record: int) -> Value {
     return {slot: slot, storage: storage, container: container, record: record};
 }
@@ -132,11 +225,15 @@ Pointer :: pure fn(storage: int, container: int) -> bool {
     return container != 0 || storage == StructStorage;
 }
 SlotStorage :: pure fn(storage: int, container: int, target: Target) -> int {
-    if (Pointer(storage, container)) { return target.pointer_storage; }
+    if (Pointer(storage, container)) {
+        return target.pointer_storage;
+    }
     return storage;
 }
 SlotKind :: pure fn(storage: int, container: int) -> int {
-    if (Pointer(storage, container)) { return AddressKind; }
+    if (Pointer(storage, container)) {
+        return AddressKind;
+    }
     return ValueKind;
 }
 SameType :: pure fn(storage: int, container: int, record: int, value: Value) -> bool {
@@ -147,9 +244,15 @@ Single :: pure fn(value: Value, storage: int) -> bool {
 }
 // The digit a hexadecimal character stands for, -1 for any other.
 HexDigit :: pure fn(character: int) -> int {
-    if (character >= 48 && character <= 57) { return character - 48; }
-    if (character >= 97 && character <= 102) { return character - 87; }
-    if (character >= 65 && character <= 70) { return character - 55; }
+    if (character >= 48 && character <= 57) {
+        return character - 48;
+    }
+    if (character >= 97 && character <= 102) {
+        return character - 87;
+    }
+    if (character >= 65 && character <= 70) {
+        return character - 55;
+    }
     return -1;
 }
 // The value of a number literal, or of `-` on one; not valid for anything
@@ -160,11 +263,15 @@ ParseNumber :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int)
     digits := node;
     negative := false;
     if (Is(forest, node, "unary_expression")) {
-        if (Text(forest, text, Field(forest, node, "operator")) != "-") { return invalid; }
+        if (Text(forest, text, Field(forest, node, "operator")) != "-") {
+            return invalid;
+        }
         digits = Field(forest, node, "operand");
         negative = true;
     }
-    if (!Is(forest, digits, "number")) { return invalid; }
+    if (!Is(forest, digits, "number")) {
+        return invalid;
+    }
     literal := Text(forest, text, digits);
     size := strings.ByteLength(literal);
     base: int = 10;
@@ -180,13 +287,19 @@ ParseNumber :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int)
     magnitude: uint64 = 0;
     while (index < size) {
         digit := HexDigit(strings.ByteAt(literal, index));
-        if (digit < 0 || digit >= base) { return invalid; }
-        if (first < 0 && digit != 0) { first = index; }
+        if (digit < 0 || digit >= base) {
+            return invalid;
+        }
+        if (first < 0 && digit != 0) {
+            first = index;
+        }
         magnitude = magnitude * uint64(base) + uint64(digit);
         index += 1;
     }
     significant: int = 0;
-    if (first >= 0) { significant = size - first; }
+    if (first >= 0) {
+        significant = size - first;
+    }
     if ((base == 16 && significant > 16) || significant > 20 ||
         (significant == 20 && strings.Compare(strings.Slice(literal, first, 20), "18446744073709551615") > 0)) {
         return invalid;
@@ -205,29 +318,51 @@ Integer :: pure fn(storage: int) -> bool {
     return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
 }
 TypeName :: pure fn(storage: int) -> string {
-    if (storage == ByteStorage) { return "byte"; }
-    if (storage == IntStorage) { return "int"; }
-    if (storage == Int64Storage) { return "int64"; }
+    if (storage == ByteStorage) {
+        return "byte";
+    }
+    if (storage == IntStorage) {
+        return "int";
+    }
+    if (storage == Int64Storage) {
+        return "int64";
+    }
     return "uint64";
 }
 // Whether a literal's value fits an integer type.
 Fits :: pure fn(negative: bool, magnitude: uint64, storage: int) -> bool {
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
-    if (negative && (storage == ByteStorage || storage == WordStorage)) { return false; }
-    if (magnitude == 0) { return true; }
-    if (storage == ByteStorage) { return (magnitude >> 8) == 0; }
-    if (storage == IntStorage) { return (magnitude >> 31) == 0 || (negative && magnitude == 0x80000000); }
-    if (storage == Int64Storage) { return (magnitude >> 63) == 0 || (negative && magnitude == 0x8000000000000000); }
+    if (negative && (storage == ByteStorage || storage == WordStorage)) {
+        return false;
+    }
+    if (magnitude == 0) {
+        return true;
+    }
+    if (storage == ByteStorage) {
+        return (magnitude >> 8) == 0;
+    }
+    if (storage == IntStorage) {
+        return (magnitude >> 31) == 0 || (negative && magnitude == 0x80000000);
+    }
+    if (storage == Int64Storage) {
+        return (magnitude >> 63) == 0 || (negative && magnitude == 0x8000000000000000);
+    }
     return !negative;
 }
 // A literal's bits in an integer type it fits, sign-extended when negative.
 Bits :: pure fn(negative: bool, magnitude: uint64) -> uint64 {
-    if (negative) { return ~magnitude + 1; }
+    if (negative) {
+        return ~magnitude + 1;
+    }
     return magnitude;
 }
 // The low and high 32 bits of a 64-bit pattern, and the pattern again.
-Low :: pure fn(bits: uint64) -> int { return int(wrap: bits & 0xFFFFFFFF); }
-High :: pure fn(bits: uint64) -> int { return int(wrap: bits >> 32); }
+Low :: pure fn(bits: uint64) -> int {
+    return int(wrap: bits & 0xFFFFFFFF);
+}
+High :: pure fn(bits: uint64) -> int {
+    return int(wrap: bits >> 32);
+}
 Join :: pure fn(high: int, low: int) -> uint64 {
     return (uint64(wrap: int64(high)) << 32) | (uint64(wrap: int64(low)) & 0xFFFFFFFF);
 }
@@ -235,9 +370,15 @@ Join :: pure fn(high: int, low: int) -> uint64 {
 // int for a byte and an int; -1 when there is none, as for a signed type with
 // uint64.
 CommonInteger :: pure fn(left: int, right: int) -> int {
-    if (left == right) { return left; }
-    if (left == ByteStorage) { return right; }
-    if (right == ByteStorage) { return left; }
+    if (left == right) {
+        return left;
+    }
+    if (left == ByteStorage) {
+        return right;
+    }
+    if (right == ByteStorage) {
+        return left;
+    }
     if ((left == IntStorage && right == Int64Storage) || (left == Int64Storage && right == IntStorage)) {
         return Int64Storage;
     }
@@ -256,7 +397,9 @@ Computes :: pure fn(ops: Ops, op: int, storage: int) -> bool {
         op == ops.bit_not || op == ops.shl || op == ops.shr) {
         return true;
     }
-    if (storage == IntStorage || storage == Int64Storage) { return true; }
+    if (storage == IntStorage || storage == Int64Storage) {
+        return true;
+    }
     return storage == WordStorage && (op == ops.add || op == ops.mul);
 }
 // A constant of an integer or bool type.
@@ -277,22 +420,54 @@ CastCode :: pure fn(ops: Ops, storage: int, output: int, input: int, mode: int, 
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
 BinaryOp :: pure fn(ops: Ops, operator: string) -> int {
-    if (operator == "+") { return ops.add; }
-    if (operator == "-") { return ops.sub; }
-    if (operator == "*") { return ops.mul; }
-    if (operator == "/") { return ops.div; }
-    if (operator == "%") { return ops.mod; }
-    if (operator == "&") { return ops.bit_and; }
-    if (operator == "|") { return ops.bit_or; }
-    if (operator == "^") { return ops.bit_xor; }
-    if (operator == "<<") { return ops.shl; }
-    if (operator == ">>") { return ops.shr; }
-    if (operator == "<") { return ops.lt; }
-    if (operator == "<=") { return ops.le; }
-    if (operator == ">") { return ops.gt; }
-    if (operator == ">=") { return ops.ge; }
-    if (operator == "==") { return ops.eq; }
-    if (operator == "!=") { return ops.ne; }
+    if (operator == "+") {
+        return ops.add;
+    }
+    if (operator == "-") {
+        return ops.sub;
+    }
+    if (operator == "*") {
+        return ops.mul;
+    }
+    if (operator == "/") {
+        return ops.div;
+    }
+    if (operator == "%") {
+        return ops.mod;
+    }
+    if (operator == "&") {
+        return ops.bit_and;
+    }
+    if (operator == "|") {
+        return ops.bit_or;
+    }
+    if (operator == "^") {
+        return ops.bit_xor;
+    }
+    if (operator == "<<") {
+        return ops.shl;
+    }
+    if (operator == ">>") {
+        return ops.shr;
+    }
+    if (operator == "<") {
+        return ops.lt;
+    }
+    if (operator == "<=") {
+        return ops.le;
+    }
+    if (operator == ">") {
+        return ops.gt;
+    }
+    if (operator == ">=") {
+        return ops.ge;
+    }
+    if (operator == "==") {
+        return ops.eq;
+    }
+    if (operator == "!=") {
+        return ops.ne;
+    }
     return -1;
 }
 Comparison :: pure fn(ops: Ops, op: int) -> bool {
@@ -300,14 +475,18 @@ Comparison :: pure fn(ops: Ops, op: int) -> bool {
 }
 // The operator of a compound assignment, "" for plain assignment.
 CompoundOperator :: pure fn(text: string) -> string {
-    if (text == "=") { return ""; }
+    if (text == "=") {
+        return "";
+    }
     return strings.Slice(text, 0, strings.ByteLength(text) - 1);
 }
 // The function of `package` named `name`, -1 when none.
 FindCallable :: pure fn(callables: Callable[], package: int, name: string) -> int {
     index: int = 0;
     while (index < length(callables)) {
-        if (callables[index].package == package && callables[index].name == name) { return index; }
+        if (callables[index].package == package && callables[index].name == name) {
+            return index;
+        }
         index += 1;
     }
     return -1;
@@ -315,7 +494,9 @@ FindCallable :: pure fn(callables: Callable[], package: int, name: string) -> in
 FindField :: pure fn(types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
-        if (members[at].name == name) { return at; }
+        if (members[at].name == name) {
+            return at;
+        }
         at += 1;
     }
     return -1;
@@ -324,14 +505,20 @@ FindField :: pure fn(types: TypeDecl[], members: TypeMember[], record: int, name
 Lookup :: pure fn(names: Name[], wanted: string) -> int {
     at := length(names) - 1;
     while (at >= 0) {
-        if (names[at].name == wanted) { return at; }
+        if (names[at].name == wanted) {
+            return at;
+        }
         at -= 1;
     }
     return -1;
 }
-Separator :: pure fn(byte: int) -> bool { return byte == 95 || byte == 32 || byte == 45; }
+Separator :: pure fn(byte: int) -> bool {
+    return byte == 95 || byte == 32 || byte == 45;
+}
 Lower :: pure fn(byte: int) -> int {
-    if (byte >= 65 && byte <= 90) { return byte + 32; }
+    if (byte >= 65 && byte <= 90) {
+        return byte + 32;
+    }
     return byte;
 }
 // Whether two names match as the native catalog matches them: ignoring case,
@@ -342,10 +529,18 @@ NameMatches :: pure fn(left: string, right: string) -> bool {
     left_length := strings.ByteLength(left);
     right_length := strings.ByteLength(right);
     while (i <= left_length && j <= right_length) {
-        while (i < left_length && Separator(strings.ByteAt(left, i))) { i += 1; }
-        while (j < right_length && Separator(strings.ByteAt(right, j))) { j += 1; }
-        if (i == left_length || j == right_length) { return i == left_length && j == right_length; }
-        if (Lower(strings.ByteAt(left, i)) != Lower(strings.ByteAt(right, j))) { return false; }
+        while (i < left_length && Separator(strings.ByteAt(left, i))) {
+            i += 1;
+        }
+        while (j < right_length && Separator(strings.ByteAt(right, j))) {
+            j += 1;
+        }
+        if (i == left_length || j == right_length) {
+            return i == left_length && j == right_length;
+        }
+        if (Lower(strings.ByteAt(left, i)) != Lower(strings.ByteAt(right, j))) {
+            return false;
+        }
         i += 1;
         j += 1;
     }
@@ -357,7 +552,9 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < length(natives)) {
-        if (natives[index].name == name) { return index; }
+        if (natives[index].name == name) {
+            return index;
+        }
         if (NameMatches(natives[index].name, name)) {
             if (found >= 0) {
                 found = -2;
@@ -373,10 +570,16 @@ FindNative :: pure fn(natives: Native[], name: string) -> int {
 // package for none, the imported one when `node` is an import alias no local
 // hides, and -1 otherwise.
 QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
-    if (node < 0) { return package; }
-    if (!Is(forest, node, "identifier")) { return -1; }
+    if (node < 0) {
+        return package;
+    }
+    if (!Is(forest, node, "identifier")) {
+        return -1;
+    }
     found := Lookup(names, Text(forest, text, node));
-    if (found < 0 || names[found].place != AliasPlace) { return -1; }
+    if (found < 0 || names[found].place != AliasPlace) {
+        return -1;
+    }
     return names[found].index;
 }
 // The package constant `node` names: `Name` when no local hides it, or
@@ -384,12 +587,18 @@ QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Nam
 ConstantOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
                       node: int) -> int {
     if (Is(forest, node, "identifier")) {
-        if (Lookup(names, Text(forest, text, node)) >= 0) { return -1; }
+        if (Lookup(names, Text(forest, text, node)) >= 0) {
+            return -1;
+        }
         return FindConstant(constants, package, Text(forest, text, node));
     }
-    if (!Is(forest, node, "member_expression")) { return -1; }
+    if (!Is(forest, node, "member_expression")) {
+        return -1;
+    }
     home := QualifierOf(forest, text, names, package, Field(forest, node, "object"));
-    if (home < 0) { return -1; }
+    if (home < 0) {
+        return -1;
+    }
     return FindConstant(constants, home, NameText(forest, text, Field(forest, node, "member")));
 }
 // The union `U` names when `node` is a member expression `U.Variant` or
@@ -405,16 +614,22 @@ UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDec
         return -1;
     }
     home := QualifierOf(forest, text, names, package, qualifier);
-    if (home < 0) { return -1; }
+    if (home < 0) {
+        return -1;
+    }
     declared := FindType(types, home, NameText(forest, text, object));
-    if (declared < 0 || types[declared].kind != UnionDecl) { return -1; }
+    if (declared < 0 || types[declared].kind != UnionDecl) {
+        return -1;
+    }
     return declared;
 }
 // Whether `variant` is among `covered` from `first` on.
 Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
     at := first;
     while (at < length(covered)) {
-        if (covered[at] == variant) { return true; }
+        if (covered[at] == variant) {
+            return true;
+        }
         at += 1;
     }
     return false;
@@ -424,7 +639,9 @@ Covers :: pure fn(covered: int[], first: int, variant: int) -> bool {
 Declared :: pure fn(names: Name[], scope: int, name: string) -> bool {
     at := scope;
     while (at < length(names)) {
-        if (names[at].name == name) { return true; }
+        if (names[at].name == name) {
+            return true;
+        }
         at += 1;
     }
     return false;
@@ -440,7 +657,9 @@ BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node:
         }
         if (Is(forest, parent, "binary_expression")) {
             operator := Text(forest, text, Field(forest, parent, "operator"));
-            if (operator != "&&" && operator != "and") { return false; }
+            if (operator != "&&" && operator != "and") {
+                return false;
+            }
         } else if (!Is(forest, parent, "parenthesized_expression")) {
             return false;
         }
@@ -452,7 +671,9 @@ BindingCondition :: pure fn(forest: snapshot.SnapshotNode[], text: string, node:
 // The next switch arm after `node` among its siblings, -1 when none.
 NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
     at := NextMember(forest, node);
-    while (at >= 0 && !Is(forest, at, "switch_arm")) { at = NextMember(forest, at); }
+    while (at >= 0 && !Is(forest, at, "switch_arm")) {
+        at = NextMember(forest, at);
+    }
     return at;
 }
 // The index of a native's result named `name`, matched as natives are: an
@@ -463,7 +684,9 @@ FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
     index: int = 0;
     while (index < native.results) {
         result := ports[native.first + native.parameters + index].name;
-        if (result == name) { return index; }
+        if (result == name) {
+            return index;
+        }
         if (NameMatches(result, name)) {
             if (found >= 0) {
                 found = -2;
@@ -488,11 +711,17 @@ Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, nam
             while (Is(forest, target, "member_expression") || Is(forest, target, "index_expression")) {
                 target = Field(forest, target, "object");
             }
-            if (Is(forest, target, "identifier") && Text(forest, text, target) == name) { return true; }
+            if (Is(forest, target, "identifier") && Text(forest, text, target) == name) {
+                return true;
+            }
         }
         child := forest[at].first_child;
         while (child >= 0) {
-            if (top < length(pending)) { pending[top] = child; } else { pending = array_add(pending, child); }
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending = array_add(pending, child);
+            }
             top += 1;
             child = forest[child].next_sibling;
         }
@@ -525,12 +754,20 @@ InPlaceUpdate :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
         return -1;
     }
     second := NextMember(forest, first);
-    if (second < 0 || NextMember(forest, second) >= 0) { return -1; }
+    if (second < 0 || NextMember(forest, second) >= 0) {
+        return -1;
+    }
     native := FindNative(natives, Text(forest, text, callee));
-    if (native < 0) { return -1; }
+    if (native < 0) {
+        return -1;
+    }
     capability := identities[2 * native];
-    if (capability == binding.ID("capability", "Array Add")) { return 0; }
-    if (capability == binding.ID("capability", "Append")) { return 1; }
+    if (capability == binding.ID("capability", "Array Add")) {
+        return 0;
+    }
+    if (capability == binding.ID("capability", "Append")) {
+        return 1;
+    }
     return -1;
 }
 
@@ -575,7 +812,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             work = array_add(work, Resume(callable.node, 0, index, 0));
         } else if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
-                container: param.container, record: param.record, writable: true};
+                          container: param.container, record: param.record, writable: true};
             names = array_add(names, name);
         } else {
             slot: Slot = {storage: param.storage, kind: ValueKind};
@@ -585,9 +822,9 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             code = array_add(code, read);
             locals = array_add(locals, param.storage);
             code = array_add(code, Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
-                length(locals) - 1, declaration));
+                                               length(locals) - 1, declaration));
             name: Name = {name: param.name, place: LocalPlace, index: length(locals) - 1,
-                storage: param.storage, container: 0, record: param.record, writable: true};
+                          storage: param.storage, container: 0, record: param.record, writable: true};
             names = array_add(names, name);
         }
         index += 1;
@@ -610,7 +847,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         // The step a node other than control flow takes.
         stepped := true;
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
-            host: length(hosts), call: length(calls)};
+                     host: length(hosts), call: length(calls)};
         step := Fail(forest, item.node, document, "");
         if (kind == "callable_body" || kind == "block") {
             stepped = false;
@@ -643,7 +880,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 condition := values[value_top];
                 if (!Single(condition, BoolStorage)) {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "condition"), document,
-                        "condition needs a bool"));
+                                                "condition needs a bool"));
                 }
                 code = array_add(code, Instruction(ops.branch_if, 0, 0, condition.slot, 0, length(code) + 2, node));
                 code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
@@ -651,7 +888,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 if (kind == "while_statement") {
                     field = "body";
                     loop: Loop = {head: item.a, first_break: length(breaks), first_continue: length(continues),
-                        each: false, index: -1, mark: length(names), leave: length(code) - 1};
+                                  each: false, index: -1, mark: length(names), leave: length(code) - 1};
                     loops = array_add(loops, loop);
                 }
                 next = array_add(next, Visit(Field(forest, item.node, field)));
@@ -715,7 +952,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top -= 1;
                 if (NameText(forest, text, Field(forest, item.node, "name")) == "") {
                     return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
-                        "Invalid string or embedded NUL"));
+                                                "Invalid string or embedded NUL"));
                 }
                 step = ForeachStep(values[value_top], ops, target, at, node);
             } else if (item.phase == 3) {
@@ -724,7 +961,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top -= 1;
                 kept := values[value_top];
                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")), place: CellPlace,
-                    index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: false};
+                                 index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: false};
                 names = array_add(names, binding);
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                 next = array_add(next, Resume(item.node, 4, 0, 0));
@@ -750,7 +987,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 code = array_add(code, constant);
                 slots = array_add(slots, number);
                 code = array_add(code, Instruction(ops.add, IntStorage, length(slots) - 1, length(slots) - 3,
-                    length(slots) - 2, -1, node));
+                                                   length(slots) - 2, -1, node));
                 code = array_add(code, Instruction(ops.save, IntStorage, 0, length(slots) - 1, 0, loop.index, node));
                 code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
                 done := code[loop.leave];
@@ -783,7 +1020,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 locals = array_add(locals, UnionStorage);
                 code = array_add(code, Instruction(ops.save, UnionStorage, 0, subject.slot, 0, length(locals) - 1, node));
                 current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
-                    first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
+                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
                 switches = array_add(switches, current);
                 next = array_add(next, Resume(item.node, 2, NextArm(forest, Field(forest, item.node, "value")), 0));
             } else if (item.phase == 2 && item.a < 0) {
@@ -791,7 +1028,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 current := switches[length(switches) - 1];
                 if (!current.defaulted && length(covered) - current.first_cover < types[current.held].count) {
                     return Body.Failed(Diagnose(forest, item.node, document,
-                        "Non-exhaustive switch: a union alternative is missing"));
+                                                "Non-exhaustive switch: a union alternative is missing"));
                 }
                 switches = slice(switches, 0, length(switches) - 1);
                 covered = slice(covered, 0, current.first_cover);
@@ -810,7 +1047,9 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 scopes = array_add(scopes, length(names));
                 pattern := Field(forest, item.a, "value");
                 if (pattern < 0) {
-                    if (current.defaulted) { return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm")); }
+                    if (current.defaulted) {
+                        return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm"));
+                    }
                     current.defaulted = true;
                     switches[length(switches) - 1] = current;
                     stepped = false;
@@ -838,7 +1077,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                         return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
                     }
                     step = MatchStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
-                        current.subject, -1, variant, bindings, true, false, ops, target, at, node);
+                                     current.subject, -1, variant, bindings, true, false, ops, target, at, node);
                 }
                 next = array_add(next, Visit(Field(forest, item.a, "body")));
                 next = array_add(next, Resume(item.node, 3, item.a, 0));
@@ -918,16 +1157,16 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
             step = StatementStep(forest, text, document, callables, types, members, natives, identities, names, scopes[length(scopes) - 1],
-                callable.package, values, value_top, function, item, ops, target, at);
+                                 callable.package, values, value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, types, members, constants, natives, ports, names,
-                callable.package, values, value_top, item, ops, target, at);
+                             callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
             step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names,
-                callable.package, values, value_top, item, ops, target, at);
+                            callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {
@@ -938,7 +1177,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             next = array_add(next, Resume(item.node, 1, 0, 0));
         } else if (kind == "is_expression") {
             step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
-                item, ops, target, at);
+                          item, ops, target, at);
         } else {
             return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
         }
@@ -949,13 +1188,14 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 stepped = retain.storage != 0;
                 if (stepped) {
                     at = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
-                        host: length(hosts), call: length(calls)};
+                          host: length(hosts), call: length(calls)};
                     step = RetainStep(retain, ops, target, at, node);
                 }
             }
             if (stepped) {
                 switch step {
-                    case .Failed(diagnostic): return Body.Failed(diagnostic);
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                   added_calls, added_names, scheduled, popped, value, kept, marks):
                         code = append(code, added_code);
@@ -968,8 +1208,12 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                         names = append(names, added_names);
                         next = append(next, scheduled);
                         value_top -= popped;
-                        if (value.storage != 0) { produced = value; }
-                        if (pass == 0) { retain = kept; }
+                        if (value.storage != 0) {
+                            produced = value;
+                        }
+                        if (pass == 0) {
+                            retain = kept;
+                        }
                         if (length(marks) == 1) {
                             // A switch arm's test: the jump past the arm.
                             current := switches[length(switches) - 1];
@@ -979,7 +1223,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                         if (length(marks) == 3) {
                             // A foreach head: its loop, then its element's binding.
                             loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
-                                each: true, index: marks[2], mark: length(names), leave: marks[1]};
+                                          each: true, index: marks[2], mark: length(names), leave: marks[1]};
                             loops = array_add(loops, loop);
                             element := produced;
                             produced = NoValue();
@@ -989,10 +1233,10 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                             } else {
                                 locals = array_add(locals, element.storage);
                                 code = array_add(code, Instruction(ops.save, element.storage, 0, element.slot, 0,
-                                    length(locals) - 1, node));
+                                                                   length(locals) - 1, node));
                                 binding: Name = {name: NameText(forest, text, Field(forest, item.node, "name")),
-                                    place: LocalPlace, index: length(locals) - 1, storage: element.storage,
-                                    container: 0, record: element.record, writable: false};
+                                                 place: LocalPlace, index: length(locals) - 1, storage: element.storage,
+                                                 container: 0, record: element.record, writable: false};
                                 names = array_add(names, binding);
                                 next = array_add(next, Visit(Field(forest, item.node, "body")));
                                 next = array_add(next, Resume(item.node, 4, 0, 0));
@@ -1003,13 +1247,21 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             pass += 1;
         }
         if (produced.storage != 0) {
-            if (value_top < length(values)) { values[value_top] = produced; } else { values = array_add(values, produced); }
+            if (value_top < length(values)) {
+                values[value_top] = produced;
+            } else {
+                values = array_add(values, produced);
+            }
             value_top += 1;
         }
         // Run scheduled items in order: the last pushed runs first.
         at_next := length(next) - 1;
         while (at_next >= 0) {
-            if (work_top < length(work)) { work[work_top] = next[at_next]; } else { work = array_add(work, next[at_next]); }
+            if (work_top < length(work)) {
+                work[work_top] = next[at_next];
+            } else {
+                work = array_add(work, next[at_next]);
+            }
             work_top += 1;
             at_next -= 1;
         }

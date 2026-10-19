@@ -1083,7 +1083,7 @@ TEST_CASE(union_members_population_and_publication)
         { "/sdk/core/strings/Strings.chibi", CORE_STRINGS_SOURCE, sizeof CORE_STRINGS_SOURCE - 1 }
     };
     for (int i = 0; i < 8; i++) {
-        REQUIRE(files[i].size < 32768);
+        REQUIRE(files[i].size < 48 * 1024);
     }
     REQUIRE(compiler_fixture_prepare_packs(&fixture, files, 8, &COMPILER_JSON_DEFINITION_PACK, 1));
     calls = 0;

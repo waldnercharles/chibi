@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -469,6 +470,132 @@ TEST_CASE(doctor_of_the_built_launcher)
     return true;
 }
 
+/* test hands ROOT, or the working directory, to the compiler's --test and
+ * exits with its status. */
+TEST_CASE(test_runs_the_compiler_tests)
+{
+    char file[256];
+    path(file, "fail");
+    unlink(file);
+    const char *named[] = { launcher, "test", "game with spaces", NULL };
+    REQUIRE(tool_run(named, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", "--project-root\ngame with spaces\n--test\n"));
+    const char *here[] = { launcher, "test", NULL };
+    REQUIRE(tool_run(here, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", "--project-root\n.\n--test\n"));
+
+    write_file("fail", "");
+    REQUIRE(tool_run(named, root, log_path) == 37);
+    REQUIRE(!unlink(file));
+    const char *help[] = { launcher, "test", "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    const char *extra[] = { launcher, "test", "one", "two", NULL };
+    REQUIRE(tool_run(extra, root, log_path) == 2);
+    return true;
+}
+
+static const char
+    FACTS[] = "package facts\n"
+              "import strings \"core:strings\"\n"
+              "\n"
+              "@test\n"
+              "Passes :: fn() {\n"
+              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "}\n"
+              "\n"
+              "@test\n"
+              "Fails :: fn() {\n"
+              "    expect(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
+              "}\n";
+
+/* The real compiler's --test runs each test of the packages below the root
+ * with the build's core collection, reports where a failure stopped and fails
+ * for a failed test, an invalid package, a native that needs a running game
+ * or a missing root. */
+TEST_CASE(compiler_test_reports_each_test)
+{
+    const char *directories[] = { "tests",        "tests/facts", "broken",
+                                  "broken/facts", "game",        "game/sounds" };
+    for (int i = 0; i < 6; i++) {
+        char directory[256];
+        path(directory, directories[i]);
+        REQUIRE(!mkdir(directory, 0700));
+    }
+    write_file("tests/facts/Facts.chibi", FACTS);
+    char tests[256], output[256], expected[512];
+    path(tests, "tests");
+    path(output, "tests.log");
+    const char *run[] = { compiler, "--project-root", tests, "--test", NULL };
+    REQUIRE(tool_run(run, root, output) == 1);
+    snprintf(
+        expected,
+        sizeof expected,
+        "PASS facts.Passes\nFAIL facts.Fails\n  %s/facts/Facts.chibi:11:5: "
+        "Expectation failed: four bytes\n2 tests, 1 failed\n",
+        tests
+    );
+    REQUIRE(file_is("tests.log", expected));
+
+    char *passing = xstrdup(FACTS);
+    *strstr(passing, "== 4") = '!';
+    write_file("tests/facts/Facts.chibi", passing);
+    free(passing);
+    REQUIRE(tool_run(run, root, output) == 0);
+    REQUIRE(file_is("tests.log", "PASS facts.Passes\nPASS facts.Fails\n2 tests, 0 failed\n"));
+
+    write_file("broken/facts/Facts.chibi", "package facts\nBroken :: fn() -> int { return missing; }\n");
+    char broken[256];
+    path(broken, "broken");
+    const char *invalid[] = { compiler, "--project-root", broken, "--test", NULL };
+    REQUIRE(tool_run(invalid, root, output) == 1);
+    REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:2:"));
+
+    write_file("game/sounds/Sounds.chibi", "package sounds\n@test\nQuiet :: fn() {\n    set_master_volume(0.5);\n}\n");
+    char game[256];
+    path(game, "game");
+    const char *service[] = { compiler, "--project-root", game, "--test", NULL };
+    REQUIRE(tool_run(service, root, output) == 1);
+    REQUIRE(file_has("tests.log", "/game/sounds/Sounds.chibi:4:5: "));
+
+    char missing[256];
+    path(missing, "missing");
+    const char *absent[] = { compiler, "--project-root", missing, "--test", NULL };
+    REQUIRE(tool_run(absent, root, output) == 1);
+    const char *scene[] = { compiler, "--project-root", tests,
+                            "--test", "--scene",        "x",
+                            NULL };
+    REQUIRE(tool_run(scene, root, output) == 2);
+    const char *both[] = { compiler, "--project-root", tests,
+                           "--test", "--check",        NULL };
+    REQUIRE(tool_run(both, root, output) == 2);
+    return true;
+}
+
+/* A compiler whose SDK lacks the core collection says so and fails. */
+TEST_CASE(compiler_test_needs_the_core_collection)
+{
+    const char *directories[] = { "sdk", "sdk/bin" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, directories[i]);
+        REQUIRE(!mkdir(directory, 0700));
+    }
+    char copy[256], output[256];
+    path(copy, "sdk/bin/chibi-compile");
+#ifdef __APPLE__
+    const char *clone[] = { "/bin/cp", "-c", compiler, copy, NULL };
+#else
+    const char *clone[] = { "/bin/cp", "--reflink=auto", compiler, copy, NULL };
+#endif
+    REQUIRE(tool_run(clone, root, log_path) == 0);
+    path(output, "core.log");
+    const char *run[] = { copy, "--project-root", root, "--test", NULL };
+    REQUIRE(tool_run(run, root, output) == 1);
+    REQUIRE(file_has("core.log", "The SDK has no core collection at "));
+    REQUIRE(!unlink(copy));
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -488,5 +615,8 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(version_of_the_built_launcher);
     RUN_TEST_CASE(doctor_reports_each_capability);
     RUN_TEST_CASE(doctor_of_the_built_launcher);
+    RUN_TEST_CASE(test_runs_the_compiler_tests);
+    RUN_TEST_CASE(compiler_test_reports_each_test);
+    RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     tool_remove_tree(root);
 }

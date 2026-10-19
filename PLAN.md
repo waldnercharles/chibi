@@ -573,9 +573,18 @@ compiler and player checks decide whether the SDK runs. For `test`, the owner
 chose an attribute contract on 2026-10-19 after a survey of Rust, Odin, Jai,
 Zig, Go and others: `@test` marks a package-level function with no parameters
 or results, and the core function `expect(condition, message)` fails it at the
-call's position. The attribute and `expect` are in place (see
-`docs/code-language.md`); the `chibi test` runner is next. `fmt`, the `test`
-runner, `web` and moving `export` behind Chibi modules remain.
+call's position (see `docs/code-language.md`). `chibi test [ROOT]` hands ROOT
+to the compiler's `--test`, which prepares every package below it with the
+SDK's `core:` collection (build trees stage it in `share/chibi/core`) and the
+natives that need no running game, runs each test alone on the default backend
+for at most 100 million instructions, and prints each outcome, where a failure
+stopped and a count. A test that waits or starts a task fails. ROOT holds only
+package files, so a game project's behaviors are not tests yet.
+`src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
+the launcher, the real compiler and a compiler without the core collection.
+The compiler's own packages cannot run under it yet, because their raw-syntax
+bridge is not among those natives. `fmt`, `web` and moving `export` behind
+Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

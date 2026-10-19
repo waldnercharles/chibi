@@ -231,10 +231,12 @@ if(CHIBI_SDK_BUILD_NATIVE)
 endif()
 
 if(TARGET chibi)
-    # Build-tree players read shaders, and chibi version the build identity,
-    # from ../share/chibi, as installed ones do.
+    # Build-tree players read shaders, chibi version the build identity and
+    # chibi test the core collection from ../share/chibi, as installed ones do.
     configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
         "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/engine.json" COPYONLY)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/strings/Strings.chibi"
+        "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/strings/Strings.chibi" COPYONLY)
     add_custom_target(chibi_build_shaders
         COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/shaders")

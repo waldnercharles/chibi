@@ -1192,6 +1192,16 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-package-tests` selects two fixed C
+cases for the shared runner behind `chibi test`. One preparation per backend has
+five files: the shipped `core:strings` source, a collection package with a test
+that must not be found, a package at the project root and a two-file project
+package, with eight tests. They cover discovery order, names and positions,
+passes, a failed `expect` reported inside its helper, an out-of-range read, an
+exhausted 100,000-instruction budget, a wait and a task start on bytecode and
+SLJIT. There is no filesystem, process, service or GPU work. This focused route
+is outside the language aggregate.
+
 `python3 tools/test_policy.py tool language-package-graph-chibi` reuses the
 existing 23 C graph cases for differential comparison with the authored compiler
 component. Two package owners prepare the actual graph/core sources once for

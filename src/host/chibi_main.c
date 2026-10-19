@@ -38,6 +38,7 @@ extern char **environ;
  * changed since the last preparation.
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
+ * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
  * chibi [PROJECT] [PLAYER OPTIONS]: shorthand for `chibi run`.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
@@ -156,6 +157,7 @@ static int usage(const char *program)
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
+        "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
@@ -171,6 +173,9 @@ static int usage(const char *program)
         "build prepares .chibi/build/game.chibip without starting the player.\n"
         "check parses, resolves and validates the project as build does, but\n"
         "migrates and writes nothing; an older project fails until migrated.\n"
+        "test runs each @test function of the packages below ROOT, the\n"
+        "working directory without one, and fails when one fails. ROOT holds\n"
+        "only package files.\n"
         "run prepares and starts the player; the unnamed form is equivalent.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
@@ -179,6 +184,7 @@ static int usage(const char *program)
         "elsewhere. --web PLAYER writes a static site instead, with the\n"
         "browser player from the PLAYER folder (make package-web-player).\n"
         "--archive also writes DIR.tar.gz.\n",
+        program,
         program,
         program,
         program,
@@ -764,6 +770,25 @@ static int check_game(int argc, char **argv)
     return result;
 }
 
+/* chibi test [ROOT]: the compiler runs the tests of the packages below ROOT. */
+static int test_packages(int argc, char **argv)
+{
+    const char *requested = NULL;
+    int status = project_argument(argc, argv, &requested);
+    if (status >= 0) {
+        return status;
+    }
+    char *bin = file_executable_dir();
+    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    char *root = xstrdup(requested ? requested : ".");
+    char *args[] = { compiler, "--project-root", root, "--test", NULL };
+    int result = chibi_process_run(args);
+    free(root);
+    free(compiler);
+    free(bin);
+    return result;
+}
+
 static int run_game(int argc, char **argv)
 {
     if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
@@ -799,6 +824,9 @@ int main(int argc, char **argv)
     }
     if (argc > 1 && !strcmp(argv[1], "check")) {
         return check_game(argc, argv);
+    }
+    if (argc > 1 && !strcmp(argv[1], "test")) {
+        return test_packages(argc, argv);
     }
     if (argc > 1 && !strcmp(argv[1], "run")) {
         return run_game(argc, argv);

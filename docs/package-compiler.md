@@ -219,7 +219,13 @@ the bytes must equal stage one's. Stage two then compiles every sample, and
 each `Compile` result, closure or rejection, must project to the same JSON as
 stage one's; the existing selectors check stage one's against stage zero and
 run its closures on bytecode and SLJIT. The run takes about 30 s, with a peak
-memory footprint of about 5 GB (macOS arm64, 2026-10-19). Under Debug and the sanitizers one
+memory footprint of about 5 GB (macOS arm64, 2026-10-19). Most of that is
+stage one, stage zero's build, writing the package compiler's module: that one
+`prepared_writer.Write` frame grows to 2.7 GB, against 92 MB for stage two's
+build of the same function on the same module. Stage two alone, loaded in a
+fresh process, compiles the compiler in 7.9 s with a 3.6 GB peak footprint;
+each copy of its 5.6 MB closure is about 224 MB as a `byte[]` of 40-byte
+values. Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
 

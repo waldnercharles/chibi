@@ -1447,19 +1447,20 @@ TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
     return run_samples(true);
 }
-/* Compile's arguments as the compiler host takes them; malloc-owned. */
-static char *arguments_json(const pin_value *args, size_t *length)
+/* Values as the compiler host takes arguments and projects results: a JSON
+ * array; malloc-owned. */
+static char *document_json(const pin_value *values, int count, size_t *length)
 {
     av_doc *doc = av_doc_new();
     av_value *array = av_arr(doc);
-    for (int i = 0; i < ARGUMENTS; i++) {
-        av_value *value = pin_value_to_document(doc, &args[i]);
+    for (int i = 0; i < count; i++) {
+        av_value *value = pin_value_to_document(doc, &values[i]);
         assert(value);
         av_arr_append(array, value);
     }
     yyjson_mut_doc *encoded = yyjson_mut_doc_new(NULL);
     yyjson_mut_doc_set_root(encoded, av_to_json(encoded, array));
-    char *json = yyjson_mut_write(encoded, YYJSON_WRITE_NOFLAG, length);
+    char *json = yyjson_mut_write(encoded, YYJSON_WRITE_ALLOW_INVALID_UNICODE, length);
     yyjson_mut_doc_free(encoded);
     av_doc_free(doc);
     return json;
@@ -1481,9 +1482,47 @@ static void stage_two_rejection(const char *json, size_t length)
         called ? result.json : result.diagnostic
     );
 }
+/* Stage two, loaded in `host`, compiles every sample as stage one does: its
+ * Compile result projects to the same JSON, the same closure or the same
+ * rejection. */
+static bool stage_two_samples()
+{
+    uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        source_package_input inputs[3];
+        int count = sample_inputs(&samples[i], inputs);
+        pin_value args[ARGUMENTS], out;
+        REQUIRE(arguments(1, inputs, count, args));
+        REQUIRE(
+            compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        );
+        size_t length, expected_length;
+        char *json = document_json(args, ARGUMENTS, &length);
+        char *expected = document_json(&out, 1, &expected_length);
+        arena_free(&detached);
+        bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
+        bool same = called && result.flow_status == FLOW_OK &&
+                    result.length == expected_length &&
+                    !memcmp(result.json, expected, expected_length);
+        if (!same) {
+            fprintf(
+                stderr,
+                "package compiler stage two %s: %s\n",
+                samples[i].name,
+                called ? result.json : result.diagnostic
+            );
+        }
+        free(json);
+        free(expected);
+        free(result.json);
+        result = (compiler_host_result){ 0 };
+        REQUIRE(same);
+    }
+    return true;
+}
 /* Stage zero prepares stage one, which compiles its own packages to a closure:
  * stage two. Stage two, loaded by the compiler host, compiles the same
- * packages to the same bytes. */
+ * packages to the same bytes, and every sample as stage one does. */
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
@@ -1526,7 +1565,7 @@ TEST_CASE(package_compiler_compiles_itself)
     REQUIRE(value->tag == tag(1, "Compiled") && value->count == 2);
     size_t length, json_length;
     unsigned char *stage_two = closure_bytes(value, &length);
-    char *json = arguments_json(args, &json_length);
+    char *json = document_json(args, ARGUMENTS, &json_length);
     arena_free(&detached);
     char error[256];
     host = compiler_host_load(stage_two, length, BEHAVIOR_SLJIT, error, sizeof error);
@@ -1570,7 +1609,7 @@ TEST_CASE(package_compiler_compiles_itself)
     free(stage_two);
     free(json);
     REQUIRE(same);
-    return true;
+    return stage_two_samples();
 }
 void test_language_package_compiler_chibi()
 {

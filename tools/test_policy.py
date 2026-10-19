@@ -213,15 +213,15 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Seven finite CLI cases: about thirty launcher calls over fake sibling
-    # compiler/player/node and identity documents, the built launcher's version
-    # and doctor (which runs its real compiler and player --help), and four runs
-    # of its real chibi-compile --check, which builds its renderer catalog; five
-    # tiny authored projects, no network. About 6s Debug + ASan of one shared 60s.
+    # Seventeen finite CLI cases: launcher calls over fake sibling compiler,
+    # player, node and browser player; the built launcher's version and doctor;
+    # its real chibi-compile's --check, --test, --format and --docs on tiny
+    # projects, package trees and sites; loopback serving for web and doc,
+    # started and stopped in-process. No network. Well within one shared 60s.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build/sdk/chibi'))],
     # The packaged SDK's launcher in place (make package-sdk first): three cases,
-    # one tiny project and package tree, one native export; no player frames.
+    # one tiny project, package tree and site, one native export; no player frames.
     'chibi-cli-installed': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                             '--chibi-cli-installed', str(ROOT / os.environ.get('CHIBI_INSTALLED_CLI', 'dist/sdk/bin/chibi'))],
     # Fixed POSIX process/VM/SLJIT cases over one controlled worker and disposable
@@ -808,6 +808,10 @@ TOOLS = {
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
+    # Four C cases rendering fixed Markdown and navigation with the shipped site
+    # generator on two backends; 2,000,000-instruction budget per call; no files/processes.
+    'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--docs-markdown'],
     # Two C cases, eight tests in two project packages per backend; one test
     # spends its 100000-instruction budget. No filesystem/process/services/GPU.
     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

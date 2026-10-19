@@ -22,18 +22,19 @@ dist/sdk/bin/chibi-compile --project-root /absolute/game --output /absolute/outp
 /installed/player/bin/chibi-player /absolute/output/game.chibip --resource-root /absolute/output
 ```
 
-To play a game while developing it, put `chibi` on your `PATH` and run it from the
-game's directory or with the game's directory or `project.kdl`:
+To play a game while developing it, put `chibi` on your `PATH` and run
+`chibi run` from the game's directory or with the game's directory or
+`project.kdl`:
 
 ```sh
 make build
 ln -sf "$PWD/build/sdk/chibi" ~/.local/bin/chibi
-chibi ~/games/neon-swarm            # or: cd ~/games/neon-swarm && chibi
+chibi run ~/games/neon-swarm        # or: cd ~/games/neon-swarm && chibi run
 ```
 
-`chibi` prepares the project into `.chibi/build/game.chibip` when the project's
-files or the compiler changed since the last run, then starts `chibi-player`
-beside it. Options after the project go to the player. Studio's `chibi-dev`
+`chibi run` prepares the project into `.chibi/build/game.chibip` when the
+project's files or the compiler changed since the last run, then starts
+`chibi-player` beside it. Options after `--` go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
 To use `chibi` and Studio in any project without a checkout's build folders,
@@ -132,6 +133,14 @@ make package-web-player
 dist/sdk/bin/chibi export ~/games/neon-swarm --web dist/web-player --output ~/builds/neon-swarm-web
 python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:8000
 ```
+
+`chibi doc [ROOT]` writes the documentation site that `ROOT/docs/site.kdl`
+lists into `ROOT/build/docs`, with ROOT the working directory by default. The
+manifest names every published page, so nothing else under `docs/` reaches the
+site, and links to unpublished files keep only their text. `--serve` then
+serves the site at `http://127.0.0.1:8000/` until Ctrl+C (`--port` as for
+`web`). In this checkout, `build/sdk/chibi doc --serve` previews the engine's
+own documentation.
 
 While developing, `chibi web` does both: it exports the site into a
 temporary folder of its own and serves it like a static host at

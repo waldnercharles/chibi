@@ -941,6 +941,160 @@ TEST_CASE(web_fails_without_leaving_a_folder)
     return true;
 }
 
+/* A site manifest with a home page and a guide whose output is `guide`. */
+static void site_manifest(const char *relative, const char *guide_source, const char *guide_output)
+{
+    char manifest[1024];
+    snprintf(
+        manifest,
+        sizeof manifest,
+        "title \"Fixture\"\n(array)sections {\n    - {\n        name "
+        "\"Overview\"\n"
+        "        (array)pages {\n            - {\n                title "
+        "\"Home\"\n"
+        "                source \"README.md\"\n                output "
+        "\"index.html\"\n"
+        "            }\n        }\n    }\n    - {\n        name \"Learn\"\n"
+        "        (array)pages {\n            - {\n                title "
+        "\"Guide\"\n"
+        "                source \"%s\"\n                output \"%s\"\n        "
+        "    }\n"
+        "        }\n    }\n}\n",
+        guide_source,
+        guide_output
+    );
+    write_file(relative, manifest);
+}
+
+/* A documentation root with two published pages and one private one. */
+static void site_fixture(const char *relative)
+{
+    char folder[256];
+    snprintf(folder, sizeof folder, "%s/docs", relative);
+    directory(relative);
+    directory(folder);
+    char file[256];
+    snprintf(file, sizeof file, "%s/README.md", relative);
+    write_file(file, "# Home\n\nRead [the guide](docs/guide.md) and [plans](PLAN.md).\n");
+    snprintf(file, sizeof file, "%s/docs/guide.md", relative);
+    write_file(file, "# Guide\n\nBack [home](../README.md).\n");
+    snprintf(file, sizeof file, "%s/docs/private.md", relative);
+    write_file(file, "# Private\n");
+    snprintf(file, sizeof file, "%s/docs/site.kdl", relative);
+    site_manifest(file, "docs/guide.md", "guide.html");
+}
+
+/* The real compiler's --docs writes exactly the pages docs/site.kdl lists,
+ * linked to one another, with the stylesheet, and refuses a manifest whose
+ * pages leave the root or the site folder, collide or are missing. */
+TEST_CASE(compiler_docs_writes_the_listed_pages)
+{
+    site_fixture("site");
+    char site[256], output[256];
+    path(site, "site");
+    path(output, "docs.log");
+    const char *docs[] = { compiler, "--project-root", site, "--docs", NULL };
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(
+        file_has("site/build/docs/index.html", "Read <a href=\"guide.html\">the guide</a> and plans.</p>")
+    );
+    REQUIRE(file_has("site/build/docs/index.html", "<title>Home · Fixture</title>"));
+    REQUIRE(file_has("site/build/docs/guide.html", "Back <a href=\"index.html\">home</a>."));
+    REQUIRE(
+        file_has("site/build/docs/guide.html", "<a href=\"guide.html\" aria-current=\"page\">Guide</a>")
+    );
+    REQUIRE(exists("site/build/docs/style.css") && !exists("site/build/docs/private.html"));
+
+    /* A page the manifest no longer lists goes with the next build. */
+    write_file("site/build/docs/old.html", "stale");
+    REQUIRE(tool_run(docs, root, output) == 0 && !exists("site/build/docs/old.html"));
+
+    char outside[256];
+    path(outside, "outside.md");
+    write_file("outside.md", "# Outside\n");
+    char link[256];
+    path(link, "site/docs/linked.md");
+    REQUIRE(!symlink(outside, link));
+    const char *refused[][3] = {
+        { "docs/guide.md", "../guide.html", "needs a title, a source and an .html output" },
+        { "../outside.md", "guide.html", "../outside.md is not a readable file inside" },
+        { "docs/linked.md", "guide.html", "docs/linked.md is not a readable file inside" },
+        { "docs/missing.md", "guide.html", "docs/missing.md is not a readable file inside" },
+        { "docs", "guide.html", "docs is not a readable file inside" },
+        { "docs/guide.md", "index.html", "two pages write index.html" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        site_manifest("site/docs/site.kdl", refused[i][0], refused[i][1]);
+        REQUIRE(tool_run(docs, root, output) == 1 && file_has("docs.log", refused[i][2]));
+        REQUIRE(file_has("site/build/docs/guide.html", "Back <a href=\"index.html\">home</a>."));
+    }
+    char bare[256];
+    path(bare, "bare");
+    directory("bare");
+    const char *none[] = { compiler, "--project-root", bare, "--docs", NULL };
+    REQUIRE(tool_run(none, root, output) == 1);
+    REQUIRE(file_has("docs.log", "cannot read the site manifest"));
+    return true;
+}
+
+/* doc hands ROOT, or the working directory, to the compiler's --docs, and
+ * with --serve then serves ROOT/build/docs until stopped. */
+TEST_CASE(doc_runs_the_compiler_docs)
+{
+    char file[256];
+    path(file, "fail");
+    unlink(file);
+    const char *named[] = { launcher, "doc", "game with spaces", NULL };
+    REQUIRE(tool_run(named, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", "--project-root\ngame with spaces\n--docs\n"));
+    const char *here[] = { launcher, "doc", NULL };
+    REQUIRE(tool_run(here, root, log_path) == 0);
+    REQUIRE(file_is("compile.args", "--project-root\n.\n--docs\n"));
+    write_file("fail", "");
+    REQUIRE(tool_run(named, root, log_path) == 37);
+    REQUIRE(!unlink(file));
+    const char *help[] = { launcher, "doc", "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    const char *unknown[] = { launcher, "doc", "--quick", NULL };
+    REQUIRE(tool_run(unknown, root, log_path) == 2);
+    const char *twice[] = { launcher, "doc",    "--serve", "--port",
+                            "1",      "--port", "2",       NULL };
+    REQUIRE(tool_run(twice, root, log_path) == 2);
+    const char *unserved[] = { launcher, "doc", "--port", "1", NULL };
+    REQUIRE(tool_run(unserved, root, log_path) == 2);
+
+    directory("game with spaces/build");
+    directory("game with spaces/build/docs");
+    write_file("game with spaces/build/docs/index.html", "<p>docs</p>");
+    char log[256];
+    path(log, "doc.log");
+    const char *serve[] = { launcher,  "doc",    "game with spaces",
+                            "--serve", "--port", "0",
+                            NULL };
+    /* A failed build serves nothing. */
+    write_file("fail", "");
+    REQUIRE(tool_run(serve, root, log) == 37 && !file_has("doc.log", "http://"));
+    REQUIRE(!unlink(file));
+    chibi_process process;
+    REQUIRE(chibi_process_start(&process, serve, root, log));
+    int port = 0;
+    for (int i = 0; i < 100 && !port && !chibi_process_poll(&process); i++) {
+        usleep(50000);
+        char *text = tool_read(log);
+        const char *url = text ? strstr(text, "http://127.0.0.1:") : NULL;
+        port = url ? atoi(url + strlen("http://127.0.0.1:")) : 0;
+        free(text);
+    }
+    bool served = port && answers(port, "/", "200 OK", "<p>docs</p>");
+    chibi_process_stop(&process);
+    for (int i = 0; i < 100 && !chibi_process_poll(&process); i++) {
+        usleep(50000);
+    }
+    REQUIRE(served);
+    REQUIRE(process.finished && process.status == 0);
+    return true;
+}
+
 /* Without its compiler, each command that needs one says so and fails
  * rather than pretending the project is fine. */
 TEST_CASE(commands_fail_without_the_compiler)
@@ -955,6 +1109,7 @@ TEST_CASE(commands_fail_without_the_compiler)
         { launcher, "build", "game with spaces", NULL },
         { launcher, "fmt", "game with spaces", NULL },
         { launcher, "test", "game with spaces", NULL },
+        { launcher, "doc", "game with spaces", NULL },
     };
     bool failed = true;
     for (size_t i = 0; i < sizeof commands / sizeof *commands; i++) {
@@ -992,6 +1147,8 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
+    RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
+    RUN_TEST_CASE(doc_runs_the_compiler_docs);
     RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);
 }
@@ -1042,7 +1199,7 @@ TEST_CASE(installed_project_commands)
     return true;
 }
 
-TEST_CASE(installed_package_tests)
+TEST_CASE(installed_package_tests_and_docs)
 {
     const char *directories[] = { "packages", "packages/facts" };
     for (int i = 0; i < 2; i++) {
@@ -1056,6 +1213,13 @@ TEST_CASE(installed_package_tests)
     REQUIRE(tool_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
     REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+
+    site_fixture("site");
+    char site[256];
+    path(site, "site");
+    const char *docs[] = { launcher, "doc", site, NULL };
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(file_has("site/build/docs/index.html", "<a href=\"guide.html\">the guide</a>"));
     return true;
 }
 
@@ -1074,6 +1238,6 @@ void test_tool_chibi_cli_installed(const char *binary)
     path(log_path, "output.log");
     RUN_TEST_CASE(installed_identity_and_doctor);
     RUN_TEST_CASE(installed_project_commands);
-    RUN_TEST_CASE(installed_package_tests);
+    RUN_TEST_CASE(installed_package_tests_and_docs);
     tool_remove_tree(root);
 }

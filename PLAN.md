@@ -632,6 +632,25 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
+Status: in progress. `chibi doc [ROOT] [--serve] [--port PORT]` hands ROOT to
+the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
+`ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
+inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
+generator is authored Chibi in `tools/docs`, which SDKs ship as
+`share/chibi/docs`: `markdown` renders the subset the public pages use
+(headings with GitHub anchors, paragraphs, lists, block quotes, fenced code,
+pipe tables, inline code, emphasis and links) and maps links between published
+sources to their pages, dropping links to anything unpublished; `site` lays out
+the navigation and stylesheet. The C side reads the manifest and files and
+calls the generator on the natives that need no running game. A page's source
+must resolve, links included, to a regular file inside ROOT. The site is written
+into a fresh folder that then replaces `build/docs`, so the published folder
+never holds a partial site or a page the manifest no longer lists. `--serve`
+serves the result like `chibi web`. The manifest so far publishes the README, the
+language reference and the examples. The Testing, Packages, FAQ, Grammar and
+Toolchain pages, the generated package reference and grammar, checked examples,
+static assets and the Pages workflow remain.
+
 Use one source of truth for prose and package comments. Create an explicit public
 manifest under `docs/` that names every Markdown page, generated grammar page,
 package reference, checked example, and static asset. Generate into `build/docs`.

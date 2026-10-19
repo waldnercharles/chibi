@@ -60,7 +60,7 @@ static int usage(const char *program)
     fprintf(
         stderr,
         "Usage: %s --project-root PATH (--output FILE | --check | --test | "
-        "--format [--check]) [--scene PATH]\n",
+        "--format [--check] | --docs) [--scene PATH]\n",
         program
     );
     return 2;
@@ -77,22 +77,31 @@ static int format(const char *, bool)
     fprintf(stderr, "This compiler prepares browser exports; it formats nothing\n");
     return 2;
 }
+static int docs(const char *)
+{
+    fprintf(stderr, "This compiler prepares browser exports; it writes no documentation\n");
+    return 2;
+}
 #else
-/* The SDK's core collection, share/chibi/core beside this program's
- * directory; NULL, having said why, when it has none. */
-static char *core_collection()
+/* A folder of the SDK's share/chibi beside this program's directory, such as
+ * its core collection; NULL, having said why, when it has none. */
+static char *shared(const char *name, const char *what)
 {
     char *bin = file_executable_dir();
-    size_t size = strlen(bin) + sizeof "/../share/chibi/core";
+    size_t size = strlen(bin) + strlen(name) + sizeof "/../share/chibi/";
     char *installed = xmalloc(size);
-    snprintf(installed, size, "%s/../share/chibi/core", bin);
-    char *core = realpath(installed, NULL);
-    if (!core) {
-        fprintf(stderr, "The SDK has no core collection at %s: %s\n", installed, strerror(errno));
+    snprintf(installed, size, "%s/../share/chibi/%s", bin, name);
+    char *folder = realpath(installed, NULL);
+    if (!folder) {
+        fprintf(stderr, "The SDK has no %s at %s: %s\n", what, installed, strerror(errno));
     }
     free(installed);
     free(bin);
-    return core;
+    return folder;
+}
+static char *core_collection()
+{
+    return shared("core", "core collection");
 }
 /* Runs the tests of the packages below project. */
 static int test(const char *project)
@@ -105,6 +114,23 @@ static int test(const char *project)
     char *core = core_collection();
     int status = core ? authoring_project_test(root, core) : 1;
     free(core);
+    free(root);
+    return status;
+}
+/* Writes the documentation site of the root at project with the SDK's site
+ * generator. */
+static int docs(const char *project)
+{
+    char *root = realpath(project, NULL);
+    if (!root) {
+        fprintf(stderr, "%s: %s\n", project, strerror(errno));
+        return 1;
+    }
+    char *generator = shared("docs", "site generator");
+    char *core = generator ? core_collection() : NULL;
+    int status = core ? authoring_project_docs(root, generator, core) : 1;
+    free(core);
+    free(generator);
     free(root);
     return status;
 }
@@ -130,11 +156,12 @@ static int format(const char *project, bool check)
 #endif
 /* --check prepares the project without migrating it or writing anything;
  * --test runs its package tests; --format rewrites its assets canonically, or
- * with --check reports the ones that are not. */
+ * with --check reports the ones that are not; --docs writes its documentation
+ * site. */
 int main(int argc, char **argv)
 {
     const char *project = NULL, *scene = NULL, *output = NULL;
-    bool check = false, tests = false, formats = false;
+    bool check = false, tests = false, formats = false, site = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             usage(argv[0]);
@@ -150,6 +177,10 @@ int main(int argc, char **argv)
         }
         if (!strcmp(argv[i], "--format") && !formats) {
             formats = true;
+            continue;
+        }
+        if (!strcmp(argv[i], "--docs") && !site) {
+            site = true;
             continue;
         }
         if (i + 1 == argc) {
@@ -169,10 +200,13 @@ int main(int argc, char **argv)
         }
         return usage(argv[0]);
     }
-    int modes = (check && !formats) + tests + formats + (output != NULL);
+    int modes = (check && !formats) + tests + formats + site + (output != NULL);
     if (!project || !*project || modes != 1 || (output && !*output) ||
-        ((tests || formats) && scene)) {
+        ((tests || formats || site) && scene)) {
         return usage(argv[0]);
+    }
+    if (site) {
+        return docs(project);
     }
     if (tests) {
         return test(project);

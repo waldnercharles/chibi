@@ -99,6 +99,7 @@ static const char *content_type(const char *path)
         const char *extension, *type;
     } TYPES[] = {
         { ".html", "text/html; charset=utf-8" },
+        { ".css", "text/css" },
         { ".js", "text/javascript" },
         { ".wasm", "application/wasm" },
         { ".json", "application/json" },

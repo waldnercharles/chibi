@@ -1192,6 +1192,13 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-docs-markdown` selects four fixed C
+cases for `chibi doc`'s authored generator: one preparation of the shipped
+`markdown` and `site` packages with `core:strings` per case, rendering blocks,
+tables and site links and laying out navigation on bytecode and SLJIT, each call
+under a 2,000,000-instruction budget. There is no filesystem, process, service or
+GPU work. This focused route is outside the language aggregate.
+
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C
 cases for the shared runner behind `chibi test`. One preparation per backend has
 five files: the shipped `core:strings` source, a collection package with a test
@@ -1947,8 +1954,9 @@ configuration and compilation are separate build evidence.
 `chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
 `CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
 `version` and `doctor`, then `check`, `fmt`, `build` and a native `export` of one tiny project,
-and `test` on one package tree that imports the installed `core:` collection. It takes about
-three seconds and starts no player.
+`test` on one package tree that imports the installed `core:` collection, and `doc` on one
+two-page site with the installed generator. It takes about three seconds and starts no
+player.
 
 `build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build

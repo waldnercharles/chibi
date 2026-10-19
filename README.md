@@ -133,6 +133,16 @@ dist/sdk/bin/chibi export ~/games/neon-swarm --web dist/web-player --output ~/bu
 python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:8000
 ```
 
+While developing, `chibi web` does both: it exports the site into a
+temporary folder of its own and serves it like a static host at
+`http://127.0.0.1:8000/` until Ctrl+C, then removes the folder. `--port`
+picks another port, 0 any free one. It serves only on this computer, and not
+yet on Windows.
+
+```sh
+dist/sdk/bin/chibi web ~/games/neon-swarm --player dist/web-player
+```
+
 The site holds `index.html`, titled with the project's title, the player's
 `chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
 `files.json` lists. The page fetches those files before the game starts,

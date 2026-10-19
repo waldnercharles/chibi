@@ -1,12 +1,17 @@
 #include "assets/project.h"
+#include "host/process.h"
 #include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <arpa/inet.h>
 #include <assert.h>
+#include <errno.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -719,6 +724,221 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     return true;
 }
 
+/* The folder at `relative`, which may already exist. */
+static void directory(const char *relative)
+{
+    char folder[256];
+    path(folder, relative);
+    assert(!mkdir(folder, 0700) || errno == EEXIST);
+}
+
+/* The whole response to a GET of target from 127.0.0.1:port naming host;
+ * NULL when nothing answers. */
+static char *fetch(int port, const char *method, const char *target, const char *host)
+{
+    char request[512];
+    int length = snprintf(request, sizeof request, "%s %s HTTP/1.1\r\nHost: %s\r\n\r\n", method, target, host);
+    assert(length > 0 && length < (int)sizeof request);
+    int client = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in address = { .sin_family = AF_INET,
+                                   .sin_port = htons((uint16_t)port),
+                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+    struct timeval timeout = { .tv_sec = 5 };
+    if (client < 0 ||
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) ||
+        connect(client, (struct sockaddr *)&address, sizeof address) ||
+        send(client, request, (size_t)length, 0) != length) {
+        if (client >= 0) {
+            close(client);
+        }
+        return NULL;
+    }
+    size_t used = 0, capacity = 1024;
+    char *response = xmalloc(capacity);
+    for (ssize_t count;
+         (count = recv(client, response + used, capacity - used - 1, 0)) > 0;) {
+        used += (size_t)count;
+        if (used + 1 == capacity) {
+            capacity *= 2;
+            response = xrealloc(response, capacity);
+        }
+    }
+    response[used] = '\0';
+    close(client);
+    return response;
+}
+
+/* Whether a GET of target from this computer answers with `first` and, when
+ * given, `second`. */
+static bool answers(int port, const char *target, const char *first, const char *second)
+{
+    char *response = fetch(port, "GET", target, "127.0.0.1");
+    bool found = response && strstr(response, first) &&
+                 (!second || strstr(response, second));
+    free(response);
+    return found;
+}
+
+/* Entries in the folder at `relative`, other than . and ... */
+static int entries(const char *relative)
+{
+    char folder[256], output[256];
+    path(folder, relative);
+    path(output, "entries.log");
+    const char *args[] = { "/bin/ls", "-A", folder, NULL };
+    assert(!tool_run(args, root, output));
+    char *listing = tool_read(output);
+    int count = 0;
+    for (const char *line = listing; line && *line; line = strchr(line, '\n') + 1) {
+        count++;
+    }
+    free(listing);
+    return count;
+}
+
+/* A fake browser player whose compiler runs under a fake node, and the
+ * engine files an export copies. */
+static void web_fixture()
+{
+    const char *folders[] = { "player",
+                              "player/compiler",
+                              "node",
+                              "tmp",
+                              "share",
+                              "share/chibi",
+                              "share/chibi/shaders",
+                              "share/chibi/licenses" };
+    for (size_t i = 0; i < sizeof folders / sizeof *folders; i++) {
+        directory(folders[i]);
+    }
+    write_file("player/index.html", "<title>{{TITLE}}</title>");
+    write_file("player/chibi-player.js", "script");
+    write_file("player/chibi-player.wasm", "module");
+    write_file(
+        "player/compiler/chibi-compile.js",
+        "[ ! -f \"$2/fail\" ] || exit 3\nprintf artifact > \"$4\"\n"
+        "printf '{\"external\":[]}' > \"$4.resources.json\"\n"
+    );
+    write_file("node/node", "#!/bin/sh\nscript=$1\nshift\nexec /bin/sh \"$script\" \"$@\"\n");
+    char file[256];
+    path(file, "node/node");
+    assert(!chmod(file, 0700));
+    write_file("share/chibi/engine.json", "{}\n");
+    write_file("share/chibi/shaders/a.glsl", "shader");
+    write_file("share/chibi/licenses/LICENSE.txt", "license");
+}
+
+/* chibi web for the CLI project on port, with the fake node first on PATH and
+ * TMPDIR in the fixture, either started into *process or run to its status. */
+static int web(const char *port, chibi_process *process)
+{
+    char *saved_path = xstrdup(getenv("PATH"));
+    char *saved_tmp = getenv("TMPDIR") ? xstrdup(getenv("TMPDIR")) : NULL;
+    char node[4096], tmp[256], player[256], log[256];
+    int length = snprintf(node, sizeof node, "%s/node:%s", root, saved_path);
+    assert(length > 0 && length < (int)sizeof node);
+    path(tmp, "tmp");
+    path(player, "player");
+    path(log, "web.log");
+    setenv("PATH", node, 1);
+    setenv("TMPDIR", tmp, 1);
+    const char *args[] = { launcher,   "web",  "game with spaces",
+                           "--player", player, "--port",
+                           port,       NULL };
+    int status = process ? !chibi_process_start(process, args, root, log)
+                         : tool_run(args, root, log);
+    setenv("PATH", saved_path, 1);
+    if (saved_tmp) {
+        setenv("TMPDIR", saved_tmp, 1);
+    } else {
+        unsetenv("TMPDIR");
+    }
+    free(saved_path);
+    free(saved_tmp);
+    return status;
+}
+
+/* web exports the browser site into a folder of its own under TMPDIR, serves
+ * it on loopback to requests that name this computer, refusing paths that
+ * leave it, until stopped, and then removes the folder. */
+TEST_CASE(web_serves_the_export_until_stopped)
+{
+    web_fixture();
+    chibi_process process;
+    REQUIRE(web("0", &process) == 0);
+    int port = 0;
+    char log[256];
+    path(log, "web.log");
+    for (int i = 0; i < 100 && !port && !chibi_process_poll(&process); i++) {
+        usleep(50000);
+        char *text = tool_read(log);
+        const char *url = text ? strstr(text, "http://127.0.0.1:") : NULL;
+        port = url ? atoi(url + strlen("http://127.0.0.1:")) : 0;
+        free(text);
+    }
+    char *rebound = port ? fetch(port, "GET", "/", "evil.example:8000") : NULL;
+    char *head = port ? fetch(port, "HEAD", "/index.html", "localhost:8000") : NULL;
+    bool served = port && entries("tmp") == 1 &&
+                  answers(port, "/", "200 OK", "<title>CLI proof</title>") &&
+                  answers(port, "/data/game.chibip", "\r\n\r\nartifact", NULL) &&
+                  answers(port, "/chibi-player.wasm", "Content-Type: application/wasm", NULL) &&
+                  answers(port, "/data/../../tmp", "400 Bad Request", NULL) &&
+                  answers(port, "/%2e%2e/web.log", "400 Bad Request", NULL) &&
+                  answers(port, "/missing.js", "404 Not Found", NULL) &&
+                  rebound && strstr(rebound, "400 Bad Request") && head &&
+                  strstr(head, "Content-Length: 24\r\n") && !strstr(head, "<title>");
+    free(rebound);
+    free(head);
+    chibi_process_stop(&process);
+    for (int i = 0; i < 100 && !chibi_process_poll(&process); i++) {
+        usleep(50000);
+    }
+    REQUIRE(served);
+    REQUIRE(process.finished && process.status == 0);
+    REQUIRE(entries("tmp") == 0);
+    return true;
+}
+
+/* web fails, leaving nothing behind, when its port is taken or the export
+ * fails; it needs --player and a valid port. */
+TEST_CASE(web_fails_without_leaving_a_folder)
+{
+    web_fixture();
+    int bound = 0, taken = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in address = { .sin_family = AF_INET,
+                                   .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
+    socklen_t size = sizeof address;
+    REQUIRE(taken >= 0 && !bind(taken, (struct sockaddr *)&address, sizeof address));
+    REQUIRE(!listen(taken, 1) && !getsockname(taken, (struct sockaddr *)&address, &size));
+    bound = ntohs(address.sin_port);
+    char port[16];
+    snprintf(port, sizeof port, "%d", bound);
+    int status = web(port, NULL);
+    close(taken);
+    REQUIRE(status == 1 && entries("tmp") == 0);
+
+    write_file("game with spaces/fail", "");
+    status = web("0", NULL);
+    char file[256];
+    path(file, "game with spaces/fail");
+    REQUIRE(!unlink(file));
+    REQUIRE(status == 1 && entries("tmp") == 0);
+
+    char player[256];
+    path(player, "player");
+    const char *missing[] = { launcher, "web", "game with spaces", NULL };
+    REQUIRE(tool_run(missing, root, log_path) == 2);
+    const char *range[] = { launcher, "web",   "--player", player,
+                            "--port", "70000", NULL };
+    REQUIRE(tool_run(range, root, log_path) == 2);
+    const char *twice[] = { launcher, "web",    "--player", player, "--port",
+                            "1",      "--port", "2",        NULL };
+    REQUIRE(tool_run(twice, root, log_path) == 2);
+    const char *help[] = { launcher, "web", "--help", NULL };
+    REQUIRE(tool_run(help, root, log_path) == 0);
+    return true;
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -743,5 +963,7 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
     RUN_TEST_CASE(fmt_formats_each_project);
     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
+    RUN_TEST_CASE(web_serves_the_export_until_stopped);
+    RUN_TEST_CASE(web_fails_without_leaving_a_folder);
     tool_remove_tree(root);
 }

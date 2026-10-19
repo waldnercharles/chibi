@@ -121,8 +121,7 @@ static bool copy_tree(const char *from, const char *to)
     return copied;
 }
 
-/* Deletes a folder without following symlinks; false when anything remains. */
-static bool remove_tree(const char *path)
+bool chibi_remove_tree(const char *path)
 {
     struct stat info;
     if (lstat(path, &info) != 0) {
@@ -137,7 +136,7 @@ static bool remove_tree(const char *path)
     while (dir && (entry = readdir(dir))) {
         if (strcmp(entry->d_name, ".") && strcmp(entry->d_name, "..")) {
             char *child = join(path, entry->d_name);
-            removed = remove_tree(child) && removed;
+            removed = chibi_remove_tree(child) && removed;
             free(child);
         }
     }
@@ -813,7 +812,7 @@ static bool publish(const char *staging, const char *output)
         published = false;
         rename(old, output);
     }
-    if (published && !remove_tree(old)) {
+    if (published && !chibi_remove_tree(old)) {
         fprintf(stderr, "Could not remove the previous export: %s\n", old);
     }
     if (!published) {
@@ -931,7 +930,7 @@ bool chibi_export(const chibi_export_spec *spec)
     } else {
         exported = chmod(staging, 0755) == 0 && assemble(spec, staging) &&
                    publish(staging, output);
-        remove_tree(staging);
+        chibi_remove_tree(staging);
     }
     free(staging);
     if (exported) {

@@ -765,8 +765,9 @@ without copies (see "Read-only plain-array traversals" in
 parameter still copy the referenced value.
 
 The stage-one compiler starts as `tools/compiler/package_compiler` (see
-`docs/package-compiler.md`). It compiles packages of functions, records and
-unions, and the `project:` and `core:` packages they import, with `int`,
+`docs/package-compiler.md`). It compiles packages of functions, records,
+unions and `int` literal constants, and the `project:` and `core:` packages
+they import, with `int`,
 `bool` and `string` values and arrays of them, statements, control flow
 including `foreach` and exhaustive `switch` over unions, calls within and
 across packages, and calls of the natives the target links, to runnable
@@ -775,9 +776,8 @@ the parser. Records and arrays use stage zero's value model: construct, snapshot
 and in-place array intrinsics, stage zero's record IDs and layout hashes, and
 value roots for suspended callers. Unions use the union-make, -test and -get
 intrinsics with stage zero's tags. Each package is a module whose import rows
-carry the fingerprints the runtime checks. Package constants, `is` patterns,
-natives with several results and conversions follow, then the compiler's own
-sources. Debugger
+carry the fingerprints the runtime checks. `is` patterns, natives with several
+results, `uint64` and conversions follow, then the compiler's own sources. Debugger
 points and watches are deferred until before stage one becomes the normal
 compiler.
 

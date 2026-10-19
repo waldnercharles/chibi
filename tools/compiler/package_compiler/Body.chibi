@@ -247,6 +247,19 @@ QualifierOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, names: Nam
     if (found < 0 || names[found].place != AliasPlace) { return -1; }
     return names[found].index;
 }
+// The package constant `node` names: `Name` when no local hides it, or
+// `alias.Name`; -1 otherwise.
+ConstantOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
+                      node: int) -> int {
+    if (Is(forest, node, "identifier")) {
+        if (Lookup(names, Text(forest, text, node)) >= 0) { return -1; }
+        return FindConstant(constants, package, Text(forest, text, node));
+    }
+    if (!Is(forest, node, "member_expression")) { return -1; }
+    home := QualifierOf(forest, text, names, package, Field(forest, node, "object"));
+    if (home < 0) { return -1; }
+    return FindConstant(constants, home, NameText(forest, text, Field(forest, node, "member")));
+}
 // The union `U` names when `node` is a member expression `U.Variant` or
 // `alias.U.Variant` and no local hides U or the alias; -1 otherwise.
 UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
@@ -304,7 +317,8 @@ InPlaceNative :: pure fn(forest: snapshot.SnapshotNode[], text: string, callable
 
 EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int,
                     callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-                    natives: Native[], ports: Port[], aliases: Name[], function: int, ops: Ops, target: Target) -> Body {
+                    constants: ConstDecl[], natives: Native[], ports: Port[], aliases: Name[], function: int, ops: Ops,
+                    target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -667,8 +681,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, names, callable.package, values, value_top, item,
-                ops, target, at);
+            step = ValueStep(forest, text, document, types, members, constants, names, callable.package, values,
+                value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {

@@ -30,7 +30,8 @@ target supplies what Chibi cannot see:
 
 ## Supported language
 
-Packages of functions, records and unions, and the packages they import:
+Packages of functions, records, unions and constants, and the packages they
+import:
 
 - `int`, `bool` and `string` values, records of those, unions whose variants
   carry them, and arrays of any of these, as parameters, results and locals;
@@ -53,15 +54,19 @@ Packages of functions, records and unions, and the packages they import:
   natives with one result or none, such as `length` and `slice`. A native's
   inferred ports take the one type its arguments give them, matched by name
   as the catalog matches names;
+- `int` constants whose value is an integer literal, `-` allowed, typed
+  (`Name: int : 5;`) or not (`Name :: 5;`). A use is the value itself; a local
+  hides a constant of the same name;
 - imports of `project:` and collection packages such as `core:strings`:
-  `alias.F(...)` calls an imported function, and `alias.T` names an imported
-  record or union in types, literals and `alias.U.V` variants. A local hides
-  an alias of the same name.
+  `alias.F(...)` calls an imported function, `alias.C` reads an imported
+  constant, and `alias.T` names an imported record or union in types,
+  literals and `alias.U.V` variants. A local hides an alias of the same name.
 
-Anything else is rejected with its source position. Package constants, `is`
-patterns, record field defaults, field assignment, assigning record or array
-parameters, named payload arguments, literal variants, natives with several
-results or variadic ones, and conversions come next.
+Anything else is rejected with its source position. Constants of other types
+or computed values, `is` patterns, record field defaults, field assignment,
+assigning record or array parameters, named payload arguments, literal
+variants, natives with several results or variadic ones, `uint64` and
+conversions come next.
 
 ## Output
 
@@ -120,9 +125,9 @@ are not emitted yet; they must be before stage one becomes the normal compiler.
 
 ## Test
 
-`tool language-package-compiler-chibi` compiles 42 samples on both compiler
-backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 5,984 assertions in
-31.1 s). A sample is package `facts`, optionally with a `lib` package and
+`tool language-package-compiler-chibi` compiles 47 samples on both compiler
+backends (macOS arm64, Debug + ASan/UBSan, 2026-10-19: 6,515 assertions in
+34.3 s under the supervisor, with other test runs loading the machine). A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
 on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
 same packages must return the same JSON; calls that must fail,

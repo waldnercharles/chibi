@@ -304,6 +304,29 @@ static const sample samples[] = {
                  { "Measure", "[\"zebra\"]", "[551]" },
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
+    { .name = "constants",
+      .source = "package facts\n"
+                "import lib \"project:lib\"\n"
+                "Base: int : 40;\n"
+                "Down: int : -2;\n"
+                "Plain :: 7;\n"
+                "Sum :: pure fn(n: int) -> int { return n + Base + Down + "
+                "Plain + lib.Step; }\n"
+                "Hidden :: pure fn() -> int { Base := 1; return Base; }\n"
+                "Limits :: pure fn() -> int {\n"
+                "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
+                "lib.Low; }\n"
+                "    return 0;\n}\n"
+                "Scale :: pure fn() -> int { return lib.Scaled(2); }",
+      .library = "package lib\n"
+                 "Step: int : 100;\n"
+                 "Low: int : -2147483648;\n"
+                 "High: int : 2147483647;\n"
+                 "Scaled :: pure fn(n: int) -> int { return n * Step; }",
+      .calls = { { "Sum", "[3]", "[148]" },
+                 { "Hidden", "[]", "[1]" },
+                 { "Limits", "[]", "[-1]" },
+                 { "Scale", "[]", "[200]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -456,6 +479,28 @@ static const sample samples[] = {
       .message = "Unknown name 'lib'",
       .line = 3,
       .column = 34 },
+    { .name = "constant type",
+      .source = "package facts\nOn: bool : true;",
+      .message = "constant type is not supported yet",
+      .line = 2,
+      .column = 5 },
+    { .name = "constant expression",
+      .source = "package facts\nA: int : 1 + 2;",
+      .message = "constant value must be an int literal",
+      .line = 2,
+      .column = 10 },
+    { .name = "constant clash",
+      .source = "package facts\nA: int : 1;\nA :: pure fn() -> int { return 1; "
+                "}",
+      .message = "Duplicate declaration 'A'",
+      .line = 3,
+      .column = 1 },
+    { .name = "constant assignment",
+      .source = "package facts\nA: int : 1;\nOne :: pure fn() -> int { A = 2; "
+                "return A; }",
+      .message = "assignment needs a local name",
+      .line = 3,
+      .column = 27 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",

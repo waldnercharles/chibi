@@ -94,8 +94,10 @@ static bool neighbor_has_matching_height_and_no_wall()
     for (int i = 0; i < 130 * 4; i++) {
         field[i] = -10;
     }
-    material_terrain_chunk
-        *chunks = material_terrain_chunks(field, (field_grid){ 130, 4, 1, 0, 0 });
+    material_terrain_chunk *chunks = material_terrain_chunks(
+        field,
+        (field_grid){ .width = 130, .height = 4, .cell_size = 1 }
+    );
     REQUIRE(acount(chunks) == 2);
     material_terrain_view views[2] = { { &chunks[0].mask, chunks[0].x, chunks[0].y },
                                        { &chunks[1].mask, chunks[1].x, chunks[1].y } };
@@ -455,8 +457,10 @@ static bool recess_matches_across_chunk_seam_and_needs_halo()
             field[y * 132 + x] = x < 126 ? -10.f : x - 125.5f;
         }
     }
-    material_terrain_chunk
-        *chunks = material_terrain_chunks(field, (field_grid){ 132, 8, 1, 0, 0 });
+    material_terrain_chunk *chunks = material_terrain_chunks(
+        field,
+        (field_grid){ .width = 132, .height = 8, .cell_size = 1 }
+    );
     REQUIRE(acount(chunks) == 2);
     material_terrain_view views[2] = { { &chunks[0].mask, chunks[0].x, chunks[0].y },
                                        { &chunks[1].mask, chunks[1].x, chunks[1].y } };

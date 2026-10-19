@@ -135,7 +135,7 @@ TEST_CASE(reference_relationship_sources_resolve_their_declared_asset_identity)
         .name = "Targets",
         .path = "content/relationships/DifferentFileName.chibi",
         .text = "Targets :: relationship {}",
-        .range = { 0, 7 },
+        .range = { .start = 0, .end = 7 },
         .text_kind = SOURCE_TEXT_CHIBI,
         .relationship = true
     };

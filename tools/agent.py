@@ -50,6 +50,8 @@ CPU_SELECTORS = {
     '--material-render': 'material-render',
     '--model-catalog': 'model-catalog',
     '--model-graphs': 'model-graphs',
+    '--clay-fields': 'clay-fields',
+    '--clay-lab': 'clay-lab',
     '--particles': 'particles',
     '--png-encoding': 'png-encoding',
     '--preview-layout': 'preview-layout',

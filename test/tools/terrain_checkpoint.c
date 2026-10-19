@@ -267,7 +267,7 @@ TEST_CASE(stream_checkpoint_cold_resident_negative_and_empty)
 TEST_CASE(checkpoint_codec_rejects_duplicate_keys_and_invalid_samples)
 {
     material_checkpoint checkpoint = { 0 }, decoded = { 0 };
-    field_grid grid = { 2, 2, 1, 0, 0 };
+    field_grid grid = { .width = 2, .height = 2, .cell_size = 1 };
     material_mask *a = material_checkpoint_copy_mask(NULL, grid);
     material_mask *b = material_checkpoint_copy_mask(NULL, grid);
     REQUIRE(a->incarnation && b->incarnation && a->incarnation != b->incarnation);

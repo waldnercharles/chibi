@@ -84,7 +84,10 @@ static void generate(bool diagonal)
         }
     }
     full = material_mask_from_field(130, 4, 1, field);
-    chunks = material_terrain_chunks(field, (field_grid){ 130, 4, 1, -100, 0 });
+    chunks = material_terrain_chunks(
+        field,
+        (field_grid){ .width = 130, .height = 4, .cell_size = 1, .center_x = -100 }
+    );
 }
 static void synchronize()
 {

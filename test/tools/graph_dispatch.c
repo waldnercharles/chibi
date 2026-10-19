@@ -15,6 +15,7 @@ void test_model_profiles();
 void test_model_reuse();
 void test_model_inspection();
 void test_model_sampled();
+void test_tool_clay_fields();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_model_parameters();
 void test_model_material_scope();
@@ -43,6 +44,7 @@ bool test_graph_dispatch(const char *selector)
 #endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
     bool model_graphs = !strcmp(selector, "--model-graphs");
+    bool clay_fields = !strcmp(selector, "--clay-fields");
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     bool model_catalog = !strcmp(selector, "--model-catalog");
     bool shader_graphs = !strcmp(selector, "--shader-graphs");
@@ -67,6 +69,10 @@ bool test_graph_dispatch(const char *selector)
     }
 #endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (clay_fields) {
+        test_tool_clay_fields();
+        return true;
+    }
     if (model_graphs) {
         test_modeling();
         test_model_constructive();

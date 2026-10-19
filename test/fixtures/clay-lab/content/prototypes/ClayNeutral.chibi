@@ -1,0 +1,40 @@
+ClayNeutral :: prototype {
+    Transform {
+        x: 0,
+        y: 0
+    }
+    Input {
+        move: { x: 0, y: 0 }
+    }
+    Geometry3D {
+        width: 36,
+        height: 36,
+        depth: 36,
+        elevation: 24
+    }
+    VisualTransform {
+        scale: 1
+    }
+    SdfSurface3D {
+        enabled: true
+    }
+    Material {
+        scene: 4294967295,
+        albedo: 4294967295,
+        edge_light: 1
+    }
+    Shader {
+        material: "ClaySurface",
+        shape: "ClaySculpt"
+    }
+    ClaySettings {
+        form: 1,
+        fingerprints: 1,
+        roughness: 0.68,
+        variation: 0.06,
+        spacing: 2.4,
+        has_form: true,
+        dirty: true
+    }
+    behaviors: [ClayControls]
+}

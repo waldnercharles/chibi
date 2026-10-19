@@ -1,0 +1,99 @@
+version 3
+name "ClaySculpt"
+domain "model"
+id_counter 2000
+description "Bounded primitive sculpt: a softened lobe and thumb cut. Form 0 recovers ClayBlock; Form 1 shows the worked silhouette."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 100
+                type "Model Rounded Box"
+                x 0.0
+                y 0.0
+                inputs {
+                    "Half Size" {
+                        default x=18.0 y=16.0 z=16.0
+                    }
+                    Radius 4.0
+                }
+            }
+            - {
+                id 200
+                type "Model Parameter"
+                x 0.0
+                y 260.0
+                reference_name "Form"
+                inputs Minimum=0.0 Maximum=1.0
+            }
+            - {
+                id 300
+                type "Behavior Expression"
+                x 280.0
+                y 230.0
+                reference_name "vec3(14 * form, 3 * form, 2 * form)"
+                inputs {
+                    form id=301 type="float"
+                }
+                outputs {
+                    Result id=302 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 400
+                type "Model Sphere"
+                x 280.0
+                y 430.0
+                inputs Radius=12.0
+            }
+            - id=500 type="Model Translate" x=580.0 y=230.0
+            - {
+                id 600
+                type "Model Smooth Union"
+                x 880.0
+                y 0.0
+                inputs Smoothness=3.0
+            }
+            - {
+                id 700
+                type "Behavior Expression"
+                x 280.0
+                y 650.0
+                reference_name "vec3(-7, 38 - 15 * form, 6)"
+                inputs {
+                    form id=701 type="float"
+                }
+                outputs {
+                    Result id=702 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 800
+                type "Model Sphere"
+                x 280.0
+                y 850.0
+                inputs Radius=10.0
+            }
+            - id=900 type="Model Translate" x=580.0 y=650.0
+            - id=1000 type="Model Difference" x=1180.0 y=0.0
+            - id=1100 type="Model Output" x=1480.0 y=0.0
+        }
+        (array)edges {
+            - from="100.Geometry" to="600.A"
+            - from="200.Value" to="300.form"
+            - from="200.Value" to="700.form"
+            - from="300.Result" to="500.Offset"
+            - from="400.Geometry" to="500.Geometry"
+            - from="500.Geometry" to="600.B"
+            - from="600.Geometry" to="1000.A"
+            - from="700.Result" to="900.Offset"
+            - from="800.Geometry" to="900.Geometry"
+            - from="900.Geometry" to="1000.B"
+            - from="1000.Geometry" to="1100.Geometry"
+        }
+    }
+    - id=1200 kind="function" math_expression="vec3(14 * form, 3 * form, 2 * form)" expression_mode=1 entry_id=1201
+    - id=1300 kind="function" math_expression="vec3(-7, 38 - 15 * form, 6)" expression_mode=1 entry_id=1301
+}

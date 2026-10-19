@@ -12,7 +12,7 @@ enum
     SIDE = 32,
     LAYERS = 24
 };
-static const field_grid PLANE = { SIDE, SIDE, 1, 0, 0 };
+static const field_grid PLANE = { .width = SIDE, .height = SIDE, .cell_size = 1 };
 static const float CENTER_DEPTH = 10, RADIUS = 6;
 /* Deeper than any volume here, so carves reach as far as their cones. */
 static const float SLAB = 64;
@@ -265,7 +265,7 @@ static bool open_field_closes_at_the_back_unless_open_and_rejects_oversize()
     render_mesh_asset_free(&mesh);
     terrain_volume_free(&volume);
     terrain_volume untouched = { 0 };
-    field_grid huge = { 4096, 4096, 1, 0, 0 };
+    field_grid huge = { .width = 4096, .height = 4096, .cell_size = 1 };
     REQUIRE(!terrain_volume_bake(
         program,
         (field_context){ 0 },
@@ -429,8 +429,10 @@ static bool refined_volume_matches_the_dense_fine_bake()
     for (int f = 0; f < 2; f++) {
         REQUIRE(programs[f]);
         terrain_volume dense = { 0 }, refined = { 0 };
-        field_grid fine = { FINE_SIDE, FINE_SIDE, 1, 0, 0 };
-        field_grid coarse = { COARSE_SIDE, COARSE_SIDE, REFINE, 0, 0 };
+        field_grid fine = { .width = FINE_SIDE, .height = FINE_SIDE, .cell_size = 1 };
+        field_grid coarse = { .width = COARSE_SIDE,
+                              .height = COARSE_SIDE,
+                              .cell_size = REFINE };
         REQUIRE(terrain_volume_bake(
             programs[f],
             (field_context){ 0 },

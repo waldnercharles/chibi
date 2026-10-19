@@ -1834,3 +1834,81 @@ This coverage is frontend inference and native BYTECODE/SLJIT evidence only.
 It does not establish generated-C, actual Wasm/browser, Studio UI, performance,
 numeric-foundation or full-suite coverage. Wider affected-contract checks remain
 an integration-review decision. Source-only registration records no measured pass.
+
+## Clay laboratory: standalone source checkpoint
+
+The first authored clay checkpoint adds two fixed C/pico_unit selectors. Neither
+is included in an aggregate, and registration alone is not exact-source workload
+admission or a recorded pass. Run each selected invocation under the unchanged
+production supervisor's shared 60-second deadline; keep configuration/build time
+separate.
+
+- `python3 tools/test_policy.py tool clay-fields`: five in-memory cases, eight
+  model compilations, eighteen bracket attempts and at most 413 scalar field
+  evaluations. Independent analytic references cover CSG bounds, a smooth join,
+  uniformly scaled spheres and a thin shell. A nonuniform-scale counterexample
+  demonstrates why a small conservative field residual is not a ray-depth error
+  bound. These are field/compiler checks, not production-picker or GPU parity.
+  See [the field contract](clay-sdf-field-contract.md).
+- `python3 tools/test_policy.py tool clay-lab`: prepare the checked-in project
+  once and run its real `.chibi` input behavior/system on one BYTECODE player.
+  Eight specimens/eleven scene entities use 26 supplied-time simulation steps
+  plus an initial zero-time boundary, 208 model/material snapshot pairs, sixteen
+  reflected spacing/dirty test-input writes, eight row publication commits and
+  24 model setter validations.
+  The case checks each toggle, held-input debounce, combined controls, reset,
+  pigment/shape identity, cleared dirty flags and unchanged program revision.
+  Material snapshot equality and the common dirty guard are not a global
+  material-host-call counter. Source admission rejects nonregular entries and
+  caps the tree at 24 files, 32 entries, depth three and 128 KiB. Prepared data
+  is capped at 1 MiB; staged embedded shader/model/value/part records at sixteen
+  records/1 MiB and 8 MiB decoded storage. No window, GPU upload, child process,
+  network, screenshot or wall-clock assertion is used.
+
+The authored case links the production `render_prepared_resources` host, whose
+current package owner is `Chibi::render`, and therefore needs a compiler-enabled
+desktop dependency build even though execution is CPU-only. Metadata-only test
+hosts cannot replace real shader/model generation publication. Builds without
+authoring, project compilation, the native host, graph/model catalog or renderer do
+not acquire this case; an unavailable `--clay-lab` returns status 2.
+
+Asset canonicalization uses fixed standalone maintenance routes:
+
+```sh
+python3 tools/test_policy.py tool clay-format
+python3 tools/test_policy.py tool clay-format-check
+```
+
+Each launches only the configured `CHIBI_CTL` (default Release controller) for
+`test/fixtures/clay-lab`, with `--format` and then `--format --check` respectively.
+Before either first invocation, independently admit the exact eighteen-file
+fixture manifest, current project version, local content/start-scene and absence
+of symlinks or external inputs. `--check` does not prevent an outdated project
+from migrating. The write route is intentional source maintenance; inspect its
+diff and re-freeze/review changed output before final tests. The older
+`fixture-format` route still owns its fixed thirteen projects and does not cover
+this fixture. No aggregate is enlarged by these maintenance entries.
+
+Affected supporting checks are `model-graphs`, `model-catalog`, `shader-graphs`
+and the tooling execution-policy/routing checks. `native-tools` adds two exact
+clay CPU-route probes and one unknown-clay negative probe to its existing C
+route case; this changed workload needs refreshed admission too. Existing
+model-catalog cases retain arbitrary override-isolation and invalid-parameter
+rollback coverage. No new native runtime/renderer/language behavior is changed.
+
+Native build prerequisites also retain the existing `desktop-dependencies`
+owner. Its new warning-boundary case performs one configure-only CMake child
+(`LANGUAGES NONE`, two INTERFACE targets) under the existing ten-second child
+limit and shared sixty-second supervisor. It checks the production boundary's
+exact project-warning isolation, instrumentation preservation and option
+restoration without a compiler, dependency fetch or build. Mechanical
+designated-initializer fixes retain the existing `reference-index`,
+`material-surface-mesh` (including terrain-volume), `terrain-seams` and
+`terrain-checkpoint` workloads and values.
+
+No product build, asset formatter/check, authored execution or render capture
+has run for this source-only checkpoint. A later preview needs its own exact
+input/device/resource admission and inspected output. CPU preparation does not
+establish clay appearance, geometric Form-zero equivalence, motion stability,
+scene3d integration, picking parity, hardware performance, VDB compatibility or
+any complete prototype gate.

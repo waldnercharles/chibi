@@ -31,6 +31,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SHADER_BAKE
 void test_tool_shader_bake();
 #endif
+#ifdef CHIBI_TEST_CLAY_LAB
+void test_clay_lab();
+#endif
 #ifdef CHIBI_TEST_TILEMAP
 void test_tool_tilemap();
 #endif
@@ -496,6 +499,19 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 2 && !strcmp(argv[1], "--clay-lab")) {
+#ifdef CHIBI_TEST_CLAY_LAB
+        tool_init();
+        source_runtime_active = true;
+        graph_types = true;
+        pu_display_time(true);
+        test_clay_lab();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        return 2;
+#endif
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();
@@ -799,10 +815,10 @@ int main(int argc, char **argv)
          terrain_seams = false, scene3d = false, material_ramps = false,
          radiance_surface = false, material_pixels = false, box3d = false,
          sky_files = false, mesh_files = false, model_import = false,
-         model_graphs = false, model_catalog = false, render_geometry = false,
-         shader_graphs = false, shader_parity = false, shader_programs = false,
-         material_cameras = false, mesh_materials = false, sdf_quality = false,
-         scene3d_post = false, scene3d_shapes = false,
+         model_graphs = false, clay_fields = false, model_catalog = false,
+         render_geometry = false, shader_graphs = false, shader_parity = false,
+         shader_programs = false, material_cameras = false, mesh_materials = false,
+         sdf_quality = false, scene3d_post = false, scene3d_shapes = false,
          texture_transform = false, material_render = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
@@ -924,6 +940,7 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
     model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
+    clay_fields = argc == 2 && !strcmp(argv[1], "--clay-fields");
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     model_catalog = argc == 2 && !strcmp(argv[1], "--model-catalog");
     shader_graphs = argc == 2 && !strcmp(argv[1], "--shader-graphs");
@@ -933,9 +950,9 @@ int main(int argc, char **argv)
     mesh_materials = argc == 2 && !strcmp(argv[1], "--mesh-materials");
     sdf_quality = argc == 2 && !strcmp(argv[1], "--sdf-quality");
 #endif
-    graph_types = model_graphs || model_catalog || shader_graphs ||
-                  shader_parity || shader_programs || material_cameras ||
-                  mesh_materials || sdf_quality;
+    graph_types = model_graphs || clay_fields || model_catalog ||
+                  shader_graphs || shader_parity || shader_programs ||
+                  material_cameras || mesh_materials || sdf_quality;
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
@@ -953,19 +970,20 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !package && !desktop_dependencies && !package_ownership && !unit &&
-        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
-        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
-        !scene_snapshot_read && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !terrain_seams &&
-        !scene3d && !material_ramps && !texture_transform && !arena &&
-        !render_geometry && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
-        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
+        !package_ownership && !unit && !web_storage && !webgpu_staging &&
+        !wasm_browser && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !scene_hierarchy && !scene_snapshot_read &&
+        !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+        !material_sampling && !scene2d && !terrain_seams && !scene3d &&
+        !material_ramps && !texture_transform && !arena && !render_geometry &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_graphs &&
+        !clay_fields && !model_catalog && !shader_graphs && !shader_parity &&
         !shader_programs && !material_cameras && !mesh_materials &&
         !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
@@ -1021,7 +1039,8 @@ int main(int argc, char **argv)
             "--material-thermal | "
             "--material-simulation | --material-ecs | --material-benchmark | "
             "--contact-benchmark | "
-            "--model-graphs | --model-catalog | --shader-graphs | "
+            "--model-graphs | --clay-fields | --clay-lab | --model-catalog | "
+            "--shader-graphs | "
             "--shader-parity | "
             "--shader-programs | --material-cameras | --mesh-materials | "
             "--sdf-quality | --scene3d-post | --scene3d-shapes | "

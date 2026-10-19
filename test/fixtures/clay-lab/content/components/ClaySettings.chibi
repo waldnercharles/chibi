@@ -1,0 +1,11 @@
+// Independent, instance-local look controls; no clock or random surface updates.
+ClaySettings :: component {
+    form: 0..1
+    fingerprints: 0..1
+    roughness: 0..1
+    variation: 0..0.2
+    // Fingerprint spacing in authored model units at visual scale 1.
+    spacing: 0.5..8 u
+    has_form: bool
+    dirty: bool
+}

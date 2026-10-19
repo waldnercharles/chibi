@@ -1,0 +1,20 @@
+// A broad white emissive card for the existing HRC surface path.
+ClayLamp :: prototype {
+    Transform {
+        x: 0,
+        y: -76
+    }
+    Appearance {
+        width: 220,
+        height: 6,
+        color: 4294967295,
+        relief: 72
+    }
+    Material {
+        scene: 4294967295,
+        albedo: 4294967295,
+        emission_color: 4294967295,
+        emission_intensity: 1,
+        emission_multiplier: 1
+    }
+}

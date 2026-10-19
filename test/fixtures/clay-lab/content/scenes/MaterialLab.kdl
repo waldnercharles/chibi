@@ -1,0 +1,75 @@
+version 1
+name "MaterialLab"
+(array)entities {
+    - name="View" prototype="ClayView"
+    - name="Stage" prototype="ClayStage"
+    - name="Key" prototype="ClayLamp"
+    - {
+        name "Neutral sphere"
+        prototype "ClayNeutral"
+        components {
+            Transform x=-108.0 y=-30.0
+            Shader shape="ClaySphere"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Neutral capsule"
+        prototype "ClayNeutral"
+        components {
+            Transform x=-36.0 y=-30.0
+            Shader shape="ClayCapsule"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Neutral block"
+        prototype "ClayNeutral"
+        components {
+            Transform x=36.0 y=-30.0
+            Shader shape="ClayBlock"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Neutral sculpt"
+        prototype "ClayNeutral"
+        components {
+            Transform x=108.0 y=-30.0
+        }
+    }
+    - {
+        name "Terracotta sphere"
+        prototype "ClayTerracotta"
+        components {
+            Transform x=-108.0 y=34.0
+            Shader shape="ClaySphere"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Terracotta capsule"
+        prototype "ClayTerracotta"
+        components {
+            Transform x=-36.0 y=34.0
+            Shader shape="ClayCapsule"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Terracotta block"
+        prototype "ClayTerracotta"
+        components {
+            Transform x=36.0 y=34.0
+            Shader shape="ClayBlock"
+            ClaySettings has_form=#false
+        }
+    }
+    - {
+        name "Terracotta sculpt"
+        prototype "ClayTerracotta"
+        components {
+            Transform x=108.0 y=34.0
+        }
+    }
+}

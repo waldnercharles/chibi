@@ -64,6 +64,13 @@ import:
   bounds-checked element reads;
 - element assignment, compound included, and `xs = array_add(xs, x)` and
   `xs = append(xs, ys)` on a local array, which update it in place;
+- field assignment, compound included, on a local record: `x.f = v` writes as
+  stage zero writes it, through the reference make, field and write
+  intrinsics, which copy the record with the new field, so no other value
+  shares the old storage, and copy a string into it. A record or array
+  parameter whose value, fields or elements the function writes gets a copy
+  of its own on entry, as stage zero isolates it; the others are read in
+  place;
 - union values `U.V` and `U.V(a, b)`, with one positional value per payload
   field, and `switch` over a union with `case .V:`, `case .V(a, b):` binding
   every payload field, and a default `case:`. Bindings are immutable. As in
@@ -91,15 +98,14 @@ import:
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
 Anything else is rejected with its source position. Floating and other
-integer types, implicit widening of call
-arguments, element stores, literal members, payloads and in-place natives,
-constants of other types or computed values, type patterns, record field
-defaults, field assignment, assigning record or array parameters, named
+integer types, implicit widening of call arguments, element stores, literal
+members, payloads and in-place natives, constants of other types or computed
+values, type patterns, record field defaults, fields of array elements, named
 payload arguments and literal variants come next. A literal passed to a
 wildcard port, as in `format_text("{}", 1)`, is a double in stage zero, and
-stage one rejects it. One check stage zero makes at compile time happens
-at run time here: a checked conversion of a named constant that does not
-fit fails the call.
+stage one rejects it. One check stage zero makes at compile time happens at
+run time here: a checked conversion of a named constant that does not fit
+fails the call.
 Locals follow stage zero's scopes: blocks, switch arms, whose statements form
 a block, and if and while statements, which hold their condition's bindings.
 A name declared twice in one scope, such as `x := 1; x := 2;` or `.Pair(a, a)`,

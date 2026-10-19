@@ -370,7 +370,7 @@ MemberUnit :: pure fn(environment: Environment, current: State, expression: Expr
 // Parameter metadata is read immediately before its argument is visited.
 // In particular, malformed annotations precede that argument's diagnostics.
 CallTarget :: pure fn(environment: Environment, current: State, expression: Expression, argument: Argument) -> Evaluation {
-    capability := -1;
+    capability: int = -1;
     if (expression.right < 0) { capability = CallCapability(environment, expression); }
     parameter := argument.parameter;
     present := false;

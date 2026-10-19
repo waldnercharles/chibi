@@ -501,6 +501,38 @@ static const sample samples[] = {
                  { "Decode", "[\"bad\"]", "[\"?\"]" },
                  { "Valid", "[\"\\\"x\\\"\"]", "[true]" },
                  { "Length", "[\"\\\"abc\\\"\"]", "[3]" } } },
+    { .name = "written parameters",
+      .source = "package facts\n"
+                "Point :: struct { x: int; y: int; }\n"
+                "Grow :: pure fn(xs: int[], n: int) -> int[] { xs = "
+                "array_add(xs, n); xs[0] = 9; return xs; }\n"
+                "Swap :: pure fn(p: Point, q: Point) -> int { p = q; return "
+                "p.x * 10 + q.y; }\n"
+                "Caller :: pure fn() -> int {\n"
+                "    xs: int[] = [1, 2];\n"
+                "    ys := Grow(xs, 5);\n"
+                "    a: Point = {x: 1, y: 2};\n"
+                "    b: Point = {x: 3, y: 4};\n"
+                "    return xs[0] * 1000 + length(ys) * 100 + ys[0] * 10 + "
+                "Swap(a, b) - a.x * 34;\n}",
+      .calls = { { "Caller", "[]", "[1390]" } } },
+    { .name = "field assignment",
+      .source = "package facts\n"
+                "Note :: struct { text: string; count: int; open: bool; }\n"
+                "Stamp :: pure fn(note: Note, count: int) -> Note { note.count "
+                "= count; note.text = format_text(\"#{}\", count); return "
+                "note; }\n"
+                "Fields :: pure fn(n: int) -> string {\n"
+                "    note: Note = {text: \"a\", count: 1, open: false};\n"
+                "    copy := note;\n"
+                "    note.count += n;\n"
+                "    note.count *= 2;\n"
+                "    note.open = true;\n"
+                "    stamped := Stamp(note, 7);\n"
+                "    return format_text(\"{} {} {} {} {} {}\", note.text, "
+                "note.count, note.open, copy.count, stamped.text, "
+                "stamped.count);\n}",
+      .calls = { { "Fields", "[4]", "[\"a 10 true 1 #7 7\"]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -583,12 +615,6 @@ static const sample samples[] = {
       .message = "foreach needs an array",
       .line = 2,
       .column = 47 },
-    { .name = "parameter element",
-      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { xs[0] = 1; "
-                "return 0; }",
-      .message = "element assignment needs a local array",
-      .line = 2,
-      .column = 36 },
     { .name = "untyped wildcard argument",
       .source = "package facts\nOne :: pure fn() -> string { return "
                 "format_text(\"{}\", 1); }",
@@ -827,6 +853,20 @@ static const sample samples[] = {
       .message = "assigning a native's several results is not supported yet",
       .line = 2,
       .column = 67 },
+    { .name = "binding field assignment",
+      .source = "package facts\nP :: struct { x: int; }\nU :: union { A(p: P) "
+                "| B }\n"
+                "One :: pure fn(u: U) -> int { switch u { case .A(p): p.x = 1; "
+                "return p.x; case .B: return 0; } return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 4,
+      .column = 54 },
+    { .name = "element field assignment",
+      .source = "package facts\nP :: struct { x: int; }\nOne :: pure fn() -> "
+                "int { ps: P[] = []; ps[0].x = 1; return 0; }",
+      .message = "field assignment needs a local record",
+      .line = 3,
+      .column = 41 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",

@@ -167,7 +167,7 @@ Declare :: pure fn(work: Work, tree: reader.Tree, node: int, context: Context,
                         line: request.line, column: request.column, document: request.document};
                     lexical_context: binding.Context = {identity: identity, scope: context.scope, function: context.function,
                         package_scope: package_scope, has_identity: true, has_documents: has_documents};
-                    existing := -1;
+                    existing: int = -1;
                     id: uint64 = 0;
                     diagnostics := old_diagnostics;
                     switch binding.Declare(lexical, lexical_context, lexical_request) {
@@ -485,8 +485,8 @@ Register :: pure fn(environment: Environment, tree: reader.Tree, node: int, cont
     work := Start(environment);
     is_macro := reader.Kind(tree, node, "macro_declaration");
     token := reader.Field(tree, node, "name");
-    symbol_index := -1;
-    function_index := -1;
+    symbol_index: int = -1;
+    function_index: int = -1;
     name := "";
     kind: int = 1;
     if (is_macro) { kind = 2; }
@@ -565,7 +565,7 @@ Register :: pure fn(environment: Environment, tree: reader.Tree, node: int, cont
             child := nodes[body].first_child;
             while (child >= 0) {
                 if (named_flags[child] && reader.Kind(tree, child, "entry_declaration")) {
-                    entry_index := -1;
+                    entry_index: int = -1;
                     switch NewFunction(work, tree, child, active, 4, -1) { case .Declared(updated, index): work = updated; entry_index = index; }
                     switch Name(work, tree, reader.Field(tree, child, "name"), active.document) { case .Name(decoded, text):
                         work = decoded;

@@ -49,7 +49,7 @@ Declare :: pure fn(environment: binding.Environment, lexical: binding.Context, c
         name: request.name, kind: TypeKind, start: request.name_start, end: request.name_end,
         line: request.name_line, column: request.name_column, document: request.name_document
     };
-    existing := -1;
+    existing: int = -1;
     id: uint64 = 0;
     switch binding.Declare(environment, lexical, admission) {
         case .Appended(value, errors): id = value; diagnostics = errors;

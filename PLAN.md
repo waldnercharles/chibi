@@ -816,10 +816,12 @@ typed by their use and checked, wrapping and clamping conversions; the
 compiler's own `x := -1` locals now declare `int`, since stage zero makes an
 untyped literal a double. Array literals with no type expected take their
 first item's type, variadic natives such as `format_text` and natives with
-several results such as `compiler_json_string` work. Compiling the compiler's
-own sources now stops first at a field assignment to a record parameter in
-`source_snapshot`; field assignment, then the rest of the compiler's sources
-follow.
+several results such as `compiler_json_string` work, and field assignment
+writes through stage zero's reference intrinsics, with written record and
+array parameters copied on entry. With these, stage one compiles the
+compiler's complete source set to a closure. Loading that closure as stage
+one and comparing what it compiles with stage zero's build, stage one to
+stage two, follows.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

@@ -270,7 +270,7 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
      j += 1;
     }
     name := "unknown";
-    typeIndex := -1;
+    typeIndex: int = -1;
     j = 0;
     foreach(type in CatalogTypes(environment)) {
      if(typeIndex < 0 && IDAt(environment,type.id_slot) == componentID) { typeIndex = j; name = type.name; }

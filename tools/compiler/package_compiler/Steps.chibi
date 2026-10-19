@@ -84,7 +84,7 @@ RetainStep :: pure fn(kept: Value, ops: Ops, target: Target, at: Bases, item: sn
 // Statements: local declarations, assignments, expression statements and
 // returns, from scheduling to the value's store.
 StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                         types: TypeDecl[], natives: Native[], names: Name[], scope: int, package: int, values: Value[],
+                         types: TypeDecl[], members: TypeMember[], natives: Native[], names: Name[], scope: int, package: int, values: Value[],
                          top: int,
                          function: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     callable := callables[function];
@@ -126,7 +126,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                     expected = Expect(value, binding.storage, binding.container, binding.record);
                     // `xs = array_add(xs, x)` and `xs = append(xs, ys)` on a
                     // local array update it in place.
-                    native := -1;
+                    native: int = -1;
                     if (operator == "") {
                         native = InPlaceNative(forest, text, callables, natives, names, package, found, destination, value);
                     }
@@ -144,10 +144,31 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                             NoValue(), retain, marks);
                     }
                 }
+            } else if (Is(forest, destination, "member_expression")) {
+                // `x.f = v` on a local record, written as stage zero writes it.
+                object := Field(forest, destination, "object");
+                found: int = -1;
+                if (Is(forest, object, "identifier")) { found = Lookup(names, Text(forest, text, object)); }
+                if (found >= 0 && !names[found].writable) {
+                    return Fail(forest, destination, document, "Assignment requires a writable value");
+                }
+                if (found < 0 || names[found].place != CellPlace || names[found].storage != StructStorage ||
+                    names[found].container != 0) {
+                    return Fail(forest, destination, document, "field assignment needs a local record");
+                }
+                member := NameText(forest, text, Field(forest, destination, "member"));
+                field := FindField(types, members, names[found].record, member);
+                if (field < 0) { return Fail(forest, destination, document, format_text("Unknown field '{}'", member)); }
+                next = array_add(next, Expect(value, members[field].storage, 0, -1));
+                write := Resume(item.node, FieldPhase, found, field);
+                if (operator != "") { write.c = 1; }
+                next = array_add(next, write);
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
+                    NoValue(), retain, marks);
             } else if (Is(forest, destination, "index_expression")) {
                 // `xs[i] = x` on a local array stores in place.
                 object := Field(forest, destination, "object");
-                found := -1;
+                found: int = -1;
                 if (Is(forest, object, "identifier")) { found = Lookup(names, Text(forest, text, object)); }
                 if (found < 0 || names[found].place != CellPlace || names[found].container != ArrayContainer ||
                     !names[found].writable) {
@@ -220,7 +241,7 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
             }
         } else if (kind == "assignment") {
             destination := Field(forest, item.node, "target");
-            found := -1;
+            found: int = -1;
             if (Is(forest, destination, "identifier")) { found = Lookup(names, Text(forest, text, destination)); }
             if (found < 0 || names[found].place == ParameterPlace || names[found].place == AliasPlace) {
                 return Fail(forest, destination, document, "assignment needs a local name");
@@ -282,6 +303,10 @@ StatementStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document
                 code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
             }
         }
+    } else if (item.phase == FieldPhase) {
+        popped = 1;
+        return FieldStep(forest, text, document, names[item.a], members[item.b], values[top - 1], item, ops, target, at,
+            node);
     } else if (item.phase == RetainedPhase) {
         // A retained copy, in the last cell: bind it, store it in a local's
         // cell, or publish its header.
@@ -585,7 +610,7 @@ ValueStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: in
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
                 Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
         }
-        found := -1;
+        found: int = -1;
         if (Single(object, StructStorage)) { found = FindField(types, members, object.record, member); }
         if (found < 0) { return Fail(forest, item.node, document, format_text("Unknown field '{}'", member)); }
         field := members[found];
@@ -772,7 +797,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     marks: int[] = [];
     if (item.phase == 0) {
         callee := Field(forest, item.node, "function");
-        sum_type := -1;
+        sum_type: int = -1;
         if (Is(forest, callee, "member_expression")) { sum_type = UnionOf(forest, text, types, names, package, callee); }
         if (sum_type >= 0) {
             // A variant with a payload: each argument is a payload field, in order.
@@ -801,7 +826,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         }
         // `F(...)` calls this package's F or a native; `alias.F(...)` calls an
         // imported package's F.
-        qualifier := -1;
+        qualifier: int = -1;
         if (Is(forest, callee, "member_expression")) {
             qualifier = Field(forest, callee, "object");
             callee = Field(forest, callee, "member");
@@ -842,7 +867,7 @@ CallStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             next = array_add(next, finish);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
         }
-        native := -1;
+        native: int = -1;
         expected_count: int = 0;
         if (found >= 0) {
             expected_count = callables[found].count;
@@ -1156,7 +1181,7 @@ OperatorStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document:
             }
         }
         integer := Integer(operand.storage) && operand.container == 0;
-        op := -1;
+        op: int = -1;
         right_slot: int = 0;
         if (operator == "-" && integer && Computes(ops, ops.neg, operand.storage)) {
             op = ops.neg;
@@ -1372,6 +1397,178 @@ ForeachStep :: pure fn(array: Value, ops: Ops, target: Target, at: Bases, node: 
         Typed(at.slot + 8, array.storage, 0, array.record), NoValue(), marks);
 }
 
+// `x.f = v` and `x.f op= v` on the local record `binding`, as stage zero
+// writes a field: a reference to the local's cell and then to the field, and
+// a write through it, which copies the record with the new field, so no other
+// value shares the old storage, and copies a string into it.
+FieldStep :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int, binding: Name, field: TypeMember,
+                     value: Value, item: Work, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    locals: int[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
+    stored := value;
+    if (item.c == 1) {
+        // The current field, read in place, combined with the value.
+        op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
+        if (op < 0 || Comparison(ops, op) || !Integer(field.storage) || !Single(value, field.storage)) {
+            return Fail(forest, item.node, document, "compound assignment needs integer operands of its type");
+        }
+        if (!Computes(ops, op, field.storage)) { return Fail(forest, item.node, document, "unsupported arithmetic type"); }
+        slots = array_add(slots, address);
+        code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, binding.index, 0, 0, node));
+        slots = array_add(slots, address);
+        record := Instruction(ops.load, target.pointer_storage, at.slot + 1, at.slot, 0, 0, node);
+        record.offset = target.payload_offset;
+        code = array_add(code, record);
+        current: Slot = {storage: field.storage, kind: ValueKind};
+        slots = array_add(slots, current);
+        read := Instruction(ops.load, field.storage, at.slot + 2, at.slot + 1, 0, 0, node);
+        read.offset = field.offset;
+        code = array_add(code, read);
+        slots = array_add(slots, current);
+        code = array_add(code, Instruction(op, field.storage, at.slot + 3, at.slot + 2, value.slot, -1, node));
+        stored = Typed(at.slot + 3, field.storage, 0, -1);
+    }
+    if (!SameType(field.storage, 0, -1, stored)) { return Fail(forest, item.node, document, "field value differs from its type"); }
+    // Reference make: the owner, the record's type, a value reference to the
+    // local's cell, then unused component facts.
+    first := at.cell;
+    kinds: int[] = [AddressKind, ValueKind, ValueKind, ValueKind, AddressKind, ValueKind, ValueKind, ValueKind,
+        ValueKind];
+    storages: int[] = [target.pointer_storage, StructStorage, IntStorage, IntStorage, target.pointer_storage,
+        HandleStorage, WordStorage, WordStorage, WordStorage];
+    constants: int[] = [0, 0, 0, -1, 0, 0, 0, 0, 0];
+    index: int = 0;
+    while (index < 9) {
+        record_index: int = -1;
+        if (index == 1) { record_index = binding.record; }
+        cell: Cell = {storage: storages[index], container: 0, record: record_index, constant: constants[index],
+            variant: -1, kind: kinds[index]};
+        cells = array_add(cells, cell);
+        index += 1;
+    }
+    made: Cell = {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1,
+        kind: ReferenceKind};
+    cells = array_add(cells, made);
+    // Reference field: the reference, the field's type, its offset, and
+    // false for a field rather than an element.
+    cells = array_add(cells, made);
+    typed: Cell = {storage: field.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells = array_add(cells, typed);
+    offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: field.offset, variant: -1, kind: ValueKind};
+    cells = array_add(cells, offset);
+    element: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells = array_add(cells, element);
+    cells = array_add(cells, made);
+    // Reference write: the field's reference and the value; it answers a bool.
+    cells = array_add(cells, made);
+    cells = array_add(cells, typed);
+    cells = array_add(cells, element);
+    // The owner and the local's cell address go into the make's cells.
+    slots = array_add(slots, address);
+    holder := at.slot + length(slots) - 1;
+    context := Instruction(ops.context, target.pointer_storage, holder, 0, 0, 1, node);
+    code = array_add(code, context);
+    slots = array_add(slots, address);
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + length(slots) - 1, binding.index,
+        0, 0, node));
+    local := at.slot + length(slots) - 1;
+    code = append(code, CellWrite(target.pointer_storage, holder, first, ops, target, at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    code = append(code, CellWrite(target.pointer_storage, local, first + 4, ops, target, at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1};
+    hosts = array_add(hosts, make);
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    // The make's reference into the field's first cell, then the field's
+    // reference into the write's.
+    code = append(code, CellRead(target.pointer_storage, first + 9, ops, target, at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    slots = array_add(slots, reference);
+    code = append(code, CellWrite(target.pointer_storage, at.slot + length(slots) - 1, first + 10, ops, target,
+        at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    field_host: Host = {intrinsic: ReferenceFieldIntrinsic, linked: -1, first: first + 10, result_first: first + 14,
+        result_count: 1};
+    hosts = array_add(hosts, field_host);
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
+    code = append(code, CellRead(target.pointer_storage, first + 14, ops, target, at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    slots = array_add(slots, reference);
+    code = append(code, CellWrite(target.pointer_storage, at.slot + length(slots) - 1, first + 15, ops, target,
+        at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    code = append(code, CellWrite(field.storage, stored.slot, first + 16, ops, target, at.slot + length(slots), node));
+    slots = array_add(slots, address);
+    write_host: Host = {intrinsic: ReferenceWriteIntrinsic, linked: -1, first: first + 15, result_first: first + 17,
+        result_count: 1};
+    hosts = array_add(hosts, write_host);
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 2, node));
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, NoValue(), NoValue(), marks);
+}
+// A cell's payload into a new slot: its address at `slot`, its value at
+// `slot + 1`.
+CellRead :: pure fn(storage: int, cell: int, ops: Ops, target: Target, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [];
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, node));
+    read := Instruction(ops.load, storage, slot + 1, slot, 0, 0, node);
+    read.offset = target.payload_offset;
+    return array_add(code, read);
+}
+// A slot's value into a cell's payload, through the cell's address at `slot`.
+CellWrite :: pure fn(storage: int, value: int, cell: int, ops: Ops, target: Target, slot: int,
+                     node: snapshot.SnapshotNode) -> Code[] {
+    code: Code[] = [];
+    code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, slot, cell, 0, 0, node));
+    write := Instruction(ops.write, storage, 0, value, slot, 0, node);
+    write.offset = target.payload_offset;
+    return array_add(code, write);
+}
+// A record or array parameter the body writes, item.a: phase 0 reads it and
+// copies it into a fresh cell; phase 1 binds its name to that cell.
+ParameterStep :: pure fn(params: Param[], callable: Callable, item: Work, ops: Ops, target: Target, at: Bases,
+                         node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    locals: int[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    param := params[callable.first + item.a];
+    if (item.phase == 1) {
+        binding: Name = {name: param.name, place: CellPlace, index: at.cell - 1, storage: param.storage,
+            container: param.container, record: param.record, writable: true};
+        bound = array_add(bound, binding);
+        return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, NoValue(), NoValue(),
+            marks);
+    }
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    slots = array_add(slots, address);
+    read := Instruction(ops.array, target.pointer_storage, at.slot, item.a, 0, ops.argument, node);
+    read.value_storage = param.storage;
+    read.value_container = param.container;
+    read.value_record = param.record;
+    code = array_add(code, read);
+    root: Root = {slot: at.slot, storage: param.storage, container: param.container, record: param.record};
+    roots = array_add(roots, root);
+    next = array_add(next, Resume(item.node, 1, item.a, 0));
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
+        Typed(at.slot, param.storage, param.container, param.record), marks);
+}
 // A match on the union in local `subject`, or, when `subject` is -1, in slot
 // `from`, which it first saves to a new local. When the union holds variant
 // types[variant], the names in `bindings` take its payload fields in order.

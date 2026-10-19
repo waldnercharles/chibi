@@ -72,6 +72,8 @@ Step :: union {
 
 ValueKind: int : 0;
 AddressKind: int : 1;
+// A slot or cell holding a reference the reference intrinsics take.
+ReferenceKind: int : 2;
 LocalPlace: int : 0;
 CellPlace: int : 1;
 ParameterPlace: int : 2;
@@ -88,6 +90,9 @@ ConstructIntrinsic: int : 2;
 ArrayPushIntrinsic: int : 27;
 ArrayStoreIntrinsic: int : 28;
 ArrayExtendIntrinsic: int : 29;
+ReferenceMakeIntrinsic: int : 3;
+ReferenceFieldIntrinsic: int : 4;
+ReferenceWriteIntrinsic: int : 6;
 UnionMakeIntrinsic: int : 20;
 UnionTestIntrinsic: int : 21;
 UnionGetIntrinsic: int : 22;
@@ -96,6 +101,7 @@ ValuePhase: int : 1;
 RetainedPhase: int : 2;
 PushPhase: int : 3;
 StorePhase: int : 4;
+FieldPhase: int : 5;
 
 Instruction :: pure fn(op: int, type: int, output: int, left: int, right: int, target: int,
                        item: snapshot.SnapshotNode) -> Code {
@@ -169,7 +175,7 @@ ParseNumber :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int)
     }
     // At most 16 hexadecimal or 20 decimal significant digits; twenty decimal
     // digits must not exceed the largest uint64.
-    first := -1;
+    first: int = -1;
     magnitude: uint64 = 0;
     while (index < size) {
         digit := HexDigit(strings.ByteAt(literal, index));
@@ -347,7 +353,7 @@ NameMatches :: pure fn(left: string, right: string) -> bool {
 // The native an exact name or one unique matching name selects: -1 when none,
 // -2 when several match.
 FindNative :: pure fn(natives: Native[], name: string) -> int {
-    found := -1;
+    found: int = -1;
     index: int = 0;
     while (index < length(natives)) {
         if (natives[index].name == name) { return index; }
@@ -390,7 +396,7 @@ ConstantOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, constants: 
 UnionOf :: pure fn(forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
                    node: int) -> int {
     object := Field(forest, node, "object");
-    qualifier := -1;
+    qualifier: int = -1;
     if (Is(forest, object, "member_expression")) {
         qualifier = Field(forest, object, "object");
         object = Field(forest, object, "member");
@@ -452,7 +458,7 @@ NextArm :: pure fn(forest: snapshot.SnapshotNode[], node: int) -> int {
 // exact name first, else the one name that matches loosely; -1 for none and
 // -2 when several match.
 FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
-    found := -1;
+    found: int = -1;
     index: int = 0;
     while (index < native.results) {
         result := ports[native.first + native.parameters + index].name;
@@ -467,6 +473,28 @@ FindResult :: pure fn(ports: Port[], native: Native, name: string) -> int {
         index += 1;
     }
     return found;
+}
+// Whether the statements under `node` assign `name`, a field of it or an
+// element of it.
+Assigns :: pure fn(forest: snapshot.SnapshotNode[], text: string, node: int, name: string) -> bool {
+    pending: int[] = [node];
+    while (length(pending) > 0) {
+        at := pending[length(pending) - 1];
+        pending = slice(pending, 0, length(pending) - 1);
+        if (Is(forest, at, "assignment")) {
+            target := Field(forest, at, "target");
+            while (Is(forest, target, "member_expression") || Is(forest, target, "index_expression")) {
+                target = Field(forest, target, "object");
+            }
+            if (Is(forest, target, "identifier") && Text(forest, text, target) == name) { return true; }
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            pending = array_add(pending, child);
+            child = forest[child].next_sibling;
+        }
+    }
+    return false;
 }
 // The port of a native's argument `index`; a variadic native's last
 // parameter takes every argument from it on.
@@ -528,11 +556,16 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
     work_top: int = 0;
     value_top: int = 0;
     // Scalar and string parameters move to locals, so assigning one needs no
-    // other form; record and array parameters are read in place.
+    // other form. Record and array parameters are read in place, unless the
+    // body writes them: those get copies of their own, before the body runs.
+    work = array_add(work, Visit(Field(forest, callable.node, "body")));
     index: int = 0;
     while (index < callable.count) {
         param := params[callable.first + index];
-        if (Pointer(param.storage, param.container)) {
+        if (Pointer(param.storage, param.container) &&
+            Assigns(forest, text, Field(forest, callable.node, "body"), param.name)) {
+            work = array_add(work, Resume(callable.node, 0, index, 0));
+        } else if (Pointer(param.storage, param.container)) {
             name: Name = {name: param.name, place: ParameterPlace, index: index, storage: param.storage,
                 container: param.container, record: param.record, writable: true};
             names = array_add(names, name);
@@ -551,8 +584,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
         }
         index += 1;
     }
-    work = array_add(work, Visit(Field(forest, callable.node, "body")));
-    work_top = 1;
+    work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
         item := work[work_top];
@@ -877,7 +909,7 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
             }
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, natives, names, scopes[length(scopes) - 1],
+            step = StatementStep(forest, text, document, callables, types, members, natives, names, scopes[length(scopes) - 1],
                 callable.package, values, value_top, function, item, ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
@@ -890,6 +922,8 @@ EmitBody :: pure fn(forest: snapshot.SnapshotNode[], text: string, document: int
                 callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+        } else if (kind == "function_declaration") {
+            step = ParameterStep(params, callable, item, ops, target, at, node);
         } else if (kind == "is_expression" && item.phase == 0) {
             stepped = false;
             next = array_add(next, Visit(Field(forest, item.node, "value")));

@@ -1944,7 +1944,13 @@ transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.
 
-`build-process`, `build-toolchain` and M0's `chibi-cli` remain focused routes. The complete
+`chibi-cli-installed` runs the packaged SDK's launcher in place, `dist/sdk/bin/chibi` unless
+`CHIBI_INSTALLED_CLI` names another, so run `make package-sdk` first. Its three cases cover
+`version` and `doctor`, then `check`, `fmt`, `build` and a native `export` of one tiny project,
+and `test` on one package tree that imports the installed `core:` collection. It takes about
+three seconds and starts no player.
+
+`build-process`, `build-toolchain`, M0's `chibi-cli` and `chibi-cli-installed` remain focused routes. The complete
 `make test-tools` group builds a runtime-only tooling driver and does not build
 the private host or public launcher. Route registration does not add either
 fixture to that aggregate. Current platform results belong in `PLAN.md`;

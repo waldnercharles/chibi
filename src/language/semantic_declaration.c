@@ -189,8 +189,47 @@ void script_analyzer_function_type(analyzer *a, int function)
     );
     afree(results);
 }
+/* Whether `@test` marks a function declaration. It is the only attribute. */
+static bool test_attribute(analyzer *a, TSNode node)
+{
+    bool test = false;
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode attribute = ts_node_named_child(node, i);
+        if (!script_analyzer_is(attribute, "attribute")) {
+            continue;
+        }
+        TSNode name = script_analyzer_field(attribute, "name");
+        if (!script_analyzer_text_is(a, name, "test")) {
+            char *text = script_analyzer_text_copy(a, name);
+            script_analyzer_diagnostic(a, attribute, "Unknown attribute '@%s'", text);
+            free(text);
+        } else if (test) {
+            script_analyzer_diagnostic(a, attribute, "Duplicate attribute '@test'");
+        }
+        test |= script_analyzer_text_is(a, name, "test");
+    }
+    return test;
+}
+/* A test is a package function with no parameters, results or type
+ * parameters, so the runner can call it alone. Its declared header says so,
+ * including a result its returns imply. */
+static void mark_test(analyzer *a, TSNode node, int function)
+{
+    if (a->function >= 0 || !script_analyzer_is(ts_node_parent(node), "source_file")) {
+        script_analyzer_diagnostic(a, node, "@test needs a package-level function");
+        return;
+    }
+    script_function *declared = &a->out->functions[function];
+    if (acount(declared->parameters) || acount(declared->results) ||
+        acount(declared->type_parameters) || declared->inferred) {
+        script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
+        return;
+    }
+    declared->test = true;
+}
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
+    bool test = test_attribute(a, node);
     script_callable_facts facts = callable_facts(a);
     script_callable_header header = script_callable_register(
         &a->out->constants,
@@ -202,6 +241,11 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
                                    script_analyzer_range(a, node).document }
     );
     callable_apply(a, header);
+    /* A name the package already declares has no function of its own; the
+     * duplicate is diagnosed where it is registered. */
+    if (test && header.function >= 0) {
+        mark_test(a, node, header.function);
+    }
 }
 static uint64_t query_relationship_id(const analyzer *a, const char *name)
 {

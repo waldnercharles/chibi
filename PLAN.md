@@ -569,7 +569,13 @@ execution backends the SDK was built for. `doctor` reports the SDK, compiler,
 player, platform, native backend and, with `--web PLAYER`, browser export as
 supported, unavailable or broken, and fails only for a broken one it checked;
 it never writes. A platform mismatch is reported as unavailable, because the
-compiler and player checks decide whether the SDK runs. `fmt`, `test`, `web` and moving `export` behind Chibi modules remain.
+compiler and player checks decide whether the SDK runs. For `test`, the owner
+chose an attribute contract on 2026-10-19 after a survey of Rust, Odin, Jai,
+Zig, Go and others: `@test` marks a package-level function with no parameters
+or results, and the core function `expect(condition, message)` fails it at the
+call's position. The attribute and `expect` are in place (see
+`docs/code-language.md`); the `chibi test` runner is next. `fmt`, the `test`
+runner, `web` and moving `export` behind Chibi modules remain.
 
 Implement commands through shared modules, not separate scripts:
 

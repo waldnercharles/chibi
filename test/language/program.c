@@ -22,6 +22,7 @@
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
+#include "runtime/text_definition.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -2430,6 +2431,38 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
             !strcmp(copy.message, "first native failure") && copy.line == 3 &&
             copy.start == start
         );
+    }
+    return true;
+}
+/* expect passes a true condition and fails the call with its message at its
+ * own position otherwise, on each backend. */
+TEST_CASE(program_expect_fails_with_its_message_and_position)
+{
+    const char *source = "behavior Checks {\n"
+                         "  on Impulse(amount, enabled) {\n"
+                         "    expect(enabled, \"enabled is set\");\n"
+                         "    expect(amount > 2.0, \"amount is large\");\n"
+                         "  }\n"
+                         "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 3 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(execution_program_error(program) == NULL);
+        args[0].d = 1;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(!strcmp(failure->message, "Expectation failed: amount is large"));
+        REQUIRE(failure->line == 4 && failure->column == 5);
+        execution_program_free(program);
+        program = NULL;
     }
     return true;
 }
@@ -7886,6 +7919,7 @@ void test_language_program()
     RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
+    RUN_TEST_CASE(program_expect_fails_with_its_message_and_position);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
     RUN_TEST_CASE(program_local_array_store_checks_its_range);

@@ -50,7 +50,7 @@ Declare :: pure fn(environment: binding.Environment, lexical: binding.Context, c
         line: request.name_line, column: request.name_column, document: request.name_document
     };
     existing := -1;
-    id: uint64 = uint64(0);
+    id: uint64 = 0;
     switch binding.Declare(environment, lexical, admission) {
         case .Appended(value, errors): id = value; diagnostics = errors;
         case .Existing(symbol, errors): existing = symbol; diagnostics = errors;
@@ -59,7 +59,7 @@ Declare :: pure fn(environment: binding.Environment, lexical: binding.Context, c
     storage := initialStorage;
     container: int = 0;
     flags := initialFlags;
-    parameter: uint64 = uint64(0);
+    parameter: uint64 = 0;
     if (existing >= 0) {
         switch environment {
             case .Tables(scopes, symbols, functions, ids, keys):
@@ -69,7 +69,7 @@ Declare :: pure fn(environment: binding.Environment, lexical: binding.Context, c
                 if (symbol.kind != TypeKind || (!record && prior.storage != UnionStorage) ||
                     symbol.document != request.name_document || symbol.start != request.name_start) {
                     return Declaration.Bound(existing, id, initialStorage, initialFlags,
-                        false, 0, 0, 0, uint64(0), "", "", false, 0, diagnostics);
+                        false, 0, 0, 0, 0, "", "", false, 0, diagnostics);
                 }
                 name = symbol.name;
                 storage = prior.storage;

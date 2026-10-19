@@ -176,7 +176,7 @@ Lower :: pure fn(request: Request) -> Plan {
                     return Reject(request_range, "invalid scalar lowering variable signature");
                 }
                 identity := ids[variable.id_slot];
-                if (identity == uint64(0) || !ValidLiteral(literals[variable.literal], types[variable.type].storage)) {
+                if (identity == 0 || !ValidLiteral(literals[variable.literal], types[variable.type].storage)) {
                     return Reject(request_range, "invalid scalar lowering variable default");
                 }
                 earlier: int = 0;

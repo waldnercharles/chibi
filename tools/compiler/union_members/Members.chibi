@@ -36,7 +36,7 @@ MaxDepth: int : 256;
 // ordinary depth64 and therefore are not called on a deep traversal frame.
 CycleID :: pure fn(ids: uint64[], slot: int) -> uint64 {
     depth_limit 0;
-    if (slot < 0) { return uint64(0); }
+    if (slot < 0) { return 0; }
     return ids[slot];
 }
 CycleType :: pure fn(types: named.Type[], ids: uint64[], index: int) -> named.Value {
@@ -342,7 +342,7 @@ BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int
                 switch reader.Name(tree, name_node, document) { case .Name(name, errors):
                     current = Errors(current, errors);
                     tag := binding.ID("union-literal", name);
-                    payload := named.Value.Typed(13, 0, 1024, uint64(0), tag);
+                    payload := named.Value.Typed(13, 0, 1024, 0, tag);
                     if (literal_node < 0) {
                         key := strings.Slice(format_text("{}:{}", union_id, name), 0, 511);
                         tag = binding.ID("union-variant", key);

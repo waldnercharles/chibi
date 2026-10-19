@@ -63,7 +63,7 @@ Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
             foreach (error in errors) { diagnostics = array_add(diagnostics, error); }
             admissible := true;
             switch value { case .Typed(storage, container, flags, nominal, parameter):
-                if (name == "" || nominal != uint64(0) || flags != 0 || container != 0 ||
+                if (name == "" || nominal != 0 || flags != 0 || container != 0 ||
                     (storage != 13 && storage != 6 && storage != 1)) {
                     diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
                         "Record fields require nonoptional string, int or bool values"));

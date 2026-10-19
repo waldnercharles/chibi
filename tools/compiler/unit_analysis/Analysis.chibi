@@ -156,7 +156,7 @@ ResultsFlag: int : 8;
 NumericExcludedFlags: int : 75;
 
 IDAt :: pure fn(environment: Environment, slot: int) -> uint64 {
-    if (slot < 0) { return uint64(0); }
+    if (slot < 0) { return 0; }
     return Ids(environment)[slot];
 }
 // Match a full-width offset to a bounded native index without narrowing it.
@@ -173,7 +173,7 @@ Kind :: pure fn(value: units.Unit) -> int {
 }
 Numeric :: pure fn(type: Type, environment: Environment) -> bool {
     return type.container == 0 &&
-           (IDAt(environment, type.nominal_slot) == uint64(0) || (type.flags & GenericFlag) != 0) &&
+           (IDAt(environment, type.nominal_slot) == 0 || (type.flags & GenericFlag) != 0) &&
            type.storage >= 2 && type.storage <= 11 && (type.flags & NumericExcludedFlags) == 0;
 }
 CapabilityAt :: pure fn(environment: Environment, id: uint64) -> int {

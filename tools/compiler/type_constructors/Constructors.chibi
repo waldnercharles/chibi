@@ -36,8 +36,8 @@ Tag :: pure fn(value: named.Value) -> uint64 {
             if ((flags & 512) != 0) { return nominal; }
             if ((flags & 1024) != 0) { return parameter; }
             nominal_id := nominal;
-            result: uint64 = uint64(0);
-            if ((flags & 64) != 0) { nominal_id = uint64(0); result = parameter; }
+            result: uint64 = 0;
+            if ((flags & 64) != 0) { nominal_id = 0; result = parameter; }
             return binding.ID("union-type", format_text("{}:{}:{}:{}:{}", storage, container, nominal_id, result, flags & 74));
     }
 }
@@ -92,7 +92,7 @@ SelectMember :: pure fn(environment: Environment, selection: Selections, value: 
                     while (index < definition.variant_count) {
                         original := variants[definition.variant_start + index];
                         tag := named.IDAt(ids, original.tag_slot);
-                        if (parameter == uint64(0) || tag == parameter) {
+                        if (parameter == 0 || tag == parameter) {
                             selection = Select(selection, named.TypeAt(types, ids, original.type), nested, index, -1, tag);
                         }
                         index += 1;
@@ -104,12 +104,12 @@ SelectMember :: pure fn(environment: Environment, selection: Selections, value: 
 // Compare the first differing bit from most to least significant. This stays
 // within the bootstrap executor's supported unsigned bit operations.
 TagAfter :: pure fn(left: uint64, right: uint64) -> bool {
-    mask: uint64 = uint64(1) << uint64(63);
-    while (mask != uint64(0)) {
+    mask: uint64 = 1 << 63;
+    while (mask != 0) {
         left_bit := left & mask;
         right_bit := right & mask;
-        if (left_bit != right_bit) { return left_bit != uint64(0); }
-        mask = mask >> uint64(1);
+        if (left_bit != right_bit) { return left_bit != 0; }
+        mask = mask >> 1;
     }
     return false;
 }
@@ -131,18 +131,18 @@ FinishUnion :: pure fn(environment: Environment, selection: Selections, pointer_
                 }
                 index += 1;
             }
-            id: uint64 = uint64(14695981039346656037);
+            id: uint64 = 14695981039346656037;
             index = 0;
             while (index < length(rows)) {
-                id = (id ^ ids[rows[index].tag_slot]) * uint64(1099511628211);
+                id = (id ^ ids[rows[index].tag_slot]) * 1099511628211;
                 index += 1;
             }
-            value := named.Value.Typed(18, 0, 256, id, uint64(0));
+            value := named.Value.Typed(18, 0, 256, id, 0);
             if (FindDefinition(environment, id) >= 0) {
                 empty: Variant[] = [];
                 noIDs: uint64[] = [];
-                return Plan.Constructed(value, false, uint64(0), "",
-                    named.Value.Typed(0, 0, 0, uint64(0), uint64(0)),
+                return Plan.Constructed(value, false, 0, "",
+                    named.Value.Typed(0, 0, 0, 0, 0),
                     0, false, empty, fields, noIDs, diagnostics);
             }
             return Plan.Constructed(value, true, id, format_text("union:{}", id), value,
@@ -175,8 +175,8 @@ Task :: pure fn(environment: Environment, result: int, function: uint64) -> Plan
             id := Tag(descriptor);
             value := named.Value.Typed(17, 0, 64, function, id);
             if (FindDefinition(environment, id) >= 0) {
-                return Plan.Constructed(value, false, uint64(0), "",
-                    named.Value.Typed(0, 0, 0, uint64(0), uint64(0)),
+                return Plan.Constructed(value, false, 0, "",
+                    named.Value.Typed(0, 0, 0, 0, 0),
                     0, false, variants, fields, outputIDs, diagnostics);
             }
             if ((types[result].flags & 8) != 0) {
@@ -230,7 +230,7 @@ Await :: pure fn(environment: Environment, success: int, request: Request) -> Pl
                 index: int = 0;
                 while (index < definitions[definition].variant_count) {
                     tag := named.IDAt(ids, variants[definitions[definition].variant_start + index].tag_slot);
-                    if (tag == uint64(0x63616e63656c6c65)) { cancelled = true; }
+                    if (tag == 0x63616e63656c6c65) { cancelled = true; }
                     index += 1;
                 }
             }
@@ -242,7 +242,7 @@ Await :: pure fn(environment: Environment, success: int, request: Request) -> Pl
             }
             selection = SelectMember(environment, selection, value, 0);
             selection = SelectMember(environment, selection, named.Value.Typed(18, 0, 512,
-                uint64(0x63616e63656c6c65), uint64(0)), 1);
+                0x63616e63656c6c65, 0), 1);
     }
     return FinishUnion(environment, selection, request.pointer_size, diagnostics);
 }

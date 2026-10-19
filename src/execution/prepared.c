@@ -893,12 +893,14 @@ execution_module *execution_prepared_read_budget(
     prepared_context c = { .linker = linker,
                            .plan = execution_module_plan_new(),
                            .dependencies = &cache,
-                           .dependency_bytes = &dependency_bytes };
+                           .dependency_bytes = &dependency_bytes,
+                           .record_work_limit = linker ? linker->layout_work : 0 };
     c.wire = (execution_wire){ .data = (unsigned char *)data,
                                .size = length,
                                .reading = true,
                                .storage = &c.plan->storage,
-                               .storage_budget = remaining };
+                               .storage_budget = remaining,
+                               .owned_limit = linker ? linker->decoded_bytes : 0 };
     execution_wire *w = &c.wire;
     c.fingerprint_budget = w;
     c.shared_record_work = &c.record_work;

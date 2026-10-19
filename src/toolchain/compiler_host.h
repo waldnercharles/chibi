@@ -5,6 +5,11 @@
 #include "execution/function.h"
 
 #define COMPILER_HOST_MAX_BYTES (64u * 1024u * 1024u)
+/* A compiler's own closure is a large program: the package compiler's module
+ * decodes to about 80 MB with its verification scratch and needs about 113 M
+ * units of record-layout work. Loading allows each module, and the closure
+ * together, this much of both; invocations keep COMPILER_HOST_MAX_BYTES. */
+#define COMPILER_HOST_MAX_LOAD_BYTES (256u * 1024u * 1024u)
 #define COMPILER_HOST_MAX_VALUES 1000000
 #define COMPILER_HOST_MAX_DEPTH 64
 #define COMPILER_HOST_MAX_BATCH 64

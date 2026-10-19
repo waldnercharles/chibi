@@ -62,7 +62,7 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -100,7 +100,6 @@ help:
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
 		'make package-web-player  Build the browser player for chibi export --web' \
-		'make publish-web    Disabled: extracted browser publishing is not integrated' \
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
 
@@ -267,10 +266,6 @@ web-threads-serve:
 
 web-profile:
 	@$(MAKE) web-serve WEB_CMAKE_FLAGS="-DCHIBI_STUDIO_WEB_TRACE=ON $(WEB_CMAKE_FLAGS)"
-
-publish-web:
-	@printf '%s\n' 'Unavailable: extracted browser deployment has not been integrated. No publication was performed.' >&2
-	@exit 2
 
 format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh

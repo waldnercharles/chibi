@@ -12,6 +12,8 @@
 #define NATIVE_TEXT_BYTE_AT_SOURCE "text_byte_at"
 #define NATIVE_TEXT_SLICE_NAME "Text Slice"
 #define NATIVE_TEXT_SLICE_SOURCE "text_slice"
+#define NATIVE_TEXT_BYTES_NAME "Text Bytes"
+#define NATIVE_TEXT_BYTES_SOURCE "text_bytes"
 #define NATIVE_TEXT_PORT(X, NAME, STORAGE, NOMINAL, FLAGS)                     \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
@@ -44,6 +46,17 @@
     NATIVE_TEXT_PORT(X, "Count", PIN_I32, "int", 0)
 #define NATIVE_TEXT_INT_OUTPUTS(X)                                             \
     NATIVE_TEXT_PORT(X, "Result", PIN_I32, "int", 0)
+#define NATIVE_TEXT_BYTES_OUTPUTS(X)                                           \
+    X("Result",                                                                \
+      NATIVE_PARAMETER_DATA,                                                   \
+      PIN_I32,                                                                 \
+      "int",                                                                   \
+      PIN_CONTAINER_ARRAY,                                                     \
+      0,                                                                       \
+      0,                                                                       \
+      SCRIPT_REFERENCE_NONE,                                                   \
+      false,                                                                   \
+      ((pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY }))
 #define NATIVE_TEXT_OPERATIONS(X)                                              \
     X(FORMAT_TEXT,                                                             \
       NATIVE_FORMAT_TEXT_NAME,                                                 \
@@ -74,6 +87,12 @@
       NATIVE_TEXT_SLICE_SOURCE,                                                \
       NATIVE_TEXT_SLICE_INPUTS,                                                \
       NATIVE_FORMAT_TEXT_OUTPUTS,                                              \
+      false)                                                                   \
+    X(TEXT_BYTES,                                                              \
+      NATIVE_TEXT_BYTES_NAME,                                                  \
+      NATIVE_TEXT_BYTES_SOURCE,                                                \
+      NATIVE_TEXT_VALUE_INPUTS,                                                \
+      NATIVE_TEXT_BYTES_OUTPUTS,                                               \
       false)
 extern const native_definition_pack NATIVE_TEXT_DEFINITION_PACK;
 #endif

@@ -84,9 +84,11 @@ loading remains unsupported; callers can still supply owned buffer snapshots.
 
 The SDK installs `core:strings` in `share/chibi/core`, exposed to CMake consumers
 as relocatable `Chibi_CORE_SOURCE_DIR`. Callers pass that root explicitly. Its
-pure functions use the text and array capability packs. `ByteLength`, `ByteAt`, `Slice`,
-`Compare`, `IsIdentifier` and `BaseName` are the primitives: byte access returns
-unsigned 0..255 or -1 outside the string, Slice clamps its start/count and owns
+pure functions use the text and array capability packs. `ByteLength`, `ByteAt`,
+`Bytes`, `Slice`, `Compare`, `IsIdentifier` and `BaseName` are the primitives:
+byte access returns unsigned 0..255 or -1 outside the string; each `ByteAt`
+call measures the string, so a loop over a long one is quadratic, and `Bytes`
+returns every byte as an `int[]` in one pass instead; Slice clamps its start/count and owns
 its result, byte ranges can split UTF-8 sequences, Compare orders unsigned
 bytes, IsIdentifier checks ASCII identifiers, and BaseName uses slash
 separators. The rest port Odin's `core:strings` over bytes: `Contains`,

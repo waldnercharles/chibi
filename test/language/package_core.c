@@ -8,6 +8,7 @@
 #include "runtime/arrays_definition.h"
 #include "runtime/text_definition.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -317,8 +318,17 @@ TEST_CASE(package_core_strings_bytes_bounds_and_owned_slices)
                 output.i == expected[i]
             );
         }
+        REQUIRE(core_call("Bytes", args, 1, PIN_I32, backends[b]));
+        const pin_array *read = output.ptr;
+        REQUIRE(output.container == PIN_CONTAINER_ARRAY && read && read->count == 3);
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(read->items[i].type == PIN_I32 && read->items[i].i == expected[i + 1]);
+        }
         args[0] = text("");
         REQUIRE(core_call("ByteLength", args, 1, PIN_I32, backends[b]) && output.i == 0);
+        REQUIRE(core_call("Bytes", args, 1, PIN_I32, backends[b]));
+        read = output.ptr;
+        REQUIRE(output.container == PIN_CONTAINER_ARRAY && read && read->count == 0);
         args[1] = integer(0);
         REQUIRE(core_call("ByteAt", args, 2, PIN_I32, backends[b]) && output.i == -1);
         char source[] = "abcdef";
@@ -618,7 +628,7 @@ TEST_CASE(package_core_pure_exports_and_generic_native_arrays)
             REQUIRE(signature && signature->pure && !signature->effects);
             functions++;
         }
-        REQUIRE(functions == 50 && types == 1);
+        REQUIRE(functions == 51 && types == 1);
         REQUIRE(invoke(app->module, exported(app, "Check"), NULL, 0, PIN_I32, backends[b]));
         REQUIRE(output.i == 3);
         cleanup();

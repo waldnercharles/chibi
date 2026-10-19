@@ -191,8 +191,8 @@ static bool read_contract(const char *compiler, contract *c, char *error, size_t
     av_value *root = doc ? av_doc_root(doc) : NULL;
     const char *pin = root ? av_get_str(av_obj_get(av_obj_get(root, "published"), "manifest"))
                            : NULL;
-    *c = (contract){ root ? av_get_int(av_obj_get(root, "version")) : 0,
-                     root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
+    *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
+                     .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
     snprintf(c->manifest, sizeof c->manifest, "%s", pin && strlen(pin) == 64 ? pin : "");
     bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {

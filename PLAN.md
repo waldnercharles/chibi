@@ -204,7 +204,7 @@ Current integration constraints:
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7 | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | Blocked | M3, M7, owner review | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | Blocked | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -556,9 +556,10 @@ SDK, relocated SDK, and source-free consumer cases pass from the Chibi build.
 
 ### M7. Finish the stable command interface
 
-Status: in progress. `check` runs the build's compiler with `--check`, which
-prepares the project read-only: it neither migrates an older project nor writes
-an artifact. The `chibi-cli` fixture covers it in the build tree, through the
+Status: in progress. Every command is implemented and covered; only moving
+`export` behind Chibi modules remains, and that is M6's build-graph work.
+`check` runs the build's compiler with `--check`, which prepares the project
+read-only: it neither migrates an older project nor writes an artifact. The `chibi-cli` fixture covers it in the build tree, through the
 launcher with a fake compiler and through the real `chibi-compile`; its
 installed-SDK and missing-compiler coverage remain. `version` prints the SDK,
 build, compiler and artifact-format identity from one generated document,
@@ -583,13 +584,18 @@ package files, so a game project's behaviors are not tests yet.
 `src/authoring/package_tests.c` finds and runs the tests; `chibi-cli` covers
 the launcher, the real compiler and a compiler without the core collection.
 The compiler's own packages cannot run under it yet, because their raw-syntax
-bridge is not among those natives. `chibi fmt [--check] [PROJECT...]` hands
+bridge is not among those natives. `chibi fmt [--check] [PATH...]` hands
 each project to the compiler's `--format`, which runs the formatter that moved
 out of the automation controller into `src/authoring/project_format.c`;
-`chibi_ctl --format` now calls the same module. Package trees are not
-formatted yet: the source formatter still rewrites package syntax such as
-`case .Variant` and continued arguments wrongly. `chibi web [PROJECT] --player
-PLAYER [--port PORT]` exports the browser site into a `mkdtemp` folder under
+`chibi_ctl --format` now calls the same module. A PATH that is a folder
+without a `project.kdl` is a package tree instead: the compiler formats each
+`.chibi` file below it that `chibi test` would read, after PR #478 taught the
+source formatter package syntax. Every file must declare a package, checked
+before anything is written, so a project's behaviors are never formatted
+without the metadata only project formatting keeps. `packages/` and
+`tools/docs` are canonical; `tools/compiler` is not yet, and is left to the
+M5 work that owns it. `chibi web [PROJECT] --player PLAYER [--port PORT]`
+exports the browser site into a `mkdtemp` folder under
 `TMPDIR`, serves it on 127.0.0.1 (port 8000 by default, 0 for any) with the
 launcher's own static server, `src/host/serve.c`, until SIGINT, SIGTERM or
 SIGHUP, and then removes that folder; a busy port or failed export leaves
@@ -632,8 +638,9 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: in progress. `chibi doc [ROOT] [--serve] [--port PORT]` hands ROOT to
-the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
+Status: blocked on the owner's review of the Pages artifact, the decision gate
+below; everything else is implemented. `chibi doc [ROOT] [--serve] [--port
+PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
 generator is authored Chibi in `tools/docs`, which SDKs ship as

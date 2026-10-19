@@ -43,6 +43,9 @@ int chibi_project_read(chibi_project *project, const char *path, char *error, si
 /* The owned path of the nearest directory at or above `start` that holds
  * project.kdl, or NULL when none does. */
 char *chibi_project_find(const char *start);
+/* Whether path is a directory without a project.kdl: a tree of packages
+ * rather than a project. */
+bool chibi_project_package_folder(const char *path);
 /* Creates an empty project with content/scenes/Start.kdl as its start scene.
  * `root` must not already exist; its parent directory must exist. On failure
  * errno is EINVAL for a missing name, path or parent, EEXIST when `root`

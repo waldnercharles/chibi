@@ -42,8 +42,9 @@ extern char **environ;
  * chibi check [PROJECT]: prepares the project as build does, without
  * migrating it or writing anything.
  * chibi test [ROOT]: runs the @test functions of the packages below ROOT.
- * chibi fmt [--check] [PROJECT...]: rewrites each project's assets in their
- * canonical form, or with --check names the ones that are not.
+ * chibi fmt [--check] [PATH...]: rewrites each project's assets, or the
+ * package sources of a folder without a project.kdl, in their canonical form,
+ * or with --check names the ones that are not.
  * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
  * chibi export [PROJECT] --output DIR [--web PLAYER]: builds a runnable game
  * folder, or a static site for browsers.
@@ -164,7 +165,7 @@ static int usage(const char *program)
         "       %s doctor [--web PLAYER]\n"
         "       %s build [PROJECT]\n"
         "       %s check [PROJECT]\n"
-        "       %s fmt [--check] [PROJECT...]\n"
+        "       %s fmt [--check] [PATH...]\n"
         "       %s test [ROOT]\n"
         "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
@@ -188,6 +189,8 @@ static int usage(const char *program)
         "only package files.\n"
         "fmt rewrites each project's sources and KDL assets as their savers\n"
         "write them; --check writes nothing and fails when one would change.\n"
+        "A PATH that is a folder without a project.kdl has the package\n"
+        "sources below it formatted instead, as test reads them.\n"
         "run prepares and starts the player.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
@@ -955,22 +958,29 @@ static int build_game(int argc, char **argv)
     return status >= 0 ? status : project_command(requested, 0, NULL, false);
 }
 
-/* Has the compiler format the project at or above `requested`. */
-static int format_game(char *compiler, const char *requested, bool check)
+/* Has the compiler format the package sources below a requested folder
+ * without a project.kdl, or else the project at or above `requested`. */
+static int format_game(char *compiler, char *requested, bool check)
 {
     chibi_project project = { 0 };
-    if (!open_project(&project, requested, false)) {
+    bool packages = requested && chibi_project_package_folder(requested);
+    if (!packages && !open_project(&project, requested, false)) {
         return 2;
     }
-    char *args[] = { compiler,   "--project-root",         project.root,
-                     "--format", check ? "--check" : NULL, NULL };
+    char *args[] = { compiler,
+                     "--project-root",
+                     packages ? requested : project.root,
+                     "--format",
+                     check ? "--check" : NULL,
+                     NULL };
     int status = chibi_process_run(args);
     chibi_project_free(&project);
     return status;
 }
 
-/* chibi fmt [--check] [PROJECT...]: the compiler formats each project, or
- * the one at or above the working directory; nonzero when any fails. */
+/* chibi fmt [--check] [PATH...]: the compiler formats each project or folder
+ * of packages, or the project at or above the working directory; nonzero
+ * when any fails. */
 static int format_games(int argc, char **argv)
 {
     bool check = false;

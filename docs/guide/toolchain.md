@@ -10,7 +10,7 @@ finds the compiler, the player and the engine files beside itself.
 | `chibi doctor [--web PLAYER]` | Reports whether the SDK, compiler, player, platform, native backend and, with `--web`, browser export are supported, unavailable or broken. It changes nothing. |
 | `chibi build [PROJECT]` | Compiles the project into `.chibi/build/game.chibip` without starting the player. |
 | `chibi check [PROJECT]` | Parses, resolves and validates the project as `build` does, but migrates and writes nothing. |
-| `chibi fmt [--check] [PROJECT...]` | Rewrites sources and KDL assets in their canonical form; `--check` only reports what would change. |
+| `chibi fmt [--check] [PATH...]` | Rewrites a project's sources and KDL assets, or the package sources of a folder without a `project.kdl`, in their canonical form; `--check` only reports what would change. |
 | `chibi test [ROOT]` | Runs the `@test` functions of the packages below ROOT. |
 | `chibi run [PROJECT] [--] [PLAYER OPTIONS]` | Builds the project when it changed, then plays it. |
 | `chibi export [PROJECT] --output DIR` | Assembles a game to ship: a macOS app, a Windows folder with an `.exe`, or a Linux folder with a desktop entry. `--web PLAYER` writes a static site instead. |
@@ -43,7 +43,7 @@ materials and the rest are KDL. `chibi fmt` keeps both canonical, and
 Packages are folders of `.chibi` files that start with `package NAME`. They
 import other packages of the same tree as `project:NAME` and the SDK's
 collection as `core:NAME`. `chibi test` runs their tests; see
-[Testing](testing.md).
+[Testing](testing.md). `chibi fmt FOLDER` formats them.
 
 ## Browsers
 

@@ -30,6 +30,8 @@ make test-materials      # the material simulation selectors, one 60-second dead
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
+make bootstrap-artifact  # stage two as the checksummed recovery artifact (Release build)
+make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
@@ -1079,6 +1081,7 @@ make test-list
 | `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | The admitted native language aggregate under one shared deadline. |
 | `test-bootstrap` | Stage one compiles the compiler and stage two compiles it to the same bytes, on an unsanitized Release `test_language`; see `docs/package-compiler.md`. |
+| `test-recovery` | The Release compiler host recovers the compiler from the artifact `make bootstrap-artifact` wrote, with sources exported from HEAD; see `docs/self-hosting-build.md`. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
 | `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
@@ -1755,6 +1758,30 @@ backends, each capped at 10,000 instructions. Arrays contain at most two tagged
 scalar values. Local append, reassignment and element writes preserve caller
 snapshots; a returned array retained in behavior state survives the first
 activation. The existing array capability pack supplies the append operation.
+
+## Compiler bootstrap checks
+
+`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
+check that the compiler host's `--bootstrap` mode refuses bad input before any
+compile runs:
+- mixed or missing options;
+- a missing or invalid `bootstrap.kdl`;
+- another manifest format, or a version older than the minimum;
+- a folder with no manifest, or a closure its manifest doesn't record;
+- a missing source, or a package that gained a file;
+- a closure recorded for another target;
+- a seed folder without a seed, or a seed whose sources aren't on disk.
+
+The SHA-256 check is pinned by four digests: FIPS 180-2's for "abc", and those
+of 55, 56 and 64 a's, which sit at the padding boundaries. The cases run about
+twenty host children on tiny folders. The target case loads the closure that
+`test_language --compiler-artifact-write` writes.
+
+`python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
+selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
+`git archive` and has the unsanitized Release host recover the compiler from
+`build-release/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
+`CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
 
 ## Compiler artifact runtime checks
 

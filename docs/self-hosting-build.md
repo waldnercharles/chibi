@@ -261,6 +261,75 @@ native ABI facts, recovery metadata, source-free installed build/link wiring,
 and real stage-one/stage-two compilation from the full compiler source manifest.
 No self-hosting or serializer completion is claimed by this handoff.
 
+## Bootstrap artifact
+
+`make bootstrap-artifact` writes the recovery artifact of the stage-one package
+compiler to `build-release/bootstrap` (`BOOTSTRAP_ARTIFACT`). It runs in two
+steps:
+
+1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
+   stage zero, compiles the compiler sources to stage two and has the compiler
+   host compile them again with stage two, to the same bytes. With
+   `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
+   arguments there as `compiler.chibip` and `compile.json`.
+2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
+   packages/core --seed SEED --revision REV` checks three things: that the
+   sources the seed compiled are the ones on disk, with every file of their
+   packages; that its target is this host; and that it compiles them to
+   itself. It then writes `DIR/compiler.chibip` and, last,
+   `DIR/bootstrap.json`, each through a new temporary file and a rename.
+
+`bootstrap.json` records these fields:
+
+- `format`: the manifest format this host reads, 1.
+- `version` and `minimum`: copied from `tools/compiler/bootstrap.kdl`.
+- `revision`: the tree's `git describe --dirty` revision.
+- `entry`: `CompileClosure`'s entry ID.
+- `closure`: its file, length and SHA-256.
+- `project` and `core`: the virtual roots Compile saw.
+- `sources`: each source in Compile's order, with its length and SHA-256.
+- `target`: Compile's last six arguments, copied verbatim. These are the external
+  inputs:
+  - the value layout (`Target`);
+  - the prepared ABI;
+  - the instruction names;
+  - the natives and their ports;
+  - each native's identity and signature ABI.
+
+`tools/compiler/bootstrap.kdl` is the sources' bootstrap contract. `version` is
+the bootstrap version a compiler built from them has. `minimum` is the oldest
+version that can compile them. Language dependencies follow the two-step rule in
+`PLAN.md` M5:
+1. When the compiler gains a feature, raise `version` and produce an artifact.
+2. Raise `minimum` only once the sources use that feature.
+
+`chibi-compiler-host --bootstrap DIR --compiler ROOT --core ROOT` recovers the
+compiler from the artifact. Before compiling, it rejects each of the following
+with its own message:
+
+- a manifest format it doesn't read;
+- a version older than the sources' minimum;
+- a closure other than the recorded one;
+- a missing source, or a package folder holding a `.chibi` file the manifest
+  doesn't record;
+- a target other than the host's own (`compiler_host_target_json`), compared
+  in full: value layout, prepared ABI, instruction names, natives, their
+  ports and native identities.
+
+It then compiles the recorded sources from disk with the artifact:
+- If they are the recorded sources, the result must be the artifact's own bytes.
+- If they changed, the compiler it produces must compile them to itself, which
+  takes a second compile.
+
+`make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
+`git archive` and runs that check with the Release host. On macOS arm64 the
+check takes one compile, about 7 s, or two when the sources changed, about
+14 s; the whole selector takes about 12 s.
+
+The artifact is a build output for one host configuration; it is neither checked
+in nor published. Where a recovery artifact for clean checkouts lives, in the
+repository or as a release asset, is still to be decided.
+
 The final normal installed workflow remains subject to `PLAN.md`: it must
 compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables
 unavailable, including hidden or renamed equivalents. Explicit platform

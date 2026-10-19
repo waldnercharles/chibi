@@ -309,10 +309,10 @@ static const sample samples[] = {
                 "import lib \"project:lib\"\n"
                 "Base: int : 40;\n"
                 "Down: int : -2;\n"
-                "Plain :: 7;\n"
+                "Plain: int : 7;\n"
                 "Sum :: pure fn(n: int) -> int { return n + Base + Down + "
                 "Plain + lib.Step; }\n"
-                "Hidden :: pure fn() -> int { Base := 1; return Base; }\n"
+                "Hidden :: pure fn() -> int { Base: int = 1; return Base; }\n"
                 "Limits :: pure fn() -> int {\n"
                 "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
                 "lib.Low; }\n"
@@ -384,13 +384,65 @@ static const sample samples[] = {
                 "Shadow :: pure fn(n: int) -> int {\n"
                 "    m := n + 1;\n"
                 "    total: int = m;\n"
-                "    if (m > 0) { total := 100; total += 1; }\n"
-                "    if (m > 1) { m := 5; total += m; }\n"
+                "    if (m > 0) { total: int = 100; total += 1; }\n"
+                "    if (m > 1) { m: int = 5; total += m; }\n"
                 "    return total + m;\n}\n"
                 "U :: union { A(x: int) | B }\n"
                 "Arm :: pure fn() -> int { u := U.A(7); switch u { case .A(n): "
-                "n := 2; return n; case .B: return 0; } return -1; }",
+                "n: int = 2; return n; case .B: return 0; } return -1; }",
       .calls = { { "Shadow", "[3]", "[13]" }, { "Arm", "[]", "[2]" } } },
+    { .name = "integers",
+      .source = "package facts\n"
+                "Mask: uint64 : 0xFF00000000000000;\n"
+                "Small: byte : 200;\n"
+                "Hash :: pure fn(bytes: byte[]) -> uint64 {\n"
+                "    hash: uint64 = 1469598103934665603;\n"
+                "    foreach (item in bytes) { hash = (hash ^ uint64(item)) * "
+                "1099511628211; }\n"
+                "    return hash;\n}\n"
+                "Bytes :: pure fn() -> byte[] {\n"
+                "    out: byte[] = [1, 2, 255];\n"
+                "    out = array_add(out, byte(wrap: 300));\n"
+                "    out = array_add(out, Small);\n"
+                "    return out;\n}\n"
+                "High :: pure fn(n: int) -> int { return int(wrap: (Mask >> "
+                "56) + uint64(n)); }\n"
+                "Mixed :: pure fn(a: int, b: int64) -> int64 { return a + b; "
+                "}\n"
+                "Store :: pure fn(a: int) -> int64 { x: int64 = a; x += 10; x "
+                "*= 3; return x; }\n"
+                "Narrow :: pure fn(v: int64) -> int { return int(v); }\n"
+                "Clamp :: pure fn(v: int) -> byte { return byte(clamp: v); }",
+      .calls = { { "Hash", "[[1,2,3]]", "[11570874782335668893]" },
+                 { "Bytes", "[]", "[[1,2,255,44,200]]" },
+                 { "High", "[1]", "[256]" },
+                 { "Mixed", "[2,5000000000]", "[5000000002]" },
+                 { "Store", "[4]", "[42]" },
+                 { "Narrow", "[7]", "[7]" },
+                 { "Narrow", "[5000000000]", NULL },
+                 { "Clamp", "[300]", "[255]" },
+                 { "Clamp", "[-5]", "[0]" } } },
+    { .name = "wide values",
+      .source = "package facts\n"
+                "Wide: int64 : -5000000000;\n"
+                "Tag :: union { Bits(value: uint64) | None }\n"
+                "Shifts :: pure fn(n: int) -> uint64 { v := uint64(n); return "
+                "(v << 4) | (v >> 60) & 0xF; }\n"
+                "Equal :: pure fn(a: int, b: int) -> bool { return uint64(a) "
+                "== uint64(b) && uint64(a) != 0; }\n"
+                "Twice :: pure fn() -> int64 { return Wide * 2; }\n"
+                "Negative :: pure fn(n: int64) -> bool { return n < 0; }\n"
+                "Mk :: pure fn(v: uint64) -> Tag { return Tag.Bits(v); }\n"
+                "Pick :: pure fn(n: int) -> uint64 {\n"
+                "    t := Mk(uint64(n) * 1000000007);\n"
+                "    switch t { case .Bits(value): return value; case .None: "
+                "return 0; }\n"
+                "    return 0;\n}",
+      .calls = { { "Shifts", "[1]", "[16]" },
+                 { "Equal", "[3,3]", "[true]" },
+                 { "Twice", "[]", "[-10000000000]" },
+                 { "Negative", "[-1]", "[true]" },
+                 { "Pick", "[5]", "[5000000035]" } } },
     { .name = "bounds",
       .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
                 "return xs[i]; }",
@@ -550,7 +602,7 @@ static const sample samples[] = {
       .column = 5 },
     { .name = "constant expression",
       .source = "package facts\nA: int : 1 + 2;",
-      .message = "constant value must be an int literal",
+      .message = "constant value must be an integer literal",
       .line = 2,
       .column = 10 },
     { .name = "constant clash",
@@ -605,11 +657,12 @@ static const sample samples[] = {
       .line = 3,
       .column = 44 },
     { .name = "duplicate local",
-      .source = "package facts\nOne :: pure fn() -> int { x := 1; x := 2; "
+      .source = "package facts\nOne :: pure fn() -> int { x: int = 1; x: int = "
+                "2; "
                 "return x; }",
       .message = "Duplicate declaration 'x'",
       .line = 2,
-      .column = 35 },
+      .column = 39 },
     { .name = "duplicate binding",
       .source = "package facts\nU :: union { A(x: int, y: int) | B }\n"
                 "One :: pure fn(u: U) -> int { if (u is .A(n, n)) { return n; "
@@ -624,6 +677,78 @@ static const sample samples[] = {
       .message = "Duplicate declaration 'n'",
       .line = 3,
       .column = 63 },
+    { .name = "signed with uint64",
+      .source = "package facts\nOne :: pure fn(a: int, b: uint64) -> uint64 { "
+                "return a + b; }",
+      .message = "int and uint64 operands need an explicit conversion, such as "
+                 "int(value)",
+      .line = 2,
+      .column = 54 },
+    { .name = "unsigned subtraction",
+      .source = "package facts\nOne :: pure fn(a: uint64, b: uint64) -> uint64 "
+                "{ return a - b; }",
+      .message = "unsupported arithmetic type",
+      .line = 2,
+      .column = 57 },
+    { .name = "byte arithmetic",
+      .source = "package facts\nOne :: pure fn(a: byte) -> byte { return a + "
+                "1; }",
+      .message = "unsupported arithmetic type",
+      .line = 2,
+      .column = 42 },
+    { .name = "unsigned ordering",
+      .source = "package facts\nOne :: pure fn(a: uint64, b: uint64) -> bool { "
+                "return a < b; }",
+      .message = "unsupported arithmetic type",
+      .line = 2,
+      .column = 55 },
+    { .name = "byte literal range",
+      .source = "package facts\nOne :: pure fn() -> byte { return 256; }",
+      .message = "Numeric literal is outside the range of byte",
+      .line = 2,
+      .column = 35 },
+    { .name = "negative uint64",
+      .source = "package facts\nOne :: pure fn() -> uint64 { x: uint64 = -1; "
+                "return x; }",
+      .message = "Numeric literal is outside the range of uint64",
+      .line = 2,
+      .column = 42 },
+    { .name = "untyped local",
+      .source = "package facts\nOne :: pure fn() -> int { x := 5; return 1; }",
+      .message = "an untyped number is a double; give the local an integer "
+                 "type",
+      .line = 2,
+      .column = 32 },
+    { .name = "conversion arity",
+      .source = "package facts\nOne :: pure fn() -> byte { return byte(1, 2); "
+                "}",
+      .message = "Conversion takes one value",
+      .line = 2,
+      .column = 35 },
+    { .name = "conversion name",
+      .source = "package facts\nOne :: pure fn() -> byte { return byte(round: "
+                "1); }",
+      .message = "A conversion argument may only be named wrap or clamp",
+      .line = 2,
+      .column = 40 },
+    { .name = "untyped constant",
+      .source = "package facts\nTwo :: 2;",
+      .message = "an untyped number is a double; give the constant an integer "
+                 "type",
+      .line = 2,
+      .column = 8 },
+    { .name = "negative zero byte",
+      .source = "package facts\nOne :: pure fn() -> byte { x: byte = -0; "
+                "return x; }",
+      .message = "Numeric literal is outside the range of byte",
+      .line = 2,
+      .column = 38 },
+    { .name = "wrapped literal in parentheses",
+      .source = "package facts\nOne :: pure fn() -> int { return int(wrap: "
+                "(0xFFFFFFFFFFFFFFFF)); }",
+      .message = "Numeric literal is outside the range of int64",
+      .line = 2,
+      .column = 45 },
     { .name = "non-exhaustive switch",
       .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",

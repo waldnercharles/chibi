@@ -41,6 +41,7 @@ void test_tool_record_c_export();
 #endif
 void test_tool_package();
 void test_tool_chibi_cli(const char *binary);
+void test_tool_chibi_cli_installed(const char *binary);
 #ifdef CHIBI_TEST_COMPILER_ARTIFACT
 void test_tool_compiler_artifact(const char *producer, const char *host);
 #endif
@@ -542,6 +543,13 @@ int main(int argc, char **argv)
         tool_init();
         pu_display_time(true);
         test_tool_chibi_cli(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 3 && !strcmp(argv[1], "--chibi-cli-installed")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_chibi_cli_installed(argv[2]);
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

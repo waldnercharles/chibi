@@ -7,6 +7,7 @@
 
 typedef struct arena_block arena_block;
 typedef struct arena_allocation arena_allocation;
+typedef struct arena_page arena_page;
 typedef void (*arena_marker)(void *user, const void *address);
 typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
 typedef struct arena
@@ -15,6 +16,9 @@ typedef struct arena
     arena_block *current;
     arena_allocation *allocations; /* Live collectable values. */
     arena_allocation *unused;      /* Swept values kept for reuse. */
+    arena_page *pages;             /* Live values by each page they touch. */
+    size_t page_capacity;          /* Index slots, a power of two. */
+    size_t page_count;             /* Occupied index slots. */
     size_t allocated;              /* Collectable bytes since the last sweep. */
     size_t kept;                   /* Collectable bytes the last sweep kept. */
     bool collectable;
@@ -27,7 +31,8 @@ void arena_reset(arena *a);
 /* Aligned allocations remain at stable addresses until reset or free. */
 void *arena_alloc(arena *a, size_t size);
 void arena_free(arena *a);
-/* Whether an address is within a currently allocated block payload. */
+/* Whether an address is within a live value or a block payload. Collectable
+ * arenas answer without walking their values. */
 bool arena_contains(const arena *a, const void *address);
 /* Thread-local backing-block allocation count; excludes allocations within blocks. */
 uint64_t arena_block_allocations();

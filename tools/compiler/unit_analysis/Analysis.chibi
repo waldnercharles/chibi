@@ -534,7 +534,7 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
             if (Kind(value) != units.Known) { value = units.Empty(units.Unknown); }
             work.phase = Finish;
         } else if (work.phase == Left) {
-            saved = set_array_elem(saved, top, value);
+            saved[top] = value;
             if (expression.kind == FallbackExpression) {
                 work.phase = ArgumentsPhase;
             } else if (expression.kind != StoreExpression && expression.right < 0) {
@@ -575,13 +575,13 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
                 } else {
                     if (expression.kind == CallExpression) {
                         switch CallTarget(environment, current, expression, argument) {
-                            case .Evaluated(unit, next): saved = set_array_elem(saved, top, unit); current = next;
+                            case .Evaluated(unit, next): saved[top] = unit; current = next;
                         }
                     } else if (expression.kind == StructExpression) {
                         type := CatalogTypes(environment)[work.catalog];
                         field := Fields(environment)[type.field_start + argument.parameter];
                         switch Annotated(current, Ranges(environment)[argument.range], field.has_unit, field.unit) {
-                            case .Evaluated(unit, next): saved = set_array_elem(saved, top, unit); current = next;
+                            case .Evaluated(unit, next): saved[top] = unit; current = next;
                         }
                     }
                     work.phase = ArgumentPhase;
@@ -596,13 +596,13 @@ Eval :: pure fn(environment: Environment, current: State, index: int) -> Evaluat
             if (expression.kind == FallbackExpression) { op = "fallback"; }
             switch Match(current, Ranges(environment)[argument.range], saved[top], op, value) {
                 case .Evaluated(unit, next):
-                    if (expression.kind == FallbackExpression) { saved = set_array_elem(saved, top, unit); }
+                    if (expression.kind == FallbackExpression) { saved[top] = unit; }
                     current = next;
             }
             work.argument += 1;
             work.phase = ArgumentsPhase;
         }
-        frames = set_array_elem(frames, top, work);
+        frames[top] = work;
         if (descend) {
             frames = array_add(frames, WorkValue(child));
             saved = array_add(saved, units.Empty(units.Unknown));

@@ -1173,6 +1173,18 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
                    OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_PUSH:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   values[1].initial.container == PIN_CONTAINER_SINGLE &&
+                   OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   values[1].initial.container == PIN_CONTAINER_ARRAY &&
+                   OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_I32) &&
+                   values[2].initial.container == PIN_CONTAINER_SINGLE &&
+                   OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
         case EXECUTION_INTRINSIC_EVENT_READ:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
@@ -1562,6 +1574,9 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_STATE_TRANSITION:
                 case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
                 case EXECUTION_INTRINSIC_EVENT_READ:
+                case EXECUTION_INTRINSIC_ARRAY_PUSH:
+                case EXECUTION_INTRINSIC_ARRAY_STORE:
+                case EXECUTION_INTRINSIC_ARRAY_EXTEND:
                     expected = BEHAVIOR_ADDRESS;
                     break;
             }

@@ -81,8 +81,7 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool canonical = behavior_function_inspection_required(f, ctx) ||
-                     !behavior_function_rows_allowed(f, ctx);
+    bool canonical = behavior_function_inspection_required(f, ctx);
     if (compact && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
@@ -415,10 +414,6 @@ int execution_machine_step(execution_machine *m, int pc)
             }
             ctx->error_message = i->right == BF_HOST_BORROW_ARRAY
                                    ? behavior_function_borrow_snapshot(ctx, i->target)
-                               : i->right == BF_HOST_BUILD_ROW
-                                   ? behavior_function_build_row(ctx, i->target)
-                               : i->right == BF_HOST_RETAIN_ROWS
-                                   ? behavior_function_retain_rows(ctx, i->target)
                                : call->value
                                    ? call->value(
                                          ctx->value_storage,

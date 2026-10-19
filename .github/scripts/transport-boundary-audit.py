@@ -111,8 +111,8 @@ HOST_SOURCES = {
         jit jit_component jit_host_call jit_integer jit_memory jit_registers jit_suspend jit_system jit_watch log
         machine module module_effects opt parallel preparation_budget prepared prepared_function prepared_record
         program program_inspection program_activation program_observers program_bindings program_commands
-        program_locals program_storage program_preflight program_tasks range_opt reads request row_builder
-        runner scalarize source_debug state storage suspend time vm update_jit wasm_emit wasm_jit
+        program_locals program_storage program_preflight program_tasks range_opt reads request
+        runner scalar_lowering_plan scalarize source_debug state storage suspend time vm update_jit wasm_emit wasm_jit
     """.split()],
 }
 

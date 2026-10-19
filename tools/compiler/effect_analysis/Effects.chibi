@@ -146,7 +146,7 @@ QueryExpression :: pure fn(environment: Environment, index: int, seen: bool[]) -
  switch QueryExpression(environment,row.left,seen) { case .Restricted(added,next): bits = bits | added; seen = next; }
  if(row.kind == Call || row.kind == Join) {
   if(row.right >= 0 && !seen[row.right]) {
-   seen = set_array_elem(seen,row.right,true);
+   seen[row.right] = true;
    switch QueryStatement(environment,Functions(environment)[row.right].body,seen) { case .Restricted(added,next): bits = bits | added; seen = next; }
   }
  } else {
@@ -323,7 +323,7 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
    j: int = 0;
    while(j < row.arg_count) { effects = effects | expressionEffects[Arguments(environment)[row.arg_start+j]]; j += 1; }
    changed = changed || effects != expressionEffects[i];
-   expressionEffects = set_array_elem(expressionEffects,i,effects);
+   expressionEffects[i] = effects;
    i += 1;
   }
   i = 0;
@@ -331,7 +331,7 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
    seeded := row; seeded.effects = statementEffects[i];
    effects := StatementEffects(environment,expressionEffects,statementEffects,seeded);
    changed = changed || effects != statementEffects[i];
-   statementEffects = set_array_elem(statementEffects,i,effects);
+   statementEffects[i] = effects;
    i += 1;
   }
   i = 0;
@@ -341,7 +341,7 @@ Analyze :: pure fn(environment: Environment) -> Analysis {
    j: int = 0;
    foreach(child in Functions(environment)) { if(child.parent == i) { effects = effects | functionEffects[j]; } j += 1; }
    changed = changed || effects != functionEffects[i];
-   functionEffects = set_array_elem(functionEffects,i,effects);
+   functionEffects[i] = effects;
    i += 1;
   }
   pass += 1;
@@ -407,7 +407,7 @@ Order :: pure fn(environment: Environment) -> Ordering {
    diagnostics: syntax.Diagnostic[] = [];
    return Ordering.Ordered(permutation,Report(environment,diagnostics,bindings[0].range,"Binding dependency cycle"));
   }
-  emitted = set_array_elem(emitted,found,true);
+  emitted[found] = true;
   permutation = array_add(permutation,found);
   pass += 1;
  }

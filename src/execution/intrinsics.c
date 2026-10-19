@@ -14,6 +14,7 @@
 #include "types/union.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -140,6 +141,92 @@ static const char *value_equal(arena *storage, const pin_value *args, int count,
     return NULL;
 }
 const node_host_call EXECUTION_value_equal_call = { .value = value_equal };
+static pin_array *owned_array(arena *storage, pin_value *header)
+{
+    assert(header && header->container == PIN_CONTAINER_ARRAY);
+    if (!header->ptr) {
+        pin_array *array = arena_alloc(storage, sizeof *array);
+        *array = (pin_array){ .element_type = header->type,
+                              .type_name = header->type_name,
+                              .record = header->record
+                                          ? pin_record_snapshot(storage, header->record)
+                                          : NULL };
+        pin_arena_trace_array(storage, array);
+        header->ptr = array;
+    }
+    pin_array *array = header->ptr;
+    /* A local's array and its layout live in this storage: every store into the
+     * local snapshots there. The optional lookup index is rebuilt on demand. */
+    array->buckets = NULL;
+    array->bucket_mask = 0;
+    return array;
+}
+static const char *array_push(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
+    if (array->count == INT_MAX ||
+        pin_array_reserve_owned(storage, array, array->count + 1)) {
+        return "Array exceeds its length limit";
+    }
+    if (pin_array_snapshot_owned_items(
+            storage,
+            array->record,
+            &array->items[array->count],
+            &args[1],
+            1
+        )) {
+        return "Cannot retain array item";
+    }
+    array->count++;
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+static const char *array_store(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 3);
+    (void)count;
+    pin_value *header = (pin_value *)(uintptr_t)args[0].u64;
+    const pin_array *current = header->ptr;
+    if (!current || args[1].i < 0 || args[1].i >= current->count) {
+        return "Array index out of range";
+    }
+    pin_value item;
+    if (pin_array_snapshot_owned_items(storage, current->record, &item, &args[2], 1)) {
+        return "Cannot retain array item";
+    }
+    owned_array(storage, header)->items[args[1].i] = item;
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+static const char *array_extend(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    pin_array *array = owned_array(storage, (pin_value *)(uintptr_t)args[0].u64);
+    const pin_array *items = args[1].ptr;
+    int added = items ? items->count : 0;
+    if (added > INT_MAX - array->count ||
+        pin_array_reserve_owned(storage, array, array->count + added)) {
+        return "Array exceeds its length limit";
+    }
+    if (added && pin_array_snapshot_owned_items(
+                     storage,
+                     array->record,
+                     &array->items[array->count],
+                     items->items,
+                     added
+                 )) {
+        return "Cannot retain array item";
+    }
+    array->count += added;
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+const node_host_call EXECUTION_array_push_call = { .value = array_push };
+const node_host_call EXECUTION_array_extend_call = { .value = array_extend };
+const node_host_call EXECUTION_array_store_call = { .value = array_store };
 const node_access EXECUTION_assignment_access = { .flags = NODE_EFFECT_HOST_SINK };
 const node_host_call EXECUTION_snapshot_call = { .value = snapshot_value };
 const node_host_call EXECUTION_construct_call = { .value = construct_value };
@@ -939,6 +1026,11 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
         case EXECUTION_INTRINSIC_CONSTRUCT: return &EXECUTION_construct_call;
         case EXECUTION_INTRINSIC_VALUE_EQUAL:
             return &EXECUTION_value_equal_call;
+        case EXECUTION_INTRINSIC_ARRAY_PUSH: return &EXECUTION_array_push_call;
+        case EXECUTION_INTRINSIC_ARRAY_STORE:
+            return &EXECUTION_array_store_call;
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            return &EXECUTION_array_extend_call;
         case EXECUTION_INTRINSIC_UNION_MAKE: return &EXECUTION_union_make_call;
         case EXECUTION_INTRINSIC_UNION_TEST: return &EXECUTION_union_test_call;
         case EXECUTION_INTRINSIC_UNION_GET: return &EXECUTION_union_get_call;
@@ -980,6 +1072,15 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_query_target_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_TARGET;
+    }
+    if (call == &EXECUTION_array_push_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_PUSH;
+    }
+    if (call == &EXECUTION_array_store_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_STORE;
+    }
+    if (call == &EXECUTION_array_extend_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ARRAY_EXTEND;
     }
     if (call == &EXECUTION_union_make_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_UNION_MAKE;

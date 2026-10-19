@@ -48,7 +48,7 @@ MultiplyTerm :: pure fn(value: Unit, term: Term) -> ProductResult {
                     terms = remove_index(terms, index);
                 } else {
                     replacement: Term = {name: term.name, power: power};
-                    terms = set_array_elem(terms, index, replacement);
+                    terms[index] = replacement;
                 }
                 return ProductResult.Product(Unit.Value(kind, terms), false);
             }

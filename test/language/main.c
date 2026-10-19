@@ -11,7 +11,6 @@
 
 void test_language_syntax();
 void test_language_inferred_string_arrays(bool repro);
-void test_language_row_builder();
 void test_language_outliner_projection();
 void test_language_row_array();
 void test_language_runtime_attribution();
@@ -119,7 +118,6 @@ int main(int argc, char **argv)
                                  !strcmp(argv[1], "--incremental-benchmark");
     bool record_prepared_runtime = argc == 2 && !strcmp(argv[1], "--record-prepared");
     bool outliner_projection = argc == 2 && !strcmp(argv[1], "--outliner-projection");
-    bool row_builder = argc == 2 && !strcmp(argv[1], "--row-builder");
     bool row_array = argc == 2 && !strcmp(argv[1], "--row-array");
     bool record_runtime = argc == 2 && !strcmp(argv[1], "--record-runtime");
     bool record_semantic = argc == 2 && !strcmp(argv[1], "--record-semantic");
@@ -216,9 +214,9 @@ int main(int argc, char **argv)
          !record_publication_repro && !record_values && !record_document &&
          !record_state && !record_services && !record_compatibility &&
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
-         !row_builder && !row_array && !record_runtime && !runtime_attribution &&
-         !wasm && !program && !query_program && !incremental && !modules &&
-         !ranges && !numeric_exact_core && !package_graph && !package_graph_chibi &&
+         !row_array && !record_runtime && !runtime_attribution && !wasm &&
+         !program && !query_program && !incremental && !modules && !ranges &&
+         !numeric_exact_core && !package_graph && !package_graph_chibi &&
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
@@ -272,7 +270,7 @@ int main(int argc, char **argv)
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
-            "--record-compatibility | --row-array | --row-builder | "
+            "--record-compatibility | --row-array | "
             "--outliner-projection | --record-publication | "
             "--record-publication-repro | "
             "--format [--corpus manifest] | --compiler-artifact-write "
@@ -289,8 +287,6 @@ int main(int argc, char **argv)
         test_language_record_publication(record_publication_repro);
     } else if (outliner_projection) {
         test_language_outliner_projection();
-    } else if (row_builder) {
-        test_language_row_builder();
     } else if (row_array) {
         test_language_row_array();
     } else if (record_compatibility) {

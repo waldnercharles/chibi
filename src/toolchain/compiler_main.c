@@ -270,7 +270,7 @@ int main(int argc, char **argv)
                       (const char *)input_bytes,
                       input_size,
                       (uintptr_t)budget,
-                      COMPILER_HOST_MAX_VALUES,
+                      COMPILER_HOST_MAX_OUTPUT_BYTES,
                       &result
                   );
         free(input_bytes);

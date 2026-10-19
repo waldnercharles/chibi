@@ -650,6 +650,12 @@ TOOLS = {
     # and integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # Stage one compiles the compiler's complete sources to a closure, stage
+    # two, which the compiler host loads and runs to compile them to the same
+    # bytes. Sanitizers make one compile take about two minutes, so this runs
+    # an unsanitized Release test_language (make test-bootstrap). shared60s.
+    'language-package-compiler-chibi-bootstrap': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
+                                                 '--package-compiler-chibi-bootstrap'],
     # Three cases:40 requests,80 authored calls capped at2m instructions each.
     # Two owners prepare3sources each;4real fact parse/analyzes:10parses total.
     # <=32symbols/8scopes/4functions/2documents,220byte names,128byte keys,

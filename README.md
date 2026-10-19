@@ -4,7 +4,10 @@ A C23 scripting/compiler/runtime SDK with a separate Studio authoring applicatio
 
 Start with the [language reference](docs/code-language.md) and the
 [toolchain guide](docs/guide/toolchain.md). To see a feature working, open one of
-the projects listed in [examples](docs/examples.md) in Studio.
+the projects listed in [examples](docs/examples.md) in Studio. Studio also runs
+in the browser at
+[waldnercharles.github.io/chibi-studio](https://waldnercharles.github.io/chibi-studio/),
+built from the latest engine release.
 
 Native product packages provide an installed compiler SDK, a separate Studio
 application, and a deployed player. Game repositories own authored content; the

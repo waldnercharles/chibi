@@ -312,6 +312,8 @@ package_collection *package_read_budget(
         .event = r.events || (native && native->event) ? event : NULL,
         .type = type,
         .import = import,
+        .decoded_bytes = native ? native->decoded_bytes : 0,
+        .layout_work = native ? native->layout_work : 0,
     };
     package_collection *collection = NULL;
     for (int i = 0; i < count; i++) {

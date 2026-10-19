@@ -274,7 +274,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-short test-policy-inventory tools-build
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap test-short test-policy-inventory tools-build
 agent-list:
 	@python3 tools/agent.py list
 
@@ -301,6 +301,13 @@ test-materials: test-build
 test-projects: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group projects
+
+# Stage one compiling itself, and stage two compiling the same sources to the
+# same bytes, take about two minutes each under sanitizers, so the bootstrap
+# check runs against an unsanitized Release test_language.
+test-bootstrap:
+	@$(MAKE) build-release BUILD_TARGET=test_language
+	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 
 test: test-short
 

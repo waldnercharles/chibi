@@ -31,6 +31,10 @@ target supplies what Chibi cannot see:
   compiler cannot pass. A variadic native's last parameter takes any number
   of arguments. The test builds these tables from the compiler host's packs.
 
+`CompileClosure` takes the same arguments and returns only the closure's
+bytes, or none when `Compile` rejects the input, for a host that takes one
+`byte[]` result (`compiler_host_invoke_bytes`).
+
 ## Supported language
 
 Packages of functions, records, unions and constants, and the packages they
@@ -206,6 +210,27 @@ and 2.6 s on bytecode; the imports sample, three packages, takes 1.1 s and
 - Copying a record descriptor into another arena copies its bytes instead of
   re-deriving and re-hashing its layout.
 
-Stage one compiles the compiler's complete source set in about 13 s in a
-Release build and 126 s under Debug and the sanitizers, where validating
-record descriptors on every snapshot is about 40% of the profile.
+`make test-bootstrap` builds an unsanitized Release `test_language` and runs
+`tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
+one, which compiles the compiler's complete source set, 14 files in 11
+packages, to a 6.2 MB closure: stage two. The compiler host loads stage two
+and runs its `CompileClosure` on the same sources and arguments, as JSON, and
+the bytes must equal stage one's. Stage two then compiles every sample, and
+each `Compile` result, closure or rejection, must project to the same JSON as
+stage one's; the existing selectors check stage one's against stage zero and
+run its closures on bytecode and SLJIT. The run takes about 30 s, with a peak
+memory footprint of about 5 GB (macOS arm64, 2026-10-19). Most of that is
+stage one, stage zero's build, writing the package compiler's module: that one
+`prepared_writer.Write` frame grows to 2.7 GB, against 92 MB for stage two's
+build of the same function on the same module. Stage two alone, loaded in a
+fresh process, compiles the compiler in 7.9 s with a 3.6 GB peak footprint;
+each copy of its 5.6 MB closure is about 224 MB as a `byte[]` of 40-byte
+values. Under Debug and the sanitizers one
+compile takes about two minutes, about 40% of it validating record
+descriptors on every snapshot, so this check runs only on the Release build.
+
+Stage two needs the compiler host's larger closure bounds: the package
+compiler's module needs about 113 M units of record-layout work and decodes to
+about 80 MB with its verification scratch, past the 64 MiB defaults of every
+prepared read, and its 6.2 MB closure, as a `byte[]` of 40-byte values, is
+past the host's former 1,000,000-value byte result.

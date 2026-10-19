@@ -204,7 +204,7 @@ Current integration constraints:
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7, owner review | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | Blocked | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -638,8 +638,8 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: blocked on the owner's review of the Pages artifact, the decision gate
-below; everything else is implemented. `chibi doc [ROOT] [--serve] [--port
+Status: implemented and reviewed; the first deployment waits for this branch
+to land on `main`, as the end of this status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
@@ -665,9 +665,10 @@ lists each rule of a Tree-sitter grammar's `rules` block with its comments
 language reference (Learn), the Testing guide, the generated `core` reference
 (Packages), the examples, the FAQ, the generated Grammar and the Toolchain
 guide. The manual `Documentation site` workflow
-(`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
-the Pages artifact; it has no deploy job, which waits for the owner's review of
-that artifact. A pre-review of the artifact on 2026-10-19 found no local paths,
+(`.github/workflows/docs.yml`) builds the site, uploads only `build/docs` as
+the Pages artifact and, since the owner approved it on 2026-10-19, deploys it
+with `actions/deploy-pages` (one deployment at a time, never cancelled). A
+pre-review of the artifact on 2026-10-19 found no local paths,
 credentials or links into private repositories (the linked `chibi-studio` is
 public). At the owner's request the README, Examples and Learn pages were then
 rewritten so that no sentence leans on a link to an unpublished document (the
@@ -677,7 +678,14 @@ TARGET is not published; written as text` for each link it drops, comments in
 generated pages included, so a page cannot quietly regain one; the
 repository's own site reports none. The site folder now gets the permissions
 `mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
-it. No published page uses an image yet, so the manifest has no
+it. At the owner's request the repository's Pages source became GitHub Actions
+on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
+on `gh-pages` keeps serving until the first deployment replaces it. GitHub
+runs a `workflow_dispatch` workflow only from the default branch, and the
+`github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
+so the owner's instruction is to run the workflow once this branch reaches
+`main`. No published page uses an
+image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
 
@@ -895,10 +903,20 @@ untyped literal a double. Array literals with no type expected take their
 first item's type, variadic natives such as `format_text` and natives with
 several results such as `compiler_json_string` work, and field assignment
 writes through stage zero's reference intrinsics, with written record and
-array parameters copied on entry. With these, stage one accepts the
-compiler's complete source set; a test that loads the closure it builds and
-checks that it compiles the same sources to the same bytes, stage one to
-stage two, follows.
+array parameters copied on entry. In-place array updates are recognized by
+capability identity, as in stage zero. With these, stage one compiles the
+compiler's complete source set, and the stage-two closure it builds, loaded by
+the compiler host, compiles the same sources to the same bytes
+and every sample as stage one does (`make test-bootstrap`, a Release build,
+about 30 s). The compiler host allows a
+compiler-sized closure: 256 MiB of decoded storage per load, 256 Mi units of
+record-layout work per module, and a 16 MiB `byte[]` result. The bootstrap run's 5 GB peak footprint is
+mostly stage zero's build writing the package compiler's module; stage two
+alone compiles the compiler in 7.9 s with a 3.6 GB peak. Still open in this
+milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
+Lab's behaviors need behaviors, events, state, doubles, vectors, named
+arguments and results, and effectful natives) and the checksummed bootstrap
+artifact with its version checks (step 5).
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

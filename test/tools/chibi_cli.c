@@ -1054,8 +1054,9 @@ static void site_fixture(const char *relative)
 }
 
 /* The real compiler's --docs writes exactly the pages docs/site.kdl lists,
- * linked to one another, with the stylesheet, and refuses a manifest whose
- * pages leave the root or the site folder, collide or are missing. */
+ * linked to one another, with the stylesheet, into a folder as readable as
+ * mkdir makes one, and refuses a manifest whose pages leave the root or the
+ * site folder, collide or are missing. */
 TEST_CASE(compiler_docs_writes_the_listed_pages)
 {
     site_fixture("site");
@@ -1073,6 +1074,12 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         file_has("site/build/docs/guide.html", "<a href=\"guide.html\" aria-current=\"page\">Guide</a>")
     );
     REQUIRE(exists("site/build/docs/style.css") && !exists("site/build/docs/private.html"));
+    char published[256];
+    path(published, "site/build/docs");
+    struct stat info;
+    mode_t mask = umask(0);
+    umask(mask);
+    REQUIRE(!stat(published, &info) && (info.st_mode & 0777) == (0777 & ~mask));
 
     /* A page the manifest no longer lists goes with the next build. */
     write_file("site/build/docs/old.html", "stale");

@@ -666,7 +666,14 @@ language reference (Learn), the Testing guide, the generated `core` reference
 guide. The manual `Documentation site` workflow
 (`.github/workflows/docs.yml`) builds the site and uploads only `build/docs` as
 the Pages artifact; it has no deploy job, which waits for the owner's review of
-that artifact. No published page uses an image yet, so the manifest has no
+that artifact. A pre-review of the artifact on 2026-10-19 found no local paths,
+credentials or links into private repositories (the linked `chibi-studio` is
+public). For the owner to decide: 25 links to unpublished documents render as
+plain text, so sentences such as the README's "See current execution evidence
+and remaining work" lose their target, and the Examples page names the
+archived private repositories. The site folder now gets the permissions
+`mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
+it. No published page uses an image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
 

@@ -968,6 +968,15 @@ static bool write_pages(
 /* Writes the site into a fresh folder beside root/build/docs and only then
  * replaces it, so the published folder never holds a partial site or pages
  * the manifest no longer lists. */
+/* mkdtemp makes a private folder; give it the permissions mkdir would, so the
+ * published site is as readable as the pages written into it. */
+static bool publishable(const char *folder)
+{
+    mode_t mask = umask(0);
+    umask(mask);
+    return !chmod(folder, 0777 & ~mask);
+}
+
 static bool write_site(
     const docs_generator *generator,
     const char *root,
@@ -980,7 +989,8 @@ static bool write_site(
     char *build = join(root, "build");
     char *folder = join(build, "docs");
     char *partial = join(build, "docs.partial-XXXXXX");
-    bool valid = (!mkdir(build, 0777) || errno == EEXIST) && mkdtemp(partial);
+    bool valid = (!mkdir(build, 0777) || errno == EEXIST) && mkdtemp(partial) &&
+                 publishable(partial);
     if (!valid) {
         snprintf(error, size, "cannot create a folder in %s: %s", build, strerror(errno));
     }

@@ -764,6 +764,13 @@ without copies (see "Read-only plain-array traversals" in
 `docs/code-language.md`); the same loop takes 0.1 s. Reads through a `ref`
 parameter still copy the referenced value.
 
+The stage-one compiler starts as `tools/compiler/package_compiler` (see
+`docs/package-compiler.md`). It compiles packages of scalar functions with
+statements, control flow and calls to runnable closures that agree with stage
+zero, with no native step after the parser. Records, arrays, strings, unions,
+imports and natives follow, then the compiler's own sources. Debugger points
+and watches are deferred until before stage one becomes the normal compiler.
+
 The following evidence belongs to the unchanged prior compiler checkpoint:
 
 - Repository: `chibi`

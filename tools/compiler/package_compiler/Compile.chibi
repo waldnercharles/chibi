@@ -1,0 +1,322 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
+import writer "project:prepared_writer"
+import strings "core:strings"
+
+// Compiles one package of scalar functions to a prepared closure. Stage zero
+// builds this compiler; everything after the raw parser is authored.
+
+// Layout facts of the runtime this compiler targets, which Chibi cannot see.
+Target :: struct { pointer_storage: int; value_size: int; payload_offset: int; results_offset: int; }
+// Prepared instructions this compiler emits, as ordinals on the target.
+Ops :: struct {
+    constant: int; argument: int; local: int; save: int; context: int; host_slot: int;
+    index: int; read: int; write: int; invoke: int; check: int; branch_if: int; jump: int;
+    finish: int; end: int; add: int; sub: int; mul: int; div: int; mod: int; neg: int;
+    bit_and: int; bit_or: int; bit_xor: int; bit_not: int; shl: int; shr: int;
+    lt: int; le: int; gt: int; ge: int; eq: int; ne: int;
+}
+Callable :: struct { name: string; document: int; node: int; first: int; count: int; result: int; }
+Param :: struct { name: string; storage: int; }
+Result :: union { Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[]) }
+Declarations :: union { Failed(diagnostic: syntax.Diagnostic) | Collected(callables: Callable[], params: Param[]) }
+
+Boolean: int : 1;
+Integer: int : 6;
+FunctionKind: int : 1;
+
+Ordinal :: pure fn(names: string[], name: string) -> int {
+    index: int = 0;
+    while (index < length(names)) {
+        if (names[index] == name) { return index; }
+        index += 1;
+    }
+    return -1;
+}
+ResolveOps :: pure fn(names: string[]) -> Ops {
+    return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
+        local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
+        host_slot: Ordinal(names, "HOST_SLOT"), index: Ordinal(names, "INDEX"), read: Ordinal(names, "READ"),
+        write: Ordinal(names, "WRITE"), invoke: Ordinal(names, "INVOKE"), check: Ordinal(names, "CHECK"),
+        branch_if: Ordinal(names, "BRANCH"), jump: Ordinal(names, "JUMP"), finish: Ordinal(names, "RETURN"),
+        end: Ordinal(names, "END"), add: Ordinal(names, "ADD"), sub: Ordinal(names, "SUB"),
+        mul: Ordinal(names, "MUL"), div: Ordinal(names, "DIV"), mod: Ordinal(names, "MOD"),
+        neg: Ordinal(names, "NEG"), bit_and: Ordinal(names, "BIT_AND"), bit_or: Ordinal(names, "BIT_OR"),
+        bit_xor: Ordinal(names, "BIT_XOR"), bit_not: Ordinal(names, "BIT_NOT"), shl: Ordinal(names, "SHL"),
+        shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
+        gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE")};
+}
+// Whether the target names every instruction this compiler emits.
+Complete :: pure fn(ops: Ops) -> bool {
+    used: int[] = [ops.constant, ops.argument, ops.local, ops.save, ops.context, ops.host_slot,
+        ops.index, ops.read, ops.write, ops.invoke, ops.check, ops.branch_if, ops.jump, ops.finish,
+        ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
+        ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne];
+    foreach (op in used) {
+        if (op < 0) { return false; }
+    }
+    return true;
+}
+TypeStorage :: pure fn(text: string) -> int {
+    if (text == "int") { return Integer; }
+    if (text == "bool") { return Boolean; }
+    return 0;
+}
+InputFailure :: pure fn(document: int, message: string) -> Result {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1, document: document, message: message};
+    return Result.Rejected(diagnostic);
+}
+
+// Every function of one package, in file and source order.
+Declare :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[]) -> Declarations {
+    callables: Callable[] = [];
+    params: Param[] = [];
+    foreach (file in files) {
+        text := documents[file].text;
+        member := FirstMember(forest, documents[file].syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, "function_declaration")) {
+                name := Text(forest, text, Field(forest, member, "name"));
+                if (FindCallable(callables, name) >= 0) {
+                    return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
+                }
+                first := length(params);
+                parameter := FirstMember(forest, Field(forest, member, "parameters"));
+                while (parameter >= 0) {
+                    storage := TypeStorage(Text(forest, text, Field(forest, parameter, "type")));
+                    if (storage == 0) {
+                        return Declarations.Failed(Diagnose(forest, parameter, file, "parameter needs an int or bool type"));
+                    }
+                    param: Param = {name: Text(forest, text, Field(forest, parameter, "name")), storage: storage};
+                    params = array_add(params, param);
+                    parameter = NextMember(forest, parameter);
+                }
+                result: int = 0;
+                results := Field(forest, member, "results");
+                if (results >= 0) {
+                    result = TypeStorage(Text(forest, text, results));
+                    if (result == 0) {
+                        return Declarations.Failed(Diagnose(forest, results, file, "result needs an int or bool type"));
+                    }
+                }
+                callable: Callable = {name: name, document: file, node: member, first: first,
+                    count: length(params) - first, result: result};
+                callables = array_add(callables, callable);
+            } else if (!Is(forest, member, "package_header")) {
+                return Declarations.Failed(Diagnose(forest, member, file, "unsupported declaration"));
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    return Declarations.Collected(callables, params);
+}
+
+ScalarValue :: pure fn(storage: int, wide: int) -> writer.Value {
+    return {tag: storage, container: 0, type_name: "", has_type_name: false, authored: false,
+        wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
+}
+NoSource :: pure fn() -> writer.Source {
+    return {graph: 0, call: 0, parent: -1, asset: "", has_asset: false, start: 0, end: 0, line: 0, column: 0};
+}
+Range :: pure fn(first: int, count: int) -> writer.Span { return {first: first, count: count}; }
+Own :: pure fn(index: int) -> writer.Reference { return {imported: -1, own: index, function: 0, role: 0}; }
+
+// The prepared module of a package's functions. Each body is a canonical
+// definition the runtime verifies and finalizes when it loads it.
+Assemble :: pure fn(forest: snapshot.SnapshotNode[], documents: snapshot.Document[], identity: string,
+                    module: uint64, callables: Callable[], params: Param[], ops: Ops, target: Target,
+                    abi: uint64) -> Result {
+    wide: uint64[] = [0];
+    values: writer.Value[] = [];
+    ints: int[] = [];
+    spans: writer.Span[] = [];
+    functions: writer.Function[] = [];
+    instructions: writer.Instruction[] = [];
+    locals: writer.Local[] = [];
+    parameters: writer.Parameter[] = [];
+    frames: writer.Frame[] = [];
+    sources: writer.Source[] = [];
+    data: writer.Data[] = [];
+    calls: writer.Call[] = [];
+    references: writer.Reference[] = [];
+    entries: writer.Entry[] = [];
+    index: int = 0;
+    while (index < length(callables)) {
+        callable := callables[index];
+        tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
+            index, ops, target);
+        switch tables {
+            case .Failed(diagnostic): return Result.Rejected(diagnostic);
+            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls):
+                base := length(spans);
+                // Argument defaults and kinds.
+                spans = array_add(spans, Range(length(values), callable.count));
+                at: int = 0;
+                while (at < callable.count) {
+                    values = array_add(values, ScalarValue(params[callable.first + at].storage, 0));
+                    at += 1;
+                }
+                spans = array_add(spans, Range(length(ints), callable.count));
+                at = 0;
+                while (at < callable.count) { ints = array_add(ints, int(0)); at += 1; }
+                // Result defaults and kinds.
+                result_count: int = 0;
+                if (callable.result != 0) { result_count = 1; }
+                spans = array_add(spans, Range(length(values), result_count));
+                if (result_count != 0) { values = array_add(values, ScalarValue(callable.result, 0)); }
+                spans = array_add(spans, Range(length(ints), result_count));
+                if (result_count != 0) { ints = array_add(ints, int(0)); }
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                foreach (slot in body_slots) { ints = array_add(ints, slot.storage); }
+                spans = array_add(spans, Range(length(ints), length(body_slots)));
+                foreach (slot in body_slots) { ints = array_add(ints, slot.kind); }
+                spans = array_add(spans, Range(0, 0));
+                // Instructions, each with its own value row and source at pc + 1.
+                spans = array_add(spans, Range(length(instructions), length(body_code)));
+                pc: int = 0;
+                foreach (code in body_code) {
+                    value := ScalarValue(code.value_storage, 0);
+                    bits := uint64(wrap: int64(code.payload));
+                    if (bits != 0) {
+                        value.wide = length(wide);
+                        wide = array_add(wide, bits);
+                    }
+                    values = array_add(values, value);
+                    row: writer.Instruction = {op: code.op, type: code.type, output: code.output,
+                        left: code.left, right: code.right, target: code.target, frame: 0, source: pc + 1,
+                        stack: -1, pin: 0, offset: code.offset, indirect: false, component_index: 0, node: 0,
+                        value: length(values) - 1, layout: 0, message: "", has_message: false};
+                    instructions = array_add(instructions, row);
+                    pc += 1;
+                }
+                spans = array_add(spans, Range(length(locals), length(body_locals)));
+                foreach (storage in body_locals) {
+                    values = array_add(values, ScalarValue(storage, 0));
+                    local: writer.Local = {kind: 0, initial: length(values) - 1, frame: 0, node: 0, pin: 0,
+                        offset: 0, parameter: false, array_default: false, data_index: 0};
+                    locals = array_add(locals, local);
+                }
+                spans = array_add(spans, Range(length(parameters), callable.count));
+                at = 0;
+                while (at < callable.count) {
+                    values = array_add(values, ScalarValue(params[callable.first + at].storage, 0));
+                    parameter: writer.Parameter = {initial: length(values) - 1, frame: 0, pin: 0};
+                    parameters = array_add(parameters, parameter);
+                    at += 1;
+                }
+                // One frame with an empty origin, then the instruction origins.
+                sources = array_add(sources, NoSource());
+                frame: writer.Frame = {source: length(sources) - 1, depth: 0, resume: 0, source_index: 0, stack: -1};
+                spans = array_add(spans, Range(length(frames), 1));
+                frames = array_add(frames, frame);
+                spans = array_add(spans, Range(length(sources), length(body_code) + 1));
+                sources = array_add(sources, NoSource());
+                asset := documents[callable.document].key;
+                foreach (code in body_code) {
+                    source := NoSource();
+                    source.asset = asset;
+                    source.has_asset = true;
+                    source.start = code.start;
+                    source.end = code.end;
+                    source.line = code.line;
+                    source.column = code.column;
+                    sources = array_add(sources, source);
+                }
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(length(data), length(body_cells)));
+                foreach (storage in body_cells) {
+                    values = array_add(values, ScalarValue(storage, 0));
+                    cell: writer.Data = {kind: 0, initial: length(values) - 1, size: 0};
+                    data = array_add(data, cell);
+                }
+                spans = array_add(spans, Range(0, 0));
+                spans = array_add(spans, Range(length(calls), length(body_calls)));
+                foreach (invocation in body_calls) {
+                    references = array_add(references, Own(invocation.callee));
+                    call: writer.Call = {function: length(references) - 1, first: invocation.first,
+                        count: invocation.count, result_first: invocation.result_first,
+                        result_count: invocation.result_count, task: false};
+                    calls = array_add(calls, call);
+                }
+                while (length(spans) < base + writer.Tables) { spans = array_add(spans, Range(0, 0)); }
+                head: writer.Function = {argument_count: callable.count, result_count: result_count,
+                    variable_count: 0, root_steps: 0, child_budget: 0, depth_bound: 0, pure_depth_limit: 0,
+                    breakpoints: false, batchable: false, managed: false, custom_lowering: false,
+                    checkpoints: false, pin_watches: false, watch_size: 0, component_bindings: false,
+                    component_access: false, spans: base};
+                functions = array_add(functions, head);
+                wide = array_add(wide, binding.ID("package-symbol",
+                    format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name)));
+                references = array_add(references, Own(index));
+                references = array_add(references, Own(-1));
+                exported: writer.Entry = {id: length(wide) - 1, kind: 0, entry_name: callable.name, has_entry: true,
+                    continuation_wait: false, effects: 0, body: length(references) - 2,
+                    subscription: length(references) - 1};
+                entries = array_add(entries, exported);
+        }
+        index += 1;
+    }
+    requirements: writer.Requirement[] = [];
+    fields: writer.Field[] = [];
+    imports: writer.Import[] = [];
+    roots: writer.Root[] = [];
+    layouts: writer.ResultLayout[] = [];
+    hosts: writer.Host[] = [];
+    points: writer.Point[] = [];
+    watches: writer.Watch[] = [];
+    prepared := writer.Write(writer.Module.Tables(module, 0, abi, wide, values, ints, requirements,
+        fields, imports, functions, spans, roots, instructions, locals, parameters, frames, sources,
+        layouts, data, hosts, calls, references, points, watches, entries));
+    ids: uint64[] = [module];
+    names: string[] = [identity];
+    starts: int[] = [0];
+    lengths: int[] = [length(prepared)];
+    return Result.Compiled(module, writer.Closure(module, ids, names, prepared, starts, lengths));
+}
+
+// `abi` is the target's prepared header ABI and `names` its instruction names
+// in ordinal order.
+Compile :: pure fn(project: string, paths: string[], sources: string[], target: Target,
+                   abi: uint64, names: string[]) -> Result {
+    ops := ResolveOps(names);
+    if (abi == 0 || !Complete(ops) || length(paths) == 0 || length(paths) != length(sources)) {
+        return InputFailure(-1, "unsupported compiler input or target");
+    }
+    inputs: snapshot.Input[] = [];
+    sizes: uint64[] = [];
+    index: int = 0;
+    while (index < length(paths)) {
+        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        inputs = array_add(inputs, input);
+        sizes = array_add(sizes, uint64(strings.ByteLength(sources[index])));
+        index += 1;
+    }
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+        has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
+    collections: routes.Collection[] = [];
+    switch snapshot.Build(options, collections, inputs, sizes) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return Result.Rejected(diagnostic);
+        case .Accepted(roots, documents, nodes, imports, graph):
+            if (length(imports) != 0) { return InputFailure(imports[0].file, "imports are not supported yet"); }
+            switch graph {
+                case .Rejected(error, cycle): return InputFailure(-1, "package graph is invalid");
+                case .Accepted(packages, members, file_packages, order, edges, bindings):
+                    if (length(packages) != 1) { return InputFailure(-1, "one package is supported yet"); }
+                    files := slice(members, packages[0].member_start, packages[0].member_count);
+                    switch Declare(nodes, documents, files) {
+                        case .Failed(diagnostic): return Result.Rejected(diagnostic);
+                        case .Collected(callables, params):
+                            identity := documents[files[0]].identity;
+                            return Assemble(nodes, documents, identity, binding.ID("module", identity),
+                                callables, params, ops, target, abi);
+                    }
+            }
+    }
+}

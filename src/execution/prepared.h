@@ -52,6 +52,9 @@ typedef struct
 /* The header's target ABI: this build's context layout and instruction names at
  * their ordinals. A producer outside C writes it as supplied. */
 uint64_t execution_prepared_abi();
+/* The instruction names that ABI hashes, in ordinal order. */
+int execution_prepared_instruction_count();
+const char *execution_prepared_instruction_name(int ordinal);
 /* The caller frees the returned byte buffer with free(). Failure produces no
  * buffer. The source module stays immutable and retains its normal ownership. */
 bool execution_prepared_write(

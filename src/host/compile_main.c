@@ -134,12 +134,28 @@ static int docs(const char *project)
     free(root);
     return status;
 }
-/* Formats the project's assets with the composition chibi build uses; with
- * check only reports what differs. Fails for an older project, which it does
- * not migrate, an asset that differs under check, an invalid one or a failed
+/* Formats the package sources below a folder that holds no project.kdl. */
+static int format_packages(const char *folder, bool check)
+{
+    char *root = realpath(folder, NULL);
+    if (!root) {
+        fprintf(stderr, "%s: %s\n", folder, strerror(errno));
+        return 1;
+    }
+    int differing = authoring_packages_format(root, check);
+    free(root);
+    return differing < 0 || (check && differing) ? 1 : 0;
+}
+/* Formats the project's assets with the composition chibi build uses, or the
+ * package sources below a folder without a project.kdl; with check only
+ * reports what differs. Fails for an older project, which it does not
+ * migrate, an asset that differs under check, an invalid one or a failed
  * write. */
 static int format(const char *project, bool check)
 {
+    if (chibi_project_package_folder(project)) {
+        return format_packages(project, check);
+    }
     char error[512] = { 0 };
     chibi_project read = { 0 };
     bool current = !chibi_project_read(&read, project, error, sizeof error);

@@ -57,7 +57,9 @@ compiler_host *compiler_host_load(
     }
     native_prepared_context context = { .native = host->native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    size_t remaining = COMPILER_HOST_MAX_BYTES;
+    linker.decoded_bytes = COMPILER_HOST_MAX_LOAD_BYTES;
+    linker.layout_work = COMPILER_HOST_MAX_LOAD_BYTES;
+    size_t remaining = COMPILER_HOST_MAX_LOAD_BYTES;
     uint64_t root;
     host->packages = compiler_artifact_read(bytes, length, &linker, backend, &remaining, &root, error, error_size);
     if (!host->packages) {

@@ -12,6 +12,7 @@
 #include "authoring/source_format.h"
 #include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
+#include "authoring/source_package_files.h"
 #include "graph/document/serialize.h"
 #include "runtime/declared_components.h"
 #include "support/array.h"
@@ -20,6 +21,7 @@
 #include "support/file_io.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdint.h>
@@ -598,5 +600,54 @@ done:
     afree(f.texts);
     declared_components_free(declared);
     free(f.content);
+    return differing;
+}
+
+/* Whether a source declares a package. */
+static bool package_source(const script_syntax *syntax)
+{
+    TSNode root = ts_tree_root_node(syntax->tree);
+    return !ts_node_is_null(ts_node_child_by_field_name(root, "package", 7));
+}
+
+int authoring_packages_format(const char *root, bool check)
+{
+    source_package_input *files = NULL;
+    source_package_load_error error;
+    if (!source_package_files_read(root, &files, &error)) {
+        fprintf(stderr, "format: %s: %s\n", error.path, error.message);
+        return -1;
+    }
+    if (!acount(files)) {
+        fprintf(stderr, "format: %s holds no project.kdl or package files\n", root);
+        return -1;
+    }
+    size_t prefix = strlen(root) + 1;
+    char **canonical = NULL;
+    int differing = 0;
+    for (int i = 0; i < acount(files) && differing >= 0; i++) {
+        assert(!strncmp(files[i].path, root, prefix - 1) && files[i].path[prefix - 1] == '/');
+        char message[256] = "it does not declare a package";
+        script_syntax *syntax = script_parse(files[i].text);
+        char *text = package_source(syntax)
+                       ? authoring_source_format(syntax, message, sizeof message)
+                       : NULL;
+        script_syntax_free(syntax);
+        if (!text) {
+            fprintf(stderr, "format: %s: %s\n", files[i].path + prefix, message);
+            differing = -1;
+        }
+        apush(canonical, text);
+    }
+    for (int i = 0; i < acount(canonical) && differing >= 0; i++) {
+        const char *name = files[i].path + prefix;
+        int one = settle(check, name, files[i].path, files[i].text, canonical[i]);
+        differing = one < 0 ? one : differing + one;
+    }
+    for (int i = 0; i < acount(canonical); i++) {
+        free(canonical[i]);
+    }
+    afree(canonical);
+    source_package_files_free(files);
     return differing;
 }

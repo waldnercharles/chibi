@@ -339,15 +339,62 @@ static void free_files(package_files *files)
     for (int i = 0; i < acount(files->roots); i++) {
         free(files->roots[i]);
     }
-    for (int i = 0; i < acount(files->files); i++) {
-        free((char *)files->files[i].path);
-        free((char *)files->files[i].text);
-    }
     afree(files->roots);
     afree(files->root_info);
-    afree(files->files);
+    source_package_files_free(files->files);
+}
+
+/* Scans each root's files, then sorts them by path. */
+static bool collect(package_files *files)
+{
+    for (int i = 0; i < acount(files->roots); i++) {
+        struct stat opened;
+        int fd = open_root(files->roots[i]);
+        if (fd < 0 || fstat(fd, &opened) || !same_file(&files->root_info[i], &opened)) {
+            if (fd >= 0) {
+                close(fd);
+            }
+            return reject(files->error, files->roots[i], "Cannot open canonical package root");
+        }
+        if (!scan(files, fd, files->roots[i])) {
+            return false;
+        }
+    }
+    if (acount(files->files) > 1) {
+        qsort(files->files, (size_t)acount(files->files), sizeof *files->files, compare_files);
+    }
+    return true;
 }
 #endif
+
+void source_package_files_free(source_package_input *files)
+{
+    for (int i = 0; i < acount(files); i++) {
+        free((char *)files[i].path);
+        free((char *)files[i].text);
+    }
+    afree(files);
+}
+
+bool source_package_files_read(const char *root, source_package_input **files, source_package_load_error *error)
+{
+    assert(files && !*files && error);
+    *error = (source_package_load_error){ 0 };
+#ifdef _WIN32
+    (void)root;
+    (void)files;
+    return reject(error, "", "Package filesystem loading is unsupported on Windows");
+#else
+    package_files found = { .error = error };
+    bool ok = add_root(&found, root) && collect(&found);
+    if (ok) {
+        *files = found.files;
+        found.files = NULL;
+    }
+    free_files(&found);
+    return ok;
+#endif
+}
 
 source_package_snapshot *source_package_snapshot_load(
     const source_package_disk_options *options,
@@ -381,23 +428,8 @@ source_package_snapshot *source_package_snapshot_load(
         }
         ok = add_root(&files, collection->root);
     }
-    for (int i = 0; ok && i < acount(files.roots); i++) {
-        struct stat opened;
-        int fd = open_root(files.roots[i]);
-        if (fd < 0 || fstat(fd, &opened) || !same_file(&files.root_info[i], &opened)) {
-            if (fd >= 0) {
-                close(fd);
-            }
-            ok = reject(error, files.roots[i], "Cannot open canonical package root");
-            break;
-        }
-        ok = scan(&files, fd, files.roots[i]);
-    }
     source_package_snapshot *snapshot = NULL;
-    if (ok) {
-        if (acount(files.files) > 1) {
-            qsort(files.files, (size_t)acount(files.files), sizeof *files.files, compare_files);
-        }
+    if (ok && collect(&files)) {
         source_package_collection collections[SOURCE_PACKAGE_MAX_FILES];
         for (int i = 0; i < options->collection_count; i++) {
             collections[i] = (source_package_collection){

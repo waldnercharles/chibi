@@ -87,14 +87,16 @@ without one, for at most 100 million instructions. It may call the natives
 that need no running game: core, text, arrays, vectors, math and value
 operations. A test that waits or starts a task fails.
 
-`chibi fmt [--check] [PROJECT...]` rewrites each project's authored assets,
+`chibi fmt [--check] [PATH...]` rewrites each project's authored assets,
 or the project at or above the working directory, as their own savers write
 them: behaviors, libraries, systems and component sources, and the KDL scenes,
 prototypes, graphs, editor documents, scenarios and input map. UI markup is
-kept as written. With `--check` it writes nothing, names each asset that is
-not canonical and fails when there is one. Like `check`, it neither migrates
-an older project nor formats one. `chibi_ctl --format` runs the same
-formatter.
+kept as written. A PATH that is a folder without a `project.kdl` has the
+package sources below it formatted instead, the files `chibi test` reads;
+each must start with `package NAME`, or nothing is written. With `--check` it
+writes nothing, names each file that is not canonical and fails when there is
+one. Like `check`, it neither migrates an older project nor formats one.
+`chibi_ctl --format` runs the same formatter.
 
 To ship a game, export it with an installed SDK's `chibi`:
 

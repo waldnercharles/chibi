@@ -116,22 +116,22 @@ Previous :: pure fn(symbol: Symbol, message: string) -> syntax.Diagnostic {
 // The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
 // one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
 ID :: pure fn(prefix: string, name: string) -> uint64 {
-    hash: uint64 = uint64(14695981039346656037);
-    prime: uint64 = uint64(1099511628211);
+    hash: uint64 = 14695981039346656037;
+    prime: uint64 = 1099511628211;
     index: int = 0;
     count := strings.ByteLength(prefix);
     while (index < count) {
         hash = (hash ^ uint64(strings.ByteAt(prefix, index))) * prime;
         index += 1;
     }
-    hash = (hash ^ uint64(58)) * prime;
+    hash = (hash ^ 58) * prime;
     index = 0;
     count = strings.ByteLength(name);
     while (index < count) {
         hash = (hash ^ uint64(strings.ByteAt(name, index))) * prime;
         index += 1;
     }
-    if (hash == uint64(0)) { return uint64(1); }
+    if (hash == 0) { return 1; }
     return hash;
 }
 SymbolID :: pure fn(environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {

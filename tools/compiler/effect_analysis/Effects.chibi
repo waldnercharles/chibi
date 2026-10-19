@@ -92,7 +92,7 @@ Suspend: int : 16;
 Impure: int : 62;
 IDAt :: pure fn(environment: Environment, slot: int) -> uint64 {
  depth_limit 0;
- if(slot < 0) { return uint64(0); }
+ if(slot < 0) { return 0; }
  return Ids(environment)[slot];
 }
 Report :: pure fn(environment: Environment, diagnostics: syntax.Diagnostic[], index: int, message: string) -> syntax.Diagnostic[] {
@@ -164,14 +164,14 @@ ComponentTarget :: pure fn(environment: Environment, index: int) -> uint64 {
  expressions := Expressions(environment);
  while(index >= 0 && expressions[index].kind == Member) {
   row := expressions[index];
-  if(IDAt(environment,row.read_slot) != uint64(0) || IDAt(environment,row.write_slot) != uint64(0) || row.container != 0) { return uint64(0); }
+  if(IDAt(environment,row.read_slot) != 0 || IDAt(environment,row.write_slot) != 0 || row.container != 0) { return 0; }
   index = row.left;
  }
- if(index < 0) { return uint64(0); }
+ if(index < 0) { return 0; }
  row := expressions[index];
  if(row.kind == Component) { return IDAt(environment,row.capability_slot); }
  if(row.kind == SymbolValue && row.symbol >= 0 && Symbols(environment)[row.symbol].kind == 10) { return IDAt(environment,Symbols(environment)[row.symbol].nominal_slot); }
- return uint64(0);
+ return 0;
 }
 ReductionCapability :: pure fn(environment: Environment, componentID: uint64, check: Reduction, id: uint64) -> Reduction {
  depth_limit 0;
@@ -180,7 +180,7 @@ ReductionCapability :: pure fn(environment: Environment, componentID: uint64, ch
    switch check {
     case .Checked(access,opaque,task,seen):
      if(row.component_access != 0) {
-      if(row.component_access != 3) { return Reduction.Checked(access || IDAt(environment,row.component_slot) == componentID,opaque || IDAt(environment,row.component_slot) == uint64(0),task,seen); }
+      if(row.component_access != 3) { return Reduction.Checked(access || IDAt(environment,row.component_slot) == componentID,opaque || IDAt(environment,row.component_slot) == 0,task,seen); }
       return check;
      }
      if(row.state_access == 0) { return Reduction.Checked(access,opaque || (row.effects & 15) != 0,task,seen); }
@@ -211,8 +211,8 @@ ReductionExpression :: pure fn(environment: Environment, componentID: uint64, ch
  depth_limit 0;
  if(index < 0) { return check; }
  row := Expressions(environment)[index];
- if(IDAt(environment,row.read_slot) != uint64(0)) { check = ReductionCapability(environment,componentID,check,IDAt(environment,row.read_slot)); }
- if(IDAt(environment,row.write_slot) != uint64(0)) { check = ReductionCapability(environment,componentID,check,IDAt(environment,row.write_slot)); }
+ if(IDAt(environment,row.read_slot) != 0) { check = ReductionCapability(environment,componentID,check,IDAt(environment,row.read_slot)); }
+ if(IDAt(environment,row.write_slot) != 0) { check = ReductionCapability(environment,componentID,check,IDAt(environment,row.write_slot)); }
  switch check {
   case .Checked(access,opaque,task,seen):
    touches := access;
@@ -250,7 +250,7 @@ ReductionDiagnostics :: pure fn(environment: Environment, functionEffects: int[]
    componentID := ComponentTarget(environment,row.expression);
    duplicate := false;
    foreach(id in checked) { duplicate = duplicate || id == componentID; }
-   if(componentID != uint64(0) && !duplicate) {
+   if(componentID != 0 && !duplicate) {
     checked = array_add(checked,componentID);
     isUnordered := row.reduction == 3;
     j := i+1;

@@ -228,7 +228,7 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             if (right is .I32(y)) {
                 if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
                 if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
-                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == int(-2147483648) && y == -1))) {
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == -2147483648 && y == -1))) {
                     return Result.Failed("invalid integer division or remainder");
                 }
                 if (op == OpAdd) { return Result.Folded(Value.I32(x + y)); }
@@ -255,7 +255,7 @@ PhysicalOperation :: pure fn(op: int, left: Value, right: Value) -> Result {
             if (right is .I64(y)) {
                 if (op == OpEq) { return Result.Folded(Value.Bool(x == y)); }
                 if (op == OpNe) { return Result.Folded(Value.Bool(x != y)); }
-                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == int64(-9223372036854775808) && y == -1))) {
+                if ((op == OpDiv || op == OpMod) && (y == 0 || (x == -9223372036854775808 && y == -1))) {
                     return Result.Failed("invalid integer division or remainder");
                 }
                 if (op == OpAdd) { return Result.Folded(Value.I64(x + y)); }
@@ -377,10 +377,10 @@ BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Res
     width := Width(source);
     mask := ~uint64(0) >> uint64(64 - width);
     x := Bits(left) & mask;
-    y: uint64 = uint64(0);
+    y: uint64 = 0;
     if (op != OpBitNot) { y = Bits(right); }
     shift := y & uint64(width - 1);
-    bits: uint64 = uint64(0);
+    bits: uint64 = 0;
     if (op == OpBitAnd) { bits = x & y; }
     if (op == OpBitOr) { bits = x | y; }
     if (op == OpBitXor) { bits = x ^ y; }
@@ -388,8 +388,8 @@ BitOperation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Res
     if (op == OpShiftLeft) { bits = x << shift; }
     if (op == OpShiftRight) {
         bits = x >> shift;
-        if (shift != uint64(0) && Signed(source) &&
-            (x & (uint64(1) << uint64(width - 1))) != uint64(0)) {
+        if (shift != 0 && Signed(source) &&
+            (x & (1 << uint64(width - 1))) != 0) {
             bits = bits | (mask ^ (mask >> shift));
         }
     }
@@ -412,7 +412,7 @@ Operation :: pure fn(op: int, left: Value, right: Value, storage: int) -> Result
             y: int = 0;
             if (right is .I32(operand)) { y = operand; }
             if ((op == OpDiv || op == OpMod) &&
-                (y == 0 || (x == int(-2147483648) && y == -1))) {
+                (y == 0 || (x == -2147483648 && y == -1))) {
                 return Result.Failed("invalid integer division or remainder");
             }
             wide := PhysicalOperation(op, Value.I64(int64(x)), Value.I64(int64(y)));

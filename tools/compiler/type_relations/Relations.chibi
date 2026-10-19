@@ -15,7 +15,7 @@ Equal :: pure fn(left: named.Value, right: named.Value) -> bool {
         switch right { case .Typed(b_storage, b_container, b_flags, b_nominal, b_parameter):
             if (((a_flags | b_flags) & 64) != 0) {
                 return a_container == b_container && (a_flags & b_flags & 64) != 0 &&
-                    (a_parameter == uint64(0) || b_parameter == uint64(0) || a_parameter == b_parameter) &&
+                    (a_parameter == 0 || b_parameter == 0 || a_parameter == b_parameter) &&
                     (a_flags & 2) == (b_flags & 2);
             }
             return a_storage == b_storage && a_container == b_container && a_nominal == b_nominal &&
@@ -26,7 +26,7 @@ Equal :: pure fn(left: named.Value, right: named.Value) -> bool {
 }
 Numeric :: pure fn(value: named.Value) -> bool {
     switch value { case .Typed(storage, container, flags, nominal, parameter):
-        return container == 0 && (nominal == uint64(0) || (flags & 32) != 0) &&
+        return container == 0 && (nominal == 0 || (flags & 32) != 0) &&
             storage >= 2 && storage <= 11 && (flags & 75) == 0;
     }
 }
@@ -56,7 +56,7 @@ Assignable :: pure fn(expected: named.Value, actual: named.Value) -> bool {
             if (((e_flags | a_flags) & 64) != 0) {
                 return e_container == a_container && (e_flags & a_flags & 64) != 0 &&
                     ((a_flags & 2) == 0 || (e_flags & 2) != 0) &&
-                    (e_parameter == uint64(0) || e_parameter == a_parameter);
+                    (e_parameter == 0 || e_parameter == a_parameter);
             }
             if ((a_flags & 2) != 0 && (e_flags & 2) == 0) { return false; }
             if ((e_flags & 2) != 0) {
@@ -91,14 +91,14 @@ FindDefinition :: pure fn(environment: Environment, id: uint64) -> int {
 Canonical :: pure fn(environment: Environment, value: named.Value) -> named.Value {
     switch value { case .Typed(storage, container, flags, original_nominal, parameter):
         nominal := original_nominal;
-        if (nominal == uint64(0)) { return value; }
+        if (nominal == 0) { return value; }
         switch environment { case .Tables(types, ids, definitions, variants):
             depth: int = 0;
             while (depth <= length(definitions)) {
                 index := FindDefinition(environment, nominal);
                 if (index < 0) { return named.Value.Typed(storage, container, flags, nominal, parameter); }
                 underlying := named.IDAt(ids, definitions[index].underlying_slot);
-                if (underlying == uint64(0)) { return named.Value.Typed(storage, container, flags, nominal, parameter); }
+                if (underlying == 0) { return named.Value.Typed(storage, container, flags, nominal, parameter); }
                 if (depth == length(definitions)) { break; }
                 nominal = underlying;
                 depth += 1;

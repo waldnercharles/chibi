@@ -278,7 +278,7 @@ FinishTask :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
             switch constructor_tables { case .Tables(types, ids, definitions, raw_variants, capabilities, functions, symbols, results):
                 switch AddType(types, ids, value) { case .Added(rows, pool, result_index):
                     facts := constructors.Environment.Tables(rows, pool, definitions, raw_variants, capabilities, functions, symbols, results);
-                    return Modifiers(Construct(reading, constructors.Task(facts, result_index, uint64(0))), tree, node);
+                    return Modifiers(Construct(reading, constructors.Task(facts, result_index, 0)), tree, node);
                 }
             }
         }
@@ -349,7 +349,7 @@ Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, doc
                 continue;
             }
             if (position < 0) {
-                reading = Replace(reading, named.Value.Typed(0, 0, 16, uint64(0), uint64(0)));
+                reading = Replace(reading, named.Value.Typed(0, 0, 16, 0, 0));
                 ready = true;
                 continue;
             }
@@ -445,7 +445,7 @@ Shorthand :: pure fn(name: string) -> bool {
 }
 Numeric :: pure fn(value: named.Value) -> bool {
     switch value { case .Typed(storage, container, flags, nominal, parameter):
-        return container == 0 && (nominal == uint64(0) || (flags & 32) != 0) &&
+        return container == 0 && (nominal == 0 || (flags & 32) != 0) &&
             storage >= 2 && storage <= 11 && (flags & 75) == 0;
     }
 }

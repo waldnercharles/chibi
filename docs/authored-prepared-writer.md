@@ -43,11 +43,12 @@ is reached. The time is linear in the module size: about 36 KB/s on bytecode and
 `tool language-prepared-writer-chibi` prepares the writer with
 `core:strings`, `syntax_diagnostics`, `package_paths` and a sample package that
 uses records, unions, arrays, imports, wide integers and floats. Its two cases
-pass with 707 assertions in 30.8 s under the 60-second supervisor (macOS arm64,
-2026-10-18):
+pass with 997 assertions in 31.4 s under the 60-second supervisor (macOS arm64,
+2026-10-19):
 - Every module's stage-zero plan is marshalled into the model and written on
   both compiler backends, then compared byte for byte with
-  `execution_prepared_write`. The writer's own 1.3 MiB module takes 38 s on
-  bytecode, so it is written on the compiled backend only.
+  `execution_prepared_write`. Modules above 512 KiB, the writer's own 1.3 MiB
+  and `core:strings`' 0.8 MiB, take 38 s and 22 s on bytecode, so they are
+  written on the compiled backend only.
 - `Fingerprint` matches `execution_prepared_measure`, and `Closure` over the four
   smaller modules matches `compiler_artifact_write`, on both backends.

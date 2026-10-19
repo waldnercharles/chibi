@@ -655,9 +655,10 @@ TOOLS = {
     'language-bounded-compiler-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--bounded-compiler-chibi'],
     # One pico_unit case: the authored prepared writer over five fixed modules
-    # (its own, core:strings, syntax_diagnostics, package_paths and a sample) on
-    # both compiler backends, ten Write calls compared byte for byte with
-    # execution_prepared_write. One shared60s including bootstrap; no aggregate.
+    # (its own, core:strings, syntax_diagnostics, package_paths and a sample),
+    # eight Write calls compared byte for byte with execution_prepared_write:
+    # modules above 512 KiB on the compiled backend only, the rest on both.
+    # One shared60s including bootstrap; no aggregate.
     'language-prepared-writer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                       '--prepared-writer-chibi'],
     # One pico_unit case: the authored package compiler over fixed sample
@@ -827,9 +828,9 @@ TOOLS = {
     # separate build and independent exact-source review before first execution.
     'language-package-files': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--package-files'],
-    # Four fixed pure core package cases, both backends: 12 preparations,
-    # 24 files/12 imports, <=24 package visits, 66 calls with budget10000.
-    # Actual core source<16KiB, app<2KiB, arrays<=3 elements, three owners.
+    # Seven fixed pure core package cases, both backends: 18 preparations,
+    # 36 files/18 imports, <=36 package visits, 378 calls with budget10000.
+    # Actual core source<16KiB, app<4KiB, arrays<=3 elements, three owners.
     # No filesystem/process/services/GPU; independent first-run review,
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

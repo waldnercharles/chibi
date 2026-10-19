@@ -134,7 +134,9 @@ python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:
 `chibi doc [ROOT]` writes the documentation site that `ROOT/docs/site.kdl`
 lists into `ROOT/build/docs`, with ROOT the working directory by default. The
 manifest names every published page, so nothing else under `docs/` reaches the
-site, and links to unpublished files keep only their text. A page is a
+site, and links to unpublished files keep only their text; each such link is
+reported as `SOURCE:LINE: link to TARGET is not published; written as text`
+without failing the build. A page is a
 Markdown `source`, the generated reference of the `packages` in a folder with
 their import `collection`, or the generated rules of a Tree-sitter `grammar`. Every example fenced
 as `chibi` must parse, and a whole package must also analyze, or the build

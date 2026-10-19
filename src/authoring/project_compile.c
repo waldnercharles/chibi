@@ -333,6 +333,7 @@ typedef enum
     DOCS_MARKDOWN, /* A Markdown page. */
     DOCS_PACKAGES, /* The reference of the packages in a folder. */
     DOCS_GRAMMAR,  /* The rules of a Tree-sitter grammar. */
+    DOCS_KINDS
 } docs_kind;
 typedef struct
 {
@@ -612,7 +613,6 @@ typedef struct
     char **paths;       /* Owned package file paths. */
     const char **lines; /* Every line, pointing into texts. */
     int *starts;        /* Where each package file's lines begin. */
-    const behavior_function *function;
     pin_value arguments[7];
     int count;
 } docs_body;
@@ -688,7 +688,9 @@ static bool read_packages(const char *root, const char *source, docs_body *body,
 
 typedef struct
 {
-    const behavior_function *render, *head, *foot, *style, *reference, *grammar;
+    /* Each kind's body and report of the links it writes as text. */
+    const behavior_function *render[DOCS_KINDS], *unpublished[DOCS_KINDS];
+    const behavior_function *head, *foot, *style;
     behavior_backend backend;
     const script_catalog *catalog; /* Names a published example may use. */
 } docs_generator;
@@ -818,7 +820,6 @@ static bool page_body(
             ((pin_array *)paths.ptr)->items[i] = text_value(body->paths[i]);
             starts->items[i] = (pin_value){ .type = PIN_I32, .i = body->starts[i] };
         }
-        body->function = generator->reference;
         body->arguments[0] = text_value(page->collection);
         body->arguments[1] = paths;
         body->arguments[2] = (pin_value){ .type = PIN_I32,
@@ -848,8 +849,6 @@ static bool page_body(
         snprintf(error, size, "%s has no `  rules: {` block", page->source);
         return false;
     }
-    body->function = page->kind == DOCS_MARKDOWN ? generator->render
-                                                 : generator->grammar;
     body->arguments[0] = lines_value(&body->storage, body->lines);
     body->arguments[1] = text_value(page->source);
     body->arguments[2] = map[4];
@@ -858,7 +857,9 @@ static bool page_body(
     return true;
 }
 
-/* Writes one page into folder: the layout around its rendered body. */
+/* Writes one page into folder: the layout around its rendered body. Then
+ * reports on stderr each link the body writes as text, which renders the body
+ * a second time, as each generator function returns a single string[]. */
 static bool write_page(
     const docs_generator *generator,
     const pin_value *map,
@@ -881,7 +882,7 @@ static bool write_page(
     written = file &&
               generate(generator->head, head, 5, generator->backend, file, page->output, error, size) &&
               generate(
-                  body.function,
+                  generator->render[page->kind],
                   body.arguments,
                   body.count,
                   generator->backend,
@@ -890,7 +891,17 @@ static bool write_page(
                   error,
                   size
               ) &&
-              generate(generator->foot, NULL, 0, generator->backend, file, page->output, error, size);
+              generate(generator->foot, NULL, 0, generator->backend, file, page->output, error, size) &&
+              generate(
+                  generator->unpublished[page->kind],
+                  body.arguments,
+                  body.count,
+                  generator->backend,
+                  stderr,
+                  page->output,
+                  error,
+                  size
+              );
     if (file) {
         written = finish(file, written, page->output, error, size);
     }
@@ -1060,20 +1071,37 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
         print_invalid(packages);
     }
     if (valid) {
-        docs_generator generator = {
-            generator_function(packages, "project:markdown", "Render", 4),
-            generator_function(packages, "project:site", "Head", 5),
-            generator_function(packages, "project:site", "Foot", 0),
-            generator_function(packages, "project:site", "Style", 0),
-            generator_function(packages, "project:reference", "Render", 7),
-            generator_function(packages, "project:grammar", "Render", 4),
-            behavior_default_backend(),
-            native_capabilities_catalog(native)
+        static const char *const identities[] = {
+            [DOCS_MARKDOWN] = "project:markdown",
+            [DOCS_PACKAGES] = "project:reference",
+            [DOCS_GRAMMAR] = "project:grammar"
         };
-        assert(
-            generator.render && generator.head && generator.foot &&
-            generator.style && generator.reference && generator.grammar
-        );
+        static const int parameters[] = { [DOCS_MARKDOWN] = 4,
+                                          [DOCS_PACKAGES] = 7,
+                                          [DOCS_GRAMMAR] = 4 };
+        docs_generator generator = {
+            .head = generator_function(packages, "project:site", "Head", 5),
+            .foot = generator_function(packages, "project:site", "Foot", 0),
+            .style = generator_function(packages, "project:site", "Style", 0),
+            .backend = behavior_default_backend(),
+            .catalog = native_capabilities_catalog(native)
+        };
+        for (int kind = 0; kind < DOCS_KINDS; kind++) {
+            generator.render[kind] = generator_function(
+                packages,
+                identities[kind],
+                "Render",
+                parameters[kind]
+            );
+            generator.unpublished[kind] = generator_function(
+                packages,
+                identities[kind],
+                "Unpublished",
+                parameters[kind]
+            );
+            assert(generator.render[kind] && generator.unpublished[kind]);
+        }
+        assert(generator.head && generator.foot && generator.style);
         valid = write_site(&generator, root, site, pages, error, sizeof error);
         if (!valid) {
             fprintf(stderr, "%s\n", error);

@@ -647,7 +647,8 @@ generator is authored Chibi in `tools/docs`, which SDKs ship as
 `share/chibi/docs`: `markdown` renders the subset the public pages use
 (headings with GitHub anchors, paragraphs, lists, block quotes, fenced code,
 pipe tables, inline code, emphasis and links) and maps links between published
-sources to their pages, dropping links to anything unpublished; `site` lays out
+sources to their pages, dropping links to anything unpublished and reporting
+each one at its source line; `site` lays out
 the navigation and stylesheet. The C side reads the manifest and files and
 calls the generator on the natives that need no running game. A page's source
 must resolve, links included, to a regular file inside ROOT. The site is written
@@ -671,7 +672,10 @@ credentials or links into private repositories (the linked `chibi-studio` is
 public). At the owner's request the README, Examples and Learn pages were then
 rewritten so that no sentence leans on a link to an unpublished document (the
 site had dropped 25 such links to plain text), and Examples no longer names the
-archived private repositories. The site folder now gets the permissions
+archived private repositories. `chibi doc` now prints `SOURCE:LINE: link to
+TARGET is not published; written as text` for each link it drops, comments in
+generated pages included, so a page cannot quietly regain one; the
+repository's own site reports none. The site folder now gets the permissions
 `mkdir` would give it rather than `mkdtemp`'s 0700, so a static host can read
 it. No published page uses an image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the

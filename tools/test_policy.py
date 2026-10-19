@@ -668,6 +668,11 @@ TOOLS = {
     # and integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # The stage-one compiler's reading of floating literals against stage
+    # zero's: listed spellings on both backends, long and generated ones on
+    # the compiled one. shared60s.
+    'language-package-compiler-chibi-literals': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                '--package-compiler-chibi-literals'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same
     # bytes. Sanitizers make one compile take about two minutes, so this runs

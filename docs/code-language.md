@@ -304,7 +304,10 @@ bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
 level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
 ```
 
-A checked conversion of an integer constant that does not fit is a compile
+A floating literal is the `double` nearest it, and a `float` literal the
+`float` nearest that `double`; a literal that overflows, or a nonzero one
+that underflows to zero or a subnormal, is a compile error. A checked
+conversion of an integer constant that does not fit is a compile
 error; a runtime value that does not fit fails the invocation. `wrap` and
 `clamp` apply only between integer types. Floating values convert to integers
 by truncating toward zero, clamping at the destination bounds and mapping NaN

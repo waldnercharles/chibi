@@ -45,11 +45,14 @@ Trimmed :: pure fn(digits: int[], count: int, point: int, trunc: bool) -> Decima
 }
 
 // The decimal spelling of a number literal: digits, an optional fraction and
-// an optional exponent, as Odin's decimal.set reads them.
+// an optional exponent, as Odin's decimal.set reads them, except that the
+// point counts every significant digit read, those beyond the stored ones
+// too.
 DecimalOf :: pure fn(spelling: string) -> Decimal {
     size := strings.ByteLength(spelling);
     digits: int[] = [];
     count: int = 0;
+    read: int = 0;
     point: int = 0;
     trunc := false;
     dot := false;
@@ -62,16 +65,19 @@ DecimalOf :: pure fn(spelling: string) -> Decimal {
                 return Decimal.Malformed;
             }
             dot = true;
-            point = count;
+            point = read;
         } else if (c >= 48 && c <= 57) {
             seen = true;
-            if (c == 48 && count == 0) {
+            if (c == 48 && read == 0) {
                 point -= 1;
-            } else if (count < DecimalDigits) {
-                digits = array_add(digits, c - 48);
-                count += 1;
-            } else if (c != 48) {
-                trunc = true;
+            } else {
+                read += 1;
+                if (count < DecimalDigits) {
+                    digits = array_add(digits, c - 48);
+                    count += 1;
+                } else if (c != 48) {
+                    trunc = true;
+                }
             }
         } else {
             break;
@@ -82,7 +88,7 @@ DecimalOf :: pure fn(spelling: string) -> Decimal {
         return Decimal.Malformed;
     }
     if (!dot) {
-        point = count;
+        point = read;
     }
     if (index < size && (strings.ByteAt(spelling, index) == 101 || strings.ByteAt(spelling, index) == 69)) {
         index += 1;
@@ -209,15 +215,13 @@ ShiftLeft :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int)
     return Trimmed(product, length(product), point + delta, dropped);
 }
 
-// The decimal divided by 2^k for 0 < k <= MaxShift, as Odin's shift_right.
+// The nonzero decimal divided by 2^k for 0 < k <= MaxShift, as Odin's
+// shift_right.
 ShiftRight :: pure fn(digits: int[], count: int, point: int, trunc: bool, k: int) -> Decimal {
     read: int = 0;
     n: int = 0;
     while ((n >> k) == 0) {
         if (read >= count) {
-            if (n == 0) {
-                return Decimal.Value(digits, 0, 0, trunc);
-            }
             while ((n >> k) == 0) {
                 n = n * 10;
                 read += 1;
@@ -327,13 +331,9 @@ PowerStep :: pure fn(distance: int) -> int {
     return steps[distance];
 }
 
-// The binary32 nearest a binary64 value: its mantissa rounded half to even
-// to 24 bits, or to a subnormal's fewer bits, as a C conversion rounds.
+// The binary32 nearest a normal binary64 value: its mantissa rounded half to
+// even to 24 bits, or to a subnormal's fewer bits, as a C conversion rounds.
 FloatFromDouble :: pure fn(exponent: int, mantissa: int64) -> int64 {
-    if (exponent == 0) {
-        // A zero or a binary64 subnormal, far below binary32's least.
-        return 0;
-    }
     whole := mantissa | (int64(1) << 52);
     unbiased := exponent - 1023;
     narrow := unbiased + 127;
@@ -380,7 +380,7 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
     now_point := point;
     now_trunc := trunc;
     exponent: int = 0;
-    while (now_point > 0 || now_point < 0 || (now_point == 0 && now_digits[0] < 5)) {
+    while (now_point != 0 || now_digits[0] < 5) {
         shift: int = 0;
         if (now_point > 0) {
             shift = -PowerStep(now_point);
@@ -397,15 +397,23 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
                 return FloatBits.OutOfRange;
         }
         exponent -= shift;
-        if (now_count == 0) {
-            return FloatBits.OutOfRange;
-        }
     }
     // From [0.5, 1) to [1, 2).
     exponent -= 1;
     if (exponent < Bias + 1) {
-        // Stage zero's strtold reports a subnormal result as out of range.
-        return FloatBits.OutOfRange;
+        // Below the least normal exponent: the mantissa takes a subnormal's
+        // place, though rounding may still make it normal.
+        step := Bias + 1 - exponent;
+        switch Shifted(now_digits, now_count, now_point, now_trunc, -step) {
+            case .Value(shifted_digits, shifted_count, shifted_point, shifted_trunc):
+                now_digits = shifted_digits;
+                now_count = shifted_count;
+                now_point = shifted_point;
+                now_trunc = shifted_trunc;
+            case .Malformed:
+                return FloatBits.OutOfRange;
+        }
+        exponent += step;
     }
     if (exponent - Bias >= ExponentLimit) {
         return FloatBits.OutOfRange;
@@ -424,6 +432,11 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
             return FloatBits.OutOfRange;
         }
     }
+    if ((mantissa & (int64(1) << MantissaBits)) == 0) {
+        // Stage zero reports a result that underflows to zero or a subnormal
+        // as out of range.
+        return FloatBits.OutOfRange;
+    }
     fraction := mantissa & ((int64(1) << MantissaBits) - 1);
     biased := exponent - Bias;
     bits := (int64(biased) << MantissaBits) | fraction;
@@ -441,11 +454,14 @@ DecimalBits :: pure fn(digits: int[], count: int, point: int, trunc: bool, negat
 // The bit patterns of the number literal `spelling`, negated when
 // `negative`.
 LiteralBits :: pure fn(spelling: string, negative: bool) -> FloatBits {
-    parsed := DecimalOf(spelling);
     size := strings.ByteLength(spelling);
-    if (size > 2 && strings.ByteAt(spelling, 0) == 48 &&
-        (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88)) {
+    hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
+                   (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);
+    parsed := Decimal.Malformed;
+    if (hexadecimal) {
         parsed = HexDecimalOf(spelling);
+    } else {
+        parsed = DecimalOf(spelling);
     }
     switch parsed {
         case .Value(digits, count, point, trunc):

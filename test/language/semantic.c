@@ -5,6 +5,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static script_syntax *syntax;
@@ -617,6 +618,51 @@ static bool converts(const char *body, behavior_cast_mode mode)
     parse(source);
     const script_expression *conversion = expression_of(SCRIPT_EXPR_CAST, PIN_U8);
     return analysis->valid && conversion && conversion->conversion == mode;
+}
+/* A floating literal is the double nearest it, never rounded twice through a
+ * wider long double, and a float literal the float nearest that double; a
+ * nonzero literal that underflows to zero or a subnormal is out of range, as
+ * one that overflows is. */
+static bool reads_nearest(const char *spelling, pin_type storage)
+{
+    char source[256];
+    snprintf(
+        source,
+        sizeof source,
+        "library L { F :: fn() -> %s { return %s; } }",
+        storage == PIN_F32 ? "float" : "double",
+        spelling
+    );
+    parse(source);
+    const script_expression *literal = constant_of(storage);
+    REQUIRE(analysis->valid && literal);
+    double nearest = strtod(spelling, NULL);
+    if (storage == PIN_F32) {
+        float narrow = (float)nearest;
+        REQUIRE(!memcmp(&literal->constant.f, &narrow, sizeof narrow));
+    } else {
+        REQUIRE(!memcmp(&literal->constant.d, &nearest, sizeof nearest));
+    }
+    return true;
+}
+TEST_CASE(language_floating_literals_read_the_nearest_double)
+{
+    REQUIRE(reads_nearest("0.1", PIN_F64));
+    REQUIRE(reads_nearest("9007199254740993.0000000001", PIN_F64));
+    REQUIRE(reads_nearest("1.7976931348623158e308", PIN_F64));
+    REQUIRE(reads_nearest("2.2250738585072012e-308", PIN_F64));
+    REQUIRE(reads_nearest("1.000000059604644775390625", PIN_F32));
+    REQUIRE(reads_nearest("3.4028234663852886e38", PIN_F32));
+    const char *const outside[] = { "4.9e-324", "1e-400", "1e400" };
+    for (int i = 0; i < 3; i++) {
+        char source[128];
+        snprintf(source, sizeof source, "library L { F :: fn() -> double { return %s; } }", outside[i]);
+        parse(source);
+        REQUIRE(!analysis->valid && diagnostic("Numeric literal must be finite"));
+    }
+    parse("library L { F :: fn() -> double { return 0e400; } }");
+    REQUIRE(analysis->valid);
+    return true;
 }
 TEST_CASE(language_numeric_conversions_check_modes_and_constants)
 {
@@ -1846,6 +1892,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
+    RUN_TEST_CASE(language_floating_literals_read_the_nearest_double);
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);

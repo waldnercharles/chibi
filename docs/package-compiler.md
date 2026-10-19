@@ -176,16 +176,23 @@ Runtime sources record each instruction's origin. Debugger points and watches
 are not emitted yet; they must be before stage one becomes the normal compiler.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
-the binary64 nearest the literal, and the binary32 nearest that binary64.
-Stage zero calls `strtold` and narrows; where `long double` is `double`, as on
-macOS arm64, that is the same. The reading ports the slow path of Odin's
-`core:strconv` (`decimal_to_float_bits` over `core:strconv/decimal`, from Go's
-`strconv`). The literal becomes a decimal of up to 800 digits that shifts by
-powers of two until its integer part is the mantissa rounded half to even,
-using only integer arithmetic. Odin's table of powers of five for left shifts
-is replaced by computing the carry's digits directly. As stage zero's
-`strtold` does, the reading reports overflow, and underflow to zero or a
-subnormal, as out of range, and it reports whether the value fits a binary32.
+the binary64 nearest the literal, and the binary32 nearest that binary64. A
+literal that overflows, or a nonzero one whose binary64 is zero or subnormal,
+is out of range ("Numeric literal must be finite"), and the reading reports
+whether the value fits a binary32. Stage zero reads floating literals with
+`strtod` and applies the same rule itself, so the reading is the same on every
+host; it used to read them with `strtold`, which rounds twice where `long
+double` is wider than `double`, and left subnormal results to the C library's
+`errno`.
+
+The reading ports the slow path of Odin's `core:strconv`
+(`decimal_to_float_bits` over `core:strconv/decimal`, from Go's `strconv`).
+The literal becomes a decimal of up to 800 stored digits that shifts by powers
+of two until its integer part is the mantissa rounded half to even, using only
+integer arithmetic. Two departures: computing the carry's digits replaces
+Odin's table of powers of five for left shifts, and the decimal point counts
+every significant digit read, not only the stored ones, which Odin's and Go's
+fast paths otherwise cover.
 
 ## Test
 
@@ -193,8 +200,8 @@ Two selectors compile 85 samples on both compiler backends, each under its
 own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, every rejection, and the floating literal
-  readings (12,959 assertions in 29.7 s);
+  arrays, strings and natives, and every rejection (9,942 assertions in
+  31.0 s);
 - `tool language-package-compiler-chibi-types`: unions, imports, constants,
   patterns, scopes, integer types and inferred arrays (3,039 assertions in
   28.6 s).
@@ -210,11 +217,16 @@ Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
-`LiteralBits`, stage zero's build of it, must read 56 listed spellings, with
-both signs, and 120 generated ones across the binary64 range exactly as the C
-library's `strtod` and a narrowing to float do. The listed spellings cover
-halfway cases, both ranges' ends, binary64 subnormals, leading zeros and
-hexadecimal integers.
+`tool language-package-compiler-chibi-literals` checks stage zero's build of
+`LiteralBits` against stage zero's own rule, computed with `strtod` (3,962
+assertions in 17.7 s). On both compiler backends it reads 59 listed
+spellings: halfway cases, both ranges' ends, values that round up to the least
+normal binary64, binary64 subnormals, leading zeros and hexadecimal integers.
+On the compiled backend it also reads them negated, along with the exact
+decimals of five binary64 values that are binary32 ties (subnormal, normal and
+next to the largest), a halfway literal decided by a last digit 800 places past it, 800 zeros
+before `e-800`, and 120 generated spellings across the binary64 range. The
+bootstrap check also has stage two read the listed spellings with both signs.
 
 Compiling is slow. In this build, compiling all the samples takes about 17 s
 of the selector's run. The arrays sample, about 50 lines, takes 0.9 s on SLJIT

@@ -233,6 +233,17 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                                destination, value);
                     }
                     if (update >= 0) {
+                        // Stage zero evaluates the target, the call and the
+                        // array it updates, as their points show; it writes a
+                        // parameter through the reference the target reads.
+                        if (Parameter(forest, binding)) {
+                            code = append(code, NamePoints(forest, text, names, ops, destination));
+                        } else {
+                            code = array_add(code, ExpressionCode(ops, forest[destination]));
+                        }
+                        code = array_add(code, ExpressionCode(ops, forest[value]));
+                        code = append(code, NamePoints(forest, text, names, ops,
+                                                       FirstMember(forest, Field(forest, value, "arguments"))));
                         argument := NextMember(forest, FirstMember(forest, Field(forest, value, "arguments")));
                         container: int = 0;
                         if (update == 1) {
@@ -243,8 +254,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0,
                                             NoValue(), retained, marks);
                     }
+                    if (operator != "" || Parameter(forest, binding)) {
+                        code = append(code, NamePoints(forest, text, names, ops, destination));
+                    }
                 }
             } else if (whole >= 0) {
+                code = append(code, TargetPoints(forest, text, names, ops, destination));
                 // `self.C op= v` combines the owner's component with the value
                 // and writes the result through the reference it read.
                 write := Resume(item.node, ComponentAssignPhase, at.slot + ComponentReferenceSlot, whole);
@@ -256,6 +271,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                                          at, node);
             } else if (owned >= 0) {
                 // `self.C.f = v` on a component of the owner.
+                code = append(code, TargetPoints(forest, text, names, ops, destination));
                 member := Text(forest, text, Field(forest, destination, "member"));
                 field := FindField(types, members, owned, member);
                 if (field < 0) {
@@ -285,6 +301,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 if (field < 0) {
                     return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
                 }
+                code = append(code, TargetPoints(forest, text, names, ops, destination));
                 next = array_add(next, Expect(value, members[field].storage, 0, -1));
                 write := Resume(item.node, FieldPhase, found, field);
                 if (operator != "") {
@@ -306,8 +323,12 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 }
                 binding := names[found];
                 compound: int = 0;
+                code = array_add(code, ExpressionCode(ops, forest[destination]));
                 if (operator != "") {
                     compound = 1;
+                }
+                if (operator != "" || Parameter(forest, binding)) {
+                    code = append(code, NamePoints(forest, text, names, ops, object));
                 }
                 next = array_add(next, Expect(Field(forest, destination, "index"), IntStorage, 0, -1));
                 next = array_add(next, Expect(value, binding.storage, 0, binding.record));
@@ -366,17 +387,20 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             if ((Single(result, ResultsStorage) || Single(result, FunctionResultsStorage)) && declared < 0) {
                 // The local reads the call's result cells.
                 binding: Name = {name: name, place: ResultsPlace, index: result.slot, storage: result.storage,
-                                 container: 0, record: result.record, writable: false};
+                                 container: 0, record: result.record, writable: false,
+                                 node: Field(forest, item.node, "name")};
                 bound = array_add(bound, binding);
             } else if (Pointer(local.storage, local.container)) {
                 // The local is the cell that holds its own copy.
+                code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
                 retained = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, 0, 0));
             } else {
                 locals = array_add(locals, ValueLocal(local.storage));
                 code = array_add(code, Instruction(ops.save, local.storage, 0, result.slot, 0, at.local, node));
+                code = array_add(code, SymbolCode(ops, Field(forest, item.node, "name"), node));
                 binding: Name = {name: name, place: LocalPlace, index: at.local, storage: local.storage, container: 0,
-                                 record: local.record, writable: true};
+                                 record: local.record, writable: true, node: Field(forest, item.node, "name")};
                 bound = array_add(bound, binding);
             }
         } else if (kind == "assignment") {
@@ -438,6 +462,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             } else {
                 code = array_add(code, Instruction(ops.save, binding.storage, 0, stored.slot, 0, binding.index, node));
             }
+            if (!Parameter(forest, binding)) {
+                code = array_add(code, SymbolCode(ops, binding.node, node));
+            }
         } else if (kind == "return_statement") {
             if (result.container == 0 && callable.result_container == 0 && Widens(result.storage, callable.result)) {
                 widened: Slot = {storage: callable.result, kind: ValueKind};
@@ -452,6 +479,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                 retained = result;
                 next = array_add(next, Resume(item.node, RetainedPhase, -1, 0));
             } else {
+                code = array_add(code, SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
                 code = array_add(code, CompletionCode(ops, node));
                 code = array_add(code, Instruction(ops.result, result.storage, 0, result.slot, 0, 0, node));
                 code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, node));
@@ -476,7 +504,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         address: Slot = {storage: target.pointer_storage, kind: AddressKind};
         if (kind == "local_declaration") {
             binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
-                             index: at.cell - 1, storage: kept.storage, container: kept.container, record: kept.record, writable: true};
+                             index: at.cell - 1, storage: kept.storage, container: kept.container, record: kept.record,
+                             writable: true, node: Field(forest, item.node, "name")};
             bound = array_add(bound, binding);
         } else if (kind == "assignment") {
             slots = array_add(slots, address);
@@ -487,6 +516,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         } else {
             // Copy the cell's whole header, type name and layout included,
             // into result zero.
+            code = array_add(code, SymbolCode(ops, -1, forest[Field(forest, item.node, "value")]));
             code = array_add(code, CompletionCode(ops, node));
             slots = array_add(slots, address);
             code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot, at.cell - 1, 0, 0, node));
@@ -616,6 +646,16 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
                       result_count: 1, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        // A push or a plain element store stores a local array; a push then
+        // evaluates it again.
+        if ((item.phase == PushPhase || item.b == 0) && !Parameter(forest, binding)) {
+            code = array_add(code, SymbolCode(ops, binding.node, node));
+        }
+        if (item.phase == PushPhase && !Parameter(forest, binding)) {
+            code = append(code, NamePoints(forest, text, names, ops,
+                                           FirstMember(forest, Field(forest, Field(forest, item.node, "value"),
+                                                                     "arguments"))));
+        }
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, NoValue(), retained, marks);
 }
@@ -1226,7 +1266,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             arity = count >= expected_count - 1;
         }
         if (found >= 0 && count < expected_count) {
-            arity = params[callables[found].first + count].has_default;
+            // Every omitted argument needs a default.
+            arity = true;
+            at_omitted := count;
+            while (at_omitted < expected_count) {
+                arity = arity && params[callables[found].first + at_omitted].has_default;
+                at_omitted += 1;
+            }
         }
         if (!arity) {
             return Fail(forest, item.node, document, "call has the wrong number of arguments");
@@ -1291,6 +1337,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             return Fail(forest, values[at_argument].record, document, "a number needs an integer type here");
         }
         at_argument += 1;
+    }
+    // Stage zero evaluates the default of each argument a call omits.
+    if (item.c == 0 && item.a >= 0) {
+        omitted := count;
+        while (omitted < callables[item.a].count) {
+            param := params[callables[item.a].first + omitted];
+            code = array_add(code, OccurrenceCode(ops, ExpressionRecord, param.default_occurrence,
+                                                  forest[Field(forest, forest[param.node].parent, "value")]));
+            omitted += 1;
+        }
     }
     if (item.c == 2) {
         // The constructor takes the variant's tag, then each payload field.
@@ -1680,6 +1736,17 @@ OperatorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, v
         slots = append(slots, NumberSlots(right.storage, left.storage));
         right = Typed(at.slot + length(slots) - 1, left.storage, 0, -1);
     }
+    // A float with a double becomes a double.
+    if (Single(left, FloatStorage) && Single(right, DoubleStorage)) {
+        slots = array_add(slots, ValueLocal(DoubleStorage));
+        code = array_add(code, Instruction(ops.convert, DoubleStorage, at.slot + length(slots) - 1, left.slot, 0, 0, node));
+        left = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+    }
+    if (Single(left, DoubleStorage) && Single(right, FloatStorage)) {
+        slots = array_add(slots, ValueLocal(DoubleStorage));
+        code = array_add(code, Instruction(ops.convert, DoubleStorage, at.slot + length(slots) - 1, right.slot, 0, 0, node));
+        right = Typed(at.slot + length(slots) - 1, DoubleStorage, 0, -1);
+    }
     numeric := Single(left, left.storage) && Single(right, left.storage) && Numeric(left.storage);
     equality := op == ops.eq || op == ops.ne;
     same := Single(right, left.storage) && (Single(left, BoolStorage) || Single(left, TextStorage));
@@ -1864,17 +1931,17 @@ FieldStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, bind
     marks: int[] = [];
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     stored := value;
-    if (value.container == 0 && Widens(value.storage, field.storage)) {
-        widened: Slot = {storage: field.storage, kind: ValueKind};
-        slots = array_add(slots, widened);
-        code = array_add(code, CastCode(ops, field.storage, at.slot, value.slot, 0, node));
-        stored = Typed(at.slot, field.storage, 0, -1);
+    if (value.container == 0 && value.storage != field.storage && Converts(value.storage, field.storage)) {
+        slots = append(slots, NumberSlots(value.storage, field.storage));
+        code = append(code, NumberCode(ops, value.storage, field.storage, value.slot, at.slot, node));
+        stored = Typed(at.slot + length(slots) - 1, field.storage, 0, -1);
     }
     if (item.c == 1) {
         // The current field, read in place, combined with the value.
         op := BinaryOp(ops, CompoundOperator(Text(forest, text, Field(forest, item.node, "operator"))));
-        if (op < 0 || Comparison(ops, op) || !Integer(field.storage) || !Single(stored, field.storage)) {
-            return Fail(forest, item.node, document, "compound assignment needs integer operands of its type");
+        if (op < 0 || Comparison(ops, op) || !(Integer(field.storage) || Floating(field.storage)) ||
+            !Single(stored, field.storage)) {
+            return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
         }
         if (!Computes(ops, op, field.storage)) {
             return Fail(forest, item.node, document, "unsupported arithmetic type");
@@ -2350,14 +2417,19 @@ FloatConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: i
                         NoValue(), marks);
 }
 // Whether a number of type `from` converts to `to` implicitly: an integer
-// widens, or becomes a floating value.
+// widens or becomes a floating value, and the floating types convert to one
+// another.
 Converts :: (from: int, to: int) -> bool {
-    return Widens(from, to) || (Integer(from) && Floating(to));
+    return Widens(from, to) || ((Integer(from) || Floating(from)) && Floating(to) && from != to);
 }
 // The conversion of the number in slot `input` from `from` to `to`, through
 // the NumberSlots from `slot`, as stage zero converts: an integer becomes a
-// floating value exactly as a double first; anything else casts.
+// floating value exactly as a double first, the floating types convert to
+// one another, and anything else casts.
 NumberCode :: (ops: Ops, from: int, to: int, input: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (Floating(from) && Floating(to)) {
+        return [Instruction(ops.convert, to, slot, input, 0, 0, node)];
+    }
     if (!Integer(from) || !Floating(to)) {
         return [CastCode(ops, to, slot, input, 0, node)];
     }
@@ -2461,9 +2533,18 @@ ResultsStep :: (forest: snapshot.SnapshotNode[], document: int, params: Param[],
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    code: Code[] = [CompletionCode(ops, node)];
-    slots: Slot[] = [];
+    // Each value stores its result, then the function completes.
+    code: Code[] = [];
+    returned_nodes := Members(forest, Field(forest, item.node, "value"));
     index: int = 0;
+    while (index < callable.results) {
+        code = array_add(code, SymbolCode(ops, params[callable.first + callable.count + index].node,
+                                          forest[returned_nodes[index]]));
+        index += 1;
+    }
+    code = array_add(code, CompletionCode(ops, node));
+    slots: Slot[] = [];
+    index = 0;
     while (index < callable.results) {
         result := params[callable.first + callable.count + index];
         returned := values[top - callable.results + index];
@@ -2801,7 +2882,7 @@ ParameterStep :: (params: Param[], callable: Callable, item: Work, ops: Ops, tar
     param := params[callable.first + item.a];
     if (item.phase == 1) {
         binding: Name = {name: param.name, place: CellPlace, index: at.cell - 1, storage: param.storage,
-                         container: param.container, record: param.record, writable: true};
+                         container: param.container, record: param.record, writable: true, node: param.node};
         bound = array_add(bound, binding);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, NoValue(), NoValue(),
                             marks);
@@ -2921,9 +3002,10 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         if (Declared(names, scope, name) || Lookup(bound, name) >= 0) {
             return Fail(forest, binding, document, format_text("Duplicate declaration '{}'", name));
         }
+        code = array_add(code, SymbolCode(ops, binding, forest[binding]));
         if (Pointer(field.storage, field.container)) {
             view: Name = {name: name, place: CellPlace, index: first + 4, storage: field.storage,
-                          container: field.container, record: field.record, writable: false};
+                          container: field.container, record: field.record, writable: false, node: binding};
             bound = array_add(bound, view);
         } else {
             slots = array_add(slots, address);
@@ -2938,7 +3020,7 @@ MatchStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
             code = array_add(code, Instruction(ops.save, field.storage, 0, at.slot + length(slots) - 1, 0,
                                                at.local + length(locals) - 1, node));
             copy: Name = {name: name, place: LocalPlace, index: at.local + length(locals) - 1, storage: field.storage,
-                          container: 0, record: field.record, writable: false};
+                          container: 0, record: field.record, writable: false, node: binding};
             bound = array_add(bound, copy);
         }
         position += 1;

@@ -116,6 +116,11 @@ Param :: struct {
     has_default: bool;
     default_bits: uint64;
     default_text: string;
+    // The occurrence of the default's expression, which stage zero evaluates
+    // where a call omits the argument.
+    default_occurrence: uint64;
+    // The node that declares the parameter, -1 when the source declares none.
+    node: int;
 }
 // A native function the target links, as its catalog describes it. Its
 // parameters and then its results are ports[first, first + parameters +
@@ -187,6 +192,8 @@ ConstDecl :: struct {
     node: int;
     file: int;
     folded: bool;
+    // The occurrence of the constant's symbol, in its own document.
+    occurrence: uint64;
 }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -336,7 +343,7 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
     for (link in links) {
         if (link.file == file) {
             alias: Name = {name: link.name, place: AliasPlace, index: link.target, storage: 0, container: 0,
-                           record: -1, writable: false};
+                           record: -1, writable: false, node: -1};
             aliases = array_add(aliases, alias);
         }
     }
@@ -403,6 +410,12 @@ FieldSize :: (storage: int, target: Target) -> int {
     }
     if (Integer(storage)) {
         return Width(storage) / 8;
+    }
+    if (storage == FloatStorage) {
+        return 4;
+    }
+    if (storage == DoubleStorage) {
+        return 8;
     }
     return 1;
 }
@@ -514,9 +527,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
                         storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
-                        if (storage == 0 || Floating(storage) || Field(forest, item, "value") >= 0) {
+                        if (storage == 0 || Field(forest, item, "value") >= 0) {
                             return Declarations.Failed(Diagnose(forest, item, file,
-                                                                "record field needs an integer, bool or string type and no default"));
+                                                                "record field needs a number, bool or string type and no default"));
                         }
                         at := declared.first;
                         while (at < length(members)) {
@@ -565,7 +578,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         parameter := FirstMember(forest, Field(forest, variant, "parameters"));
                         while (parameter >= 0) {
                             payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
-                            if (payload.storage == 0 || Floating(payload.storage)) {
+                            if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
@@ -598,7 +611,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                switch FunctionSignature(forest, text, types, aliases, package, file, member, name, length(params)) {
+                switch FunctionSignature(forest, text, documents[file].key, types, aliases, package, file, member, name,
+                                         length(params)) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
@@ -625,8 +639,12 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         return Declarations.Failed(Diagnose(forest, declared, file, "constant type is not supported yet"));
                     }
                 }
+                named := forest[Field(forest, member, "name")];
                 constant: ConstDecl = {name: name, package: package, storage: storage, bits: 0,
-                                       node: Field(forest, member, "value"), file: file, folded: false};
+                                       node: Field(forest, member, "value"), file: file, folded: false,
+                                       occurrence: Occurrence(documents[file].key, SymbolRecord,
+                                                              SolidBefore(text, named.start),
+                                                              SolidBefore(text, named.end))};
                 constants = array_add(constants, constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
@@ -748,7 +766,11 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
     } else if (unary && operator == "+") {
         result = left;
     } else if (unary && operator == "~") {
+        // An unsigned type's complement keeps only its own bits.
         result = ~left;
+        if (!Signed(storage) && storage != WordStorage) {
+            result = result & ((int64(1) << int64(Width(storage))) - 1);
+        }
     } else if (operator == "+") {
         result = left + right;
         exact = (left >= 0) != (right >= 0) || (result >= 0) == (left >= 0);
@@ -757,7 +779,8 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
         exact = (left >= 0) == (right >= 0) || (result >= 0) == (left >= 0);
     } else if (operator == "*") {
         result = left * right;
-        exact = left == 0 || (result / left == right && !(left == -1 && right == Int64Min));
+        // Int64Min / -1 itself traps, so that pair is tested first.
+        exact = left == 0 || (!(left == -1 && right == Int64Min) && result / left == right);
     } else if (operator == "/" || operator == "%") {
         if (right == 0) {
             return Folding.Failed(Diagnose(forest, node, file, "Constant division by zero"));
@@ -841,8 +864,8 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 }
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar.
-FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[],
-                      package: int, file: int, member: int, name: string, first: int) -> Signature {
+FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, types: TypeDecl[],
+                      aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
     while (parameter >= 0) {
@@ -855,9 +878,15 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
             return Signature.Failed(Diagnose(forest, Field(forest, parameter, "name"), file,
                                              "Invalid string or embedded NUL"));
         }
-        param: Param = {name: param_name, storage: declared.storage, container: declared.container,
-                        record: declared.record, has_default: false, default_bits: 0, default_text: ""};
         default_value := Field(forest, parameter, "value");
+        default_occurrence: uint64 = 0;
+        if (default_value >= 0) {
+            default_occurrence = Occurrence(key, ExpressionRecord, SolidBefore(text, forest[default_value].start),
+                                            SolidBefore(text, forest[default_value].end));
+        }
+        param: Param = {name: param_name, storage: declared.storage, container: declared.container,
+                        record: declared.record, has_default: false, default_bits: 0, default_text: "",
+                        default_occurrence: default_occurrence, node: Field(forest, parameter, "name")};
         if (default_value >= 0) {
             switch LiteralDefault(forest, text, file, default_value, declared) {
                 case .Failed(diagnostic):
@@ -887,7 +916,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, types: Type
             }
             result_name := Text(forest, text, Field(forest, named, "name"));
             param: Param = {name: result_name, storage: declared.storage, container: 0, record: declared.record,
-                            has_default: false, default_bits: 0, default_text: ""};
+                            has_default: false, default_bits: 0, default_text: "", default_occurrence: 0,
+                            node: Field(forest, named, "name")};
             added = array_add(added, param);
             named = NextMember(forest, named);
         }
@@ -1046,6 +1076,69 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
 // functions are its handlers; its bytes are the Compiled result's. Each body
 // is a canonical definition the runtime verifies and finalizes when it loads
 // it.
+// `constants`, each another package's taking the occurrence of the first use
+// in package `package`, where stage zero declares its symbol.
+UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], links: graph.Binding[],
+                  callables: Callable[], constants: ConstDecl[], package: int, first_own: int,
+                  reachable: bool[]) -> ConstDecl[] {
+    // Only a package this one imports declares a constant it can use.
+    foreign := false;
+    for (constant in constants) {
+        foreign = foreign || (constant.package != package && reachable[constant.package]);
+    }
+    if (!foreign) {
+        return constants;
+    }
+    seen := resize([false], length(constants));
+    firsts := resize([uint64(0)], length(constants));
+    index := first_own;
+    while (index < length(callables) && callables[index].package == package) {
+        document := callables[index].document;
+        text := documents[document].text;
+        aliases := Aliases(links, document);
+        // The body's nodes in source order.
+        pending: int[] = [Field(forest, callables[index].node, "body")];
+        while (length(pending) > 0) {
+            node := pending[length(pending) - 1];
+            pending = slice(pending, 0, length(pending) - 1);
+            found: int = -1;
+            if (Is(forest, node, "member_expression")) {
+                found = ConstantOf(forest, text, constants, aliases, package, node);
+            }
+            if (found >= 0 && constants[found].package != package && !seen[found]) {
+                seen[found] = true;
+                firsts[found] = Occurrence(documents[document].key, SymbolRecord, SolidBefore(text, forest[node].start),
+                                           SolidBefore(text, forest[node].end));
+            }
+            children: int[] = [];
+            child := forest[node].first_child;
+            while (child >= 0) {
+                children = array_add(children, child);
+                child = forest[child].next_sibling;
+            }
+            at_child := length(children) - 1;
+            while (at_child >= 0) {
+                pending = array_add(pending, children[at_child]);
+                at_child -= 1;
+            }
+        }
+        index += 1;
+    }
+    used: ConstDecl[] = [];
+    at: int = 0;
+    while (at < length(constants)) {
+        occurrence := constants[at].occurrence;
+        if (seen[at]) {
+            occurrence = firsts[at];
+        }
+        first: ConstDecl = {name: constants[at].name, package: constants[at].package, storage: constants[at].storage,
+                            bits: constants[at].bits, node: constants[at].node, file: constants[at].file,
+                            folded: constants[at].folded, occurrence: occurrence};
+        used = array_add(used, first);
+        at += 1;
+    }
+    return used;
+}
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int,
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
@@ -1148,6 +1241,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (first_own < length(callables) && callables[first_own].package != package) {
         first_own += 1;
     }
+    used := UsedConstants(forest, documents, links, callables, constants, package, first_own, reachable);
     // The packages this module calls into, each an import row.
     imported: int[] = [];
     imports: writer.Import[] = [];
@@ -1174,7 +1268,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
         }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-                           types, members, constants, natives, ports, identities, aggregates, record_makes, make_fields,
+                           types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
                            append(Aliases(links, callable.document), behaving), documents[callable.document].key, solid,
                            meaning, index, ops, target);
         switch tables {

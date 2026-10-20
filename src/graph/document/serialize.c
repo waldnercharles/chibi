@@ -284,8 +284,6 @@ static int apply_pin(graph *g, node *n, int output, int i, av_value *v, load_ref
                 binding.event_node_id = av_get_uint(event_node_id);
                 binding.event_pin_id = av_get_uint(event_pin_id);
             }
-        } else if (!strcmp(kind_name, "delta_time")) {
-            binding.kind = PIN_BINDING_DELTA_TIME;
         } else {
             serialize_error_set("unknown pin binding kind '%s'", kind_name);
             return -1;

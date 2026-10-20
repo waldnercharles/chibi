@@ -912,9 +912,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
     for (int backend = 0; backend < 2; backend++) {
         prepare();
         ecs_entity moving = positioned(1, true);
-        REQUIRE(
-            compile("Motion :: system( position: Position, velocity: Velocity) { position.x += velocity.x * dt; position.y = position.x + velocity.x; }", backends[backend])
-        );
+        REQUIRE(compile(
+            "Motion :: system( position: Position, velocity: Velocity) on Tick "
+            ":: (dt: float s) { position.x += velocity.x * dt; position.y = "
+            "position.x + velocity.x; }",
+            backends[backend]
+        ));
         execution_effect_summary effects = execution_module_effects(module);
         REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
         REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
@@ -937,12 +940,12 @@ TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
 
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    const char
-        *source = "Motion :: system(position: Position, velocity: Velocity) {\n"
-                  "    position.x += velocity.x * dt;\n"
-                  "    await Delay(10);\n"
-                  "    position.y = 99;\n"
-                  "}\n";
+    const char *source = "Motion :: system(position: Position, velocity: "
+                         "Velocity) on Tick :: (dt: float s) {\n"
+                         "    position.x += velocity.x * dt;\n"
+                         "    await Delay(10);\n"
+                         "    position.y = 99;\n"
+                         "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();

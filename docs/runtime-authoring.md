@@ -51,7 +51,10 @@ longer parse. The migration refuses a handler that it cannot rewrite
 exactly, such as one that reads the whole `event` or whose alias an action
 reads; rewrite that handler by hand and migrate again. It does not see events
 that a game's own native table declares, so write those handlers in the named
-form first.
+form first. Version 31 removes the step globals `dt`, `delta` and
+`delta_time()`: a read in an `on Tick` handler or a system becomes a listed
+`dt`, and the migration refuses one anywhere else, where the step must be
+passed in.
 A prototype is the `name` it declares, whatever its file is called: scenes and
 other prototypes' `(array)includes` find it by that name in the player and in
 `chibi_ctl` alike, and two prototypes that declare one name, or a name over

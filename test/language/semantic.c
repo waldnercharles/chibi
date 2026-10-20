@@ -825,6 +825,100 @@ TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly)
     REQUIRE(diagnostic("Numeric literal is outside the range of byte"));
     return true;
 }
+/* The value of the one character constant the last parse produced. */
+static bool character(pin_type storage, int value, bool is_char)
+{
+    const script_expression *constant = constant_of(storage);
+    return analysis->valid && constant &&
+           script_type_char(constant->type) == is_char &&
+           (storage == PIN_U8 ? constant->constant.u8 : constant->constant.i) == value;
+}
+TEST_CASE(language_character_literals_take_their_type_from_context)
+{
+    parse("L :: library { F :: (c: byte) -> bool { return c == '/'; } }");
+    REQUIRE(character(PIN_U8, '/', false));
+    parse("L :: library { F :: (c: int) -> bool { return c >= 'A' && c <= 'Z'; } }");
+    REQUIRE(analysis->valid && !constant_of(PIN_F64));
+    parse("L :: library { Slash: byte : 'é'; }");
+    REQUIRE(character(PIN_U8, 233, false));
+    parse("L :: library { Euro: byte : '€'; }");
+    REQUIRE(diagnostic("Character literal is outside the range of byte"));
+    parse("L :: library { F :: () -> char { c := 'a'; return c; } }");
+    REQUIRE(character(PIN_I32, 'a', true));
+    parse("L :: library { F :: () -> char { return '🐈'; } }");
+    REQUIRE(character(PIN_I32, 0x1F408, true));
+    parse("L :: library { F :: () -> char { return '\\uD83D\\uDC08'; } }");
+    REQUIRE(character(PIN_I32, 0x1F408, true));
+    parse("L :: library { F :: () -> char { return '\\''; } }");
+    REQUIRE(character(PIN_I32, '\'', true));
+    parse("L :: library { F :: () -> char { return '\"'; } }");
+    REQUIRE(character(PIN_I32, '"', true));
+    parse("L :: library { F :: () -> char { return '\\n'; } }");
+    REQUIRE(character(PIN_I32, '\n', true));
+    parse("L :: library { F :: () -> char { return '\\u0000'; } }");
+    REQUIRE(character(PIN_I32, 0, true));
+    parse("L :: library { F :: () -> char { return ''; } }");
+    REQUIRE(diagnostic("A character literal holds exactly one character"));
+    parse("L :: library { F :: () -> char { return 'ab'; } }");
+    REQUIRE(diagnostic("A character literal holds exactly one character"));
+    parse("L :: library { F :: () -> char { return '\\q'; } }");
+    REQUIRE(diagnostic("Invalid character literal"));
+    parse("L :: library { F :: () -> char { return '\\uD800'; } }");
+    REQUIRE(diagnostic("Invalid character literal"));
+    parse("L :: library { F :: () -> string { return 'a'; } }");
+    REQUIRE(!analysis->valid);
+    parse("L :: library { F :: () -> double { return 'a'; } }");
+    REQUIRE(diagnostic("A character literal needs an integer or char type"));
+    return true;
+}
+TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
+{
+    parse("L :: library { F :: (c: char) -> int { return c; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> int64 { return c; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> byte { return c; } }");
+    REQUIRE(diagnostic("Incompatible types: expected byte, got char; convert with byte(value)"));
+    parse("L :: library { F :: (n: int) -> char { return n; } }");
+    REQUIRE(diagnostic("Incompatible types: expected char, got int; convert with char(value)"));
+    parse("L :: library { F :: (n: int) -> char { return char(n); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> byte { return byte(c); } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (n: int) -> char { return char(wrap: n); } }");
+    REQUIRE(diagnostic("char converts only with char(value)"));
+    parse("L :: library { F :: () -> char { return char(0xD800); } }");
+    REQUIRE(diagnostic("Constant does not fit in char"));
+    parse("L :: library { F :: () -> char { return char(0x10FFFF); } }");
+    REQUIRE(analysis->valid);
+    /* char arithmetic stays char; with an int it widens to int. */
+    parse("L :: library { F :: (c: char) -> char { return c + 1; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, n: int) -> int { return c + n; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, n: int) -> char { return c + n; } }");
+    REQUIRE(diagnostic("Incompatible types: expected char, got int; convert with char(value)"));
+    parse("L :: library { F :: () -> char { return 'a' + 1; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char) -> int { return c - '0'; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (d: double) -> char { return char(d); } }");
+    REQUIRE(diagnostic("char converts from an integer"));
+    /* A compile-time call evaluates its character literals. */
+    parse(
+        "L :: library { Code :: () -> int { return 'a'; } Folded :: Code(); "
+        "F :: () -> bool { return Folded == 97; } }"
+    );
+    REQUIRE(analysis->valid);
+    /* A char type argument specializes apart from int. */
+    parse(
+        "L :: library { Box :: struct($T: Type) { value: T } "
+        "A :: () -> Box(char) { return {value: 'a'}; } "
+        "B :: () -> Box(int) { return A(); } }"
+    );
+    REQUIRE(!analysis->valid);
+    return true;
+}
 TEST_CASE(language_hex_literal_fills_integer_storage)
 {
     parse("Colors :: behavior { color: uint = 0xf7d308ff; }");
@@ -2037,6 +2131,8 @@ void test_language_semantic()
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
+    RUN_TEST_CASE(language_character_literals_take_their_type_from_context);
+    RUN_TEST_CASE(language_char_widens_to_int_and_narrows_explicitly);
     RUN_TEST_CASE(language_numeric_conversions_check_modes_and_constants);
     RUN_TEST_CASE(language_integers_widen_implicitly_and_narrow_explicitly);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);

@@ -284,6 +284,12 @@ bool script_catalog_values_key(const script_catalog *, unsigned char **);
 const script_catalog_type *script_catalog_type_by_id(const script_catalog *, uint64_t id);
 const script_catalog_capability *script_catalog_capability_by_id(const script_catalog *, uint64_t id);
 script_type script_builtin_type(const char *name);
+/* One Unicode scalar: int storage under its own nominal, so a char converts
+ * to int implicitly and back only through a checked char(value). */
+script_type script_char_type();
+bool script_type_char(script_type);
+/* The source name of a numeric type: char, or its storage's name. */
+const char *script_numeric_name(script_type);
 script_type script_reference_type(script_reference_kind);
 script_reference_kind script_reference_kind_for_type(script_type);
 const char *script_reference_type_name(script_reference_kind);

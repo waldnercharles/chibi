@@ -150,6 +150,9 @@ bool script_analyzer_text_is(const analyzer *a, TSNode node, const char *text);
 char *script_analyzer_text_copy(const analyzer *a, TSNode node);
 void script_analyzer_diagnostic(analyzer *a, TSNode node, const char *format, ...);
 char *script_analyzer_name_copy(analyzer *a, TSNode node);
+/* The one Unicode scalar a character literal holds; false after diagnosing
+ * a malformed, empty or longer literal. */
+bool script_analyzer_character_value(analyzer *a, TSNode node, int *value);
 int script_analyzer_scope_new(analyzer *a, TSNode node);
 int script_analyzer_lookup_name(const analyzer *a, const char *name);
 int script_analyzer_lookup_storage(analyzer *, TSNode, script_symbol_kind);

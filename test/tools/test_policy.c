@@ -56,31 +56,33 @@ static const char driver_setup
          "if mode == 'no-reader':\n"
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
-static const char driver_routes[] =
-    "if sys.argv[2] == 'cpu-route':\n"
-    "    import agent\n"
-    "    selector = sys.argv[5]\n"
-    "    if selector not in agent.runnable_selectors(agent.CPU, "
-    "agent.CPU_SELECTORS):\n"
-    "        sys.exit(2)\n"
-    "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
-    "    print(Path(command[0]).name, command[-1])\n"
-    "    sys.exit(0)\n"
-    /* Every group owns unique selectors; grouped Release controller users
-     * belong to the target that builds that controller. */
-    "if sys.argv[2] == 'misplaced-selectors':\n"
-    "    names = [n for group in policy.GROUPS.values() for n in group]\n"
-    "    ctl = {n for n, command in policy.TOOLS.items()\n"
-    "           if any(Path(a).name == 'chibi_ctl' for a in command[1:])}\n"
-    "    print(' '.join(sorted({n for n in names if names.count(n) > 1} |\n"
-    "        {n for n in ctl & set(names) if n not in "
-    "policy.GROUPS['projects']})))\n"
-    "    print(policy.GROUPS['language'].count('language-row-array'),\n"
-    "          policy.GROUPS['wasm'].count('wasm-row-array'),\n"
-    "          "
-    "policy.GROUPS['language'].count('language-outliner-projection'),\n"
-    "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
-    "    sys.exit(0)\n";
+static const char driver_routes
+    [] = "if sys.argv[2] == 'cpu-route':\n"
+         "    import agent\n"
+         "    selector = sys.argv[5]\n"
+         "    if selector not in agent.runnable_selectors(agent.CPU, "
+         "agent.CPU_SELECTORS):\n"
+         "        sys.exit(2)\n"
+         "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
+         "    print(Path(command[0]).name, command[-1])\n"
+         "    sys.exit(0)\n"
+         /* Every group owns unique selectors; grouped Release chibi_ctl and
+          * chibi-compile users belong to the target that builds them. */
+         "if sys.argv[2] == 'misplaced-selectors':\n"
+         "    names = [n for group in policy.GROUPS.values() for n in group]\n"
+         "    ctl = {n for n, command in policy.TOOLS.items()\n"
+         "           if any(Path(a).name in ('chibi_ctl', 'chibi-compile') "
+         "for a in command[1:])}\n"
+         "    print(' '.join(sorted({n for n in names if names.count(n) > 1} "
+         "|\n"
+         "        {n for n in ctl & set(names) if n not in "
+         "policy.GROUPS['projects']})))\n"
+         "    print(policy.GROUPS['language'].count('language-row-array'),\n"
+         "          policy.GROUPS['wasm'].count('wasm-row-array'),\n"
+         "          "
+         "policy.GROUPS['language'].count('language-outliner-projection'),\n"
+         "          policy.GROUPS['wasm'].count('wasm-outliner-projection'))\n"
+         "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -282,7 +284,7 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                     "--render-fixture\n--material-bake\n--environment-"
                     "authoring\n"
                     "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n";
+                    "--terrain-playable\n--published-docs\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -300,7 +302,8 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                                 "--material-bake\n",
                                 "--environment-authoring\n",
                                 "--terrain-checkpoint\n",
-                                "--terrain-storage-commands\n" };
+                                "--terrain-storage-commands\n",
+                                "--published-docs\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }

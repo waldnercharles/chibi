@@ -1631,10 +1631,12 @@ execution_cost_summary execution_module_costs(const execution_module *m)
  * update a tainted local in place, or write through a reference other than a
  * value reference to an own, untainted cell. Writes through addresses the
  * analysis cannot place forget what every cell holds. Values copied by
- * snapshots, constructors and authored returns are fresh while the copied
- * headers keep their declared types: the verifier rejects direct writes to a
- * cell's type and container, a return checks its results' headers, and
- * `retyped` covers the writes neither can place. */
+ * snapshots, constructors, reference reads and authored returns are fresh while
+ * the copied headers keep their declared types: the verifier rejects direct
+ * writes to a cell's type and container, a return checks its results'
+ * headers, a reference read checks its result's header and its root's type,
+ * a reference write checks the written value's type, and `retyped` covers the
+ * writes none of them can place. */
 enum
 {
     SHARE_NONE = -2,

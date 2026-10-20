@@ -187,12 +187,12 @@ Three selectors compile 85 samples on both compiler backends, each under its
 own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (10,537 assertions in
-  33.2 s);
+  arrays, strings and natives, and every rejection (10,581 assertions in
+  31.5 s);
 - `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types and inferred arrays (2,940 assertions in 28.2 s);
+  scopes, integer types and inferred arrays (2,984 assertions in 27.0 s);
 - `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,946 assertions in 44.2 s).
+  compiles all of `core:strings` (1,990 assertions in 43.2 s).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs

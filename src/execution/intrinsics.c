@@ -548,6 +548,23 @@ static const type_desc *reference_root_layout(const language_reference *ref)
              ? column->type
              : NULL;
 }
+/* Whether layout has a field of the claimed type at offset: a field path
+ * copies by its claimed type, which must be the field's own. Names of scalar
+ * types do not change their storage. */
+static bool field_at(const type_desc *layout, size_t offset, pin_value type)
+{
+    for (int i = 0; i < layout->field_count; i++) {
+        const type_field *field = &layout->fields[i];
+        bool named = type.type != PIN_STRUCT ||
+                     (field->type_name && type.type_name &&
+                      !strcmp(field->type_name, type.type_name));
+        if (field->offset == offset && field->type == type.type &&
+            type.container == PIN_CONTAINER_SINGLE && named) {
+            return true;
+        }
+    }
+    return false;
+}
 static void *reference_path_data(
     const language_reference_path *path,
     pin_value *type,
@@ -598,7 +615,7 @@ static void *reference_path_data(
                             : type->type == PIN_STRUCT && type->container == PIN_CONTAINER_SINGLE
                                 ? pin_value_type(type)
                                 : NULL;
-    if (!layout || path->offset >= layout->size) {
+    if (!layout || !field_at(layout, path->offset, path->type)) {
         return NULL;
     }
     *type = path->type;
@@ -663,23 +680,69 @@ static int snapshot_reference_root(
     pin_copy_record(PIN_COPY_RECORD, layout->size);
     return pin_struct_snapshot_fields(storage, layout, out->ptr);
 }
+/* Whether two headers describe the same storage: the same type and
+ * container and, for records and unions, the same declaration. Names of
+ * scalar types do not change their storage. Union headers name their
+ * declaration only when the lowering knows it; two unnamed unions match. */
+static bool same_storage(pin_value a, pin_value b)
+{
+    if (a.type != b.type || a.container != b.container) {
+        return false;
+    }
+    if (a.type != PIN_STRUCT && a.type != PIN_UNION) {
+        return true;
+    }
+    if (a.record || b.record) {
+        return pin_record_same(a.record, b.record);
+    }
+    if (!a.type_name || !b.type_name) {
+        return a.type == PIN_UNION && !a.type_name && !b.type_name;
+    }
+    return !strcmp(a.type_name, b.type_name);
+}
+/* A reference's root must hold the type it was made with: reads and writes
+ * size and walk the root by that type. A component's root is its column's
+ * record, when the column is the one the reference was made for. */
+static bool root_matches(const language_reference *ref, pin_value root)
+{
+    if (ref->kind != LANGUAGE_REFERENCE_COMPONENT) {
+        return same_storage(ref->root, root);
+    }
+    const type_desc *layout = reference_root_layout(ref);
+    return !layout ||
+           (ref->root.type == PIN_STRUCT && ref->root.container == PIN_CONTAINER_SINGLE &&
+            ref->root.type_name && !strcmp(ref->root.type_name, layout->name));
+}
 static const char *read_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 1);
     (void)count;
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
-    pin_value root;
+    /* The result keeps the header it was declared with, which the verifier
+     * checked every later use against. */
+    pin_value declared = *out, root;
     void *data = reference_data(ref, &root);
+    if (!root_matches(ref, root)) {
+        return "Reference type differs from its storage";
+    }
     if (ref->path && ref->path->element) {
         const pin_array *array = reference_array(ref, &root);
         if (!array) {
             return "Referenced array element is unavailable";
         }
-        pin_value item = pin_array_get(array, ref->path->index);
-        return pin_value_snapshot_to_arena(storage, out, &item)
-                 ? "Referenced array element is unavailable"
-                 : NULL;
+        pin_value item = pin_array_get(array, ref->path->index), copy;
+        if (pin_value_snapshot_to_arena(storage, &copy, &item)) {
+            return "Referenced array element is unavailable";
+        }
+        if (!same_storage(declared, copy)) {
+            return "Reference read differs from its declared result";
+        }
+        *out = copy;
+        return NULL;
+    }
+    if (!same_storage(declared, ref->type)) {
+        return "Reference read differs from its declared result";
     }
     const type_desc *layout = !ref->path ? reference_root_layout(ref) : NULL;
     size_t size = layout ? layout->size : execution_value_size(ref->type);
@@ -716,11 +779,19 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
 {
     pin_value root;
     void *current = reference_data(ref, &root);
+    /* The value is copied by the reference's type, and an unpathed or element
+     * write replaces the root's or the item's header with the value's. */
     bool element = ref->path && ref->path->element;
     bool map = ref->path && ref->path->map;
+    const pin_array *array = element ? reference_array(ref, &root) : NULL;
+    pin_value item = array ? pin_array_get(array, ref->path->index)
+                           : (pin_value){ 0 };
+    if (!root_matches(ref, root) || !same_storage(ref->type, args[1]) ||
+        (array && !same_storage(item, args[1]))) {
+        return "Reference write differs from the reference's type";
+    }
     if (!current && !map &&
-        (element ? !reference_array(ref, &root)
-                 : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) {
+        (element ? !array : ref->path || ref->kind == LANGUAGE_REFERENCE_COMPONENT)) {
         return "Referenced storage is unavailable";
     }
     if (!owner_storage) {

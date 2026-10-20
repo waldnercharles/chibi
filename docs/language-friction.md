@@ -78,7 +78,10 @@ and Zig type `'0'`.
 ## Strings have no indexing or slicing syntax
 
 Byte access goes through `strings.ByteAt`, `strings.ByteLength` and
-`strings.Slice`.
+`strings.Slice`. Strings carry no length, so each `ByteAt` measures its
+string: scanning 1 MiB byte by byte took 19.9 s in a Release build on macOS
+arm64, against 0.07 s through `strings.Bytes`, which reads every byte into an
+`int[]` once (2026-10-19).
 
 - Odin and Go index bytes with `s[i]` and slice with `s[a:b]`; Rust slices a
   `str` by byte offsets with `&s[a..b]` and reads bytes through

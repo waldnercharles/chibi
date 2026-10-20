@@ -192,6 +192,10 @@ Current integration constraints:
   v26 parser) and prepared schema 18. Stage one reads packed arrays and `for`
   loops, and its twins follow main's expression kinds and inferred purity.
   The published bootstrap artifact predates schema 18 and must be republished.
+  PRs #504 (`text_bytes`) and #509 (reference type checks), which landed on
+  this branch during the integration, are merged in as well. #509's storage
+  check now accepts two unnamed unions, because main's lowering gives union
+  headers no declaration name.
 - Engine PR #407 is conflicted and explicitly held. Do not absorb its operation
   contracts, commits, or dependencies as part of this work.
 
@@ -555,9 +559,10 @@ Step 5 is implemented for the package compiler on 2026-10-19:
   about 12 s: one compile, or two when the sources changed.
 
 At the owner's direction the clean-checkout artifact is published as a release
-asset, not checked in. The prerelease
-`compiler-bootstrap-1-d1c40f0d3c94` was built from revision `375459b4b`, and
-`tools/compiler/bootstrap.kdl` pins its manifest's SHA-256.
+asset, not checked in. The current prerelease,
+`compiler-bootstrap-1-fd1b5aaf8c6c`, was built from revision `da03e96dd`
+after `text_bytes` joined the host's natives, and `tools/compiler/bootstrap.kdl`
+pins its manifest's SHA-256.
 `make bootstrap-recover` downloads that release with `gh` and recovers the
 compiler from it, about 11 s on macOS arm64. See
 `docs/self-hosting-build.md`.
@@ -778,20 +783,19 @@ deadline:
 
 | Check | Result |
 | --- | --- |
-| `make test-native`, `test-materials`, `test-projects`, `test-language-all`, `test-tools` | Passed; 31.0s, 30.4s, 34.9s, 32.1s and 29.1s. |
-| `make test-wasm`, `check-format` (clang-format 22) | Passed; 7.7s. |
-| 86 standalone language and tool selectors | Passed. |
-| `language-package-compiler-chibi`, `-types`, `-imports` | Passed; 33.2s, 28.2s and 44.2s. |
-| `make test-bootstrap` | Passed; 27.9s. |
-| `make bootstrap-artifact`, `test-recovery` | Run on the committed merge: recovery exports `HEAD`'s sources. |
+| `make test-native`, `test-materials`, `test-projects`, `test-language-all`, `test-tools` | Passed; 27.4s, 29.1s, 30.2s, 29.2s and 25.8s. |
+| `make test-wasm`, `check-format` (clang-format 22) | Passed; 4.4s. |
+| 87 standalone language and tool selectors | Passed. |
+| `language-package-compiler-chibi`, `-types`, `-imports` | Passed; 31.5s, 27.0s and 43.2s. |
+| `make test-bootstrap`, `bootstrap-artifact`, `test-recovery` | Passed on the committed merge; 24.9s, 24.9s and 10.6s. |
 
 The merge found and fixed a record copy that left field type names and units
 in the source arena, runtime array copies that scanned every source element for
 packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
-Next action: commit the merge, run `test-recovery`, open the integration PR
-into `main` and republish the bootstrap artifact after confirmation.
+Next action: land the integration PR into `main`, then republish the
+bootstrap artifact from the merged revision after confirmation.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.

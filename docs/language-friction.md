@@ -268,7 +268,7 @@ Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 
 ### Stage one cannot compile assert
 
-Stage one. Since #ASSERT_PR, stage zero has a pure
+Stage one. Since #534, stage zero has a pure
 `assert(condition, message)` in place of `expect`: it fails the call as a
 checked conversion does, keeps its caller pure, and fails compilation when it
 fails while the compiler evaluates a constant. Stage one does not compile it,

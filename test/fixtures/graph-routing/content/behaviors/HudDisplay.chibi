@@ -1,3 +1,5 @@
+// Shows the Player's hull and speed on the HUD document, and repairs the hull
+// when the player asks.
 HudDisplay :: behavior {
 
     on Tick as tick(DeltaSeconds: float = 0.0) {

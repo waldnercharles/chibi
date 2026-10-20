@@ -225,7 +225,7 @@ for each component it writes through a reference, where stage zero lists two,
 and has the behavior's states as its variables. Its effects are stage zero's:
 reading a state reads the invocation's retained values; storing one also
 reads them and writes; reading a component reads, and writing one reads and
-writes. The function has no debugger points or watches.
+writes. Its debugger points are those every function has (see Output).
 
 ## Output
 
@@ -286,8 +286,19 @@ Each package is its own module, assembled dependencies first:
   variant's tag is the same in every module.
 - The closure has one row per package, named by its identity.
 
-Runtime sources record each instruction's origin. Debugger points and watches
-are not emitted yet; they must be before stage one becomes the normal compiler.
+Runtime sources record each instruction's origin. Each function has stage
+zero's function, statement and completion points:
+- one at its entry, meaning the event a handler handles, or the function;
+- one before each statement, and one before each value a `return` gives;
+- a completion point at each `return` and at the function's end.
+
+A point's occurrence is `script_occurrence` of its record's source range, so
+it is the one Studio's breakpoints find; a completion point's record is the
+function. Its position is where it is placed. Each point is a `SOURCE_POINT`
+instruction, which suspends, so each invocation's and point's target is its
+order among them, as the runtime numbers suspensions; an imported module's
+fingerprint covers those bytes. Expression and symbol points and watches are
+not emitted yet; they must be before stage one becomes the normal compiler.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
@@ -313,22 +324,25 @@ fast paths otherwise cover.
 ## Test
 
 Three selectors compile 86 samples on both compiler backends, each under its
-own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
+own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-20, load average
+about 15 from other sessions):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (10,581 assertions in
-  28.2 s);
+  arrays, strings and natives, and every rejection (10,859 assertions in
+  38.6 s);
 - `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types, inferred arrays and element reads (3,197 assertions in
-  24.6 s);
+  scopes, integer types, inferred arrays and element reads (3,374 assertions in
+  38.1 s);
 - `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,990 assertions in 35.7 s).
+  compiles all of `core:strings` (1,995 assertions in 51.5 s; 35.7 s on a quiet
+  machine before points).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
 on bytecode and SLJIT with JSON arguments, and stage zero's own closure of the
 same packages must return the same JSON; calls that must fail, such as
-out-of-bounds reads, fail on all three. Rejections check the exact message and
+out-of-bounds reads, fail on all three. Each module of the closure must have
+the function and statement points of stage zero's module with its ID. Rejections check the exact message and
 position. In the boxed elements sample, the closure's functions that read
 arrays of strings, unions and records with a string field must not load an
 array's stride, and the one that reads an array of records of scalars must. In
@@ -338,8 +352,9 @@ Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
-`tool language-package-compiler-chibi-behaviors` compiles twelve behaviors on
-both compiler backends against a game the test declares: a `Spot` component
+`tool language-package-compiler-chibi-behaviors` and
+`tool language-package-compiler-chibi-behaviors-rest` each compile half of
+twelve behaviors on both compiler backends against a game the test declares: a `Spot` component
 of three floats, one read-only; the entity type; a `Tick` event with a
 `DeltaSeconds` payload; and `self` and a `pace` global. The behaviors are:
 - Counter's;
@@ -358,16 +373,19 @@ of three floats, one read-only; the entity type; a `Tick` event with a
 
 Each module must declare stage zero's module, owner type, requirements,
 services, states, events and payload fields, and handlers, with the same IDs,
-ABIs, kinds and effects. Then stage one's module, read back through a linker,
+ABIs, kinds and effects, and each function must have stage zero's function
+and statement points. Then stage one's module, read back through a linker,
 and stage zero's each play five ticks on an owner of their own, and the
 `Spot` and the states must match after every tick. Seven sources must be
 rejected with their exact messages. With a project's path as its identity,
-Counter's module, state and handler must take stage zero's IDs. A second
-case fails when any of stage one's functions, other than `Compile`,
+Counter's module, state and handler must take stage zero's IDs. The second
+selector checks those two (4,316 and 5,715 assertions in 23.4 s and 28.9 s
+under load). `tool language-package-compiler-chibi-sharing` fails when any of
+stage one's functions, other than `Compile`,
 `CompileClosure`, `CompileBehavior`, `CompileBehaviors`, `Declare` and
 `DeclarePackage`, copies
 its arguments on each call: one such function, through its callers, takes
-stage one compiling itself past its ceiling (4,329 assertions in 33.2 s; see
+stage one compiling itself past its ceiling (11 assertions in 22.9 s; see
 `docs/language-friction.md`).
 
 `tool language-package-compiler-chibi-literals` checks stage zero's build of

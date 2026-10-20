@@ -3,7 +3,6 @@
 
 #include "graph/model/behavior_asset.h"
 #include "language/semantic.h"
-#include "support/text_edit.h"
 
 typedef struct authoring_source_presentation authoring_source_presentation;
 typedef enum
@@ -84,21 +83,12 @@ const source_presentation_origin *authoring_source_presentation_origin(
     uint64_t node,
     uint64_t pin
 );
-/* Optional layout is bound to exact source bytes and semantic origin IDs.
- * Malformed/stale sidecars are ignored before any presentation mutation. */
+/* Editor state: in-session layout, breakpoints, watches and comments, as an
+ * owned JSON snapshot bound to the exact source text and semantic origin IDs.
+ * Projects never store it. Restore takes a snapshot and ignores a malformed
+ * or stale one before any presentation mutation. */
 char *authoring_source_presentation_metadata(const authoring_source_presentation *);
 bool authoring_source_presentation_restore(authoring_source_presentation *, const char *json);
-/* Rebind optional layout after a canonical rename. Edits must be the planner's
- * original byte replacements. Complete CST structure and every untouched leaf
- * remain identical; renamed leaves must be identifier/string tokens. Returns
- * owned metadata for the new identity/source, or NULL without mutating views. */
-char *authoring_source_presentation_rebase(
-    const authoring_source_presentation *before,
-    const authoring_source_presentation *after,
-    const char *metadata,
-    const text_edit *,
-    int count
-);
 /* Replaces the exact source region identified by this generation. Returns
  * owned text for canonical reanalysis; never adopts an unchecked graph edit. */
 char *authoring_source_presentation_replace(

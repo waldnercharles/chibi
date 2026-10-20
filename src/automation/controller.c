@@ -34,7 +34,6 @@
 #include "authoring/source_format.h"
 #include "authoring/source_graph_library.h"
 #include "authoring/source_intelligence.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_presentation.h"
 #include "authoring/source_references.h"
 #include "authoring/source_rename.h"
@@ -2680,10 +2679,6 @@ static int analyze_project_source(
     authoring_source_presentation
         *presentation = authoring_source_presentation_new(analysis, view, NULL);
     if (presentation) {
-        const char *metadata = request_string(request, "metadata");
-        if (metadata) {
-            authoring_source_presentation_restore(presentation, metadata);
-        }
         av_doc *values = av_doc_new();
         yyjson_mut_obj_add_val(
             doc,
@@ -2708,9 +2703,6 @@ static int analyze_project_source(
             yyjson_mut_obj_add_uint(doc, item, "pin_id", origin->pin);
             source_range_json(doc, item, origin->range);
         }
-        char *sidecar = authoring_source_presentation_metadata(presentation);
-        yyjson_mut_obj_add_strcpy(doc, result, "metadata", sidecar);
-        free(sidecar);
         if (location) {
             const source_presentation_origin *origin = authoring_source_presentation_origin(
                 presentation,
@@ -5184,22 +5176,6 @@ static int inspect_source_asset(
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "source"), yyjson_mut_strcpy(bound, text));
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "path"), yyjson_mut_strcpy(bound, ref->relative));
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "inspect_source_graph"), yyjson_mut_bool(bound, true));
-    char *path = content_path(root, ref->relative);
-    size_t sidecar_size = strlen(path) + 6;
-    char *sidecar = xmalloc(sidecar_size);
-    snprintf(sidecar, sidecar_size, "%s.meta", path);
-    struct stat metadata_info;
-    char *metadata = stat(sidecar, &metadata_info) == 0 &&
-                             metadata_info.st_size >= 0 &&
-                             metadata_info.st_size <= 512 * 1024
-                       ? file_read_text(sidecar)
-                       : NULL;
-    if (metadata && authoring_source_metadata_matches(metadata, text)) {
-        yyjson_mut_obj_put(input, yyjson_mut_str(bound, "metadata"), yyjson_mut_strcpy(bound, metadata));
-    }
-    free(metadata);
-    free(sidecar);
-    free(path);
     yyjson_doc *immutable = yyjson_mut_doc_imut_copy(bound, NULL);
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, ref, bytes, hash);
@@ -5234,9 +5210,6 @@ static int inspect_source_asset(
         }
     }
     yyjson_mut_obj_remove_key(value, "document");
-    if (!yyjson_get_bool(yyjson_obj_get(request, "include_layout"))) {
-        yyjson_mut_obj_remove_key(value, "metadata");
-    }
     if (yyjson_get_bool(yyjson_obj_get(request, "include_uses"))) {
         add_graph_use_counts(root, ref, result->doc, value);
     }
@@ -6260,21 +6233,6 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "source", json);
-    if (source_program_family(ref.family)) {
-        char *path = content_path(root, ref.relative);
-        size_t length = strlen(path) + 6;
-        char *sidecar = xmalloc(length);
-        snprintf(sidecar, length, "%s.meta", path);
-        char *metadata = text_file_read(sidecar);
-        if (metadata) {
-            if (authoring_source_metadata_matches(metadata, json)) {
-                yyjson_mut_obj_add_strcpy(result->doc, value, "metadata", metadata);
-            }
-        }
-        free(metadata);
-        free(sidecar);
-        free(path);
-    }
     yyjson_mut_obj_add_val(
         result->doc,
         value,

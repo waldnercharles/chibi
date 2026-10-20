@@ -539,7 +539,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/authoring/source_prepare.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_metadata.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_rename.c"
@@ -547,7 +546,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_format.h authoring/source_metadata.h authoring/source_navigation.h
+        authoring/source_format.h authoring/source_navigation.h
         authoring/source_prototype_flow.h
         authoring/source_rename.h authoring/source_intelligence.h authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)

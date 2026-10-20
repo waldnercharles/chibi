@@ -66,9 +66,10 @@ jobs:
       # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
-      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
-      - name: Build an unsanitized chibi_ctl (Release)
-        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT=/usr/lib/llvm-18
+      # validate-project runs chibi_ctl dozens of times, and published-docs runs
+      # chibi-compile --docs, both too slowly under sanitizers.
+      - name: Build an unsanitized chibi_ctl and chibi-compile (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi-compile' LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Save dependencies
         if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
@@ -126,9 +127,10 @@ jobs:
         run: make test-build LIBCLANG_ROOT="$LLVM"
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT="$LLVM"
-      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
-      - name: Build an unsanitized chibi_ctl (Release)
-        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT="$LLVM"
+      # validate-project runs chibi_ctl dozens of times, and published-docs runs
+      # chibi-compile --docs, both too slowly under sanitizers.
+      - name: Build an unsanitized chibi_ctl and chibi-compile (Release)
+        run: make build-release BUILD_TARGET='chibi_ctl chibi-compile' LIBCLANG_ROOT="$LLVM"
       - name: Save dependencies
         if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4

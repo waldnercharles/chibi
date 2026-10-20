@@ -1,4 +1,4 @@
-version 29
+version 30
 name "Studio workspace contracts"
 content "content"
 start_scene "scenes/Sandbox.kdl"

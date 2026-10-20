@@ -13,7 +13,7 @@ Fold :: behavior {
         return (whole, rest)
     }
 
-    on Tick {
+    on Tick :: () {
         self.Transform.x = Wrap(self.Transform.x + 7, 20)
         parts := Split(self.Transform.x)
         self.Transform.y = parts.whole * 2 + parts.rest

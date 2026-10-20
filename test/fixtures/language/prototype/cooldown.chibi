@@ -2,7 +2,7 @@ Cooldown :: behavior {
     remaining := 2.0
     ready := false
 
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         remaining = clamp(remaining - dt, 0, 2)
         if remaining == 0 {
             ready = true

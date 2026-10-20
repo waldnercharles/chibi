@@ -1,7 +1,7 @@
 WavePulseBehavior :: behavior {
     Age: float = 0.0
     action age_2 = set_variable<Age>(Age + delta_time())
-    on Tick {
+    on Tick :: () {
         age_2()
     }
     after age_2 {

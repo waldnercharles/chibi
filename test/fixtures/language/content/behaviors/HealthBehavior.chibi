@@ -9,13 +9,13 @@ HealthBehavior :: behavior {
             goto False;
         }
     }
-    on Damage as damage(Amount: int = 0, Source: handle<ecs.entity> = 0) {
-        if (convert<To_Real>(damage.Amount) > 0) {
-            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: damage.Amount, Source: damage.Source);
+    on Damage :: (Amount: int, Source: handle<ecs.entity>) {
+        if (convert<To_Real>(Amount) > 0) {
+            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: Amount, Source: Source);
         } else {
         }
     }
-    on Died as died(Source: handle<ecs.entity> = 0) {
+    on Died :: () {
         if (double(self.Health.current) <= 0) {
             await Notify_Encounter();
             destroy_entity(Entity: self);

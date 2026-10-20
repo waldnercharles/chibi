@@ -1,5 +1,5 @@
 ReplayInput :: behavior {
-    on Fire {
+    on Fire :: () {
         self.Velocity = {
             x: 1.0,
             y: 0.0

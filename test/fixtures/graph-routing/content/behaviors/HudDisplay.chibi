@@ -1,6 +1,6 @@
 HudDisplay :: behavior {
 
-    on Tick as tick(DeltaSeconds: float = 0.0) {
+    on Tick :: () {
         player := entity(get_global_variable(Name: "Player"))
         alive := has_component(Component: Health, Entity: player)
         if (alive) {
@@ -20,7 +20,7 @@ HudDisplay :: behavior {
             set_ui_text(Entity: 0, Element: "#status", Text: "Ship lost");
         }
     }
-    on Repair as repair() {
+    on Repair :: () {
         player := entity(get_global_variable(Name: "Player"))
         alive := has_component(Component: Health, Entity: player)
         if (alive) {

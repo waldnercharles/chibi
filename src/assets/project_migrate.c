@@ -2,6 +2,7 @@
 
 #include "language/syntax.h"
 #include "project_migrate26.h"
+#include "project_migrate29.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -30,6 +31,7 @@ const TSLanguage *tree_sitter_chibi_project25();
 const TSLanguage *tree_sitter_chibi_project26();
 const TSLanguage *tree_sitter_chibi_project27();
 const TSLanguage *tree_sitter_chibi_project28();
+const TSLanguage *tree_sitter_chibi_project29();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -70,7 +72,8 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 25 ? tree_sitter_chibi_project25()
         : version == 26 ? tree_sitter_chibi_project26()
         : version == 27 ? tree_sitter_chibi_project27()
-                        : tree_sitter_chibi_project28()
+        : version == 28 ? tree_sitter_chibi_project28()
+                        : tree_sitter_chibi_project29()
     );
     assert(compatible);
     (void)compatible;
@@ -131,6 +134,10 @@ static script_syntax *parse27(const char *text)
 static script_syntax *parse28(const char *text)
 {
     return chibi_migrate_parse(text, 28);
+}
+static script_syntax *parse29(const char *text)
+{
+    return chibi_migrate_parse(text, 29);
 }
 
 typedef struct
@@ -3764,6 +3771,7 @@ static char *migrate_source_metadata(
                               : version == 26 ? parse26(before)
                               : version == 27 ? parse27(before)
                               : version == 28 ? parse28(before)
+                              : version == 29 ? parse29(before)
                                               : script_parse(before);
         yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
         size_t i, count;
@@ -5374,6 +5382,7 @@ static int accept_migrated(
     const char *text = result ? result : source;
     script_syntax *check = version == 27 ? parse27(text)
                          : version == 28 ? parse28(text)
+                         : version == 29 ? parse29(text)
                                          : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
@@ -6314,6 +6323,92 @@ static char **migrate_after_entry(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+/* Version 29 handler edits as replacements in source order, for sidecars. */
+static replacement *handler_replacements(text_edit *edits)
+{
+    replacement *out = NULL;
+    for (int i = 0; i < acount(edits); i++) {
+        push_edit(&out, edits[i].start, edits[i].end, (char *)edits[i].text);
+    }
+    qsort(out, (size_t)acount(out), sizeof *out, by_start);
+    afree(edits);
+    return out;
+}
+static int migrate_handler_source(
+    const char *source,
+    const char *const *declarations,
+    int declaration_count,
+    char **migrated,
+    replacement **edits,
+    char *error,
+    size_t size
+)
+{
+    char *result = NULL;
+    text_edit *applied = NULL;
+    *migrated = NULL;
+    if (chibi_migrate29_handlers(source, declarations, declaration_count, &result, &applied, error, size)) {
+        return -1;
+    }
+    *edits = handler_replacements(applied);
+    return result
+             ? accept_migrated(source, result, "Handler", 30, migrated, error, size)
+             : 0;
+}
+int chibi_migrate_handlers(
+    const char *source,
+    const char *const *declarations,
+    int declaration_count,
+    char **migrated,
+    char *error,
+    size_t size
+)
+{
+    replacement *edits = NULL;
+    int status = migrate_handler_source(source, declarations, declaration_count, migrated, &edits, error, size);
+    prefix_edits_free(edits);
+    return status;
+}
+static char **migrate_handlers(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    const char **declarations = NULL;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], DECLARATIVE_ASSET_EXTENSION)) {
+            apush(declarations, sources[i]);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        replacement *edits = NULL;
+        if (migrate_handler_source(
+                sources[i],
+                declarations,
+                acount(declarations),
+                &migrated[i],
+                &edits,
+                error,
+                size
+            )) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+        size_t length = strlen(paths[i]);
+        for (int j = 0; migrated[i] && j < count; j++) {
+            if (!strncmp(paths[j], paths[i], length) &&
+                !strcmp(paths[j] + length, ".meta")) {
+                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, NULL, 29);
+            }
+        }
+        prefix_edits_free(edits);
+    }
+    afree(declarations);
+    return migrated;
+}
+
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -6349,6 +6444,10 @@ int chibi_project_migrate_content(
      * step from version 22 on rewrites scripts after their sidecars. */
     if (!status && (from == 15 || from == 17 || from >= 22)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
+    }
+    /* Version 30 types handler payloads from the project's event declarations. */
+    if (!status && from == 29) {
+        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
      * content, so add it unless the scan found it. */
@@ -6485,6 +6584,11 @@ int chibi_project_migrate_content(
             case 28:
                 error[0] = '\0';
                 migrated = migrate_after_entry(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 29:
+                error[0] = '\0';
+                migrated = migrate_handlers(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

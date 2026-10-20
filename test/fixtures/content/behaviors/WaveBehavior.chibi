@@ -1,11 +1,11 @@
 WaveBehavior :: behavior {
-    CountLimit: int = 8
+    CountLimit := 8
     Interval: float = 1.5
     SpawnDistance: float = 260.0
     Elapsed: float = 0.0
-    Spawned: int = 0
+    Spawned := 0
     Side: float = -1.0
-    on Tick {
+    on Tick :: () {
         if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
             Elapsed = Elapsed + delta_time()
             await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
@@ -18,7 +18,7 @@ WaveBehavior :: behavior {
             } else {
                 Elapsed = Elapsed - max(Interval, B: float = 0.01)
                 await Spawn_Enemy(Player_Position)
-                Spawned = add(Spawned, B: int = 1)
+                Spawned = add(Spawned, 1)
                 Side = Side * -1.0
             }
         }

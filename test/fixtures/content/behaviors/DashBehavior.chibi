@@ -9,21 +9,21 @@ DashBehavior :: behavior {
 
     Just_Started := false
     Struck_Entities: handle<ecs.entity>[] = []
-    on Dash {
+    on Dash :: () {
         if delta_time() >= self.Dash.cooldown_remaining {
             if 0.0 >= self.Dash.remaining {
                 await Start_Dash()
             }
         }
     }
-    on Tick {
+    on Tick :: () {
         await Advance_Dash_Timers()
         if 0.0 < self.Dash.remaining {
             await Drive_Dash()
         }
     }
-    on Contact_Begin {
-        await Strike_Target(event.Other)
+    on Contact_Begin :: (Other: handle<ecs.entity>) {
+        await Strike_Target(Other)
     }
     Capture_Dash_Direction :: () {
         if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {

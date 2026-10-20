@@ -1,9 +1,9 @@
 DamageFlashBehavior :: behavior {
     action set_material_parameter_action = set_material_parameter(self, "Flash", Value: float = 3.0)
-    on Begin {
+    on Begin :: () {
         set_material_parameter_action()
     }
-    on Damage {
+    on Damage :: () {
         set_material_parameter_action()
     }
     after set_material_parameter_action {

@@ -1,5 +1,5 @@
 Movement :: behavior {
-    on Tick {
+    on Tick :: () {
         self.Orientation.Radians = atan2(self.Aim.Direction.y, self.Aim.Direction.x)
         if input.Boost.held {
             self.Drive.Target = direction(double(self.Orientation.Radians)) * double(self.Movement.Speed) * 2

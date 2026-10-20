@@ -1,22 +1,15 @@
 InputBehavior :: behavior {
-    import_component_write_1 :: (import_arg_0: Velocity) -> (Value: Velocity) {
-        self.Velocity = import_arg_0
-        return import_arg_0
-    }
-
-    action set_gamevelocity = import_component_write_1(MovementActions.Movement_Velocity(input.Direction, self.Movement))
-    on Input as input {
+    on Input :: (Direction: struct<CF_V2>) {
         if self.Dash {
             if 0.0 < self.Dash.remaining {
             } else {
-                set_gamevelocity()
+                self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+                await Face_Direction(Direction)
             }
         } else {
-            set_gamevelocity()
+            self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+            await Face_Direction(Direction)
         }
-    }
-    after set_gamevelocity {
-        await Face_Direction(input.Direction)
     }
     Face_Direction :: (Direction: struct<CF_V2> = null) {
         if self.Orientation {

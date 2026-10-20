@@ -1,6 +1,6 @@
 ArenaDropBehavior :: behavior {
 
-    on Begin as begin() {
+    on Begin :: () {
         if (double(self.Pickup.state) == 3) {
             await Spawn_Surface_Pulse(Prototype: ArenaDeathPulse, Position: self.Transform);
             await Emit_Source_Frame(Position: self.Transform, Appearance: self.Geometry3D, Material: self.Shader, Orientation: self.Orientation, Visual: self.VisualTransform);

@@ -8,7 +8,7 @@ ProjectileBehavior :: behavior {
     }
 
     action set_gameprojectile_age = import_component_write_1(self.Projectile.age + delta_time())
-    on Tick {
+    on Tick :: () {
         await Face_Direction(self.Velocity.x, self.Velocity.y)
         set_gameprojectile_age()
     }

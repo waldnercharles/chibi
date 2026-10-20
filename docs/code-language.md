@@ -326,7 +326,7 @@ source audit of the snapshot is not fresh runtime or cross-backend validation.
 
 Chibi uses these document formats:
 
-- Project manifests are `project.kdl` files at version 29.
+- Project manifests are `project.kdl` files at version 30.
 - Scenes, KDL prototypes, event declarations, models, shapes, materials,
   fields, shader libraries, scenarios and editor configuration use KDL 2.
 - Behaviors, behavior libraries and systems use readable `.chibi` source.
@@ -335,7 +335,7 @@ Chibi uses these document formats:
 This example is a project manifest:
 
 ```kdl
-version 29
+version 30
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -941,7 +941,8 @@ on Begin :: () { ... }
 
 Tick's payload is `dt`, the time in seconds since the last frame.
 
-These older forms still work until a project-format migration rewrites them:
+The migration from version 29 rewrites these older forms. The language still
+accepts them until a later change removes them:
 
 - `on Tick(dt) { ... }` binds the payload fields in order.
 - `on Tick { ... }` binds each field by its own name.
@@ -1138,6 +1139,33 @@ refuses these cases:
 - The handler reads `event` or names its payload.
 - The handler declares a name that the function also uses.
 - The function is on one line and has other statements.
+
+Rewrite these cases by hand before you migrate.
+
+### Handler payloads
+
+Project version 30 handlers name the payload fields that they read. The
+migration from version 29 writes `on X :: (Field: Type)` for each `on` handler.
+It lists the fields that the handler read, under their own names and in
+payload order, and rewrites `event.F`, `alias.F` and renamed positional
+parameters to `F`.
+
+The migration types each field from these sources:
+
+- The engine's events as version 29 declared them. Tick's field is `dt: float s`.
+- The project's event declarations.
+- A typed parameter list, for an event that it cannot find.
+
+The migration refuses these cases:
+
+- A handler reads the whole `event` or its alias.
+- A handler reads a field that its event does not have.
+- An alias is read outside its handler, for example by an action. Move that
+  code into the handler.
+- The handler declares a name that a field uses, or reads a field's name with
+  another meaning.
+- An event that the migration cannot find has untyped parameters.
+- An `after` handler has an alias.
 
 Rewrite these cases by hand before you migrate.
 
@@ -2167,7 +2195,7 @@ graph operation.
 
 ### Metadata files
 
-Project manifests use version 29. Executable files contain no generated
+Project manifests use version 30. Executable files contain no generated
 identity annotations or embedded authoring footer.
 
 Optional `<asset>.chibi.meta` JSON stores:

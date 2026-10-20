@@ -576,8 +576,13 @@ static bool compile(const char *source, behavior_backend backend)
 }
 /* Historical migration cases assert their intermediate spelling, then run
  * it through every later source step: version 23 declarations, 24
- * retention, 25 syntax, 26 conversions, 27 parameter names and 28 function
- * bodies. */
+ * retention, 25 syntax, 26 conversions, 27 parameter names, 28 function
+ * bodies and 29 handler payloads, with the test catalog's Impulse declared. */
+static const char *const
+    IMPULSE_DECLARATION = "version 3\nname \"Impulse\"\ndomain "
+                          "\"event\"\n(array)variables {\n"
+                          "    - id=1 name=\"amount\" type=\"double\"\n    - "
+                          "id=2 name=\"enabled\" type=\"bool\"\n}\n";
 static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
 {
     switch (step) {
@@ -587,14 +592,15 @@ static int migrate_step(int step, const char *source, char **migrated, char *err
         case 2: return chibi_migrate_syntax(source, migrated, error, size);
         case 3: return chibi_migrate_conversions(source, migrated, error, size);
         case 4: return chibi_migrate_entry(source, migrated, error, size);
+        case 5: return chibi_migrate_after_entry(source, migrated, error, size);
         default:
-            return chibi_migrate_after_entry(source, migrated, error, size);
+            return chibi_migrate_handlers(source, &IMPULSE_DECLARATION, 1, migrated, error, size);
     }
 }
 static char *current_source(const char *source)
 {
     char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 6; step++) {
+    for (int step = 0; step < 7; step++) {
         char *migrated = NULL;
         if (migrate_step(step, current, &migrated, error, sizeof error)) {
             fprintf(stderr, "migration: %s\n", error);
@@ -4807,6 +4813,26 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     free(migrated);
     return true;
 }
+/* The test catalog's Impulse event, declared as a project declares it, so
+ * the version 30 migration can type a handler's payload. */
+static void declare_impulse(const char *root, bool declared)
+{
+    char path[300];
+    snprintf(path, sizeof path, "%s/content/Impulse.kdl", root);
+    if (!declared) {
+        unlink(path);
+        return;
+    }
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(
+        "version 3\nname \"Impulse\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"amount\" type=\"double\"\n    - id=2 "
+        "name=\"enabled\" type=\"bool\"\n}\n",
+        file
+    );
+    fclose(file);
+}
 TEST_CASE(program_version_12_results_migrate_to_returns)
 {
     const char *
@@ -4949,7 +4975,13 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     );
     fclose(file);
     REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 12);
+    declare_impulse(root, true);
+    int upgraded = chibi_project_migrate(root, error, sizeof error);
+    declare_impulse(root, false);
+    if (upgraded < 0) {
+        fprintf(stderr, "migration: %s\n", error);
+    }
+    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 12);
     char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
@@ -5095,7 +5127,13 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
         file
     );
     fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 10);
+    declare_impulse(root, true);
+    int upgraded = chibi_project_migrate(root, error, sizeof error);
+    declare_impulse(root, false);
+    if (upgraded < 0) {
+        fprintf(stderr, "migration: %s\n", error);
+    }
+    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 10);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
     char text[1024];
     file = fopen(path, "rb");
@@ -6972,6 +7010,12 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     free(retained);
     free(current_expected);
     current_expected = current;
+    current = NULL;
+    REQUIRE(!chibi_migrate_handlers(current_expected, NULL, 0, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
     char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
@@ -7108,6 +7152,15 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
     free(retained);
     free(current_library);
     current_library = current;
+    char **targets[] = { &current_expected, &current_library };
+    for (int i = 0; i < 2; i++) {
+        current = NULL;
+        REQUIRE(!chibi_migrate_handlers(*targets[i], NULL, 0, &current, error, sizeof error));
+        if (current) {
+            free(*targets[i]);
+            *targets[i] = current;
+        }
+    }
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
@@ -7951,6 +8004,103 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
  * move after the function's statements, before the handlers that follow, and
  * macros keep theirs. The current analyzer refuses `after entry` in a
  * function. */
+/* Version 30 handlers name the payload fields they read, typed from the
+ * engine's version 29 events or the project's event declarations. */
+TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
+{
+    const char *damage = "version 3\nname \"Damage\"\ndomain "
+                         "\"event\"\n(array)variables {\n"
+                         "    - id=2 name=\"Amount\" type=\"int\"\n"
+                         "    - id=3 name=\"Source\" type=\"handle\" "
+                         "type_name=\"ecs.entity\"\n}\n";
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "B :: behavior { x: float = 0; on Tick(dt) { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick as tick(DeltaSeconds: float = "
+          "0.0) { x += tick.DeltaSeconds + "
+          "DeltaSeconds } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "B :: behavior { on Contact_Begin { destroy(event.Other) } }", "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { destroy(Other) } }" },
+        { "B :: behavior { on Begin { } on Tick { } }",
+          "B :: behavior { on Begin :: () { } on Tick :: () { } }" },
+        { "B :: behavior { total: int = 0; on Damage as hit { total += "
+          "hit.Amount } }",
+          "B :: behavior { total: int = 0; on Damage :: (Amount: int) { total "
+          "+= Amount } }" },
+        { "B :: behavior { last: handle<ecs.entity> = 0; on Died as "
+          "died(Source: handle<ecs.entity> = 0) { last = "
+          "Source } }",
+          "B :: behavior { last: handle<ecs.entity> = 0; on Died :: (Source: "
+          "handle<ecs.entity>) { last = Source } }" },
+        { "B :: behavior { on Repair as repair() { } }",
+          "B :: behavior { on Repair :: () { } }" },
+    };
+    char error[256], *migrated = NULL;
+    for (int i = 0; i < 7; i++) {
+        REQUIRE(
+            !chibi_migrate_handlers(cases[i].source, &damage, 1, &migrated, error, sizeof error)
+        );
+        if (!migrated || strcmp(migrated, cases[i].expected)) {
+            fprintf(stderr, "case %d: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(migrated && !strcmp(migrated, cases[i].expected));
+        free(migrated);
+        REQUIRE(
+            !chibi_migrate_handlers(cases[i].expected, &damage, 1, &migrated, error, sizeof error)
+        );
+        REQUIRE(!migrated);
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "B :: behavior { action show = Show(menu.Key); on Damage as menu { "
+          "show() } }",
+          "outside the handler" },
+        { "B :: behavior { on Damage { Keep(event) } }", "the whole `event`" },
+        { "B :: behavior { on Damage as hit { Keep(hit) } }", "the whole payload" },
+        { "B :: behavior { x: float = 0; on Tick(t) { dt := 1.0; x += t } }",
+          "declares a name" },
+        { "B :: behavior { Other: int = 0; on Contact_Begin(o) { Other = 1; "
+          "destroy(o) } }",
+          "another meaning" },
+        { "B :: behavior { on Died(source) { } }", "untyped payload field" },
+        { "B :: behavior { on Damage { Keep(event.Force) } }", "does not have" },
+    };
+    for (int i = 0; i < 7; i++) {
+        REQUIRE(
+            chibi_migrate_handlers(refused[i].source, &damage, 1, &migrated, error, sizeof error) < 0
+        );
+        if (!strstr(error, refused[i].message)) {
+            fprintf(stderr, "refusal %d: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, refused[i].message));
+    }
+    /* A project's own event declarations type its handlers' payloads. */
+    char root[] = "/tmp/chibi-handlers-XXXXXX", path[300];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/events", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
+    write_whole(path, damage);
+    snprintf(path, sizeof path, "%s/Hurt.chibi", root);
+    write_whole(path, "Hurt :: behavior { total: int = 0; on Damage { total += Amount } }");
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 29, error, sizeof error));
+    const char *text = read_whole(path);
+    REQUIRE(
+        text && !strcmp(text, "Hurt :: behavior { total: int = 0; on Damage :: (Amount: int) { total += Amount } }")
+    );
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/events", root);
+    REQUIRE(!rmdir(path));
+    REQUIRE(!rmdir(root));
+    return true;
+}
 TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
 {
     const char *source = "Moves :: library {\n"
@@ -9369,6 +9519,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
+    RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

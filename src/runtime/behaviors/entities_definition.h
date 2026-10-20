@@ -12,7 +12,7 @@
 #define ENTITY_SPAWN_NAME "Spawn Prototype"
 #define ENTITY_DESTROY_NAME "Destroy Entity"
 #define ENTITY_SEND_NAME "Send Event"
-#define ENTITY_SPAWN_SOURCE "spawn"
+#define ENTITY_SPAWN_SOURCE "spawn_prototype"
 
 /* X(name, kind, storage, type_name, container, type_flags, generic_group,
  *   reference_kind, default_owner, default_value). */

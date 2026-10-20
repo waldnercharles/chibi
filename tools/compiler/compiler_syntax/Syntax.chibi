@@ -8,10 +8,10 @@ Tree :: union {
 
 // The private parser returns aligned columns of public tree facts. An explicit
 // read-only count keeps the ordinary record-array builder's loop-bound proof.
-Assemble :: pure fn(count: int, kinds: string[], starts: int[], ends: int[],
-                    rows: int[], columns: int[], parents: int[],
-                    first_children: int[], next_siblings: int[],
-                    errors: bool[], missing: bool[], has_errors: bool[]) -> syntax.Node[] {
+Assemble :: (count: int, kinds: string[], starts: int[], ends: int[],
+             rows: int[], columns: int[], parents: int[],
+             first_children: int[], next_siblings: int[],
+             errors: bool[], missing: bool[], has_errors: bool[]) -> syntax.Node[] {
     nodes: syntax.Node[] = [];
     index: int = 0;
     while (index < count) {
@@ -27,7 +27,7 @@ Assemble :: pure fn(count: int, kinds: string[], starts: int[], ends: int[],
     return nodes;
 }
 
-Parse :: pure fn(text: string) -> Tree {
+Parse :: (text: string) -> Tree {
     raw := compiler_syntax_parse(text);
     nodes := Assemble(length(raw.kinds), raw.kinds, raw.starts, raw.ends,
                       raw.rows, raw.columns, raw.parents, raw.first_children,

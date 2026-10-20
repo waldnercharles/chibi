@@ -108,12 +108,13 @@ The API owns no values and retains no runtime pointer.
 `pin_copy_counts` has unsigned 64-bit counters and an overflow flag:
 
 - `value_header_moves`: executed `pin_value` descriptor assignments in the
-  six explicitly selected sites listed below. A scalar array executes selected
-  moves per element. This is not a logical value-copy count, ownership-transfer
+  six explicitly selected sites listed below. Boxed scalar arrays execute selected
+  moves per element; packed payload writes do not. This is not a logical value-copy count, ownership-transfer
   count, generated machine-store count or all-runtime assignment census.
-- `value_buffer_bytes`: only the actual borrowed task-result wrapper memcpy
-  at `program_tasks.c:308`. Per-element assignments already counted above must
-  not also increment this. No array-insertion-shift hook is proposed.
+- `value_buffer_bytes`: the actual borrowed task-result wrapper memcpy
+  at `program_tasks.c:308`, plus packed fixed-width scalar array payload writes.
+  Boxed per-element assignments already counted above must not also increment
+  this. No array-insertion-shift hook is proposed.
 - `text_bytes`: exact byte spans copied for managed string/name values and
   registered record string/name fields, including each copied terminating NUL.
 - `nominal_bytes`: exact copied type/nominal name spans, including NUL. Distinct
@@ -158,11 +159,12 @@ The selected payload/buffer leaf inventory is equally fixed:
 | T1 | `array.c:26` arena-string memcpy, text at callers 172, 207 and 314 |
 | T2 | `array.c:288` heap string duplication, text bytes including NUL |
 | N1 | The same `array.c:26` memcpy, nominal at callers 131, 198 and 233 |
-| N2 | `types/index.c:142` owned-set nominal-name memcpy |
+| N2 | Former owned-set name copy; packed sets now delegate their sole nominal copy to the shared array snapshot helper, counted once under N1 |
 | N3 | `intrinsics.c:435` layout-name memcpy |
 | R1 | `array.c:225` root-record memcpy |
 | R2 | `intrinsics.c:438` layout-aware root-record memcpy |
 | B1 | `program_tasks.c:308` borrowed task-result descriptor-buffer memcpy |
+| B2 | Packed fixed-width scalar array snapshot payload writes; count element width, not `pin_value` headers |
 
 A small private category argument on the existing arena-string helper, or an
 equally direct caller-specific recording path, separates T1/N1. A single memcpy
@@ -355,15 +357,15 @@ All enum/handle items are scalar, with no hidden container or managed payload.
 | --- | --- | --- |
 | S1: scalar and push | Heap-copy one unnamed PIN_I32; push that scalar into an empty heap array | H=1; H=2 (H3 then H1). T=N=R=B=0 for both |
 | S2: text leaf routes | Heap-copy null text; heap-copy empty text; heap-copy `abc`; arena-copy `abc`; owning-snapshot empty text | H=1 each; T=0,1,4,4,1 respectively; N=R=B=0 |
-| S3: array leaf routes | Heap-copy unnamed scalar array of N=3; clone a named handle array directly to arena; arena-copy that named array value; owning-snapshot the named array value | H=4,3,4,4. Heap case N=0. Named cases N=5,5,25. T=R=B=0 |
+| S3: array leaf routes | Heap-copy unnamed scalar array of N=3; clone a named handle array directly to arena; arena-copy that named array value; owning-snapshot the named array value into packed storage | H=4,3,4,1. Heap case N=0. Named cases N=5,5,10. Last operation B=3×sizeof(uint64_t); other B=0. T=R=0 |
 | S4: union delegation | Direct `pin_union_copy`; heap union via `pin_value_copy`; arena union via `pin_value_copy_to_arena`; direct owning union snapshot | K=2 unnamed scalar children. H=3,4,4,3. N=0,0,2,2. T=R=B=0 |
 | S5: borrowed versus owning record | Heap-copy a borrowed ProbeRecord descriptor; owning-snapshot the same value | H=1 each. Borrowed T=N=R=B=0. Owning T=8, N=12, R=sizeof(ProbeRecord), B=0 |
 | S6: layout-aware component root | One `EXECUTION_reference_read_call.value` on a whole native ProbeRecord component reference | H=1 at H6; T=8, N=12, R=sizeof(ProbeRecord), B=0 |
-| S7: owned-set nominal leaf | First `pin_set_add_owned` of named handle into a null set; repeat the identical handle | First H=1,N=24; repeat all zero. T=R=B=0 |
+| S7: owned-set nominal leaf | First `pin_set_add_owned` of named handle into a null set; repeat the identical handle | First H=0,N=sizeof("ProbeHandle"),B=sizeof(uint64_t); repeat all zero. T=R=0 |
 | S8: record containing a union | Owning-snapshot one ProbeEnvelope record with one union field holding an unnamed integer and `kid` text | H=4: root + field-union descriptor + two child descriptors; T=4,N=14,R=sizeof(ProbeEnvelope),B=0 |
 | F1: partial-copy failure | Owning-snapshot BrokenRecord; first field is valid text `ok`, second descriptor has offset beyond the record | H=1,T=3,N=13,R=sizeof(BrokenRecord),B=0; return failure; discard unpublished arena |
 
-This is 22 measured API operations per mode, 44 across off/on, and 46 selected
+This is 22 measured API operations per mode, 44 across off/on, and 42 selected
 header assignments per complete enabled S1–F1 pass. Counter-disabled operations
 leave the inactive fixture counter objects unchanged; expected results and
 ownership assertions are otherwise identical. Any change to the table changes
@@ -372,7 +374,9 @@ the proposed workload and must be reviewed before execution.
 The named S3 array uses root descriptor name `Elem` (5 bytes), array name `Elem`
 (5), and three item descriptor names `Elem` (3×5). Direct/ordinary arena clone
 copies only the array name: root/element names stay borrowed. Owning snapshot
-copies root + array + each element: 5+5+15=25. The heap scalar-array input is a
+packs the three uint64 handles and copies only root + array names: 5+5=10.
+Its 24 payload bytes are buffer traffic; there are no stored element headers
+or per-element nominal copies. The heap scalar-array input is a
 separate unnamed 3-item input. This covers both `array.c:131` and `:233`, without
 pretending ordinary clone has owning-record semantics.
 
@@ -403,8 +407,10 @@ the owning snapshot again. Count only H6, not `read_reference`'s excluded wrappe
 assignments. This case contributes two world constructions across off/on.
 
 S7 uses PIN_HANDLE with nominal name `ProbeHandle` (12 bytes), nonzero handle 1,
-and an initially null owned set. Its first insertion copies that name at N2
-and again in the item's owning snapshot at N1: 12+12=24. The duplicate creates
+and an initially null owned set. Its first insertion copies that name once
+through the array snapshot helper and writes one packed uint64 payload. The
+item shares the array's nominal metadata, so H=0, N=12 and B=8 on both pointer
+widths. The duplicate creates
 no new snapshot and must increment no selected counter.
 
 ProbeEnvelope's nominal name is 14 bytes; its union children are built outside
@@ -556,7 +562,7 @@ no new product configuration surface and no overhead result before measurement.
 | Hook/site | Required exact assertion |
 | --- | --- |
 | H1 push assignment | S1 push H=2 together with its H3 copy; no buffer bytes |
-| H2 owning descriptor | S2 snapshot H=1; S3 owning array H=4; S8/F1 recursion/failure formulas |
+| H2 owning descriptor | S2 snapshot H=1; S3 packed owning array H=1; S8/F1 recursion/failure formulas |
 | H3 heap descriptor | S1 scalar H=1; S4 delegated heap union H=4 versus direct H=3 |
 | H4 arena descriptor | S2 arena text H=1; S3 arena array H=4; S4 arena union H=4 |
 | H5 direct heap union | S4 direct union H=3, delegated union H=4 |
@@ -567,12 +573,13 @@ no new product configuration surface and no overhead result before measurement.
 | T2 heap text | S2 null/empty/`abc` T=0/1/4 |
 | N1 nominal caller131 | S3 direct and ordinary arena clone N=5 |
 | N1 nominal caller198 | S3 owning root/items; S4 owning union N=2; S5/F1 root names |
-| N1 nominal caller233 | S3 owning array name contributes 5 within N=25 |
-| N2 owned-set nominal | S7 first insert N=24, duplicate zero; one 12-byte copy at each nominal site |
+| N1 nominal caller233 | S3 packed owning array name contributes 5 within N=10; packed elements share that name |
+| Owned-set nominal path | S7 first insert N=12, duplicate zero; one shared 12-byte array-name copy, no item-name copy |
 | N3 layout nominal | S6 N=12 |
 | R1 record copy | S5/S8/F1 exact sizeof(record), including partial failure |
 | R2 layout record copy | S6 exact sizeof(ProbeRecord), with stable layout/stride |
 | B1 task wrapper | Case4 K=1: sizeof(pin_value) per Save, 8× per enabled program |
+| B2 packed scalar payload | S3 owns three uint64 handles: exactly 3×sizeof(uint64_t), one outer header, two 5-byte nominal names |
 | Interpreter entry | Cases2/5 exact VM counts; cases4/6 expected BYTECODE route |
 | Native generated entry/inspected subset | Case5 normal/inspected windows; cases4/6 actual compiled route |
 | Native inspected fallback subset | Case5 fresh COMPILING control: VM1/fallback1/SLJIT0 |

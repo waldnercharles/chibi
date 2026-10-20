@@ -14,7 +14,9 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -612,6 +614,89 @@ static bool state_function_valid(const execution_module_plan *m, const behavior_
     }
     return true;
 }
+static bool value_tasks(pin_value value, int depth)
+{
+    if (value.type == PIN_TASK || depth == 64) {
+        return true;
+    }
+    if (value.container == PIN_CONTAINER_MAP) {
+        const pin_map *map = value.ptr;
+        if (!map) {
+            return false;
+        }
+        if (value_tasks(map->key_type, depth + 1) ||
+            value_tasks(map->value_type, depth + 1)) {
+            return true;
+        }
+        for (int i = 0; i < map->count; i++) {
+            if (value_tasks(map->entries[i].key, depth + 1) ||
+                value_tasks(map->entries[i].value, depth + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (value.container >= PIN_CONTAINER_ARRAY) {
+        const pin_array *array = value.ptr;
+        if (!array) {
+            return false;
+        }
+        pin_value element = { .type = array->element_type,
+                              .type_name = array->type_name,
+                              .record = array->record };
+        if (value_tasks(element, depth + 1)) {
+            return true;
+        }
+        for (int i = 0; i < array->count; i++) {
+            if (value_tasks(pin_array_get(array, i), depth + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (value.type == PIN_UNION) {
+        const pin_union *tagged = value.ptr;
+        for (int i = 0; tagged && i < tagged->count; i++) {
+            if (value_tasks(tagged->values[i], depth + 1)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (value.type != PIN_STRUCT) {
+        return false;
+    }
+    const type_desc *type = pin_value_type(&value);
+    for (int i = 0; type && i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        if (field->type != PIN_TASK && field->type != PIN_STRUCT &&
+            field->type != PIN_UNION) {
+            continue;
+        }
+        pin_value member = { .type = field->type, .type_name = field->type_name };
+        if (value.ptr && field->type != PIN_TASK) {
+            pin_read_field(value.ptr, field, &member);
+        }
+        if (value_tasks(member, depth + 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool retained_tasks(const execution_module_plan *plan)
+{
+    for (int i = 0; i < plan->state_count; i++) {
+        if (plan->states[i].contains_tasks || value_tasks(plan->states[i].initial, 0)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < plan->import_count; i++) {
+        if (plan->imports[i]->retained_tasks) {
+            return true;
+        }
+    }
+    return false;
+}
 static int publish(execution_module_plan *m, behavior_backend backend, char *error, size_t size, bool decoded)
 {
     if (!m->valid || !behavior_backend_available(backend)) {
@@ -690,7 +775,24 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             }
         }
     }
+    bool registration = false;
+    for (int i = 0; i < m->function_count; i++) {
+        registration |= m->functions[i].kind == EXECUTION_FUNCTION_SYSTEM;
+    }
+    if (registration && retained_tasks(m)) {
+        snprintf(error, size, "System-owned retained bindings, including imported libraries, cannot contain tasks; keep task handles in coroutine locals");
+        return FLOW_ERR_COMPILE;
+    }
     for (int i = 0; i < m->state_count; i++) {
+        if (!m->states[i].contains_tasks && value_tasks(m->states[i].initial, 0)) {
+            snprintf(error, size, "Retained task schema is missing its task metadata");
+            return FLOW_ERR_COMPILE;
+        }
+        if (m->states[i].shared && (m->states[i].contains_tasks ||
+                                    m->states[i].initial.type == PIN_TASK)) {
+            snprintf(error, size, "Shared retained bindings cannot contain tasks");
+            return FLOW_ERR_COMPILE;
+        }
         if (!m->states[i].id) {
             snprintf(error, size, "state %d has no stable identity", i);
             return FLOW_ERR_COMPILE;
@@ -1065,6 +1167,7 @@ static execution_module *finish(
     module->plan = **owned;
     module->backend = backend;
     module->references = 1;
+    module->retained_tasks = retained_tasks(&module->plan);
     bool effects_ready = execution_module_build_effects(module);
     assert(effects_ready);
     (void)effects_ready;

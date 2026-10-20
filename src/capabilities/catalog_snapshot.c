@@ -48,6 +48,71 @@ static bool parameters(
     *out = copy;
     return true;
 }
+static bool compile_value_copy(arena *storage, script_compile_value *out, const script_compile_value *value)
+{
+    *out = *value;
+    if (value->is_type) {
+        out->value = (pin_value){ 0 };
+        return true;
+    }
+    return !pin_value_snapshot_to_arena(storage, &out->value, &value->value);
+}
+static bool generic_metadata(arena *storage, const script_catalog *source, script_catalog *out)
+{
+    assert(source->template_count >= 0 && (!source->template_count || source->templates));
+    assert(
+        source->specialization_count >= 0 &&
+        (!source->specialization_count || source->specializations)
+    );
+    script_catalog_template *templates = arena_alloc(
+        storage,
+        (size_t)source->template_count * sizeof *templates
+    );
+    for (int i = 0; i < source->template_count; i++) {
+        templates[i] = source->templates[i];
+        templates[i].name = text(storage, templates[i].name);
+        templates[i].owner = text(storage, templates[i].owner);
+        int count = templates[i].parameter_count;
+        assert(count >= 0 && (!count || templates[i].parameters));
+        script_template_parameter *parameters = arena_alloc(storage, (size_t)count * sizeof *parameters);
+        for (int j = 0; j < count; j++) {
+            parameters[j] = templates[i].parameters[j];
+            parameters[j].name = text(storage, parameters[j].name);
+            parameters[j].binder = text(storage, parameters[j].binder);
+        }
+        templates[i].parameters = parameters;
+    }
+    out->templates = templates;
+    out->template_count = source->template_count;
+    script_catalog_specialization *specializations = arena_alloc(
+        storage,
+        (size_t)source->specialization_count * sizeof *specializations
+    );
+    for (int i = 0; i < source->specialization_count; i++) {
+        specializations[i] = source->specializations[i];
+        int count = specializations[i].binding_count;
+        assert(count >= 0 && (!count || specializations[i].bindings));
+        script_compile_binding *bindings = arena_alloc(storage, (size_t)count * sizeof *bindings);
+        for (int j = 0; j < count; j++) {
+            const script_compile_binding *source_binding = &specializations[i].bindings[j];
+            bindings[j].name = (char *)text(storage, source_binding->name);
+            if (!compile_value_copy(storage, &bindings[j].value, &source_binding->value)) {
+                return false;
+            }
+        }
+        specializations[i].bindings = bindings;
+        if (!compile_value_copy(
+                storage,
+                &specializations[i].result,
+                &source->specializations[i].result
+            )) {
+            return false;
+        }
+    }
+    out->specializations = specializations;
+    out->specialization_count = source->specialization_count;
+    return true;
+}
 bool script_catalog_snapshot(arena *storage, const script_catalog *source, script_catalog *out)
 {
     assert(storage && source && out);
@@ -164,5 +229,5 @@ bool script_catalog_snapshot(arena *storage, const script_catalog *source, scrip
     }
     out->capabilities = capabilities;
     out->capability_count = source->capability_count;
-    return true;
+    return generic_metadata(storage, source, out);
 }

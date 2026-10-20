@@ -275,7 +275,7 @@ static bool scalar_value(int backend, pin_value value, pin_value *out)
     if (text) {
         fields[0] = (pin_value){ .type = PIN_STR, .str = value.str ? value.str : "" };
     }
-    REQUIRE(!pin_union_value(&input, variant->tag, fields, variant->field_count, out));
+    REQUIRE(!compiler_fixture_union(&input, variant->tag, fields, variant->field_count, out));
     return true;
 }
 static void literal(int index, pin_value value)
@@ -506,7 +506,7 @@ static bool compare(int index)
         }
         if (index == 11 || index == 12) {
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b][index - 11], &kept[b][index - 11], &result)
+                !compiler_fixture_snapshot(&retained[b][index - 11], &kept[b][index - 11], &result)
             );
             REQUIRE(owned(&retained[b][index - 11], &kept[b][index - 11]));
         }

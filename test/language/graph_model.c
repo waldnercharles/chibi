@@ -1,6 +1,7 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/model/value_copy.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
 
 #include <assert.h>
@@ -104,7 +105,10 @@ TEST_CASE(graph_model_owns_nested_values_and_artifact_lifetimes)
     pin_array *array = pin_array_clone_to_graph(asset->graph, &source);
     REQUIRE(array && array != &source && array->items != items);
     items[0].str = "changed";
-    REQUIRE(array->items[0].type == PIN_STR && !strcmp(array->items[0].str, "nested owned label"));
+    REQUIRE(
+        pin_array_get(array, 0).type == PIN_STR &&
+        !strcmp(pin_array_get(array, 0).str, "nested owned label")
+    );
     retired = 0;
     artifact *first = artifact_new(n->id);
     behavior_asset_set_artifact(asset, first, retire);

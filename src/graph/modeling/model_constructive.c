@@ -11,7 +11,7 @@ static const pin_array *points(const node *n)
 }
 static const float *point(const pin_array *p, int i)
 {
-    return p->items[i].ptr;
+    return pin_array_data(p, i);
 }
 bool model_constructive_validate(const node *n, shader_error *error)
 {
@@ -33,7 +33,8 @@ bool model_constructive_validate(const node *n, shader_error *error)
         return model_fail(error, n->id, "Tube Sweep requires positive Radius and at most 32 nondegenerate segments");
     }
     for (int i = 0; i < p->count; i++) {
-        const pin_value *v = &p->items[i];
+        pin_value element = pin_array_get(p, i);
+        const pin_value *v = &element;
         if (v->type != PIN_STRUCT || v->container != PIN_CONTAINER_SINGLE ||
             !v->type_name || strcmp(v->type_name, "ShaderVec3") || !v->ptr) {
             return model_fail(error, n->id, "Tube points require typed ShaderVec3 values");

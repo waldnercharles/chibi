@@ -1,23 +1,31 @@
-behavior "DashBehavior" {
-    state "Just Started" := false
-    state "Struck Entities": handle<"ecs.entity">[] = []
+DashBehavior :: behavior {
+    import_component_write_1 :: (import_arg_0: float, import_arg_1: entity = self) -> (Value: Dash) {
+        if import_arg_1 == 0 {
+            import_arg_1 = self
+        }
+        import_arg_1.Dash.remaining = import_arg_0
+        return import_arg_1.Dash
+    }
+
+    Just_Started := false
+    Struck_Entities: handle<ecs.entity>[] = []
     on Dash {
         if delta_time() >= self.Dash.cooldown_remaining {
             if 0.0 >= self.Dash.remaining {
-                await "Start Dash"()
+                await Start_Dash()
             }
         }
     }
     on Tick {
-        await "Advance Dash Timers"()
+        await Advance_Dash_Timers()
         if 0.0 < self.Dash.remaining {
-            await "Drive Dash"()
+            await Drive_Dash()
         }
     }
-    on "Contact Begin" {
-        await "Strike Target"(event.Other)
+    on Contact_Begin {
+        await Strike_Target(event.Other)
     }
-    "Capture Dash Direction" :: fn() {
+    Capture_Dash_Direction :: () {
         after entry {
             if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {
                 self.Dash.direction = vec2_norm(self.Input.move)
@@ -28,17 +36,17 @@ behavior "DashBehavior" {
             }
         }
     }
-    "Drive Dash" :: fn() {
+    Drive_Dash :: () {
         after entry {
             self.Velocity = self.Dash.direction * self.Dash.speed
-            self.Orientation = "DirectionMath"."Direction Orientation"(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
+            self.Orientation = DirectionMath.Direction_Orientation(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
             return
         }
     }
-    "Restore Movement" :: fn() {
+    Restore_Movement :: () {
         after entry {
             if self.Input {
-                self.Velocity = "MovementActions"."Movement Velocity"(self.Input.move, self.Movement)
+                self.Velocity = MovementActions.Movement_Velocity(self.Input.move, self.Movement)
                 return
             } else {
                 self.Velocity = {
@@ -49,8 +57,8 @@ behavior "DashBehavior" {
             }
         }
     }
-    "Advance Dash" :: fn() {
-        action set_gamedash_remaining = set_dash_remaining(max(self.Dash.remaining - delta_time(), B: float = 0.0))
+    Advance_Dash :: () {
+        action set_gamedash_remaining = import_component_write_1(max(self.Dash.remaining - delta_time(), B: float = 0.0))
         after entry {
             set_gamedash_remaining()
         }
@@ -58,20 +66,20 @@ behavior "DashBehavior" {
             if 0.0 < set_gamedash_remaining.Value.remaining {
                 return
             } else {
-                await "Restore Movement"()
+                await Restore_Movement()
                 return
             }
         }
     }
-    "Advance Dash Timers" :: fn() {
+    Advance_Dash_Timers :: () {
         after entry {
-            if state."Just Started" {
-                state."Just Started" = false
+            if Just_Started {
+                Just_Started = false
                 return
             } else {
                 self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - delta_time(), B: float = 0.0)
                 if 0.0 < self.Dash.remaining {
-                    await "Advance Dash"()
+                    await Advance_Dash()
                     return
                 } else {
                     return
@@ -79,17 +87,17 @@ behavior "DashBehavior" {
             }
         }
     }
-    "Strike Target" :: fn(Other: handle<"ecs.entity"> = 0) {
+    Strike_Target :: (Other: handle<ecs.entity> = 0) {
         after entry {
             if 0.0 < self.Dash.remaining {
                 if entry.Other.Health {
                     if entry.Other.Collider {
                         if has_any_flags(entry.Other.Collider.category, 2) {
-                            if contains(state."Struck Entities", entry.Other) {
+                            if contains(Struck_Entities, entry.Other) {
                                 return
                             } else {
-                                state."Struck Entities" = array_add(state."Struck Entities", entry.Other)
-                                await send_event<"Damage">(entry.Other, self.Dash.damage, self)
+                                Struck_Entities = array_add(Struck_Entities, entry.Other)
+                                await send_event<Damage>(entry.Other, self.Dash.damage, self)
                                 return
                             }
                         } else {
@@ -106,23 +114,23 @@ behavior "DashBehavior" {
             }
         }
     }
-    "Strike Current Contacts" :: fn() {
+    Strike_Current_Contacts :: () {
         after entry {
-            foreach (foreach_2 in get_contact_entities(self, 2)) {
-                await "Strike Target"(foreach_2)
+            for (foreach_2 in get_contact_entities(self, 2)) {
+                await Strike_Target(foreach_2)
             }
             return
         }
     }
-    "Start Dash" :: fn() {
+    Start_Dash :: () {
         after entry {
             if self.Health.current >= 1 {
-                await "Capture Dash Direction"()
+                await Capture_Dash_Direction()
                 self.Dash.remaining = self.Dash.duration
                 self.Dash.cooldown_remaining = self.Dash.cooldown
-                state."Just Started" = true
-                state."Struck Entities" = []
-                await "Strike Current Contacts"()
+                Just_Started = true
+                Struck_Entities = []
+                await Strike_Current_Contacts()
                 return
             } else {
                 return

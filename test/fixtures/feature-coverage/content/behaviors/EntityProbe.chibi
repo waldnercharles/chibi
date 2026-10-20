@@ -1,26 +1,26 @@
-behavior EntityProbe {
+EntityProbe :: behavior {
     on Begin {
         spawner := globals.Spawner
         await set_global_variable("Spawned", Value: int = 0)
         drone := await spawn_prototype(Drone)
-        debris := "Debris" /* Reaches the spawn through a local. */
+        debris := Debris /* Reaches the spawn through a local. */
         await spawn_prototype(debris)
-        await add_component("Orientation") /* Credited through its selector. */
-        if has_component("Orientation", self) {
-            orientation := get_component("Orientation", self)
-            await set_component("Orientation", self, orientation)
-            await remove_component("Orientation")
+        add_component(Orientation) /* Credited through its selector. */
+        if has_component(Orientation, self) {
+            orientation := get_component(Orientation, self)
+            set_component(Orientation, self, orientation)
+            remove_component(Orientation)
         }
-        if has_entities_with_component("Collider") {
-            colliders := find_entities_with_component("Collider")
+        if has_entities_with_component(Collider) {
+            colliders := find_entities_with_component(Collider)
             nearest := find_nearest_entity(self.Transform, 64.0, 2, self)
             if nearest.Found {
-                await send_event<"Probe Signal">(spawner, select(1, Option0: int = 0, Option1: int = 1))
+                await send_event<Probe_Signal>(spawner, select(1, Option0: int = 0, Option1: int = 1))
                 destroy_entity(nearest.Entity)
             }
         }
     }
-    on "Probe Signal" {
+    on Probe_Signal {
         self.Health.current -= Count
     }
 }

@@ -319,7 +319,7 @@ TEST_CASE(build_workflow_missing_service_fails_without_recording)
 TEST_CASE(build_workflow_invalid_source_fails_before_effects)
 {
     const char
-        *invalid = "library Invalid { Build :: fn() -> int { return 1 + ; } }";
+        *invalid = "Invalid :: library { Build :: () -> int { return 1 + ; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         const script_lower_bindings bindings = { .host = resolve_host };

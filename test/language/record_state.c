@@ -9,6 +9,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/record.h"
 
 #include <stdio.h>
@@ -38,10 +39,11 @@ static const script_catalog_capability event = { .id = 71,
                                                  .parameter_count = 1 };
 static const script_catalog empty_catalog;
 static const script_lower_bindings bindings;
-static const char behavior[] =
-    "behavior Store { row: Rows.Row = {key: \"initial\", label: \"initial\"}; "
-    "rows: Rows.Row[] = []; on Set(text) { empty: Rows.Row[] = []; "
-    "rows = empty; row = {key: text, label: text}; rows = [row, row, row]; } }";
+static const char
+    behavior[] = "Store :: behavior { row: Rows.Row = {key: \"initial\", "
+                 "label: \"initial\"}; rows: Rows.Row[] = []; on Set(text) { "
+                 "empty: Rows.Row[] = []; rows = empty; row = {key: text, "
+                 "label: text}; rows = [row, row, row]; } }";
 static void retire_source()
 {
     script_analysis_free(analysis);
@@ -101,7 +103,7 @@ static bool compile(int generation, behavior_backend backend, execution_module *
     int length = snprintf(
         source,
         sizeof source,
-        "library Rows { Row :: struct { key: string; label: string; "
+        "Rows :: library { Row :: struct { key: string; label: string; "
         "icon: string = \"%s\"; prototype: string = \"\"; drop: string = \"\"; "
         "%s: int = %d; behaviors: int = 0; active: bool = true; "
         "marked: bool = false; hidden: bool = false; locked: bool = false; "
@@ -202,7 +204,8 @@ static bool rows(const pin_value *v, int count, const char *text, int generation
     REQUIRE(a->element_type == PIN_STRUCT && a->record == v->record);
     REQUIRE(a->type_name == v->type_name && a->count == count);
     for (int i = 0; i < count; i++) {
-        REQUIRE(a->items[i].record == v->record && row(&a->items[i], text, generation));
+        pin_value item = pin_array_get(a, i);
+        REQUIRE(item.record == v->record && row(&item, text, generation));
     }
     return true;
 }
@@ -438,7 +441,8 @@ static bool owned(const pin_value *v)
         if (a) {
             REQUIRE(arena_contains(&saved, a));
             for (int i = 0; i < a->count; i++) {
-                REQUIRE(owned(&a->items[i]));
+                pin_value item = pin_array_get(a, i);
+                REQUIRE(owned(&item));
             }
         }
         return true;

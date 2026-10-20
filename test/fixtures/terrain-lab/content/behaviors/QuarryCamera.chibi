@@ -1,4 +1,4 @@
-behavior QuarryCamera {
+QuarryCamera :: behavior {
     on Tick {
         target := vec2(clamp(globals.Explorer.Transform.x, -144, 144), -24)
         self.Transform += (target - self.Transform) * (1 - pow(0.001, dt))

@@ -78,6 +78,9 @@ static unsigned query_expression_restrictions(const script_effect_facts *out, in
     }
     const script_expression *value = &out->expressions[index];
     unsigned restrictions = value->task ? QUERY_STARTS_TASK : 0;
+    if (value->effects & SCRIPT_EFFECT_INVOCATION_READ) {
+        restrictions |= QUERY_READS_INVOCATION;
+    }
     if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
         const script_symbol *symbol = &out->symbols[value->symbol];
         if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
@@ -286,6 +289,37 @@ static void finish_reductions(const script_effect_facts *a, script_diagnostic **
     }
     afree(checked);
 }
+static void finish_reference_iteration(const script_effect_facts *out, script_diagnostic **diagnostics)
+{
+    for (int i = 0; i < out->statement_count; i++) {
+        const script_statement *loop = &out->statements[i];
+        if (loop->kind != SCRIPT_STMT_FOREACH || loop->symbol < 0 ||
+            !(out->symbols[loop->symbol].type.flags & SCRIPT_TYPE_REFERENCE) ||
+            loop->body < 0) {
+            continue;
+        }
+        const script_statement *body = &out->statements[loop->body];
+        const script_expression *source = &out->expressions[loop->expression];
+        bool unsafe = (body->effects & (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST |
+                                        SCRIPT_EFFECT_STRUCTURAL)) != 0;
+        for (int j = 0; j < out->expression_count; j++) {
+            const script_expression *e = &out->expressions[j];
+            if (e->range.start < body->range.start || e->range.end > body->range.end) {
+                continue;
+            }
+            /* While borrowed, the source can only be reached through item.
+             * Other bindings hold snapshots, not aliases to its mutable bank. */
+            unsafe |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol == source->symbol;
+            unsafe |= e->kind == SCRIPT_EXPR_CALL &&
+                      (e->effects & SCRIPT_EFFECT_WRITE);
+        }
+        if (unsafe) {
+            script_diagnostic d = { .range = loop->range };
+            snprintf(d.message, sizeof d.message, "Reference iteration cannot suspend, start tasks, call mutating procedures or access its borrowed source binding");
+            apush(*diagnostics, d);
+        }
+    }
+}
 static void finish_effects(script_effect_facts *a, script_diagnostic **diagnostics)
 {
     script_effect_facts *out = a;
@@ -294,6 +328,19 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
         for (int i = 0; i < out->expression_count; i++) {
             script_expression *expression = &((script_expression *)out->expressions)[i];
             unsigned effects = expression->effects;
+            if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0) {
+                const script_symbol *symbol = &out->symbols[expression->symbol];
+                if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+                    ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
+                     symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+                    effects |= SCRIPT_EFFECT_INVOCATION_READ;
+                }
+            }
+            if (expression->task) {
+                /* Starting an activation changes execution ownership even if
+                 * the callee's only body effect is its own suspension. */
+                effects |= SCRIPT_EFFECT_HOST;
+            }
             if (expression->left >= 0) {
                 effects |= out->expressions[expression->left].effects;
             }
@@ -335,6 +382,7 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
         }
     }
     finish_reductions(a, diagnostics);
+    finish_reference_iteration(out, diagnostics);
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;
@@ -366,14 +414,6 @@ static void finish_effects(script_effect_facts *a, script_diagnostic **diagnosti
              (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL))) {
             script_diagnostic d = { .range = s->range };
             snprintf(d.message, sizeof d.message, "Streaming relationship iteration cannot suspend or change entity structure");
-            apush(*diagnostics, d);
-        }
-    }
-    for (int i = 0; i < out->function_count; i++) {
-        script_function *function = &((script_function *)out->functions)[i];
-        if (function->pure && function->effects & impure) {
-            script_diagnostic d = { .range = function->range };
-            snprintf(d.message, sizeof d.message, "Pure function performs execution effects");
             apush(*diagnostics, d);
         }
     }

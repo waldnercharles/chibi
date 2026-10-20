@@ -31,7 +31,7 @@
  * Parent shape, non-NULL strings and C-locale byte semantics are preconditions.
  */
 static const char SOURCE[] =
-    "library OutlinerProjection {\n"
+    "OutlinerProjection :: library {\n"
     "    Row :: struct {\n"
     "        key:string; label:string; icon:string=\"\"; "
     "prototype:string=\"\"; drop:string=\"\";\n"
@@ -537,10 +537,13 @@ static bool check_inputs(const request *r, bool changed)
         REQUIRE(!v->record && array && arena_contains(&inputs, array));
         REQUIRE(array->element_type == types[a] && array->count == r->raw_count);
         REQUIRE(
-            !array->record && (!array->count || arena_contains(&inputs, array->items))
+            !array->record &&
+            (!array->count ||
+             arena_contains(&inputs, array->stride ? array->data : (void *)array->items))
         );
         for (int n = 0; n < r->raw_count; n++) {
-            const pin_value *item = &array->items[n];
+            pin_value element = pin_array_get(array, n);
+            const pin_value *item = &element;
             REQUIRE(item->type == types[a] && item->container == PIN_CONTAINER_SINGLE);
             REQUIRE(!item->record);
             switch (a) {
@@ -680,10 +683,14 @@ static bool check(call *c, const request *r, bool changed)
     REQUIRE(array && arena_contains(&c->storage, array));
     REQUIRE(array->element_type == PIN_STRUCT && pin_record_same(array->record, record));
     REQUIRE(array->type_name == record->type.name && array->count == r->row_count);
-    REQUIRE(!array->count || arena_contains(&c->storage, array->items));
+    REQUIRE(
+        !array->count ||
+        arena_contains(&c->storage, array->stride ? array->data : (void *)array->items)
+    );
     for (int i = 0; i < array->count; i++) {
         int n = r->rows[i];
-        const pin_value *row = &array->items[i];
+        pin_value element = pin_array_get(array, i);
+        const pin_value *row = &element;
         REQUIRE(row->type == PIN_STRUCT && row->container == PIN_CONTAINER_SINGLE);
         REQUIRE(
             pin_record_same(row->record, record) &&

@@ -192,7 +192,7 @@ static bool tagged(
 {
     const script_catalog_variant *tag = variant(b, package, name, member);
     REQUIRE(tag && tag->field_count == count);
-    REQUIRE(!pin_union_value(&input, tag->tag, fields, count, out));
+    REQUIRE(!compiler_fixture_union(&input, tag->tag, fields, count, out));
     return true;
 }
 static int slot(uint64_t id)
@@ -624,9 +624,7 @@ static bool compare(const script_named_facts *facts, int scope_count, int functi
             ((const pin_union *)resolved->values[5].ptr)->tag == use_tag->tag
         );
         if (retain >= 0) {
-            REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b][retain], &kept[b][retain], &result)
-            );
+            REQUIRE(!compiler_fixture_snapshot(&retained[b][retain], &kept[b][retain], &result));
             REQUIRE(
                 owned(&retained[b][retain], &kept[b][retain], 0) &&
                 resolution(&kept[b][retain], &expected)
@@ -888,12 +886,12 @@ static bool spelling(TSNode node, char *out, size_t capacity)
 TEST_CASE(named_binding_analyzer_annotations_match)
 {
     const char *sources[] = {
-        "library Facts { Run :: pure fn(value: int) -> int { return value; } }",
-        "library Facts { Run :: pure fn(value: int[]) -> int[] { return value; "
+        "Facts :: library { Run :: (value: int) -> int { return value; } }",
+        "Facts :: library { Run :: (value: int[]) -> int[] { return value; "
         "} }",
-        "library Facts { Thing :: struct { value: int; }; Run :: pure "
-        "fn(value: Thing?) -> Thing? { return value; } }",
-        "library Facts { Run :: pure fn(value: ref int) -> int { return value; "
+        "Facts :: library { Thing :: struct { value: int; }; Run :: "
+        "(value: Thing?) -> Thing? { return value; } }",
+        "Facts :: library { Run :: (value: ref int) -> int { return value; "
         "} }",
     };
     const script_catalog native = { 0 };

@@ -66,104 +66,113 @@ Validation :: union {
 }
 MaxDepth: int : 256;
 
-// All helpers reachable from the depth-256 traversal use the existing
-// unlimited callable depth setting; imported convenience helpers retain their
-// ordinary depth64 and therefore are not called on a deep traversal frame.
-CycleID :: pure fn(ids: uint64[], slot: int) -> uint64 {
-    depth_limit 0;
+// The traversal keeps its own stack: callable depth is limited to 64.
+CycleID :: (ids: uint64[], slot: int) -> uint64 {
     if (slot < 0) {
         return 0;
     }
     return ids[slot];
 }
-CycleType :: pure fn(types: named.Type[], ids: uint64[], index: int) -> named.Value {
-    depth_limit 0;
+CycleType :: (types: named.Type[], ids: uint64[], index: int) -> named.Value {
     row := types[index];
     return named.Value.Typed(row.storage, row.container, row.flags,
                              CycleID(ids, row.nominal_slot), CycleID(ids, row.parameter_slot));
 }
-
-// Walk discovers owned edges from metadata, including array/optional nominal
-// payloads. Visiting/done checks precede the depth guard, exactly as in C.
-Walk :: pure fn(types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
-                value: named.Value, states: int[], depth: int) -> Validation {
-    depth_limit 0;
+// The record or union definition a value names, or -1 when it owns no edges.
+Target :: (ids: uint64[], definitions: Definition[], value: named.Value) -> int {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             if (storage != 15 && storage != 18) {
-                return Validation.Checked(-1, 0, states);
+                return -1;
             }
-            found: int = -1;
             index: int = 0;
-            while (index < length(definitions) && found < 0) {
+            while (index < length(definitions)) {
                 if (CycleID(ids, definitions[index].id_slot) == nominal) {
-                    found = index;
+                    return index;
                 }
                 index += 1;
             }
-            if (found < 0) {
-                return Validation.Checked(-1, 0, states);
-            }
-            if (states[found] == 1) {
-                return Validation.Checked(-1, 1, states);
-            }
-            if (states[found] == 2) {
-                return Validation.Checked(-1, 0, states);
-            }
-            if (depth == MaxDepth) {
-                return Validation.Checked(-1, 2, states);
-            }
-            updated := states;
-            updated[found] = 1;
-            definition := definitions[found];
-            index = 0;
-            while (index < definition.field_count) {
-                row := fields[definition.field_start + index];
-                switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, row.type), updated, depth + 1) {
-                    case .Checked(root, error, next_states):
-                        if (error != 0) {
-                            return Validation.Checked(-1, error, next_states);
-                        }
-                        updated = next_states;
-                }
-                index += 1;
-            }
-            index = 0;
-            while (index < definition.variant_count) {
-                variant := variants[definition.variant_start + index];
-                if (!variant.tagged) {
-                    switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, variant.type), updated, depth + 1) {
-                        case .Checked(root, error, next_states):
-                            if (error != 0) {
-                                return Validation.Checked(-1, error, next_states);
-                            }
-                            updated = next_states;
-                    }
-                }
-                field_index: int = 0;
-                while (field_index < variant.field_count) {
-                    row := fields[variant.field_start + field_index];
-                    switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, row.type), updated, depth + 1) {
-                        case .Checked(root, error, next_states):
-                            if (error != 0) {
-                                return Validation.Checked(-1, error, next_states);
-                            }
-                            updated = next_states;
-                    }
-                    field_index += 1;
-                }
-                index += 1;
-            }
-            updated[found] = 2;
-            return Validation.Checked(-1, 0, updated);
     }
+    return -1;
 }
-Validate :: pure fn(types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
-                    roots: int[], states: int[]) -> Validation {
+// A definition's owned edges in visit order, as type indices: its fields, then
+// each variant's untagged payload and its fields, including array/optional
+// nominal payloads.
+Edges :: (definition: Definition, variants: Variant[], fields: Field[]) -> int[] {
+    edges: int[] = [];
+    index: int = 0;
+    while (index < definition.field_count) {
+        edges = array_add(edges, fields[definition.field_start + index].type);
+        index += 1;
+    }
+    index = 0;
+    while (index < definition.variant_count) {
+        variant := variants[definition.variant_start + index];
+        if (!variant.tagged) {
+            edges = array_add(edges, variant.type);
+        }
+        field_index: int = 0;
+        while (field_index < variant.field_count) {
+            edges = array_add(edges, fields[variant.field_start + field_index].type);
+            field_index += 1;
+        }
+        index += 1;
+    }
+    return edges;
+}
+// Walk discovers owned edges from metadata depth first. Visiting/done checks
+// precede the depth guard, exactly as in C; a definition's depth is the number
+// of definitions open above it.
+Walk :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
+         root: named.Value, states: int[]) -> Validation {
+    updated := states;
+    open: int[] = [];
+    cursors: int[] = [];
+    depth: int = 0;
+    value := root;
+    visiting: bool = true;
+    while (visiting || depth > 0) {
+        if (visiting) {
+            visiting = false;
+            found := Target(ids, definitions, value);
+            if (found >= 0 && updated[found] == 1) {
+                return Validation.Checked(-1, 1, updated);
+            }
+            if (found >= 0 && updated[found] == 0) {
+                if (depth == MaxDepth) {
+                    return Validation.Checked(-1, 2, updated);
+                }
+                updated[found] = 1;
+                if (depth == length(open)) {
+                    open = array_add(open, found);
+                    cursors = array_add(cursors, int(0));
+                } else {
+                    open[depth] = found;
+                    cursors[depth] = 0;
+                }
+                depth += 1;
+            }
+        } else {
+            top := depth - 1;
+            edges := Edges(definitions[open[top]], variants, fields);
+            if (cursors[top] == length(edges)) {
+                updated[open[top]] = 2;
+                depth = top;
+            } else {
+                value = CycleType(types, ids, edges[cursors[top]]);
+                cursors[top] += 1;
+                visiting = true;
+            }
+        }
+    }
+    return Validation.Checked(-1, 0, updated);
+}
+Validate :: (types: named.Type[], ids: uint64[], definitions: Definition[], variants: Variant[], fields: Field[],
+             roots: int[], states: int[]) -> Validation {
     updated := states;
     index: int = 0;
     while (index < length(roots)) {
-        switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, roots[index]), updated, 0) {
+        switch Walk(types, ids, definitions, variants, fields, CycleType(types, ids, roots[index]), updated) {
             case .Checked(root, error, next_states):
                 if (error != 0) {
                     return Validation.Checked(index, error, next_states);
@@ -178,7 +187,7 @@ Validate :: pure fn(types: named.Type[], ids: uint64[], definitions: Definition[
 Eligible :: union {
     Declaration(symbol: int, value: named.Value, diagnostics: syntax.Diagnostic[])
 }
-EligibleUnion :: pure fn(environment: Environment, tree: reader.Tree, node: int, scope: int, document: int) -> Eligible {
+EligibleUnion :: (environment: Environment, tree: reader.Tree, node: int, scope: int, document: int) -> Eligible {
     token := reader.Field(tree, node, "name");
     switch reader.Name(tree, token, document) {
         case .Name(name, diagnostics):
@@ -212,7 +221,7 @@ EligibleUnion :: pure fn(environment: Environment, tree: reader.Tree, node: int,
 }
 // Preserve original variant metadata selections when a constructor flattens
 // an earlier declaration. Tagged child payload spans remain raw catalog facts.
-Append :: pure fn(environment: Environment, plan: constructors.Plan) -> Environment {
+Append :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
         case .Constructed(value, publish, id, name, definition_value, size, internal, selected, selected_fields, output_ids, diagnostics):
             if (!publish) {
@@ -286,12 +295,12 @@ Append :: pure fn(environment: Environment, plan: constructors.Plan) -> Environm
             }
     }
 }
-Absorb :: pure fn(environment: Environment, result: reader.Reading) -> Members {
+Absorb :: (environment: Environment, result: reader.Reading) -> Members {
     switch result {
         case .Read(value, has_unit, unit, updated, diagnostics, uses, publications):
             current := environment;
             updates: Update[] = [];
-            foreach (plan in publications) {
+            for (plan in publications) {
                 current = Append(current, plan);
                 updates = array_add(updates, Update.Added(plan));
             }
@@ -301,7 +310,7 @@ Absorb :: pure fn(environment: Environment, result: reader.Reading) -> Members {
             }
     }
 }
-Combine :: pure fn(earlier: Members, later: Members) -> Members {
+Combine :: (earlier: Members, later: Members) -> Members {
     switch earlier {
         case .Built(old_environment, old_updates, old_diagnostics, old_uses):
             switch later {
@@ -309,44 +318,44 @@ Combine :: pure fn(earlier: Members, later: Members) -> Members {
                     all_updates := old_updates;
                     all_diagnostics := old_diagnostics;
                     all_uses := old_uses;
-                    foreach (item in updates) {
+                    for (item in updates) {
                         all_updates = array_add(all_updates, item);
                     }
-                    foreach (item in diagnostics) {
+                    for (item in diagnostics) {
                         all_diagnostics = array_add(all_diagnostics, item);
                     }
-                    foreach (item in uses) {
+                    for (item in uses) {
                         all_uses = array_add(all_uses, item);
                     }
                     return Members.Built(environment, all_updates, all_diagnostics, all_uses);
             }
     }
 }
-Errors :: pure fn(result: Members, errors: syntax.Diagnostic[]) -> Members {
+Errors :: (result: Members, errors: syntax.Diagnostic[]) -> Members {
     switch result {
         case .Built(environment, updates, diagnostics, uses):
             all_diagnostics := diagnostics;
-            foreach (item in errors) {
+            for (item in errors) {
                 all_diagnostics = array_add(all_diagnostics, item);
             }
             return Members.Built(environment, updates, all_diagnostics, uses);
     }
 }
-OneError :: pure fn(result: Members, tree: reader.Tree, node: int, document: int, message: string) -> Members {
+OneError :: (result: Members, tree: reader.Tree, node: int, document: int, message: string) -> Members {
     errors: syntax.Diagnostic[] = [];
     errors = array_add(errors, reader.Diagnostic(tree, node, document, message));
     return Errors(result, errors);
 }
 
-Replace :: pure fn(environment: Environment, id: uint64, declared_variants: DeclaredVariant[], declared_fields: DeclaredField[],
-                   payload_types: named.Type[], payload_ids: uint64[]) -> Environment {
+Replace :: (environment: Environment, id: uint64, declared_variants: DeclaredVariant[], declared_fields: DeclaredField[],
+            payload_types: named.Type[], payload_ids: uint64[]) -> Environment {
     switch environment {
         case .Tables(reading, types, ids, definitions, variants, fields, capabilities, capability_fields):
             new_types := types;
             new_ids := ids;
             new_fields := fields;
             field_start := length(new_fields);
-            foreach (item in declared_fields) {
+            for (item in declared_fields) {
                 switch reader.AddType(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type)) {
                     case .Added(rows, pool, type_index):
                         new_types = rows;
@@ -357,7 +366,7 @@ Replace :: pure fn(environment: Environment, id: uint64, declared_variants: Decl
             }
             new_variants := variants;
             variant_start := length(new_variants);
-            foreach (item in declared_variants) {
+            for (item in declared_variants) {
                 switch reader.AddType(new_types, new_ids, named.TypeAt(payload_types, payload_ids, item.type)) {
                     case .Added(rows, pool, type_index):
                         new_types = rows;
@@ -386,7 +395,7 @@ Replace :: pure fn(environment: Environment, id: uint64, declared_variants: Decl
                             pool := ctor_ids;
                             alternatives := ctor_variants;
                             start := length(alternatives);
-                            foreach (item in declared_variants) {
+                            for (item in declared_variants) {
                                 switch reader.AddType(rows, pool, named.TypeAt(payload_types, payload_ids, item.type)) {
                                     case .Added(next_rows, next_pool, type_index):
                                         rows = next_rows;
@@ -413,8 +422,8 @@ Replace :: pure fn(environment: Environment, id: uint64, declared_variants: Decl
             }
     }
 }
-BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int, document: int,
-                      union_value: named.Value) -> Members {
+BuildUnion :: (initial: Members, tree: reader.Tree, node: int, scope: int, document: int,
+               union_value: named.Value) -> Members {
     current := initial;
     variants: DeclaredVariant[] = [];
     fields: DeclaredField[] = [];
@@ -448,7 +457,7 @@ BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int
                                         payload = named.Value.Typed(storage, container, flags, nominal, tag);
                                 }
                             }
-                            foreach (item in variants) {
+                            for (item in variants) {
                                 if (named.IDAt(ids, item.tag_slot) == tag) {
                                     current = OneError(current, tree, child, document, format_text("Duplicate union alternative '{}'", name));
                                 }
@@ -525,7 +534,7 @@ BuildUnion :: pure fn(initial: Members, tree: reader.Tree, node: int, scope: int
             return Members.Built(updated, all_updates, diagnostics, uses);
     }
 }
-Build :: pure fn(environment: Environment, tree: reader.Tree, body: int, scope: int, document: int) -> Members {
+Build :: (environment: Environment, tree: reader.Tree, body: int, scope: int, document: int) -> Members {
     updates: Update[] = [];
     diagnostics: syntax.Diagnostic[] = [];
     uses: named.Use[] = [];

@@ -140,10 +140,9 @@ static int dispatch(uint64_t event, unsigned budget)
 }
 TEST_CASE(source_controller_connected_reads_live_slots)
 {
-    const char *
-        text = "behavior Controllers { state slot:int=3; "
-               "state connected:bool=true; "
-               "on Tick { connected=controller_connected(Controller:slot); } }";
+    const char *text = "Controllers :: behavior { slot:retain int=3; "
+                       "connected:retain bool=true; on Tick { "
+                       "connected=controller_connected(Controller:slot); } }";
     for (int backend = 0; backend < 2; backend++) {
         world = ecs_world_new();
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
@@ -181,17 +180,17 @@ TEST_CASE(source_controller_connected_reads_live_slots)
 
 TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
 {
-    const char *text =
-        "behavior Numbers { state input:double=0; state number:double=0; "
-        "state found:bool=false; state fallback:double=0; state "
-        "missing:bool=true; "
-        "on Begin { absent:=read_saved_number(Key:\"absent\",Default:19.5); "
-        "missing=absent.Found; fallback=absent.Number; } "
-        "on Tick { await set_saved_number(Key:\"score\",Number:input); "
-        "result:=read_saved_number(Key:\"score\",Default:-1.0); "
-        "found=result.Found; number=result.Number; await commit_save(); "
-        "await set_saved_number(Key:\"score\",Number:42.0); "
-        "await discard_save_changes(); } }";
+    const char *
+        text = "Numbers :: behavior { input:retain double=0; number:retain "
+               "double=0; found:retain bool=false; fallback:retain double=0; "
+               "missing:retain bool=true; on Begin { "
+               "absent:=read_saved_number(Key:\"absent\",Default:19.5); "
+               "missing=absent.Found; fallback=absent.Number; } on Tick { "
+               "await set_saved_number(Key:\"score\",Number:input); "
+               "result:=read_saved_number(Key:\"score\",Default:-1.0); "
+               "found=result.Found; number=result.Number; await commit_save(); "
+               "await set_saved_number(Key:\"score\",Number:42.0); await "
+               "discard_save_changes(); } }";
     const double samples[] = {
         0,       -0.0,    0.1,          -12345.625,
         DBL_MAX, DBL_MIN, DBL_TRUE_MIN, 9007199254740991.0

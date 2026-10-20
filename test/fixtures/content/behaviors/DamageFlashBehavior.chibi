@@ -1,13 +1,13 @@
-behavior "DamageFlashBehavior" {
-    action set_material_parameter = engine["Set Material Parameter"](engine["Self"](), "Flash", Value: float = 3.0)
+DamageFlashBehavior :: behavior {
+    action set_material_parameter_action = set_material_parameter(self, "Flash", Value: float = 3.0)
     on Begin {
-        set_material_parameter()
+        set_material_parameter_action()
     }
     on Damage {
-        set_material_parameter()
+        set_material_parameter_action()
     }
-    after set_material_parameter {
+    after set_material_parameter_action {
         await delay(0.18)
-        engine["Set Material Parameter"](engine["Self"](), "Flash", Value: float = 0.0)
+        set_material_parameter(self, "Flash", Value: float = 0.0)
     }
 }

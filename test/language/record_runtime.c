@@ -9,6 +9,7 @@
 #include "language/lower.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/record.h"
 
 #include <stdio.h>
@@ -75,6 +76,19 @@ static void cleanup()
 static bool compile(const char *source, behavior_backend backend, bool reject_types)
 {
     syntax = script_parse(source);
+    for (int i = 0; i < syntax->diagnostic_count; i++) {
+        const script_diagnostic *d = &syntax->diagnostics[i];
+        fprintf(
+            stderr,
+            "record parse %d:%d [%d,%d): %s: %.64s\n",
+            d->range.line,
+            d->range.column,
+            d->range.start,
+            d->range.end,
+            d->message,
+            source + d->range.start
+        );
+    }
     REQUIRE(!syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     for (int i = 0; i < analysis->diagnostic_count; i++) {
@@ -211,7 +225,7 @@ static pin_value member(const pin_value *row, int index)
 }
 TEST_CASE(record_runtime_owned_return_and_value_copy)
 {
-    static const char source[] = "library Rows { " ROW
+    static const char source[] = "Rows :: library { " ROW
                                  "Make :: (text: string) -> Row { a: Row = "
                                  "{key: text, label: text}; "
                                  "b := a; b.label = \"changed\"; b.depth = 4; "
@@ -277,7 +291,7 @@ TEST_CASE(record_runtime_owned_return_and_value_copy)
 TEST_CASE(record_runtime_array_results)
 {
     static const char source
-        [] = "library Rows { " ROW
+        [] = "Rows :: library { " ROW
              "MakeRows :: (n: int, empty: Row[]) -> Row[] { if n < 0 { return "
              "empty; } if n == 0 { return []; } "
              "a: Row = {key: \"a\", label: \"A\"}; if n == 1 { return [a]; } "
@@ -307,8 +321,9 @@ TEST_CASE(record_runtime_array_results)
             REQUIRE(result.record == array->record);
             REQUIRE(arena_contains(&storage, array->record));
             for (int j = 0; j < array->count; j++) {
-                REQUIRE(array->items[j].record == array->record);
-                REQUIRE(member(&array->items[j], 5).i == 1);
+                REQUIRE(pin_array_get(array, j).record == array->record);
+                pin_value item = pin_array_get(array, j);
+                REQUIRE(member(&item, 5).i == 1);
             }
         }
         REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &result));
@@ -323,18 +338,20 @@ TEST_CASE(record_runtime_array_results)
         );
         REQUIRE(!strcmp(null_saved.type_name, "Rows.Row"));
         REQUIRE(pin_record_valid(saved.record) && array->count == 3);
-        REQUIRE(!strcmp(member(&array->items[2], 1).str, "C"));
+        pin_value last = pin_array_get(array, 2);
+        REQUIRE(!strcmp(member(&last, 1).str, "C"));
     }
     return true;
 }
 TEST_CASE(record_runtime_fieldwise_equality)
 {
-    static const char source[] = "library Rows { " ROW
+    static const char source[] = "Rows :: library { " ROW
                                  "Same :: (change: bool) -> bool { a: Row = "
                                  "{key: \"a\", label: \"A\"}; "
                                  "b: Row = {key: \"a\", label: \"A\"}; if "
                                  "change { b.label = \"B\"; } "
-                                 "return (a == b) and not (a != b); } }";
+                                 "different: bool = a != b; "
+                                 "return (a == b) and not different; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(source, backends[b], false));
@@ -348,13 +365,13 @@ TEST_CASE(record_runtime_fieldwise_equality)
 }
 TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
 {
-    static const char producer[] = "library Rows { " ROW
-                                   "Make :: pure fn() -> Row[] { return "
+    static const char producer[] = "Rows :: library { " ROW
+                                   "Make :: () -> Row[] { return "
                                    "[{key: \"a\", label: \"A\"}, "
                                    "{key: \"b\", label: \"B\"}]; } }";
     static const char
-        consumer[] = "library Rows { " ROW
-                     "Change :: pure fn(row: Row, rows: Row[]) -> Row { "
+        consumer[] = "Rows :: library { " ROW
+                     "Change :: (row: Row, rows: Row[]) -> Row { "
                      "local := row; local.label = \"local\"; "
                      "row.label = \"parameter\"; rows[0].label = \"array\"; "
                      "rows[0].depth += 4; local.key = row.label; "
@@ -362,27 +379,27 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
                      "if rows[0].label != \"array\" { local.depth = -100; } "
                      "return local; } }";
     static const char reference_consumer
-        [] = "library Rows { " ROW
-             "Change :: fn(row: ref Row, rows: ref Row[]) -> Row { "
+        [] = "Rows :: library { " ROW
+             "Change :: (row: ref Row, rows: ref Row[]) -> Row { "
              "row.label = \"reference\"; rows[0].label = \"reference-array\"; "
              "rows[0].depth += 7; return rows[0]; } }";
     static const char exposed_consumer
-        [] = "library Rows { " ROW
-             "Change :: fn(row: Row, rows: Row[], count: int) -> Row { "
+        [] = "Rows :: library { " ROW
+             "Change :: (row: Row, rows: Row[], count: int) -> Row { "
              "Mutate(row, rows, count); row.depth += count; "
              "if rows[0].label != \"exposed-array\" { row.depth = -100; } "
              "return row; } "
-             "Mutate :: fn(row: ref Row, rows: ref Row[], count: ref int) { "
+             "Mutate :: (row: ref Row, rows: ref Row[], count: ref int) { "
              "row.label = \"exposed\"; rows[0].label = \"exposed-array\"; "
              "count += 5; } }";
     static const char
-        inline_consumer[] = "library Rows { " ROW
-                            "Change :: pure fn(row: Row, rows: Row[], count: "
-                            "int) -> Row { entry \"entry\" { "
+        inline_consumer[] = "Rows :: library { " ROW
+                            "Change :: (row: Row, rows: Row[], count: "
+                            "int) -> Row { "
                             "row.label = \"inline\"; rows[0].label = "
                             "\"inline-array\"; count += 3; row.depth = count; "
                             "if rows[0].label != \"inline-array\" { row.depth "
-                            "= -100; } return row; } } }";
+                            "= -100; } return row; } }";
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile(producer, backends[b], false));
@@ -437,25 +454,6 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
             REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
             REQUIRE(member(&original->items[0], 5).i == 1);
             REQUIRE(inputs[2].i == 2);
-            if (c == 1) {
-                bool found = false;
-                for (int i = 0; i < execution_module_function_count(module); i++) {
-                    execution_module_function_info f = execution_module_function_at(module, i);
-                    if (f.kind == EXECUTION_FUNCTION_MACRO_ENTRY && f.entry &&
-                        !strcmp(f.entry, "entry")) {
-                        REQUIRE(f.body && f.body->argument_count == 3);
-                        function_id = f.id;
-                        found = true;
-                    }
-                }
-                REQUIRE(found);
-                REQUIRE(run(backends[b], inputs, 3));
-                REQUIRE(!strcmp(member(&result, 1).str, "inline"));
-                REQUIRE(member(&result, 5).i == 5);
-                REQUIRE(!strcmp(member(&inputs[0], 1).str, "A"));
-                REQUIRE(!strcmp(member(&original->items[0], 1).str, "A"));
-                REQUIRE(inputs[2].i == 2);
-            }
             finish_call();
             execution_module_free(module);
             module = NULL;
@@ -483,11 +481,16 @@ TEST_CASE(record_runtime_pure_owned_mutation_preserves_caller)
 }
 TEST_CASE(record_runtime_formatter_layout)
 {
-    static const char input
-        [] = "library Rows{Row::struct{key:string;label:string;depth:int=1;}}";
-    static const char expected[] = "library Rows {\n    Row :: struct {\n      "
-                                   "  key: string;\n        label: string;\n   "
-                                   "     depth: int = 1;\n    }\n}\n";
+    static const char
+        input[] = "Rows :: "
+                  "library{Row::struct{key:string;label:string;depth:int=1;}}";
+    static const char expected[] = "Rows :: library {\n"
+                                   "    Row :: struct {\n"
+                                   "        key: string;\n"
+                                   "        label: string;\n"
+                                   "        depth: int = 1;\n"
+                                   "    }\n"
+                                   "}\n";
     syntax = script_parse(input);
     REQUIRE(!syntax->diagnostic_count);
     char error[192];

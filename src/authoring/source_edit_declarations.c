@@ -72,7 +72,7 @@ static bool variable_type(const script_catalog *catalog, const char *text, scrip
     if (!text || !text[0] || strlen(text) > 4096) {
         return false;
     }
-    const char *prefix = "behavior __VariableType { __probe :: fn(__value: ";
+    const char *prefix = "__VariableType :: behavior { __probe :: (__value: ";
     const char *suffix = ") {} }";
     size_t bytes = strlen(prefix) + strlen(text) + strlen(suffix) + 1;
     char *probe = xmalloc(bytes);
@@ -176,7 +176,10 @@ static bool retype_variable(
         assert(!ts_node_is_null(assign));
         size_t bytes = strlen(r->signature) + 6;
         char *annotation = xmalloc(bytes);
-        snprintf(annotation, bytes, ": %s%s", r->signature, keep || literal ? " =" : "");
+        bool retained = !ts_node_is_null(
+            ts_node_child_by_field_name(declaration, "storage", 7)
+        );
+        snprintf(annotation, bytes, "%s%s%s", retained ? " " : ": ", r->signature, keep || literal ? " =" : "");
         patch(changes, script_node_range(assign), annotation);
         free(annotation);
     }
@@ -253,16 +256,10 @@ bool source_edit_declarations(
         r->kind == AUTHORING_EDIT_CREATE_MACRO ||
         r->kind == AUTHORING_EDIT_CREATE_EXPRESSION) {
         const char *name = r->name && r->name[0] ? r->name : "NewValue";
-        if (strlen(name) > 256) {
-            return fail(error, size, "Declaration names must fit within 256 bytes");
+        if (strlen(name) > 256 || !identifier(name)) {
+            return fail(error, size, "Declaration names must be identifiers within 256 bytes");
         }
-        char *quoted = authoring_source_literal(
-            c,
-            (script_type){ .storage = PIN_STR },
-            &(pin_value){ .type = PIN_STR, .str = name },
-            error,
-            size
-        );
+        char *quoted = authoring_source_identifier(name, error, size);
         if (!quoted) {
             return false;
         }
@@ -276,7 +273,7 @@ bool source_edit_declarations(
             /* A named expression is a function, recomputed at each call. */
             size_t bytes = strlen(quoted) + strlen(r->expression) + 32;
             fragment = xmalloc(bytes);
-            snprintf(fragment, bytes, "%s :: fn() { return %s }", quoted, r->expression);
+            snprintf(fragment, bytes, "%s :: () { return %s }", quoted, r->expression);
         } else {
             size_t bytes = strlen(quoted) + 64;
             fragment = xmalloc(bytes);
@@ -285,7 +282,7 @@ bool source_edit_declarations(
                 bytes,
                 r->kind == AUTHORING_EDIT_CREATE_MACRO
                     ? "macro %s()->() { entry Start {} }"
-                    : "%s :: fn()->() {}",
+                    : "%s :: () {}",
                 quoted
             );
         }

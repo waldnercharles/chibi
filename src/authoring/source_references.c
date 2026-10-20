@@ -7,7 +7,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int source_asset(reference_index *index, const authoring_document *document, authoring_target target)
+static bool relationship_target(const script_catalog *catalog, authoring_target target)
+{
+    for (int i = 0; target.kind == AUTHORING_TYPE && i < catalog->relationship_count;
+         i++) {
+        if (catalog->relationships[i].id == target.id) {
+            return true;
+        }
+    }
+    return false;
+}
+static int source_asset(
+    reference_index *index,
+    const authoring_document *document,
+    authoring_target target,
+    const script_catalog *catalog
+)
 {
     reference_asset_kind kind;
     if (document->analysis) {
@@ -26,10 +41,19 @@ static int source_asset(reference_index *index, const authoring_document *docume
                 return i;
             }
         }
-        kind = target.kind == AUTHORING_PROTOTYPE ? REFERENCE_ASSET_PROTOTYPE
+        kind = relationship_target(catalog, target) ? REFERENCE_ASSET_RELATIONSHIP
+             : target.kind == AUTHORING_PROTOTYPE ? REFERENCE_ASSET_PROTOTYPE
                                                   : REFERENCE_ASSET_EVENT;
     }
     const char *name = document->analysis ? document->analysis->name : NULL;
+    if (!name && relationship_target(catalog, target)) {
+        for (int i = 0; i < catalog->relationship_count; i++) {
+            if (catalog->relationships[i].id == target.id) {
+                name = catalog->relationships[i].name;
+                break;
+            }
+        }
+    }
     char *fallback = NULL;
     if (!name || !*name) {
         const char *base = strrchr(document->path, '/');
@@ -127,7 +151,7 @@ void authoring_source_references_add(reference_index *index, const authoring_nav
         if (!document->analysis) {
             continue; /* Native declarations are indexed by their owning KDL adapters. */
         }
-        int source = source_asset(index, document, fact->target);
+        int source = source_asset(index, document, fact->target, catalog);
         if (source < 0) {
             continue;
         }
@@ -139,7 +163,8 @@ void authoring_source_references_add(reference_index *index, const authoring_nav
                                          navigation,
                                          definition->location.document
                                      ),
-                                     fact->target
+                                     fact->target,
+                                     catalog
                                  )
                                : -1;
         const char *name = authoring_navigation_name(navigation, fact->target);
@@ -186,7 +211,12 @@ void authoring_source_references_add(reference_index *index, const authoring_nav
                 break;
             }
             case AUTHORING_TYPE:
-                symbol.kind = REFERENCE_SYMBOL_COMPONENT;
+                symbol.kind = relationship_target(catalog, fact->target)
+                                ? REFERENCE_SYMBOL_ASSET
+                                : REFERENCE_SYMBOL_COMPONENT;
+                if (symbol.kind == REFERENCE_SYMBOL_ASSET && symbol.asset < 0 && name) {
+                    symbol.asset = reference_index_named_asset(index, REFERENCE_ASSET_RELATIONSHIP, name);
+                }
                 break;
             case AUTHORING_FIELD:
                 symbol.kind = REFERENCE_SYMBOL_FIELD;

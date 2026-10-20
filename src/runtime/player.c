@@ -1,5 +1,6 @@
 #include "runtime/player.h"
 
+#include "ecs/execution.h"
 #include "runtime/audio.h"
 #include "runtime/component_catalog.h"
 #include "runtime/material_field_prepared.h"
@@ -436,9 +437,31 @@ reject:
     *remaining = initial_budget;
     return NULL;
 }
+static void prepare_shutdown(world *world)
+{
+    ecs_world *ecs = world_ecs(world);
+    /* This player owns the whole world. Cancel unapplied commands, then treat
+     * every live slot as owned, including entities hidden from normal queries.
+     * No Panic link can be external to this final destruction boundary. */
+    ecs_world_clear_commands(ecs);
+    const ecs_execution_view *view = ecs_world_execution(ecs);
+    ecs_entity *entities = NULL;
+    for (uint32_t slot = 1; slot < view->slot_count; slot++) {
+        if (view->occupied[slot]) {
+            apush(entities, ((ecs_entity){ slot, view->generations[slot] }));
+        }
+    }
+    int status = ecs_world_prepare_owned_destruction(ecs, entities, acount(entities));
+    afree(entities);
+    assert(status == ECS_OK);
+    (void)status;
+}
 void player_free(player *p)
 {
     assert(p);
+    if (p->world) {
+        prepare_shutdown(p->world);
+    }
     if (p->scene) {
         scene_instance_free(p->scene);
     }
@@ -478,6 +501,12 @@ bool player_load_scene(player *p, const char *name, char *error, size_t size)
         snprintf(error, size, "No scene named '%s'", name);
         return false;
     }
+    /* A refused release must leave both ownership and per-scene services
+     * intact. In particular, do not clear globals or advance the scene flow. */
+    if (!scene_instance_release(p->scene, error, size)) {
+        return false;
+    }
+    p->scene = NULL;
     const engine_modules *services = world_modules(p->world);
     engine_reset_scene(world_engine(p->world));
     scene_flow_enter(world_scenes(p->world), name);
@@ -485,8 +514,6 @@ bool player_load_scene(player *p, const char *name, char *error, size_t size)
         particles_clear(services->particles);
     }
     entities_reset(services->entities);
-    scene_instance_free(p->scene);
-    p->scene = NULL;
     if ((services->physics &&
          physics_configure(services->physics, scene_physics(scene)) < 0) ||
         (services->physics3d &&

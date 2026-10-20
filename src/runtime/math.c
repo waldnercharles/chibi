@@ -17,6 +17,15 @@
     }
 NATIVE_MATH_UNARIES(UNARY)
 #undef UNARY
+#define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION)                                \
+    pin_value native_math_F32_##KEY(const pin_value *inputs, int count, arena *) \
+    {                                                                            \
+        assert(count == 1 && inputs[0].type == PIN_F32);                         \
+        (void)count;                                                             \
+        return (pin_value){ .type = PIN_F32, .f = FN##f(inputs[0].f) };          \
+    }
+NATIVE_MATH_UNARIES(UNARY)
+#undef UNARY
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)                  \
     pin_value native_math_##KEY(const pin_value *inputs, int count, arena *)          \
     {                                                                                 \
@@ -26,6 +35,56 @@ NATIVE_MATH_UNARIES(UNARY)
     }
 NATIVE_MATH_BINARIES(BINARY)
 #undef BINARY
+#define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)                  \
+    pin_value native_math_F32_##KEY(const pin_value *inputs, int count, arena *)      \
+    {                                                                                 \
+        assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32); \
+        (void)count;                                                                  \
+        return (pin_value){ .type = PIN_F32, .f = FN##f(inputs[0].f, inputs[1].f) };  \
+    }
+NATIVE_MATH_BINARIES(BINARY)
+#undef BINARY
+
+pin_value native_math_F32_Step(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
+    (void)count;
+    return (pin_value){ .type = PIN_F32, .f = inputs[0].f < inputs[1].f ? 0 : 1 };
+}
+pin_value native_math_F32_Mix(const pin_value *inputs, int count, arena *)
+{
+    assert(
+        count == 3 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32 &&
+        inputs[2].type == PIN_F32
+    );
+    (void)count;
+    float span = inputs[1].f - inputs[0].f;
+    float offset = span * inputs[2].f;
+    return (pin_value){ .type = PIN_F32, .f = inputs[0].f + offset };
+}
+pin_value native_math_F32_Quantize_Angle(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
+    (void)count;
+    float angle = inputs[0].f, step = inputs[1].f;
+    if (!isfinite(angle) || !isfinite(step) || step == 0) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    float result = roundf(angle / step) * step;
+    return isfinite(result) ? (pin_value){ .type = PIN_F32, .f = result }
+                            : (pin_value){ .type = PIN_FLOW };
+}
+pin_value native_math_F32_Smooth_Step(const pin_value *inputs, int count, arena *)
+{
+    assert(count == 1 && inputs[0].type == PIN_F32);
+    (void)count;
+    float value = inputs[0].f;
+    if (!isfinite(value)) {
+        return (pin_value){ .type = PIN_FLOW };
+    }
+    value = fminf(fmaxf(value, 0), 1);
+    return (pin_value){ .type = PIN_F32, .f = value * value * (3 - 2 * value) };
+}
 
 pin_value native_math_Step(const pin_value *inputs, int count, arena *)
 {
@@ -154,13 +213,17 @@ const char *native_math_spring(const pin_value *inputs, pin_value *out)
                  : NULL;                                                                          \
     }                                                                                             \
     const node_host_call NATIVE_MATH_##KEY##_CALL = { .value = KEY##_call };
-#define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION) ADAPTER(KEY)
+#define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION)                              \
+    ADAPTER(KEY) ADAPTER(F32_##KEY)
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)           \
-    ADAPTER(KEY)
+    ADAPTER(KEY) ADAPTER(F32_##KEY)
 #define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM) ADAPTER(KEY)
 NATIVE_MATH_UNARIES(UNARY)
 NATIVE_MATH_BINARIES(BINARY)
 NATIVE_MATH_VALUES(VALUE)
+#define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS) ADAPTER(F32_##KEY)
+NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+#undef FLOAT_VALUE
 #undef UNARY
 #undef BINARY
 #undef VALUE

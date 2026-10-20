@@ -1,10 +1,10 @@
-behavior "ProjectileEffects" {
-    owner "ecs.entity";
-    action spawn_prototype = engine["Spawn Prototype"](Prototype: "TrailEmitter");
+ProjectileEffects :: behavior {
+
+    action spawn_prototype_action = spawn_prototype(Prototype: TrailEmitter);
     on Begin as begin() {
-        spawn_prototype();
+        spawn_prototype_action();
     }
-    after spawn_prototype {
-        set_particle_emitter_parent(Value: self, Target: spawn_prototype.Entity);
+    after spawn_prototype_action {
+        spawn_prototype_action.Entity.ParticleEmitter.parent = self;
     }
 }

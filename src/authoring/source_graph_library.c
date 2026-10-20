@@ -218,7 +218,7 @@ static const script_statement *returned(const script_analysis *a, const script_f
 static bool lowerable(const script_analysis *a, const script_function *f)
 {
     if (f->kind != SCRIPT_FUNCTION_AUTHORED || !f->pure || f->symbol < 0 ||
-        f->type_parameter_count || !f->result_count || !returned(a, f)) {
+        !f->result_count || !returned(a, f)) {
         return false;
     }
     for (int i = 0; i < f->parameter_count; i++) {

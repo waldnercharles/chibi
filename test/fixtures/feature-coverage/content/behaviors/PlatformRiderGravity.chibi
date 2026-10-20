@@ -1,4 +1,4 @@
-behavior PlatformRiderGravity {
+PlatformRiderGravity :: behavior {
     on Tick(dt) {
         self.Body3D.linear_velocity.y -= 320 * dt
     }

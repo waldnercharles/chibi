@@ -1,4 +1,4 @@
-behavior ToneProbe {
+ToneProbe :: behavior {
     on Begin {
         set_audio_source(0)
         await play_tone(440.0, 220.0, 0.1, 0.2, 0.0, 0.0)

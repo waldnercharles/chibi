@@ -7,7 +7,9 @@
 /* Selected managed-value C copy operations, not all runtime memory traffic.
  * Text/name bytes include NUL; record bytes include inline fields and padding.
  * Descriptor operations and borrowed descriptor-buffer bytes are separate from
- * payload. Completed copies remain counted when a later validation fails.
+ * payload. Buffer bytes also include packed fixed-width scalar array payload
+ * writes, which move no element descriptors. Completed copies remain counted
+ * when a later validation fails.
  * Descriptor sites: push destination, owning/heap/arena value copy, direct heap
  * union copy and layout-aware reference-root snapshot. Payload leaves include
  * their text/nominal/record copies and the owned-set name. The task-result

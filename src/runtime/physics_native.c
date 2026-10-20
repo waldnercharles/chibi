@@ -73,18 +73,16 @@ const char *physics_native_contacts(
         return "Get Contact Entities requires valid Collider and Transform "
                "components";
     }
-    pin_array *array = arena_alloc(a, sizeof *array);
-    *array = (pin_array){ .element_type = PIN_HANDLE,
-                          .type_name = "ecs.entity",
-                          .count = acount(handles),
-                          .capacity = acount(handles) };
-    if (array->count) {
-        array->items = arena_alloc(a, (size_t)array->count * sizeof *array->items);
-        for (int i = 0; i < array->count; i++) {
-            array->items[i] = (pin_value){ .type = PIN_HANDLE,
-                                           .type_name = "ecs.entity",
-                                           .u64 = ecs_entity_to_u64(handles[i]) };
-        }
+    pin_array shape = { .element_type = PIN_HANDLE, .type_name = "ecs.entity" };
+    pin_array *array = pin_array_snapshot_like(a, &shape, acount(handles));
+    assert(array);
+    for (int i = 0; i < array->count; i++) {
+        pin_value item = { .type = PIN_HANDLE,
+                           .type_name = "ecs.entity",
+                           .u64 = ecs_entity_to_u64(handles[i]) };
+        int stored = pin_array_set(array, i, &item);
+        assert(!stored);
+        (void)stored;
     }
     afree(handles);
     *out = (pin_value){ .type = PIN_HANDLE,

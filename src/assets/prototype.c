@@ -540,6 +540,10 @@ static bool merge_prototype(prototype *dst, prototype *src, char *error, size_t 
         apush(dst->graphs, src->graphs[i]);
     }
     aclear(src->graphs);
+    for (int i = 0; i < acount(src->pairs); i++) {
+        apush(dst->pairs, src->pairs[i]);
+    }
+    aclear(src->pairs);
     return true;
 }
 
@@ -579,6 +583,57 @@ static prototype *load_named(
         return NULL;
     }
     return document;
+}
+static bool read_pairs(prototype *document, av_value *root, char *error, size_t error_size)
+{
+    const prototype_registry *registry = document->registry;
+    av_value *pairs = av_obj_get(root, "links");
+    if (pairs && !av_is_obj(pairs)) {
+        set_error(error, error_size, "prototype links must be a relationship object");
+        return false;
+    }
+    for (size_t i = 0; i < av_obj_size(pairs); i++) {
+        const char *name = av_get_str(av_obj_key_at(pairs, i));
+        av_value *targets = av_obj_value_at(pairs, i);
+        const ecs_relationship_desc *relationship = NULL;
+        for (int j = 0; j < registry->relationship_count; j++) {
+            if (!strcmp(registry->relationships[j]->name, name)) {
+                relationship = registry->relationships[j];
+            }
+        }
+        if (!relationship || (!av_is_str(targets) && !av_is_arr(targets))) {
+            set_error(error, error_size, "prototype link names an unknown relationship or invalid target");
+            return false;
+        }
+        int count = av_is_str(targets) ? 1 : (int)av_arr_size(targets);
+        if ((relationship->traits & ECS_REL_EXCLUSIVE) && count > 1) {
+            set_error(error, error_size, "exclusive prototype relationship has multiple targets");
+            return false;
+        }
+        /* A derived prototype replaces the links it explicitly names. */
+        for (int j = acount(document->pairs) - 1; j >= 0; j--) {
+            if (document->pairs[j].relationship->id == relationship->id) {
+                free(document->pairs[j].path);
+                memmove(
+                    document->pairs + j,
+                    document->pairs + j + 1,
+                    (size_t)(acount(document->pairs) - j - 1) * sizeof *document->pairs
+                );
+                asetlen(document->pairs, acount(document->pairs) - 1);
+            }
+        }
+        for (int j = 0; j < count; j++) {
+            const char *path = av_get_str(
+                av_is_str(targets) ? targets : av_arr_get(targets, (size_t)j)
+            );
+            if (!path || strncmp(path, "child.", 6) || !path[6]) {
+                set_error(error, error_size, "prototype relationship target must name child.<entity-path>");
+                return false;
+            }
+            apush(document->pairs, ((prototype_pair){ relationship, xstrdup(path + 6) }));
+        }
+    }
+    return true;
 }
 
 /* Folds the included prototype's content into `prototype`, before its own. */
@@ -725,7 +780,8 @@ static prototype *load_value_document(
 
     av_value *includes = av_obj_get(root, "includes");
     if (includes) {
-        if (!av_is_arr(includes) || (!authored && !registry->include)) {
+        if (!av_is_arr(includes) ||
+            (!authored && av_arr_size(includes) && !registry->include)) {
             set_error(error, error_size, "prototype includes need a resolver");
             prototype_free(document);
             return NULL;
@@ -790,6 +846,10 @@ static prototype *load_value_document(
             apush(document->graphs, own_string(document, av_get_str(graph)));
         }
     }
+    if (!read_pairs(document, root, error, error_size)) {
+        prototype_free(document);
+        return NULL;
+    }
     return document;
 }
 
@@ -802,7 +862,9 @@ static prototype *load_document(
     size_t error_size
 )
 {
-    av_doc *doc = asset_text_read(text, error, error_size);
+    av_doc *doc = registry->decode
+                    ? registry->decode(text, registry, error, error_size)
+                    : asset_text_read(text, error, error_size);
     prototype *result = doc
                           ? load_value_document(av_doc_root(doc), registry, false, stack, stack_count, error, error_size)
                           : NULL;
@@ -835,7 +897,9 @@ prototype *prototype_load_authored(
     size_t error_size
 )
 {
-    av_doc *doc = asset_text_read(text, error, error_size);
+    av_doc *doc = registry->decode
+                    ? registry->decode(text, registry, error, error_size)
+                    : asset_text_read(text, error, error_size);
     prototype *result = doc
                           ? load_value_document(av_doc_root(doc), registry, true, NULL, 0, error, error_size)
                           : NULL;
@@ -974,6 +1038,10 @@ void prototype_free(prototype *document)
     }
     afree(document->detached_components);
     prototype_links_free(document->links);
+    for (int i = 0; i < acount(document->pairs); i++) {
+        free(document->pairs[i].path);
+    }
+    afree(document->pairs);
     afree(document->graphs);
     afree(document->includes);
     scene_document_free(document->children);
@@ -1190,6 +1258,21 @@ av_value *prototype_to_value(const prototype *document)
         av_obj_add_strcpy(doc, root, "identity", document->identity);
     }
     free(identity);
+    if (acount(document->pairs)) {
+        av_value *pairs = av_obj_add_obj(doc, root, "links");
+        for (int i = 0; i < acount(document->pairs); i++) {
+            const prototype_pair *pair = &document->pairs[i];
+            av_value *targets = av_obj_get(pairs, pair->relationship->name);
+            if (!targets) {
+                targets = av_obj_add_arr(doc, pairs, pair->relationship->name);
+            }
+            size_t length = strlen(pair->path) + sizeof "child.";
+            char *path = xmalloc(length);
+            snprintf(path, length, "child.%s", pair->path);
+            av_arr_add_str(doc, targets, path);
+            free(path);
+        }
+    }
     if (document->authored && acount(document->includes)) {
         av_value *includes = av_arr(doc);
         for (int i = 0; i < acount(document->includes); i++) {
@@ -1698,6 +1781,20 @@ static int create_tree(
     size_t error_size
 )
 {
+    for (int i = 0; document->registry && i < document->registry->relationship_count;
+         i++) {
+        const ecs_relationship_desc *desc = document->registry->relationships[i];
+        const ecs_relationship_desc *found = ecs_world_relationship(world, desc->id);
+        if ((found && (found->traits != desc->traits ||
+                       found->on_delete_target != desc->on_delete_target ||
+                       (found->key != desc->key && (!found->key || !desc->key ||
+                                                    strcmp(found->key, desc->key))) ||
+                       strcmp(found->name, desc->name))) ||
+            (!found && ecs_world_register_relationship(world, desc, NULL))) {
+            set_error(error, error_size, "prototype relationship schema could not be registered");
+            return ECS_ERR_DUPLICATE;
+        }
+    }
     if (prototype_register_tag(document, world) != ECS_OK) {
         set_error(error, error_size, "prototype identity tag could not be registered");
         return ECS_ERR_DUPLICATE;
@@ -1781,6 +1878,27 @@ static int create_tree(
     for (int i = 0; !result && i < count; i++) {
         result = write_links(world, spawned[i], document->child_prototypes[i], true, document, spawned, error, error_size);
     }
+    for (int i = 0; !result && i < acount(document->pairs); i++) {
+        const prototype_pair *pair = &document->pairs[i];
+        int target = document->children
+                       ? scene_document_entity_index(document->children, pair->path)
+                       : -1;
+        if (target < 0) {
+            set_error(error, error_size, "prototype relationship names missing child.%s", pair->path);
+            result = ECS_ERR_ENTITY;
+        } else {
+            result = ecs_world_record_add_pair(
+                world,
+                entity,
+                pair->relationship->id,
+                spawned[target],
+                (uint64_t)i
+            );
+        }
+    }
+    if (!result && acount(document->pairs)) {
+        result = ecs_world_apply_commands(world);
+    }
     afree(spawned);
     afree(children);
     return result;
@@ -1831,9 +1949,13 @@ static int spawn_tree(
         /* Children go first: one whose ChildOf was never applied would
          * outlive its parent. */
         ecs_world_clear_commands(world);
-        for (int i = acount(entities) - 1; i >= 0; i--) {
+        int cleanup = ecs_world_prepare_owned_destruction(world, entities, acount(entities));
+        if (cleanup) {
+            set_error(error, error_size, "prototype rollback refused by an external Panic link");
+        }
+        for (int i = acount(entities) - 1; !cleanup && i >= 0; i--) {
             if (ecs_entity_is_alive(world, entities[i])) {
-                ecs_world_destroy_entity(world, entities[i]);
+                cleanup = ecs_world_destroy_entity(world, entities[i]);
             }
         }
     }

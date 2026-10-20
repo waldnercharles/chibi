@@ -1,4 +1,4 @@
 # repository waldnercharles/chibi
 # target	variant	release	sha256
-macos-arm64	release	third-party-2026-10-20	5df43777601df361f332c11c035195f4d4e61f785424be525a577bb9a2536c3b
-macos-arm64	address-undefined	third-party-2026-10-20	644f6fe498713f628143f1dc0cfe38fdb592237a47a83b34e93b8a9dc85d74a1
+macos-arm64	release	third-party-2026-10-20.2	66771e3fd93ac52603b72b0853728b8772862a6d69c3b01051ad33ed9c6a3d54
+macos-arm64	address-undefined	third-party-2026-10-20.2	1fe620fd961e19f266a18169ae9768692f369d17b3ff46080b2756faef0d3567

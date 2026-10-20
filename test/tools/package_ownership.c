@@ -38,7 +38,7 @@ static int inspect()
                          "sys.argv[4])\n"
                          "c=p.cache_values(b);r=p.build_identity(b,c)\n"
                          "f=p.package_files(s);i=p.installed_archive_owners(r,"
-                         "f,'',False)\n"
+                         "f)\n"
                          "t=p.installed_private_tools(r,f,s)\n"
                          "e=p.engine_manifest(b/'engine-stage',r)\n"
                          "print(json.dumps({'compiled':r,'installation':i,'"

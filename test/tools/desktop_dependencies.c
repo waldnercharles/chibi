@@ -97,6 +97,12 @@ TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail)
     return true;
 }
 
+TEST_CASE(archive_libraries_keep_languages_and_licences)
+{
+    REQUIRE(relocated("archive"));
+    return true;
+}
+
 TEST_CASE(tooling_languages_follow_native_packages)
 {
     char producer[1024];
@@ -126,6 +132,7 @@ void test_tool_desktop_dependencies()
     RUN_TEST_CASE(supplied_crypto_keeps_its_provider_contract);
     RUN_TEST_CASE(mismatched_crypto_metadata_is_rejected);
     RUN_TEST_CASE(discovered_opengl_roles_relocate_but_unowned_paths_fail);
+    RUN_TEST_CASE(archive_libraries_keep_languages_and_licences);
     RUN_TEST_CASE(tooling_languages_follow_native_packages);
     tool_remove_tree(directory);
 }

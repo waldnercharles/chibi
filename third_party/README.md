@@ -20,12 +20,23 @@ repository. Nothing is fetched or compiled from upstream during a normal build.
   (ThreadSanitizer). Sanitized builds link the matching variant; every other
   build links `release`.
 
-An archive holds Cute Framework (with SDL3, PhysicsFS, Box2D, Box3D and, on
-Linux, s2n-tls) and RmlUi (with FreeType) as static libraries, their headers
-and licences, and an imported-target file, `third-party.cmake`. It also holds
-the patched sources the SDK compiles itself under `source/`: Box2D, Box3D,
-SLJIT, enkiTS, tree-sitter and its CSS and HTML grammars, and the Cute headers
-and single-file decoders the SDK compiles against.
+An archive holds static libraries with their headers and licences, and
+`third-party.cmake`, which defines an imported `Chibi::vendor_<library>` target
+for each:
+
+- Cute Framework, with SDL3, PhysicsFS, its own Box2D and Box3D and, on Linux,
+  s2n-tls; RmlUi, with FreeType.
+- Box2D, Box3D, enkiTS (not in `web` or `web-player`), SLJIT (native only),
+  tree-sitter and its CSS and HTML grammars. The SDK exports them as
+  `Chibi::box2d`, `Chibi::box3d`, `Chibi::task_scheduler`,
+  `Chibi::execution_sljit`, `Chibi::syntax_runtime` and `Chibi::ui_syntax`.
+  They keep the flags the SDK compiled them with: Box2D and Box3D without
+  floating-point contraction and with SIMD only in `web-threads` among the web
+  targets, enkiTS with three task priorities, SLJIT with its W^X allocator.
+
+The SDK installs copies of the libraries it links. The archive also holds Cute's
+math headers, image and Vorbis decoders and runtime shader compiler header under
+`source/cute_framework/`, which the SDK compiles against directly.
 
 ## Building the archives
 

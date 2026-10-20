@@ -919,6 +919,60 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
     REQUIRE(!analysis->valid);
     return true;
 }
+/* A function with results ends in a terminating statement, as Go and Odin
+ * require: a return, an if/else or exhaustive switch whose every branch
+ * terminates, or a while (true) that nothing breaks out of. */
+TEST_CASE(language_functions_with_results_must_return)
+{
+    const char *missing[] = {
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }",
+        "L :: library { F :: (a: float) -> (r: float) { r = a; } }",
+        "L :: library { F :: (c: bool) -> int { while (true) { if c { break; } "
+        "return 1; } } }",
+        "L :: library { F :: (n: int) -> int { switch n { case 1: return 1; "
+        "case 2: return 2; } } }",
+        "L :: library { F :: (n: int) -> int { while (n > 0) { return 1; } } }",
+        "L :: library { F :: (n: int) -> int { for i in 0..n { return i; } } }",
+        "L :: library { F :: (n: int) -> int { while (true) { switch n { case "
+        "1: break; case: return 1; } } } }",
+        "L :: library { F :: (n: int) { if n > 0 { return 1; } } }",
+        "Run :: behavior { F :: () -> int { on Begin { } } }",
+    };
+    for (size_t i = 0; i < sizeof missing / sizeof *missing; i++) {
+        parse(missing[i]);
+        REQUIRE(!analysis->valid && diagnostic("Missing return"));
+    }
+    const char *ending[] = {
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else { "
+        "return 2; } } }",
+        "L :: library { F :: (a: float) -> (r: float) { r = a; return; } }",
+        "L :: library { F :: () -> int { while (true) { return 1; } } }",
+        "L :: library { F :: (c: bool) -> int { while (true) { while (c) { "
+        "break; } return 1; } } }",
+        "L :: library { F :: (n: int) -> int { switch n { case 1: return 1; "
+        "case: return 2; } } }",
+        "L :: library { Choice :: union { A | B }; "
+        "F :: (n: int) -> Choice { while (true) { if n > 0 { return Choice.A; "
+        "} return Choice.B; } } }",
+        "L :: library { F :: (n: int) { if n > 0 { return; } } }",
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else if "
+        "n < 0 { return -1; } else { return 0; } } }",
+
+    };
+    for (size_t i = 0; i < sizeof ending / sizeof *ending; i++) {
+        parse(ending[i]);
+        REQUIRE(analysis->valid);
+    }
+    /* A union result still needs a value on every return path. */
+    parse("L :: library { Choice :: union { A | B }; F :: () -> (value: Choice) { return; } }");
+    REQUIRE(diagnostic("Union result 'value' requires a value on every return path"));
+    /* The diagnostic sits on the closing brace that control would fall past. */
+    parse("L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }");
+    const script_diagnostic *error = diagnostic("Missing return");
+    int brace = (int)(strstr(analysis->text, "} } }") - analysis->text) + 2;
+    REQUIRE(error && error->range.start == brace && error->range.end == brace + 1);
+    return true;
+}
 TEST_CASE(language_hex_literal_fills_integer_storage)
 {
     parse("Colors :: behavior { color: uint = 0xf7d308ff; }");
@@ -1685,7 +1739,7 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "elapsed; } }",
           "Units differ: u = s" },
         { "M :: library { Bad :: (distance: u = dt) {} }", "Units differ: u default s" },
-        { "M :: library { Bad :: () -> (Distance: u = dt) {} }",
+        { "M :: library { Bad :: () -> (Distance: u = dt) { return } }",
           "Units differ: u default s" },
         { "M :: library { Bad :: () -> (Distance: u, Elapsed: s) { "
           "return(Distance: dt, Elapsed: 1); } }",
@@ -1873,7 +1927,7 @@ TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches)
         "Run :: () -> Choice { } }"
     );
     REQUIRE(!analysis->valid);
-    REQUIRE(diagnostic("Union result 'Result' requires a value on every return path"));
+    REQUIRE(diagnostic("Missing return"));
     parse("Unions :: library { Choice :: union { A | B }; Run :: () -> Choice { return Result; } }");
     REQUIRE(!analysis->valid);
     parse(
@@ -2130,6 +2184,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_query_filters_reject_effects_and_unbound_variables);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
+    RUN_TEST_CASE(language_functions_with_results_must_return);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
     RUN_TEST_CASE(language_character_literals_take_their_type_from_context);
     RUN_TEST_CASE(language_char_widens_to_int_and_narrows_explicitly);

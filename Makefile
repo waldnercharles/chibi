@@ -104,7 +104,7 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 3 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 4 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build
 toolchain-build:

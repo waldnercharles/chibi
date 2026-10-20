@@ -46,11 +46,10 @@ static bool spelled(const char *text, TSNode node, const char *name)
     return strlen(name) == length &&
            !strncmp(text + ts_node_start_byte(node), name, length);
 }
-/* Names match as the catalog matches them: without case, spaces,
- * underscores or hyphens. */
-static bool tick(const char *text, TSNode name)
+/* Whether name spells want as the catalog matches names: without case,
+ * spaces, underscores or hyphens. */
+static bool named(const char *text, TSNode name, const char *want)
 {
-    const char *want = "tick";
     for (uint32_t i = ts_node_start_byte(name); i < ts_node_end_byte(name); i++) {
         char c = text[i];
         if (c == ' ' || c == '_' || c == '-') {
@@ -125,13 +124,47 @@ static bool callable(TSNode node)
     return is(node, "handler") || is(node, "function_declaration") ||
            is(node, "macro_declaration") || is(node, "system");
 }
-/* Whether a declaration around node binds name, so it reads no global. */
+static bool lists(const char *text, TSNode list, const char *name)
+{
+    for (uint32_t i = 0; i < named_count(list); i++) {
+        if (spelled(text, field(ts_node_named_child(list, i), "name"), name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether a declaration in scope at node binds name, so it reads no global:
+ * a parameter of a callable around it, a loop or pattern around it, a local
+ * declared before it in a block around it, or a declaration of the program. */
 static bool shadowed(const char *text, TSNode node, const char *name)
 {
+    uint32_t at = ts_node_start_byte(node);
     for (TSNode up = ts_node_parent(node); !ts_node_is_null(up);
          up = ts_node_parent(up)) {
-        if (callable(up) && declares(text, up, name)) {
+        if (callable(up) && (lists(text, field(up, "parameters"), name) ||
+                             lists(text, field(up, "payload"), name) ||
+                             lists(text, field(up, "results"), name))) {
             return true;
+        }
+        if (is(up, "for_statement") && (spelled(text, field(up, "name"), name) ||
+                                        spelled(text, field(up, "key"), name))) {
+            return true;
+        }
+        if ((is(up, "if_statement") && declares(text, field(up, "condition"), name)) ||
+            (is(up, "switch_arm") && declares(text, field(up, "value"), name))) {
+            return true;
+        }
+        bool block = is(up, "block") || is(up, "callable_body") ||
+                     is(up, "system_body");
+        for (uint32_t i = 0; block && i < named_count(up); i++) {
+            TSNode child = ts_node_named_child(up, i);
+            bool binds = is(child, "local_declaration") ||
+                         is(child, "constant_declaration") ||
+                         is(child, "state_declaration");
+            if (binds && ts_node_start_byte(child) < at &&
+                spelled(text, field(child, "name"), name)) {
+                return true;
+            }
         }
         for (uint32_t i = 0; is(up, "declaration_body") && i < named_count(up); i++) {
             TSNode child = ts_node_named_child(up, i);
@@ -178,15 +211,24 @@ static void list_step(step_rewrite *s, TSNode owner, TSNode list, TSNode body)
     snprintf(entry, sizeof entry, "%s%s", fields ? ", " : "", STEP_FIELD);
     edit(s, ts_node_end_byte(list) - 1, ts_node_end_byte(list) - 1, entry);
 }
-static void step_read(step_rewrite *s, TSNode node, const char *name)
+/* A read of a step global: node is the identifier, or the call whose callee
+ * names the capability. */
+static void step_read(step_rewrite *s, TSNode node)
 {
-    if (shadowed(s->text, node, name)) {
+    TSNode spelling = is(node, "call_expression") ? field(node, "function") : node;
+    uint32_t length = ts_node_end_byte(spelling) - ts_node_start_byte(spelling);
+    char *name = xmalloc(length + 1);
+    memcpy(name, s->text + ts_node_start_byte(spelling), length);
+    name[length] = '\0';
+    bool local = shadowed(s->text, node, name);
+    free(name);
+    if (local) {
         return;
     }
     TSNode owner = evaluator(node);
     bool handler = is(owner, "handler") &&
                    spelled(s->text, field(owner, "kind"), "on") &&
-                   tick(s->text, field(owner, "name"));
+                   named(s->text, field(owner, "name"), "tick");
     if (handler) {
         list_step(s, owner, field(owner, "parameters"), field(owner, "body"));
     } else if (is(owner, "system")) {
@@ -208,16 +250,16 @@ static void reads(step_rewrite *s, TSNode node)
         reads(s, field(node, "object"));
         return;
     }
-    if (is(node, "call_expression") &&
-        spelled(s->text, field(node, "function"), "delta_time") &&
+    TSNode callee = field(node, "function");
+    if (is(node, "call_expression") && is(callee, "identifier") &&
+        named(s->text, callee, "deltatime") &&
         !named_count(field(node, "arguments"))) {
-        step_read(s, node, "delta_time");
+        step_read(s, node);
         return;
     }
     if (is(node, "identifier")) {
-        if (spelled(s->text, node, "dt") || spelled(s->text, node, "delta")) {
-            uint32_t length = ts_node_end_byte(node) - ts_node_start_byte(node);
-            step_read(s, node, length == 2 ? "dt" : "delta");
+        if (named(s->text, node, "dt") || named(s->text, node, "delta")) {
+            step_read(s, node);
         }
         return;
     }

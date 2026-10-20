@@ -8057,6 +8057,13 @@ TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
           "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
         { "S :: system(p: Position) on Tick :: () { p.x += delta }",
           "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        /* The catalog's spellings name the capability; a local declared later
+         * or in an inner block hides only the reads in its scope. */
+        { "B :: behavior { x: float = 0; on Tick :: () { x += DeltaTime() } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt; if x > 1 { "
+          "dt := 1; x += dt } } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt; "
+          "if x > 1 { dt := 1; x += dt } } }" },
         /* A parameter, local or state of that name reads no global. */
         { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
         { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },

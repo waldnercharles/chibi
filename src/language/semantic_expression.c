@@ -546,6 +546,30 @@ static void record_defaults(analyzer *a, TSNode node, script_expression *result)
         apush(result->arguments, ((script_argument){ value, i, field->id, result->range }));
     }
 }
+/* Whether symbol is a payload name a handler without a parameter list binds,
+ * spelled like a parameter of the function the handler runs in. A bare read
+ * would take the payload, though the function's parameter is in sight. An
+ * `after entry` payload is the function's own parameters, so it is exempt. */
+static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
+{
+    if (symbol->kind != SCRIPT_PARAMETER || symbol->declaration.start >= 0 ||
+        symbol->function < 0) {
+        return false;
+    }
+    const script_function *handler = &a->out->functions[symbol->function];
+    if ((handler->kind != SCRIPT_FUNCTION_CONTINUATION &&
+         handler->kind != SCRIPT_FUNCTION_HANDLER) ||
+        handler->parent < 0) {
+        return false;
+    }
+    const script_function *owner = &a->out->functions[handler->parent];
+    for (int i = 0; i < acount(owner->parameters); i++) {
+        if (!strcmp(a->out->symbols[owner->parameters[i]].name, symbol->name)) {
+            return true;
+        }
+    }
+    return false;
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -689,14 +713,17 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             return script_analyzer_expr_add(a, result);
         }
         script_analyzer_resolve_initializer(a, index);
-        if (script_analyzer_is(node, "builtin_reference") &&
-            script_analyzer_text_is(a, node, "entry")) {
-            int function = a->out->symbols[index].function;
-            if (function >= 0 && acount(a->out->functions[function].parameters) == 1) {
-                index = a->out->functions[function].parameters[0];
-            }
-        }
         script_symbol symbol = a->out->symbols[index];
+        if (hides_parameter(a, &symbol)) {
+            script_analyzer_diagnostic(
+                a,
+                node,
+                "'%s' names both this handler's payload and a parameter of the "
+                "function around it; "
+                "list the payload's parameters to give them other names",
+                symbol.name
+            );
+        }
         int owner = symbol.scope >= 0 ? a->out->scopes[symbol.scope].function : -1;
         if (a->out->kind == SCRIPT_PROGRAM_SYSTEM &&
             symbol.kind == SCRIPT_LOCAL && owner < 0 && a->function >= 0 &&

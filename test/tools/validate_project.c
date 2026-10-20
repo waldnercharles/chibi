@@ -570,7 +570,7 @@ static const char *const
     SHAPES_LIBRARY = "Shapes :: library {\n"
                      "    Disc :: (X: float = 0.0, Y: float = 0.0) -> (Value: "
                      "float = 0.0) {\n"
-                     "        return field_circle(entry.X, entry.Y, 40.0)\n"
+                     "        return field_circle(X, Y, 40.0)\n"
                      "    }\n"
                      "}\n";
 

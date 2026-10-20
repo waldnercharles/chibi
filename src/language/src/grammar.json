@@ -1610,6 +1610,15 @@
         {
           "type": "ALIAS",
           "content": {
+            "type": "STRING",
+            "value": "entry"
+          },
+          "named": true,
+          "value": "builtin_reference"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
             "type": "SYMBOL",
             "name": "_handler_path"
           },
@@ -3814,10 +3823,6 @@
         {
           "type": "STRING",
           "value": "event"
-        },
-        {
-          "type": "STRING",
-          "value": "entry"
         }
       ]
     },

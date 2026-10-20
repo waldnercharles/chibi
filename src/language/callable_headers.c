@@ -348,18 +348,6 @@ static void register_header(headers *h, TSNode node, int *symbol_out, int *funct
     h->functions[function].scope = h->context.scope;
     parameters(h, field(node, "parameters"), false);
     parameters(h, field(node, "results"), true);
-    script_symbol entry = { .name = own(h->storage, "entry"),
-                            .id = script_catalog_id("entry", h->symbols[symbol].name),
-                            .kind = SCRIPT_PARAMETER,
-                            .type = { .storage = PIN_STRUCT,
-                                      .nominal = h->symbols[symbol].id,
-                                      .flags = SCRIPT_TYPE_RESULTS },
-                            .scope = h->context.scope,
-                            .initializer = -1,
-                            .function = function,
-                            .declaration = { .start = -1, .end = -1 } };
-    apush(h->symbols, entry);
-    apush(h->changes, SCRIPT_CALLABLE_APPEND);
     h->functions[function].inferred = !macro &&
                                       ts_node_is_null(field(node, "results")) &&
                                       returns_value(body);

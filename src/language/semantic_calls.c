@@ -265,30 +265,6 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         );
     }
     if (script_analyzer_is(object, "builtin_reference") &&
-        script_analyzer_text_is(a, object, "entry")) {
-        int payload = script_analyzer_lookup(a, object);
-        int function = payload >= 0 ? a->out->symbols[payload].function : -1;
-        int parameter = function >= 0
-                          ? script_analyzer_authored_parameter_index(a, &a->out->functions[function], name)
-                          : -1;
-        if (parameter >= 0) {
-            int symbol = a->out->functions[function].parameters[parameter];
-            script_symbol value = a->out->symbols[symbol];
-            script_analyzer_use(a, member, symbol, SCRIPT_READ, 0);
-            free(name);
-            return script_analyzer_expr_add(
-                a,
-                (script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
-                                     .type = value.type,
-                                     .range = script_analyzer_range(a, node),
-                                     .symbol = symbol,
-                                     .left = -1,
-                                     .right = -1,
-                                     .writable = value.writable }
-            );
-        }
-    }
-    if (script_analyzer_is(object, "builtin_reference") &&
         script_analyzer_text_is(a, object, "state")) {
         int symbol = script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
         if (symbol < 0) {
@@ -419,9 +395,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             result.writable = (result.type.flags & SCRIPT_TYPE_REFERENCE) != 0;
         } else if (receiver_function >= 0) {
             script_function *function = &a->out->functions[receiver_function];
-            bool payload = (receiver.symbol >= 0 &&
-                            !strcmp(a->out->symbols[receiver.symbol].name, "entry")) ||
-                           function->kind == SCRIPT_FUNCTION_HANDLER ||
+            bool payload = function->kind == SCRIPT_FUNCTION_HANDLER ||
                            function->kind == SCRIPT_FUNCTION_CONTINUATION ||
                            function->kind == SCRIPT_FUNCTION_MACRO_ENTRY;
             int *members = payload ? function->parameters : function->results;

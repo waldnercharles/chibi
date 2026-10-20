@@ -215,24 +215,24 @@ Suggestion: stage one compiles the maps stage zero accepts, then the
 compiler's name lookups use them. Dispatch on a byte or an operator stays a
 `switch`, as in Odin, since a map would hash on every lookup.
 
-## Stage one compiles only `for name in array`
+## The compiler counts with `while`
 
 Stage one. Stage zero has `for i in first..last` with inclusive bounds, keyed
 loops and `for item: ref in items` (#420), and since #542 half-open
-`first..<last` and reverse `for <` loops over ranges and arrays, as the owner
-decided on 2026-10-20 after Odin's `..<` and Jai's `for <`. Stage one rejects
-all of them, so the compiler's own counting loops stay
-`while (index < n) { ...; index += 1; }`. Since stage one compiles
-`core:strings`, every scan there, forward and reverse, is a `while` with its
-own `i += 1` or `i -= 1`, and a `continue` before the step hangs (#503).
+`first..<last` and reverse `for <` loops, as the owner decided on 2026-10-20
+after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
+range, keyed and reverse forms too, but not `ref` loops, and the compiler's
+own counting loops and `core:strings`' scans are still
+`while (index < n) { ...; index += 1; }`, where a `continue` before the step
+hangs (#503).
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
   `for (0..n) |i|`; Jai inclusive `for i: 0..n-1` and `for <` to reverse;
   Python `for i in range(n)`; C, C++ and C# three-part `for`.
 
-Suggestion: stage one compiles range, keyed and reverse loops, then the
-compiler and `core:strings` replace their counting `while` loops.
+Suggestion: `core:strings` and the compiler replace their counting `while`
+loops with range loops, and stage one compiles `ref` loops.
 
 ## Stage one constants are literals only
 

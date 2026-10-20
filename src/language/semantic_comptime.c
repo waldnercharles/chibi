@@ -248,6 +248,27 @@ static bool compile_number(
     *out = (compile_value){ .value = frame->literal.constant };
     return true;
 }
+/* A character literal evaluates to its scalar, an int as at run time. */
+static bool compile_character(
+    analyzer *a,
+    TSNode node,
+    compile_binding *bindings,
+    compile_value *out,
+    int *budget,
+    compile_expression_frame *frame
+)
+{
+    (void)bindings;
+    (void)budget;
+    (void)frame;
+
+    int value = 0;
+    if (!script_analyzer_character_value(a, node, &value)) {
+        return false;
+    }
+    *out = (compile_value){ .value = { .type = PIN_I32, .i = value } };
+    return true;
+}
 static bool compile_boolean(
     analyzer *a,
     TSNode node,
@@ -492,16 +513,17 @@ static bool expression(
                   ? 6
               : (!strcmp(kind, "unary_expression") || !strcmp(kind, "binary_expression"))
                   ? 7
-                  : -1;
+              : !strcmp(kind, "character") ? 8
+                                           : -1;
     if (index < 0) {
         return fail(a, node, "unsupported expression in a constant context");
     }
     /* Volatile dispatch preserves branch stack isolation through Wasm's
      * whole-program inliner, which does not retain C noinline attributes. */
     static compile_expression_handler const volatile handlers[] = {
-        compile_parenthesized,   compile_named,    compile_member,
-        compile_number,          compile_boolean,  compile_string,
-        compile_call_expression, compile_operation
+        compile_parenthesized,   compile_named,     compile_member,
+        compile_number,          compile_boolean,   compile_string,
+        compile_call_expression, compile_operation, compile_character
     };
     return handlers[index](a, node, bindings, out, budget, frame);
 }

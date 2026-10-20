@@ -118,6 +118,20 @@ static const type_field *find_field(const type_desc *type, const char *name)
     return NULL;
 }
 
+/* The scalar a field of type `field` combines with: an integer becomes a
+ * double for a floating field, as integers widen implicitly to floating
+ * types, and numeric_op reads both operands as floating. */
+static pin_value field_scalar(pin_value scalar, pin_type field)
+{
+    if ((field != PIN_F32 && field != PIN_F64) || scalar.type < PIN_I8 ||
+        scalar.type > PIN_U64) {
+        return scalar;
+    }
+    pin_value widened;
+    behavior_scalar_cast(scalar, PIN_F64, BEHAVIOR_CAST_EXACT, &widened);
+    return widened;
+}
+
 static pin_value struct_binary(pin_value aggregate, pin_value other, int operation, arena *a, int aggregate_left)
 {
     const type_desc *type = type_catalog_find(aggregate.type_name);
@@ -145,9 +159,9 @@ static pin_value struct_binary(pin_value aggregate, pin_value other, int operati
             }
             pin_read_field(other.ptr, peer, aggregate_left ? &right : &left);
         } else if (aggregate_left) {
-            right = other;
+            right = field_scalar(other, field->type);
         } else {
-            left = other;
+            left = field_scalar(other, field->type);
         }
         pin_value result = numeric_op(left, right, operation);
         if (result.type == PIN_FLOW) {

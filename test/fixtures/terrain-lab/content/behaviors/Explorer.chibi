@@ -3,7 +3,7 @@
 Explorer :: behavior {
     terrain: entity
     terrainIdentity := "terrain-lab-quarry-v1"
-    facing := 1
+    facing := 1.0
     jumpHeld := false
     digHeld := false
     saveHeld := false

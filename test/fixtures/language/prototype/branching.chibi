@@ -1,8 +1,8 @@
 Branching :: behavior {
-    elapsed := 0
+    elapsed := 0.0
     paused := false
     active := true
-    intensity := 0
+    intensity := 0.0
 
     on Tick(dt) {
         if !paused && active {

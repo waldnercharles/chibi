@@ -127,20 +127,6 @@ Other languages:
 Suggestion: both compilers gain `a, b := F()` destructuring and
 `a, b = b, a`.
 
-## Stage one computes less integer arithmetic than stage zero
-
-Stage one. Stage zero computes every arithmetic and comparison operator on
-`uint64`, `uint`, `uint16`, `int8` and `byte`, with unsigned ordering and
-division. Stage one computes only addition, multiplication, equality and bit
-operations on `uint64`, only equality and bit operations on `byte`, and has no
-`uint`, `uint16` or `int8`, so magnitudes move to `int64` and comparisons are
-rewritten. `core:strings` works in `int` for the same reason (#503).
-
-- C, C++, Rust, Odin, Zig and C# provide every arithmetic and comparison
-  operator on unsigned integers.
-
-Suggestion: stage one computes what stage zero computes.
-
 ## Integer overflow wraps silently
 
 Language. Integer arithmetic wraps without a sign: `int` 2147483647 + 1 is

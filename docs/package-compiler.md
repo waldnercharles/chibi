@@ -40,8 +40,8 @@ bytes, or none when `Compile` rejects the input, for a host that takes one
 Packages of functions, records, unions and constants, and the packages they
 import:
 
-- `int`, `bool`, `string`, `byte`, `int64` and `uint64` values, records of
-  those, unions whose variants carry any of them, and arrays of any of these,
+- `int`, `bool`, `string`, `int8`, `byte`, `int16`, `uint16`, `uint`,
+  `int64` and `uint64` values, records of those, unions whose variants carry any of them, and arrays of any of these,
   as parameters, results and locals; `float` and `double` values as
   parameters, results and locals; string literals decode as JSON strings, as
   stage zero reads them;
@@ -72,11 +72,9 @@ import:
   `first..last` or `first..<last`, and over an array, `for x in xs` or
   `for x, i in xs` with its index, each counting down with `for <`, as stage
   zero counts them; `ref` loops reject;
-- integer arithmetic, bitwise and comparison operators where the runtime
-  computes them: all of them for `int` and `int64`, only addition,
-  multiplication, equality and bit operations for `uint64`, and only equality
-  and bit operations for `byte`, as stage zero's verifier allows. String
-  equality, and `!`, `&&` and `||` with short-circuit evaluation;
+- every integer arithmetic, bitwise and comparison operator on every integer
+  type, unsigned ordering and division included, as stage zero computes
+  them; negation only on the signed types. String equality, and `!`, `&&` and `||` with short-circuit evaluation;
 - struct and array literals, where the type is known from the declared local,
   the result or the parameter. With no type expected, as for `xs := [a, b]` or
   an argument of a native such as `resize([int(0)], n)`, an array literal's
@@ -124,7 +122,7 @@ import:
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
 Anything else is rejected with its source position. Floating record fields
-and payloads, other integer types, implicit widening of call arguments,
+and payloads, implicit widening of call arguments,
 element stores, literal
 members, payloads and in-place natives, constants of other types, constant
 arrays and constants computed by calls, type patterns, record field defaults, fields of array elements, named

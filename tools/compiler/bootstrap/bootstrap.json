@@ -2,12 +2,12 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "e13f75073fee85cae55757310b9497e598208ef5",
+  "revision": "c3889b8b5ed02a3254ff4c092e864a8dda506694",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 9641370,
-    "sha256": "3fd236e1332154e1df6dbb551fcb1349ccc5d7b24745576999eb7c2d640ba842"
+    "bytes": 9667653,
+    "sha256": "feeb15fcc6587e7de127c6e899d244d989f8ebc20f7bdf02efdbf412bef0d058"
   },
   "project": "/project",
   "core": "/sdk/core",
@@ -39,8 +39,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 20609,
-      "sha256": "c8520478c498b2ef8170473bed85ea4fc098ae4e23c19f429bdd93236ea88f82"
+      "bytes": 21915,
+      "sha256": "179872c8d72eebfcf4b8e1aa5587430d9c4ce63d3a92060403c0c53032dcd362"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",

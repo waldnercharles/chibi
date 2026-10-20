@@ -191,7 +191,11 @@ member procedures, and `on` handlers of the game's events with scalar
 payloads. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
-event's payload; a parameter names the field in its position. A handler body
+event's payload, one parameter per field in payload order. As in stage zero,
+`on Move :: (y: float)` names fields in any order, matched as the catalog
+matches names; each field it leaves out gets an unnamed parameter. A name the
+payload lacks, or a field listed twice, is refused with stage zero's
+diagnostic. Written types are not checked yet. A handler body
 is a function body, as above. In it, states are names that read and store as
 `VARIABLE` and `STORE`, `self` is the owner, and `self.C.f = v` writes the
 writable field `f` of the owner's component `C`. As in stage zero, the write

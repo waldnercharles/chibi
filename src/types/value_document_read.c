@@ -646,6 +646,7 @@ static int read_map(pin_value declaration, const av_value *document, pin_value *
     if (!map) {
         return -1;
     }
+    map->capacity = count;
     map->entries = (pin_map_entry *)(map + 1);
     const pin_map *schema = declaration.ptr;
     if (read_shape(reader, av_obj_get(document, "key_type"), schema ? &schema->key_type : NULL, &map->key_type) ||
@@ -686,6 +687,7 @@ static int read_map(pin_value declaration, const av_value *document, pin_value *
         key_bytes += width;
         map->count++;
     }
+    pin_map_index(reader->storage, map);
     *out = declaration;
     out->ptr = map;
     return 0;

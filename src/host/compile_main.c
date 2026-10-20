@@ -1,10 +1,12 @@
 #include "assets/project.h"
 #include "authoring/project_compile.h"
 #include "authoring/project_format.h"
+#include "authoring/project_prepare.h"
 #include "graph/model/registry.h"
 #include "runtime/component_catalog.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
+#include "toolchain/compiler_target.h"
 #include "types/catalog.h"
 
 #include <errno.h>
@@ -60,7 +62,8 @@ static int usage(const char *program)
     fprintf(
         stderr,
         "Usage: %s --project-root PATH (--output FILE | --check | --test | "
-        "--format [--check] | --docs) [--scene PATH]\n",
+        "--format [--check] | --docs | --stage-one-target FILE) [--scene "
+        "PATH]\n",
         program
     );
     return 2;
@@ -170,13 +173,45 @@ static int format(const char *project, bool check)
     return differing < 0 || (check && differing) ? 1 : 0;
 }
 #endif
+static bool write_text(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "wb");
+    bool written = file && fputs(text, file) >= 0;
+    return file && !fclose(file) && written;
+}
+/* Writes what the project's modules link against, for the stage-one
+ * compiler: compiler_game_target_json of the catalog preparation uses. */
+static int stage_one_target(const char *project, const char *output)
+{
+    char error[512] = { 0 };
+    authoring_application application;
+    if (!authoring_application_begin(&application, error, sizeof error)) {
+        fprintf(stderr, "stage-one target: %s\n", error);
+        return 1;
+    }
+    authoring_project_options options = { .project = project,
+                                          .native = application.native };
+    authoring_project_catalog *catalog = authoring_project_catalog_open(&options, error, sizeof error);
+    size_t length = 0;
+    char *json = catalog
+                   ? compiler_game_target_json(authoring_project_catalog_view(catalog), &length)
+                   : NULL;
+    authoring_project_catalog_free(catalog);
+    authoring_application_end(&application);
+    bool written = json && write_text(output, json);
+    free(json);
+    if (!written) {
+        fprintf(stderr, "stage-one target: %s\n", error[0] ? error : "could not write the target");
+    }
+    return written ? 0 : 1;
+}
 /* --check prepares the project without migrating it or writing anything;
  * --test runs its package tests; --format rewrites its assets canonically, or
  * with --check reports the ones that are not; --docs writes its documentation
  * site. */
 int main(int argc, char **argv)
 {
-    const char *project = NULL, *scene = NULL, *output = NULL;
+    const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL;
     bool check = false, tests = false, formats = false, site = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
@@ -214,12 +249,20 @@ int main(int argc, char **argv)
             output = argv[++i];
             continue;
         }
+        if (!strcmp(argv[i], "--stage-one-target") && !target) {
+            target = argv[++i];
+            continue;
+        }
         return usage(argv[0]);
     }
-    int modes = (check && !formats) + tests + formats + site + (output != NULL);
+    int modes = (check && !formats) + tests + formats + site +
+                (output != NULL) + (target != NULL);
     if (!project || !*project || modes != 1 || (output && !*output) ||
-        ((tests || formats || site) && scene)) {
+        (target && !*target) || ((tests || formats || site || target) && scene)) {
         return usage(argv[0]);
+    }
+    if (target) {
+        return stage_one_target(project, target);
     }
     if (site) {
         return docs(project);

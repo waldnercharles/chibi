@@ -593,8 +593,10 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c")
-    foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax)
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c"
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c")
+    foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax
+            compiler_target)
         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/toolchain/${header}.h" COPYONLY)
     endforeach()

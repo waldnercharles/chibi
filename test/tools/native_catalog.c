@@ -548,7 +548,7 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_re
     if (steps < 0) {
         fprintf(stderr, "native project migration: %s\n", error);
     }
-    REQUIRE(steps == 2);
+    REQUIRE(steps == 3);
     migration_text = file_read_text(migration_source);
     migration_metadata = file_read_text(migration_sidecar);
     REQUIRE(migration_text && migration_metadata);
@@ -561,7 +561,7 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_re
     REQUIRE(authoring_source_metadata_matches(migration_metadata, migration_text));
     REQUIRE(strstr(migration_metadata, "\"id\":817") && strstr(migration_metadata, "retained"));
     migration_reopened = file_read_text(migration_manifest);
-    REQUIRE(migration_reopened && strstr(migration_reopened, "version 27"));
+    REQUIRE(migration_reopened && strstr(migration_reopened, "version 28"));
     free(migration_reopened);
     migration_reopened = NULL;
     REQUIRE(authoring_project_migrate(migration_root, native, error, sizeof error) == 0);

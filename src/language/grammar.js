@@ -295,6 +295,7 @@ module.exports = grammar({
       choice(
         $._name,
         $.builtin_reference,
+        alias(K.entry, $.builtin_reference),
         alias($._handler_path, $.member_expression),
       ),
     _handler_path: ($) =>
@@ -525,7 +526,7 @@ module.exports = grammar({
         $.struct_expression,
         $.await_expression,
       ),
-    builtin_reference: ($) => choice(K.state, K.event, K.entry),
+    builtin_reference: ($) => choice(K.state, K.event),
     member_expression: ($) =>
       prec.left(
         P.member,

@@ -1,5 +1,5 @@
 MovementActions :: library {
     Movement_Velocity :: (direction: struct<CF_V2> = null, speed: struct<Movement> = null) -> (Velocity: struct<CF_V2> = null) {
-        return entry.direction * convert<Unwrap_Movement>(entry.speed)
+        return direction * convert<Unwrap_Movement>(speed)
     }
 }

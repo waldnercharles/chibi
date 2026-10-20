@@ -30,8 +30,8 @@ make test-materials      # the material simulation selectors, one 60-second dead
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
-make bootstrap-artifact  # stage two as the checksummed recovery artifact (Release build)
-make bootstrap-recover   # recover the compiler from the published artifact (needs gh)
+make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
+make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
 make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -1301,6 +1301,24 @@ process, service or GPU work. Build separately and independently review the
 exact workload before first execution under one shared 60-second ceiling.
 It remains outside the language aggregate.
 
+`python3 tools/test_policy.py tool language-source-tokenizer-chibi` compares
+the authored tokenizer (`docs/source-tokenizer.md`) with Tree-sitter. It reads
+every `.chibi` file below `packages/`, `test/` and `tools/` at run time, about
+145 files under 1 MiB in all, and tokenizes each once on SLJIT; every token's
+kind, span, row and column must match the leaves of the cursor walk
+`compiler_syntax_parse` makes. The scanner's automatic terminators are hidden
+from that walk, so each is read from a node that ends after its last child, or
+after a prototype's field that no `,` or `;` follows. Files Tree-sitter
+rejects, two legacy fixtures today, compare leaves only, and a `>` leaf
+directly followed by `>` or `=` matches one `>>` or `>=`. Seventeen fixed
+sources cover forms the corpus lacks, such as attributes, keywords as names,
+bodies opened on the next line and prototype fields, and ten hand-written
+cases cover terminators directly after a token and Odin's errors with their
+offsets; both run on bytecode and SLJIT. One owner per backend prepares the
+package, and calls are capped at 64 steps per byte. There is no process,
+service or GPU work. The route took about 5 seconds in a local sanitizer build
+and is outside the language aggregate.
+
 The fixed syntax corpus exercises visible missing tokens, ERROR subtrees and
 UTF-8 byte columns after CRLF. It reports hidden-recovery diagnostic counts but
 does not require a witness: the current parser selects visible missing tokens
@@ -1814,7 +1832,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects eight cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1823,7 +1841,6 @@ compile runs:
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;
 - a closure recorded for another target;
-- with `--published`, a manifest other than the one `bootstrap.kdl` pins;
 - a seed folder without a seed, or a seed whose sources aren't on disk.
 
 The SHA-256 check is pinned by four digests: FIPS 180-2's for "abc", and those
@@ -1834,8 +1851,55 @@ twenty host children on tiny folders. The target case loads the closure that
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
 selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
-`build-release/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
+the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+
+## Game equivalence
+
+`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
+M5 step 4. It rebuilds the stories in `test/stories` with a reference and a
+candidate compiler, and compares what the two artifacts of each story declare
+and how they play. It is a standalone selector, not part of any group, and
+takes about 6 s.
+
+- **Stories.** Each story is a small project that shows one feature, played
+  by its `content/scenarios/Story.kdl`. `test/stories/README.md` lists them in
+  the order stage one reaches them. Each compiles alone, so stage one can
+  pass one story before it compiles another.
+- **Compilers.** A compiler is any program that takes `--project-root ROOT
+  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
+  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
+  `build/sdk/chibi-compile` until stage one compiles stories.
+- **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
+  `chibi-build-host`. Its `Rebuild` entry compiles each story with each
+  compiler and plays them, and `Diff` compares two traces.
+- **Observer.** `test_tools --game-observe TRACE ARTIFACT SCENARIO...` reads
+  each artifact on the CPU and replays its scenario from the scenario's
+  scene. For each story, the trace holds:
+  - a `play NAME` line, NAME being the artifact's file name;
+  - what the artifact declares apart from its code: a digest of every byte
+    outside its module records, located by `player_prepared_modules`, then
+    each module's name and ID (`--native` checks that function);
+  - one line per fixed step, from frame 0 (after Begin) to the scenario's
+    last frame: hashes of the ECS world, saved state, materials, physics
+    bodies, contacts and events, and UI text. Frame N is the world after N
+    steps, so input keyed at step K first shows in frame K + 1.
+- **Cases.**
+  - Assembling each story from the modules of its own artifact, with
+    `authoring_project_assemble`, writes that artifact again byte for byte.
+    A source without its module, or a module of no source, is refused. This
+    is the assembly a stage-one route uses for modules stage one compiled.
+  - `chibi-compile --project-root ROOT --stage-one-target FILE` exports what a
+    story's behavior links against, for stage one. The test compares its
+    types with the requirements of the module stage zero writes for Counter
+    (all 112, in order: ID, layout, storage, size and name). It also compares
+    the module's events (ID, ABI and payload fields) and the entity type.
+  - Both compilers rebuild every story to the same trace.
+  - A variant of Motion whose drift is doubled is named in Motion at frame 1,
+    with both lines, and its declarations still match.
+  - Differing declarations are named. A missing trace, or a story with no
+    frames, is refused rather than matched; the observer removes the trace
+    unless every story played.
 
 ## Compiler artifact runtime checks
 
@@ -2000,10 +2064,10 @@ into an unrelated executable must fail provenance checks.
 
 ## Private build-host process checks
 
-`python3 tools/test_policy.py tool build-process` selects eighteen C cases in the
+`python3 tools/test_policy.py tool build-process` selects 23 C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
-fixed authored sources, at most 54 controlled process launches or failed
+fixed authored sources, at most 58 controlled process launches or failed
 spawn attempts, and one shared 60-second production deadline. It performs no
 engine configure/build, network, renderer or GPU work. Case deadlines are at
 most two seconds, with shorter deliberate timeout/cancellation budgets; every
@@ -2019,20 +2083,27 @@ compiler-only builds verify rejection by a catalog without build capabilities.
 Two CLI invocations cover source loading, a nonzero authored result and a missing
 entry. Seven additional cases cover argument and returned-value lifetimes,
 string operations, truncated or binary output rejection, regular-file and size
-limits, and atomic write failure cleanup. Their fixed file workload is about
-7 MiB. The original eight `language-build-workflow` recording cases remain an
+limits, and atomic write failure cleanup. Five more cover a step's 1 MiB output
+and unreported probes, file kinds, stamps and sorted directory entries with
+their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
+vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
+files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
-installed authored build program. Four cases make 38 API invocations across
-bytecode and SLJIT; one runs the host CLI with exact tail arguments. Ten tiny
-Git roots and at most 53 controlled CMake attempts cover compiler/environment/
-cache precedence, explicit typed and split definitions, loaded inputs, compiler
-identity, private dependency overrides, failure/retry and exact argument
-forwarding. The sixth case uses the production Makefile to select recovery for
-missing/old hosts and authored orchestration for a compatible host, including
-paths with spaces; three outer and three recursive Make calls run marker recipes
-only. The process route also tests the private protocol query used by this
+`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
+installed authored build program, and an eighth on macOS. Five cases make 50 API
+invocations across bytecode and SLJIT, and the macOS case seven more that
+alternate them; one runs the host CLI with exact tail arguments. Twelve tiny Git
+roots, thirteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+cover compiler/environment/cache precedence, explicit typed and split
+definitions, loaded inputs, compiler identity, private dependency overrides and
+their precedence over the cache, failure/retry and exact argument forwarding.
+The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
+report, through links and shell-quoted `CC` words, and falls back to a stand-in
+`xcrun`. Another case uses the production Makefile to select recovery for a
+missing host, one that fails the protocol query and one that reports protocol 2,
+and authored orchestration for a compatible host, including paths with spaces;
+four outer and four recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.

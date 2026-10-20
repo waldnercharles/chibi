@@ -466,12 +466,14 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
@@ -567,11 +569,14 @@ if(TARGET chibi_authoring AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$")
     add_library(chibi_build_host OBJECT "${CHIBI_SDK_ROOT}/src/host/build_host.c"
         "${CHIBI_SDK_ROOT}/src/host/build_catalog.c"
         "${CHIBI_SDK_ROOT}/src/host/build_values.c"
-        "${CHIBI_SDK_ROOT}/src/host/build_io.c")
+        "${CHIBI_SDK_ROOT}/src/host/build_io.c"
+        "${CHIBI_SDK_ROOT}/src/support/sha256.c")
     foreach(header build_host build_host_internal build_values build_io process)
         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/host/${header}.h" COPYONLY)
     endforeach()
+    configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/build-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_build_host PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/build-host")
     target_link_libraries(chibi_build_host PUBLIC chibi_authoring PRIVATE chibi_support)
     target_compile_options(chibi_build_host PRIVATE -Wall -Wextra -Werror)
@@ -593,11 +598,15 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_artifact.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_host.c"
         "${CHIBI_SDK_ROOT}/src/toolchain/compiler_json.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c")
-    foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax)
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_syntax.c"
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_target.c")
+    foreach(header compiler_artifact compiler_bootstrap compiler_host compiler_json compiler_syntax
+            compiler_target)
         configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
             "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/toolchain/${header}.h" COPYONLY)
     endforeach()
+    configure_file("${CHIBI_SDK_ROOT}/src/support/sha256.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host/support/sha256.h" COPYONLY)
     target_include_directories(chibi_compiler_host PUBLIC
         "${CMAKE_CURRENT_BINARY_DIR}/private/compiler-host")
     target_link_libraries(chibi_compiler_host PUBLIC chibi_behavior_runtime
@@ -607,7 +616,7 @@ if(TARGET chibi_language_syntax AND CMAKE_SYSTEM_NAME MATCHES "^(Linux|Darwin)$"
     # Bootstrap artifacts are the executable's own: no other compiler-host
     # consumer reads their KDL contract.
     add_executable(chibi-compiler-host "${CHIBI_SDK_ROOT}/src/toolchain/compiler_main.c"
-        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c")
+        "${CHIBI_SDK_ROOT}/src/toolchain/compiler_bootstrap.c" "${CHIBI_SDK_ROOT}/src/support/sha256.c")
     target_link_libraries(chibi-compiler-host PRIVATE chibi_compiler_host chibi_asset_text chibi_asset_values
         chibi_json)
     target_include_directories(chibi-compiler-host PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")

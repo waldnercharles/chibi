@@ -12,6 +12,7 @@
 static const char *worker_path, *host_path;
 static char suite[256], root[512], program_path[1024];
 static char *program;
+static char last_stderr[CHIBI_BUILD_OUTPUT_CAPACITY];
 static const char *const environment_names[] = {
     "PATH",
     "CC",
@@ -105,6 +106,7 @@ static bool invoke(const char *const *arguments, int count, int backend, int val
     };
     chibi_build_result result;
     bool success = chibi_build_invoke(&options, &result);
+    snprintf(last_stderr, sizeof last_stderr, "%s", result.stderr_text);
     if (!success || result.value != value) {
         fprintf(
             stderr,
@@ -303,6 +305,172 @@ TEST_CASE(private_source_overrides_disable_immutable_dependency_packages)
     return true;
 }
 
+static void make_build(const char *name, const char *cache)
+{
+    char directory[1024], file[1100];
+    path(directory, root, name);
+    assert(!mkdir(directory, 0700));
+    snprintf(file, sizeof file, "%s/CMakeCache.txt", name);
+    write_file(file, cache);
+}
+/* Dependency preparation runs only when configuration chooses packages. Here
+ * it fails at once: a multi-configuration generator or a private override is
+ * not packageable. */
+static bool packages_chosen(const char *const *arguments, int count, int backend)
+{
+    char file[1100];
+    snprintf(file, sizeof file, "%s/%s/.chibi-dependency-package.cmake", root, arguments[1]);
+    return invoke(arguments, count, backend, 1) &&
+           strstr(last_stderr, "dependency preparation failed") &&
+           access(file, F_OK);
+}
+static bool packages_declined(const char *const *arguments, int count, int backend)
+{
+    char file[1100];
+    snprintf(file, sizeof file, "%s/.chibi-dependency-package.cmake", arguments[1]);
+    return invoke(arguments, count, backend, 0) &&
+           file_contains(file, "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)");
+}
+
+TEST_CASE(dependency_overrides_follow_definitions_then_cache)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("dependency overrides", b);
+        assert(!setenv("CHIBI_DEPENDENCY_PACKAGES", "1", 1));
+        make_build(
+            "inside",
+            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
+            "FETCHCONTENT_SOURCE_DIR_TEST:PATH=inside/_deps/test-src\n"
+        );
+        char directory[1024];
+        path(directory, root, "inside/_deps");
+        assert(!mkdir(directory, 0700));
+        path(directory, root, "inside/_deps/test-src");
+        assert(!mkdir(directory, 0700));
+        const char *inside[] = { "native", "inside", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
+        REQUIRE(packages_chosen(inside, 5, b));
+
+        const char *sljit_cache = "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
+                                  "CHIBI_SJLIT_SOURCE_DIR:PATH=/opt/sljit\n";
+        make_build("cached", sljit_cache);
+        const char *cached[] = { "native", "cached", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
+        REQUIRE(packages_declined(cached, 5, b));
+        make_build("cleared", sljit_cache);
+        const char *cleared[] = {
+            "native",
+            "cleared",
+            "--configure-only",
+            "--",
+            "-DCHIBI_SJLIT_SOURCE_DIR:PATH=",
+            "-DCMAKE_GENERATOR=Xcode",
+        };
+        REQUIRE(packages_chosen(cleared, 6, b));
+
+        const char *valueless[] = {
+            "native",
+            "valueless",
+            "--configure-only",
+            "--",
+            "-DFETCHCONTENT_FULLY_DISCONNECTED",
+            "-DCMAKE_GENERATOR=Xcode",
+        };
+        REQUIRE(packages_chosen(valueless, 6, b));
+        const char *quiet[] = { "native", "quiet", "--configure-only", "--", "-DFETCHCONTENT_QUIET=OFF" };
+        REQUIRE(packages_declined(quiet, 5, b));
+
+        const char *dangling[] = { "native",
+                                   "dangling",
+                                   "--configure-only",
+                                   "--",
+                                   "-DCMAKE_C_COMPILER=clang",
+                                   "-D" };
+        REQUIRE(invoke(dangling, 6, b, 1));
+#ifdef __APPLE__
+        /* The SDK definition configuration appends completes the dangling -D. */
+        REQUIRE(strstr(last_stderr, "dependency preparation failed"));
+#else
+        REQUIRE(strstr(last_stderr, "-D requires a definition"));
+#endif
+        REQUIRE(trace_count("CONFIGURE\n") == 2 && !trace_count("BUILD\n"));
+    }
+    return true;
+}
+
+#ifdef __APPLE__
+static bool configured_sysroot(const char *build, const char *sdk, int backend)
+{
+    const char *arguments[] = { "native", build, "--configure-only", "--" };
+    char cache[1024], expected[2048];
+    snprintf(cache, sizeof cache, "%s/CMakeCache.txt", build);
+    snprintf(expected, sizeof expected, "CMAKE_OSX_SYSROOT:PATH=%s\n", sdk);
+    return invoke(arguments, 4, backend, 0) && file_contains(cache, expected);
+}
+static bool driver_ran(const char *arguments)
+{
+    char file[1024];
+    path(file, root, "driver.trace");
+    return file_contains("driver.trace", arguments) && !unlink(file);
+}
+
+/* Without SDKROOT or a cached sysroot, the selected compiler's -### report
+ * names the SDK, followed through links; xcrun answers otherwise. CC is one
+ * file or shell words. Both stand-ins sit first on PATH. Steps alternate
+ * bytecode and SLJIT, so each backend parses quoted reports and falls back. */
+TEST_CASE(compiler_driver_report_names_the_sdk_before_xcrun)
+{
+    reset_fixture("compiler SDK", 0);
+    assert(!unsetenv("SDKROOT"));
+    char file[1024], directory[1024], sdk[1024], fallback[1024], text[1200];
+    const char *shims[] = { "bin/cc", "bin/xcrun", "driver dir/my cc" };
+    path(directory, root, "driver dir");
+    assert(!mkdir(directory, 0700));
+    for (int i = 0; i < 3; i++) {
+        path(file, root, shims[i]);
+        assert(!symlink(worker_path, file));
+    }
+    path(directory, root, "SDKs");
+    assert(!mkdir(directory, 0700));
+    path(sdk, directory, "Fixture \"quoted\" \\ 26.sdk");
+    assert(!mkdir(sdk, 0700));
+    path(file, directory, "Fixture.sdk");
+    assert(!symlink("Fixture \"quoted\" \\ 26.sdk", file));
+    write_file("compiler-sysroot", file);
+    path(fallback, directory, "Fallback.sdk");
+    assert(!mkdir(fallback, 0700));
+    snprintf(text, sizeof text, "%s\n", fallback);
+    write_file("xcrun-sdk", text);
+
+    REQUIRE(configured_sysroot("default", sdk, 0));
+    REQUIRE(driver_ran("arg=cc\narg=-###\narg=-x\narg=c\narg=-fsyntax-only\narg=-\n"));
+    assert(!setenv("CC", "cc  -fflag\t'two words' \"say \\\"hi\\\"\" a\\ b", 1));
+    REQUIRE(configured_sysroot("words", sdk, 1));
+    REQUIRE(driver_ran("arg=cc\narg=-fflag\narg=two words\narg=say \"hi\"\narg=a b\narg=-###\n"));
+    path(file, root, "driver dir/my cc");
+    assert(!setenv("CC", file, 1));
+    REQUIRE(configured_sysroot("file", sdk, 0));
+    snprintf(text, sizeof text, "arg=%s\narg=-###\n", file);
+    REQUIRE(driver_ran(text));
+
+    path(file, directory, "Missing.sdk");
+    write_file("compiler-sysroot", file);
+    assert(!unsetenv("CC"));
+    REQUIRE(configured_sysroot("missing", fallback, 1));
+    REQUIRE(driver_ran("arg=cc\narg=-###\n"));
+    path(file, root, "compiler-sysroot");
+    assert(!unlink(file));
+    REQUIRE(configured_sysroot("unnamed", fallback, 0));
+    REQUIRE(driver_ran("arg=cc\narg=-###\n"));
+    const char *unusable[] = { "absent-compiler", "cc 'unclosed" };
+    for (int i = 0; i < 2; i++) {
+        assert(!setenv("CC", unusable[i], 1));
+        REQUIRE(configured_sysroot(i ? "unclosed" : "absent", fallback, 1 - i));
+        path(file, root, "driver.trace");
+        REQUIRE(access(file, F_OK));
+    }
+    return true;
+}
+#endif
+
 TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
 {
     reset_fixture("CLI tail", 0);
@@ -358,16 +526,19 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         selected
     );
     tool_write(overrides, recipes);
-    char old[1024], current[1024], missing[1024];
+    char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
+    path(previous, root, "protocol-2 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
+    assert(!symlink(worker_path, previous));
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    const char *hosts[] = { missing, old, current };
-    for (int i = 0; i < 3; i++) {
+    /* A protocol-2 host answers the query but cannot prepare today's program. */
+    const char *hosts[] = { missing, old, previous, current };
+    for (int i = 0; i < 4; i++) {
         char host_option[1200];
         snprintf(host_option, sizeof host_option, "BUILD_HOST=%s", hosts[i]);
         const char *arguments[] = {
@@ -378,7 +549,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         };
         REQUIRE(!tool_run(arguments, source, log));
         char *choice = tool_read(selected);
-        bool correct = choice && !strcmp(choice, i == 2 ? "authored\n" : "recovery\n");
+        bool correct = choice && !strcmp(choice, i == 3 ? "authored\n" : "recovery\n");
         free(choice);
         REQUIRE(correct);
         REQUIRE(!unlink(selected));
@@ -407,6 +578,11 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(private_source_overrides_disable_immutable_dependency_packages);
+    RUN_TEST_CASE(dependency_overrides_follow_definitions_then_cache);
+
+#ifdef __APPLE__
+    RUN_TEST_CASE(compiler_driver_report_names_the_sdk_before_xcrun);
+#endif
     RUN_TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments);
     RUN_TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol);
     for (size_t i = 0; i < sizeof environment_names / sizeof *environment_names; i++) {

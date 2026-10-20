@@ -149,20 +149,20 @@ without a game: it may call the natives that need none, such as text, array
 and math functions, and fails when it waits or starts a task, or after 100
 million instructions.
 
-The [versioned contract snapshot](language-contracts/v1.md) pins source evidence,
+The versioned contract snapshot in the repository, `docs/language-contracts/v1.md`, pins source evidence,
 existing C conformance cases and unresolved migration semantics separately at its
 recorded revision, before the version-25 retained-binding migration. Its source
 audit is not fresh runtime or cross-backend validation.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 26. Scenes, KDL prototypes, event
+Project manifests are `project.kdl`, version 28. Scenes, KDL prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 26
+version 28
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -197,9 +197,9 @@ payloads are declarative configuration, not executable behavior source.
 Authored asset declarations use the same name-first headers as executable source:
 `Health :: component { ... }`, `Enemy :: prototype { ... }` and
 `Targets :: relationship { ... }`. A composed prototype names ordered bases,
-such as `Elite :: prototype(Enemy, Armored) { ... }`. See
-[authored prototypes and relationships](runtime-authoring.md#authored-prototypes-and-relationships)
-for sparse defaults, instance-local links, relationship traits and typed pair edits.
+such as `Elite :: prototype(Enemy, Armored) { ... }`. The repository's
+`docs/runtime-authoring.md` covers sparse defaults, instance-local links,
+relationship traits and typed pair edits.
 
 ## Executable source
 
@@ -265,7 +265,7 @@ or a reflected interface needs them. Formatting keeps a declared type unless inf
 
 An explicit retained binding puts its lifetime after the name and colon:
 
-```chibi
+```code
 visits: retain int = 0
 elapsed: retain = 0
 ```
@@ -342,7 +342,7 @@ Language declarations, bindings and member names use identifiers. Quotes denote
 string values, including user-facing text and literal union alternatives.
 Prototype, component and relationship symbols produce typed reference values:
 
-```chibi
+```code
 asset: Prototype = MovementEmitter
 component: Component = Health
 relation: Relationship = Targets
@@ -380,17 +380,22 @@ bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
 level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
 ```
 
-A checked conversion of an integer constant that does not fit is a compile
+A floating literal is the `double` nearest it, and a `float` literal the
+`float` nearest that `double`; a literal that overflows, or a nonzero one
+that underflows to zero or a subnormal, is a compile error. A checked
+conversion of an integer constant that does not fit is a compile
 error; a runtime value that does not fit fails the invocation. `wrap` and
 `clamp` apply only between integer types. Floating values convert to integers
 by truncating toward zero, clamping at the destination bounds and mapping NaN
 to zero. Mixed integer operands, in arithmetic and comparisons, use the wider
 type, or `int` or `int64` for a signed and unsigned pair: `byte + int8` is `int`
 and `int + uint` is `int64`. `int64` with `uint64` needs an explicit conversion.
-Arithmetic narrower than 32 bits, and unsigned ordering and subtraction, are not
-yet supported. A constant can declare its type, as in `Mask: uint : 0xFF`. A
-conversion to a value's own type, such as `entity(get_global_variable("Player"))`,
-only supplies the type a polymorphic call needs.
+Every integer type has every arithmetic and comparison operator, unsigned types
+comparing as unsigned values. Integer arithmetic wraps on overflow:
+`byte(3) - byte(200)` is 59. A constant can declare its type, as in
+`Mask: uint : 0xFF`. A conversion to a value's own type, such as
+`entity(get_global_variable("Player"))`, only supplies the type a polymorphic
+call needs.
 
 ### Array storage
 
@@ -418,7 +423,7 @@ universal speedup.
 Maps retain separate key and value types. A complete type can be explicit or
 inferred from a nonempty initializer:
 
-```chibi
+```code
 scores: Map<string, int> = {"Ada": 3, "Bo": 5}
 inferred: Map = {"Ada": 3}
 more := {"Ada": 3}
@@ -441,7 +446,7 @@ Array iteration binds the item first and the optional zero-based index second.
 String iteration yields one string per Unicode scalar, not one byte or one
 grapheme cluster. Both take a value snapshot before entering the loop:
 
-```chibi
+```code
 for item,index in items { total += item * index }
 for character in "Aé🐈" { append_character(character) }
 for item: ref in items { item += 1 }
@@ -548,6 +553,18 @@ switch level {
         damage = 30
 }
 ```
+
+Project version 28 reads parameters by name. A callable reads its
+parameter `X` as `X`. The version 27 spelling `entry.X` migrates to `X`; when
+`X` is not a parameter, `entry` meant the callable's only parameter `p`, so a
+bare `entry` migrates to `p` and `entry.x` to `p.x`. The migration refuses a
+read that a local, constant, loop, handler or pattern binding of the same
+name would capture; rename that binding first.
+
+A handler without a parameter list binds its payload's names. A bare read of
+one that is also a parameter of the function around the handler is an error,
+since the payload would hide the function's parameter; list the payload's
+parameters, as in `after spawned(made) { ... }`, to give them other names.
 
 Project version 24 migrates existing `function` declarations and `match` statements
 to these forms. Those old keywords are no longer runtime syntax.
@@ -802,7 +819,7 @@ Recursive functions, and functions that call each other in a cycle, declare thei
 known at compilation. Specialization keeps concrete storage types and reuses the
 same instantiation for identical bindings:
 
-```chibi
+```code
 Identity :: (value: $T) -> T { return value }
 Scale :: (value: $T, $N: int) -> T { return value * N }
 Factorial :: (n: int) -> int {
@@ -1137,7 +1154,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 26. Executable files contain no generated identity
+Project manifests use version 28. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

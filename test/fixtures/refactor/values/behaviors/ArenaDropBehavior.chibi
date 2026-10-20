@@ -26,13 +26,12 @@ ArenaDropBehavior :: behavior {
     }
     Emit_Source_Frame :: (Position: struct<Transform> = null, Appearance: struct<Geometry3D> = null, Material: struct<Shader> = null, Orientation: struct<Orientation> = null, Visual: struct<VisualTransform> = null) -> () {
 
-        action forloop = for_loop(FirstIndex: 0, LastIndex: int(subtract(A: plain int = primitive_part(Appearance: entry.Appearance, Index: 0).Count, B: plain int = 1)));
+        action forloop = for_loop(FirstIndex: 0, LastIndex: int(subtract(A: plain int = primitive_part(Appearance: Appearance, Index: 0).Count, B: plain int = 1)));
         after entry {
             forloop();
         }
         after forloop.Body {
-            Appearance := entry.Appearance
-            Spawn_Source_Beam(Position: entry.Position, Appearance: Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part(Appearance: Appearance, Index: forloop.Index).Center, Center_Y: primitive_part(Appearance: Appearance, Index: forloop.Index).Elevation, Width: primitive_part(Appearance: Appearance, Index: forloop.Index).Width, Height: primitive_part(Appearance: Appearance, Index: forloop.Index).Height, Depth: primitive_part(Appearance: Appearance, Index: forloop.Index).Depth, Primitive: primitive_part(Appearance: Appearance, Index: forloop.Index).Primitive);
+            Spawn_Source_Beam(Position: Position, Appearance: Appearance, Material: Material, Orientation: Orientation, Visual: Visual, Center: primitive_part(Appearance: Appearance, Index: forloop.Index).Center, Center_Y: primitive_part(Appearance: Appearance, Index: forloop.Index).Elevation, Width: primitive_part(Appearance: Appearance, Index: forloop.Index).Width, Height: primitive_part(Appearance: Appearance, Index: forloop.Index).Height, Depth: primitive_part(Appearance: Appearance, Index: forloop.Index).Depth, Primitive: primitive_part(Appearance: Appearance, Index: forloop.Index).Primitive);
         }
         after forloop.Completed {
             return ();
@@ -40,12 +39,12 @@ ArenaDropBehavior :: behavior {
     }
     Spawn_Surface_Pulse :: (Prototype: Prototype = ArenaHitPulse, Position: struct<Transform> = null) -> () {
 
-        action spawn_prototype_action = spawn_prototype(Prototype: entry.Prototype);
+        action spawn_prototype_action = spawn_prototype(Prototype: Prototype);
         after entry {
             spawn_prototype_action();
         }
         after spawn_prototype_action {
-            spawn_prototype_action.Entity.Transform = entry.Position;
+            spawn_prototype_action.Entity.Transform = Position;
             return ();
         }
     }
@@ -56,13 +55,13 @@ ArenaDropBehavior :: behavior {
             spawn_prototype_action();
         }
         after spawn_prototype_action {
-            await set_component(Component: Transform, Entity: spawn_prototype_action.Entity, Value.x: float = double(add(A: plain double = entry.Position.x, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x)), Value.y: float = double(add(A: plain double = entry.Position.y, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y)));
-            await set_component(Component: Geometry3D, Entity: spawn_prototype_action.Entity, Value.primitive: int = entry.Primitive, Value.width: float = entry.Width, Value.depth: float = entry.Depth, Value.height: float = entry.Height, Value.elevation: float = double(add(A: plain double = entry.Appearance.elevation, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Elevation)));
-            await set_component(Component: Velocity, Entity: spawn_prototype_action.Entity, Value.x: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x, B: plain double = 5.0)), Value.y: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y, B: plain double = 5.0)));
+            await set_component(Component: Transform, Entity: spawn_prototype_action.Entity, Value.x: float = double(add(A: plain double = Position.x, B: plain double = transform_visual_offset(Offset: Center, Elevation: Center_Y, Heading: Orientation.radians, Visual: Visual).Offset.x)), Value.y: float = double(add(A: plain double = Position.y, B: plain double = transform_visual_offset(Offset: Center, Elevation: Center_Y, Heading: Orientation.radians, Visual: Visual).Offset.y)));
+            await set_component(Component: Geometry3D, Entity: spawn_prototype_action.Entity, Value.primitive: int = Primitive, Value.width: float = Width, Value.depth: float = Depth, Value.height: float = Height, Value.elevation: float = double(add(A: plain double = Appearance.elevation, B: plain double = transform_visual_offset(Offset: Center, Elevation: Center_Y, Heading: Orientation.radians, Visual: Visual).Elevation)));
+            await set_component(Component: Velocity, Entity: spawn_prototype_action.Entity, Value.x: float = double(multiply(A: plain double = transform_visual_offset(Offset: Center, Elevation: Center_Y, Heading: Orientation.radians, Visual: Visual).Offset.x, B: plain double = 5.0)), Value.y: float = double(multiply(A: plain double = transform_visual_offset(Offset: Center, Elevation: Center_Y, Heading: Orientation.radians, Visual: Visual).Offset.y, B: plain double = 5.0)));
             Shard := spawn_prototype_action.Entity
-            Shard.Shader = entry.Material;
-            Shard.Orientation = entry.Orientation;
-            Shard.VisualTransform = entry.Visual;
+            Shard.Shader = Material;
+            Shard.Orientation = Orientation;
+            Shard.VisualTransform = Visual;
             return ();
         }
     }

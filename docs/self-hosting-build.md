@@ -50,7 +50,8 @@ supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
 `--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
 
-The private catalog includes `RunBuildStep(arguments: string[]) -> int` and
+The private catalog includes `RunBuildStep(arguments: string[]) -> int`,
+`RunBuildProbe(arguments: string[]) -> int` and
 `BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
 directory. PATH lookup selects the executable separately from the authored
 `argv[0]`, preserving every argument, including empty strings and shell syntax.
@@ -62,10 +63,15 @@ The environment snapshot includes compiler, flags, CMake, SDK, dependency-cache,
 ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths
 and the inherited test deadline. `environment_names` in `build_host.c` owns the
 explicit allowlist. Missing allowed names read as empty strings; other names
-are capability errors. The snapshot is limited to 1 MiB. Each invocation permits
-64 steps and each step permits
-256 arguments totaling 64 KiB. Captured stdout and stderr each retain at most
-4,095 bytes across all steps; truncation remains visible in the result and CLI.
+are capability errors. `BuildEnvironmentNames()` lists the allowed names the
+snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
+1 MiB. Each invocation permits 64 steps, probes included, and each step permits
+256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
+1 MiB, one build text value, for `BuildLastStdout` and `BuildLastStderr`. A
+reported step also adds its output to the invocation's result, which retains at
+most 4,095 bytes of each across reported steps; truncation remains visible in
+the result and CLI. A probe's output is data only: compiler reports and tool
+queries stay out of the build's output and leave room for its diagnostics.
 
 Child exits return `0..255`; signal termination returns the negative signal
 number. Invalid input, spawn failure, timeout, cancellation and host failure
@@ -107,8 +113,10 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 2
-through `--protocol-version`. A cold build or an older host
+`make build` uses this program when its private host reports protocol version 3
+through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
+`Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
+file primitives and probes and the redesigned syntax. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
@@ -121,20 +129,72 @@ loaded CMake files, new configuration files, dependency inputs and compiler/tool
 identities. It is written atomically only after successful configuration. Build
 targets and parallelism do not invalidate configuration.
 
+The program also decides whether immutable dependency packages may serve a
+configuration: a `FETCHCONTENT_*` definition, a set `CHIBI_SJLIT_SOURCE_DIR` or a
+`FETCHCONTENT_SOURCE_DIR_*` outside the build's `_deps` selects private sources
+and declines them. Definitions replace cached values, and a missing source counts
+as private.
+
+On macOS the program finds the SDK itself when neither `SDKROOT`, the cache nor
+an explicit definition names one. It splits the selected compiler into words as
+Python's `shlex.split` does, unless the compiler names one file, probes its
+`-### -x c -fsyntax-only -` report and takes the directory `-isysroot` names,
+following links; `xcrun --show-sdk-path` answers otherwise. Apple clang's report
+is about 4.1 KiB.
+
 Three installed Python helpers remain transitional dependencies:
-`configure_inputs.py` retains the existing read-only signature, compiler SDK and
-dependency-override probes; `dependency_package.py` and `fetchcontent_cache.py`
-retain dependency acquisition and cache ownership. Their replacement and removal
-gates remain in the toolchain inventory. CMake still owns the stage-zero graph.
+`configure_inputs.py` retains the read-only signature probe;
+`dependency_package.py` and `fetchcontent_cache.py` retain dependency acquisition
+and cache ownership until dependencies are vendored. Their replacement and
+removal gates remain in the toolchain inventory. CMake still owns the stage-zero
+graph.
 
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,
-last-process output and string/array operations. File and text values are limited
-to 1 MiB, arrays to 8,192 entries and 1 MiB of text, and retained helper storage
-to 32 MiB per invocation. Last-output accessors reject truncation and embedded
-NUL bytes, so authored protocol parsing cannot accept a partial result. Returned
-values remain owned by the invocation until it finishes; parent cwd and
-environment are never mutated.
+last-process output, the file primitives below and string/array operations. File
+and text values are limited to 1 MiB, arrays to 8,192 entries and 1 MiB of text,
+and retained helper storage to 32 MiB per invocation. Last-output accessors
+reject truncation and embedded NUL bytes, so authored protocol parsing cannot
+accept a partial result. Returned values remain owned by the invocation until it
+finishes; parent cwd and environment are never mutated.
+
+### Build-host file primitives
+
+The remaining configuration and packaging Python reads file metadata, walks
+trees, copies, renames, removes and hashes. Zig's `std.fs.Dir`, Rust's
+`std::fs` (which Cargo build scripts use) and Odin's `core:os` expose the same
+small layer: one-level directory iteration with walks built over it
+(`Dir.walk`, Odin's `Walker`, `fs::read_dir` recursion), a stat record, atomic
+copy that keeps permissions, rename, and single-entry removal with recursive
+removal built over it. Hashing lives in their libraries
+(`std.crypto.hash.sha2`, `core:crypto`). The host keeps to that layer; walks
+and recursive removal are authored Chibi. Dependencies will be vendored, as
+Odin vendors its libraries, so the dependency fetch and caches, and the
+interprocess lock they needed, go away rather than move.
+
+| Primitive | Result |
+| --- | --- |
+| `BuildFileKind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
+| `BuildFileStamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
+| `BuildListDirectory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
+| `BuildCopyFile(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
+| `BuildRename(source, destination) -> bool` | `rename(2)`. |
+| `BuildRemove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
+| `BuildHashFile(path) -> string`, `BuildHashText(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+
+Queries return a capability error for failures other than absence; mutations
+return false. Every primitive checks the deadline and cancellation, and copies
+and hashes check them between 64 KiB chunks. `support/sha256.c` is shared with
+the bootstrap artifact's digests.
+
+These primitives do not yet cover everything the Python does. The configuration
+signature hashes the full environment; children see only the allowlist, so
+`BuildEnvironmentNames` suffices. Once dependencies are vendored it no longer
+tracks dependency packages or source caches. Packaging also needs sizes,
+modification-time order, symbolic-link reads and unique staging directories.
+Each invocation has a 100,000-step execution budget, which bounds authored
+walks over large SDK trees; a walk of thousands of files needs a larger budget
+or a native tree operation. Add each with the move that first calls it.
 
 ## Bootstrap and backend milestones
 
@@ -263,15 +323,17 @@ No self-hosting or serializer completion is claimed by this handoff.
 
 ## Bootstrap artifact
 
-`make bootstrap-artifact` writes the recovery artifact of the stage-one package
-compiler to `build-release/bootstrap` (`BOOTSTRAP_ARTIFACT`). It runs in two
-steps:
+The recovery artifact of the stage-one package compiler is checked in at
+`tools/compiler/bootstrap`, as Zig checks in `stage1/zig1.wasm`.
+`make bootstrap-artifact` rewrites it (`BOOTSTRAP_ARTIFACT` names another
+folder). It runs in two steps:
 
 1. The Release bootstrap check (`make test-bootstrap`) prepares stage one with
    stage zero, compiles the compiler sources to stage two and has the compiler
    host compile them again with stage two, to the same bytes. With
    `CHIBI_BOOTSTRAP_SEED` naming a folder, it leaves stage two and Compile's
-   arguments there as `compiler.chibip` and `compile.json`.
+   arguments there as `compiler.chibip` and `compile.json`. The target
+   leaves the seed in `build-release/bootstrap.seed` and removes it after.
 2. `chibi-compiler-host --bootstrap DIR --compiler tools/compiler --core
    packages/core --seed SEED --revision REV` checks three things: that the
    sources the seed compiled are the ones on disk, with every file of their
@@ -323,34 +385,32 @@ It then compiles the recorded sources from disk with the artifact:
 
 `make test-recovery` exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and runs that check with the Release host. On macOS arm64 the
-check takes one compile, about 7 s, or two when the sources changed, about
-14 s; the whole selector takes about 12 s.
+check takes one compile, about 11 s, or two when the sources changed, about
+26 s; the whole selector takes about 18 s.
 
-The recovery artifact for clean checkouts is published, not checked in. It is
-a prerelease of this repository, tagged `compiler-bootstrap-VERSION-` followed
-by the start of the closure's SHA-256, with `compiler.chibip` and
-`bootstrap.json` as its assets. Studio only selects `engine-<commit>` tags, so
-it never mistakes one for an engine release. `tools/compiler/bootstrap.kdl`
-pins the published artifact with `published repository=... tag=...
-manifest=SHA256`. The manifest's own SHA-256 is pinned, and the manifest in
-turn pins the closure's.
+A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
+`chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
+tools/compiler --core packages/core` and needs neither stage zero, nor a
+compiler built from Chibi, nor a network. Git stores the artifact by content,
+and the manifest pins the closure's SHA-256, so a damaged closure is refused
+before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
+target is the value layout and prepared ABI rather than an operating system,
+so one artifact serves every host with that ABI.
 
-`make bootstrap-recover` runs `tools/toolchain/Bootstrap.chibi` in the build
-host. That program:
-1. downloads the release with `gh release download` into
-   `build-release/bootstrap-published`;
-2. runs `chibi-compiler-host --bootstrap ... --published`, which refuses a
-   manifest without the pinned SHA-256 before it loads anything.
+Rewrite the artifact only when it can no longer recover the compiler:
+- when `minimum` rises past its version;
+- when the host's target changes;
+- when a compiler package gains or loses a source file, because recovery
+  compiles the files the manifest records;
+- when the compiler emits other code for its own sources, because the first
+  compile is the artifact's code generation: the compiler it builds compiles
+  the sources to other bytes than its own, and recovery fails.
 
-The repository is private, so `gh` must be signed in. This needs no stage zero
-and no compiler built from Chibi.
-
-To publish a new artifact, for example when `minimum` rises or the host's
-target changes:
-1. Run `make bootstrap-artifact` on a clean tree.
-2. Run `gh release create compiler-bootstrap-VERSION-PREFIX --prerelease
-   --target REVISION`, uploading both files.
-3. Update the pin in `bootstrap.kdl`.
+Any other change to the contents of recorded sources needs no new artifact,
+because recovery reaches the fixpoint in a second compile. To rewrite it:
+1. Run `make bootstrap-artifact` on a clean tree, so that it records a
+   revision without `-dirty`.
+2. Commit `tools/compiler/bootstrap` together with the change that needs it.
 
 The final normal installed workflow remains subject to `PLAN.md`: it must
 compile Chibi and drive build/link with `cmake`, `clang` and `gcc` executables

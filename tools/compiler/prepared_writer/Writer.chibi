@@ -8,8 +8,10 @@ import strings "core:strings"
 // into the module's `wide` pool, whose entry 0 is zero for an absent payload.
 // Nested values, table items and per-function tables are ranges of flat pools.
 //
-// Every table stays in Write; helpers take scalars, text and single records,
-// and 64-bit fields arrive as values.
+// Every table stays in Write; helpers encode one row, taking single records,
+// scalars, text and the pools they index. Each encodes a row's fields in as
+// few Words or Ints calls as it can, since a call that returns an array costs
+// far more than a field.
 
 Magic: uint64 : 0x4348494249505245;
 Version: int : 18;
@@ -238,177 +240,165 @@ Module :: union {
            references: Reference[], points: Point[], watches: Watch[], entries: Entry[])
 }
 
-U64 :: (value: uint64) -> byte[] {
+// Varints of 64-bit words: seven bits at a time from the low end, the high bit
+// marking that more follow.
+Words :: (words: uint64[]) -> byte[] {
     bytes: byte[] = [];
-    rest := value;
-    more := true;
-    while (more) {
-        low := rest & 127;
-        rest = rest >> 7;
-        more = rest != 0;
-        if (more) {
-            low = low | 128;
+    for (word in words) {
+        rest := word;
+        while ((rest >> 7) != 0) {
+            bytes = array_add(bytes, byte(wrap: rest | 128));
+            rest = rest >> 7;
         }
-        bytes = array_add(bytes, byte(wrap: low));
+        bytes = array_add(bytes, byte(wrap: rest));
     }
     return bytes;
 }
-// Zigzag keeps small negative values, such as -1 for none, one byte long.
-Int :: (value: int) -> byte[] {
-    wide := int64(value);
-    return U64(uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63));
-}
-Bool :: (value: bool) -> byte[] {
-    if (value) {
-        return U64(1);
+// Zigzag varints of ints, which keep small negative values, such as -1 for
+// none, one byte long.
+Ints :: (values: int[]) -> byte[] {
+    bytes: byte[] = [];
+    for (value in values) {
+        wide := int64(value);
+        rest := uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63);
+        while ((rest >> 7) != 0) {
+            bytes = array_add(bytes, byte(wrap: rest | 128));
+            rest = rest >> 7;
+        }
+        bytes = array_add(bytes, byte(wrap: rest));
     }
-    return U64(0);
+    return bytes;
+}
+// An int as its zigzag word, for a row of Words.
+Zig :: (value: int) -> uint64 {
+    wide := int64(value);
+    return uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63);
+}
+Flag :: (value: bool) -> uint64 {
+    if (value) {
+        return 1;
+    }
+    return 0;
+}
+// The bytes of a string.
+Raw :: (value: string) -> byte[] {
+    bytes: byte[] = [];
+    for (code in strings.Bytes(value)) {
+        bytes = array_add(bytes, byte(wrap: code));
+    }
+    return bytes;
 }
 // Absent text is 0; otherwise its byte length plus one, then its bytes.
 Text :: (value: string, present: bool) -> byte[] {
     if (!present) {
-        return U64(0);
+        return [0];
     }
-    size := strings.ByteLength(value);
-    bytes := U64(uint64(size + 1));
-    index: int = 0;
-    while (index < size) {
-        bytes = array_add(bytes, byte(strings.ByteAt(value, index)));
-        index += 1;
-    }
-    return bytes;
+    raw := Raw(value);
+    return append(Words([uint64(length(raw) + 1)]), raw);
 }
 Zeros :: (count: int) -> byte[] {
-    bytes: byte[] = [];
-    while (length(bytes) < count) {
-        bytes = array_add(bytes, byte(0));
-    }
-    return bytes;
+    return resize([byte(0)], count);
 }
 // A value's own bytes; its nested values follow them. `bits` is its wide entry.
 ValueHead :: (v: Value, bits: uint64) -> byte[] {
-    bytes := Int(v.tag);
-    bytes = append(bytes, Int(v.container));
-    bytes = append(bytes, Text(v.type_name, v.has_type_name));
-    bytes = append(bytes, Bool(v.authored));
+    bytes := append(Ints([v.tag, v.container]), Text(v.type_name, v.has_type_name));
     if (v.container != 0) {
-        bytes = append(bytes, Bool(v.present));
         if (!v.present) {
-            return bytes;
+            return append(bytes, Words([Flag(v.authored), 0]));
         }
-        return append(bytes, Int(v.count));
+        return append(bytes, Words([Flag(v.authored), 1, Zig(v.count)]));
     }
     if (v.tag == StructTag) {
-        bytes = append(bytes, U64(bits));
-        bytes = append(bytes, Bool(v.present));
-        return append(bytes, Int(v.count));
+        return append(bytes, Words([Flag(v.authored), bits, Flag(v.present), Zig(v.count)]));
     }
     if (v.tag == UnionTag) {
-        bytes = append(bytes, Bool(v.present));
         if (!v.present) {
-            return bytes;
+            return append(bytes, Words([Flag(v.authored), 0]));
         }
-        bytes = append(bytes, U64(bits));
-        return append(bytes, Int(v.count));
+        return append(bytes, Words([Flag(v.authored), 1, bits, Zig(v.count)]));
     }
     if (v.tag == TextTag || v.tag == NameTag) {
+        bytes = append(bytes, Words([Flag(v.authored)]));
         return append(bytes, Text(v.text, v.has_text));
     }
-    return append(bytes, U64(bits));
+    return append(bytes, Words([Flag(v.authored), bits]));
 }
-// How many nested values follow a value's own bytes.
-Nested :: (v: Value) -> int {
+// A value's bytes: its own, then those of the values nested in it, which
+// `pool` already holds from starts[i] for sizes[i] bytes.
+ValueBytes :: (v: Value, wide: uint64[], pool: byte[], starts: int[], sizes: int[]) -> byte[] {
+    bytes := ValueHead(v, wide[v.wide]);
     aggregate := v.container != 0 || v.tag == StructTag || v.tag == UnionTag;
-    if (aggregate && v.present) {
-        return v.count;
+    if (!aggregate || !v.present) {
+        return bytes;
     }
-    return 0;
+    nested := v.first;
+    while (nested < v.first + v.count) {
+        bytes = append(bytes, slice(pool, starts[nested], sizes[nested]));
+        nested += 1;
+    }
+    return bytes;
 }
 // A zero flow value, as an empty observer type is written.
 FlowValue :: () -> byte[] {
-    bytes := Int(FlowTag);
-    bytes = append(bytes, Int(0));
-    bytes = append(bytes, Text("", false));
-    bytes = append(bytes, Bool(false));
-    return append(bytes, U64(0));
+    return Ints([FlowTag, 0, 0, 0, 0]);
 }
-SourceBytes :: (v: Source, graph: uint64, call: uint64) -> byte[] {
-    bytes := U64(graph);
-    bytes = append(bytes, U64(call));
-    bytes = append(bytes, Int(v.parent));
-    bytes = append(bytes, Text(v.asset, v.has_asset));
-    bytes = append(bytes, Int(v.start));
-    bytes = append(bytes, Int(v.end));
-    bytes = append(bytes, Int(v.line));
-    return append(bytes, Int(v.column));
+// A source with its asset's text already encoded; an absent asset is 0.
+SourceBytes :: (v: Source, wide: uint64[], asset: byte[]) -> byte[] {
+    if (!v.has_asset) {
+        bytes := Words([wide[v.graph], wide[v.call], Zig(v.parent), 0]);
+        return append(bytes, Ints([v.start, v.end, v.line, v.column]));
+    }
+    bytes := append(Words([wide[v.graph], wide[v.call], Zig(v.parent)]), asset);
+    return append(bytes, Ints([v.start, v.end, v.line, v.column]));
 }
-ReferenceBytes :: (v: Reference, function: uint64) -> byte[] {
-    bytes := Int(v.imported);
-    bytes = append(bytes, Int(v.own));
-    bytes = append(bytes, U64(function));
-    return append(bytes, Int(v.role));
+ReferenceBytes :: (v: Reference, wide: uint64[]) -> byte[] {
+    return Words([Zig(v.imported), Zig(v.own), wide[v.function], Zig(v.role)]);
 }
-PointBytes :: (v: Point, occurrence: uint64, meaning: uint64) -> byte[] {
-    bytes := U64(occurrence);
-    bytes = append(bytes, U64(meaning));
-    bytes = append(bytes, Int(v.start));
-    bytes = append(bytes, Int(v.end));
-    bytes = append(bytes, Int(v.line));
-    bytes = append(bytes, Int(v.column));
-    bytes = append(bytes, Int(v.kind));
-    return append(bytes, Bool(v.completion));
+PointBytes :: (v: Point, wide: uint64[]) -> byte[] {
+    return Words([wide[v.occurrence], wide[v.meaning], Zig(v.start), Zig(v.end), Zig(v.line), Zig(v.column),
+                  Zig(v.kind), Flag(v.completion)]);
 }
-// An instruction up to its value; the value and its layout follow.
-InstructionHead :: (v: Instruction, node: uint64) -> byte[] {
-    bytes := Int(v.op);
-    bytes = append(bytes, Int(v.type));
-    bytes = append(bytes, Int(v.output));
-    bytes = append(bytes, Int(v.left));
-    bytes = append(bytes, Int(v.right));
-    bytes = append(bytes, Int(v.target));
-    bytes = append(bytes, Int(v.frame));
-    bytes = append(bytes, Int(v.source));
-    bytes = append(bytes, Int(v.stack));
-    bytes = append(bytes, Int(v.pin));
-    bytes = append(bytes, U64(uint64(v.offset)));
-    bytes = append(bytes, Bool(v.indirect));
-    bytes = append(bytes, Int(v.component_index));
-    return append(bytes, U64(node));
+// An instruction with its value, layout and message.
+InstructionBytes :: (v: Instruction, wide: uint64[], pool: byte[], starts: int[], sizes: int[]) -> byte[] {
+    bytes := Ints([v.op, v.type, v.output, v.left, v.right, v.target, v.frame, v.source, v.stack, v.pin]);
+    bytes = append(bytes, Words([uint64(v.offset), Flag(v.indirect), Zig(v.component_index), wide[v.node]]));
+    bytes = append(bytes, slice(pool, starts[v.value], sizes[v.value]));
+    if (!v.has_message) {
+        return append(bytes, Words([wide[v.layout], 0]));
+    }
+    bytes = append(bytes, Words([wide[v.layout]]));
+    return append(bytes, Text(v.message, true));
+}
+LocalBytes :: (v: Local, wide: uint64[], pool: byte[], starts: int[], sizes: int[]) -> byte[] {
+    bytes := append(Ints([v.kind]), slice(pool, starts[v.initial], sizes[v.initial]));
+    return append(bytes, Words([Zig(v.frame), wide[v.node], Zig(v.pin), uint64(v.offset), Flag(v.parameter),
+                                Flag(v.array_default), Zig(v.data_index)]));
+}
+HostBytes :: (v: Host, wide: uint64[]) -> byte[] {
+    bytes := Words([wide[v.capability], wide[v.abi], Zig(v.first), Zig(v.result_first), Zig(v.result_count),
+                    Zig(v.outcome_count)]);
+    return append(bytes, Words(slice(wide, v.outcome_first, v.outcome_count)));
+}
+CallBytes :: (v: Call, target: Reference, wide: uint64[]) -> byte[] {
+    bytes := ReferenceBytes(target, wide);
+    return append(bytes, Words([Zig(v.first), Zig(v.count), Zig(v.result_first), Zig(v.result_count), Flag(v.task)]));
 }
 FunctionHead :: (v: Function) -> byte[] {
-    bytes := Int(v.argument_count);
-    bytes = append(bytes, Int(v.result_count));
-    bytes = append(bytes, Int(v.variable_count));
-    bytes = append(bytes, U64(uint64(v.root_steps)));
-    bytes = append(bytes, U64(uint64(v.child_budget)));
-    bytes = append(bytes, U64(uint64(v.depth_bound)));
-    bytes = append(bytes, U64(uint64(v.pure_depth_limit)));
-    bytes = append(bytes, Bool(v.breakpoints));
-    bytes = append(bytes, Bool(v.batchable));
-    bytes = append(bytes, Bool(v.managed));
-    bytes = append(bytes, Bool(v.custom_lowering));
-    bytes = append(bytes, Bool(v.checkpoints));
-    bytes = append(bytes, Bool(v.pin_watches));
-    bytes = append(bytes, U64(uint64(v.watch_size)));
-    bytes = append(bytes, Bool(v.component_bindings));
-    return append(bytes, Bool(v.component_access));
+    return Words([Zig(v.argument_count), Zig(v.result_count), Zig(v.variable_count), uint64(v.root_steps),
+                  uint64(v.child_budget), uint64(v.depth_bound), uint64(v.pure_depth_limit), Flag(v.breakpoints),
+                  Flag(v.batchable), Flag(v.managed), Flag(v.custom_lowering), Flag(v.checkpoints),
+                  Flag(v.pin_watches), uint64(v.watch_size), Flag(v.component_bindings), Flag(v.component_access)]);
 }
 // An entry before its body and subscription references.
 EntryHead :: (v: Entry, id: uint64, effects: uint64) -> byte[] {
-    bytes := U64(id);
-    // Event, event ABI and the observer's component, layout, field and offset.
-    bytes = append(bytes, Zeros(6));
-    bytes = append(bytes, FlowValue());
-    bytes = append(bytes, Int(0));
-    // Action, parent and outcome, then no captures.
-    bytes = append(bytes, Zeros(3));
-    bytes = append(bytes, Int(0));
-    bytes = append(bytes, Int(0));
-    bytes = append(bytes, Bool(v.continuation_wait));
-    bytes = append(bytes, Int(v.kind));
+    // Event, event ABI, the observer's component, layout, field and offset,
+    // then its type.
+    bytes := append(Words([id, 0, 0, 0, 0, 0, 0]), FlowValue());
+    // The observer's argument, action, parent and outcome, then no captures.
+    bytes = append(bytes, Words([0, 0, 0, 0, 0, 0, Flag(v.continuation_wait), Zig(v.kind)]));
     bytes = append(bytes, Text(v.entry_name, v.has_entry));
-    bytes = append(bytes, Text("", false));
-    return append(bytes, U64(effects));
+    // No event name.
+    return append(bytes, Words([0, effects]));
 }
 
 // The complete inner module.
@@ -424,163 +414,143 @@ Write :: (module: Module) -> byte[] {
             sizes := resize([int(0)], length(values));
             at := length(values) - 1;
             while (at >= 0) {
-                v := values[at];
                 start := length(pool);
-                pool = append(pool, ValueHead(v, wide[v.wide]));
-                nested: int = 0;
-                count := Nested(v);
-                while (nested < count) {
-                    child := v.first + nested;
-                    pool = append(pool, slice(pool, starts[child], sizes[child]));
-                    nested += 1;
-                }
+                pool = append(pool, ValueBytes(values[at], wide, pool, starts, sizes));
                 starts[at] = start;
                 sizes[at] = length(pool) - start;
                 at -= 1;
             }
 
-            bytes := U64(Magic);
-            bytes = append(bytes, U64(uint64(Version)));
-            bytes = append(bytes, U64(8));
-            bytes = append(bytes, U64(abi));
-            bytes = append(bytes, U64(id));
-            bytes = append(bytes, U64(owner_type));
-            bytes = append(bytes, Int(length(requirements)));
+            bytes := Words([Magic, uint64(Version), 8, abi, id, owner_type, Zig(length(requirements))]);
             for (requirement in requirements) {
-                bytes = append(bytes, U64(wide[requirement.id]));
-                bytes = append(bytes, U64(wide[requirement.layout]));
-                bytes = append(bytes, Int(requirement.storage));
+                bytes = append(bytes, Words([wide[requirement.id], wide[requirement.layout],
+                                             Zig(requirement.storage)]));
                 bytes = append(bytes, Text(requirement.name, true));
-                bytes = append(bytes, U64(uint64(requirement.size)));
-                bytes = append(bytes, Bool(requirement.authored));
+                bytes = append(bytes, Words([uint64(requirement.size), Flag(requirement.authored)]));
                 if (requirement.authored) {
-                    bytes = append(bytes, Int(requirement.count));
+                    bytes = append(bytes, Ints([requirement.count]));
                     index: int = 0;
                     while (index < requirement.count) {
                         field := fields[requirement.first + index];
                         bytes = append(bytes, Text(field.name, true));
-                        bytes = append(bytes, Int(field.kind));
+                        bytes = append(bytes, Ints([field.kind]));
                         bytes = append(bytes, Text(field.type_name, field.has_type_name));
                         bytes = append(bytes, Text(field.unit, field.has_unit));
                         index += 1;
                     }
                 }
             }
-            bytes = append(bytes, Int(0));
-            bytes = append(bytes, Int(length(imports)));
+            bytes = append(bytes, Ints([0, length(imports)]));
             for (imported in imports) {
-                bytes = append(bytes, U64(wide[imported.id]));
-                bytes = append(bytes, U64(wide[imported.fingerprint]));
+                bytes = append(bytes, Words([wide[imported.id], wide[imported.fingerprint]]));
             }
 
-            bytes = append(bytes, Int(length(functions)));
+            // Consecutive sources of one asset share its encoded text.
+            asset := "";
+            asset_bytes := Text(asset, true);
+            bytes = append(bytes, Ints([length(functions)]));
             for (function in functions) {
                 bytes = append(bytes, FunctionHead(function));
                 table: int = 0;
                 while (table < Tables) {
                     span := spans[function.spans + table];
-                    bytes = append(bytes, Int(span.count));
-                    index: int = 0;
-                    while (index < span.count) {
-                        item := span.first + index;
-                        if (table == ArgumentDefaults || table == ResultDefaults ||
-                            table == VariableDefaults) {
+                    bytes = append(bytes, Ints([span.count]));
+                    item := span.first;
+                    last := span.first + span.count;
+                    if (table == ArgumentDefaults || table == ResultDefaults || table == VariableDefaults) {
+                        while (item < last) {
                             bytes = append(bytes, slice(pool, starts[item], sizes[item]));
-                        } else if (table == ArgumentKinds || table == ResultKinds ||
-                                   table == Slots || table == SlotKinds) {
-                            bytes = append(bytes, Int(ints[item]));
-                        } else if (table == Roots) {
-                            root := roots[item];
-                            bytes = append(bytes, Int(root.bank));
-                            bytes = append(bytes, Int(root.index));
-                            bytes = append(bytes, slice(pool, starts[root.shape], sizes[root.shape]));
-                        } else if (table == Instructions) {
-                            code := instructions[item];
-                            bytes = append(bytes, InstructionHead(code, wide[code.node]));
-                            bytes = append(bytes, slice(pool, starts[code.value], sizes[code.value]));
-                            bytes = append(bytes, U64(wide[code.layout]));
-                            bytes = append(bytes, Text(code.message, code.has_message));
-                        } else if (table == Locals) {
-                            local := locals[item];
-                            bytes = append(bytes, Int(local.kind));
-                            bytes = append(bytes, slice(pool, starts[local.initial], sizes[local.initial]));
-                            bytes = append(bytes, Int(local.frame));
-                            bytes = append(bytes, U64(wide[local.node]));
-                            bytes = append(bytes, Int(local.pin));
-                            bytes = append(bytes, U64(uint64(local.offset)));
-                            bytes = append(bytes, Bool(local.parameter));
-                            bytes = append(bytes, Bool(local.array_default));
-                            bytes = append(bytes, Int(local.data_index));
-                        } else if (table == Parameters) {
-                            parameter := parameters[item];
-                            bytes = append(bytes, slice(pool, starts[parameter.initial], sizes[parameter.initial]));
-                            bytes = append(bytes, Int(parameter.frame));
-                            bytes = append(bytes, Int(parameter.pin));
-                        } else if (table == Frames) {
+                            item += 1;
+                        }
+                    } else if (table == ArgumentKinds || table == ResultKinds || table == Slots ||
+                               table == SlotKinds) {
+                        bytes = append(bytes, Ints(slice(ints, span.first, span.count)));
+                    } else if (table == Roots) {
+                        while (item < last) {
+                            bytes = append(bytes, Ints([roots[item].bank, roots[item].index]));
+                            bytes = append(bytes, slice(pool, starts[roots[item].shape], sizes[roots[item].shape]));
+                            item += 1;
+                        }
+                    } else if (table == Instructions) {
+                        while (item < last) {
+                            bytes = append(bytes, InstructionBytes(instructions[item], wide, pool, starts, sizes));
+                            item += 1;
+                        }
+                    } else if (table == Locals) {
+                        while (item < last) {
+                            bytes = append(bytes, LocalBytes(locals[item], wide, pool, starts, sizes));
+                            item += 1;
+                        }
+                    } else if (table == Parameters) {
+                        while (item < last) {
+                            initial := parameters[item].initial;
+                            bytes = append(bytes, slice(pool, starts[initial], sizes[initial]));
+                            bytes = append(bytes, Ints([parameters[item].frame, parameters[item].pin]));
+                            item += 1;
+                        }
+                    } else if (table == Frames) {
+                        while (item < last) {
                             frame := frames[item];
                             source := sources[frame.source];
-                            bytes = append(bytes, SourceBytes(source, wide[source.graph], wide[source.call]));
-                            bytes = append(bytes, Int(frame.depth));
-                            bytes = append(bytes, Int(frame.resume));
-                            bytes = append(bytes, Int(frame.source_index));
-                            bytes = append(bytes, Int(frame.stack));
-                        } else if (table == Sources || table == Stacks) {
-                            source := sources[item];
-                            bytes = append(bytes, SourceBytes(source, wide[source.graph], wide[source.call]));
-                        } else if (table == Results) {
-                            bytes = append(bytes, Int(results[item].index));
-                            bytes = append(bytes, Text(results[item].name, true));
-                        } else if (table == DataValues) {
-                            datum := data[item];
-                            bytes = append(bytes, Int(datum.kind));
-                            bytes = append(bytes, slice(pool, starts[datum.initial], sizes[datum.initial]));
-                            bytes = append(bytes, U64(uint64(datum.size)));
-                        } else if (table == Hosts) {
-                            host := hosts[item];
-                            bytes = append(bytes, U64(wide[host.capability]));
-                            bytes = append(bytes, U64(wide[host.abi]));
-                            bytes = append(bytes, Int(host.first));
-                            bytes = append(bytes, Int(host.result_first));
-                            bytes = append(bytes, Int(host.result_count));
-                            bytes = append(bytes, Int(host.outcome_count));
-                            outcome: int = 0;
-                            while (outcome < host.outcome_count) {
-                                bytes = append(bytes, U64(wide[host.outcome_first + outcome]));
-                                outcome += 1;
-                            }
-                        } else if (table == Calls) {
-                            call := calls[item];
-                            target := references[call.function];
-                            bytes = append(bytes, ReferenceBytes(target, wide[target.function]));
-                            bytes = append(bytes, Int(call.first));
-                            bytes = append(bytes, Int(call.count));
-                            bytes = append(bytes, Int(call.result_first));
-                            bytes = append(bytes, Int(call.result_count));
-                            bytes = append(bytes, Bool(call.task));
-                        } else if (table == Definitions) {
-                            target := references[ints[item]];
-                            bytes = append(bytes, ReferenceBytes(target, wide[target.function]));
-                        } else if (table == SourcePoints) {
-                            point := points[item];
-                            bytes = append(bytes, PointBytes(point, wide[point.occurrence], wide[point.meaning]));
-                        } else {
-                            watch := watches[item];
-                            origin := points[watch.origin];
-                            bytes = append(bytes, PointBytes(origin, wide[origin.occurrence], wide[origin.meaning]));
-                            bytes = append(bytes, slice(pool, starts[watch.initial], sizes[watch.initial]));
-                            bytes = append(bytes, Int(watch.ordinal));
-                            bytes = append(bytes, Bool(watch.output));
-                            bytes = append(bytes, Bool(watch.reference));
+                            bytes = append(bytes, SourceBytes(source, wide, Text(source.asset, source.has_asset)));
+                            bytes = append(bytes, Ints([frame.depth, frame.resume, frame.source_index, frame.stack]));
+                            item += 1;
                         }
-                        index += 1;
-                    }
-                    // Queries, commands and their banks follow host calls; calls follow them.
-                    if (table == Hosts) {
+                    } else if (table == Sources || table == Stacks) {
+                        while (item < last) {
+                            if (sources[item].has_asset && sources[item].asset != asset) {
+                                asset = sources[item].asset;
+                                asset_bytes = Text(asset, true);
+                            }
+                            bytes = append(bytes, SourceBytes(sources[item], wide, asset_bytes));
+                            item += 1;
+                        }
+                    } else if (table == Results) {
+                        while (item < last) {
+                            bytes = append(bytes, Ints([results[item].index]));
+                            bytes = append(bytes, Text(results[item].name, true));
+                            item += 1;
+                        }
+                    } else if (table == DataValues) {
+                        while (item < last) {
+                            bytes = append(bytes, Ints([data[item].kind]));
+                            bytes = append(bytes, slice(pool, starts[data[item].initial], sizes[data[item].initial]));
+                            bytes = append(bytes, Words([uint64(data[item].size)]));
+                            item += 1;
+                        }
+                    } else if (table == Hosts) {
+                        while (item < last) {
+                            bytes = append(bytes, HostBytes(hosts[item], wide));
+                            item += 1;
+                        }
+                        // Queries, commands and their banks follow host calls; calls follow them.
                         bytes = append(bytes, Zeros(6));
-                    }
-                    // Components, component writes and state selections follow definitions.
-                    if (table == Definitions) {
+                    } else if (table == Calls) {
+                        while (item < last) {
+                            bytes = append(bytes, CallBytes(calls[item], references[calls[item].function], wide));
+                            item += 1;
+                        }
+                    } else if (table == Definitions) {
+                        while (item < last) {
+                            bytes = append(bytes, ReferenceBytes(references[ints[item]], wide));
+                            item += 1;
+                        }
+                        // Components, component writes and state selections follow definitions.
                         bytes = append(bytes, Zeros(3));
+                    } else if (table == SourcePoints) {
+                        while (item < last) {
+                            bytes = append(bytes, PointBytes(points[item], wide));
+                            item += 1;
+                        }
+                    } else {
+                        while (item < last) {
+                            watch := watches[item];
+                            bytes = append(bytes, PointBytes(points[watch.origin], wide));
+                            bytes = append(bytes, slice(pool, starts[watch.initial], sizes[watch.initial]));
+                            bytes = append(bytes, Words([Zig(watch.ordinal), Flag(watch.output),
+                                                         Flag(watch.reference)]));
+                            item += 1;
+                        }
                     }
                     table += 1;
                 }
@@ -589,19 +559,14 @@ Write :: (module: Module) -> byte[] {
             }
 
             // No states.
-            bytes = append(bytes, Int(0));
-            bytes = append(bytes, Int(length(entries)));
+            bytes = append(bytes, Ints([0, length(entries)]));
             for (item in entries) {
                 bytes = append(bytes, EntryHead(item, wide[item.id], wide[item.effects]));
-                body := references[item.body];
-                bytes = append(bytes, ReferenceBytes(body, wide[body.function]));
-                subscription := references[item.subscription];
-                bytes = append(bytes, ReferenceBytes(subscription, wide[subscription.function]));
+                bytes = append(bytes, ReferenceBytes(references[item.body], wide));
+                bytes = append(bytes, ReferenceBytes(references[item.subscription], wide));
             }
             // No queries, query -1, no query variables or filter, bindings or actions.
-            bytes = append(bytes, Int(0));
-            bytes = append(bytes, Int(-1));
-            return append(bytes, Zeros(4));
+            return append(bytes, Ints([0, -1, 0, 0, 0, 0]));
     }
 }
 
@@ -656,11 +621,7 @@ Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
         bytes = append(bytes, Word(ids[row]));
         bytes = append(bytes, Word(uint64(size)));
         bytes = append(bytes, Word(uint64(lengths[row])));
-        at: int = 0;
-        while (at < size) {
-            bytes = array_add(bytes, byte(strings.ByteAt(name, at)));
-            at += 1;
-        }
+        bytes = append(bytes, Raw(name));
         bytes = append(bytes, slice(data, starts[row], lengths[row]));
     }
     return bytes;

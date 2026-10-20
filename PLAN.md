@@ -191,7 +191,9 @@ Current integration constraints:
   (main's v26 syntax step, then this branch's conversions step over a frozen
   v26 parser) and prepared schema 18. Stage one reads packed arrays and `for`
   loops, and its twins follow main's expression kinds and inferred purity.
-  The published bootstrap artifact predates schema 18 and must be republished.
+  The bootstrap artifact is checked in at `tools/compiler/bootstrap` and was
+  rebuilt from the merged tree (#512); the earlier published prerelease
+  predates schema 18 and is refused.
   PRs #504 (`text_bytes`) and #509 (reference type checks), which landed on
   this branch during the integration, are merged in as well. #509's storage
   check now accepts two unnamed unions, because main's lowering gives union
@@ -211,7 +213,7 @@ Current integration constraints:
 | M5 | **In progress** | M4 | Complete stage-one and stage-two Chibi compiler bootstrap. |
 | M6 | Blocked | M5 | Chibi-owned internal build graph and installed SDK build path; CMake retained only for active consumers. |
 | M7 | **In progress** | M3 | Stable authoring and distribution commands implemented through shared Chibi modules. |
-| M8 | Blocked | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
+| M8 | **Complete** | M3, M7, landing on `main` | Chibi documentation generator, public source allowlist, and reviewable Pages workflow. |
 | M9 | Blocked | M5, M6 | First-party engine modules moved to Chibi packages behind tested native bindings. |
 | M10 | **In progress** | replacement-specific | Python, shell, CMake, and C implementations removed one responsibility at a time. |
 
@@ -556,15 +558,15 @@ Step 5 is implemented for the package compiler on 2026-10-19:
   another target and a version older than the sources' minimum. It then requires the artifact's own bytes, or a
   fixpoint when the sources changed.
 - `make test-recovery` runs that recovery from sources exported from HEAD in
-  about 12 s: one compile, or two when the sources changed.
+  about 18 s: one compile, or two when the sources changed.
 
-At the owner's direction the clean-checkout artifact is published as a release
-asset, not checked in. The current prerelease,
-`compiler-bootstrap-1-fd1b5aaf8c6c`, was built from revision `da03e96dd`
-after `text_bytes` joined the host's natives, and `tools/compiler/bootstrap.kdl`
-pins its manifest's SHA-256.
-`make bootstrap-recover` downloads that release with `gh` and recovers the
-compiler from it, about 11 s on macOS arm64. See
+At the owner's direction on 2026-10-19 the clean-checkout artifact is checked
+in at `tools/compiler/bootstrap`, as Zig checks in `zig1.wasm`, replacing the
+earlier release-asset download. It was rebuilt on 2026-10-20 from revision
+`94858a96c`, after #420's syntax and prepared target reached the compiler
+sources; the artifact published before that is refused ("prepared target ABI
+differs"). `make bootstrap-recover` recovers the
+compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
@@ -574,7 +576,7 @@ until the clean-checkout artifact recovery test passes.
 ### M6. Replace the internal build graph
 
 Move product profiles, generated prerequisites, native/cross compilation,
-include/link ownership, install layouts, dependency cache policy, and artifact
+include/link ownership, install layouts, vendored dependency builds, and artifact
 assembly into Chibi modules. Preserve installed CMake package files while Studio
 or another supported consumer needs them; generate those files rather than using
 them as the internal source of truth.
@@ -668,8 +670,9 @@ failure-path coverage.
 
 ### M8. Generate and publish one documentation site
 
-Status: implemented and reviewed; the first deployment waits for this branch
-to land on `main`, as the end of this status explains. `chibi doc [ROOT] [--serve] [--port
+Status: implemented, reviewed and published. The site has been live at
+https://waldnercharles.github.io/chibi/ since 2026-10-20, as the end of this
+status explains. `chibi doc [ROOT] [--serve] [--port
 PORT]` hands ROOT to the compiler's `--docs`, which writes `ROOT/build/docs` from the manifest
 `ROOT/docs/site.kdl`: a title and sections of pages, each a Markdown source
 inside ROOT and an `.html` file name. Nothing else under `docs/` is read. The
@@ -713,8 +716,17 @@ on 2026-10-19; the 2026-09-29 browser build from the retired engine publisher
 on `gh-pages` keeps serving until the first deployment replaces it. GitHub
 runs a `workflow_dispatch` workflow only from the default branch, and the
 `github-pages` environment deploys only from `main`, `gh-pages` and `v0.1.0`,
-so the owner's instruction is to run the workflow once this branch reaches
-`main`. No published page uses an
+so the owner's instruction was to run the workflow once this branch reached
+`main`. It landed on 2026-10-20, but GitHub refused to start the workflow's
+job ("recent account payments have failed or your spending limit needs to be
+increased"). At the owner's direction the site was instead built locally from
+`main` (`5a8457bf9`) with `build/sdk/chibi doc`, committed to `gh-pages`, and
+the Pages source switched back to that branch. The commit, `0b17fddde`,
+replaces the old browser build, whose editor now lives on chibi-studio's own
+Pages site. To publish again, build the site from `main`, commit `build/docs`
+with `.nojekyll` and a `BUILD_COMMIT` naming the source revision to
+`gh-pages`, and push. Returning to the workflow means switching the Pages
+source back to GitHub Actions once billing allows. No published page uses an
 image yet, so the manifest has no
 static assets beyond the generated stylesheet; listing assets comes with the
 first page that needs one.
@@ -755,8 +767,40 @@ publication contracts already live in the replacement: Studio's
 SHA-256 in `studio.json` and skips an unchanged pair, the engine release
 workflow publishes versioned packages, `docs/game-web-workflow.yml` deploys a
 game from them, and `chibi export --web` assembles a local site. Git history
-is the recovery path. Every other responsibility in
-`docs/toolchain-inventory.md` still waits for its replacement.
+is the recovery path.
+
+On 2026-10-19 the owner asked to start removing project-owned C, C++, Python,
+CMake, Make and shell wherever Chibi can own the work, and to do no work in C
+or stage zero that Chibi can do. The removal inventory in
+`docs/toolchain-inventory.md` now classifies every such file. The in-tree
+browser editor's leftovers are gone: `tools/configure_web.sh`,
+`tools/web_compiler.sh`, the root `CHIBI_COLLAB_URL` and the copies of
+`tools/web_*` and the collaboration client. Nothing had called them since
+Studio took over the browser build on 2026-10-08 (`aff61c28f`); Studio builds
+from its own `web/` and `test/tools/web_storage.c` already reads that copy.
+So are the retired one-off probes: `tools/hrc_sparse_sweep.c`, built by
+nothing since its September HRC study (its research note says how to recover
+it from Git), and `tools/compare_neon_frames.mjs` with `tools/png-check.mjs`,
+a frame diff for a game no longer in this repository. `Build.chibi` now decides
+whether private dependency sources decline immutable packages, which was
+`configure_inputs.py package-enabled`; the `build-toolchain` cases passed
+unchanged against both implementations. Compiler SDK discovery followed it
+from `configure_inputs.py compiler-sdk`; the new `build-toolchain` macOS case
+passed against both implementations. A step's own output now holds 1 MiB
+rather than 4 KiB, probes keep tool reports out of the build's output, and the
+build host gained the file primitives in `docs/self-hosting-build.md`. Owner
+decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
+`dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
+than ported, and the configuration signature shrinks before it moves. Waiting
+on a decision: `.github/scripts/` (the M5 owner
+confirms its hosted runs are finished), the CUT61 analysis scripts (owner
+review of the stale record), and game runtime installation (whether the
+`update-game-runtime` workflow outlived the retired game repositories).
+Everything else is blocked. Packaging still needs sizes, modification-time
+order, link reads and staging directories from the host, and the Blender
+launcher needs child resource limits.
+The build graph waits on M6, the executables and runtime on a native backend,
+and engine modules on M9.
 
 Delete one responsibility at a time. Before deletion, name the replacement,
 enumerate every repository, installed-SDK, CI, release, and application caller,
@@ -794,8 +838,10 @@ in the source arena, runtime array copies that scanned every source element for
 packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
-Next action: land the integration PR into `main`, then republish the
-bootstrap artifact from the merged revision after confirmation.
+The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
+#512 rebuilt the checked-in bootstrap artifact from it. Next action: M5 step
+4, following `docs/design-notes.md`: gate each stage-one feature on a
+purpose-made example before rebuilding a whole game.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -967,8 +1013,38 @@ mostly stage zero's build writing the package compiler's module; stage two
 alone compiles the compiler in 7.9 s with a 3.6 GB peak. Still open in this
 milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
 Lab's behaviors need behaviors, events, state, doubles, vectors, named
-arguments and results, and effectful natives) and the checksummed bootstrap
-artifact with its version checks (step 5).
+arguments and results, and effectful natives).
+
+Step 4's gate exists since 2026-10-19; stage one does not yet pass it. At
+the owner's direction (2026-10-20) it gates on purpose-made stories in
+`test/stories`, one feature each, rather than on a playable game; playable
+examples such as Terrain Lab are to live outside the engine repository. The
+`game-equivalence` selector rebuilds each story with a reference and a
+candidate compiler, each a program that takes `--project-root ROOT --output
+FILE`. It then compares the two artifacts of each story:
+- what they declare apart from their code: every byte outside the module
+  records, and each module's name and ID;
+- one observation per fixed step while both play the story's scenario on the
+  CPU.
+
+`test/tools/GameEquivalence.chibi` orchestrates and compares in the build
+host. C reads and plays the artifact. Both compilers are stage zero until
+stage one compiles behaviors. Stage one then needs a route that puts its
+modules into a game artifact. Project preparation is now split for it:
+`authoring_project_assemble` writes the artifact from the project's
+declarations, scenes, prototypes and resources plus supplied prepared
+modules, one per executable source by module ID. Assembling each story from
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
+behavior links against: Compile's six target arguments, then the catalog's
+events, the type requirements stage zero lists, and the entity type. Next,
+in order:
+1. Stage one compiles a behavior asset, Counter first: retained state, an
+   event handler, `self` and a component field write through the reference
+   intrinsics, with the writer's state, event and component tables.
+2. The route: a Chibi program that runs stage one on a story with that
+   target, then this assembly through a narrow binding, as game-equivalence's
+   candidate.
+3. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

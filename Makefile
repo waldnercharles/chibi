@@ -104,7 +104,7 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 2 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 3 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build
 toolchain-build:
@@ -309,24 +309,24 @@ test-bootstrap:
 	@$(MAKE) build-release BUILD_TARGET=test_language
 	@CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
 
-# The bootstrap artifact: the bootstrap check leaves stage two and its
-# arguments in a seed folder, and the Release compiler host writes the artifact
-# once stage two compiles the sources to itself. test-recovery recovers the
-# compiler from it with sources exported from HEAD. See docs/self-hosting-build.md.
-BOOTSTRAP_ARTIFACT ?= $(RELEASE_BUILD_DIR)/bootstrap
+# The bootstrap artifact is checked in at tools/compiler/bootstrap, as Zig
+# checks in zig1.wasm. bootstrap-artifact rewrites it: the bootstrap check
+# leaves stage two and its arguments in a seed folder, and the Release compiler
+# host writes the artifact once stage two compiles the sources to itself.
+# bootstrap-recover recovers the compiler from it with the sources on disk, and
+# test-recovery with sources exported from HEAD. See docs/self-hosting-build.md.
+BOOTSTRAP_ARTIFACT ?= tools/compiler/bootstrap
+BOOTSTRAP_SEED = $(RELEASE_BUILD_DIR)/bootstrap.seed
 bootstrap-artifact:
 	@$(MAKE) build-release BUILD_TARGET='test_language chibi-compiler-host'
-	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed" && mkdir -p "$(BOOTSTRAP_ARTIFACT).seed"
-	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_ARTIFACT).seed)" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
-	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_ARTIFACT).seed" --revision "$$(git describe --always --dirty --abbrev=40)"
-	@rm -rf "$(BOOTSTRAP_ARTIFACT).seed"
+	@rm -rf "$(BOOTSTRAP_SEED)" && mkdir -p "$(BOOTSTRAP_SEED)"
+	@CHIBI_BOOTSTRAP_SEED="$(abspath $(BOOTSTRAP_SEED))" CHIBI_RELEASE_LANGUAGE_BUILD_DIR="$(RELEASE_BUILD_DIR)/test/language" python3 tools/test_policy.py tool language-package-compiler-chibi-bootstrap
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core --seed "$(BOOTSTRAP_SEED)" --revision "$$(git describe --always --dirty --abbrev=40)"
+	@rm -rf "$(BOOTSTRAP_SEED)"
 
-# Recovers the compiler from the published artifact tools/compiler/bootstrap.kdl
-# pins: tools/toolchain/Bootstrap.chibi downloads the release with gh and has
-# the Release compiler host check its manifest against the pin and recover.
 bootstrap-recover:
-	@$(MAKE) build-release BUILD_TARGET='chibi-compiler-host chibi-build-host'
-	@"$(RELEASE_BUILD_DIR)/sdk/chibi-build-host" --root "$(CURDIR)" --source tools/toolchain/Bootstrap.chibi --entry Recover --timeout-ms 300000 -- "$(abspath $(RELEASE_BUILD_DIR))/sdk/chibi-compiler-host" "$(abspath $(RELEASE_BUILD_DIR))/bootstrap-published"
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@"$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" --bootstrap "$(BOOTSTRAP_ARTIFACT)" --compiler tools/compiler --core packages/core
 
 test-recovery: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host

@@ -21,10 +21,10 @@ InputBehavior :: behavior {
     Face_Direction :: (Direction: struct<CF_V2> = null) {
         after entry {
             if self.Orientation {
-                if 0.0 >= abs(entry.Direction.x) + abs(entry.Direction.y) {
+                if 0.0 >= abs(Direction.x) + abs(Direction.y) {
                     return
                 } else {
-                    self.Orientation = DirectionMath.Direction_Orientation(entry.Direction.x, entry.Direction.y)
+                    self.Orientation = DirectionMath.Direction_Orientation(Direction.x, Direction.y)
                     return
                 }
             } else {

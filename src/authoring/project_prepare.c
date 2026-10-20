@@ -155,7 +155,7 @@ static event_catalog *events_prepare(
 }
 static bool attachments_valid(
     const scene *prepared_scene,
-    const authoring_sources *sources,
+    const source_catalog *catalog,
     char *error,
     size_t size
 )
@@ -164,10 +164,11 @@ static bool attachments_valid(
         for (int j = 0; j < scene_object_behavior_count(prepared_scene, i); j++) {
             const char *name = scene_object_behavior(prepared_scene, i, j);
             bool found = false;
-            for (int k = 0; k < authoring_sources_count(sources); k++) {
-                const authoring_source *source = authoring_sources_at(sources, k);
-                if (!strcmp(source->analysis->name, name) &&
-                    source->analysis->kind == SCRIPT_PROGRAM_BEHAVIOR) {
+            for (int k = 0; k < source_catalog_source_count(catalog); k++) {
+                const script_analysis *declared = source_catalog_source_at(catalog, k)
+                                                      ->declarations;
+                if (!strcmp(declared->name, name) &&
+                    declared->kind == SCRIPT_PROGRAM_BEHAVIOR) {
                     found = true;
                     break;
                 }
@@ -187,7 +188,7 @@ typedef struct
     const chibi_project *project;
     const project_prototype *prototypes;
     material_fields *fields;
-    const authoring_sources *sources;
+    const source_catalog *catalog;
     ecs_world *schemas;
 } scene_inputs;
 static scene *prepare_scene(const scene_inputs *in, const char *path, char *error, size_t size)
@@ -226,7 +227,7 @@ static scene *prepare_scene(const scene_inputs *in, const char *path, char *erro
     afree(objects);
     scene_document_free(document);
     if (prepared_scene &&
-        (!attachments_valid(prepared_scene, in->sources, error, size) ||
+        (!attachments_valid(prepared_scene, in->catalog, error, size) ||
          scene_register_components(prepared_scene, in->schemas, error, size))) {
         scene_free(prepared_scene);
         return NULL;
@@ -421,8 +422,80 @@ static char *manifest(const player_asset *assets, const player_asset *icon, cons
     yyjson_mut_doc_free(doc);
     return text;
 }
-bool authoring_project_prepare(
+/* The catalog's first diagnostic, as source diagnostics are reported. */
+static bool catalog_valid(const source_catalog *catalog, char *error, size_t size)
+{
+    if (!source_catalog_diagnostic_count(catalog)) {
+        return true;
+    }
+    const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, 0);
+    if (size) {
+        snprintf(
+            error,
+            size,
+            "%s:%d:%d (byte %d): %s",
+            diagnostic->path,
+            diagnostic->range.line,
+            diagnostic->range.column,
+            diagnostic->range.start,
+            diagnostic->message
+        );
+    }
+    return false;
+}
+/* Copies the supplied module of each source, in the catalog's order and named
+ * as the source declares itself, as stage zero names its own; every module
+ * must belong to exactly one source. */
+static bool supplied_modules(
+    const source_catalog *catalog,
+    const package_module *supplied,
+    int count,
+    package_module **modules,
+    char *error,
+    size_t size
+)
+{
+    size_t total = 0;
+    for (int i = 0; i < source_catalog_source_count(catalog); i++) {
+        const source_catalog_source *source = source_catalog_source_at(catalog, i);
+        uint64_t id = script_catalog_id("module", source->identity);
+        const package_module *module = NULL;
+        for (int j = 0; j < count && !module; j++) {
+            module = supplied[j].id == id ? &supplied[j] : NULL;
+        }
+        if (!module) {
+            if (size) {
+                snprintf(
+                    error,
+                    size,
+                    "%s: no prepared module was supplied",
+                    source->identity
+                );
+            }
+            return false;
+        }
+        if (module->length > PACKAGE_MAX_BYTES - total) {
+            return fail(error, size, "Prepared module closure exceeds package byte limit");
+        }
+        total += module->length;
+        unsigned char *bytes = xmalloc(module->length ? module->length : 1);
+        memcpy(bytes, module->data, module->length);
+        apush(
+            *modules,
+            ((
+                package_module
+            ){ xstrdup(source->declarations->name), id, bytes, module->length })
+        );
+    }
+    return acount(*modules) == count ||
+           fail(error, size, "A supplied module repeats another or belongs to no project source");
+}
+/* Prepares the project's game artifact. Stage zero compiles its sources when
+ * `supplied` is NULL; otherwise they are the supplied prepared modules. */
+static bool prepare(
     const authoring_project_options *options,
+    const package_module *supplied,
+    int supplied_count,
     authoring_project_artifact *artifact,
     char *error,
     size_t size
@@ -448,6 +521,8 @@ bool authoring_project_prepare(
     package_collection *collection = NULL;
     authoring_language_catalog *native = NULL;
     authoring_sources *sources = NULL;
+    source_catalog *declarations = NULL;
+    const source_catalog *catalog = NULL;
     project_prototype *prototypes = NULL;
     ecs_relationship_desc **relationships = NULL;
     scene *prepared_scene = NULL;
@@ -506,15 +581,25 @@ bool authoring_project_prepare(
     if (!native) {
         goto done;
     }
-    script_lower_bindings bindings = authoring_language_bindings(native);
-    sources = authoring_sources_prepare(
-        project.content,
-        authoring_language_catalog_view(native),
-        &bindings,
-        BEHAVIOR_BYTECODE
-    );
-    if (!sources || !sources_valid(sources, error, size)) {
-        goto done;
+    if (supplied) {
+        declarations = source_catalog_new(project.content, authoring_language_catalog_view(native));
+        catalog = declarations;
+        if (!catalog_valid(catalog, error, size) ||
+            !supplied_modules(catalog, supplied, supplied_count, &modules, error, size)) {
+            goto done;
+        }
+    } else {
+        script_lower_bindings bindings = authoring_language_bindings(native);
+        sources = authoring_sources_prepare(
+            project.content,
+            authoring_language_catalog_view(native),
+            &bindings,
+            BEHAVIOR_BYTECODE
+        );
+        if (!sources || !sources_valid(sources, error, size)) {
+            goto done;
+        }
+        catalog = authoring_sources_source_catalog(sources);
     }
     if (!authoring_native_graphs_prepare(project.content, sources, fields, error, size)) {
         goto done;
@@ -523,7 +608,7 @@ bool authoring_project_prepare(
     execution_prepared_linker native_types = native_capabilities_prepared_linker(&event_context);
     declared_components_linking event_linking = { declared, &native_types };
     execution_prepared_linker event_types = declared_components_linker(&event_linking);
-    events = events_prepare(authoring_sources_catalog(sources), &event_types, error, size);
+    events = events_prepare(source_catalog_view(catalog), &event_types, error, size);
     if (!events) {
         goto done;
     }
@@ -549,12 +634,12 @@ bool authoring_project_prepare(
             goto done;
         }
         apush(prepared, ((player_prototype){ document->identity, one }));
-        if (!attachments_valid(one, sources, error, size) ||
+        if (!attachments_valid(one, catalog, error, size) ||
             scene_register_components(one, schemas, error, size)) {
             goto done;
         }
     }
-    scene_inputs inputs = { &project, prototypes, fields, sources, schemas };
+    scene_inputs inputs = { &project, prototypes, fields, catalog, schemas };
     scene_path = chibi_project_scene_path(&project, options->scene);
     if (!scene_path) {
         fail(error, size, "Project has no start scene");
@@ -565,7 +650,7 @@ bool authoring_project_prepare(
     if (!prepared_scene || !prepare_scenes(&inputs, start, &scenes, error, size)) {
         goto done;
     }
-    for (int i = 0; i < authoring_sources_count(sources); i++) {
+    for (int i = 0; sources && i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
         unsigned char *bytes = NULL;
         size_t length = 0;
@@ -587,20 +672,25 @@ bool authoring_project_prepare(
         );
         apush(definitions, source->module);
     }
-    if (!module_set_validate(definitions, acount(definitions), 0, error, size) ||
-        !event_catalog_validate(events, definitions, acount(definitions), error, size)) {
+    if (sources &&
+        (!module_set_validate(definitions, acount(definitions), 0, error, size) ||
+         !event_catalog_validate(events, definitions, acount(definitions), error, size))) {
         goto done;
     }
     /* The encoded package is linked independently of source/compiler storage. */
-    const input_action *map = authoring_sources_input(sources);
+    const input_action *map = source_catalog_input(catalog);
     for (int i = 0; i < acount(map); i++) {
         input_action action = map[i];
         action.name = xstrdup(action.name);
         apush(actions, action);
     }
     afree(definitions);
+    definitions = NULL;
+    catalog = NULL;
     authoring_sources_free(sources);
     sources = NULL;
+    source_catalog_free(declarations);
+    declarations = NULL;
     authoring_language_catalog_free(native);
     native = NULL;
     native_prepared_context context = { .native = options->native, .events = events };
@@ -724,6 +814,7 @@ done:
     free(scene_path);
     event_catalog_free(events);
     authoring_sources_free(sources);
+    source_catalog_free(declarations);
     authoring_language_catalog_free(native);
     afree(components);
     input_map_free(actions);
@@ -732,4 +823,76 @@ done:
     authoring_mesh_unmount_content();
     clear_visuals();
     return valid;
+}
+bool authoring_project_prepare(
+    const authoring_project_options *options,
+    authoring_project_artifact *artifact,
+    char *error,
+    size_t size
+)
+{
+    return prepare(options, NULL, 0, artifact, error, size);
+}
+bool authoring_project_assemble(
+    const authoring_project_options *options,
+    const package_module *modules,
+    int count,
+    authoring_project_artifact *artifact,
+    char *error,
+    size_t size
+)
+{
+    assert(count >= 0 && (!count || modules));
+    static const package_module none;
+    return prepare(options, count ? modules : &none, count, artifact, error, size);
+}
+struct authoring_project_catalog
+{
+    chibi_project project;
+    declared_components *declared;
+    authoring_language_catalog *native;
+};
+authoring_project_catalog *authoring_project_catalog_open(
+    const authoring_project_options *options,
+    char *error,
+    size_t size
+)
+{
+    assert(options && options->project && options->native);
+    authoring_project_catalog *catalog = xcalloc(1, sizeof *catalog);
+    bool valid = !chibi_project_read(&catalog->project, options->project, error, size) &&
+                 authoring_component_declarations_load(
+                     catalog->project.content,
+                     native_capabilities_catalog(options->native),
+                     &catalog->declared,
+                     error,
+                     size
+                 );
+    if (valid) {
+        catalog->native = authoring_language_catalog_new(
+            &(authoring_language_catalog_input){ .native = options->native },
+            error,
+            size
+        );
+        valid = catalog->native != NULL;
+    }
+    if (!valid) {
+        authoring_project_catalog_free(catalog);
+        return NULL;
+    }
+    return catalog;
+}
+const script_catalog *authoring_project_catalog_view(const authoring_project_catalog *catalog)
+{
+    return authoring_language_catalog_view(catalog->native);
+}
+void authoring_project_catalog_free(authoring_project_catalog *catalog)
+{
+    if (!catalog) {
+        return;
+    }
+    authoring_language_catalog_free(catalog->native);
+    declared_components_free(catalog->declared);
+    chibi_project_free(&catalog->project);
+    free(catalog);
 }

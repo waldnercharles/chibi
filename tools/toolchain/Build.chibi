@@ -38,6 +38,183 @@ ToolchainBuild :: library {
         }
         return "";
     }
+    Contains :: (text: string, part: string) -> bool {
+        return BuildBefore(text, part) != text;
+    }
+    // The kind of file a path names once links are followed, "" for none.
+    Kind :: (path: string) -> string {
+        resolved := BuildResolvePath(path);
+        if (resolved == "") {
+            return "";
+        }
+        return BuildFileKind(resolved);
+    }
+    // The separator that occurs first in text, or "" when none does.
+    Earliest :: (text: string, separators: string[]) -> string {
+        found := "";
+        prefix := text;
+        for (separator in separators) {
+            before := BuildBefore(text, separator);
+            if (before != prefix && BuildStartsWith(prefix, before)) {
+                found = separator;
+                prefix = before;
+            }
+        }
+        return found;
+    }
+    // Text split into words as a POSIX shell splits it, without expansion,
+    // like Python's shlex.split: blanks separate words, single quotes keep
+    // their text, a backslash keeps the next byte, and inside double quotes
+    // only a double quote or backslash can be escaped. An unclosed quote or a
+    // trailing backslash splits into no words.
+    Words :: (text: string) -> string[] {
+        unquoted := [" ", "\t", "\r", "\n", "'", "\"", "\\"];
+        words: string[] = [];
+        word := "";
+        started := false;
+        quote := "";
+        rest := text;
+        while (true) {
+            separators := unquoted;
+            if (quote == "'") {
+                separators = ["'"];
+            } else if (quote == "\"") {
+                separators = ["\"", "\\"];
+            }
+            separator := Earliest(rest, separators);
+            if (separator == "") {
+                if (quote != "") {
+                    return [];
+                }
+                if (rest != "" || started) {
+                    words = BuildConcat(words, [Join([word, rest])]);
+                }
+                return words;
+            }
+            part := BuildBefore(rest, separator);
+            rest = BuildAfter(rest, separator);
+            word = Join([word, part]);
+            started = started || part != "";
+            if (separator == "\\") {
+                if (rest == "") {
+                    return [];
+                }
+                escapable := unquoted;
+                if (quote == "\"") {
+                    escapable = ["\"", "\\"];
+                }
+                escaped := "";
+                for (candidate in escapable) {
+                    if (BuildStartsWith(rest, candidate)) {
+                        escaped = candidate;
+                    }
+                }
+                // Outside quotes an ordinary byte stays at the front of rest.
+                if (escaped != "") {
+                    word = Join([word, escaped]);
+                    rest = BuildAfter(rest, escaped);
+                } else if (quote == "\"") {
+                    word = Join([word, "\\"]);
+                }
+                started = true;
+            } else if (separator == "'" || separator == "\"") {
+                if (quote == "") {
+                    quote = separator;
+                } else {
+                    quote = "";
+                }
+                started = true;
+            } else if (started) {
+                words = BuildConcat(words, [word]);
+                word = "";
+                started = false;
+            }
+        }
+        return words;
+    }
+    // The SDK the -isysroot of a compiler driver's -### report names, followed
+    // through links, or "" when the driver cannot run or names no directory.
+    // The report is data, so it stays out of the build's output.
+    CompilerSDK :: (compiler: string) -> string {
+        command := [compiler];
+        if (Kind(compiler) != "file") {
+            command = Words(compiler);
+        }
+        if (BuildLength(command) == 0 || BuildFindExecutable(command[0]) == "") {
+            return "";
+        }
+        RunBuildProbe(BuildConcat(command, ["-###", "-x", "c", "-fsyntax-only", "-"]));
+        for (line in BuildLines(BuildLastStderr())) {
+            if (!Contains(line, "-isysroot")) {
+                continue;
+            }
+            words := Words(line);
+            if (BuildLength(words) == 0) {
+                return "";
+            }
+            index: int = 0;
+            while (index < BuildLength(words) && words[index] != "-isysroot") {
+                index += 1;
+            }
+            if (index + 1 < BuildLength(words) && Kind(words[index + 1]) == "directory") {
+                return BuildResolvePath(words[index + 1]);
+            }
+        }
+        return "";
+    }
+    SourceOverride :: (name: string) -> bool {
+        return BuildStartsWith(name, "FETCHCONTENT_SOURCE_DIR_") || name == "CHIBI_SJLIT_SOURCE_DIR";
+    }
+    // A set SLJIT source is private, and so is a FetchContent source outside
+    // BUILD/_deps. A missing source counts as private; CMake rejects it anyway.
+    PrivateSource :: (build: string, name: string, value: string) -> bool {
+        if (value == "") {
+            return false;
+        }
+        if (name == "CHIBI_SJLIT_SOURCE_DIR") {
+            return true;
+        }
+        source := BuildResolvePath(value);
+        dependencies := Join([BuildResolvePath(build), "/_deps"]);
+        return source != dependencies && !BuildStartsWith(source, Join([dependencies, "/"]));
+    }
+    // Whether a definition or the build's cache selects private dependency
+    // sources, which immutable dependency packages cannot serve. Any
+    // FETCHCONTENT_* definition does; for source overrides a definition
+    // replaces the cached value. Entries follow CMake's NAME[:TYPE]=VALUE form.
+    PrivateSources :: (build: string, arguments: string[]) -> bool {
+        overrides: Map<string, string> = {};
+        for (line in BuildLines(BuildReadFile(Join([build, "/CMakeCache.txt"])))) {
+            name := BuildBefore(line, ":");
+            typed := BuildAfter(line, ":");
+            if (SourceOverride(name) && !Contains(name, "=") && !Contains(name, "#") &&
+                Contains(typed, "=") && BuildBefore(typed, "=") != "") {
+                overrides[name] = BuildAfter(typed, "=");
+            }
+        }
+        for (argument in Normalize(arguments)) {
+            definition := BuildAfter(argument, "-D");
+            head := BuildBefore(definition, "=");
+            name := BuildBefore(head, ":");
+            value := BuildAfter(definition, "=");
+            if (!BuildStartsWith(argument, "-D") || !Contains(definition, "=") || name == "" ||
+                (head != name && BuildAfter(head, ":") == "") || Contains(value, "\n")) {
+                continue;
+            }
+            if (BuildStartsWith(name, "FETCHCONTENT_")) {
+                return true;
+            }
+            if (SourceOverride(name)) {
+                overrides[name] = value;
+            }
+        }
+        for (name, value in overrides) {
+            if (PrivateSource(build, name, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
     NativeArguments :: (build: string, arguments: string[]) -> string[] {
         cachePath := Join([build, "/CMakeCache.txt"]);
         cache := BuildReadFile(cachePath);
@@ -85,10 +262,8 @@ ToolchainBuild :: library {
         if (sdk != "") {
             return sdk;
         }
-        if (RunBuildStep(["python3", Helper("configure_inputs.py"), "compiler-sdk", compiler]) == 0) {
-            sdk = BuildTrim(BuildLastStdout());
-        }
-        if (sdk == "" && RunBuildStep(["xcrun", "--show-sdk-path"]) == 0) {
+        sdk = CompilerSDK(compiler);
+        if (sdk == "" && RunBuildProbe(["xcrun", "--show-sdk-path"]) == 0) {
             sdk = BuildTrim(BuildLastStdout());
         }
         return sdk;
@@ -147,13 +322,15 @@ ToolchainBuild :: library {
         packageEnabled := BuildEnvironment("CHIBI_DEPENDENCY_PACKAGES");
         package: string = "";
         if (packageEnabled == "" || packageEnabled == "1") {
-            status := RunBuildStep(BuildConcat([
-                "python3", Helper("configure_inputs.py"), "package-enabled", build, "--"
-            ], selected));
-            if (status != 0) {
-                return status;
+            normalized := Normalize(selected);
+            if (BuildLength(normalized) > 0 && normalized[BuildLength(normalized) - 1] == "-D") {
+                BuildReport("-D requires a definition");
+                return 1;
             }
-            packageEnabled = BuildTrim(BuildLastStdout());
+            packageEnabled = "1";
+            if (PrivateSources(build, selected)) {
+                packageEnabled = "0";
+            }
         }
         if (packageEnabled == "1") {
             status := RunBuildStep(BuildConcat([

@@ -850,6 +850,34 @@ static const char *observe_controllers(void *service, const pin_value *, pin_val
     controllers.pointer.active = pointer[0].b;
     return error;
 }
+/* player_prepared_modules finds the one module record between the sections
+ * before it and the prototype after it, borrowing its bytes, and refuses an
+ * artifact cut inside the record. */
+static bool modules_located(const unsigned char *bytes, size_t length, const void *module_data, size_t module_length)
+{
+    arena names = { 0 };
+    package_module *modules = NULL;
+    size_t first = 0, end = 0;
+    char error[192];
+    REQUIRE(
+        player_prepared_modules(bytes, length, &names, &modules, &first, &end, error, sizeof error)
+    );
+    bool located = acount(modules) == 1 && !strcmp(modules[0].name, "Initial") &&
+                   modules[0].id == 992 && modules[0].length == module_length &&
+                   !memcmp(modules[0].data, module_data, module_length) &&
+                   (const unsigned char *)modules[0].data > bytes + first &&
+                   (const unsigned char *)modules[0].data + module_length ==
+                       bytes + end &&
+                   end < length;
+    afree(modules);
+    REQUIRE(located);
+    REQUIRE(
+        !player_prepared_modules(bytes, end - 1, &names, &modules, &first, &end, error, sizeof error)
+    );
+    REQUIRE(!modules);
+    arena_free(&names);
+    return true;
+}
 /* Read the saved map before attaching an observer, so the same sequence tests
  * runtime sampling and the prepared player's controller binding format. */
 static bool controller_world(engine **out, behavior_backend backend)
@@ -1402,6 +1430,7 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(!strcmp(read.project_name, "native-project"));
         REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
         player_application_free(&read);
+        REQUIRE(modules_located(player_bytes, player_length, module_bytes, length));
         /* An icon outside the resource root is refused, as on reading. */
         application.icon = "../outside.png";
         unsigned char *unsafe = NULL;

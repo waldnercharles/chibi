@@ -21,39 +21,6 @@ def cache_values(build: Path) -> dict[str, str]:
     return values
 
 
-def definitions(arguments: list[str]):
-    split = False
-    for argument in arguments:
-        if split:
-            argument = "-D" + argument
-            split = False
-        elif argument == "-D":
-            split = True
-            continue
-        match = re.fullmatch(r"-D([^:=]+)(?::[^=]+)?=(.*)", argument)
-        if match:
-            yield match.groups()
-    if split:
-        raise ValueError("-D requires a definition")
-
-
-def package_enabled(build: Path, arguments: list[str]) -> bool:
-    values = cache_values(build) if (build / "CMakeCache.txt").is_file() else {}
-    private = False
-    for name, value in definitions(arguments):
-        if name.startswith("FETCHCONTENT_"):
-            private = True
-        if name.startswith("FETCHCONTENT_SOURCE_DIR_") or name == "CHIBI_SJLIT_SOURCE_DIR":
-            values[name] = value
-    for name, value in values.items():
-        if not value:
-            continue
-        if name == "CHIBI_SJLIT_SOURCE_DIR":
-            private = True
-        elif name.startswith("FETCHCONTENT_SOURCE_DIR_"):
-            if not Path(value).resolve().is_relative_to(build / "_deps"):
-                private = True
-    return not private
 
 
 def signature(source: Path, build: Path, profile: str, program: Path,
@@ -167,10 +134,8 @@ def main(arguments: list[str]) -> int:
         if arguments and arguments[0] == "signature" and len(arguments) >= 6:
             source, build, program = (Path(arguments[index]).resolve() for index in (1, 2, 4))
             print(signature(source, build, arguments[3], program, cmake_arguments(arguments, 5)))
-        elif arguments and arguments[0] == "package-enabled" and len(arguments) >= 3:
-            print(int(package_enabled(Path(arguments[1]).resolve(), cmake_arguments(arguments, 2))))
         else:
-            raise ValueError("expected signature or package-enabled")
+            raise ValueError("expected signature")
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as error:
         print(f"configure inputs: {error}", file=sys.stderr)
         return 1

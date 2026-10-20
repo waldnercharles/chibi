@@ -30,8 +30,8 @@ make test-materials      # the material simulation selectors, one 60-second dead
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
-make bootstrap-artifact  # stage two as the checksummed recovery artifact (Release build)
-make bootstrap-recover   # recover the compiler from the published artifact (needs gh)
+make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
+make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
 make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -1814,7 +1814,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects eight cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1823,7 +1823,6 @@ compile runs:
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;
 - a closure recorded for another target;
-- with `--published`, a manifest other than the one `bootstrap.kdl` pins;
 - a seed folder without a seed, or a seed whose sources aren't on disk.
 
 The SHA-256 check is pinned by four digests: FIPS 180-2's for "abc", and those
@@ -1834,8 +1833,40 @@ twenty host children on tiny folders. The target case loads the closure that
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
 selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
-`build-release/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
+the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
+
+## Game equivalence
+
+`python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
+M5 step 4. It rebuilds Terrain Lab with a reference and a candidate compiler
+and compares what the two artifacts declare and how they play. It is a
+standalone selector, not part of any group, and takes about 7 s.
+
+- **Compilers.** A compiler is any program that takes `--project-root ROOT
+  --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
+  `CHIBI_CANDIDATE_COMPILER` select them. Both default to
+  `build/sdk/chibi-compile` until stage one compiles games.
+- **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
+  `chibi-build-host`. Its `Rebuild` entry compiles the project with each
+  compiler and plays each artifact, and `Diff` compares two traces.
+- **Observer.** `test_tools --game-observe ARTIFACT SCENARIO TRACE` reads the
+  artifact on the CPU and replays the authored
+  `content/scenarios/Dig.kdl` from the start scene. It writes a trace:
+  - first, what the artifact declares apart from its code: a digest of every
+    byte outside its module records, located by `player_prepared_modules`,
+    then each module's name and ID (`--native` checks that function);
+  - then one line per fixed step, from frame 0 (after Begin) to the
+    scenario's last frame: hashes of the ECS world, saved state, materials,
+    physics bodies, contacts and events, and UI text. Frame N is the world
+    after N steps, so input keyed at step K first shows in frame K + 1.
+- **Cases.**
+  - Both compilers rebuild Terrain Lab to the same trace through frame 90.
+  - A variant whose jump is weaker is named at frame 21, with both lines,
+    and its declarations still match.
+  - Differing declarations are named. A missing trace, or traces with no
+    frames, are refused rather than matching each other; the observer removes
+    the trace of an artifact it could not play.
 
 ## Compiler artifact runtime checks
 
@@ -2026,17 +2057,17 @@ vectors, and environment names. Their fixed file workload is about 10 MiB and 8,
 files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
-installed authored build program, and a seventh on macOS. Four cases make 38 API
+`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
+installed authored build program, and an eighth on macOS. Five cases make 50 API
 invocations across bytecode and SLJIT, and the macOS case seven more that
-alternate them; one runs the host CLI with exact tail arguments. Ten tiny Git
-roots, eleven on macOS, and at most 53 controlled CMake attempts, 60 on macOS,
-cover compiler/environment/
-cache precedence, explicit typed and split definitions, loaded inputs, compiler
-identity, private dependency overrides, failure/retry and exact argument
-forwarding. The macOS case finds the SDK from a stand-in compiler driver's
-5 KiB `-###` report, through links and shell-quoted `CC` words, and falls back
-to a stand-in `xcrun`. The sixth case uses the production Makefile to select recovery for
+alternate them; one runs the host CLI with exact tail arguments. Twelve tiny Git
+roots, thirteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+cover compiler/environment/cache precedence, explicit typed and split
+definitions, loaded inputs, compiler identity, private dependency overrides and
+their precedence over the cache, failure/retry and exact argument forwarding.
+The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
+report, through links and shell-quoted `CC` words, and falls back to a stand-in
+`xcrun`. Another case uses the production Makefile to select recovery for
 missing/old hosts and authored orchestration for a compatible host, including
 paths with spaces; three outer and three recursive Make calls run marker recipes
 only. The process route also tests the private protocol query used by this

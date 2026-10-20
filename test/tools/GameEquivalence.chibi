@@ -1,0 +1,111 @@
+GameEquivalence :: library {
+    // Rebuilds one game with a reference and a candidate compiler and compares
+    // what the two artifacts declare and how they play. A compiler is any
+    // program that takes --project-root ROOT --output FILE, as chibi-compile
+    // does. The observer plays an artifact under a scenario and writes a
+    // trace: its declarations, then one line per fixed step.
+    Join :: (parts: string[]) -> string {
+        return BuildJoin(parts, "");
+    }
+    // Compiles project with compiler into NAME.chibip and plays it into
+    // NAME.trace.
+    Play :: (compiler: string, observer: string, project: string, scenario: string, name: string) -> bool {
+        artifact := Join([name, ".chibip"]);
+        if (RunBuildStep([compiler, "--project-root", project, "--output", artifact]) != 0) {
+            BuildReport(Join([compiler, " cannot compile ", project]));
+            return false;
+        }
+        if (RunBuildStep([observer, "--game-observe", artifact, scenario, Join([name, ".trace"])]) != 0) {
+            BuildReport(Join([observer, " cannot play ", artifact]));
+            return false;
+        }
+        return true;
+    }
+    // A trace's lines, or none when path holds no trace.
+    Trace :: (path: string) -> string[] {
+        if (!BuildFileExists(path)) {
+            return [];
+        }
+        lines := BuildLines(BuildReadFile(path));
+        if (BuildLength(lines) == 0 || !BuildStartsWith(lines[0], "declarations ")) {
+            return [];
+        }
+        return lines;
+    }
+    Differs :: (summary: string, reference: string, candidate: string) -> int {
+        BuildReport(Join([summary, "\n  reference: ", reference, "\n  candidate: ", candidate]));
+        return 1;
+    }
+    // The frame number a trace line names.
+    Frame :: (line: string) -> string {
+        return BuildBefore(BuildAfter(line, "frame "), " ");
+    }
+    // 0 when the traces match line for line, 1 with the first line that
+    // differs, 2 when either is not a trace or neither holds a frame.
+    Compare :: (referencePath: string, candidatePath: string) -> int {
+        reference := Trace(referencePath);
+        candidate := Trace(candidatePath);
+        if (BuildLength(reference) == 0) {
+            BuildReport(Join([referencePath, " is not a trace"]));
+            return 2;
+        }
+        if (BuildLength(candidate) == 0) {
+            BuildReport(Join([candidatePath, " is not a trace"]));
+            return 2;
+        }
+        index: int = 0;
+        last := "";
+        while (index < BuildLength(reference) && index < BuildLength(candidate)) {
+            left := reference[index];
+            right := candidate[index];
+            index += 1;
+            played := BuildStartsWith(left, "frame ");
+            if (left != right && played) {
+                return Differs(Join(["the candidate differs from the reference at frame ", Frame(left)]), left, right);
+            }
+            if (left != right) {
+                return Differs("the candidate declares differently from the reference", left, right);
+            }
+            if (played) {
+                last = Frame(left);
+            }
+        }
+        if (BuildLength(reference) != BuildLength(candidate)) {
+            BuildReport("the candidate's trace and the reference's differ in length");
+            return 1;
+        }
+        if (last == "") {
+            BuildReport("the traces hold no frames");
+            return 2;
+        }
+        BuildReport(Join(["the candidate matches the reference through frame ", last]));
+        return 0;
+    }
+    // Arguments: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER. The
+    // artifacts and traces are written to FOLDER.
+    Rebuild :: () -> int {
+        arguments := BuildArguments();
+        if (BuildLength(arguments) != 6) {
+            BuildReport("usage: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER");
+            return 2;
+        }
+        folder := arguments[5];
+        reference := Join([folder, "/reference"]);
+        candidate := Join([folder, "/candidate"]);
+        if (!BuildMakeDirectory(folder) ||
+            !Play(arguments[0], arguments[2], arguments[3], arguments[4], reference) ||
+            !Play(arguments[1], arguments[2], arguments[3], arguments[4], candidate)) {
+            return 2;
+        }
+        return Compare(Join([reference, ".trace"]), Join([candidate, ".trace"]));
+    }
+    // Arguments: REFERENCE_TRACE CANDIDATE_TRACE.
+    Diff :: () -> int {
+        arguments := BuildArguments();
+        if (BuildLength(arguments) != 2) {
+            BuildReport("usage: REFERENCE_TRACE CANDIDATE_TRACE");
+            return 2;
+        }
+        return Compare(arguments[0], arguments[1]);
+    }
+}

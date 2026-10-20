@@ -43,7 +43,7 @@ def cache_root_from_env() -> Path:
 PACKAGE_CMAKE = ("dependencies.cmake", "enkits.cmake", "Findcrypto.cmake", "apply_patch.cmake", "rmlui_dependencies.cmake",
                  "zep_dependencies.cmake", "tree_sitter.cmake", "ckdl.cmake", "thirdparty.cmake",
                  "dependency_package/CMakeLists.txt")
-APP_OPTIONS = {"CHIBI_REFLECT_EXECUTABLE", "CHIBI_COLLAB_URL", "CHIBI_DISTRIBUTION",
+APP_OPTIONS = {"CHIBI_REFLECT_EXECUTABLE", "CHIBI_DISTRIBUTION",
                "CHIBI_ENABLE_WARNINGS", "LIBCLANG_ROOT", "CMAKE_EXPORT_COMPILE_COMMANDS",
                "CHIBI_SDK_BUILD_COMPILER", "CHIBI_SDK_BUILD_NATIVE", "CHIBI_SDK_BUILD_DESKTOP"}
 

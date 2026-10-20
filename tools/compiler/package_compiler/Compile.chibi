@@ -147,13 +147,12 @@ Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
 }
 // A package constant: an integer literal of an integer type, its 64 bits,
-// sign-extended for signed types, as `high` and `low` halves.
+// sign-extended for signed types.
 ConstDecl :: struct {
     name: string;
     package: int;
     storage: int;
-    high: int;
-    low: int;
+    bits: uint64;
 }
 Declarations :: union {
     Failed(diagnostic: syntax.Diagnostic)
@@ -230,8 +229,8 @@ Complete :: (ops: Ops) -> bool {
     }
     return true;
 }
-// The storage of a scalar type: one a record field may hold, or byte, int64
-// or uint64; 0 for any other.
+// The storage of a scalar type, any of which a record field may hold: an
+// integer, bool or string; 0 for any other.
 ScalarStorage :: (text: string) -> int {
     if (text == "byte") {
         return ByteStorage;
@@ -242,10 +241,6 @@ ScalarStorage :: (text: string) -> int {
     if (text == "uint64") {
         return WordStorage;
     }
-    return FieldStorage(text);
-}
-// The storage of a type a record field may hold, 0 for any other.
-FieldStorage :: (text: string) -> int {
     if (text == "int") {
         return IntStorage;
     }
@@ -355,6 +350,9 @@ FieldSize :: (storage: int, target: Target) -> int {
     if (storage == IntStorage) {
         return 4;
     }
+    if (storage == Int64Storage || storage == WordStorage) {
+        return 8;
+    }
     return 1;
 }
 AlignTo :: (size: int, alignment: int) -> int {
@@ -462,10 +460,10 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         if (field_name == "") {
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
-                        storage := FieldStorage(Text(forest, text, Field(forest, item, "type")));
+                        storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
                         if (storage == 0 || Field(forest, item, "value") >= 0) {
                             return Declarations.Failed(Diagnose(forest, item, file,
-                                                                "record field needs an int, bool or string type and no default"));
+                                                                "record field needs an integer, bool or string type and no default"));
                         }
                         at := declared.first;
                         while (at < length(members)) {
@@ -605,9 +603,8 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                             return Declarations.Failed(Diagnose(forest, Field(forest, member, "value"), file,
                                                                 format_text("Numeric literal is outside the range of {}", TypeName(storage))));
                         }
-                        bits := Bits(negative, magnitude);
-                        constant: ConstDecl = {name: name, package: package, storage: storage, high: High(bits),
-                                               low: Low(bits)};
+                        constant: ConstDecl = {name: name, package: package, storage: storage,
+                                               bits: Bits(negative, magnitude)};
                         constants = array_add(constants, constant);
                 }
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
@@ -804,7 +801,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             requirements = array_add(requirements, requirement);
             at := declared.first;
             while (at < declared.first + declared.count) {
-                // Record fields are int, bool or string, so none names a type or unit.
+                // Record fields are integers, bools or strings, so none names a type or unit.
                 field: writer.Field = {name: members[at].name, kind: members[at].storage, type_name: "",
                                        has_type_name: false, unit: "", has_unit: false};
                 fields = array_add(fields, field);
@@ -885,10 +882,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                         value.text = code.text;
                         value.has_text = true;
                     }
-                    bits := Join(code.payload_high, code.payload);
-                    if (bits != 0) {
+                    if (code.payload != 0) {
                         value.wide = length(wide);
-                        wide = array_add(wide, bits);
+                        wide = array_add(wide, code.payload);
                     }
                     values = array_add(values, value);
                     row: writer.Instruction = {op: code.op, type: code.type, output: code.output,

@@ -637,7 +637,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         declared := constants[ConstantOf(forest, text, constants, names, package, item.node)];
         slot: Slot = {storage: declared.storage, kind: ValueKind};
         slots = array_add(slots, slot);
-        code = array_add(code, ConstantCode(ops, declared.storage, Join(declared.high, declared.low), at.slot, node));
+        code = array_add(code, ConstantCode(ops, declared.storage, declared.bits, at.slot, node));
         produced = Typed(at.slot, declared.storage, 0, -1);
     } else if (kind == "identifier") {
         wanted := Text(forest, text, item.node);

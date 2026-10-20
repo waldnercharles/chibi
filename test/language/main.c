@@ -173,6 +173,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--package-compiler-chibi");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_literals = argc == 2 &&
+                                           !strcmp(argv[1], "--package-compiler-chibi-literals");
     bool package_compiler_chibi_imports = argc == 2 &&
                                           !strcmp(argv[1], "--package-compiler-chibi-imports");
     bool package_compiler_chibi_bootstrap = argc == 2 &&
@@ -246,13 +248,13 @@ int main(int argc, char **argv)
          !record_semantic && !record_prepared_runtime && !outliner_projection &&
          !row_array && !record_runtime && !runtime_attribution && !wasm &&
          !program && !query_program && !incremental && !modules && !ranges &&
-         !numeric_exact_core && !package_graph && !package_graph_chibi &&
-         !syntax_chibi && !source_tokenizer_chibi && !package_syntax &&
-         !package_syntax_chibi && !package_paths_chibi && !package_routes_chibi &&
-         !package_snapshot_chibi && !constant_proof_chibi && !constant_scalar_chibi &&
-         !scalar_lowering_chibi && !bounded_compiler_chibi && !prepared_writer_chibi &&
-         !package_compiler_chibi && !package_compiler_chibi_types &&
-         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
+         !numeric_exact_core && !package_graph && !package_graph_chibi && !syntax_chibi &&
+         !source_tokenizer_chibi && !package_syntax && !package_syntax_chibi &&
+         !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
+         !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
+         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
+         !package_compiler_chibi_types && !package_compiler_chibi_imports &&
+         !package_compiler_chibi_bootstrap && !package_compiler_chibi_literals &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
          !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
          !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
@@ -282,6 +284,7 @@ int main(int argc, char **argv)
             "--package-compiler-chibi-types | --package-compiler-chibi-imports "
             "| "
             "--package-compiler-chibi-bootstrap | "
+            "--package-compiler-chibi-literals | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
             "--type-constructors-chibi | --type-relations-chibi | "
@@ -460,6 +463,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi_imports();
     } else if (package_compiler_chibi_bootstrap) {
         test_language_package_compiler_chibi_bootstrap();
+    } else if (package_compiler_chibi_literals) {
+        test_language_package_compiler_chibi_literals();
     } else if (scalar_lowering_chibi) {
         test_language_scalar_lowering_chibi();
     } else if (lexical_binding_chibi) {

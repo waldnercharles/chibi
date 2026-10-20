@@ -700,6 +700,11 @@ TOOLS = {
     # integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # The stage-one compiler's reading of floating literals against stage
+    # zero's: listed spellings on both backends, long and generated ones on
+    # the compiled one. shared60s.
+    'language-package-compiler-chibi-literals': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                '--package-compiler-chibi-literals'],
     # The same case over the imports sample, which compiles all of
     # core:strings, split off so it keeps its own shared60s.
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

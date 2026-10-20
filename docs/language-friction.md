@@ -129,10 +129,10 @@ later without breaking code that relied on it.
 
 ## Stage one has no character literals
 
-Stage one. Stage zero has character literals and `char` since the friction
-review's row 1 (2026-10-20): `'a'` takes an integer type from context, as in
-`c: byte = 'a'` or `ByteAt(s, i) == '/'`, and is otherwise a `char`, a 32-bit
-Unicode scalar with integer arithmetic. Stage one rejects them, and it compiles
+Stage one. Stage zero has character literals and `char` since #530: `'a'`
+takes an integer type from context, as in `c: byte = 'a'` or
+`ByteAt(s, i) == '/'`, and is otherwise a `char`, a 32-bit Unicode scalar with
+integer arithmetic. Stage one rejects them, and it compiles
 the compiler, `core:strings` and the tokenizer, so those still compare bytes
 by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`; `core:strings` writes
 `ByteAt(path, index) == 47` for `'/'` and tests `c >= 65 && c <= 90` (#503);

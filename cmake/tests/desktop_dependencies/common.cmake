@@ -1,5 +1,4 @@
-# Synthetic inputs for configure/install metadata checks. The cached-package
-# entrypoint performs ordinary compiler detection, but builds no dependency.
+# Synthetic inputs for configure/install metadata checks; no dependency is built.
 set(CMAKE_STATIC_LIBRARY_PREFIX "lib")
 set(CMAKE_STATIC_LIBRARY_SUFFIX ".a")
 set(CMAKE_DL_LIBS "dl")

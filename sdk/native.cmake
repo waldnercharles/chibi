@@ -23,7 +23,7 @@ if(NOT CHIBI_NATIVE_TYPES_SOURCE)
     set(CHIBI_NATIVE_BINDINGS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/native_capabilities.c")
     set(native_manifest "${CHIBI_SDK_ROOT}/src/runtime/component_ids.tsv")
     set(native_args --include "${CHIBI_SDK_ROOT}/src"
-        --include "${CHIBI_CUTE_MATH_INCLUDE_DIR}" --manifest "${native_manifest}")
+        --include "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/include" --manifest "${native_manifest}")
     set(CHIBI_REFLECT_RESOURCE_INCLUDE_DIR "" CACHE PATH
         "C builtin headers matching the host reflection tool's libclang")
     if(CHIBI_REFLECT_RESOURCE_INCLUDE_DIR)

@@ -1,12 +1,15 @@
 #include "host/build_host.h"
+#include "support/sha256.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 static const char *worker_path, *host_path;
@@ -23,6 +26,7 @@ static const char *const environment_names[] = {
     "CFLAGS",
     "CHIBI_DEPENDENCY_PACKAGES",
     "CHIBI_FETCHCONTENT_CACHE_DIR",
+    "GH_TOKEN",
 };
 static char *saved_environment[sizeof environment_names / sizeof *environment_names];
 
@@ -50,15 +54,19 @@ static bool file_contains(const char *name, const char *part)
     free(text);
     return found;
 }
-static int trace_count(const char *kind)
+static int count_in(const char *name, const char *kind)
 {
-    char *text = read_file("cmake.trace");
+    char *text = read_file(name);
     int count = 0;
     for (const char *p = text; p && (p = strstr(p, kind)); p += strlen(kind)) {
         count++;
     }
     free(text);
     return count;
+}
+static int trace_count(const char *kind)
+{
+    return count_in("cmake.trace", kind);
 }
 static void reset_fixture(const char *name, int backend)
 {
@@ -79,8 +87,6 @@ static void reset_fixture(const char *name, int backend)
     assert(!unsetenv("CC") && !unsetenv("CXX") && !unsetenv("CMAKE_TOOLCHAIN_FILE"));
     assert(!unsetenv("CFLAGS"));
     assert(!setenv("CMAKE_GENERATOR", "Unix Makefiles", 1));
-    assert(!setenv("CHIBI_DEPENDENCY_PACKAGES", "0", 1));
-    assert(!setenv("CHIBI_FETCHCONTENT_CACHE_DIR", "/dev/null/chibi-no-cache", 1));
     path(file, root, "sdk");
     assert(!mkdir(file, 0700));
     assert(!setenv("SDKROOT", file, 1));
@@ -271,127 +277,182 @@ TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_na
     return true;
 }
 
-TEST_CASE(private_source_overrides_disable_immutable_dependency_packages)
+TEST_CASE(configuration_ignores_retired_dependency_switches)
 {
     for (int b = 0; b < 2; b++) {
-        reset_fixture("private dependencies", b);
+        reset_fixture("retired switches", b);
+        /* The dependency package and FetchContent cache are gone; their
+         * switches select nothing and configuration reads no cache files. */
         assert(!setenv("CHIBI_DEPENDENCY_PACKAGES", "1", 1));
-        char definition[1200];
-        snprintf(definition, sizeof definition, "FETCHCONTENT_SOURCE_DIR_TEST:PATH=%s/external checkout", root);
-        const char *split[] = { "native", "split build", "--configure-only",
-                                "--",     "-D",          definition };
-        REQUIRE(invoke(split, 6, b, 0));
-        REQUIRE(
-            file_contains("split build/.chibi-dependency-package.cmake", "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)")
-        );
-        char build[1024], cache[4096];
-        path(build, root, "cached override");
-        assert(!mkdir(build, 0700));
-        snprintf(
-            cache,
-            sizeof cache,
-            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
-            "FETCHCONTENT_SOURCE_DIR_TEST:PATH=%s/external checkout\n",
-            root
-        );
-        write_file("cached override/CMakeCache.txt", cache);
-        const char *cached[] = { "native", "cached override", "--configure-only", "--" };
-        REQUIRE(invoke(cached, 4, b, 0));
-        REQUIRE(
-            file_contains("cached override/.chibi-dependency-package.cmake", "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)")
-        );
-        REQUIRE(trace_count("CONFIGURE\n") == 2 && !trace_count("BUILD\n"));
+        assert(!setenv("CHIBI_FETCHCONTENT_CACHE_DIR", "/dev/null/chibi-no-cache", 1));
+        const char *arguments[] = { "native", "retired build", "--configure-only", "--" };
+        REQUIRE(invoke(arguments, 4, b, 0));
+        char cache[1100];
+        snprintf(cache, sizeof cache, "-DCHIBI_THIRD_PARTY_CACHE=%s/.git/chibi/third_party", root);
+        REQUIRE(file_contains("cmake.trace", cache));
+        REQUIRE(!file_contains("cmake.trace", ".chibi-fetchcontent-cache.cmake"));
+        REQUIRE(!file_contains("cmake.trace", ".chibi-dependency-package.cmake"));
+        REQUIRE(!read_file("retired build/.chibi-dependency-package.cmake"));
+        assert(!unsetenv("CHIBI_DEPENDENCY_PACKAGES") && !unsetenv("CHIBI_FETCHCONTENT_CACHE_DIR"));
     }
     return true;
 }
 
-static void make_build(const char *name, const char *cache)
+/* The archive target third_party/archives.tsv names for this host. */
+static void host_target(char out[32])
 {
-    char directory[1024], file[1100];
-    path(directory, root, name);
-    assert(!mkdir(directory, 0700));
-    snprintf(file, sizeof file, "%s/CMakeCache.txt", name);
-    write_file(file, cache);
+    struct utsname host;
+    assert(!uname(&host));
+    bool arm = !strcmp(host.machine, "arm64") || !strcmp(host.machine, "aarch64");
+    snprintf(out, 32, "%s-%s", !strcmp(host.sysname, "Darwin") ? "macos" : "linux", arm ? "arm64" : "x64");
 }
-/* Dependency preparation runs only when configuration chooses packages. Here
- * it fails at once: a multi-configuration generator or a private override is
- * not packageable. */
-static bool packages_chosen(const char *const *arguments, int count, int backend)
+static void write_manifest(const char *target, const char *sha256)
 {
-    char file[1100];
-    snprintf(file, sizeof file, "%s/%s/.chibi-dependency-package.cmake", root, arguments[1]);
-    return invoke(arguments, count, backend, 1) &&
-           strstr(last_stderr, "dependency preparation failed") &&
-           access(file, F_OK);
+    char text[512];
+    snprintf(
+        text,
+        sizeof text,
+        "# repository owner/chibi\n# target\tvariant\trelease\tsha256\n"
+        "%s\trelease\tfixture-1\t%s\n"
+        "windows-x64\trelease\tfixture-1\t%064d\n",
+        target,
+        sha256,
+        1
+    );
+    write_file("third_party/archives.tsv", text);
 }
-static bool packages_declined(const char *const *arguments, int count, int backend)
+/* Whether the fixture clone's archive store holds exactly these entries. */
+static bool store_holds(const char *const *entries, int count)
 {
-    char file[1100];
-    snprintf(file, sizeof file, "%s/.chibi-dependency-package.cmake", arguments[1]);
-    return invoke(arguments, count, backend, 0) &&
-           file_contains(file, "unset(CHIBI_DEPENDENCY_PACKAGE CACHE)");
+    char directory[1024];
+    path(directory, root, ".git/chibi/third_party");
+    DIR *dir = opendir(directory);
+    assert(dir);
+    int found = 0, total = 0;
+    for (struct dirent *item; (item = readdir(dir));) {
+        if (!strcmp(item->d_name, ".") || !strcmp(item->d_name, "..")) {
+            continue;
+        }
+        total++;
+        for (int i = 0; i < count; i++) {
+            found += !strcmp(item->d_name, entries[i]);
+        }
+    }
+    assert(!closedir(dir));
+    return found == count && total == count;
+}
+/* Packs a one-file archive as gh-asset, which the gh stand-in serves, links
+ * that stand-in into the fixture's bin and returns the archive's SHA-256. */
+static void fixture_archive(char sha256[65])
+{
+    char file[1024], tree[1024], log[1024];
+    path(file, root, "bin/gh");
+    assert(!symlink(worker_path, file));
+    path(tree, root, "asset tree");
+    assert(!mkdir(tree, 0700));
+    write_file("asset tree/third-party.cmake", "# fixture archive\n");
+    path(file, root, "gh-asset");
+    path(log, root, "tar.log");
+    const char *pack[] = { "tar", "-czf", file, "-C", tree, ".", NULL };
+    assert(!tool_run(pack, root, log));
+    FILE *asset = fopen(file, "rb");
+    assert(asset);
+    static char bytes[65536];
+    size_t size = fread(bytes, 1, sizeof bytes, asset);
+    assert(size > 0 && size < sizeof bytes && !fclose(asset));
+    sha256_hex(bytes, size, sha256);
+    path(file, root, "third_party");
+    assert(!mkdir(file, 0700));
 }
 
-TEST_CASE(dependency_overrides_follow_definitions_then_cache)
+/* gh stands in for the release download (policy_worker copies gh-asset) and
+ * records the GH_TOKEN it receives. An archive downloads once for this host's
+ * target, unpacks under its SHA-256 and is reused; another target's archive is
+ * not fetched; an archive whose SHA-256 differs is refused and leaves nothing
+ * behind. */
+TEST_CASE(third_party_archives_download_once_and_refuse_another_hash)
 {
     for (int b = 0; b < 2; b++) {
-        reset_fixture("dependency overrides", b);
-        assert(!setenv("CHIBI_DEPENDENCY_PACKAGES", "1", 1));
-        make_build(
-            "inside",
-            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
-            "FETCHCONTENT_SOURCE_DIR_TEST:PATH=inside/_deps/test-src\n"
-        );
-        char directory[1024];
-        path(directory, root, "inside/_deps");
+        reset_fixture("third-party archives", b);
+        char file[1024], target[32], sha256[65], expected[1100];
+        fixture_archive(sha256);
+        host_target(target);
+        write_manifest(target, sha256);
+        /* gh authenticates with GH_TOKEN, which reaches it through the host. */
+        assert(!setenv("GH_TOKEN", "fixture-token", 1));
+        const char *arguments[] = { "native", "archive build", "--configure-only", "--" };
+        REQUIRE(invoke(arguments, 4, b, 0));
+        snprintf(expected, sizeof expected, "gh release download fixture-1 --repo owner/chibi --pattern third-party-%s-release.tar.gz", target);
+        REQUIRE(file_contains("gh.trace", expected));
+        REQUIRE(file_contains("gh.trace", " token=fixture-token\n"));
+        snprintf(file, sizeof file, ".git/chibi/third_party/%s/third-party.cmake", sha256);
+        REQUIRE(file_contains(file, "# fixture archive\n"));
+        const char *stored[] = { sha256 };
+        REQUIRE(store_holds(stored, 1));
+        REQUIRE(invoke(arguments, 4, b, 0));
+        REQUIRE(count_in("gh.trace", "gh release download") == 1);
+
+        write_manifest(target, "0000000000000000000000000000000000000000000000000000000000000000");
+        REQUIRE(invoke(arguments, 4, b, 1));
+        REQUIRE(strstr(last_stderr, "does not match the SHA-256"));
+        REQUIRE(count_in("gh.trace", "gh release download") == 2);
+        REQUIRE(store_holds(stored, 1));
+        assert(!unsetenv("GH_TOKEN"));
+    }
+    return true;
+}
+
+/* The archive store keeps what any worktree of the clone pins and a download
+ * in progress, and removes the rest. */
+TEST_CASE(third_party_store_keeps_what_worktrees_pin)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("third-party pruning", b);
+        char sha256[65], target[32], other[1024], log[1024], pin[65], stray[65],
+            partial[96];
+        fixture_archive(sha256);
+        host_target(target);
+        write_manifest(target, sha256);
+        path(log, root, "git.log");
+        path(other, root, "other worktree");
+        const char *commit[] = { "git",
+                                 "-c",
+                                 "user.name=fixture",
+                                 "-c",
+                                 "user.email=fixture@example.com",
+                                 "commit",
+                                 "-q",
+                                 "--allow-empty",
+                                 "-m",
+                                 "fixture",
+                                 NULL };
+        const char *add[] = { "git",      "worktree", "add", "-q",
+                              "--detach", other,      NULL };
+        assert(!tool_run(commit, root, log) && !tool_run(add, root, log));
+        snprintf(pin, sizeof pin, "%064d", 2);
+        snprintf(stray, sizeof stray, "%064d", 3);
+        snprintf(partial, sizeof partial, "%s.download.partial", stray);
+        char text[256], file[1100], directory[1024];
+        snprintf(text, sizeof text, "%s\trelease\tfixture-1\t%s\n", target, pin);
+        path(directory, other, "third_party");
         assert(!mkdir(directory, 0700));
-        path(directory, root, "inside/_deps/test-src");
+        write_file("other worktree/third_party/archives.tsv", text);
+        path(directory, root, ".git/chibi");
         assert(!mkdir(directory, 0700));
-        const char *inside[] = { "native", "inside", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
-        REQUIRE(packages_chosen(inside, 5, b));
-
-        const char *sljit_cache = "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
-                                  "CHIBI_SJLIT_SOURCE_DIR:PATH=/opt/sljit\n";
-        make_build("cached", sljit_cache);
-        const char *cached[] = { "native", "cached", "--configure-only", "--", "-DCMAKE_GENERATOR=Xcode" };
-        REQUIRE(packages_declined(cached, 5, b));
-        make_build("cleared", sljit_cache);
-        const char *cleared[] = {
-            "native",
-            "cleared",
-            "--configure-only",
-            "--",
-            "-DCHIBI_SJLIT_SOURCE_DIR:PATH=",
-            "-DCMAKE_GENERATOR=Xcode",
-        };
-        REQUIRE(packages_chosen(cleared, 6, b));
-
-        const char *valueless[] = {
-            "native",
-            "valueless",
-            "--configure-only",
-            "--",
-            "-DFETCHCONTENT_FULLY_DISCONNECTED",
-            "-DCMAKE_GENERATOR=Xcode",
-        };
-        REQUIRE(packages_chosen(valueless, 6, b));
-        const char *quiet[] = { "native", "quiet", "--configure-only", "--", "-DFETCHCONTENT_QUIET=OFF" };
-        REQUIRE(packages_declined(quiet, 5, b));
-
-        const char *dangling[] = { "native",
-                                   "dangling",
-                                   "--configure-only",
-                                   "--",
-                                   "-DCMAKE_C_COMPILER=clang",
-                                   "-D" };
-        REQUIRE(invoke(dangling, 6, b, 1));
-#ifdef __APPLE__
-        /* The SDK definition configuration appends completes the dangling -D. */
-        REQUIRE(strstr(last_stderr, "dependency preparation failed"));
-#else
-        REQUIRE(strstr(last_stderr, "-D requires a definition"));
-#endif
-        REQUIRE(trace_count("CONFIGURE\n") == 2 && !trace_count("BUILD\n"));
+        path(directory, root, ".git/chibi/third_party");
+        assert(!mkdir(directory, 0700));
+        const char *seeded[] = { pin, stray, partial };
+        for (int i = 0; i < 3; i++) {
+            snprintf(file, sizeof file, ".git/chibi/third_party/%s", seeded[i]);
+            path(directory, root, file);
+            assert(!mkdir(directory, 0700));
+            snprintf(file, sizeof file, ".git/chibi/third_party/%s/third-party.cmake", seeded[i]);
+            write_file(file, "# cached\n");
+        }
+        const char *arguments[] = { "native", "pruned build", "--configure-only", "--" };
+        REQUIRE(invoke(arguments, 4, b, 0));
+        const char *stored[] = { sha256, pin, partial };
+        REQUIRE(store_holds(stored, 3));
     }
     return true;
 }
@@ -577,8 +638,9 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(native_compiler_and_explicit_cache_precedence);
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
-    RUN_TEST_CASE(private_source_overrides_disable_immutable_dependency_packages);
-    RUN_TEST_CASE(dependency_overrides_follow_definitions_then_cache);
+    RUN_TEST_CASE(configuration_ignores_retired_dependency_switches);
+    RUN_TEST_CASE(third_party_archives_download_once_and_refuse_another_hash);
+    RUN_TEST_CASE(third_party_store_keeps_what_worktrees_pin);
 
 #ifdef __APPLE__
     RUN_TEST_CASE(compiler_driver_report_names_the_sdk_before_xcrun);

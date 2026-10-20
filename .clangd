@@ -14,4 +14,4 @@
 CompileFlags:
   CompilationDatabase: .
   Add:
-    - -Ibuild/_deps/cute_framework-src/include
+    - -Ithird_party/cute_framework/include

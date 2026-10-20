@@ -1,8 +1,13 @@
 # Install the exact pinned dependency archives used to build the desktop SDK.
 # Imported targets below own real archives and copied public headers; the installed
 # definitions never refer to the dependency build or the engine checkout.
-set(CHIBI_DESKTOP_DEPENDENCY_CONFIG "${CMAKE_CURRENT_BINARY_DIR}/ChibiDesktopDependencies.cmake")
-file(WRITE "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" "include(CMakeFindDependencyMacro)\nget_filename_component(_chibi_desktop_prefix \"\${CMAKE_CURRENT_LIST_DIR}/../../..\" ABSOLUTE)\n")
+# The third-party archive builder (third_party/CMakeLists.txt) writes its own
+# definitions file at the archive's root, with global imported targets.
+if(NOT CHIBI_DESKTOP_DEPENDENCY_CONFIG)
+    set(CHIBI_DESKTOP_DEPENDENCY_CONFIG "${CMAKE_CURRENT_BINARY_DIR}/ChibiDesktopDependencies.cmake")
+    set(CHIBI_DESKTOP_DEPENDENCY_ROOT "../../..")
+endif()
+file(WRITE "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" "include(CMakeFindDependencyMacro)\nget_filename_component(_chibi_desktop_prefix \"\${CMAKE_CURRENT_LIST_DIR}/${CHIBI_DESKTOP_DEPENDENCY_ROOT}\" ABSOLUTE)\n")
 # Cute's Linux link interface contains FindOpenGL's absolute library paths.
 # Recreate these system API roles on the consumer instead of vendoring a shared
 # host library or trusting an arbitrary same-named path.
@@ -58,7 +63,12 @@ function(chibi_desktop_dependency target output)
     if(alias)
         set(target ${alias})
     endif()
-    string(MAKE_C_IDENTIFIER "${target}" key)
+    # A target the third-party archive already defined keeps its name.
+    if(target MATCHES "^Chibi::desktop_(.+)$")
+        set(key "${CMAKE_MATCH_1}")
+    else()
+        string(MAKE_C_IDENTIFIER "${target}" key)
+    endif()
     set(owner "Chibi::desktop_${key}")
     get_property(recorded GLOBAL PROPERTY "CHIBI_DESKTOP_DEPENDENCY_${key}")
     if(recorded)
@@ -74,7 +84,7 @@ function(chibi_desktop_dependency target output)
     get_target_property(type ${target} TYPE)
     get_target_property(imported ${target} IMPORTED)
     if(type STREQUAL "INTERFACE_LIBRARY")
-        file(APPEND "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" "add_library(${owner} INTERFACE IMPORTED)\n")
+        file(APPEND "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}" "add_library(${owner} INTERFACE IMPORTED${CHIBI_DESKTOP_DEPENDENCY_SCOPE})\n")
     else()
         if(imported)
             get_target_property(location ${target} IMPORTED_LOCATION)
@@ -97,7 +107,7 @@ function(chibi_desktop_dependency target output)
         set(archive "${CMAKE_STATIC_LIBRARY_PREFIX}chibi_desktop_${key}${CMAKE_STATIC_LIBRARY_SUFFIX}")
         install(FILES "$<TARGET_FILE:${target}>" DESTINATION lib/chibi-vendor RENAME "${archive}")
         file(APPEND "${CHIBI_DESKTOP_DEPENDENCY_CONFIG}"
-            "add_library(${owner} STATIC IMPORTED)\nset_target_properties(${owner} PROPERTIES IMPORTED_LOCATION \"\${_chibi_desktop_prefix}/lib/chibi-vendor/${archive}\")\n")
+            "add_library(${owner} STATIC IMPORTED${CHIBI_DESKTOP_DEPENDENCY_SCOPE})\nset_target_properties(${owner} PROPERTIES IMPORTED_LOCATION \"\${_chibi_desktop_prefix}/lib/chibi-vendor/${archive}\")\n")
     endif()
     set(paths "")
     get_target_property(includes ${target} INTERFACE_INCLUDE_DIRECTORIES)

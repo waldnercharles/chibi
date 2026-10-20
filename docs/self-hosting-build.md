@@ -59,11 +59,11 @@ No shell interprets the arguments. The host copies the root, arguments and
 allowlisted environment for the child lifetime and never changes parent cwd or
 environment.
 
-The environment snapshot includes compiler, flags, CMake, SDK, dependency-cache,
-ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths
-and the inherited test deadline. `environment_names` in `build_host.c` owns the
-explicit allowlist. Missing allowed names read as empty strings; other names
-are capability errors. `BuildEnvironmentNames()` lists the allowed names the
+The environment snapshot includes compiler, flags, CMake, SDK, cache-directory,
+ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths,
+the GitHub CLI's `GH_TOKEN` for archive downloads and the inherited test
+deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
+Missing allowed names read as empty strings; other names are capability errors. `BuildEnvironmentNames()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
 1 MiB. Each invocation permits 64 steps, probes included, and each step permits
 256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
@@ -125,15 +125,18 @@ target remains available if the authored driver cannot run.
 The program gives explicit compiler/toolchain/preload options precedence over
 fresh-build defaults, retains cached selections, and discovers the matching
 macOS SDK. The configuration stamp tracks caller arguments, environment,
-loaded CMake files, new configuration files, dependency inputs and compiler/tool
-identities. It is written atomically only after successful configuration. Build
+loaded CMake files, new configuration files and compiler/tool identities. It is written atomically only after successful configuration. Build
 targets and parallelism do not invalidate configuration.
 
-The program also decides whether immutable dependency packages may serve a
-configuration: a `FETCHCONTENT_*` definition, a set `CHIBI_SJLIT_SOURCE_DIR` or a
-`FETCHCONTENT_SOURCE_DIR_*` outside the build's `_deps` selects private sources
-and declines them. Definitions replace cached values, and a missing source counts
-as private.
+Before configuring, the program makes sure the cache holds every third-party
+archive `third_party/archives.tsv` pins for its host (`third_party/README.md`).
+It downloads a missing one with `gh release download`, refuses it unless its
+SHA-256 matches, unpacks it with `tar` beside the store and renames it into
+`.git/chibi/third_party/<sha256>` in the clone's Git directory, which all its
+worktrees share, then passes that store to CMake as `CHIBI_THIRD_PARTY_CACHE`.
+CMake picks the archive for the build's variant. Afterwards the program removes
+archives that no worktree's `third_party/archives.tsv` pins
+(`git worktree list`).
 
 On macOS the program finds the SDK itself when neither `SDKROOT`, the cache nor
 an explicit definition names one. It splits the selected compiler into words as
@@ -142,11 +145,9 @@ Python's `shlex.split` does, unless the compiler names one file, probes its
 following links; `xcrun --show-sdk-path` answers otherwise. Apple clang's report
 is about 4.1 KiB.
 
-Three installed Python helpers remain transitional dependencies:
-`configure_inputs.py` retains the read-only signature probe;
-`dependency_package.py` and `fetchcontent_cache.py` retain dependency acquisition
-and cache ownership until dependencies are vendored. Their replacement and
-removal gates remain in the toolchain inventory. CMake still owns the stage-zero
+One installed Python helper remains a transitional dependency:
+`configure_inputs.py` retains the read-only signature probe. Its replacement and
+removal gate remains in the toolchain inventory. CMake still owns the stage-zero
 graph.
 
 The private primitives expose exact arguments, platform and root paths,
@@ -168,9 +169,9 @@ small layer: one-level directory iteration with walks built over it
 copy that keeps permissions, rename, and single-entry removal with recursive
 removal built over it. Hashing lives in their libraries
 (`std.crypto.hash.sha2`, `core:crypto`). The host keeps to that layer; walks
-and recursive removal are authored Chibi. Dependencies will be vendored, as
+and recursive removal are authored Chibi. Dependencies come prebuilt, as
 Odin vendors its libraries, so the dependency fetch and caches, and the
-interprocess lock they needed, go away rather than move.
+interprocess lock they needed, went away rather than moved.
 
 | Primitive | Result |
 | --- | --- |
@@ -189,8 +190,8 @@ the bootstrap artifact's digests.
 
 These primitives do not yet cover everything the Python does. The configuration
 signature hashes the full environment; children see only the allowlist, so
-`BuildEnvironmentNames` suffices. Once dependencies are vendored it no longer
-tracks dependency packages or source caches. Packaging also needs sizes,
+`BuildEnvironmentNames` suffices. It no longer tracks dependency packages or
+source caches. Packaging also needs sizes,
 modification-time order, symbolic-link reads and unique staging directories.
 Each invocation has a 100,000-step execution budget, which bounds authored
 walks over large SDK trees; a walk of thousands of files needs a larger budget

@@ -24,7 +24,7 @@ Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six r
 
 ## Retained patches
 
-The rows follow the build's application order. Each patch applies independently to the pinned commit, and the ordered series applies cleanly.
+The rows follow the order `third_party/CMakeLists.txt` applies them in. Each patch applies independently to the pinned commit, and the ordered series applies cleanly.
 
 | Patch | Why it remains |
 | --- | --- |
@@ -38,7 +38,7 @@ The rows follow the build's application order. Each patch applies independently 
 | [cute-gles-range-draw-state](cute-gles-range-draw-state.md) | Keep the viewport between GLES range draws, so batched shadow casters stay in their atlas tile. |
 | [cute-sound-free-queue-music-volume](cute-sound-free-queue-music-volume.md) | Grow the deferred free queue by pointers and apply the music volume once. |
 
-The October 6 audit published each patch it kept as an unlisted gist, and `gists.json` records that publication. The gists hold the October 6 versions and were not republished for this update. The patches in `cmake/patches` and these documents are current.
+The October 6 audit published each patch it kept as an unlisted gist, and `gists.json` records that publication. The gists hold the October 6 versions and were not republished for this update. The patches in `third_party/cute_framework`, which the third-party archive builder applies, and these documents are current.
 
 ## Behavior changes from upstream
 

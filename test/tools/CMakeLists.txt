@@ -211,10 +211,8 @@ add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 # Exercise the runtime GLSL compiler without opening a device. Its compiler
 # header is private to Cute, so these cases require an in-tree build.
 if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALLED_SDK)
-    get_target_property(platform_source Chibi::platform SOURCE_DIR)
-    get_directory_property(cute_source DIRECTORY "${platform_source}" DEFINITION cute_framework_SOURCE_DIR)
     target_sources(test_tools PRIVATE shader_webgpu.c)
-    target_include_directories(test_tools PRIVATE "${cute_source}/tools")
+    target_include_directories(test_tools PRIVATE "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/tools")
     target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
 endif()

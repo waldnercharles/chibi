@@ -2099,14 +2099,16 @@ vectors, and environment names. Their fixed file workload is about 10 MiB and 8,
 files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
-installed authored build program, and an eighth on macOS. Five cases make 50 API
+`python3 tools/test_policy.py tool build-toolchain` selects eight C cases for the
+installed authored build program, and a ninth on macOS. Six cases make 44 API
 invocations across bytecode and SLJIT, and the macOS case seven more that
-alternate them; one runs the host CLI with exact tail arguments. Twelve tiny Git
-roots, thirteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
+alternate them; one runs the host CLI with exact tail arguments. Fourteen tiny Git
+roots, fifteen on macOS, and at most 57 controlled CMake attempts, 64 on macOS,
 cover compiler/environment/cache precedence, explicit typed and split
-definitions, loaded inputs, compiler identity, private dependency overrides and
-their precedence over the cache, failure/retry and exact argument forwarding.
+definitions, loaded inputs, compiler identity, retired dependency switches, a
+third-party archive downloaded once through a `gh` stand-in, reused, refused
+for another SHA-256 and pruned unless a worktree pins it, failure/retry and
+exact argument forwarding.
 The macOS case finds the SDK from a stand-in compiler driver's 5 KiB `-###`
 report, through links and shell-quoted `CC` words, and falls back to a stand-in
 `xcrun`. Another case uses the production Makefile to select recovery for a
@@ -2847,8 +2849,9 @@ the fixture targets, fetch dependencies, execute fixture code or use a GPU.
 CMake's compiler identification/try-compile subprocesses remain part of each
 bounded configuration child.
 
-The whole existing selector now has eight C cases and twenty direct children
-(previously seven/sixteen). Its existing ten-second child limits and one shared
+The whole selector has five C cases and fifteen direct children on Linux
+(eight and twenty before the dependency package, its s2n pin and enkiTS
+acquisition cases were removed, 2026-10-20). Its existing ten-second child limits and one shared
 production 60-second route deadline remain unchanged. The added case performs
 four `REQUIRE` checks, one per successful complete configuration/generation.
 Parent C++ activation follows actual scheduler/render targets, leaving pure C SDK

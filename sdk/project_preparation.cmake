@@ -15,11 +15,11 @@ target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi
 
 # Players' pinned Vorbis decoder, compiled with private symbols, so preparation
 # refuses an Ogg sound that players cannot decode.
-file(READ "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c" code)
+file(READ "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c" code)
 string(REPLACE "stb_vorbis_" "chibi_sound_vorbis_" code "${code}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation/vendor/sound_vorbis.h" "${code}")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-    "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../libraries/stb/stb_vorbis.c")
+    "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c")
 add_library(chibi_project_compilation STATIC)
 foreach(unit component_declarations project_open project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare source_graph_library material_prepare scene_prepare sound_prepare ui_prepare

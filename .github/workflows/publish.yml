@@ -82,15 +82,6 @@ jobs:
         with:
           version: ${{ env.EMSDK_VERSION }}
           actions-cache-folder: emsdk-cache
-      - name: Restore dependency sources and packages
-        if: steps.release.outputs.complete != 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/chibi-fetchcontent
-            ~/.cache/chibi-dependency-packages
-          key: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-${{ hashFiles('engine/cmake/**', 'engine/tools/dependency_package.py', 'engine/tools/fetchcontent_cache.py') }}
-          restore-keys: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-
       - name: Restore compiler cache
         if: steps.release.outputs.complete != 'true'
         uses: hendrikmuhs/ccache-action@v1.2

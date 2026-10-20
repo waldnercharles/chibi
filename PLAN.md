@@ -788,10 +788,22 @@ unchanged against both implementations. Compiler SDK discovery followed it
 from `configure_inputs.py compiler-sdk`; the new `build-toolchain` macOS case
 passed against both implementations. A step's own output now holds 1 MiB
 rather than 4 KiB, probes keep tool reports out of the build's output, and the
-build host gained the file primitives in `docs/self-hosting-build.md`. Owner
-decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
-`dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
-than ported, and the configuration signature shrinks before it moves. Waiting
+build host gained the file primitives in `docs/self-hosting-build.md`.
+Dependency acquisition is replaced (2026-10-20): the owner chose prebuilt
+libraries, as Odin's `vendor/` keeps them, published as GitHub release assets
+instead of committed. `third_party/archives.tsv` pins one archive per target
+and variant (release, ASan+UBSan, ThreadSanitizer) by SHA-256; `Build.chibi`
+unpacks it into the clone's `.git/chibi/third_party`, which its worktrees
+share, and the SDK compiles the small libraries it owns from
+the archive's patched sources. The FetchContent declarations, configure-time
+patching, `dependency_package.py`, `fetchcontent_cache.py`, the package
+decision `Build.chibi` took over from `configure_inputs.py package-enabled`,
+their tests and CI cache keys are deleted, as are the engine's unused Zep copy
+and its never-linked Tracy option. `third_party/CMakeLists.txt` builds the
+archives in CI and `cmake/third_party.cmake` can download one on the CMake-only
+recovery path; both are temporary and leave with CMake. Windows CI is paused
+until the build host runs there. The configuration signature can move next.
+Waiting
 on a decision: `.github/scripts/` (the M5 owner
 confirms its hosted runs are finished), the CUT61 analysis scripts (owner
 review of the stale record), and game runtime installation (whether the

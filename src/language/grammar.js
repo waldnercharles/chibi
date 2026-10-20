@@ -193,6 +193,9 @@ module.exports = grammar({
         repeat(field("join", $.query_join)),
         optional(field("without", $.without_clause)),
         optional(seq(K.where, field("where", $._expression))),
+        // `on Tick :: (dt: s)` names the fields of the step's payload it reads.
+        optional(seq(K.on, field("event", $._handler_name), field("binding", "::"),
+          field("payload", $.parameter_list))),
         field("body", $.system_body),
       ),
     // A component's fields are data: a type, or a number measured by an

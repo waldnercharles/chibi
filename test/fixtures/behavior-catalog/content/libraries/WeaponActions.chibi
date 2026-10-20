@@ -1,3 +1,4 @@
+// Shared weapon cooldown and projectile initialization functions.
 WeaponActions :: library {
     Check_Firing_Interval :: (Elapsed: float = 0.0, Cooldown: float = 0.0) -> (Ready: bool = false, Remainder: float = 0.0) {
         return (Elapsed >= max(Cooldown, B: float = 0.01), Elapsed - max(Cooldown, B: float = 0.01))

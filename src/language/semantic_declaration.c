@@ -942,7 +942,7 @@ static void positional_payload(
 /* `on X :: (a: T)` names payload fields in any order. Each listed field binds
  * a parameter of its written type; each other field an unnamed one, so the
  * parameters keep the payload's order and slots. */
-static void named_payload(
+void script_analyzer_named_payload(
     analyzer *a,
     int function,
     TSNode list,
@@ -992,6 +992,7 @@ static void named_payload(
         int symbol = ts_node_is_null(listed[k])
                        ? hidden_payload(a, function, &payload[k], "")
                        : payload_symbol(a, listed[k], &payload[k]);
+        a->out->symbols[symbol].function = function;
         apush(a->out->functions[function].parameters, symbol);
     }
     afree(listed);
@@ -1188,7 +1189,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     bool named = !ts_node_is_null(script_analyzer_field(node, "binding"));
     a->out->functions[function].named = named;
     if (named) {
-        named_payload(a, function, parameter_nodes, payload, count, name);
+        script_analyzer_named_payload(a, function, parameter_nodes, payload, count, name);
     } else {
         positional_payload(a, function, parameter_nodes, payload, count);
     }

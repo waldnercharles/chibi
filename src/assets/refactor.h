@@ -19,7 +19,6 @@ typedef struct
     const reference_index *index;
     const char *const *texts;
     const prototype_registry *registry; /* loads prototypes and systems */
-    const char *const *metadata; /* optional parallel executable identity snapshots */
 } refactor_project;
 
 typedef struct
@@ -30,7 +29,6 @@ typedef struct
     /* The definitions and references it rewrites or removes, borrowed from
      * the index (support/array.h). */
     const reference **references;
-    char *metadata; /* optional executable identity/layout sidecar, owned */
 } refactor_edit;
 
 /* A value equal to the old name that no indexed reference accounts for,

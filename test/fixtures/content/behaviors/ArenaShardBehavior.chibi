@@ -1,4 +1,8 @@
+// The twelve original box-frame beams keep their source pose and material,
+// separate outward, tumble at independent rates, arc above the floor, and
+// shrink away after 0.55 seconds.
 ArenaShardBehavior :: behavior {
+    // State
     Age: float = 0.0
     Pitch_Rate: float = 0.0
     Roll_Rate: float = 0.0

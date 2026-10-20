@@ -78,6 +78,7 @@ Ops :: struct {
     store: int;
     owner: int;
     convert: int;
+    source_point: int;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -251,7 +252,8 @@ ResolveOps :: (names: string[]) -> Ops {
             shr: Ordinal(names, "SHR"), lt: Ordinal(names, "LT"), le: Ordinal(names, "LE"),
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
-            store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT")};
+            store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
+            source_point: Ordinal(names, "SOURCE_POINT")};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: (ops: Ops) -> bool {
@@ -260,7 +262,7 @@ Complete :: (ops: Ops) -> bool {
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.owner, ops.convert];
+                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point];
     for (op in used) {
         if (op < 0) {
             return false;
@@ -1150,16 +1152,37 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     // The packages this module calls into, each an import row.
     imported: int[] = [];
     imports: writer.Import[] = [];
+    points: writer.Point[] = [];
+    // Debugger points count each document's bytes that are not whitespace.
+    solid: int[] = [];
+    solid_document: int = -1;
     index := first_own;
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
+        if (callable.document != solid_document) {
+            solid = SolidOffsets(documents[callable.document].text);
+            solid_document = callable.document;
+        }
+        handler: int = -1;
+        if (index - first_own < length(handled)) {
+            handler = handled[index - first_own];
+        }
+        // A function's points mean the event it handles, or the function.
+        meaning := binding.ID("package-symbol", format_text("{}:{}:{}:callable", identity, FunctionKind, callable.name));
+        if (handler >= 0) {
+            meaning = game_events[handler].id;
+        } else if (owner_type != 0) {
+            meaning = binding.ID("symbol", format_text("{}:1:{}:callable", identity, callable.name));
+        }
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, constants, natives, ports, identities, aggregates, record_makes, make_fields,
-                           append(Aliases(links, callable.document), behaving), index, ops, target);
+                           append(Aliases(links, callable.document), behaving), documents[callable.document].key, solid,
+                           meaning, index, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
-            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots):
+            case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
+                          body_points):
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans = array_add(spans, Range(length(values), callable.count));
@@ -1351,6 +1374,15 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                     ints = array_add(ints, length(wide));
                     wide = array_add(wide, component_id);
                 }
+                spans = array_add(spans, Range(length(points), length(body_points)));
+                for (point in body_points) {
+                    wide = array_add(wide, point.occurrence);
+                    wide = array_add(wide, point.meaning);
+                    row: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1, start: point.start,
+                                         end: point.end, line: point.line, column: point.column, kind: point.kind,
+                                         completion: point.completion};
+                    points = array_add(points, row);
+                }
                 while (length(spans) < base + writer.Tables) {
                     spans = array_add(spans, Range(0, 0));
                 }
@@ -1363,10 +1395,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                 functions = array_add(functions, head);
                 references = array_add(references, Own(index - first_own));
                 references = array_add(references, Own(-1));
-                handler: int = -1;
-                if (index - first_own < length(handled)) {
-                    handler = handled[index - first_own];
-                }
                 if (handler >= 0) {
                     // Stage zero's handler ID: the source, the handler's offset and its kind.
                     handled_event := game_events[handler];
@@ -1437,7 +1465,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         states = array_add(states, row);
     }
     layouts_table: writer.ResultLayout[] = [];
-    points: writer.Point[] = [];
     watches: writer.Watch[] = [];
     return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, wide, values, ints, requirements,
                                                                      fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,

@@ -130,6 +130,24 @@ TEST_CASE(language_handlers_name_payload_fields)
     REQUIRE(original->diagnostic_count > 0);
     return true;
 }
+/* A system names its step's payload fields after its query clauses. */
+TEST_CASE(language_systems_name_their_step)
+{
+    parse("Motion :: system(p: Position) where p.x > 0 on Tick :: (dt: s) { p.x += dt }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    REQUIRE(!strcmp(ts_node_type(system), "system"));
+    REQUIRE(
+        node_text(field(system, "event"), "Tick") &&
+        node_text(field(system, "binding"), "::")
+    );
+    TSNode parameter = ts_node_named_child(field(system, "payload"), 0);
+    REQUIRE(
+        node_text(field(parameter, "name"), "dt") &&
+        node_text(field(parameter, "type"), "s")
+    );
+    return true;
+}
 TEST_CASE(language_retained_binding_syntax)
 {
     parse(
@@ -801,6 +819,7 @@ void test_language_syntax()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
     RUN_TEST_CASE(language_handlers_name_payload_fields);
+    RUN_TEST_CASE(language_systems_name_their_step);
     RUN_TEST_CASE(language_retained_binding_syntax);
     RUN_TEST_CASE(language_unified_declarations_and_generic_map_shapes);
     RUN_TEST_CASE(language_authored_asset_declarations);

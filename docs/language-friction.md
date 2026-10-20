@@ -208,6 +208,20 @@ Suggestion: `s[i]` as a byte and `s[a:b]` as a string, with bounds checks.
 Constant time needs the representation in
 [Strings are NUL-terminated and carry no length](#strings-are-nul-terminated-and-carry-no-length).
 
+## Stage one has no optionals
+
+Stage one. Stage zero has `T?`, `nil`, presence tests that narrow, `as T`
+and, since the nil-coalescing PR, `a ?? b`, but stage one's `ReadType`
+rejects any type with `?`. The compiler marks absence with sentinels instead:
+`-1` for a missing node, field or record, and `{storage: 0}` for no type.
+
+- Odin has `Maybe(T)` with `or_else`; Zig `?T` with `orelse` and `if (x) |v|`;
+  Swift `T?` with `??` and `if let`; Rust `Option<T>` with `unwrap_or`;
+  C# and TypeScript `T?` with `??`.
+
+Suggestion: stage one compiles `T?`, `nil`, presence narrowing and `??`, then
+the compiler replaces its `-1` sentinels where a value may be absent.
+
 ## Stage one has no maps
 
 Stage one. Stage zero has `[K: V]` maps with `["k": v]` and `[:]` literals,

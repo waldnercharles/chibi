@@ -401,7 +401,8 @@ static source_flow_target expression_flow(source_projection *p, int index, sourc
     }
     bool lazy = e->kind == SCRIPT_EXPR_FALLBACK ||
                 (e->kind == SCRIPT_EXPR_BINARY &&
-                 (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR));
+                 (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR ||
+                  e->op == SCRIPT_OP_COALESCE));
     if (lazy || source_view_expression_action(p, index)) {
         node *n = source_view_expression(p, index);
         int input = exec_pin(n, false, NULL);

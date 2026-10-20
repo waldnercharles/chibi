@@ -470,6 +470,20 @@ Example :: library {
 }
 ```
 
+`a ?? b` reads an optional's value, or `b` when it is `nil`, as Swift's `??`
+and Odin's `or_else` do. `b` runs only when `a` is `nil`. It has `a`'s value
+type, or is optional itself, which keeps the result optional. `??` groups to
+the right and binds below arithmetic and above comparison, so
+`a ?? b ?? 0 + 1 < limit` reads `(a ?? (b ?? (0 + 1))) < limit`.
+
+```chibi
+Example :: library {
+    Total :: (bonus: int?, scores: [string: int?]) -> int {
+        return (bonus ?? 0) + (scores["Ada"] ?? scores["Bea"] ?? 0)
+    }
+}
+```
+
 ## Packages and visibility
 
 A package is a folder of `.chibi` files with the same `package` header.

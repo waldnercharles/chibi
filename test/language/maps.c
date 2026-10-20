@@ -371,6 +371,39 @@ TEST_CASE(maps_absent_record_keys_read_defaults_or_report_missing_keys)
     return true;
 }
 
+/* `a ?? b` keeps a present value and evaluates b only for nil; `??` groups
+ * to the right and binds below arithmetic, above comparison. */
+TEST_CASE(maps_and_optionals_coalesce_nil_to_fallbacks)
+{
+    const char
+        *source = "Coalesce :: behavior { result: int = 0; calls: int = 0; "
+                  "flag: bool = false; "
+                  "Fallback :: () -> int { calls += 1; return 7; } "
+                  "on Run :: () { some: int? = 3; none: int? = nil; name: "
+                  "string? = nil; "
+                  "maybe: [string: int?] = [\"a\": 4, \"b\": nil]; "
+                  "result = some ?? Fallback(); "
+                  "result = result * 10 + (none ?? Fallback()); "
+                  "result = result * 10 + (maybe[\"a\"] ?? 0); "
+                  "result = result * 10 + (maybe[\"b\"] ?? maybe[\"c\"] ?? 5); "
+                  "kept: int? = none ?? maybe[\"a\"]; result = result * 10 + "
+                  "(kept ?? 0); "
+                  "result = result * 10 + (none ?? 1 + 1); "
+                  "flag = none ?? 1 < 2 && (name ?? \"x\") == \"x\"; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = attach();
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(state(instance, "result") && state(instance, "result")->i == 374542);
+        REQUIRE(state(instance, "calls") && state(instance, "calls")->i == 1);
+        REQUIRE(state(instance, "flag") && state(instance, "flag")->b);
+        cleanup();
+    }
+    return true;
+}
+
 TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types)
 {
     const char *invalid[] = {
@@ -651,6 +684,7 @@ void test_language_maps()
     RUN_TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays);
     RUN_TEST_CASE(maps_absent_keys_read_zero_values);
     RUN_TEST_CASE(maps_absent_record_keys_read_defaults_or_report_missing_keys);
+    RUN_TEST_CASE(maps_and_optionals_coalesce_nil_to_fallbacks);
     RUN_TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types);
     RUN_TEST_CASE(maps_own_strings_compare_associations_and_reject_nonfinite_keys);
     RUN_TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads);

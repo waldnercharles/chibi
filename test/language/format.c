@@ -1651,7 +1651,7 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
         "Identity::(value:$ T)->T=>{return value;}"
         "Product::(left:$ L,right:$ R)->ProductType(L,R){return left;}"
         "Use::(){scores:[string:int]=[\"Ada\":1,key:2];empty:[int:int]=[ : ];"
-        "delete scores [key];gone:=key not  in scores;"
+        "delete scores [key];gone:=key not  in scores;kept:=maybe??other??0;"
         "for item:ref in items{item+=1;}}}"
     ));
     REQUIRE(strstr(text, "Vector :: struct($Element: Type, $Size: int) {"));
@@ -1661,6 +1661,7 @@ TEST_CASE(source_format_generic_types_maps_and_reference_iteration)
     REQUIRE(strstr(text, "empty: [int: int] = [:]"));
     REQUIRE(strstr(text, "delete scores[key]"));
     REQUIRE(strstr(text, "gone := key not in scores"));
+    REQUIRE(strstr(text, "kept := maybe ?? other ?? 0"));
     REQUIRE(strstr(text, "for item: ref in items {"));
     return true;
 }

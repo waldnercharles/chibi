@@ -319,6 +319,28 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     REQUIRE(diagnostic("Optional component requires a presence guard before member access"));
     return true;
 }
+/* `??` needs an optional on its left and a fallback of its value type; an
+ * optional fallback keeps the result optional. */
+TEST_CASE(language_coalesce_types_its_operands)
+{
+    parse("L :: library { F :: (a: int?, b: int?) -> int { c: int? = a ?? b; return a ?? b ?? 0; } }");
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    parse("L :: library { F :: (a: int?) -> bool { return a ?? 1 < 2; } }");
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    const char *invalid[] = {
+        "L :: library { F :: (a: int) -> int { return a ?? 1; } }",
+        "L :: library { F :: (a: int?) -> int { return a ?? \"x\"; } }",
+        "L :: library { F :: (a: int?, b: int?) -> int { return a ?? b; } }",
+        "Motion :: system(position: Position?) { x := position ?? position; }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+    }
+    parse(invalid[0]);
+    REQUIRE(diagnostic("?? requires an optional value on its left"));
+    return true;
+}
 TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
 {
     parse(
@@ -2240,6 +2262,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks);
     RUN_TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_coalesce_types_its_operands);
     RUN_TEST_CASE(language_reductions_resolve_stored_fields_and_membership);
     RUN_TEST_CASE(language_reductions_require_system_component_fields);
     RUN_TEST_CASE(language_reduction_producers_reject_conflicting_component_values);

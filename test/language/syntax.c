@@ -585,6 +585,17 @@ TEST_CASE(language_expressions_precedence_and_continuation)
     TSNode difference = field(ts_node_named_child(body, 1), "value");
     REQUIRE(node_text(field(difference, "right"), "1"));
     REQUIRE(node_text(field(field(difference, "left"), "operator"), "-"));
+    /* `??` groups to the right and binds above comparison. */
+    parse("Expressions :: behavior { chosen := a ?? b ?? c + 1 < d }");
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode comparison = field(ts_node_named_child(declaration_body(), 0), "value");
+    REQUIRE(node_text(field(comparison, "operator"), "<"));
+    TSNode coalesce = field(comparison, "left");
+    REQUIRE(
+        node_text(field(coalesce, "operator"), "??") &&
+        node_text(field(coalesce, "left"), "a")
+    );
+    REQUIRE(node_text(field(coalesce, "right"), "b ?? c + 1"));
     parse(syntax_corpus_cases[SYNTAX_CORPUS_CALLS].text);
     REQUIRE(original->diagnostic_count == 0);
     TSNode statements = field(ts_node_named_child(declaration_body(), 0), "body");

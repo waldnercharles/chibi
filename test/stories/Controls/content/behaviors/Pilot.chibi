@@ -1,6 +1,6 @@
 // Held movement and a pressed action, replayed from the scenario.
 Pilot :: behavior {
-    jumps := 0
+    jumps: int = 0
 
     on Tick :: () {
         self.Transform.x += self.Input.Move.x

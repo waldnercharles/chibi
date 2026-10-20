@@ -191,7 +191,9 @@ Current integration constraints:
   (main's v26 syntax step, then this branch's conversions step over a frozen
   v26 parser) and prepared schema 18. Stage one reads packed arrays and `for`
   loops, and its twins follow main's expression kinds and inferred purity.
-  The published bootstrap artifact predates schema 18 and must be republished.
+  The bootstrap artifact is checked in at `tools/compiler/bootstrap` and was
+  rebuilt from the merged tree (#512); the earlier published prerelease
+  predates schema 18 and is refused.
   PRs #504 (`text_bytes`) and #509 (reference type checks), which landed on
   this branch during the integration, are merged in as well. #509's storage
   check now accepts two unnamed unions, because main's lowering gives union
@@ -794,8 +796,10 @@ in the source arena, runtime array copies that scanned every source element for
 packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
-Next action: land the integration PR into `main`, then republish the
-bootstrap artifact from the merged revision after confirmation.
+The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
+#512 rebuilt the checked-in bootstrap artifact from it. Next action: M5 step
+4, following `docs/design-notes.md`: gate each stage-one feature on a
+purpose-made example before rebuilding a whole game.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.

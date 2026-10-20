@@ -49,8 +49,8 @@ make the compiler self-hosted.
 | Responsibility | Current owners | Replacement and deletion gate | Required evidence |
 | --- | --- | --- | --- |
 | Project prepare and run | `src/host/chibi_main.c`, `src/host/compile_main.c`, `src/authoring/project_compile.c` | Expose stable commands first, then move orchestration into installed `.chibi` modules through the build-only host. | `test/tools/chibi_cli.c`, installed-SDK build/run, cache hit and invalidation, exact player arguments, failure status. |
-| Build-host process execution | `src/host/process.c`, `src/host/build_host.c`, `src/host/build_main.c`, `test/language/BuildWorkflow.chibi` | Private stage-zero host supplies direct argv, cwd, allowlisted environment, bounded output and deadline, error mapping, cancellation, and process-group cleanup. Keep it out of game catalogs; retain native bindings as Chibi takes ownership of orchestration. | `build-process` real-child cases on Linux/macOS and `language-build-workflow` recording parity; Windows retains stage zero pending equivalent process-tree support. |
-| Native configuration | `tools/toolchain/Build.chibi`, `tools/configure_inputs.py`, `tools/configure.sh`, `tools/configure_native.sh`, `tools/configure_web.sh` | Installed Chibi program owns native orchestration; read-only Python probes and shell recovery remain until their replacement gates. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `build-toolchain` authored cases plus `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
+| Build-host process execution | `src/host/process.c`, `src/host/build_host.c`, `src/host/build_main.c`, `test/language/BuildWorkflow.chibi` | Private stage-zero host supplies direct argv, cwd, allowlisted environment, bounded output and deadline, error mapping, cancellation, and process-group cleanup, plus the narrow file primitives in `docs/self-hosting-build.md`. Keep it out of game catalogs; retain native bindings as Chibi takes ownership of orchestration. | `build-process` real-child cases on Linux/macOS and `language-build-workflow` recording parity; Windows retains stage zero pending equivalent process-tree support. |
+| Native configuration | `tools/toolchain/Build.chibi`, `tools/configure_inputs.py`, `tools/configure.sh`, `tools/configure_native.sh`, `tools/configure_web.sh` | Installed Chibi program owns native orchestration and compiler SDK discovery; the read-only Python signature and dependency-override probes and shell recovery remain until their replacement gates. Preserve explicit compiler, toolchain, cache, and user-definition precedence and correct invalidation. | `build-toolchain` authored cases plus `test/tools/package.c`, including warm configuration and web SDK recipe cases; clean and warm profile builds. |
 | Dependency acquisition and cache | `tools/dependency_package.py`, `tools/fetchcontent_cache.py`, `cmake/dependencies.cmake`, `cmake/dependency_package/` | Preserve exact dependency identities, applied patches, pristine snapshots, interprocess locking, atomic completion, and corrupt-cache rejection. | Direct cold, warm, concurrent, interrupted, and corrupt cache fixtures plus current package/configuration cases. |
 | Build logs and command display | `tools/quiet.py`, Makefile `QUIET` | Build host owns bounded capture, full failure diagnostics, log retention, pruning, concurrent writers, and signal cleanup. | Focused native fixtures for success, large output, failure, interruption, pruning, and concurrent commands. |
 | SDK and runtime packaging | `tools/package_sdk.py`, `sdk/CMakeLists.txt`, `sdk/*.cmake` | Chibi modules assemble installed outputs, enforce target/header/object ownership, retain licenses and identity, and work without source checkout. | Admitted `package`, `package-ownership`, and `desktop-dependencies`; source-free and relocated installed SDK consumers. |
@@ -84,6 +84,21 @@ tools/fetchcontent_cache.py
 Remove an installed script only when the replacement is present in the installed
 SDK and its source-free consumer checks pass. A wrapper that still requires the
 engine checkout or Python has not crossed this gate.
+
+## Host file primitives
+
+The build host now reads file kinds, change stamps and directory entries,
+copies, renames, removes, hashes, locks, and lists its allowed environment
+(`docs/self-hosting-build.md`). Each step's own output holds 1 MiB, and probes
+keep tool reports out of the build's output. What each responsibility still
+lacks:
+
+| Responsibility | Unblocked by the primitives | Still missing |
+| --- | --- | --- |
+| Configuration signature (`configure_inputs.py signature`) | Metadata, directory walks, environment names, text hashing, and `git ls-files` output beyond 4 KiB. | Nothing in the host: query Ninja inputs with `ninja -t query` rather than reading `build.ninja`, which exceeds 1 MiB. |
+| Dependency acquisition and cache | Copies, renames, removals, file hashing and the exclusive lock. | Symbolic-link copies, unique temporary directories, a non-waiting lock, modification-time order and touch, and a step budget or native tree copy for large source trees. |
+| SDK, player and Studio packaging | Kinds, walks, copies, renames, removals and file hashing. | Sizes, modification-time order, symbolic-link reads, unique staging directories, the same budget, and M6. |
+| Blender launcher and publication | Hashing, copies and renames. | Child resource limits. |
 
 ## Current project-owned script inventory
 

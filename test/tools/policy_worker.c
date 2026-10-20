@@ -1,10 +1,12 @@
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -232,11 +234,68 @@ static int toolchain_cmake(int argc, char **argv)
     return 0;
 }
 
+/* Prints a working-directory file to stream, escaped as -### quotes it when
+ * asked; a missing file prints nothing. */
+static void print_file(const char *name, FILE *stream, bool escape)
+{
+    FILE *file = fopen(name, "r");
+    if (!file) {
+        return;
+    }
+    for (int c; (c = fgetc(file)) != EOF;) {
+        if (escape && (c == '"' || c == '\\' || c == '$')) {
+            fputc('\\', stream);
+        }
+        fputc(c, stream);
+    }
+    assert(!fclose(file));
+}
+
+/* A compiler driver's -### report as Apple clang prints it: each argument
+ * double-quoted with ", \ and $ escaped, more than 4 KiB in all. The sysroot
+ * comes from compiler-sysroot in the working directory; without that file
+ * the command names none. driver.trace records the driver's argv. */
+static int compiler_driver(int argc, char **argv)
+{
+    FILE *trace = fopen("driver.trace", "a");
+    assert(trace);
+    for (int i = 0; i < argc; i++) {
+        fprintf(trace, "arg=%s\n", argv[i]);
+    }
+    assert(!fclose(trace));
+    fputs(
+        "Apple clang version 21.0.0 (fixture)\nTarget: arm64-apple-darwin\n"
+        "Thread model: posix\nInstalledDir: /fixture/bin\n "
+        "\"/fixture/bin/clang\" \"-cc1\"",
+        stderr
+    );
+    for (int i = 0; i < 160; i++) {
+        fprintf(stderr, " \"-target-feature\" \"+fixture%d\"", i);
+    }
+    if (!access("compiler-sysroot", F_OK)) {
+        fputs(" \"-isysroot\" \"", stderr);
+        print_file("compiler-sysroot", stderr, true);
+        fputc('"', stderr);
+    }
+    fputs(" \"-x\" \"c\" \"-\"\n", stderr);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     /* Emulate an earlier private host which does not recognize this query. */
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
         return 2;
+    }
+    /* xcrun prints the SDK named by xcrun-sdk in the working directory. */
+    if (argc == 2 && !strcmp(argv[1], "--show-sdk-path")) {
+        print_file("xcrun-sdk", stdout, false);
+        return 0;
+    }
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-###")) {
+            return compiler_driver(argc, argv);
+        }
     }
     assert(argc >= 3);
     if (!strcmp(argv[1], "-S") &&
@@ -282,11 +341,23 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(argv[1], "build-output")) {
-        for (int i = 0; i < 16384; i++) {
-            fputc('o', stdout);
-            fputc('e', stderr);
+        char out[4096], err[4096];
+        memset(out, 'o', sizeof out);
+        memset(err, 'e', sizeof err);
+        for (size_t size = (size_t)atoi(argv[2]), part; size; size -= part) {
+            part = size < sizeof out ? size : sizeof out;
+            assert(fwrite(out, 1, part, stdout) == part && fwrite(err, 1, part, stderr) == part);
         }
         return 0;
+    }
+    /* Exits 1 while another open file holds the lock on argv[2]. */
+    if (!strcmp(argv[1], "lock-probe")) {
+        int fd = open(argv[2], O_RDONLY);
+        assert(fd >= 0);
+        int busy = flock(fd, LOCK_EX | LOCK_NB) != 0;
+        assert(!busy || errno == EWOULDBLOCK);
+        assert(!close(fd));
+        return busy;
     }
     if (!strcmp(argv[1], "build-signal")) {
         raise(SIGTERM);

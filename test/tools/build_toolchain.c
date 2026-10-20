@@ -303,6 +303,82 @@ TEST_CASE(private_source_overrides_disable_immutable_dependency_packages)
     return true;
 }
 
+#ifdef __APPLE__
+static bool configured_sysroot(const char *build, const char *sdk, int backend)
+{
+    const char *arguments[] = { "native", build, "--configure-only", "--" };
+    char cache[1024], expected[2048];
+    snprintf(cache, sizeof cache, "%s/CMakeCache.txt", build);
+    snprintf(expected, sizeof expected, "CMAKE_OSX_SYSROOT:PATH=%s\n", sdk);
+    return invoke(arguments, 4, backend, 0) && file_contains(cache, expected);
+}
+static bool driver_ran(const char *arguments)
+{
+    char file[1024];
+    path(file, root, "driver.trace");
+    return file_contains("driver.trace", arguments) && !unlink(file);
+}
+
+/* Without SDKROOT or a cached sysroot, the selected compiler's -### report
+ * names the SDK, followed through links; xcrun answers otherwise. CC is one
+ * file or shell words. Both stand-ins sit first on PATH. */
+TEST_CASE(compiler_driver_report_names_the_sdk_before_xcrun)
+{
+    for (int b = 0; b < 2; b++) {
+        reset_fixture("compiler SDK", b);
+        assert(!unsetenv("SDKROOT"));
+        char file[1024], directory[1024], sdk[1024], fallback[1024], text[1200];
+        const char *shims[] = { "bin/cc", "bin/xcrun", "driver dir/my cc" };
+        path(directory, root, "driver dir");
+        assert(!mkdir(directory, 0700));
+        for (int i = 0; i < 3; i++) {
+            path(file, root, shims[i]);
+            assert(!symlink(worker_path, file));
+        }
+        path(directory, root, "SDKs");
+        assert(!mkdir(directory, 0700));
+        path(sdk, directory, "Fixture \"quoted\" \\ 26.sdk");
+        assert(!mkdir(sdk, 0700));
+        path(file, directory, "Fixture.sdk");
+        assert(!symlink("Fixture \"quoted\" \\ 26.sdk", file));
+        write_file("compiler-sysroot", file);
+        path(fallback, directory, "Fallback.sdk");
+        assert(!mkdir(fallback, 0700));
+        snprintf(text, sizeof text, "%s\n", fallback);
+        write_file("xcrun-sdk", text);
+
+        REQUIRE(configured_sysroot("default", sdk, b));
+        REQUIRE(driver_ran("arg=cc\narg=-###\narg=-x\narg=c\narg=-fsyntax-only\narg=-\n"));
+        assert(!setenv("CC", "cc  -fflag\t'two words' \"say \\\"hi\\\"\" a\\ b", 1));
+        REQUIRE(configured_sysroot("words", sdk, b));
+        REQUIRE(driver_ran("arg=cc\narg=-fflag\narg=two words\narg=say \"hi\"\narg=a b\narg=-###\n"));
+        path(file, root, "driver dir/my cc");
+        assert(!setenv("CC", file, 1));
+        REQUIRE(configured_sysroot("file", sdk, b));
+        snprintf(text, sizeof text, "arg=%s\narg=-###\n", file);
+        REQUIRE(driver_ran(text));
+
+        path(file, directory, "Missing.sdk");
+        write_file("compiler-sysroot", file);
+        assert(!unsetenv("CC"));
+        REQUIRE(configured_sysroot("missing", fallback, b));
+        REQUIRE(driver_ran("arg=cc\narg=-###\n"));
+        path(file, root, "compiler-sysroot");
+        assert(!unlink(file));
+        REQUIRE(configured_sysroot("unnamed", fallback, b));
+        REQUIRE(driver_ran("arg=cc\narg=-###\n"));
+        const char *unusable[] = { "absent-compiler", "cc 'unclosed" };
+        for (int i = 0; i < 2; i++) {
+            assert(!setenv("CC", unusable[i], 1));
+            REQUIRE(configured_sysroot(i ? "unclosed" : "absent", fallback, b));
+            path(file, root, "driver.trace");
+            REQUIRE(access(file, F_OK));
+        }
+    }
+    return true;
+}
+#endif
+
 TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments)
 {
     reset_fixture("CLI tail", 0);
@@ -407,6 +483,9 @@ void test_build_toolchain(const char *worker, const char *host)
     RUN_TEST_CASE(warm_configuration_tracks_inputs_options_environment_and_compiler);
     RUN_TEST_CASE(configuration_and_build_failures_propagate_and_tool_host_profile_is_narrow);
     RUN_TEST_CASE(private_source_overrides_disable_immutable_dependency_packages);
+#ifdef __APPLE__
+    RUN_TEST_CASE(compiler_driver_report_names_the_sdk_before_xcrun);
+#endif
     RUN_TEST_CASE(private_cli_forwards_empty_and_special_tail_arguments);
     RUN_TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol);
     for (size_t i = 0; i < sizeof environment_names / sizeof *environment_names; i++) {

@@ -1951,10 +1951,10 @@ into an unrelated executable must fail provenance checks.
 
 ## Private build-host process checks
 
-`python3 tools/test_policy.py tool build-process` selects eighteen C cases in the
+`python3 tools/test_policy.py tool build-process` selects 24 C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
-fixed authored sources, at most 54 controlled process launches or failed
+fixed authored sources, at most 62 controlled process launches or failed
 spawn attempts, and one shared 60-second production deadline. It performs no
 engine configure/build, network, renderer or GPU work. Case deadlines are at
 most two seconds, with shorter deliberate timeout/cancellation budgets; every
@@ -1970,17 +1970,24 @@ compiler-only builds verify rejection by a catalog without build capabilities.
 Two CLI invocations cover source loading, a nonzero authored result and a missing
 entry. Seven additional cases cover argument and returned-value lifetimes,
 string operations, truncated or binary output rejection, regular-file and size
-limits, and atomic write failure cleanup. Their fixed file workload is about
-7 MiB. The original eight `language-build-workflow` recording cases remain an
+limits, and atomic write failure cleanup. Six more cover a step's 1 MiB output
+and unreported probes, file kinds, stamps and sorted directory entries with
+their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
+vectors, locks against another process, the deadline and their limit, and
+environment names. Their fixed file workload is about 10 MiB and 8,193 empty
+files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
 `python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
-installed authored build program. Four cases make 38 API invocations across
-bytecode and SLJIT; one runs the host CLI with exact tail arguments. Ten tiny
-Git roots and at most 53 controlled CMake attempts cover compiler/environment/
+installed authored build program, and a seventh on macOS. Four cases make 38 API
+invocations across bytecode and SLJIT, and the macOS case 14 more; one runs the
+host CLI with exact tail arguments. Ten tiny Git roots, twelve on macOS, and at
+most 53 controlled CMake attempts, 67 on macOS, cover compiler/environment/
 cache precedence, explicit typed and split definitions, loaded inputs, compiler
 identity, private dependency overrides, failure/retry and exact argument
-forwarding. The sixth case uses the production Makefile to select recovery for
+forwarding. The macOS case finds the SDK from a stand-in compiler driver's
+5 KiB `-###` report, through links and shell-quoted `CC` words, and falls back
+to a stand-in `xcrun`. The sixth case uses the production Makefile to select recovery for
 missing/old hosts and authored orchestration for a compatible host, including
 paths with spaces; three outer and three recursive Make calls run marker recipes
 only. The process route also tests the private protocol query used by this

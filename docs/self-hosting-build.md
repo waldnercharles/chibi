@@ -50,7 +50,8 @@ supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
 `--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
 
-The private catalog includes `RunBuildStep(arguments: string[]) -> int` and
+The private catalog includes `RunBuildStep(arguments: string[]) -> int`,
+`RunBuildProbe(arguments: string[]) -> int` and
 `BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
 directory. PATH lookup selects the executable separately from the authored
 `argv[0]`, preserving every argument, including empty strings and shell syntax.
@@ -62,10 +63,15 @@ The environment snapshot includes compiler, flags, CMake, SDK, dependency-cache,
 ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths
 and the inherited test deadline. `environment_names` in `build_host.c` owns the
 explicit allowlist. Missing allowed names read as empty strings; other names
-are capability errors. The snapshot is limited to 1 MiB. Each invocation permits
-64 steps and each step permits
-256 arguments totaling 64 KiB. Captured stdout and stderr each retain at most
-4,095 bytes across all steps; truncation remains visible in the result and CLI.
+are capability errors. `BuildEnvironmentNames()` lists the allowed names the
+snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
+1 MiB. Each invocation permits 64 steps, probes included, and each step permits
+256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
+1 MiB, one build text value, for `BuildLastStdout` and `BuildLastStderr`. A
+reported step also adds its output to the invocation's result, which retains at
+most 4,095 bytes of each across reported steps; truncation remains visible in
+the result and CLI. A probe's output is data only: compiler reports and tool
+queries stay out of the build's output and leave room for its diagnostics.
 
 Child exits return `0..255`; signal termination returns the negative signal
 number. Invalid input, spawn failure, timeout, cancellation and host failure
@@ -121,20 +127,67 @@ loaded CMake files, new configuration files, dependency inputs and compiler/tool
 identities. It is written atomically only after successful configuration. Build
 targets and parallelism do not invalidate configuration.
 
+On macOS the program finds the SDK itself when neither `SDKROOT`, the cache nor
+an explicit definition names one. It splits the selected compiler into words as
+Python's `shlex.split` does, unless the compiler names one file, probes its
+`-### -x c -fsyntax-only -` report and takes the directory `-isysroot` names,
+following links; `xcrun --show-sdk-path` answers otherwise. Apple clang's report
+is about 4.1 KiB.
+
 Three installed Python helpers remain transitional dependencies:
-`configure_inputs.py` retains the existing read-only signature, compiler SDK and
+`configure_inputs.py` retains the existing read-only signature and
 dependency-override probes; `dependency_package.py` and `fetchcontent_cache.py`
 retain dependency acquisition and cache ownership. Their replacement and removal
 gates remain in the toolchain inventory. CMake still owns the stage-zero graph.
 
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,
-last-process output and string/array operations. File and text values are limited
-to 1 MiB, arrays to 8,192 entries and 1 MiB of text, and retained helper storage
-to 32 MiB per invocation. Last-output accessors reject truncation and embedded
-NUL bytes, so authored protocol parsing cannot accept a partial result. Returned
-values remain owned by the invocation until it finishes; parent cwd and
-environment are never mutated.
+last-process output, the file primitives below and string/array operations. File
+and text values are limited to 1 MiB, arrays to 8,192 entries and 1 MiB of text,
+and retained helper storage to 32 MiB per invocation. Last-output accessors
+reject truncation and embedded NUL bytes, so authored protocol parsing cannot
+accept a partial result. Returned values remain owned by the invocation until it
+finishes; parent cwd and environment are never mutated.
+
+### Build-host file primitives
+
+The remaining configuration, dependency-cache and packaging Python reads file
+metadata, walks trees, copies, renames, removes, hashes and locks. Zig's
+`std.fs.Dir`, Rust's `std::fs` (which Cargo build scripts use) and Odin's
+`core:os` expose the same small layer: one-level directory iteration with walks
+built over it (`Dir.walk`, Odin's `Walker`, `fs::read_dir` recursion), a stat
+record, atomic copy that keeps permissions, rename, single-entry removal with
+recursive removal built over it, and an exclusive file lock (`File.lock`,
+`flock`). Hashing lives in their libraries (`std.crypto.hash.sha2`,
+`core:crypto`). The host keeps to that layer; walks and recursive removal are
+authored Chibi.
+
+| Primitive | Result |
+| --- | --- |
+| `BuildFileKind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
+| `BuildFileStamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
+| `BuildListDirectory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
+| `BuildCopyFile(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
+| `BuildRename(source, destination) -> bool` | `rename(2)`. |
+| `BuildRemove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
+| `BuildHashFile(path) -> string`, `BuildHashText(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `BuildLockFile(path) -> bool`, `BuildUnlockFile(path) -> bool` | Exclusive `flock` on a lock file, created when missing, waiting for other processes until the deadline or cancellation. At most 16 per invocation; locking a held file again is a capability error; children never inherit them, and every lock is released when the invocation ends. Unlock reports whether the path named a held lock. |
+
+Queries return a capability error for failures other than absence; mutations
+return false. Every primitive checks the deadline and cancellation, and copies
+and hashes check them between 64 KiB chunks. `support/sha256.c` is shared with
+the bootstrap artifact's digests.
+
+These primitives do not yet cover everything the Python does. The configuration
+signature still needs an equivalent of its full-environment hash (children see
+only the allowlist, so `BuildEnvironmentNames` suffices) and `ninja -t query`
+instead of reading `build.ninja`, which exceeds the 1 MiB text limit in a full
+build. The dependency cache also needs symbolic-link copies, unique temporary
+directories, a non-waiting lock for pruning, and modification-time order and
+touch. Packaging also needs sizes and modification-time order. Each invocation
+has a 100,000-step execution budget, which bounds authored walks over large
+dependency or SDK trees; a walk of thousands of files needs a larger budget or
+a native tree operation. Add each with the move that first calls it.
 
 ## Bootstrap and backend milestones
 

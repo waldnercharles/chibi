@@ -752,8 +752,14 @@ publication contracts already live in the replacement: Studio's
 SHA-256 in `studio.json` and skips an unchanged pair, the engine release
 workflow publishes versioned packages, `docs/game-web-workflow.yml` deploys a
 game from them, and `chibi export --web` assembles a local site. Git history
-is the recovery path. Every other responsibility in
-`docs/toolchain-inventory.md` still waits for its replacement.
+is the recovery path. Compiler SDK discovery moved from `configure_inputs.py
+compiler-sdk` into `tools/toolchain/Build.chibi` (2026-10-19); its only caller
+was `Build.chibi`, and the `build-toolchain` macOS case passed against both
+implementations. A step's own output now holds 1 MiB rather than 4 KiB, probes
+keep tool reports out of the build's output, and the build host gained the
+file primitives in `docs/self-hosting-build.md`. The inventory's host-file
+table names what each remaining Python responsibility still lacks. Every other
+responsibility in `docs/toolchain-inventory.md` still waits for its replacement.
 
 Delete one responsibility at a time. Before deletion, name the replacement,
 enumerate every repository, installed-SDK, CI, release, and application caller,

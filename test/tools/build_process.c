@@ -10,10 +10,12 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
@@ -83,7 +85,7 @@ TEST_CASE(argv_cwd_and_explicit_environment)
 
 TEST_CASE(separate_output_bounds)
 {
-    const char *argv[] = { worker_path, "build-output", "unused", NULL };
+    const char *argv[] = { worker_path, "build-output", "16384", NULL };
     const char *envp[] = { "PATH=/usr/bin:/bin", NULL };
     chibi_process_capture_result result = capture(argv, envp, 2);
     REQUIRE(result.error == CHIBI_PROCESS_OK && result.status == 0);
@@ -369,14 +371,41 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
     REQUIRE(game);
     const script_catalog *catalog = native_capabilities_catalog(game);
     static const char *private_names[] = {
-        "RunBuildStep",        "BuildEnvironment", "BuildArguments",
-        "BuildPlatform",       "BuildRoot",        "BuildProgramDirectory",
-        "BuildFindExecutable", "BuildReadFile",    "BuildFileExists",
-        "BuildMakeDirectory",  "BuildResolvePath", "BuildWriteFile",
-        "BuildLastStdout",     "BuildLastStderr",  "BuildReport",
-        "BuildJoin",           "BuildStartsWith",  "BuildBefore",
-        "BuildAfter",          "BuildLines",       "BuildTrim",
-        "BuildConcat",         "BuildLength",
+        "RunBuildStep",
+        "BuildEnvironment",
+        "BuildArguments",
+        "BuildPlatform",
+        "BuildRoot",
+        "BuildProgramDirectory",
+        "BuildFindExecutable",
+        "BuildReadFile",
+        "BuildFileExists",
+        "BuildMakeDirectory",
+        "BuildResolvePath",
+        "BuildWriteFile",
+        "BuildLastStdout",
+        "BuildLastStderr",
+        "BuildReport",
+        "BuildJoin",
+        "BuildStartsWith",
+        "BuildBefore",
+        "BuildAfter",
+        "BuildLines",
+        "BuildTrim",
+        "BuildConcat",
+        "BuildLength",
+        "RunBuildProbe",
+        "BuildEnvironmentNames",
+        "BuildFileKind",
+        "BuildFileStamp",
+        "BuildListDirectory",
+        "BuildCopyFile",
+        "BuildRename",
+        "BuildRemove",
+        "BuildHashFile",
+        "BuildHashText",
+        "BuildLockFile",
+        "BuildUnlockFile",
     };
     bool absent = true;
     for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
@@ -552,10 +581,10 @@ TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols)
     static const char *sources[] = {
         "library Output { Build :: fn() -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "output\",\"unused\"]); BuildLastStdout(); return 0; } }",
+        "output\",\"1048577\"]); BuildLastStdout(); return 0; } }",
         "library Output { Build :: fn() -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
-        "output\",\"unused\"]); BuildLastStderr(); return 0; } }",
+        "output\",\"1048577\"]); BuildLastStderr(); return 0; } }",
         "library Output { Build :: fn() -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
         "binary\",\"stdout\"]); BuildLastStdout(); return 0; } }",
@@ -805,6 +834,330 @@ TEST_CASE(private_argument_bounds_reject_before_authored_execution)
     return true;
 }
 
+static bool run_primitives(const char *source, behavior_backend backend, int steps)
+{
+    chibi_build_options options = primitive_options(source, backend);
+    chibi_build_result result;
+    bool success = chibi_build_invoke(&options, &result);
+    if (!success || result.value) {
+        fprintf(stderr, "build primitives: value=%d %s\n", result.value, result.diagnostic);
+    }
+    return success && !result.value && result.steps == steps &&
+           primitive_backend(&result, backend);
+}
+
+static bool fails_with(const char *source, behavior_backend backend, const char *diagnostic)
+{
+    chibi_build_options options = primitive_options(source, backend);
+    chibi_build_result result;
+    return !chibi_build_invoke(&options, &result) &&
+           !strcmp(result.diagnostic, diagnostic) &&
+           primitive_backend(&result, backend);
+}
+
+static off_t file_size(const char *name)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s", root, name);
+    struct stat info;
+    return stat(path, &info) ? -1 : info.st_size;
+}
+
+TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported)
+{
+    static const char *
+        source = "library Output { Build :: fn() -> int { "
+                 "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
+                 "if(RunBuildProbe([worker,\"build-argv\",\"probe\"])!=23) { "
+                 "return 1; } "
+                 "if(BuildAfter(BuildLastStdout(),\"arg=5:\")!=\"probe\\n\" || "
+                 "BuildLastStderr()!=\"worker-stderr\\n\") { return 2; } "
+                 "if(RunBuildStep([worker,\"build-output\",\"1048576\"])!=0) { "
+                 "return 3; } "
+                 "if(!BuildWriteFile(\"step-stdout\",BuildLastStdout()) || "
+                 "!BuildWriteFile(\"step-stderr\",BuildLastStderr())) { return "
+                 "4; } "
+                 "return 0; } }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        chibi_build_options options = primitive_options(source, backend);
+        chibi_build_result result;
+        bool success = chibi_build_invoke(&options, &result);
+        if (!success || result.value) {
+            fprintf(stderr, "step output: value=%d %s\n", result.value, result.diagnostic);
+        }
+        REQUIRE(success && !result.value && result.steps == 2);
+        REQUIRE(primitive_backend(&result, backend));
+        REQUIRE(
+            file_size("step-stdout") == 1024 * 1024 &&
+            file_size("step-stderr") == 1024 * 1024
+        );
+        /* The reported step fills the result; the probe added nothing first. */
+        REQUIRE(result.stdout_text[0] == 'o' && result.stderr_text[0] == 'e');
+        REQUIRE(result.stdout_size == CHIBI_BUILD_OUTPUT_CAPACITY - 1 && result.stdout_truncated);
+        REQUIRE(result.stderr_size == CHIBI_BUILD_OUTPUT_CAPACITY - 1 && result.stderr_truncated);
+    }
+    return true;
+}
+
+static void primitive_link(const char *target, const char *name)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s", root, name);
+    assert(!symlink(target, path));
+}
+
+static void primitive_directory(const char *name)
+{
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s", root, name);
+    assert(!mkdir(path, 0700));
+}
+
+TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries)
+{
+    primitive_directory("meta");
+    primitive_directory("meta/c");
+    primitive_file("meta/b", "b", 1);
+    primitive_file("meta/a", "a", 1);
+    primitive_file("meta/.hidden", "", 0);
+    primitive_link("b", "meta/link");
+    primitive_link("nowhere", "meta/dangling");
+    primitive_link("loop", "meta/loop");
+    char path[256];
+    snprintf(path, sizeof path, "%s/meta/fifo", root);
+    REQUIRE(!mkfifo(path, 0600));
+    static const char *
+        source = "library Meta { Build :: fn() -> int { "
+                 "kinds:=[BuildFileKind(\"meta\"),BuildFileKind(\"meta/"
+                 "a\"),BuildFileKind(\"meta/link\"),"
+                 "BuildFileKind(\"meta/dangling\"),BuildFileKind(\"meta/"
+                 "fifo\"),BuildFileKind(\"meta/none\"),"
+                 "BuildFileKind(\"meta/a/below\")]; "
+                 "if(BuildJoin(kinds,\"|\")!=\"directory|file|link|link|other||"
+                 "\") { return 1; } "
+                 "if(BuildJoin(BuildListDirectory(\"meta\"),\"|\")!=\".hidden|"
+                 "a|b|c|dangling|fifo|link|loop\") { "
+                 "return 2; } "
+                 "if(BuildLength(BuildListDirectory(\"meta/c\"))!=0 || "
+                 "BuildLength(BuildListDirectory(\"meta/none\"))!=0) { return "
+                 "3; } "
+                 "stamp:=BuildFileStamp(\"meta/a\"); "
+                 "if(stamp==\"\" || "
+                 "BuildFileStamp(\"meta/link\")!=BuildFileStamp(\"meta/b\") || "
+                 "BuildFileStamp(\"meta/b\")==stamp) { return 4; } "
+                 "if(BuildFileStamp(\"meta/dangling\")!=\"\" || "
+                 "BuildFileStamp(\"meta/none\")!=\"\") { return 5; } "
+                 "if(!BuildWriteFile(\"meta/a\",\"a\") || "
+                 "BuildFileStamp(\"meta/a\")==stamp) { return 6; } "
+                 "return 0; } }";
+    static const char *failures[] = {
+        "library Meta { Build :: fn() -> int { BuildListDirectory(\"meta/a\"); "
+        "return 0; } }",
+        "library Meta { Build :: fn() -> int { BuildFileStamp(\"meta/loop\"); "
+        "return 0; } }",
+        "library Meta { Build :: fn() -> int { BuildFileKind(\"meta/loop/x\"); "
+        "return 0; } }",
+        "library Meta { Build :: fn() -> int { BuildListDirectory(\"many\"); "
+        "return 0; } }",
+    };
+    static const char *diagnostics[] = {
+        "build directory list failed",
+        "build file metadata failed",
+        "build file metadata failed",
+        "build array limit exceeded",
+    };
+    primitive_directory("many");
+    for (int i = 0; i < 8193; i++) {
+        snprintf(path, sizeof path, "many/%d", i);
+        primitive_file(path, "", 0);
+    }
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(run_primitives(source, backend, 0));
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(fails_with(failures[i], backend, diagnostics[i]));
+        }
+    }
+    return true;
+}
+
+TEST_CASE(private_copies_renames_and_removals_leave_whole_files)
+{
+    primitive_file("copy-source", "bytes\0and more", 15);
+    char path[256];
+    snprintf(path, sizeof path, "%s/copy-source", root);
+    REQUIRE(!chmod(path, 0751));
+    primitive_file("copy-existing", "old", 3);
+    primitive_directory("copy-directory");
+    primitive_file("copy-directory/keep", "", 0);
+    primitive_directory("copy-empty");
+    primitive_link("copy-source", "copy-link");
+    static const char *source =
+        "library Copy { Build :: fn() -> int { "
+        "if(!BuildCopyFile(\"copy-source\",\"copy-existing\") || "
+        "!BuildCopyFile(\"copy-link\",\"copy-new\")) { return 1; } "
+        "if(BuildCopyFile(\"copy-missing\",\"copy-other\") || "
+        "BuildCopyFile(\"copy-directory\",\"copy-other\") || "
+        "BuildCopyFile(\"copy-source\",\"copy-none/file\") || "
+        "BuildCopyFile(\"copy-source\",\"copy-directory\")) { return 2; } "
+        "if(!BuildRename(\"copy-new\",\"copy-renamed\") || "
+        "BuildFileKind(\"copy-new\")!=\"\" || "
+        "BuildRename(\"copy-missing\",\"copy-other\") || "
+        "BuildRename(\"copy-renamed\",\"copy-none/file\")) { return 3; } "
+        "if(!BuildRemove(\"copy-renamed\") || !BuildRemove(\"copy-renamed\") "
+        "|| "
+        "!BuildRemove(\"copy-empty\") || BuildRemove(\"copy-directory\")) { "
+        "return 4; } "
+        "if(!BuildRemove(\"copy-link\") || "
+        "BuildFileKind(\"copy-source\")!=\"file\") { return 5; } "
+        "return 0; } }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        struct stat before, after;
+        snprintf(path, sizeof path, "%s/copy-existing", root);
+        REQUIRE(!stat(path, &before));
+        REQUIRE(run_primitives(source, backend, 0));
+        REQUIRE(!stat(path, &after) && before.st_ino != after.st_ino);
+        REQUIRE((after.st_mode & 0777) == 0751 && after.st_size == 15);
+        FILE *file = fopen(path, "rb");
+        char bytes[16] = { 0 };
+        REQUIRE(file && fread(bytes, 1, sizeof bytes, file) == 15);
+        fclose(file);
+        REQUIRE(!memcmp(bytes, "bytes\0and more", 15));
+        REQUIRE(file_size("copy-directory/keep") == 0 && file_size("copy-other") < 0);
+        REQUIRE(no_write_temporary("copy-directory.") && no_write_temporary("copy-existing."));
+        primitive_link("copy-source", "copy-link");
+        primitive_directory("copy-empty");
+    }
+    return true;
+}
+
+/* FIPS 180-4 example digests: "abc", the 448-bit two-block message and one
+ * million 'a' bytes, which also spans many read chunks. */
+TEST_CASE(private_hashes_match_sha256_vectors)
+{
+    primitive_file("hash-abc", "abc", 3);
+    size_t size = 1000000;
+    char *million = malloc(size);
+    assert(million);
+    memset(million, 'a', size);
+    primitive_file("hash-million", million, size);
+    free(million);
+    static const char *source =
+        "library Hash { Build :: fn() -> int { "
+        "abc:="
+        "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"; "
+        "if(BuildHashFile(\"hash-abc\")!=abc || BuildHashText(\"abc\")!=abc) { "
+        "return 1; } "
+        "if(BuildHashText(\"\")!="
+        "\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\") "
+        "{ "
+        "return 2; } "
+        "if(BuildHashText("
+        "\"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq\")!="
+        "\"248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1\") "
+        "{ return 3; } "
+        "if(BuildHashFile(\"hash-million\")!="
+        "\"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0\") "
+        "{ return 4; } "
+        "if(BuildHashFile(\"hash-missing\")!=\"\") { return 5; } "
+        "return 0; } }";
+    static const char *directory = "library Hash { Build :: fn() -> int { "
+                                   "BuildHashFile(\".\"); return 0; } }";
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(run_primitives(source, backend, 0));
+        REQUIRE(fails_with(directory, backend, "build file hash needs a regular file"));
+    }
+    return true;
+}
+
+TEST_CASE(private_locks_exclude_others_until_released_or_the_invocation_ends)
+{
+    static const char
+        *source = "library Lock { Build :: fn() -> int { "
+                  "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
+                  "if(!BuildLockFile(\"lock-file\") || "
+                  "RunBuildStep([worker,\"lock-probe\",\"lock-file\"])!=1) { "
+                  "return 1; } "
+                  "if(!BuildUnlockFile(\"lock-file\") || "
+                  "BuildUnlockFile(\"lock-file\") || "
+                  "RunBuildStep([worker,\"lock-probe\",\"lock-file\"])!=0) { "
+                  "return 2; } "
+                  "if(BuildLockFile(\"lock-none/file\") || "
+                  "BuildLockFile(\".\")) { return 3; } "
+                  "if(!BuildLockFile(\"./lock-file\")) { return 4; } "
+                  "return 0; } }";
+    static const char *twice = "library Lock { Build :: fn() -> int { "
+                               "BuildLockFile(\"lock-file\"); "
+                               "BuildLockFile(\"lock-file\"); return 0; } }";
+    static const char
+        *many = "library Lock { Build :: fn() -> int { "
+                "foreach(name in "
+                "[\"l0\",\"l1\",\"l2\",\"l3\",\"l4\",\"l5\",\"l6\",\"l7\","
+                "\"l8\",\"l9\","
+                "\"l10\",\"l11\",\"l12\",\"l13\",\"l14\",\"l15\",\"l16\"]) { "
+                "BuildLockFile(BuildJoin([\"lock-\",name],\"\")); } return 0; "
+                "} }";
+    static const char *held = "library Lock { Build :: fn() -> int { "
+                              "BuildLockFile(\"lock-held\"); return 0; } }";
+    REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+    char path[256];
+    snprintf(path, sizeof path, "%s/lock-held", root);
+    int other = open(path, O_RDONLY | O_CREAT, 0600);
+    REQUIRE(other >= 0 && !flock(other, LOCK_EX | LOCK_NB));
+    for (int b = 0; b < 2; b++) {
+        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(run_primitives(source, backend, 2));
+        snprintf(path, sizeof path, "%s/lock-file", root);
+        int fd = open(path, O_RDONLY);
+        REQUIRE(fd >= 0 && !flock(fd, LOCK_EX | LOCK_NB));
+        close(fd);
+        REQUIRE(fails_with(twice, backend, "build lock is already held"));
+        REQUIRE(fails_with(many, backend, "build lock limit exceeded"));
+        chibi_build_options options = primitive_options(held, backend);
+        options.deadline = deadline_after(.2);
+        chibi_build_result result;
+        double start = now();
+        REQUIRE(!chibi_build_invoke(&options, &result));
+        REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - start < 1);
+    }
+    close(other);
+    return true;
+}
+
+TEST_CASE(private_environment_names_list_the_allowed_snapshot)
+{
+    REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
+    REQUIRE(!setenv("CHIBI_BUILD_SECRET", "parent-only", 1));
+    char *saved = getenv("CCACHE_TEMPDIR") ? strdup(getenv("CCACHE_TEMPDIR")) : NULL;
+    REQUIRE(!setenv("CCACHE_TEMPDIR", "", 1));
+    static const char
+        *source = "library Names { Build :: fn() -> int { "
+                  "names:=BuildJoin([\"\",BuildJoin(BuildEnvironmentNames(),\"|"
+                  "\"),\"\"],\"|\"); "
+                  "if(BuildBefore(names,\"|CHIBI_BUILD_WORKER|\")==names || "
+                  "BuildBefore(names,\"|CCACHE_TEMPDIR|\")==names) { return 1; "
+                  "} "
+                  "if(BuildBefore(names,\"SECRET\")!=names || "
+                  "BuildEnvironment(\"CCACHE_TEMPDIR\")!=\"\") { "
+                  "return 2; } "
+                  "return 0; } }";
+    bool passed = true;
+    for (int b = 0; b < 2; b++) {
+        passed &= run_primitives(source, b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, 0);
+    }
+    if (saved) {
+        assert(!setenv("CCACHE_TEMPDIR", saved, 1));
+    } else {
+        assert(!unsetenv("CCACHE_TEMPDIR"));
+    }
+    free(saved);
+    REQUIRE(passed);
+    return true;
+}
+
 void test_tool_build_process(const char *worker, const char *host)
 {
     worker_path = worker;
@@ -844,6 +1197,12 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
     RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
     RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
+    RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
+    RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);
+    RUN_TEST_CASE(private_copies_renames_and_removals_leave_whole_files);
+    RUN_TEST_CASE(private_hashes_match_sha256_vectors);
+    RUN_TEST_CASE(private_locks_exclude_others_until_released_or_the_invocation_ends);
+    RUN_TEST_CASE(private_environment_names_list_the_allowed_snapshot);
     tool_remove_tree(root);
     if (saved_worker) {
         assert(!setenv("CHIBI_BUILD_WORKER", saved_worker, 1));

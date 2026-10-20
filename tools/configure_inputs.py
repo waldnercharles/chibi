@@ -7,7 +7,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -55,26 +54,6 @@ def package_enabled(build: Path, arguments: list[str]) -> bool:
             if not Path(value).resolve().is_relative_to(build / "_deps"):
                 private = True
     return not private
-
-
-def compiler_sdk(compiler: str) -> str:
-    try:
-        command = [compiler] if Path(compiler).is_file() else shlex.split(compiler)
-        if not command:
-            return ""
-        result = subprocess.run([*command, "-###", "-x", "c", "-fsyntax-only", "-"],
-                                input="", text=True, capture_output=True)
-        for line in result.stderr.splitlines():
-            arguments = shlex.split(line)
-            if "-isysroot" in arguments:
-                index = arguments.index("-isysroot") + 1
-                if index < len(arguments):
-                    sdk = Path(arguments[index])
-                    if sdk.is_dir():
-                        return str(sdk.resolve())
-    except (OSError, ValueError):
-        pass
-    return ""
 
 
 def signature(source: Path, build: Path, profile: str, program: Path,
@@ -188,14 +167,10 @@ def main(arguments: list[str]) -> int:
         if arguments and arguments[0] == "signature" and len(arguments) >= 6:
             source, build, program = (Path(arguments[index]).resolve() for index in (1, 2, 4))
             print(signature(source, build, arguments[3], program, cmake_arguments(arguments, 5)))
-        elif len(arguments) == 2 and arguments[0] == "compiler-sdk":
-            sdk = compiler_sdk(arguments[1])
-            if sdk:
-                print(sdk)
         elif arguments and arguments[0] == "package-enabled" and len(arguments) >= 3:
             print(int(package_enabled(Path(arguments[1]).resolve(), cmake_arguments(arguments, 2))))
         else:
-            raise ValueError("expected signature, compiler-sdk or package-enabled")
+            raise ValueError("expected signature or package-enabled")
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as error:
         print(f"configure inputs: {error}", file=sys.stderr)
         return 1

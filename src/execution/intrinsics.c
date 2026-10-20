@@ -713,10 +713,10 @@ static bool root_matches(const language_reference *ref, pin_value root)
            (ref->root.type == PIN_STRUCT && ref->root.container == PIN_CONTAINER_SINGLE &&
             ref->root.type_name && !strcmp(ref->root.type_name, layout->name));
 }
+/* A second argument is what an absent map key reads, its value type's zero. */
 static const char *read_reference(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count == 1);
-    (void)count;
+    assert(count == 1 || count == 2);
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
     /* The result keeps the header it was declared with, which the verifier
@@ -743,6 +743,11 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     }
     if (!same_storage(declared, ref->type)) {
         return "Reference read differs from its declared result";
+    }
+    if (!data && count == 2 && ref->path && ref->path->map) {
+        return pin_value_snapshot_to_arena(storage, out, &args[1])
+                 ? "Cannot retain referenced value"
+                 : NULL;
     }
     const type_desc *layout = !ref->path ? reference_root_layout(ref) : NULL;
     size_t size = layout ? layout->size : execution_value_size(ref->type);

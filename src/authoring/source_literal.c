@@ -230,19 +230,21 @@ static bool map(literal *l, script_type expected, const pin_value *v, int depth)
         (items && (items->count < 0 || items->count > LITERAL_MAX_VALUES - l->values))) {
         return fail(l, "Map literal requires its complete key/value descriptor");
     }
-    if (!token(l, "{")) {
+    if (!items || !items->count) {
+        return token(l, "[:]");
+    }
+    if (!token(l, "[")) {
         return false;
     }
-    for (int i = 0; items && i < items->count; i++) {
+    for (int i = 0; i < items->count; i++) {
         const pin_map_entry *entry = &items->entries[i];
         if (!pin_map_key_supported(entry->key) || (i && !token(l, ", ")) ||
-            !token(l, "[") || !value(l, descriptor->key_type, &entry->key, depth + 1) ||
-            !token(l, "]: ") ||
+            !value(l, descriptor->key_type, &entry->key, depth + 1) || !token(l, ": ") ||
             !value(l, descriptor->element_type, &entry->value, depth + 1)) {
             return false;
         }
     }
-    return token(l, "}");
+    return token(l, "]");
 }
 static bool number(literal *l, const pin_value *v)
 {

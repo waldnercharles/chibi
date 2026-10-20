@@ -771,7 +771,7 @@ TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
 }
 TEST_CASE(modules_systems_reject_task_state_in_imported_libraries)
 {
-    const char *types[] = { "task", "task[]", "Map<string, task>", "Map<string, task[]>[]" };
+    const char *types[] = { "task", "task[]", "[string: task]", "[string: task[]][]" };
     for (size_t i = 0; i < sizeof types / sizeof *types; i++) {
         char library[256];
         snprintf(library, sizeof library, "Store :: library { pending:retain %s; Read::()->int { return 1; } }", types[i]);
@@ -790,6 +790,22 @@ TEST_CASE(modules_systems_reject_task_state_in_imported_libraries)
         REQUIRE(diagnostic(source(0, "Counter"), "cannot contain tasks"));
         clear();
     }
+    return true;
+}
+/* `has` names a map method only on a value, so a library's own `has` stays
+ * callable through the library's name. */
+TEST_CASE(modules_library_has_stays_callable_beside_map_methods)
+{
+    const input inputs[] = {
+        { "libraries/Store.chibi", "Store :: library { has :: (value: bool) -> bool { return value; } }" },
+        { "behaviors/Reader.chibi",
+          "Reader :: behavior { observed: int = 0; seen: [int: bool] = [:]; on "
+          "Tick :: () { "
+          "if Store.has(value: true) && !seen.has(1) { observed = 1; } } }" },
+    };
+    prepare(0, inputs, 2, false, BEHAVIOR_BYTECODE);
+    REQUIRE(source(0, "Store")->valid && source(0, "Reader")->valid);
+    clear();
     return true;
 }
 TEST_CASE(modules_compile_time_parameters_preserve_constant_mutability)
@@ -847,5 +863,6 @@ void test_language_modules()
     RUN_TEST_CASE(modules_failed_imported_requests_publish_no_concrete_generation);
     RUN_TEST_CASE(modules_retained_library_state_inherits_consuming_owner);
     RUN_TEST_CASE(modules_systems_reject_task_state_in_imported_libraries);
+    RUN_TEST_CASE(modules_library_has_stays_callable_beside_map_methods);
     RUN_TEST_CASE(modules_compile_time_parameters_preserve_constant_mutability);
 }

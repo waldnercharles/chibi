@@ -206,20 +206,10 @@ static script_type application(reader *r, TSNode node)
     }
     return found->type;
 }
-static script_type map(reader *r, TSNode node, TSNode arguments)
+static script_type map(reader *r, TSNode node)
 {
-    int count = ts_node_is_null(arguments) ? 0 : (int)ts_node_named_child_count(arguments);
-    if (!count) {
-        return (script_type){ .storage = PIN_UNION,
-                              .container = PIN_CONTAINER_MAP,
-                              .flags = SCRIPT_TYPE_UNTYPED };
-    }
-    if (count != 2) {
-        diagnostic(r, node, "Map requires key and value types");
-        return (script_type){ .flags = SCRIPT_TYPE_ERROR };
-    }
-    script_type key = type(r, ts_node_named_child(arguments, 0));
-    script_type value = type(r, ts_node_named_child(arguments, 1));
+    script_type key = type(r, field(node, "key"));
+    script_type value = type(r, field(node, "value"));
     bool supported = key.container == PIN_CONTAINER_SINGLE &&
                      !(key.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK |
                                     SCRIPT_TYPE_UNION)) &&
@@ -228,7 +218,7 @@ static script_type map(reader *r, TSNode node, TSNode arguments)
                       key.storage == PIN_STR || key.storage == PIN_NAME ||
                       key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
     if (!supported) {
-        diagnostic(r, node, "Unsupported Map key type");
+        diagnostic(r, node, "Unsupported map key type");
     }
     return collection(r, PIN_CONTAINER_MAP, key, value);
 }
@@ -249,6 +239,9 @@ static script_type type(reader *r, TSNode node)
             if (is(child, "type_application")) {
                 return traits(r, node, application(r, child));
             }
+            if (is(child, "map_type")) {
+                return traits(r, node, map(r, child));
+            }
         }
         TSNode name_node = field(node, "name"), arguments = field(node, "arguments");
         if (is(name_node, "type_binder")) {
@@ -261,9 +254,7 @@ static script_type type(reader *r, TSNode node)
                        !strcmp(value, "handle");
         script_type out;
         const script_signature_generic *member = generic(r, name_node);
-        if (!strcmp(value, "Map")) {
-            out = map(r, node, arguments);
-        } else if (!strcmp(value, "task") && !ts_node_is_null(arguments)) {
+        if (!strcmp(value, "task") && !ts_node_is_null(arguments)) {
             if (ts_node_named_child_count(arguments) != 1) {
                 diagnostic(r, node, "task requires one result type");
                 out = (script_type){ .flags = SCRIPT_TYPE_ERROR };
@@ -288,7 +279,7 @@ static script_type type(reader *r, TSNode node)
                                             ? PIN_CONTAINER_MAP
                                             : PIN_CONTAINER_ARRAY;
                 if (!strcmp(value, "map")) {
-                    diagnostic(r, node, "Use Map<K, V> for associative maps");
+                    diagnostic(r, node, "Use [K: V] for associative maps");
                 }
                 if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
                     out = collection(r, container, (script_type){ 0 }, out);

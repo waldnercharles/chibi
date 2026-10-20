@@ -616,6 +616,7 @@ static bool literal(TSNode value)
     return is(value, "number") || is(value, "string") ||
            is(value, "character") || is(value, "boolean") || is(value, "nil") ||
            is(value, "struct_expression") || is(value, "array_expression") ||
+           is(value, "map_expression") ||
            (is(value, "unary_expression") && is(field(value, "operand"), "number"));
 }
 static TSNode argument_value(TSNode argument)

@@ -60,8 +60,9 @@ static bool nest(TSNode node)
     return !block(node) &&
            (kind(node, "argument_list") || kind(node, "parameter_list") ||
             kind(node, "pattern_bindings") || kind(node, "array_expression") ||
-            kind(node, "struct_expression") || kind(node, "prototype_bases") ||
-            kind(node, "struct_field") || kind(node, "parenthesized_expression"));
+            kind(node, "map_expression") || kind(node, "struct_expression") ||
+            kind(node, "prototype_bases") || kind(node, "struct_field") ||
+            kind(node, "parenthesized_expression"));
 }
 
 /* The outermost operator of an expression, whose operands may continue on

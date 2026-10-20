@@ -1,3 +1,4 @@
+// Set movement velocity from local input and face the movement direction.
 InputBehavior :: behavior {
     on Input :: (Direction: struct<CF_V2>) {
         if self.Dash {

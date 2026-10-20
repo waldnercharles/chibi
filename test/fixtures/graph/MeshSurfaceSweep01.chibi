@@ -1,3 +1,5 @@
+// Deterministic stationary specimen: 12-second heading rotation, independent
+// +/-30-degree pitch and roll sweeps; no gameplay input.
 MeshSurfaceSweep01 :: behavior {
     elapsed: retain float = 0.0
     on Tick :: () {

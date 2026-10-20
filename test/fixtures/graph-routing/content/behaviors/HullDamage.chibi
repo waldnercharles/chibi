@@ -1,3 +1,5 @@
+// Apply damage, emit hit feedback, and release the hull when health reaches
+// zero.
 HullDamage :: behavior {
     on Damage :: (Amount: int) {
         self.Health.Current -= Amount

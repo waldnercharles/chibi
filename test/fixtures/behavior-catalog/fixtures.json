@@ -29,30 +29,15 @@
     "sha256": "5d71a37821b3a711385a89f64637fa2b2624029f7312a4aabaed26982aa36321",
     "source": "content/libraries/DirectionMath.chibi"
   },
-  "content/libraries/DirectionMath.chibi.meta": {
-    "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "99279ee363bc8fd0dfa8c7e0ef40aed6d633678983fd636fdcac580e9d4ab611",
-    "source": "content/libraries/DirectionMath.chibi.meta"
-  },
   "content/libraries/MovementActions.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
     "sha256": "0e8bc6d946c51d743a492f16ae86c048ae4af519527c5bff2df9e148940df8de",
     "source": "content/libraries/MovementActions.chibi"
   },
-  "content/libraries/MovementActions.chibi.meta": {
-    "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "b68e2a66c3d7eda715520a93eaab838e8733a8fd2f6818347b505557e6595404",
-    "source": "content/libraries/MovementActions.chibi.meta"
-  },
   "content/libraries/WeaponActions.chibi": {
     "purpose": "shared runtime test signature and exact linked callable contract",
     "sha256": "0e2588c5583c6a518db82db5f33398a1a5135b8a96b7b280db8ee1a79423f79d",
     "source": "content/libraries/WeaponActions.chibi"
-  },
-  "content/libraries/WeaponActions.chibi.meta": {
-    "purpose": "shared runtime test signature and exact linked callable contract",
-    "sha256": "54aad801de7a595e97f52fefefd863cd58ed0ed544c98124630686fff28a9bde",
-    "source": "content/libraries/WeaponActions.chibi.meta"
   },
   "content/shader-libraries/ShaderMath.kdl": {
     "purpose": "shared runtime test signature and exact linked callable contract",

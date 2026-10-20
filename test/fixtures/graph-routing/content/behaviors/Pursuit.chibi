@@ -1,3 +1,5 @@
+// Approach a player within 600 units, limiting acceleration to 120 units per
+// second squared.
 Pursuit :: behavior {
     on Tick :: () {
         if find_nearest_entity(self.Transform, 600.0, 1, 0).Found {

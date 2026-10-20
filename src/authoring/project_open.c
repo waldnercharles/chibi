@@ -3,7 +3,6 @@
 #include "authoring/component_declarations.h"
 #include "authoring/language_catalog.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "support/array.h"
 #include "support/file_io.h"
@@ -205,7 +204,6 @@ static int finalize(const char *content, const char *start_scene, int from, void
             }
             goto done;
         }
-        int *positions = NULL;
         script_analysis *ordinary = script_analyze_document(
             source->syntax,
             source_catalog_view(catalog),
@@ -227,11 +225,10 @@ static int finalize(const char *content, const char *start_scene, int from, void
         script_analysis_free(ordinary);
         char normalization_error[512] = { 0 };
         char *after = unchanged_source ? xstrdup(source->text)
-                                       : authoring_source_migrate_generated_mapped(
+                                       : authoring_source_migrate_generated(
                                              source->text,
                                              source_catalog_view(catalog),
                                              source->identity,
-                                             &positions,
                                              normalization_error,
                                              sizeof normalization_error
                                          );
@@ -245,68 +242,10 @@ static int finalize(const char *content, const char *start_scene, int from, void
                     normalization_error[0] ? normalization_error : "generated-call normalization could not establish equivalence"
                 );
             }
-            free(positions);
             goto done;
         }
         apush(edits, ((source_catalog_edit){ source->path, after, NULL }));
         if (strcmp(source->text, after)) {
-            size_t bytes = strlen(source->path) + sizeof ".meta";
-            char *sidecar = xmalloc(bytes);
-            snprintf(sidecar, bytes, "%s.meta", source->path);
-            struct stat info;
-            if (!lstat(sidecar, &info)) {
-                if (!S_ISREG(info.st_mode) || info.st_size < 0 ||
-                    info.st_size > 8 * 1024 * 1024) {
-                    if (size) {
-                        snprintf(error, size, "Invalid source metadata file: %s", sidecar);
-                    }
-                    free(sidecar);
-                    free(positions);
-                    goto done;
-                }
-                char *metadata = file_read_text(sidecar);
-                if (!metadata) {
-                    if (size) {
-                        snprintf(error, size, "Cannot read source metadata: %s", sidecar);
-                    }
-                    free(sidecar);
-                    free(positions);
-                    goto done;
-                }
-                if (authoring_source_metadata_matches(metadata, source->text)) {
-                    script_syntax *next = script_parse(after);
-                    char *mapped = authoring_source_metadata_remap_positions(
-                        metadata,
-                        source->syntax,
-                        next,
-                        positions
-                    );
-                    script_syntax_free(next);
-                    if (!mapped) {
-                        if (size) {
-                            snprintf(error, size, "Cannot preserve source metadata anchors: %s", sidecar);
-                        }
-                        free(metadata);
-                        free(sidecar);
-                        free(positions);
-                        goto done;
-                    }
-                    /* Metadata publishes first. An interrupted source replacement
-                     * leaves it stale until the deterministic retry finishes. */
-                    apush(files, ((migration_file){ sidecar, metadata, mapped, NULL }));
-                    sidecar = NULL;
-                } else {
-                    free(metadata);
-                }
-            } else if (errno != ENOENT) {
-                if (size) {
-                    snprintf(error, size, "Cannot inspect source metadata: %s", sidecar);
-                }
-                free(sidecar);
-                free(positions);
-                goto done;
-            }
-            free(sidecar);
             apush(
                 files,
                 ((
@@ -314,7 +253,6 @@ static int finalize(const char *content, const char *start_scene, int from, void
                 ){ xstrdup(source->path), xstrdup(source->text), xstrdup(after), NULL })
             );
         }
-        free(positions);
     }
     validated = source_catalog_replaced(
         content,

@@ -33,19 +33,9 @@
       "source_sha256": "304322a209a8c55717d455b35b515a7e680eb1477a3ce2c3b1262e544552b908",
       "purpose": "Current migrated field/library fixture; original lineage retained in material-contracts/fixtures.json"
     },
-    "content/libraries/FieldShapes.chibi.meta": {
-      "source": "/Users/cwaldner/Personal/chibi/.worktrees/environment-authoring/chibi/test/fixtures/material-contracts/content/libraries/FieldShapes.chibi.meta",
-      "source_sha256": "5592e42398f449adfa417b410515e1faca76621c9947bc366248874f3dbcb094",
-      "purpose": "Current migrated field/library fixture; original lineage retained in material-contracts/fixtures.json"
-    },
     "content/behaviors/CutMaterial.chibi": {
       "source": "/Users/cwaldner/Personal/chibi/.worktrees/environment-authoring/chibi/test/fixtures/graph-routing/content/behaviors/CutMaterial.chibi",
       "source_sha256": "0bca88aa9867a48969b995ca3c2a02419f0f1cbbaa903aec87c49efc60bd6942",
-      "purpose": "Current migrated CutMaterial behavior; original lineage retained in graph-routing/fixtures.json"
-    },
-    "content/behaviors/CutMaterial.chibi.meta": {
-      "source": "/Users/cwaldner/Personal/chibi/.worktrees/environment-authoring/chibi/test/fixtures/graph-routing/content/behaviors/CutMaterial.chibi.meta",
-      "source_sha256": "561e8e2cb5ef9ccbb5bf2907a088d3f0f59b5eda285b987a4d3eb0cb83116ae5",
       "purpose": "Current migrated CutMaterial behavior; original lineage retained in graph-routing/fixtures.json"
     },
     "content/scenes/MaterialStudy.kdl": {

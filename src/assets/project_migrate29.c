@@ -3,6 +3,7 @@
 #include "project_migrate26.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/text_edit.h"
 #include "support/xalloc.h"
 
 #include <ctype.h>
@@ -508,7 +509,6 @@ int chibi_migrate29_handlers(
     const char *const *declarations,
     int declaration_count,
     char **migrated,
-    text_edit **applied,
     char *error,
     size_t size
 )
@@ -537,14 +537,8 @@ int chibi_migrate29_handlers(
     } else if (acount(s.edits)) {
         *migrated = text_edits_apply(source, s.edits, acount(s.edits));
     }
-    /* Each edit owns its text; the caller may keep them for the sidecars. */
-    if (applied && !status) {
-        *applied = s.edits;
-        s.edits = NULL;
-    } else {
-        for (int i = 0; i < acount(s.owned); i++) {
-            free(s.owned[i]);
-        }
+    for (int i = 0; i < acount(s.owned); i++) {
+        free(s.owned[i]);
     }
     afree(s.owned);
     afree(s.edits);

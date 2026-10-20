@@ -11,7 +11,7 @@ executable closure. The recovered world drops five retired HRC lab fields using 
 project migration policy; fixtures.json names the removed fields.
 The current project uses version 24 directly; it does not
 claim the entire version-5 game has been migrated. FieldShapes and CutMaterial
-retain their original checked-in metadata. No game movement, weapons, enemies,
+keep their original descriptions as source comments. No game movement, weapons, enemies,
 fluid simulation or project-owned systems are required.
 
 Sandbox's CaveField already has a current engine fixture in material-contracts;

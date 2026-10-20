@@ -2,7 +2,6 @@
 
 #include "authoring/application_catalog.h"
 #include "authoring/graph_catalog.h"
-#include "authoring/source_metadata.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/authoring/layout.h"
 #include "runtime/component_catalog.h"
@@ -13,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <yyjson.h>
 
 /* A presentation-only embedding: no native descriptors or execution services.
  * Fixed small source snapshots, no filesystem or runtime work. */
@@ -39,6 +39,40 @@ static authoring_source_presentation *view, *copy;
 static char *metadata, *edited;
 static native_capabilities *native;
 static authoring_graph_catalog *palette;
+
+static char *write_snapshot(yyjson_mut_doc *doc)
+{
+    char *out = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    return out;
+}
+static yyjson_mut_doc *read_snapshot(const char *json)
+{
+    yyjson_doc *read = yyjson_read(json, strlen(json), 0);
+    yyjson_mut_doc *doc = yyjson_doc_mut_copy(read, NULL);
+    yyjson_doc_free(read);
+    return doc;
+}
+/* The snapshot bound to some other text. */
+static char *stale_snapshot(const char *json)
+{
+    yyjson_mut_doc *doc = read_snapshot(json);
+    yyjson_mut_obj_put(
+        yyjson_mut_doc_get_root(doc),
+        yyjson_mut_str(doc, "source_hash"),
+        yyjson_mut_str(doc, "0000000000000000")
+    );
+    return write_snapshot(doc);
+}
+/* The snapshot with its first node record naming no origin. */
+static char *unanchored_snapshot(const char *json)
+{
+    yyjson_mut_doc *doc = read_snapshot(json);
+    yyjson_mut_val *layout = yyjson_mut_obj_get(yyjson_mut_doc_get_root(doc), "source_layout");
+    yyjson_mut_val *record = yyjson_mut_arr_get(layout, 0);
+    yyjson_mut_obj_put(record, yyjson_mut_str(doc, "identity"), yyjson_mut_uint(doc, 0));
+    return write_snapshot(doc);
+}
 
 static void cleanup()
 {
@@ -141,14 +175,11 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
     REQUIRE(authoring_source_presentation_restore(copy, metadata));
     REQUIRE(copied->x == 12 && copied->y == 34 && copied->placed);
     REQUIRE(!strcmp(copied->comment, "retained comment") && copied->comment_hidden);
-    char *stale = authoring_source_metadata_bind(metadata, edited);
+    char *stale = stale_snapshot(metadata);
     REQUIRE(stale != NULL);
     REQUIRE(!authoring_source_presentation_restore(copy, stale));
     free(stale);
-    char *invalid = authoring_source_metadata_bind(
-        "{\"version\":2,\"source_layout\":[{\"identity\":0}]}",
-        authoring_source_presentation_text(copy)
-    );
+    char *invalid = unanchored_snapshot(metadata);
     REQUIRE(invalid != NULL);
     REQUIRE(!authoring_source_presentation_restore(copy, invalid));
     free(invalid);

@@ -1,4 +1,7 @@
+// Fires toward a nearby enemy on each complete cooldown interval, retaining
+// unused time while preserving projectile defaults.
 AutoWeaponBehavior :: behavior {
+    // Weapon
     Elapsed: float = 0.0
     on Tick :: () {
         if find_nearest_entity(self.Transform, 600.0, 2, self).Found {

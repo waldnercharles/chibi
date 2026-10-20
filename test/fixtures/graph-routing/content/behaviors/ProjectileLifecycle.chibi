@@ -1,3 +1,4 @@
+// Age and expire projectiles; face velocity while moving.
 ProjectileLifecycle :: behavior {
     on Tick :: () {
         self.Projectile.Age += double(delta)

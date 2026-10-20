@@ -2,7 +2,6 @@
 #include "authoring/prototype_prepare.h"
 #include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_prototype_edit.h"
 #include "backend.h"
 #include "language/lower.h"
@@ -629,53 +628,6 @@ TEST_CASE(source_prototype_failed_attachment_rolls_back_internal_panic_links)
     REQUIRE(ecs_world_live_count(world) == 0);
     return true;
 }
-TEST_CASE(source_migration_position_map_preserves_replaced_and_unaffected_anchors)
-{
-    const char
-        *before = "Demo :: behavior { on Tick { x := old(entity)\ny := 4\n} }";
-    const char
-        *after = "Demo :: behavior { on Tick { x := entity.Health\ny := 4\n} }";
-    script_syntax *old = script_parse(before), *next = script_parse(after);
-    int positions[128];
-    size_t length = strlen(before);
-    size_t replaced = (size_t)(strstr(before, "old(entity)") - before);
-    size_t unaffected = (size_t)(strstr(before, "y :=") - before);
-    REQUIRE(length + 1 <= sizeof positions / sizeof positions[0]);
-    for (size_t i = 0; i <= length; i++) {
-        positions[i] = i < replaced      ? (int)i
-                     : i < replaced + 11 ? (int)replaced
-                                         : (int)i + 2;
-    }
-    REQUIRE(!old->diagnostic_count && !next->diagnostic_count);
-    char json[256];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":71,\"kind\":"
-        "\"node\"},"
-        "{\"start\":%zu,\"id\":72,\"kind\":\"node\"}],\"note\":\"keep\"}",
-        replaced,
-        unaffected
-    );
-    char *metadata = authoring_source_metadata_bind(json, before);
-    REQUIRE(metadata);
-    char *mapped = authoring_source_metadata_remap_positions(metadata, old, next, positions);
-    REQUIRE(mapped);
-    REQUIRE(authoring_source_metadata_matches(mapped, after));
-    REQUIRE(strstr(mapped, "\"id\":71"));
-    char expected[40];
-    snprintf(expected, sizeof expected, "\"start\":%zu", unaffected + 2);
-    REQUIRE(strstr(mapped, expected));
-    REQUIRE(strstr(mapped, "\"note\":\"keep\""));
-    positions[unaffected]++; /* Not the surviving token's start. */
-    REQUIRE(!authoring_source_metadata_remap_positions(metadata, old, next, positions));
-    free(mapped);
-    free(metadata);
-    script_syntax_free(old);
-    script_syntax_free(next);
-    return true;
-}
-
 static int migration_refuse(const char *content, const char *start, int from, void *user, char *error, size_t size)
 {
     (void)content;
@@ -728,7 +680,6 @@ TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable)
 void test_language_source_assets()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_migration_position_map_preserves_replaced_and_unaffected_anchors);
     RUN_TEST_CASE(source_migration_callback_failure_keeps_old_manifest_retryable);
     RUN_TEST_CASE(source_prototype_composition_normalizes_fields_and_overrides_defaults);
     RUN_TEST_CASE(source_relationships_survive_preparation_encoding_and_target_cleanup);

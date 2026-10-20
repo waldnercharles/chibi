@@ -1,3 +1,5 @@
+// Aim at the nearest enemy when manual aim is absent; emit shots only while
+// Fire is held.
 Weapon :: behavior {
     macro AdvanceElapsed(elapsed: ref float, dt: double) {
         elapsed = float(double(elapsed) + dt)

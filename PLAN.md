@@ -636,8 +636,9 @@ against DNS rebinding, and gives each connection ten seconds. Like a static
 host it sends no cross-origin isolation headers: with them the non-threaded
 browser player aborts in WebGPU. Windows does not serve yet.
 
-Coverage: `chibi-cli` runs each command against the build tree, a fake compiler
-and player, and a fake browser player, including help, exit status, failure
+Coverage: `chibi-cli`, in `make test-projects` against the Release build, runs
+each command against the build tree, a fake compiler and player, and a fake
+browser player, including help, exit status, failure
 paths and missing capabilities (no compiler, no core collection, no browser
 player, a busy port). `chibi-cli-installed` runs the packaged SDK's own
 launcher on `version`, `doctor`, `check`, `fmt`, `build`, a native `export` and

@@ -66,13 +66,13 @@ static const char driver_routes
          "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
          "    print(Path(command[0]).name, command[-1])\n"
          "    sys.exit(0)\n"
-         /* Every group owns unique selectors; grouped Release chibi_ctl and
-          * chibi-compile users belong to the target that builds them. */
+         /* Every group owns unique selectors; grouped Release chibi_ctl, chibi
+          * and chibi-compile users belong to the target that builds them. */
          "if sys.argv[2] == 'misplaced-selectors':\n"
          "    names = [n for group in policy.GROUPS.values() for n in group]\n"
          "    ctl = {n for n, command in policy.TOOLS.items()\n"
-         "           if any(Path(a).name in ('chibi_ctl', 'chibi-compile') "
-         "for a in command[1:])}\n"
+         "           if any(Path(a).name in ('chibi_ctl', 'chibi', "
+         "'chibi-compile') for a in command[1:])}\n"
          "    print(' '.join(sorted({n for n in names if names.count(n) > 1} "
          "|\n"
          "        {n for n in ctl & set(names) if n not in "
@@ -284,7 +284,7 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                     "--render-fixture\n--material-bake\n--environment-"
                     "authoring\n"
                     "--terrain-checkpoint\n--terrain-storage-commands\n"
-                    "--terrain-playable\n--published-docs\n";
+                    "--terrain-playable\n--published-docs\n--chibi-cli\n";
     bool exact = output && !strcmp(output, expected);
     free(output);
     REQUIRE(exact);
@@ -303,7 +303,8 @@ TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
                                 "--environment-authoring\n",
                                 "--terrain-checkpoint\n",
                                 "--terrain-storage-commands\n",
-                                "--published-docs\n" };
+                                "--published-docs\n",
+                                "--chibi-cli\n" };
     for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
         separate = !strstr(output, selectors[i]);
     }

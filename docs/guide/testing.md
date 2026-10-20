@@ -1,7 +1,10 @@
 # Testing
 
-Tests are Chibi functions. Mark a package-level function that takes and
-returns nothing with `@test`, and check what it computes with `assert`:
+A test is a Chibi function. To write a test:
+
+1. Declare a package-level function that has no parameters and no result.
+2. Put `@test` before the function.
+3. Use `assert` to check the values that the function calculates.
 
 ```chibi
 package scoring
@@ -16,15 +19,16 @@ DoublesPoints :: () {
 }
 ```
 
-`assert(condition, message)` does nothing when the condition holds. When it
-does not, the test fails with `Assertion failed: message` at the position of
-the `assert` call, even inside a function the test calls. Without a message,
-it reports the condition's source text instead.
+`assert(condition, message)` does nothing when the condition is true. When the
+condition is false, the test fails with `Assertion failed: message`. The
+failure shows the position of the `assert` call. This is also true when the
+`assert` call is in a function that the test calls. Without a message, the
+failure shows the condition's source text instead.
 
 ## Running tests
 
-`chibi test [ROOT]` prepares every package below ROOT, the working directory
-by default, and runs each test alone:
+`chibi test [ROOT]` prepares each package below ROOT and runs each test alone.
+ROOT is the working directory by default.
 
 ```text
 PASS scoring.DoublesPoints
@@ -33,25 +37,26 @@ FAIL scoring.HalvesPoints
 2 tests, 1 failed
 ```
 
-It exits 0 when every test passes and 1 when one fails or a package is
-invalid, so it fits a pre-commit hook or CI.
+The command exits with 0 when all tests pass. It exits with 1 when a test fails
+or a package is not valid. Thus you can use it in a pre-commit hook or in CI.
 
 ## What a test can do
 
-A test runs without a game. Its packages may call the functions that need no
-running game: core, text, arrays, vectors, math and value operations. A
-package that calls anything else, such as audio or entities, does not compile
-for `chibi test`, which reports where.
+A test runs without a game. Its packages can call the functions that do not
+need a running game: core, text, arrays, vectors, math and value operations. A
+package that calls a different function, such as an audio or entity function,
+does not compile for `chibi test`. The command reports the location.
 
-A test also fails:
+A test also fails in these conditions:
 
-- on any runtime failure, such as reading past the end of an array;
-- when it waits, with `await` or `yield`, or starts a task, because nothing
-  would resume it;
-- after 100 million instructions, so a loop that never ends still stops.
+- A runtime failure occurs, such as a read past the end of an array.
+- The test waits with `await` or `yield`, or it starts a task. Nothing would
+  resume the test.
+- The test runs for 100 million instructions. Thus a loop that does not end
+  still stops.
 
 ## Where tests live
 
-ROOT holds only package files, each starting with `package NAME`, and tests
-sit beside the code they check. A game project's behaviors and libraries are
-not packages, so they hold no tests yet.
+ROOT contains only package files. Each file starts with `package NAME`. Tests
+are beside the code that they check. The behaviors and libraries of a game
+project are not packages. Thus they contain no tests yet.

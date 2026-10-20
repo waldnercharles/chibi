@@ -2,9 +2,51 @@ package site
 
 import markdown "project:markdown"
 
-// Lays out the pages of the documentation site: each page's navigation,
-// grouped by section with the current page marked, around its body, and the
-// one stylesheet every page links. A site has at least one page.
+// Lays out the pages of the documentation site: a bar with the site's name and
+// its sections, each page's navigation grouped by section with the current
+// page marked, its body, and the one stylesheet every page links. A site has
+// at least one page.
+
+// The bar's link to each section's first page, with the current page's
+// section marked.
+Sections :: (sections: string[], outputs: string[], current: int) -> string[] {
+    html: string[] = [];
+    index: int = 0;
+    while (index < length(sections)) {
+        if (index == 0 || sections[index] != sections[index - 1]) {
+            mark: string = "";
+            if (sections[index] == sections[current]) {
+                mark = " aria-current=\"true\"";
+            }
+            html = array_add(html, format_text("<a href=\"{}\"{}>{}</a>\n", markdown.Escape(outputs[index]),
+                                               mark, markdown.Escape(sections[index])));
+        }
+        index += 1;
+    }
+    return html;
+}
+
+// Every page under its section, with the current page marked.
+Pages :: (sections: string[], titles: string[], outputs: string[], current: int) -> string[] {
+    html: string[] = [];
+    index: int = 0;
+    while (index < length(titles)) {
+        if (index == 0 || sections[index] != sections[index - 1]) {
+            if (index > 0) {
+                html = array_add(html, "</ul>\n");
+            }
+            html = array_add(html, format_text("<h2>{}</h2>\n<ul>\n", markdown.Escape(sections[index])));
+        }
+        mark: string = "";
+        if (index == current) {
+            mark = " aria-current=\"page\"";
+        }
+        html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n", markdown.Escape(outputs[index]),
+                                           mark, markdown.Escape(titles[index])));
+        index += 1;
+    }
+    return array_add(html, "</ul>\n");
+}
 
 // A page up to its body, as HTML pieces to write in order. sections, titles
 // and outputs describe every page in navigation order, and current is this
@@ -15,51 +57,62 @@ Head :: (site: string, sections: string[], titles: string[], outputs: string[], 
     html = array_add(html, "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
     html = array_add(html, format_text("<title>{} · {}</title>\n", markdown.Escape(titles[current]),
                                        markdown.Escape(site)));
-    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<nav>\n");
-    html = array_add(html, format_text("<p class=\"site\"><a href=\"{}\">{}</a></p>\n",
+    html = array_add(html, "<link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n<header class=\"bar\">\n");
+    html = array_add(html, format_text("<a class=\"site\" href=\"{}\">{}</a>\n<nav aria-label=\"Sections\">\n",
                                        markdown.Escape(outputs[0]), markdown.Escape(site)));
-    section: string = "";
-    index: int = 0;
-    while (index < length(titles)) {
-        if (index == 0 || sections[index] != section) {
-            if (index > 0) {
-                html = array_add(html, "</ul>\n");
-            }
-            section = sections[index];
-            html = array_add(html, format_text("<h2>{}</h2>\n<ul>\n", markdown.Escape(section)));
-        }
-        mark: string = "";
-        if (index == current) {
-            mark = " aria-current=\"page\"";
-        }
-        html = array_add(html, format_text("<li><a href=\"{}\"{}>{}</a></li>\n", markdown.Escape(outputs[index]),
-                                           mark, markdown.Escape(titles[index])));
-        index += 1;
-    }
-    html = array_add(html, "</ul>\n</nav>\n<main>\n");
-    return html;
+    html = append(html, Sections(sections, outputs, current));
+    html = array_add(html, "</nav>\n</header>\n<div class=\"page\">\n<nav class=\"pages\" aria-label=\"Pages\">\n");
+    html = append(html, Pages(sections, titles, outputs, current));
+    return array_add(html, "</nav>\n<main>\n");
 }
 
 // A page after its body.
 Foot :: () -> string[] {
-    return ["</main>\n</body>\n</html>\n"];
+    return ["</main>\n</div>\n</body>\n</html>\n"];
 }
 
-// The stylesheet, as lines to write in order.
+// The stylesheet, as lines to write in order. Its colours are custom
+// properties that the dark palette redefines when the reader's system asks for
+// a dark scheme, so no script is needed. Wide windows show the page's contents
+// in a column on the right; narrow ones drop that column, then move the page
+// list below the page. The bar keeps one row of a fixed height, scrolling its
+// sections sideways when they do not fit, so anchors scroll clear of it.
 Style :: () -> string[] {
     return [
-        "body { margin: 0; display: flex; font: 16px/1.6 system-ui, sans-serif; color: #1d1d1f; }\n",
-        "nav { width: 15rem; flex: none; padding: 1.5rem; background: #f5f5f7; min-height: 100vh; box-sizing: border-box; }\n",
-        "nav h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6e6e73; margin: 1.2rem 0 0.3rem; }\n",
-        "nav ul { list-style: none; margin: 0; padding: 0; }\n",
-        "nav a { color: inherit; text-decoration: none; }\n",
-        "nav a[aria-current] { font-weight: 600; color: #0066cc; }\n",
-        ".site { font-weight: 700; font-size: 1.2rem; margin: 0; }\n",
-        "main { max-width: 50rem; padding: 1.5rem 3rem; overflow-wrap: anywhere; }\n",
-        "pre { background: #f5f5f7; padding: 0.8rem 1rem; overflow-x: auto; border-radius: 6px; }\n",
-        "code { font: 0.9em ui-monospace, monospace; }\n",
-        "table { border-collapse: collapse; }\n",
-        "th, td { border: 1px solid #d2d2d7; padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }\n",
-        "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid #d2d2d7; color: #6e6e73; }\n"
+        ":root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --bar: #2f6db5; --bar-text: #ffffff; }\n",
+        "@media (prefers-color-scheme: dark) {\n",
+        "  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; --bar: #1f3a5f; }\n",
+        "}\n",
+        "body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--text); background: var(--page); }\n",
+        "a { color: var(--link); }\n",
+        ".bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2rem; height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }\n",
+        ".bar a { color: var(--bar-text); text-decoration: none; }\n",
+        ".bar .site { flex: none; font-weight: 700; font-size: 1.3rem; }\n",
+        ".bar nav { display: flex; gap: 1.2rem; min-width: 0; padding: 0.3rem 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }\n",
+        ".bar a[aria-current] { text-decoration: underline; text-underline-offset: 0.3em; }\n",
+        ".page { display: flex; max-width: 84rem; margin: 0 auto; padding-right: 15rem; box-sizing: border-box; }\n",
+        ".pages { width: 14rem; flex: none; position: sticky; top: 3.5rem; align-self: flex-start; max-height: calc(100vh - 3.5rem); overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; }\n",
+        ".pages h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 1rem 0 0.2rem 0.5rem; }\n",
+        ".pages ul, .contents ul { list-style: none; margin: 0; padding: 0; }\n",
+        ".pages a { display: block; padding: 0.1rem 0.5rem; border-radius: 4px; color: inherit; text-decoration: none; }\n",
+        ".pages a[aria-current] { background: var(--panel); color: var(--link); font-weight: 600; }\n",
+        "main { flex: 1; min-width: 0; max-width: 50rem; padding: 1.5rem 2.5rem 4rem; overflow-wrap: break-word; }\n",
+        "main h2 { margin-top: 2.2rem; padding-bottom: 0.2rem; border-bottom: 1px solid var(--line); }\n",
+        "main [id] { scroll-margin-top: 4.5rem; }\n",
+        ".contents { position: fixed; top: 3.5rem; bottom: 0; right: max(0px, calc((100vw - 84rem) / 2)); width: 15rem; overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; font-size: 0.85rem; }\n",
+        ".contents p { margin: 0 0 0.4rem; font-weight: 600; }\n",
+        ".contents li { margin: 0.25rem 0; }\n",
+        ".contents a { color: var(--muted); text-decoration: none; }\n",
+        ".contents .sub { padding-left: 0.8rem; }\n",
+        ".pages a:hover, .contents a:hover { color: var(--link); }\n",
+        "pre { background: var(--panel); border: 1px solid var(--line); padding: 0.8rem 1rem; overflow-x: auto; border-radius: 6px; }\n",
+        "code { font: 0.9em ui-monospace, monospace; color: var(--code); }\n",
+        "pre code, a code { color: inherit; }\n",
+        "table { display: block; overflow-x: auto; border-collapse: collapse; }\n",
+        "th, td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }\n",
+        "th { background: var(--panel); }\n",
+        "blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }\n",
+        "@media (max-width: 64rem) { .page { padding-right: 0; } .contents { display: none; } }\n",
+        "@media (max-width: 48rem) { .bar { gap: 1rem; padding: 0 1rem; } .page { flex-direction: column; } .pages { order: 1; width: auto; position: static; align-self: stretch; max-height: none; border-top: 1px solid var(--line); } main { padding: 1rem; } }\n"
     ];
 }

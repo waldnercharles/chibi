@@ -497,7 +497,7 @@ static void record_defaults(analyzer *a, TSNode node, script_expression *result)
 /* Whether symbol is a payload name a handler without a parameter list binds,
  * spelled like a parameter of the function the handler runs in. A bare read
  * would take the payload, though the function's parameter is in sight. An
- * `after entry` payload is the function's own parameters, so it is exempt. */
+ * `after entry` payload is the macro's own parameters, so it is exempt. */
 static bool hides_parameter(const analyzer *a, const script_symbol *symbol)
 {
     if (symbol->kind != SCRIPT_PARAMETER || symbol->declaration.start >= 0 ||

@@ -25,20 +25,18 @@ HealthBehavior :: behavior {
     Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<ecs.entity> = 0) -> () {
 
         action current_remaininghealth = HealthChanged(Current: plain double = convert<To_Real>(Current), RemainingHealth: plain double = double(clamp(convert<To_Real>(Current) - clamp(convert<To_Real>(Amount), 0, convert<To_Real>(Current)), 0, convert<To_Real>(Maximum))));
-        after entry {
-            if (convert<To_Real>(Current) > 0) {
-                if (self.Dash != nil) {
-                    if (double(self.Dash.remaining) > 0) {
-                        return ();
-                    } else {
-                        current_remaininghealth();
-                    }
+        if (convert<To_Real>(Current) > 0) {
+            if (self.Dash != nil) {
+                if (double(self.Dash.remaining) > 0) {
+                    return ();
                 } else {
                     current_remaininghealth();
                 }
             } else {
-                return ();
+                current_remaininghealth();
             }
+        } else {
+            return ();
         }
         after current_remaininghealth.True {
             current := Current
@@ -58,15 +56,13 @@ HealthBehavior :: behavior {
     }
     Notify_Encounter :: () -> () {
 
-        after entry {
-            if (self.EncounterMember != nil) {
-                for (foreach_2 in find_entities_with_component(Component: Encounter)) {
-                    send_event<RefreshEncounter>(Entity: foreach_2);
-                }
-                return ();
-            } else {
-                return ();
+        if (self.EncounterMember != nil) {
+            for (foreach_2 in find_entities_with_component(Component: Encounter)) {
+                send_event<RefreshEncounter>(Entity: foreach_2);
             }
+            return ();
+        } else {
+            return ();
         }
     }
 }

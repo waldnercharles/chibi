@@ -6,13 +6,11 @@ AutoWeaponBehavior :: behavior {
         }
     }
     Fire_Ready_Projectiles :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0) {
-        after entry {
-            Elapsed = Elapsed + delta_time()
-            while WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Ready {
-                Elapsed = WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Remainder
-                await WeaponActions.Fire_Projectile(Origin, Direction, Damage, Projectile, self)
-            }
-            return
+        Elapsed = Elapsed + delta_time()
+        while WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Ready {
+            Elapsed = WeaponActions.Check_Firing_Interval(Elapsed, self.Weapon.cooldown).Remainder
+            await WeaponActions.Fire_Projectile(Origin, Direction, Damage, Projectile, self)
         }
+        return
     }
 }

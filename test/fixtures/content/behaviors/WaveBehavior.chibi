@@ -12,25 +12,21 @@ WaveBehavior :: behavior {
         }
     }
     Spawn_Within_Wave_Limit :: (Player_Position: struct<CF_V2> = null) {
-        after entry {
-            while Elapsed >= max(Interval, B: float = 0.01) {
-                if Spawned >= CountLimit {
-                    return
-                } else {
-                    Elapsed = Elapsed - max(Interval, B: float = 0.01)
-                    await Spawn_Enemy(Player_Position)
-                    Spawned = add(Spawned, B: int = 1)
-                    Side = Side * -1.0
-                }
+        while Elapsed >= max(Interval, B: float = 0.01) {
+            if Spawned >= CountLimit {
+                return
+            } else {
+                Elapsed = Elapsed - max(Interval, B: float = 0.01)
+                await Spawn_Enemy(Player_Position)
+                Spawned = add(Spawned, B: int = 1)
+                Side = Side * -1.0
             }
-            return
         }
+        return
     }
     Spawn_Enemy :: (Player_Position: struct<CF_V2> = null) {
         action spawn_prototype_action = spawn_prototype(Enemy)
-        after entry {
-            spawn_prototype_action()
-        }
+        spawn_prototype_action()
         after spawn_prototype_action {
             spawn_prototype_action.Entity.Transform = make_transform(Player_Position.x + Side * SpawnDistance, Player_Position.y)
             return

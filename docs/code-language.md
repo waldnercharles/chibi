@@ -156,13 +156,13 @@ audit is not fresh runtime or cross-backend validation.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 28. Scenes, KDL prototypes, event
+Project manifests are `project.kdl`, version 29. Scenes, KDL prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 28
+version 29
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -565,6 +565,16 @@ A handler without a parameter list binds its payload's names. A bare read of
 one that is also a parameter of the function around the handler is an error,
 since the payload would hide the function's parameter; list the payload's
 parameters, as in `after spawned(made) { ... }`, to give them other names.
+
+Project version 29 runs a function's own body. A function's statements run when
+it is called, so a function cannot have an `after entry` handler; macros keep
+theirs. The version 28 migration moves the statements of a function's
+`after entry` after the function's own statements and before the handlers that
+follow them. The handler read the arguments as they were passed, so the
+migration refuses a handler that reads a parameter the function's statements
+assign, or pass to a function or macro with a `ref` parameter. It also refuses a handler that reads `event` or names
+its payload, one that declares a name the function also uses, and a one-line
+function with other statements. Rewrite those by hand first.
 
 Project version 24 migrates existing `function` declarations and `match` statements
 to these forms. Those old keywords are no longer runtime syntax.
@@ -1154,7 +1164,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 28. Executable files contain no generated identity
+Project manifests use version 29. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

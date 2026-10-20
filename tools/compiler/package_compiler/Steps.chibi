@@ -7,20 +7,39 @@ import strings "core:strings"
 // body's tables, which calls share rather than copy, and returns only what it
 // adds, numbered from the sizes in `at`.
 
+// Whether an array of this element type may hold its elements inline, with a
+// nonzero stride, as the runtime decides: scalars and records of scalars may,
+// while strings, unions and records with a string field are always boxed.
+Packable :: (storage: int, record: int, types: TypeDecl[], members: TypeMember[]) -> bool {
+    if (storage == TextStorage || storage == UnionStorage) {
+        return false;
+    }
+    if (storage != StructStorage) {
+        return true;
+    }
+    at := types[record].first;
+    while (at < types[record].first + types[record].count) {
+        if (members[at].storage == TextStorage) {
+            return false;
+        }
+        at += 1;
+    }
+    return true;
+}
 // The slots ElementRead numbers from its `first`: zero, the lower check, the
 // count and the upper check, then the slots of ElementLoad.
-ElementSlots :: (storage: int, target: Target) -> Slot[] {
+ElementSlots :: (storage: int, packable: bool, target: Target) -> Slot[] {
     number: Slot = {storage: IntStorage, kind: ValueKind};
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
     checks: Slot[] = [number, flag, number, flag];
-    return append(checks, LoadSlots(storage, target));
+    return append(checks, LoadSlots(storage, packable, target));
 }
 // Reads the element of the array in slot `array` at the index in slot
 // `position` into the last of ElementSlots, after checking 0 <= index < count
-// as stage zero does. `pc` is where its code starts; a record element needs
-// the local `local`.
-ElementRead :: (array: int, position: int, storage: int, first: int, pc: int, local: int, ops: Ops,
-                target: Target, node: snapshot.SnapshotNode) -> Code[] {
+// as stage zero does. `pc` is where its code starts; a packable record element
+// needs the local `local`.
+ElementRead :: (array: int, position: int, storage: int, packable: bool, first: int, pc: int, local: int,
+                ops: Ops, target: Target, node: snapshot.SnapshotNode) -> Code[] {
     code: Code[] = [];
     constant := Instruction(ops.constant, IntStorage, first, 0, 0, 0, node);
     constant.value_storage = IntStorage;
@@ -33,18 +52,24 @@ ElementRead :: (array: int, position: int, storage: int, first: int, pc: int, lo
     code = array_add(code, count);
     code = array_add(code, Instruction(ops.lt, IntStorage, first + 3, position, first + 2, -1, node));
     code = array_add(code, Instruction(ops.guard, 0, 0, first + 3, 0, target.argument_failure, node));
-    return append(code, ElementLoad(array, position, storage, first + 4, pc + length(code), local, ops, target, node));
+    return append(code, ElementLoad(array, position, storage, packable, first + 4, pc + length(code), local, ops,
+                                    target, node));
 }
-// The slots ElementLoad numbers from its `first`: the array's items, data and
-// stride, a zero word, whether the array is packed, the boxed and the actual
-// element width, the index as a word, its byte offset, the base, the item,
-// then for a record its boxed pointer and the element, and for any other
-// element the payload offset, the offset to use, its address and the element.
-LoadSlots :: (storage: int, target: Target) -> Slot[] {
+// The slots ElementLoad numbers from its `first`. For an element type that is
+// never packed: the array's items, the item and the element. Otherwise: the
+// array's items, data and stride, a zero word, whether the array is packed,
+// the boxed and the actual element width, the index as a word, its byte
+// offset, the base, the item, then for a record its boxed pointer and the
+// element, and for any other element the payload offset, the offset to use,
+// its address and the element.
+LoadSlots :: (storage: int, packable: bool, target: Target) -> Slot[] {
     flag: Slot = {storage: BoolStorage, kind: ValueKind};
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     word: Slot = {storage: target.pointer_storage, kind: ValueKind};
     element: Slot = {storage: SlotStorage(storage, 0, target), kind: SlotKind(storage, 0)};
+    if (!packable) {
+        return [address, address, element];
+    }
     slots: Slot[] = [address, address, word, word, flag, word, word, word, word, address, address];
     if (storage == StructStorage) {
         return append(slots, [address, element]);
@@ -54,15 +79,24 @@ LoadSlots :: (storage: int, target: Target) -> Slot[] {
 // Loads the element at the index in slot `position`, already checked, into
 // the last of LoadSlots, as stage zero does: a packed array (nonzero stride)
 // holds elements inline in `data`, and any other holds value headers in
-// `items`. A packed record is the element itself, so the boxed pointer is
-// loaded only past a branch, through local `local`; `pc` is where the code
-// starts.
-ElementLoad :: (array: int, position: int, storage: int, first: int, pc: int, local: int, ops: Ops,
-                target: Target, node: snapshot.SnapshotNode) -> Code[] {
+// `items`. An element type that is never packed reads `items` alone. A packed
+// record is the element itself, so the boxed pointer is loaded only past a
+// branch, through local `local`; `pc` is where the code starts.
+ElementLoad :: (array: int, position: int, storage: int, packable: bool, first: int, pc: int, local: int,
+                ops: Ops, target: Target, node: snapshot.SnapshotNode) -> Code[] {
     code: Code[] = [];
     items := Instruction(ops.load, target.pointer_storage, first, array, 0, 0, node);
     items.offset = target.items_offset;
     code = array_add(code, items);
+    if (!packable) {
+        // The header's payload is the value, or a record's pointer.
+        item := Instruction(ops.index, target.pointer_storage, first + 1, first, position, 0, node);
+        item.offset = target.value_size;
+        code = array_add(code, item);
+        element := Instruction(ops.load, SlotStorage(storage, 0, target), first + 2, first + 1, 0, 0, node);
+        element.offset = target.payload_offset;
+        return array_add(code, element);
+    }
     data := Instruction(ops.load, target.pointer_storage, first + 1, array, 0, 0, node);
     data.offset = target.data_offset;
     code = array_add(code, data);
@@ -91,9 +125,10 @@ ElementLoad :: (array: int, position: int, storage: int, first: int, pc: int, lo
     code = array_add(code, Instruction(ops.add, target.pointer_storage, first + 13, first + 10, first + 12, -1, node));
     return array_add(code, Instruction(ops.load, SlotStorage(storage, 0, target), first + 14, first + 13, 0, 0, node));
 }
-// The locals ElementRead and ElementLoad need: one for a record element.
-ElementLocals :: (storage: int, target: Target) -> Slot[] {
-    if (storage == StructStorage) {
+// The locals ElementRead and ElementLoad need: one for a packable record
+// element.
+ElementLocals :: (storage: int, packable: bool, target: Target) -> Slot[] {
+    if (storage == StructStorage && packable) {
         return [{storage: target.pointer_storage, kind: AddressKind}];
     }
     return [];
@@ -476,9 +511,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             code = array_add(code, load);
             root: Root = {slot: at.slot + 1, storage: IntStorage, container: ArrayContainer, record: -1};
             roots = array_add(roots, root);
-            slots = append(slots, ElementSlots(IntStorage, target));
-            code = append(code, ElementRead(at.slot + 1, index_value.slot, IntStorage, at.slot + 2, at.pc + length(code), -1,
-                                            ops, target, node));
+            slots = append(slots, ElementSlots(IntStorage, true, target));
+            code = append(code, ElementRead(at.slot + 1, index_value.slot, IntStorage, true, at.slot + 2,
+                                            at.pc + length(code), -1, ops, target, node));
             element := at.slot + length(slots) - 1;
             combined: Slot = {storage: IntStorage, kind: ValueKind};
             slots = array_add(slots, combined);
@@ -732,9 +767,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, type
         if (!Single(position, IntStorage)) {
             return Fail(forest, Field(forest, item.node, "index"), document, "index needs an int");
         }
-        slots = ElementSlots(array.storage, target);
-        locals = ElementLocals(array.storage, target);
-        code = ElementRead(array.slot, position.slot, array.storage, at.slot, at.pc, at.local, ops, target, node);
+        packable := Packable(array.storage, array.record, types, members);
+        slots = ElementSlots(array.storage, packable, target);
+        locals = ElementLocals(array.storage, packable, target);
+        code = ElementRead(array.slot, position.slot, array.storage, packable, at.slot, at.pc, at.local, ops, target,
+                           node);
         element := at.slot + length(slots) - 1;
         if (array.storage == StructStorage) {
             root: Root = {slot: element, storage: StructStorage, container: 0, record: array.record};
@@ -1491,9 +1528,9 @@ ConstantStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, l
 
 // The head of a for loop over the copy in the last cell: an index local
 // set to zero, then at `head` the bound check, the exit jump and the element
-// load, which takes a second local for a record. Marks report the head, the
-// exit jump and the index local.
-ForStep :: (array: Value, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+// load, which takes a second local for a packable record. Marks report the
+// head, the exit jump and the index local.
+ForStep :: (array: Value, packable: bool, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     code: Code[] = [];
     slots: Slot[] = [];
     locals: Slot[] = [];
@@ -1535,10 +1572,10 @@ ForStep :: (array: Value, ops: Ops, target: Target, at: Bases, node: snapshot.Sn
     leave := at.pc + length(code);
     code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
     // The index is below the count, so the element needs no check.
-    slots = append(slots, LoadSlots(array.storage, target));
-    code = append(code, ElementLoad(at.slot + 2, at.slot + 4, array.storage, at.slot + 6, at.pc + length(code),
-                                    at.local + 1, ops, target, node));
-    locals = append(locals, ElementLocals(array.storage, target));
+    slots = append(slots, LoadSlots(array.storage, packable, target));
+    code = append(code, ElementLoad(at.slot + 2, at.slot + 4, array.storage, packable, at.slot + 6,
+                                    at.pc + length(code), at.local + 1, ops, target, node));
+    locals = append(locals, ElementLocals(array.storage, packable, target));
     element := at.slot + length(slots) - 1;
     if (array.storage == StructStorage) {
         element_root: Root = {slot: element, storage: StructStorage, container: 0, record: array.record};

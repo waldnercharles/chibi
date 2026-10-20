@@ -90,6 +90,7 @@ typedef struct
     TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
+    bool query; /* Analyzing a system's `where`, which reports its own reads. */
 } analyzer;
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
@@ -227,6 +228,16 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body);
 void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);
 void script_analyzer_handler(analyzer *a, TSNode node);
+/* Binds the payload fields `list` names, by name, as parameters of function
+ * in payload order; unlisted fields bind unnamed parameters. */
+void script_analyzer_named_payload(
+    analyzer *a,
+    int function,
+    TSNode list,
+    const script_catalog_parameter *payload,
+    int count,
+    const char *event
+);
 uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
 void script_analyzer_binding_reads(analyzer *a, script_binding *binding, int index, int depth);
 void script_analyzer_binding(analyzer *a, TSNode node);

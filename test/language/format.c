@@ -123,6 +123,8 @@ TEST_CASE(source_format_keeps_named_payload_fields)
 {
     REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
     REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
+    REQUIRE(format("Motion :: system(p: Position) on Tick ::(dt:s) {\np.x += dt\n}\n"));
+    REQUIRE(strstr(text, "system(p: Position) on Tick :: (dt: s) {"));
     return true;
 }
 TEST_CASE(source_format_spaces_typed_constant_colons)

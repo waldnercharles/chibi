@@ -17,15 +17,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/file.h>
 #include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
 #define BUILD_FILE_LIMIT (1024 * 1024)
 #define BUILD_IO_CHUNK 4096
 #define BUILD_IO_COPY_CHUNK 65536
-#define BUILD_IO_LOCK_POLL_NS 10000000
 
 static const char *io_ready(double deadline, const volatile sig_atomic_t *cancelled)
 {
@@ -481,88 +478,4 @@ const char *build_io_hash(
         sha256_end(&hash, digest);
     }
     return error;
-}
-
-static int held_lock(const build_io_locks *locks, const struct stat *info)
-{
-    for (int i = 0; i < locks->count; i++) {
-        struct stat held;
-        if (!fstat(locks->fds[i], &held) && held.st_dev == info->st_dev &&
-            held.st_ino == info->st_ino) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-const char *build_io_lock(
-    build_io_locks *locks,
-    const char *root,
-    const char *path,
-    double deadline,
-    const volatile sig_atomic_t *cancelled,
-    bool *locked
-)
-{
-    *locked = false;
-    const char *error = io_ready(deadline, cancelled);
-    if (error) {
-        return error;
-    }
-    if (locks->count == BUILD_IO_LOCKS) {
-        return "build lock limit exceeded";
-    }
-    char *joined = build_io_path(root, path);
-    int fd = open(joined, O_RDONLY | O_CREAT | O_NONBLOCK | O_CLOEXEC | O_NOCTTY, 0644);
-    free(joined);
-    struct stat info;
-    if (fd < 0) {
-        return NULL;
-    }
-    if (fstat(fd, &info) || !S_ISREG(info.st_mode)) {
-        close(fd);
-        return NULL;
-    }
-    if (held_lock(locks, &info) >= 0) {
-        close(fd);
-        return "build lock is already held";
-    }
-    while (flock(fd, LOCK_EX | LOCK_NB)) {
-        if (errno != EWOULDBLOCK && errno != EINTR) {
-            close(fd);
-            return NULL;
-        }
-        error = io_ready(deadline, cancelled);
-        if (error) {
-            close(fd);
-            return error;
-        }
-        struct timespec pause = { .tv_nsec = BUILD_IO_LOCK_POLL_NS };
-        nanosleep(&pause, NULL);
-    }
-    locks->fds[locks->count++] = fd;
-    *locked = true;
-    return NULL;
-}
-
-bool build_io_unlock(build_io_locks *locks, const char *root, const char *path)
-{
-    char *joined = build_io_path(root, path);
-    struct stat info;
-    int index = stat(joined, &info) ? -1 : held_lock(locks, &info);
-    free(joined);
-    if (index < 0) {
-        return false;
-    }
-    close(locks->fds[index]);
-    locks->fds[index] = locks->fds[--locks->count];
-    return true;
-}
-
-void build_io_unlock_all(build_io_locks *locks)
-{
-    for (int i = 0; i < locks->count; i++) {
-        close(locks->fds[i]);
-    }
-    locks->count = 0;
 }

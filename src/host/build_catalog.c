@@ -257,26 +257,6 @@ static const char *build_hash_text(void *service, const pin_value *arguments, pi
     sha256_hex(arguments[0].str, strlen(arguments[0].str), digest);
     return string_result(host, results, digest);
 }
-static const char *build_lock_file(void *service, const pin_value *arguments, pin_value *results)
-{
-    READY_HOST();
-    STRING_ARGUMENTS(1);
-    return build_io_lock(
-        &host->locks,
-        host->root,
-        arguments[0].str,
-        host->deadline,
-        host->options->cancelled,
-        &results[0].b
-    );
-}
-static const char *build_unlock_file(void *service, const pin_value *arguments, pin_value *results)
-{
-    READY_HOST();
-    STRING_ARGUMENTS(1);
-    results[0].b = build_io_unlock(&host->locks, host->root, arguments[0].str);
-    return NULL;
-}
 #define VALUE_CALLBACK(NAME)                                                                       \
     static const char *value_##NAME(void *service, const pin_value *arguments, pin_value *results) \
     {                                                                                              \
@@ -373,8 +353,6 @@ static const script_catalog_capability capabilities[] = {
     BUILD_CAPABILITY(931, "BuildRemove", &path_parameter, 1, bool_result),
     BUILD_CAPABILITY(932, "BuildHashFile", &path_parameter, 1, text_result),
     BUILD_CAPABILITY(933, "BuildHashText", &text_parameter, 1, text_result),
-    BUILD_CAPABILITY(934, "BuildLockFile", &path_parameter, 1, bool_result),
-    BUILD_CAPABILITY(935, "BuildUnlockFile", &path_parameter, 1, bool_result),
 };
 #undef BUILD_CAPABILITY
 static const script_catalog catalog = { .capabilities = capabilities,
@@ -418,8 +396,6 @@ static const node_host_call calls[] = {
     BUILD_CALL(build_remove),
     BUILD_CALL(build_hash_file),
     BUILD_CALL(build_hash_text),
-    BUILD_CALL(build_lock_file),
-    BUILD_CALL(build_unlock_file),
 };
 #undef BUILD_CALL
 bool build_host_resolve(void *, uint64_t id, script_lower_host *out)

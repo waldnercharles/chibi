@@ -1,12 +1,10 @@
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/file.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -349,15 +347,6 @@ int main(int argc, char **argv)
             assert(fwrite(out, 1, part, stdout) == part && fwrite(err, 1, part, stderr) == part);
         }
         return 0;
-    }
-    /* Exits 1 while another open file holds the lock on argv[2]. */
-    if (!strcmp(argv[1], "lock-probe")) {
-        int fd = open(argv[2], O_RDONLY);
-        assert(fd >= 0);
-        int busy = flock(fd, LOCK_EX | LOCK_NB) != 0;
-        assert(!busy || errno == EWOULDBLOCK);
-        assert(!close(fd));
-        return busy;
     }
     if (!strcmp(argv[1], "build-signal")) {
         raise(SIGTERM);

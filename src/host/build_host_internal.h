@@ -1,7 +1,6 @@
 #ifndef CHIBI_HOST_BUILD_HOST_INTERNAL_H
 #define CHIBI_HOST_BUILD_HOST_INTERNAL_H
 #include "host/build_host.h"
-#include "host/build_io.h"
 #include "host/build_values.h"
 #include "language/lower.h"
 
@@ -20,7 +19,6 @@ typedef struct
     size_t last_stdout_size, last_stderr_size;
     bool last_stdout_truncated, last_stderr_truncated;
     char *environment[BUILD_ENVIRONMENT_CAPACITY];
-    build_io_locks locks;
     double deadline;
 } build_host;
 

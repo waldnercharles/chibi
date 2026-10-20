@@ -151,16 +151,17 @@ finishes; parent cwd and environment are never mutated.
 
 ### Build-host file primitives
 
-The remaining configuration, dependency-cache and packaging Python reads file
-metadata, walks trees, copies, renames, removes, hashes and locks. Zig's
-`std.fs.Dir`, Rust's `std::fs` (which Cargo build scripts use) and Odin's
-`core:os` expose the same small layer: one-level directory iteration with walks
-built over it (`Dir.walk`, Odin's `Walker`, `fs::read_dir` recursion), a stat
-record, atomic copy that keeps permissions, rename, single-entry removal with
-recursive removal built over it, and an exclusive file lock (`File.lock`,
-`flock`). Hashing lives in their libraries (`std.crypto.hash.sha2`,
-`core:crypto`). The host keeps to that layer; walks and recursive removal are
-authored Chibi.
+The remaining configuration and packaging Python reads file metadata, walks
+trees, copies, renames, removes and hashes. Zig's `std.fs.Dir`, Rust's
+`std::fs` (which Cargo build scripts use) and Odin's `core:os` expose the same
+small layer: one-level directory iteration with walks built over it
+(`Dir.walk`, Odin's `Walker`, `fs::read_dir` recursion), a stat record, atomic
+copy that keeps permissions, rename, and single-entry removal with recursive
+removal built over it. Hashing lives in their libraries
+(`std.crypto.hash.sha2`, `core:crypto`). The host keeps to that layer; walks
+and recursive removal are authored Chibi. Dependencies will be vendored, as
+Odin vendors its libraries, so the dependency fetch and caches, and the
+interprocess lock they needed, go away rather than move.
 
 | Primitive | Result |
 | --- | --- |
@@ -171,7 +172,6 @@ authored Chibi.
 | `BuildRename(source, destination) -> bool` | `rename(2)`. |
 | `BuildRemove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
 | `BuildHashFile(path) -> string`, `BuildHashText(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
-| `BuildLockFile(path) -> bool`, `BuildUnlockFile(path) -> bool` | Exclusive `flock` on a lock file, created when missing, waiting for other processes until the deadline or cancellation. At most 16 per invocation; locking a held file again is a capability error; children never inherit them, and every lock is released when the invocation ends. Unlock reports whether the path named a held lock. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -179,15 +179,13 @@ and hashes check them between 64 KiB chunks. `support/sha256.c` is shared with
 the bootstrap artifact's digests.
 
 These primitives do not yet cover everything the Python does. The configuration
-signature still needs an equivalent of its full-environment hash (children see
-only the allowlist, so `BuildEnvironmentNames` suffices) and `ninja -t query`
-instead of reading `build.ninja`, which exceeds the 1 MiB text limit in a full
-build. The dependency cache also needs symbolic-link copies, unique temporary
-directories, a non-waiting lock for pruning, and modification-time order and
-touch. Packaging also needs sizes and modification-time order. Each invocation
-has a 100,000-step execution budget, which bounds authored walks over large
-dependency or SDK trees; a walk of thousands of files needs a larger budget or
-a native tree operation. Add each with the move that first calls it.
+signature hashes the full environment; children see only the allowlist, so
+`BuildEnvironmentNames` suffices. Once dependencies are vendored it no longer
+tracks dependency packages or source caches. Packaging also needs sizes,
+modification-time order, symbolic-link reads and unique staging directories.
+Each invocation has a 100,000-step execution budget, which bounds authored
+walks over large SDK trees; a walk of thousands of files needs a larger budget
+or a native tree operation. Add each with the move that first calls it.
 
 ## Bootstrap and backend milestones
 

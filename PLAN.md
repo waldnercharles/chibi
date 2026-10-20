@@ -571,7 +571,7 @@ until the clean-checkout artifact recovery test passes.
 ### M6. Replace the internal build graph
 
 Move product profiles, generated prerequisites, native/cross compilation,
-include/link ownership, install layouts, dependency cache policy, and artifact
+include/link ownership, install layouts, vendored dependency builds, and artifact
 assembly into Chibi modules. Preserve installed CMake package files while Studio
 or another supported consumer needs them; generate those files rather than using
 them as the internal source of truth.
@@ -758,7 +758,10 @@ was `Build.chibi`, and the `build-toolchain` macOS case passed against both
 implementations. A step's own output now holds 1 MiB rather than 4 KiB, probes
 keep tool reports out of the build's output, and the build host gained the
 file primitives in `docs/self-hosting-build.md`. The inventory's host-file
-table names what each remaining Python responsibility still lacks. Every other
+table names what each remaining Python responsibility still lacks. Owner
+decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
+`dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
+than ported, and the configuration signature shrinks before it moves. Every other
 responsibility in `docs/toolchain-inventory.md` still waits for its replacement.
 
 Delete one responsibility at a time. Before deletion, name the replacement,

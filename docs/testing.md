@@ -1951,10 +1951,10 @@ into an unrelated executable must fail provenance checks.
 
 ## Private build-host process checks
 
-`python3 tools/test_policy.py tool build-process` selects 24 C cases in the
+`python3 tools/test_policy.py tool build-process` selects 23 C cases in the
 existing tooling dispatcher. Build `chibi-build-host`, `test_tools` and its
 `policy_worker` dependency separately. The route uses one disposable directory,
-fixed authored sources, at most 62 controlled process launches or failed
+fixed authored sources, at most 58 controlled process launches or failed
 spawn attempts, and one shared 60-second production deadline. It performs no
 engine configure/build, network, renderer or GPU work. Case deadlines are at
 most two seconds, with shorter deliberate timeout/cancellation budgets; every
@@ -1970,11 +1970,10 @@ compiler-only builds verify rejection by a catalog without build capabilities.
 Two CLI invocations cover source loading, a nonzero authored result and a missing
 entry. Seven additional cases cover argument and returned-value lifetimes,
 string operations, truncated or binary output rejection, regular-file and size
-limits, and atomic write failure cleanup. Six more cover a step's 1 MiB output
+limits, and atomic write failure cleanup. Five more cover a step's 1 MiB output
 and unreported probes, file kinds, stamps and sorted directory entries with
 their limits, atomic copies, renames and removals, SHA-256 against FIPS 180-4
-vectors, locks against another process, the deadline and their limit, and
-environment names. Their fixed file workload is about 10 MiB and 8,193 empty
+vectors, and environment names. Their fixed file workload is about 10 MiB and 8,193 empty
 files. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 

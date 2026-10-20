@@ -525,7 +525,6 @@ done:
     free(host.program_directory);
     free(host.last_stdout);
     free(host.last_stderr);
-    build_io_unlock_all(&host.locks);
     arena_free(&host.values.memory);
     return success;
 }

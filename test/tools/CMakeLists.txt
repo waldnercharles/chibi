@@ -62,7 +62,7 @@ elseif(NOT TARGET Chibi::types)
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/languages.cmake")
 add_executable(policy_worker policy_worker.c)
-target_compile_definitions(policy_worker PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+target_compile_definitions(policy_worker PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE)
 target_compile_features(policy_worker PRIVATE c_std_11)
 target_compile_options(policy_worker PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 

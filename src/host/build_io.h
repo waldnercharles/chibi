@@ -78,25 +78,4 @@ const char *build_io_hash(
     char digest[65]
 );
 
-/* Exclusive advisory locks on lock files, created when missing. Lock waits
- * for other processes until the deadline; *locked is false when the file
- * cannot be opened. Unlock releases a held lock and reports whether path
- * named one. Children never inherit lock descriptors. */
-#define BUILD_IO_LOCKS 16
-typedef struct
-{
-    int fds[BUILD_IO_LOCKS];
-    int count;
-} build_io_locks;
-const char *build_io_lock(
-    build_io_locks *,
-    const char *root,
-    const char *path,
-    double deadline,
-    const volatile sig_atomic_t *cancelled,
-    bool *locked
-);
-bool build_io_unlock(build_io_locks *, const char *root, const char *path);
-void build_io_unlock_all(build_io_locks *);
-
 #endif

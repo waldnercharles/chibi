@@ -10,12 +10,10 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/file.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
@@ -404,8 +402,6 @@ TEST_CASE(ordinary_catalog_rejects_private_process_capabilities)
         "BuildRemove",
         "BuildHashFile",
         "BuildHashText",
-        "BuildLockFile",
-        "BuildUnlockFile",
     };
     bool absent = true;
     for (size_t i = 0; i < sizeof private_names / sizeof *private_names; i++) {
@@ -1073,60 +1069,6 @@ TEST_CASE(private_hashes_match_sha256_vectors)
     return true;
 }
 
-TEST_CASE(private_locks_exclude_others_until_released_or_the_invocation_ends)
-{
-    static const char
-        *source = "library Lock { Build :: fn() -> int { "
-                  "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
-                  "if(!BuildLockFile(\"lock-file\") || "
-                  "RunBuildStep([worker,\"lock-probe\",\"lock-file\"])!=1) { "
-                  "return 1; } "
-                  "if(!BuildUnlockFile(\"lock-file\") || "
-                  "BuildUnlockFile(\"lock-file\") || "
-                  "RunBuildStep([worker,\"lock-probe\",\"lock-file\"])!=0) { "
-                  "return 2; } "
-                  "if(BuildLockFile(\"lock-none/file\") || "
-                  "BuildLockFile(\".\")) { return 3; } "
-                  "if(!BuildLockFile(\"./lock-file\")) { return 4; } "
-                  "return 0; } }";
-    static const char *twice = "library Lock { Build :: fn() -> int { "
-                               "BuildLockFile(\"lock-file\"); "
-                               "BuildLockFile(\"lock-file\"); return 0; } }";
-    static const char
-        *many = "library Lock { Build :: fn() -> int { "
-                "foreach(name in "
-                "[\"l0\",\"l1\",\"l2\",\"l3\",\"l4\",\"l5\",\"l6\",\"l7\","
-                "\"l8\",\"l9\","
-                "\"l10\",\"l11\",\"l12\",\"l13\",\"l14\",\"l15\",\"l16\"]) { "
-                "BuildLockFile(BuildJoin([\"lock-\",name],\"\")); } return 0; "
-                "} }";
-    static const char *held = "library Lock { Build :: fn() -> int { "
-                              "BuildLockFile(\"lock-held\"); return 0; } }";
-    REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
-    char path[256];
-    snprintf(path, sizeof path, "%s/lock-held", root);
-    int other = open(path, O_RDONLY | O_CREAT, 0600);
-    REQUIRE(other >= 0 && !flock(other, LOCK_EX | LOCK_NB));
-    for (int b = 0; b < 2; b++) {
-        behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
-        REQUIRE(run_primitives(source, backend, 2));
-        snprintf(path, sizeof path, "%s/lock-file", root);
-        int fd = open(path, O_RDONLY);
-        REQUIRE(fd >= 0 && !flock(fd, LOCK_EX | LOCK_NB));
-        close(fd);
-        REQUIRE(fails_with(twice, backend, "build lock is already held"));
-        REQUIRE(fails_with(many, backend, "build lock limit exceeded"));
-        chibi_build_options options = primitive_options(held, backend);
-        options.deadline = deadline_after(.2);
-        chibi_build_result result;
-        double start = now();
-        REQUIRE(!chibi_build_invoke(&options, &result));
-        REQUIRE(!strcmp(result.diagnostic, "build process timeout") && now() - start < 1);
-    }
-    close(other);
-    return true;
-}
-
 TEST_CASE(private_environment_names_list_the_allowed_snapshot)
 {
     REQUIRE(!setenv("CHIBI_BUILD_WORKER", worker_path, 1));
@@ -1201,7 +1143,6 @@ void test_tool_build_process(const char *worker, const char *host)
     RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);
     RUN_TEST_CASE(private_copies_renames_and_removals_leave_whole_files);
     RUN_TEST_CASE(private_hashes_match_sha256_vectors);
-    RUN_TEST_CASE(private_locks_exclude_others_until_released_or_the_invocation_ends);
     RUN_TEST_CASE(private_environment_names_list_the_allowed_snapshot);
     tool_remove_tree(root);
     if (saved_worker) {

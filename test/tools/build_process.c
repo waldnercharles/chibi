@@ -250,11 +250,12 @@ TEST_CASE(authored_fixture_runs_real_children_on_each_backend)
 TEST_CASE(authored_capability_errors_do_not_become_exit_codes)
 {
     static const char *sources[] = {
-        "library Failure { Build :: fn() -> int { return "
+        "Failure :: library { Build :: () -> int { return "
         "RunBuildStep([\"/chibi/nonexistent/worker\"]); } }",
-        "library Failure { Build :: fn() -> int { return RunBuildStep([\"\"]); "
+        "Failure :: library { Build :: () -> int { return "
+        "RunBuildStep([\"\"]); "
         "} }",
-        "library Failure { Build :: fn() -> int { return "
+        "Failure :: library { Build :: () -> int { return "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"), \"sleep\", "
         "\"3\"]); } }",
     };
@@ -501,7 +502,7 @@ static bool primitive_backend(const chibi_build_result *result, behavior_backend
 TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 {
     static const char *source =
-        "library Primitives { Build :: fn() -> int { "
+        "Primitives :: library { Build :: () -> int { "
         "args:=BuildArguments(); retained:=args[1]; "
         "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
         "status:=RunBuildStep([worker,\"build-argv\",args[0],retained]); "
@@ -542,7 +543,7 @@ TEST_CASE(private_values_and_process_snapshots_survive_later_calls)
 TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
 {
     static const char
-        *source = "library Text { Build :: fn() -> int { "
+        *source = "Text :: library { Build :: () -> int { "
                   "lines:=BuildLines(\" a\\r\\n\\nb\\n\"); "
                   "if(BuildLength(lines)!=3 || BuildTrim(lines[0])!=\"a\" || "
                   "lines[1]!=\"\" || lines[2]!=\"b\") { return 1; } "
@@ -575,16 +576,16 @@ TEST_CASE(private_string_utilities_preserve_delimiters_and_empty_values)
 TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols)
 {
     static const char *sources[] = {
-        "library Output { Build :: fn() -> int { "
+        "Output :: library { Build :: () -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
         "output\",\"1048577\"]); BuildLastStdout(); return 0; } }",
-        "library Output { Build :: fn() -> int { "
+        "Output :: library { Build :: () -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
         "output\",\"1048577\"]); BuildLastStderr(); return 0; } }",
-        "library Output { Build :: fn() -> int { "
+        "Output :: library { Build :: () -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
         "binary\",\"stdout\"]); BuildLastStdout(); return 0; } }",
-        "library Output { Build :: fn() -> int { "
+        "Output :: library { Build :: () -> int { "
         "RunBuildStep([BuildEnvironment(\"CHIBI_BUILD_WORKER\"),\"build-"
         "binary\",\"stderr\"]); BuildLastStderr(); return 0; } }",
     };
@@ -630,21 +631,22 @@ TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text)
     assert(file && !ftruncate(fileno(file), 1024 * 1024 + 1));
     assert(!fclose(file));
     static const char *sources[] = {
-        "library Read { Build :: fn() -> int { "
+        "Read :: library { Build :: () -> int { "
         "if(BuildReadFile(\"primitive-text\")!=\"read me\\n\" || "
         "!BuildFileExists(\"primitive-text\")) { return 1; } return 0; } }",
-        "library Read { Build :: fn() -> int { "
+        "Read :: library { Build :: () -> int { "
         "if(BuildReadFile(\"primitive-missing\")!=\"\" || "
         "BuildFileExists(\"primitive-missing\") || "
         "BuildResolvePath(\"primitive-missing\")!=\"\") { return 1; } return "
         "0; } }",
-        "library Read { Build :: fn() -> int { "
+        "Read :: library { Build :: () -> int { "
         "BuildReadFile(\"primitive-fifo\"); return 0; } }",
-        "library Read { Build :: fn() -> int { "
+        "Read :: library { Build :: () -> int { "
         "BuildReadFile(\"primitive-nul\"); return 0; } }",
-        "library Read { Build :: fn() -> int { "
+        "Read :: library { Build :: () -> int { "
         "BuildReadFile(\"primitive-large\"); return 0; } }",
-        "library Read { Build :: fn() -> int { BuildReadFile(\".\"); return 0; "
+        "Read :: library { Build :: () -> int { BuildReadFile(\".\"); return "
+        "0; "
         "} }",
     };
     static const char *diagnostics[] = {
@@ -688,13 +690,13 @@ TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth)
     }
     primitive_file("primitive-many-lines", many_lines, sizeof many_lines);
     static const char *sources[] = {
-        "library Limit { Build :: fn() -> int { "
+        "Limit :: library { Build :: () -> int { "
         "if(!BuildWriteFile(\"primitive-limit-copy\",BuildReadFile(\"primitive-"
         "limit\"))) { return 1; } return 0; } }",
-        "library Limit { Build :: fn() -> int { "
+        "Limit :: library { Build :: () -> int { "
         "BuildJoin([BuildReadFile(\"primitive-limit\"),\"x\"],\"\"); return 0; "
         "} }",
-        ("library Limit { Build :: fn() -> int { "
+        ("Limit :: library { Build :: () -> int { "
          "BuildLines(BuildReadFile(\"primitive-many-lines\")); return 0; } }"),
     };
     for (int b = 0; b < 2; b++) {
@@ -750,7 +752,7 @@ TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure)
     tool_write(marker, "unchanged");
     snprintf(target, sizeof target, "%s/primitive-atomic", root);
     static const char
-        *source = "library Write { Build :: fn() -> int { "
+        *source = "Write :: library { Build :: () -> int { "
                   "if(!BuildMakeDirectory(\"primitive/nested\") || "
                   "!BuildMakeDirectory(\"primitive/nested\")) { return 1; } "
                   "if(BuildMakeDirectory(\"primitive-atomic/child\")) { return "
@@ -784,7 +786,7 @@ TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure)
 
 TEST_CASE(private_argument_bounds_reject_before_authored_execution)
 {
-    static const char *source = "library Args { Build :: fn() -> int { return "
+    static const char *source = "Args :: library { Build :: () -> int { return "
                                 "BuildLength(BuildArguments()); } }";
     const char *arguments[257];
     for (int i = 0; i < 257; i++) {
@@ -862,7 +864,7 @@ static off_t file_size(const char *name)
 TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported)
 {
     static const char *
-        source = "library Output { Build :: fn() -> int { "
+        source = "Output :: library { Build :: () -> int { "
                  "worker:=BuildEnvironment(\"CHIBI_BUILD_WORKER\"); "
                  "if(RunBuildProbe([worker,\"build-argv\",\"probe\"])!=23) { "
                  "return 1; } "
@@ -924,7 +926,7 @@ TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries)
     snprintf(path, sizeof path, "%s/meta/fifo", root);
     REQUIRE(!mkfifo(path, 0600));
     static const char *
-        source = "library Meta { Build :: fn() -> int { "
+        source = "Meta :: library { Build :: () -> int { "
                  "kinds:=[BuildFileKind(\"meta\"),BuildFileKind(\"meta/"
                  "a\"),BuildFileKind(\"meta/link\"),"
                  "BuildFileKind(\"meta/dangling\"),BuildFileKind(\"meta/"
@@ -948,13 +950,13 @@ TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries)
                  "BuildFileStamp(\"meta/a\")==stamp) { return 6; } "
                  "return 0; } }";
     static const char *failures[] = {
-        "library Meta { Build :: fn() -> int { BuildListDirectory(\"meta/a\"); "
+        "Meta :: library { Build :: () -> int { BuildListDirectory(\"meta/a\"); "
         "return 0; } }",
-        "library Meta { Build :: fn() -> int { BuildFileStamp(\"meta/loop\"); "
+        "Meta :: library { Build :: () -> int { BuildFileStamp(\"meta/loop\"); "
         "return 0; } }",
-        "library Meta { Build :: fn() -> int { BuildFileKind(\"meta/loop/x\"); "
+        "Meta :: library { Build :: () -> int { BuildFileKind(\"meta/loop/x\"); "
         "return 0; } }",
-        "library Meta { Build :: fn() -> int { BuildListDirectory(\"many\"); "
+        "Meta :: library { Build :: () -> int { BuildListDirectory(\"many\"); "
         "return 0; } }",
     };
     static const char *diagnostics[] = {
@@ -990,7 +992,7 @@ TEST_CASE(private_copies_renames_and_removals_leave_whole_files)
     primitive_directory("copy-empty");
     primitive_link("copy-source", "copy-link");
     static const char *source =
-        "library Copy { Build :: fn() -> int { "
+        "Copy :: library { Build :: () -> int { "
         "if(!BuildCopyFile(\"copy-source\",\"copy-existing\") || "
         "!BuildCopyFile(\"copy-link\",\"copy-new\")) { return 1; } "
         "if(BuildCopyFile(\"copy-missing\",\"copy-other\") || "
@@ -1041,7 +1043,7 @@ TEST_CASE(private_hashes_match_sha256_vectors)
     primitive_file("hash-million", million, size);
     free(million);
     static const char *source =
-        "library Hash { Build :: fn() -> int { "
+        "Hash :: library { Build :: () -> int { "
         "abc:="
         "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"; "
         "if(BuildHashFile(\"hash-abc\")!=abc || BuildHashText(\"abc\")!=abc) { "
@@ -1059,7 +1061,7 @@ TEST_CASE(private_hashes_match_sha256_vectors)
         "{ return 4; } "
         "if(BuildHashFile(\"hash-missing\")!=\"\") { return 5; } "
         "return 0; } }";
-    static const char *directory = "library Hash { Build :: fn() -> int { "
+    static const char *directory = "Hash :: library { Build :: () -> int { "
                                    "BuildHashFile(\".\"); return 0; } }";
     for (int b = 0; b < 2; b++) {
         behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
@@ -1076,7 +1078,7 @@ TEST_CASE(private_environment_names_list_the_allowed_snapshot)
     char *saved = getenv("CCACHE_TEMPDIR") ? strdup(getenv("CCACHE_TEMPDIR")) : NULL;
     REQUIRE(!setenv("CCACHE_TEMPDIR", "", 1));
     static const char
-        *source = "library Names { Build :: fn() -> int { "
+        *source = "Names :: library { Build :: () -> int { "
                   "names:=BuildJoin([\"\",BuildJoin(BuildEnvironmentNames(),\"|"
                   "\"),\"\"],\"|\"); "
                   "if(BuildBefore(names,\"|CHIBI_BUILD_WORKER|\")==names || "

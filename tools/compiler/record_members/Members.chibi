@@ -16,8 +16,8 @@ Member :: union {
 
 // Authored-record bits are raw metadata aligned with the complete merged
 // catalog. All decisions, including original-order lookup and origin, live here.
-Select :: pure fn(environment: reader.Environment, authored_records: bool[],
-                  tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
+Select :: (environment: reader.Environment, authored_records: bool[],
+           tree: reader.Tree, node: int, scope: int, document: int) -> Selection {
     empty: syntax.Diagnostic[] = [];
     if (!reader.Kind(tree, node, "record_declaration")) {
         return Selection.Selected(-1, -1, empty);
@@ -64,8 +64,8 @@ Select :: pure fn(environment: reader.Environment, authored_records: bool[],
 // handles default_node separately, then supplies refreshed facts for the next
 // member. Previous names include every earlier field, even invalid ones.
 // Defaults are discovered, never read, resolved, checked or evaluated here.
-Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
-                previous_names: string[], scope: int, document: int) -> Member {
+Read :: (environment: reader.Environment, tree: reader.Tree, member: int,
+         previous_names: string[], scope: int, document: int) -> Member {
     token := reader.Field(tree, member, "name");
     switch reader.Name(tree, token, document) {
         case .Name(name, name_diagnostics):
@@ -73,7 +73,7 @@ Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
             annotation := reader.Type(environment, tree, reader.Field(tree, member, "type"), scope, document);
             switch annotation {
                 case .Read(value, has_unit, unit, updated, errors, uses, publications):
-                    foreach (error in errors) {
+                    for (error in errors) {
                         diagnostics = array_add(diagnostics, error);
                     }
                     admissible := true;
@@ -86,7 +86,7 @@ Read :: pure fn(environment: reader.Environment, tree: reader.Tree, member: int,
                                 admissible = false;
                             }
                     }
-                    foreach (previous in previous_names) {
+                    for (previous in previous_names) {
                         if (previous == name) {
                             diagnostics = array_add(diagnostics, reader.Diagnostic(tree, member, document,
                                                                                    format_text("Duplicate record field '{}'", name)));

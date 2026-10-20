@@ -102,8 +102,11 @@ static void init(facts *f)
                                      .type = f->types[1],
                                      .initializer = -1 };
     /* Deliberately different signature/symbol orders, full-width exact IDs. */
-    f->variables[0] = (execution_module_state){ f->symbols[1].id, integer(19), true };
-    f->variables[1] = (execution_module_state){ f->symbols[0].id, integer(-7), false };
+    f->variables[0] = (execution_module_state){ .id = f->symbols[1].id,
+                                                .initial = integer(19),
+                                                .shared = true };
+    f->variables[1] = (execution_module_state){ .id = f->symbols[0].id,
+                                                .initial = integer(-7) };
     f->vectors[0][0] = integer(5);
     f->vectors[0][1] = integer(1);
     f->vectors[1][0] = integer(4);
@@ -408,7 +411,7 @@ static bool pack(int b, const facts *f, pin_value *out)
                      offsetof(behavior_function_context, results) };
     REQUIRE(ints(&a[9], keys, values, 6));
     a[10] = integer(f->analysis.expression_count);
-    REQUIRE(!pin_union_value(&input, tag(b, "Request", "Tables"), a, 11, out));
+    REQUIRE(!compiler_fixture_union(&input, tag(b, "Request", "Tables"), a, 11, out));
     return true;
 }
 static bool same_value(pin_value a, pin_value b)
@@ -506,7 +509,7 @@ static bool owned(arena *owner, const pin_value *v, int depth)
             return true;
         }
         REQUIRE(arena_contains(owner, a) && a->count <= 256 && a->count >= 0);
-        REQUIRE(!a->count || arena_contains(owner, a->items));
+        REQUIRE(!a->count || (a->items && arena_contains(owner, a->items)));
         for (int i = 0; i < a->count; i++) {
             REQUIRE(owned(owner, &a->items[i], depth + 1));
         }

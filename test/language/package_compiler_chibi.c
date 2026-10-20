@@ -48,41 +48,50 @@ typedef struct
 {
     const char *function, *arguments, *expected;
 } sample_call;
+/* Each group of samples runs under its own selector, so each selector stays
+ * within its time ceiling: unions, constants, patterns and integer types
+ * (TYPE_SAMPLES), and the imports sample, which compiles all of core:strings
+ * (IMPORT_SAMPLES). */
+typedef enum
+{
+    BASE_SAMPLES,
+    TYPE_SAMPLES,
+    IMPORT_SAMPLES
+} sample_group;
 /* `source` is package facts; `library` is package lib when present, and
- * `core` adds core:strings. Samples of unions, imports, constants, patterns
- * and integer types (`types`) run under their own selector, so each selector
- * stays within its time ceiling. An `updates` sample's `Build(count)` updates
- * a local array in place: doubling its count at most doubles the values it
+ * `core` adds core:strings. An `updates` sample's `Build(count)` updates a
+ * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. */
 typedef struct
 {
     const char *name, *source, *library;
-    bool core, types, updates;
+    sample_group group;
+    bool core, updates;
     sample_call calls[CALLS];
     const char *message;
     int line, column;
 } sample;
 static const sample samples[] = {
     { .name = "constant",
-      .source = "package facts\nAnswer :: pure fn() -> int { return 42; }",
+      .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
     { .name = "parameters",
-      .source = "package facts\nAdd :: pure fn(a: int, b: int) -> int { return "
+      .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
       .calls = { { "Add", "[3,4]", "[12]" }, { "Add", "[-5,2]", "[0]" } } },
     { .name = "loops",
-      .source = "package facts\nSum :: pure fn(n: int) -> int {\n"
+      .source = "package facts\nSum :: (n: int) -> int {\n"
                 "    total: int = 0;\n    i: int = 0;\n"
                 "    while (i < n) { total += i; i += 1; }\n    return "
                 "total;\n}",
       .calls = { { "Sum", "[10]", "[45]" }, { "Sum", "[0]", "[0]" } } },
     { .name = "recursion",
-      .source = "package facts\nFib :: pure fn(n: int) -> int {\n"
+      .source = "package facts\nFib :: (n: int) -> int {\n"
                 "    if (n < 2) { return n; }\n    return Fib(n - 1) + Fib(n - "
                 "2);\n}",
       .calls = { { "Fib", "[15]", "[610]" } } },
     { .name = "control",
-      .source = "package facts\nCount :: pure fn(n: int) -> int {\n"
+      .source = "package facts\nCount :: (n: int) -> int {\n"
                 "    found: int = 0;\n    i: int = 0;\n"
                 "    while (true) {\n        i += 1;\n        if (i > n) { "
                 "break; }\n"
@@ -91,9 +100,9 @@ static const sample samples[] = {
                 "    return found;\n}",
       .calls = { { "Count", "[15]", "[8]" } } },
     { .name = "logic",
-      .source = "package facts\nEven :: pure fn(n: int) -> bool { return !(n % "
+      .source = "package facts\nEven :: (n: int) -> bool { return !(n % "
                 "2 != 0) && n >= 0; }\n"
-                "Both :: pure fn(a: int, b: int) -> bool { return Even(a) && "
+                "Both :: (a: int, b: int) -> bool { return Even(a) && "
                 "Even(b) || a == b; }",
       .calls = { { "Even", "[4]", "[true]" },
                  { "Even", "[-4]", "[false]" },
@@ -103,14 +112,14 @@ static const sample samples[] = {
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; title: string; open: bool; "
                 "}\n"
-                "Make :: pure fn(x: int, y: int) -> Point {\n"
+                "Make :: (x: int, y: int) -> Point {\n"
                 "    p: Point = {x: x, y: y, title: \"p\", open: x < y};\n"
                 "    return p;\n}\n"
-                "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
-                "Moved :: pure fn(p: Point, dx: int) -> Point {\n"
+                "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                "Moved :: (p: Point, dx: int) -> Point {\n"
                 "    return {title: p.title, open: p.open, y: p.y, x: p.x + "
                 "dx};\n}\n"
-                "Total :: pure fn(n: int) -> int {\n"
+                "Total :: (n: int) -> int {\n"
                 "    acc: Point = {x: 0, y: 0, title: \"\", open: false};\n"
                 "    i: int = 0;\n"
                 "    while (i < n) { acc = Moved(acc, i); i += 1; }\n"
@@ -123,14 +132,14 @@ static const sample samples[] = {
                  { "Total", "[5]", "[123]" } } },
     { .name = "strings",
       .source = "package facts\n"
-                "Name :: pure fn(name: string) -> string {\n"
+                "Name :: (name: string) -> string {\n"
                 "    if (name == \"\") { return \"nobody\"; }\n    return "
                 "name;\n}\n"
-                "Same :: pure fn(a: string, b: string) -> bool { return a == b "
+                "Same :: (a: string, b: string) -> bool { return a == b "
                 "&& !(a != b); }\n"
-                "Differ :: pure fn(a: string, b: string) -> bool { return a != "
+                "Differ :: (a: string, b: string) -> bool { return a != "
                 "b; }\n"
-                "Quoted :: pure fn() -> string { text: string = "
+                "Quoted :: () -> string { text: string = "
                 "\"a\\\"b\\u0041\"; "
                 "return text; }",
       .calls = { { "Name", "[\"\"]", "[\"nobody\"]" },
@@ -139,55 +148,45 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
-    { .name = "quoted names",
-      .source = "package facts\n"
-                "Pair :: struct { \"first\": int; second: int; }\n"
-                "Make :: pure fn(\"n\": int) -> Pair {\n"
-                "    \"p\": Pair = {\"first\": n, second: n + 1};\n    return "
-                "p;\n}\n"
-                "Total :: pure fn(p: Pair) -> int { return p.\"first\" + "
-                "p.second; }",
-      .calls = { { "Make", "[1]", "[{\"first\":1,\"second\":2}]" },
-                 { "Total", "[{\"first\":2,\"second\":3}]", "[5]" } } },
     { .name = "arrays",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
-                "Squares :: pure fn(n: int) -> int[] {\n"
+                "Squares :: (n: int) -> int[] {\n"
                 "    out: int[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { out = array_add(out, i * i); i += 1; }\n"
                 "    return out;\n}\n"
-                "Total :: pure fn(xs: int[]) -> int {\n"
+                "Total :: (xs: int[]) -> int {\n"
                 "    sum: int = 0;\n"
-                "    foreach (x in xs) { if (x == 4) { continue; } sum += x; "
+                "    for (x in xs) { if (x == 4) { continue; } sum += x; "
                 "}\n"
                 "    return sum;\n}\n"
-                "Edit :: pure fn() -> int {\n"
+                "Edit :: () -> int {\n"
                 "    xs: int[] = [1, 2, 3];\n    xs[1] = 20;\n    xs[2] += 5;\n"
                 "    copy := xs;\n    more: int[] = [7, 8];\n    xs = "
                 "append(xs, more);\n"
                 "    return xs[1] + xs[2] + length(xs) * 100 + length(copy) * "
                 "1000;\n}\n"
-                "Points :: pure fn(n: int) -> Point[] {\n"
+                "Points :: (n: int) -> Point[] {\n"
                 "    ps: Point[] = [];\n    i: int = 0;\n"
                 "    while (i < n) { p: Point = {x: i, y: i * 2}; ps = "
                 "array_add(ps, p); i += 1; }\n"
                 "    return ps;\n}\n"
-                "SumY :: pure fn(ps: Point[]) -> int {\n"
+                "SumY :: (ps: Point[]) -> int {\n"
                 "    total: int = 0;\n"
-                "    foreach (p in ps) { total += p.y; if (total > 100) { "
+                "    for (p in ps) { total += p.y; if (total > 100) { "
                 "break; } }\n"
                 "    return total + ps[0].x;\n}\n"
-                "Words :: pure fn() -> string[] {\n"
+                "Words :: () -> string[] {\n"
                 "    ws: string[] = [\"a\", \"b\", \"c\"];\n    return "
                 "slice(ws, 1, 2);\n}\n"
-                "Counts :: pure fn(n: int) -> int { return length(Squares(n)) "
+                "Counts :: (n: int) -> int { return length(Squares(n)) "
                 "+ Total(Squares(n)); }\n"
-                "Pick :: pure fn(xs: int[], i: int) -> int { return xs[i]; }\n"
-                "Index :: pure fn(i: int) -> int { return i; }\n"
-                "Nested :: pure fn(ps: Point[]) -> int {\n"
+                "Pick :: (xs: int[], i: int) -> int { return xs[i]; }\n"
+                "Index :: (i: int) -> int { return i; }\n"
+                "Nested :: (ps: Point[]) -> int {\n"
                 "    total: int = 0;\n    ws: string[] = [\"a\", \"bb\"];\n"
-                "    foreach (p in ps) {\n        if (p.x == 0) { continue; }\n"
-                "        foreach (w in ws) { if (w == \"a\") { continue; } "
+                "    for (p in ps) {\n        if (p.x == 0) { continue; }\n"
+                "        for (w in ws) { if (w == \"a\") { continue; } "
                 "total += p.x * 10; }\n    }\n"
                 "    counts: int[] = [0, 0, 0];\n    counts[Index(2)] += 7;\n"
                 "    return total + counts[2];\n}",
@@ -203,13 +202,13 @@ static const sample samples[] = {
                    "[[{\"x\":0,\"y\":1},{\"x\":2,\"y\":0},{\"x\":3,\"y\":0}]]",
                    "[57]" } } },
     { .name = "unions",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Shape :: union { Circle(radius: int) | Box(width: int, "
                 "height: int) | Spot(at: Point)\n"
                 "    | Named(name: string, sides: int[]) | Empty }\n"
-                "Make :: pure fn(kind: int) -> Shape {\n"
+                "Make :: (kind: int) -> Shape {\n"
                 "    if (kind == 0) { return Shape.Circle(3); }\n"
                 "    if (kind == 1) { return Shape.Box(2, 5); }\n"
                 "    if (kind == 2) { p: Point = {x: 4, y: 6}; return "
@@ -217,8 +216,8 @@ static const sample samples[] = {
                 "    if (kind == 3) { sides: int[] = [1, 2, 3]; return "
                 "Shape.Named(\"tri\", sides); }\n"
                 "    return Shape.Empty;\n}\n"
-                "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
-                "Area :: pure fn(shape: Shape) -> int {\n"
+                "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                "Area :: (shape: Shape) -> int {\n"
                 "    switch shape {\n"
                 "        case .Circle(radius): return radius * radius * 3;\n"
                 "        case .Box(width, height): return width * height;\n"
@@ -226,25 +225,25 @@ static const sample samples[] = {
                 "at.x;\n"
                 "        case .Named(name, sides):\n"
                 "            total: int = 0;\n"
-                "            foreach (side in sides) { total += side; }\n"
+                "            for (side in sides) { total += side; }\n"
                 "            if (name == \"tri\") { total += 100; }\n"
                 "            return total;\n"
                 "        case .Empty: return -1;\n"
                 "    }\n    return -2;\n}\n"
-                "Score :: pure fn(n: int) -> int {\n"
+                "Score :: (n: int) -> int {\n"
                 "    total: int = 0;\n    i: int = 0;\n"
                 "    while (i < n) { total += Area(Make(i)); i += 1; }\n"
                 "    return total;\n}\n"
-                "Kinds :: pure fn() -> int {\n"
+                "Kinds :: () -> int {\n"
                 "    shapes: Shape[] = [Shape.Circle(1), Shape.Empty, "
                 "Shape.Box(1, 1)];\n"
                 "    count: int = 0;\n"
-                "    foreach (shape in shapes) {\n"
+                "    for (shape in shapes) {\n"
                 "        switch shape {\n            case .Empty: count += "
                 "10;\n            case .Box: count += 100;\n"
                 "            case: count += 1;\n        }\n"
                 "    }\n    return count;\n}\n"
-                "Pair :: pure fn(a: Shape, b: Shape) -> int {\n"
+                "Pair :: (a: Shape, b: Shape) -> int {\n"
                 "    switch a {\n"
                 "        case .Empty:\n"
                 "            switch b {\n                case .Empty: return "
@@ -254,7 +253,7 @@ static const sample samples[] = {
                 "        case .Spot(at): return at.x;\n"
                 "        case .Named(name, sides): return length(sides);\n"
                 "    }\n    return -1;\n}\n"
-                "Nested :: pure fn() -> int {\n"
+                "Nested :: () -> int {\n"
                 "    return Pair(Shape.Empty, Shape.Empty) * 10 + "
                 "Pair(Shape.Empty, Shape.Circle(1)) * 100 + Pair(Shape.Box(3, "
                 "4), Shape.Empty);\n}",
@@ -266,42 +265,42 @@ static const sample samples[] = {
                  { "Make", "[3]", "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
                  { "Make", "[4]", "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
     { .name = "imports",
-      .types = true,
+      .group = IMPORT_SAMPLES,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "import strings \"core:strings\"\n"
-                "Total :: pure fn(n: int) -> int { return lib.Twice(n) + "
+                "Total :: (n: int) -> int { return lib.Twice(n) + "
                 "lib.Sum(lib.Make(n, 3)); }\n"
-                "Local :: pure fn() -> int { p: lib.Point = {x: 2, y: 5}; "
+                "Local :: () -> int { p: lib.Point = {x: 2, y: 5}; "
                 "return lib.Sum(p) + p.x; }\n"
-                "Shapes :: pure fn() -> int {\n"
+                "Shapes :: () -> int {\n"
                 "    return lib.Size(lib.Shape.Dot(lib.Make(1, 2))) + "
                 "lib.Size(lib.Shape.Line(7)) * 10 +\n"
                 "        lib.Size(lib.Shape.Nothing);\n}\n"
-                "Match :: pure fn(n: int) -> int {\n"
+                "Match :: (n: int) -> int {\n"
                 "    shape := lib.Shape.Line(n);\n"
                 "    switch shape { case .Line(size): return size; case: "
                 "return 0; }\n"
                 "    return -1;\n}\n"
-                "Measure :: pure fn(s: string) -> int {\n"
+                "Measure :: (s: string) -> int {\n"
                 "    return strings.ByteLength(s) * 10 + strings.Compare(s, "
                 "\"m\") + lib.Width(s) * 100;\n}\n"
-                "Echo :: pure fn(p: lib.Point) -> lib.Point { return p; }\n"
-                "Points :: pure fn(n: int) -> lib.Point[] { points: "
+                "Echo :: (p: lib.Point) -> lib.Point { return p; }\n"
+                "Points :: (n: int) -> lib.Point[] { points: "
                 "lib.Point[] = [lib.Make(n, n)]; return points; }",
       .library = "package lib\n"
                  "import text \"core:strings\"\n"
                  "Point :: struct { x: int; y: int; }\n"
                  "Shape :: union { Dot(at: Point) | Line(size: int) | Nothing "
                  "}\n"
-                 "Make :: pure fn(x: int, y: int) -> Point { p: Point = {x: x, "
+                 "Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
                  "y: y}; return p; }\n"
-                 "Sum :: pure fn(p: Point) -> int { return p.x + p.y; }\n"
-                 "Twice :: pure fn(n: int) -> int { return Helper(n) * 2; }\n"
-                 "Helper :: pure fn(n: int) -> int { return n + 1; }\n"
-                 "Width :: pure fn(s: string) -> int { return "
+                 "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                 "Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
+                 "Helper :: (n: int) -> int { return n + 1; }\n"
+                 "Width :: (s: string) -> int { return "
                  "text.ByteLength(s); }\n"
-                 "Size :: pure fn(shape: Shape) -> int {\n"
+                 "Size :: (shape: Shape) -> int {\n"
                  "    switch shape {\n"
                  "        case .Dot(at): return Sum(at);\n"
                  "        case .Line(size): return size;\n"
@@ -316,42 +315,42 @@ static const sample samples[] = {
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
     { .name = "constants",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "import lib \"project:lib\"\n"
                 "Base: int : 40;\n"
                 "Down: int : -2;\n"
                 "Plain: int : 7;\n"
-                "Sum :: pure fn(n: int) -> int { return n + Base + Down + "
+                "Sum :: (n: int) -> int { return n + Base + Down + "
                 "Plain + lib.Step; }\n"
-                "Hidden :: pure fn() -> int { Base: int = 1; return Base; }\n"
-                "Limits :: pure fn() -> int {\n"
+                "Hidden :: () -> int { Base: int = 1; return Base; }\n"
+                "Limits :: () -> int {\n"
                 "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
                 "lib.Low; }\n"
                 "    return 0;\n}\n"
-                "Scale :: pure fn() -> int { return lib.Scaled(2); }",
+                "Scale :: () -> int { return lib.Scaled(2); }",
       .library = "package lib\n"
                  "Step: int : 100;\n"
                  "Low: int : -2147483648;\n"
                  "High: int : 2147483647;\n"
-                 "Scaled :: pure fn(n: int) -> int { return n * Step; }",
+                 "Scaled :: (n: int) -> int { return n * Step; }",
       .calls = { { "Sum", "[3]", "[148]" },
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
                  { "Scale", "[]", "[200]" } } },
     { .name = "patterns",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
                 "Value :: union { Int(n: int) | Text(s: string) | Pair(a: int, "
                 "b: int) | Spot(at: Point) | Nothing }\n"
-                "Make :: pure fn(k: int) -> Value {\n"
+                "Make :: (k: int) -> Value {\n"
                 "    if (k == 0) { return Value.Int(5); }\n"
                 "    if (k == 1) { return Value.Text(\"hey\"); }\n"
                 "    if (k == 2) { return Value.Pair(3, 4); }\n"
                 "    if (k == 3) { return Value.Pair(4, 3); }\n"
                 "    return Value.Nothing;\n}\n"
-                "Score :: pure fn(k: int) -> int {\n"
+                "Score :: (k: int) -> int {\n"
                 "    v := Make(k);\n"
                 "    if (v is .Int(n)) { return n; }\n"
                 "    if (v is .Pair(a, b) && a < b) { return a * 10 + b; }\n"
@@ -359,18 +358,18 @@ static const sample samples[] = {
                 "    if ((v is .Text(s)) && s == \"hey\") { return 100; } else "
                 "{ return 0; }\n"
                 "    return -2;\n}\n"
-                "Kind :: pure fn(k: int) -> int {\n"
+                "Kind :: (k: int) -> int {\n"
                 "    v := Make(k);\n"
                 "    if (v is .Int(n)) { return n; } else if (v is .Pair(a, "
                 "b)) { return a + b; } else { return -5; }\n"
                 "    return 0;\n}\n"
-                "Count :: pure fn() -> int {\n"
+                "Count :: () -> int {\n"
                 "    v := Make(2);\n"
                 "    total: int = 0;\n"
                 "    while (v is .Pair(a, b) && a < 10) { total += a; v = "
                 "Value.Pair(a + b, b); }\n"
                 "    return total;\n}\n"
-                "Walk :: pure fn() -> int {\n"
+                "Walk :: () -> int {\n"
                 "    start: Point = {x: 0, y: 1};\n"
                 "    v := Value.Spot(start);\n"
                 "    total: int = 0;\n"
@@ -380,7 +379,7 @@ static const sample samples[] = {
                 "        v = Value.Spot(next);\n"
                 "    }\n"
                 "    return total;\n}\n"
-                "Empty :: pure fn(k: int) -> bool { return Make(k) is "
+                "Empty :: (k: int) -> bool { return Make(k) is "
                 ".Nothing; }",
       .calls = { { "Score", "[0]", "[5]" },
                  { "Score", "[1]", "[100]" },
@@ -393,41 +392,41 @@ static const sample samples[] = {
                  { "Walk", "[]", "[33]" },
                  { "Empty", "[4]", "[true]" } } },
     { .name = "shadowing",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
-                "Shadow :: pure fn(n: int) -> int {\n"
+                "Shadow :: (n: int) -> int {\n"
                 "    m := n + 1;\n"
                 "    total: int = m;\n"
                 "    if (m > 0) { total: int = 100; total += 1; }\n"
                 "    if (m > 1) { m: int = 5; total += m; }\n"
                 "    return total + m;\n}\n"
                 "U :: union { A(x: int) | B }\n"
-                "Arm :: pure fn() -> int { u := U.A(7); switch u { case .A(n): "
+                "Arm :: () -> int { u := U.A(7); switch u { case .A(n): "
                 "n: int = 2; return n; case .B: return 0; } return -1; }",
       .calls = { { "Shadow", "[3]", "[13]" }, { "Arm", "[]", "[2]" } } },
     { .name = "integers",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Mask: uint64 : 0xFF00000000000000;\n"
                 "Small: byte : 200;\n"
-                "Hash :: pure fn(bytes: byte[]) -> uint64 {\n"
+                "Hash :: (bytes: byte[]) -> uint64 {\n"
                 "    hash: uint64 = 1469598103934665603;\n"
-                "    foreach (item in bytes) { hash = (hash ^ uint64(item)) * "
+                "    for (item in bytes) { hash = (hash ^ uint64(item)) * "
                 "1099511628211; }\n"
                 "    return hash;\n}\n"
-                "Bytes :: pure fn() -> byte[] {\n"
+                "Bytes :: () -> byte[] {\n"
                 "    out: byte[] = [1, 2, 255];\n"
                 "    out = array_add(out, byte(wrap: 300));\n"
                 "    out = array_add(out, Small);\n"
                 "    return out;\n}\n"
-                "High :: pure fn(n: int) -> int { return int(wrap: (Mask >> "
+                "High :: (n: int) -> int { return int(wrap: (Mask >> "
                 "56) + uint64(n)); }\n"
-                "Mixed :: pure fn(a: int, b: int64) -> int64 { return a + b; "
+                "Mixed :: (a: int, b: int64) -> int64 { return a + b; "
                 "}\n"
-                "Store :: pure fn(a: int) -> int64 { x: int64 = a; x += 10; x "
+                "Store :: (a: int) -> int64 { x: int64 = a; x += 10; x "
                 "*= 3; return x; }\n"
-                "Narrow :: pure fn(v: int64) -> int { return int(v); }\n"
-                "Clamp :: pure fn(v: int) -> byte { return byte(clamp: v); }",
+                "Narrow :: (v: int64) -> int { return int(v); }\n"
+                "Clamp :: (v: int) -> byte { return byte(clamp: v); }",
       .calls = { { "Hash", "[[1,2,3]]", "[11570874782335668893]" },
                  { "Bytes", "[]", "[[1,2,255,44,200]]" },
                  { "High", "[1]", "[256]" },
@@ -438,18 +437,18 @@ static const sample samples[] = {
                  { "Clamp", "[300]", "[255]" },
                  { "Clamp", "[-5]", "[0]" } } },
     { .name = "wide values",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Wide: int64 : -5000000000;\n"
                 "Tag :: union { Bits(value: uint64) | None }\n"
-                "Shifts :: pure fn(n: int) -> uint64 { v := uint64(n); return "
+                "Shifts :: (n: int) -> uint64 { v := uint64(n); return "
                 "(v << 4) | (v >> 60) & 0xF; }\n"
-                "Equal :: pure fn(a: int, b: int) -> bool { return uint64(a) "
+                "Equal :: (a: int, b: int) -> bool { return uint64(a) "
                 "== uint64(b) && uint64(a) != 0; }\n"
-                "Twice :: pure fn() -> int64 { return Wide * 2; }\n"
-                "Negative :: pure fn(n: int64) -> bool { return n < 0; }\n"
-                "Mk :: pure fn(v: uint64) -> Tag { return Tag.Bits(v); }\n"
-                "Pick :: pure fn(n: int) -> uint64 {\n"
+                "Twice :: () -> int64 { return Wide * 2; }\n"
+                "Negative :: (n: int64) -> bool { return n < 0; }\n"
+                "Mk :: (v: uint64) -> Tag { return Tag.Bits(v); }\n"
+                "Pick :: (n: int) -> uint64 {\n"
                 "    t := Mk(uint64(n) * 1000000007);\n"
                 "    switch t { case .Bits(value): return value; case .None: "
                 "return 0; }\n"
@@ -460,22 +459,22 @@ static const sample samples[] = {
                  { "Negative", "[-1]", "[true]" },
                  { "Pick", "[5]", "[5000000035]" } } },
     { .name = "inferred arrays",
-      .types = true,
+      .group = TYPE_SAMPLES,
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
-                "Sizes :: pure fn(n: int) -> int {\n"
+                "Sizes :: (n: int) -> int {\n"
                 "    flags := resize([false], n);\n"
                 "    counts := resize([int(0)], n);\n"
                 "    counts[0] = 7;\n"
                 "    total: int = 0;\n"
-                "    foreach (count in counts) { total += count; }\n"
+                "    for (count in counts) { total += count; }\n"
                 "    if (flags[1]) { return -1; }\n"
                 "    return total * 10 + length(flags);\n}\n"
-                "Words :: pure fn() -> int { first := \"x\"; words := [first, "
+                "Words :: () -> int { first := \"x\"; words := [first, "
                 "\"yy\", \"zzz\"]; return length(words); }\n"
-                "Points :: pure fn() -> int { p: Point = {x: 1, y: 2}; points "
+                "Points :: () -> int { p: Point = {x: 1, y: 2}; points "
                 ":= [p, p]; return points[1].y + length(points); }\n"
-                "Wide :: pure fn() -> uint64 { bits := [uint64(1), 2, 0xFF]; "
+                "Wide :: () -> uint64 { bits := [uint64(1), 2, 0xFF]; "
                 "return bits[1] + bits[2]; }",
       .calls = { { "Sizes", "[3]", "[73]" },
                  { "Words", "[]", "[3]" },
@@ -483,11 +482,11 @@ static const sample samples[] = {
                  { "Wide", "[]", "[257]" } } },
     { .name = "formatting",
       .source = "package facts\n"
-                "Label :: pure fn(n: int, name: string) -> string { return "
+                "Label :: (n: int, name: string) -> string { return "
                 "format_text(\"{}:{}\", n, name); }\n"
-                "Plain :: pure fn() -> string { return format_text(\"plain\"); "
+                "Plain :: () -> string { return format_text(\"plain\"); "
                 "}\n"
-                "Mixed :: pure fn(flag: bool) -> string { big: uint64 = "
+                "Mixed :: (flag: bool) -> string { big: uint64 = "
                 "0xFFFFFFFFFFFFFFFF; return format_text(\"{} {} {}\", flag, "
                 "big, int64(-3)); }",
       .calls = { { "Label", "[3,\"x\"]", "[\"3:x\"]" },
@@ -495,14 +494,14 @@ static const sample samples[] = {
                  { "Mixed", "[true]", "[\"true 18446744073709551615 -3\"]" } } },
     { .name = "native results",
       .source = "package facts\n"
-                "Decode :: pure fn(literal: string) -> string {\n"
+                "Decode :: (literal: string) -> string {\n"
                 "    decoded := compiler_json_string(literal);\n"
                 "    if (!decoded.valid) { return \"?\"; }\n"
                 "    return format_text(\"{}/{}\", decoded.value, "
                 "decoded.byte_length);\n}\n"
-                "Valid :: pure fn(literal: string) -> bool { return "
+                "Valid :: (literal: string) -> bool { return "
                 "compiler_json_string(literal).Valid; }\n"
-                "Length :: pure fn(literal: string) -> int { return "
+                "Length :: (literal: string) -> int { return "
                 "compiler_json_string(literal).ByteLength; }",
       .calls = { { "Decode", "[\"\\\"a\\\\u00e9\\\"\"]", "[\"a\303\251/3\"]" },
                  { "Decode", "[\"bad\"]", "[\"?\"]" },
@@ -511,11 +510,11 @@ static const sample samples[] = {
     { .name = "written parameters",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
-                "Grow :: pure fn(xs: int[], n: int) -> int[] { xs = "
+                "Grow :: (xs: int[], n: int) -> int[] { xs = "
                 "array_add(xs, n); xs[0] = 9; return xs; }\n"
-                "Swap :: pure fn(p: Point, q: Point) -> int { p = q; return "
+                "Swap :: (p: Point, q: Point) -> int { p = q; return "
                 "p.x * 10 + q.y; }\n"
-                "Caller :: pure fn() -> int {\n"
+                "Caller :: () -> int {\n"
                 "    xs: int[] = [1, 2];\n"
                 "    ys := Grow(xs, 5);\n"
                 "    a: Point = {x: 1, y: 2};\n"
@@ -526,10 +525,10 @@ static const sample samples[] = {
     { .name = "field assignment",
       .source = "package facts\n"
                 "Note :: struct { text: string; count: int; open: bool; }\n"
-                "Stamp :: pure fn(note: Note, count: int) -> Note { note.count "
+                "Stamp :: (note: Note, count: int) -> Note { note.count "
                 "= count; note.text = format_text(\"#{}\", count); return "
                 "note; }\n"
-                "Fields :: pure fn(n: int) -> string {\n"
+                "Fields :: (n: int) -> string {\n"
                 "    note: Note = {text: \"a\", count: 1, open: false};\n"
                 "    copy := note;\n"
                 "    note.count += n;\n"
@@ -545,7 +544,7 @@ static const sample samples[] = {
       .calls = { { "Fields", "[4]", "[\"a 10 true 6 #7 7\"]" } } },
     { .name = "record push",
       .source = "package facts\nNode :: struct { kind: string; start: int; }\n"
-                "Build :: pure fn(count: int) -> int {\n"
+                "Build :: (count: int) -> int {\n"
                 "    nodes: Node[] = [];\n"
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
@@ -557,7 +556,7 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[3]" } } },
     { .name = "extension",
-      .source = "package facts\nBuild :: pure fn(count: int) -> int {\n"
+      .source = "package facts\nBuild :: (count: int) -> int {\n"
                 "    xs: int[] = [];\n"
                 "    index: int = 0;\n"
                 "    while (index < count) {\n"
@@ -568,152 +567,158 @@ static const sample samples[] = {
       .updates = true,
       .calls = { { "Build", "[3]", "[6]" } } },
     { .name = "bounds",
-      .source = "package facts\nPick :: pure fn(xs: int[], i: int) -> int { "
+      .source = "package facts\nPick :: (xs: int[], i: int) -> int { "
                 "return xs[i]; }",
       .calls = { { "Pick", "[[1,2],1]", "[2]" },
                  { "Pick", "[[1,2],-1]", NULL },
                  { "Pick", "[[],0]", NULL } } },
     { .name = "unknown name",
-      .source = "package facts\nAnswer :: pure fn() -> int { return missing; }",
+      .source = "package facts\nAnswer :: () -> int { return missing; }",
       .message = "Unknown name 'missing'",
       .line = 2,
-      .column = 37 },
+      .column = 30 },
     { .name = "arity",
-      .source = "package facts\nOne :: pure fn(a: int) -> int { return a; "
-                "}\nTwo :: pure fn() -> int { return One(); }",
+      .source = "package facts\nOne :: (a: int) -> int { return a; "
+                "}\nTwo :: () -> int { return One(); }",
       .message = "call has the wrong number of arguments",
       .line = 3,
-      .column = 34 },
+      .column = 27 },
     { .name = "types",
-      .source = "package facts\nAnswer :: pure fn() -> int { return true; }",
+      .source = "package facts\nAnswer :: () -> int { return true; }",
       .message = "returned value differs from the result type",
       .line = 2,
-      .column = 30 },
+      .column = 23 },
     { .name = "untyped literal",
       .source = "package facts\nPair :: struct { a: int; }\n"
-                "One :: pure fn() -> int { p := {a: 1}; return p.a; }",
+                "One :: () -> int { p := {a: 1}; return p.a; }",
       .message = "Struct literal needs an explicit record type",
       .line = 3,
-      .column = 32 },
+      .column = 25 },
     { .name = "unknown field",
       .source = "package facts\nPair :: struct { a: int; }\n"
-                "One :: pure fn(p: Pair) -> int { return p.b; }",
+                "One :: (p: Pair) -> int { return p.b; }",
       .message = "Unknown field 'b'",
       .line = 3,
-      .column = 41 },
+      .column = 34 },
     { .name = "missing field",
       .source = "package facts\nPair :: struct { a: int; b: int; }\n"
-                "One :: pure fn() -> Pair { return {a: 1}; }",
+                "One :: () -> Pair { return {a: 1}; }",
       .message = "Struct literal needs every field",
       .line = 3,
-      .column = 35 },
+      .column = 28 },
     { .name = "duplicate member",
       .source = "package facts\nPair :: struct { a: int; b: int; }\n"
-                "One :: pure fn() -> Pair { return {a: 1, a: 2}; }",
+                "One :: () -> Pair { return {a: 1, a: 2}; }",
       .message = "Duplicate literal member 'a'",
       .line = 3,
-      .column = 42 },
+      .column = 35 },
     { .name = "shared scope",
       .source = "package facts\nPoint :: struct { x: int; }\n"
-                "Point :: pure fn() -> int { return 1; }",
+                "Point :: () -> int { return 1; }",
       .message = "Duplicate declaration 'Point'",
       .line = 3,
       .column = 1 },
     { .name = "no value",
-      .source = "package facts\nNothing :: pure fn() { }\n"
-                "One :: pure fn() -> int { x := Nothing(); return 0; }",
+      .source = "package facts\nNothing :: () { }\n"
+                "One :: () -> int { x := Nothing(); return 0; }",
       .message = "call has no value",
       .line = 3,
-      .column = 27 },
+      .column = 20 },
     { .name = "untyped array",
-      .source = "package facts\nOne :: pure fn() -> int { xs := [1]; return 0; "
+      .source = "package facts\nOne :: () -> int { xs := [1]; return 0; "
                 "}",
       .message = "an untyped number is a double; give the array an integer "
                  "type",
       .line = 2,
-      .column = 34 },
+      .column = 27 },
     { .name = "unknown function",
-      .source = "package facts\nOne :: pure fn() -> int { return Missing(1); }",
+      .source = "package facts\nOne :: () -> int { return Missing(1); }",
       .message = "Unknown function 'Missing'",
       .line = 2,
-      .column = 34 },
+      .column = 27 },
     { .name = "index type",
-      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { return "
+      .source = "package facts\nOne :: (xs: int[]) -> int { return "
                 "xs[true]; }",
       .message = "index needs an int",
       .line = 2,
-      .column = 46 },
-    { .name = "foreach scalar",
-      .source = "package facts\nOne :: pure fn(n: int) -> int { foreach (x in "
-                "n) { } return 0; }",
-      .message = "foreach needs an array",
+      .column = 39 },
+    { .name = "range for",
+      .source = "package facts\nOne :: () -> int { for i in 0..3 { } return 0; "
+                "}",
+      .message = "for loops support only `for name in array`",
       .line = 2,
-      .column = 47 },
+      .column = 20 },
+    { .name = "for scalar",
+      .source = "package facts\nOne :: (n: int) -> int { for (x in "
+                "n) { } return 0; }",
+      .message = "for needs an array",
+      .line = 2,
+      .column = 36 },
     { .name = "untyped wildcard argument",
-      .source = "package facts\nOne :: pure fn() -> string { return "
+      .source = "package facts\nOne :: () -> string { return "
                 "format_text(\"{}\", 1); }",
       .message = "a number needs an integer type here",
       .line = 2,
-      .column = 55 },
+      .column = 48 },
     { .name = "inferred mismatch",
-      .source = "package facts\nOne :: pure fn(xs: int[]) -> int { ys := "
+      .source = "package facts\nOne :: (xs: int[]) -> int { ys := "
                 "array_add(xs, true); return length(ys); }",
       .message = "argument differs from its parameter type",
       .line = 2,
-      .column = 42 },
+      .column = 35 },
     { .name = "switch scalar",
-      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(n: int) "
+      .source = "package facts\nU :: union { A | B }\nOne :: (n: int) "
                 "-> int { switch n { case .A: return 1; } return 0; }",
       .message = "switch needs a union value",
       .line = 3,
-      .column = 40 },
+      .column = 33 },
     { .name = "unknown variant",
-      .source = "package facts\nU :: union { A | B }\nOne :: pure fn() -> U { "
+      .source = "package facts\nU :: union { A | B }\nOne :: () -> U { "
                 "return U.C; }",
       .message = "Unknown variant 'C'",
       .line = 3,
-      .column = 32 },
+      .column = 25 },
     { .name = "partial bindings",
       .source = "package facts\nU :: union { A(x: int, y: int) }\n"
-                "One :: pure fn(u: U) -> int { switch u { case .A(x): return "
+                "One :: (u: U) -> int { switch u { case .A(x): return "
                 "x; } return 0; }",
       .message = "A union payload pattern must bind every field",
       .line = 3,
-      .column = 47 },
+      .column = 40 },
     { .name = "assigned binding",
       .source = "package facts\nU :: union { A(x: int) }\n"
-                "One :: pure fn(u: U) -> int { switch u { case .A(x): x = 2; "
+                "One :: (u: U) -> int { switch u { case .A(x): x = 2; "
                 "return x; } return 0; }",
       .message = "Assignment requires a writable value",
       .line = 3,
-      .column = 54 },
+      .column = 47 },
     { .name = "missing payload",
-      .source = "package facts\nU :: union { A(x: int) }\nOne :: pure fn() -> "
+      .source = "package facts\nU :: union { A(x: int) }\nOne :: () -> "
                 "U { return U.A; }",
       .message = "variant 'A' needs its payload",
       .line = 3,
-      .column = 32 },
+      .column = 25 },
     { .name = "unknown imported function",
-      .source = "package facts\nimport lib \"project:lib\"\nOne :: pure fn() "
+      .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
-      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .library = "package lib\nTwo :: () -> int { return 2; }",
       .message = "Unknown function 'Missing'",
       .line = 3,
-      .column = 38 },
+      .column = 31 },
     { .name = "alias conflict",
-      .source = "package facts\nimport lib \"project:lib\"\nlib :: pure fn() "
+      .source = "package facts\nimport lib \"project:lib\"\nlib :: () "
                 "-> int { return 1; }",
-      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .library = "package lib\nTwo :: () -> int { return 2; }",
       .message = "Package import alias conflicts with a package declaration",
       .line = 2,
       .column = 1 },
     { .name = "alias value",
-      .source = "package facts\nimport lib \"project:lib\"\nOne :: pure fn() "
+      .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib; }",
-      .library = "package lib\nTwo :: pure fn() -> int { return 2; }",
+      .library = "package lib\nTwo :: () -> int { return 2; }",
       .message = "Unknown name 'lib'",
       .line = 3,
-      .column = 34 },
+      .column = 27 },
     { .name = "constant type",
       .source = "package facts\nOn: bool : true;",
       .message = "constant type is not supported yet",
@@ -725,131 +730,131 @@ static const sample samples[] = {
       .line = 2,
       .column = 10 },
     { .name = "constant clash",
-      .source = "package facts\nA: int : 1;\nA :: pure fn() -> int { return 1; "
+      .source = "package facts\nA: int : 1;\nA :: () -> int { return 1; "
                 "}",
       .message = "Duplicate declaration 'A'",
       .line = 3,
       .column = 1 },
     { .name = "constant assignment",
-      .source = "package facts\nA: int : 1;\nOne :: pure fn() -> int { A = 2; "
+      .source = "package facts\nA: int : 1;\nOne :: () -> int { A = 2; "
                 "return A; }",
       .message = "assignment needs a local name",
       .line = 3,
-      .column = 27 },
+      .column = 20 },
     { .name = "binding outside condition",
-      .source = "package facts\nU :: union { A(x: int) | B }\nOne :: pure "
-                "fn(u: U) -> bool { return u is .A(x); }",
+      .source = "package facts\nU :: union { A(x: int) | B }\nOne :: "
+                "(u: U) -> bool { return u is .A(x); }",
       .message = "Pattern bindings require a matching if, while or switch arm",
       .line = 3,
-      .column = 47 },
+      .column = 40 },
     { .name = "negated binding",
       .source = "package facts\nU :: union { A(x: int) | B }\n"
-                "One :: pure fn(u: U) -> int { if (u is not .A(x)) { return 1; "
+                "One :: (u: U) -> int { if (u is not .A(x)) { return 1; "
                 "} return 0; }",
       .message = "Pattern bindings require a matching if, while or switch arm",
       .line = 3,
-      .column = 47 },
+      .column = 40 },
     { .name = "alternative binding",
       .source = "package facts\nU :: union { A(x: int) | B }\n"
-                "One :: pure fn(u: U) -> int { if (u is .A(x) || false) { "
+                "One :: (u: U) -> int { if (u is .A(x) || false) { "
                 "return 1; } return 0; }",
       .message = "Pattern bindings require a matching if, while or switch arm",
       .line = 3,
-      .column = 43 },
+      .column = 36 },
     { .name = "binding in else",
       .source = "package facts\nU :: union { A(x: int) | B }\n"
-                "One :: pure fn(u: U) -> int { if (u is .A(x)) { return x; } "
+                "One :: (u: U) -> int { if (u is .A(x)) { return x; } "
                 "else { return x; } }",
       .message = "Unknown name 'x'",
       .line = 3,
-      .column = 75 },
+      .column = 68 },
     { .name = "is scalar",
-      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(n: int) "
+      .source = "package facts\nU :: union { A | B }\nOne :: (n: int) "
                 "-> bool { return n is .A; }",
       .message = "is needs a union value",
       .line = 3,
-      .column = 41 },
+      .column = 34 },
     { .name = "is unknown variant",
-      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
+      .source = "package facts\nU :: union { A | B }\nOne :: (u: U) -> "
                 "bool { return u is .C; }",
       .message = "Unknown union variant 'C'",
       .line = 3,
-      .column = 44 },
+      .column = 37 },
     { .name = "duplicate local",
-      .source = "package facts\nOne :: pure fn() -> int { x: int = 1; x: int = "
+      .source = "package facts\nOne :: () -> int { x: int = 1; x: int = "
                 "2; "
                 "return x; }",
       .message = "Duplicate declaration 'x'",
       .line = 2,
-      .column = 39 },
+      .column = 32 },
     { .name = "duplicate binding",
       .source = "package facts\nU :: union { A(x: int, y: int) | B }\n"
-                "One :: pure fn(u: U) -> int { if (u is .A(n, n)) { return n; "
+                "One :: (u: U) -> int { if (u is .A(n, n)) { return n; "
                 "} return 0; }",
       .message = "Duplicate declaration 'n'",
       .line = 3,
-      .column = 46 },
+      .column = 39 },
     { .name = "duplicate condition binding",
       .source = "package facts\nU :: union { A(x: int) | B }\n"
-                "One :: pure fn(u: U, v: U) -> int { if (u is .A(n) && v is "
+                "One :: (u: U, v: U) -> int { if (u is .A(n) && v is "
                 ".A(n)) { return n; } return 0; }",
       .message = "Duplicate declaration 'n'",
       .line = 3,
-      .column = 63 },
+      .column = 56 },
     { .name = "signed with uint64",
-      .source = "package facts\nOne :: pure fn(a: int, b: uint64) -> uint64 { "
+      .source = "package facts\nOne :: (a: int, b: uint64) -> uint64 { "
                 "return a + b; }",
       .message = "int and uint64 operands need an explicit conversion, such as "
                  "int(value)",
       .line = 2,
-      .column = 54 },
+      .column = 47 },
     { .name = "unsigned subtraction",
-      .source = "package facts\nOne :: pure fn(a: uint64, b: uint64) -> uint64 "
+      .source = "package facts\nOne :: (a: uint64, b: uint64) -> uint64 "
                 "{ return a - b; }",
       .message = "unsupported arithmetic type",
       .line = 2,
-      .column = 57 },
+      .column = 50 },
     { .name = "byte arithmetic",
-      .source = "package facts\nOne :: pure fn(a: byte) -> byte { return a + "
+      .source = "package facts\nOne :: (a: byte) -> byte { return a + "
                 "1; }",
       .message = "unsupported arithmetic type",
       .line = 2,
-      .column = 42 },
+      .column = 35 },
     { .name = "unsigned ordering",
-      .source = "package facts\nOne :: pure fn(a: uint64, b: uint64) -> bool { "
+      .source = "package facts\nOne :: (a: uint64, b: uint64) -> bool { "
                 "return a < b; }",
       .message = "unsupported arithmetic type",
       .line = 2,
-      .column = 55 },
+      .column = 48 },
     { .name = "byte literal range",
-      .source = "package facts\nOne :: pure fn() -> byte { return 256; }",
+      .source = "package facts\nOne :: () -> byte { return 256; }",
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
-      .column = 35 },
+      .column = 28 },
     { .name = "negative uint64",
-      .source = "package facts\nOne :: pure fn() -> uint64 { x: uint64 = -1; "
+      .source = "package facts\nOne :: () -> uint64 { x: uint64 = -1; "
                 "return x; }",
       .message = "Numeric literal is outside the range of uint64",
       .line = 2,
-      .column = 42 },
+      .column = 35 },
     { .name = "untyped local",
-      .source = "package facts\nOne :: pure fn() -> int { x := 5; return 1; }",
+      .source = "package facts\nOne :: () -> int { x := 5; return 1; }",
       .message = "an untyped number is a double; give the local an integer "
                  "type",
       .line = 2,
-      .column = 32 },
+      .column = 25 },
     { .name = "conversion arity",
-      .source = "package facts\nOne :: pure fn() -> byte { return byte(1, 2); "
+      .source = "package facts\nOne :: () -> byte { return byte(1, 2); "
                 "}",
       .message = "Conversion takes one value",
       .line = 2,
-      .column = 35 },
+      .column = 28 },
     { .name = "conversion name",
-      .source = "package facts\nOne :: pure fn() -> byte { return byte(round: "
+      .source = "package facts\nOne :: () -> byte { return byte(round: "
                 "1); }",
       .message = "A conversion argument may only be named wrap or clamp",
       .line = 2,
-      .column = 40 },
+      .column = 33 },
     { .name = "untyped constant",
       .source = "package facts\nTwo :: 2;",
       .message = "an untyped number is a double; give the constant an integer "
@@ -857,93 +862,93 @@ static const sample samples[] = {
       .line = 2,
       .column = 8 },
     { .name = "negative zero byte",
-      .source = "package facts\nOne :: pure fn() -> byte { x: byte = -0; "
+      .source = "package facts\nOne :: () -> byte { x: byte = -0; "
                 "return x; }",
       .message = "Numeric literal is outside the range of byte",
       .line = 2,
-      .column = 38 },
+      .column = 31 },
     { .name = "wrapped literal in parentheses",
-      .source = "package facts\nOne :: pure fn() -> int { return int(wrap: "
+      .source = "package facts\nOne :: () -> int { return int(wrap: "
                 "(0xFFFFFFFFFFFFFFFF)); }",
       .message = "Numeric literal is outside the range of int64",
       .line = 2,
-      .column = 45 },
+      .column = 38 },
     { .name = "untyped empty array",
-      .source = "package facts\nOne :: pure fn() -> int { xs := []; return "
+      .source = "package facts\nOne :: () -> int { xs := []; return "
                 "length(xs); }",
       .message = "Empty arrays need an explicit element type",
       .line = 2,
-      .column = 33 },
+      .column = 26 },
     { .name = "results in an array",
-      .source = "package facts\nOne :: pure fn(s: string) -> bool { xs := "
+      .source = "package facts\nOne :: (s: string) -> bool { xs := "
                 "[compiler_json_string(s)]; return true; }",
       .message = "array item has no value type",
       .line = 2,
-      .column = 44 },
+      .column = 37 },
     { .name = "results assignment",
-      .source = "package facts\nOne :: pure fn(s: string) -> bool { d := "
+      .source = "package facts\nOne :: (s: string) -> bool { d := "
                 "compiler_json_string(s); d = "
                 "compiler_json_string(s); return d.valid; }",
       .message = "assigning a native's several results is not supported yet",
       .line = 2,
-      .column = 67 },
+      .column = 60 },
     { .name = "binding field assignment",
       .source = "package facts\nP :: struct { x: int; }\nU :: union { A(p: P) "
                 "| B }\n"
-                "One :: pure fn(u: U) -> int { switch u { case .A(p): p.x = 1; "
+                "One :: (u: U) -> int { switch u { case .A(p): p.x = 1; "
                 "return p.x; case .B: return 0; } return 0; }",
       .message = "Assignment requires a writable value",
       .line = 4,
-      .column = 54 },
-    { .name = "foreach field assignment",
-      .source = "package facts\nP :: struct { x: int; }\nOne :: pure fn(ps: "
-                "P[]) -> int { foreach (p in ps) { p.x = 1; } return 0; }",
+      .column = 47 },
+    { .name = "for field assignment",
+      .source = "package facts\nP :: struct { x: int; }\nOne :: (ps: "
+                "P[]) -> int { for (p in ps) { p.x = 1; } return 0; }",
       .message = "Assignment requires a writable value",
       .line = 3,
-      .column = 54 },
-    { .name = "foreach assignment",
-      .source = "package facts\nOne :: pure fn(xs: int[]) -> "
-                "int { foreach (x in xs) { x = 1; } return 0; }",
+      .column = 43 },
+    { .name = "for assignment",
+      .source = "package facts\nOne :: (xs: int[]) -> "
+                "int { for (x in xs) { x = 1; } return 0; }",
       .message = "Assignment requires a writable value",
       .line = 2,
-      .column = 56 },
+      .column = 45 },
     { .name = "element field assignment",
-      .source = "package facts\nP :: struct { x: int; }\nOne :: pure fn() -> "
+      .source = "package facts\nP :: struct { x: int; }\nOne :: () -> "
                 "int { ps: P[] = []; ps[0].x = 1; return 0; }",
       .message = "field assignment needs a local record",
       .line = 3,
-      .column = 41 },
+      .column = 34 },
     { .name = "non-exhaustive switch",
-      .source = "package facts\nU :: union { A | B }\nOne :: pure fn(u: U) -> "
+      .source = "package facts\nU :: union { A | B }\nOne :: (u: U) -> "
                 "int { switch u { case .A: return 2; } return 1; }",
       .message = "Non-exhaustive switch: a union alternative is missing",
       .line = 3,
-      .column = 31 },
+      .column = 24 },
     { .name = "duplicate arm",
       .source = "package facts\nU :: union { A | B }\n"
-                "One :: pure fn(u: U) -> int { switch u { case .A: return 2; "
+                "One :: (u: U) -> int { switch u { case .A: return 2; "
                 "case .A: return 3; case .B: return 4; } return 1; }",
       .message = "Unreachable duplicate union pattern",
       .line = 3,
-      .column = 66 },
+      .column = 59 },
     { .name = "duplicate default",
       .source = "package facts\nU :: union { A | B }\n"
-                "One :: pure fn(u: U) -> int { switch u { case: return 2; "
+                "One :: (u: U) -> int { switch u { case: return 2; "
                 "case: return 3; } return 1; }",
       .message = "Duplicate default arm",
       .line = 3,
-      .column = 58 },
+      .column = 51 },
     { .name = "duplicate field",
       .source = "package facts\nPair :: struct { a: int; a: bool; }",
       .message = "Duplicate field 'a'",
       .line = 2,
       .column = 26 },
     { .name = "embedded NUL",
-      .source = "package facts\nBad :: pure fn() -> string { return "
+      .source = "package facts\nBad :: () -> string { return "
                 "\"a\\u0000b\"; }",
       .message = "Invalid string or embedded NUL",
       .line = 2,
-      .column = 37 },
+      .column = 30 },
 };
 enum
 {
@@ -1199,6 +1204,8 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
     REQUIRE(put(&args[5], "record_offset", (int)offsetof(pin_value, record)));
     REQUIRE(put(&args[5], "count_offset", (int)offsetof(pin_array, count)));
     REQUIRE(put(&args[5], "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(&args[5], "data_offset", (int)offsetof(pin_array, data)));
+    REQUIRE(put(&args[5], "stride_offset", (int)offsetof(pin_array, stride)));
     REQUIRE(put(&args[5], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
     REQUIRE(put(&args[5], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
     args[6] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
@@ -1363,13 +1370,13 @@ static bool updates_in_place(const unsigned char *bytes, size_t length, const ch
     host = NULL;
     return true;
 }
-static bool run_samples(bool types)
+static bool run_samples(sample_group group)
 {
     REQUIRE(prepare());
     for (int b = 0; b < 2; b++) {
         for (int i = 0; i < (int)SAMPLES; i++) {
             const sample *s = &samples[i];
-            if (s->types != types) {
+            if (s->group != group) {
                 continue;
             }
             source_package_input inputs[3];
@@ -1441,11 +1448,15 @@ static bool run_samples(bool types)
 }
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
-    return run_samples(false);
+    return run_samples(BASE_SAMPLES);
 }
 TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
-    return run_samples(true);
+    return run_samples(TYPE_SAMPLES);
+}
+TEST_CASE(package_compiler_builds_runnable_importing_packages)
+{
+    return run_samples(IMPORT_SAMPLES);
 }
 /* Values as the compiler host takes arguments and projects results: a JSON
  * array; malloc-owned. */
@@ -1644,6 +1655,12 @@ void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_imports()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builds_runnable_importing_packages);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_bootstrap()

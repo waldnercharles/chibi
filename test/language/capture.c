@@ -4,6 +4,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -154,13 +155,13 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
     execution_reference_capture(&references, &origin, &first, &box);
     pin_value saved;
     REQUIRE(!pin_value_snapshot_to_arena(&escaped, &saved, &box.kept));
-    REQUIRE(write_value(first, ((pin_array *)box.kept.ptr)->items[1], true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "tail"));
-    REQUIRE(write_value(second, ((pin_array *)box.kept.ptr)->items[1], true));
+    REQUIRE(write_value(first, pin_array_get(box.kept.ptr, 1), true));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "tail"));
+    REQUIRE(write_value(second, pin_array_get(box.kept.ptr, 1), true));
     values.count = 1;
     REQUIRE(write_value(root_reference, root, true));
     REQUIRE(write_value(first, (pin_value){ .type = PIN_STR, .str = "short" }, true));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, "short"));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, "short"));
     REQUIRE(write_value(second, (pin_value){ .type = PIN_STR, .str = "bad" }, false));
     values.count = 0;
     REQUIRE(write_value(root_reference, root, true));
@@ -179,9 +180,9 @@ TEST_CASE(capture_paths_survive_root_replacement_and_fail_atomically)
         (pin_value){ .type = PIN_STRUCT, .type_name = "MissingCaptureType", .ptr = large_text },
         false
     ));
-    REQUIRE(!strcmp(((pin_array *)box.kept.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[0].str, large_text));
-    REQUIRE(!strcmp(((pin_array *)saved.ptr)->items[1].str, "tail"));
+    REQUIRE(!strcmp(pin_array_get(box.kept.ptr, 0).str, large_text));
+    REQUIRE(!strcmp(pin_array_get(saved.ptr, 0).str, large_text));
+    REQUIRE(!strcmp(pin_array_get(saved.ptr, 1).str, "tail"));
     return true;
 }
 
@@ -311,6 +312,24 @@ TEST_CASE(capture_references_refuse_another_type)
     );
     return true;
 }
+/* Lowered union headers carry no declaration name: an unnamed union reference
+ * reads and writes unnamed unions, and a named one still refuses another. */
+TEST_CASE(capture_unnamed_union_references_read_and_write)
+{
+    pin_value payload = { .type = PIN_I32, .i = 4 }, first, second;
+    REQUIRE(!pin_union_value(&escaped, 11, &payload, 1, &first));
+    REQUIRE(!pin_union_value(&escaped, 12, NULL, 0, &second));
+    REQUIRE(begin(first));
+    pin_value read;
+    REQUIRE(read_value(root_reference, (pin_value){ .type = PIN_UNION }, NULL, &read));
+    REQUIRE(((const pin_union *)read.ptr)->tag == 11);
+    REQUIRE(write_value(root_reference, second, true));
+    REQUIRE(((const pin_union *)box.kept.ptr)->tag == 12);
+    pin_value named = first;
+    named.type_name = "Shape";
+    REQUIRE(write_value(root_reference, named, false));
+    return true;
+}
 /* An element write must match both the element type its reference claims and
  * the array's own item: a string array's element stays a string. */
 TEST_CASE(capture_element_writes_keep_the_item_type)
@@ -338,5 +357,6 @@ void test_language_capture()
     RUN_TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root);
     RUN_TEST_CASE(capture_references_refuse_another_type);
     RUN_TEST_CASE(capture_element_writes_keep_the_item_type);
+    RUN_TEST_CASE(capture_unnamed_union_references_read_and_write);
     pu_clear_setup();
 }

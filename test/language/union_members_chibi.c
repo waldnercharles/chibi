@@ -37,23 +37,23 @@ enum
 static const char PACKAGE[] = "project:union_members";
 static const char NAMED[] = "project:named_binding";
 static const char *const sources[SOURCE_CASES] = {
-    "library Facts { Choice::union{Ready} }",
-    "library Facts { Choice::union{\"alpha\"|\"beta\"} }",
-    "library Facts { Choice::union{Payload(value:int,name:string)} }",
-    "library Facts { Choice::union{\"same\"|\"same\"|\"same\"} }",
-    "library Facts { Choice::union{A(value:int)|A(value:string)} }",
-    "library Facts { Choice::union{Payload(value:ref int)} }",
-    "library Facts { Choice::union{Payload(value)} }",
-    "library Facts { Choice::union{Payload(value:int=Unknown())} }",
-    "library Facts { "
+    "Facts :: library { Choice::union{Ready} }",
+    "Facts :: library { Choice::union{\"alpha\"|\"beta\"} }",
+    "Facts :: library { Choice::union{Payload(value:int,name:string)} }",
+    "Facts :: library { Choice::union{\"same\"|\"same\"|\"same\"} }",
+    "Facts :: library { Choice::union{A(value:int)|A(value:string)} }",
+    "Facts :: library { Choice::union{Payload(value:ref int)} }",
+    "Facts :: library { Choice::union{Payload(value)} }",
+    "Facts :: library { Choice::union{Payload(value:int=Unknown())} }",
+    "Facts :: library { "
     "Choice::union{Payload(first:int|string,second:int|string)} }",
-    "library Facts { A::union{Next(value:B)} B::union{Next(value:A)} }",
-    "library Facts { Choice::union{Next(values:Choice[])} }",
-    "library Facts { Choice::union{Next(value:task<Choice>)} }",
-    "library Facts { Choice::union{Ready} }",
-    "library Facts { Choice::union{Ready} }",
-    "library Facts { Choice::union{\"\\u0000\"} }",
-    "library Facts { A::union{Ready|Payload(value:int)} "
+    "Facts :: library { A::union{Next(value:B)} B::union{Next(value:A)} }",
+    "Facts :: library { Choice::union{Next(values:Choice[])} }",
+    "Facts :: library { Choice::union{Next(value:task<Choice>)} }",
+    "Facts :: library { Choice::union{Ready} }",
+    "Facts :: library { Choice::union{Ready} }",
+    "Facts :: library { Choice::union{\"\\u0000\"} }",
+    "Facts :: library { A::union{Ready|Payload(value:int)} "
     "B::union{Box(first:A|bool,second:A|bool)} }",
 };
 static compiler_fixture fixture;
@@ -234,7 +234,7 @@ static bool tagged(int b, const char *name, const char *member, pin_value *field
 {
     const script_catalog_variant *tag = variant(b, name, member);
     REQUIRE(tag && tag->field_count == count);
-    REQUIRE(!pin_union_value(&input, tag->tag, fields, count, out));
+    REQUIRE(!compiler_fixture_union(&input, tag->tag, fields, count, out));
     return true;
 }
 static bool owned(const arena *storage, const pin_value *value, int depth)
@@ -904,7 +904,7 @@ static bool source_case(int index)
         REQUIRE(owned(&detached, &out, 0) && compare_members(b, &out, &result, &catalog));
         if (index == 15) {
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[0][b], &kept[0][b], &out) &&
+                !compiler_fixture_snapshot(&retained[0][b], &kept[0][b], &out) &&
                 owned(&retained[0][b], &kept[0][b], 0)
             );
         }
@@ -1049,7 +1049,7 @@ static bool raw_case(int index)
         }
         if (index == 6) {
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[1][b], &kept[1][b], &out) &&
+                !compiler_fixture_snapshot(&retained[1][b], &kept[1][b], &out) &&
                 owned(&retained[1][b], &kept[1][b], 0)
             );
         }

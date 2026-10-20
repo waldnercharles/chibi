@@ -27,7 +27,7 @@ Diagnostic :: struct {
     message: string;
 }
 
-Diagnose :: pure fn(nodes: Node[], root: int) -> Diagnostic[] {
+Diagnose :: (nodes: Node[], root: int) -> Diagnostic[] {
     diagnostics: Diagnostic[] = [];
     current := root;
     while (true) {

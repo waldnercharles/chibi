@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "test/prepared_fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 #include "types/value_wire.h"
 
 #include <stdio.h>
@@ -29,6 +30,7 @@ static size_t length, library_length, wrong_length;
 static uint64_t host_abi, state_id;
 static int mismatch, log_count;
 static bool log_text;
+static bool native_header_types;
 static execution_log_service logger;
 static execution_module *module, *library, *wrong_library;
 static execution_program *program;
@@ -80,6 +82,10 @@ static void cleanup()
     selected_leaf = event_checks = 0;
     mismatch = log_count = 0;
     log_text = true;
+    if (native_header_types) {
+        type_catalog_set_project(NULL);
+        native_header_types = false;
+    }
 }
 static bool read_file(const char *name, unsigned char **out, size_t *size)
 {
@@ -1067,6 +1073,33 @@ TEST_CASE(prepared_runtime_scalar_getter_rejects_old_version_and_forged_range)
     return true;
 }
 
+TEST_CASE(prepared_runtime_owned_native_header_checks_linked_layout)
+{
+    REQUIRE(read_file("native-header.prepared", &bytes, &length));
+    REQUIRE(length <= 16 * 1024);
+    static const type_desc *const reflected[] = { &prepared_counter_type };
+    static const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    native_header_types = true;
+    execution_prepared_linker link = linker();
+    char error[192];
+    module = execution_prepared_read(bytes, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(module && execution_module_function_count(module) == 1);
+    execution_module_free(module);
+    module = NULL;
+    size_t native_layout = 0;
+    REQUIRE(prepared_native_header_layout(bytes, length, &native_layout));
+    mutation = malloc(length);
+    REQUIRE(mutation);
+    memcpy(mutation, bytes, length);
+    mutation[native_layout] ^= 1; /* Keep varint framing; change only layout bits. */
+    module = execution_prepared_read(mutation, length, &link, BEHAVIOR_BYTECODE, error, sizeof error);
+    type_catalog_set_project(NULL);
+    native_header_types = false;
+    REQUIRE(!module && strstr(error, "Prepared struct layout differs from linked type"));
+    return true;
+}
+
 void test_tool_prepared_runtime(const char *path)
 {
     directory = path;
@@ -1083,5 +1116,6 @@ void test_tool_prepared_runtime(const char *path)
     RUN_TEST_CASE(prepared_runtime_debugger_uses_decoded_occurrences_without_compiler);
     RUN_TEST_CASE(prepared_runtime_scalar_getter_executes_after_wire_retirement);
     RUN_TEST_CASE(prepared_runtime_scalar_getter_rejects_old_version_and_forged_range);
+    RUN_TEST_CASE(prepared_runtime_owned_native_header_checks_linked_layout);
     pu_clear_setup();
 }

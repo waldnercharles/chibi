@@ -155,6 +155,8 @@ char *compiler_host_target_json(const compiler_host *host, size_t *length)
         { "record_offset", (int)offsetof(pin_value, record) },
         { "count_offset", (int)offsetof(pin_array, count) },
         { "items_offset", (int)offsetof(pin_array, items) },
+        { "data_offset", (int)offsetof(pin_array, data) },
+        { "stride_offset", (int)offsetof(pin_array, stride) },
         { "data_failure", BEHAVIOR_FUNCTION_HOST_DATA },
         { "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT },
     };
@@ -319,13 +321,13 @@ static bool value_quota(const pin_value *value, int depth, quota *q)
         if (!array) {
             return true;
         }
-        if (array->count < 0 || array->capacity < array->count ||
-            (array->count && !array->items) ||
+        if (!pin_array_valid(array) ||
             (size_t)array->count > COMPILER_HOST_MAX_VALUES - q->values) {
             return false;
         }
         for (int i = 0; i < array->count; i++) {
-            if (!value_quota(&array->items[i], depth + 1, q)) {
+            pin_value item = pin_array_get(array, i);
+            if (!value_quota(&item, depth + 1, q)) {
                 return false;
             }
         }
@@ -431,8 +433,8 @@ static bool byte_type(const pin_value *value, pin_container container)
 #define OUTPUT_STORAGE                                                         \
     (sizeof(pin_array) +                                                       \
      (size_t)COMPILER_HOST_MAX_OUTPUT_BYTES * (2 * sizeof(pin_value) + 1))
-/* pin_array stores full pin_values, not packed octets. Copy while the runtime
- * arena is alive, and expose nothing until every item has been checked. */
+/* Bytes may be packed octets or boxed values. Copy while the runtime arena is
+ * alive, and expose nothing until every item has been checked. */
 static bool extract_bytes(const pin_value *value, size_t limit, invocation_result *out)
 {
     if (!byte_type(value, PIN_CONTAINER_ARRAY)) {
@@ -443,24 +445,23 @@ static bool extract_bytes(const pin_value *value, size_t limit, invocation_resul
         return true; /* Existing typed empty-array representation. */
     }
     if (array->element_type != PIN_U8 || array->record || array->type_name ||
-        array->count < 0 || array->capacity < array->count ||
-        (array->count && !array->items) || (size_t)array->count > limit ||
-        (size_t)array->capacity >
-            (OUTPUT_STORAGE - sizeof *array) / sizeof *array->items) {
+        !pin_array_valid(array) || (size_t)array->count > limit ||
+        pin_array_storage_bytes(array) > OUTPUT_STORAGE - sizeof *array) {
         return false;
     }
     size_t length = (size_t)array->count;
-    size_t represented = sizeof *array + (size_t)array->capacity * sizeof *array->items;
+    size_t represented = sizeof *array + pin_array_storage_bytes(array);
     if (length > OUTPUT_STORAGE - represented) {
         return false;
     }
     unsigned char *bytes = length ? xmalloc(length) : NULL;
     for (size_t i = 0; i < length; i++) {
-        if (!byte_type(&array->items[i], PIN_CONTAINER_SINGLE)) {
+        pin_value item = pin_array_get(array, (int)i);
+        if (!byte_type(&item, PIN_CONTAINER_SINGLE)) {
             free(bytes);
             return false;
         }
-        bytes[i] = array->items[i].u8;
+        bytes[i] = item.u8;
     }
     out->data = bytes;
     out->length = length;

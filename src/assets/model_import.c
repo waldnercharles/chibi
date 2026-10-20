@@ -4,6 +4,7 @@
 #include "assets/prototype.h"
 #include "assets/standard_material.h"
 #include "authoring/image_prepare.h"
+#include "authoring/source_asset.h"
 #include "graph/document/serialize.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_asset.h"
@@ -1234,7 +1235,7 @@ static bool declared_name(import *in, const char *path, char **name)
         return fail(in, "Cannot read content/%s", shown);
     }
     char reason[160];
-    av_doc *document = av_doc_read(text, reason, sizeof reason);
+    av_doc *document = authoring_prototype_document_read(text, NULL, reason, sizeof reason);
     av_value *value = document ? av_obj_get(av_doc_root(document), "name") : NULL;
     *name = value && av_is_str(value) ? xstrdup(av_get_str(value)) : NULL;
     bool parsed = document != NULL;
@@ -1252,11 +1253,14 @@ static bool names_file(const char *file, const char *name)
 }
 
 /* Whether `file` is a declarative asset, as the catalogs read them. */
-static bool asset_file(const char *file)
+static bool asset_file(const char *file, new_asset_kind kind)
 {
     size_t length = strlen(file), extension = strlen(DECLARATIVE_ASSET_EXTENSION);
-    return file[0] != '.' && length > extension &&
-           !strcmp(file + length - extension, DECLARATIVE_ASSET_EXTENSION);
+    return file[0] != '.' &&
+           ((length > extension &&
+             !strcmp(file + length - extension, DECLARATIVE_ASSET_EXTENSION)) ||
+            (kind == NEW_ASSET_PROTOTYPE && length > 6 &&
+             !strcmp(file + length - 6, ".chibi")));
 }
 
 /* Whether `file`, an asset of `kind` that declares `name`, declares one of
@@ -1302,7 +1306,7 @@ static int undeclared(import *in, new_asset_kind kind)
     for (struct dirent *entry;
          count >= 0 && directory && (entry = readdir(directory));) {
         const char *file = entry->d_name;
-        if (!asset_file(file)) {
+        if (!asset_file(file, kind)) {
             continue;
         }
         bytes = strlen(in->content) + strlen(folder) + strlen(file) + 3;
@@ -1341,7 +1345,7 @@ static bool names_free(import *in)
     int graphs = 0;
     for (int kind = 0; kind < NEW_ASSET_KIND_COUNT; kind++) {
         bool declarative = !strcmp(new_asset_extension(kind), DECLARATIVE_ASSET_EXTENSION);
-        if (!declarative || kind == NEW_ASSET_SCENE) {
+        if ((!declarative && kind != NEW_ASSET_PROTOTYPE) || kind == NEW_ASSET_SCENE) {
             continue;
         }
         int count = undeclared(in, kind);

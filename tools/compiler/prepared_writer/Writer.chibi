@@ -2,7 +2,7 @@ package prepared_writer
 
 import strings "core:strings"
 
-// Prepared format v15, written exactly as execution_prepared_write encodes a
+// Prepared format v18, written exactly as execution_prepared_write encodes a
 // module of authored functions. Records hold only text, int and bool fields,
 // so every 64-bit payload (ids, layouts, scalar bits, union tags) is an index
 // into the module's `wide` pool, whose entry 0 is zero for an absent payload.
@@ -12,7 +12,7 @@ import strings "core:strings"
 // and 64-bit fields arrive as values.
 
 Magic: uint64 : 0x4348494249505245;
-Version: int : 15;
+Version: int : 18;
 
 // A value. `wide` holds scalar bits, a union tag or a struct layout; nested
 // struct fields, union payloads and array items are values[first, first + count),
@@ -40,6 +40,10 @@ TextTag: int : 13;
 Field :: struct {
     name: string;
     kind: int;
+    type_name: string;
+    has_type_name: bool;
+    unit: string;
+    has_unit: bool;
 }
 // An authored record requirement lists its fields; others resolve by identity.
 Requirement :: struct {
@@ -234,7 +238,7 @@ Module :: union {
            references: Reference[], points: Point[], watches: Watch[], entries: Entry[])
 }
 
-U64 :: pure fn(value: uint64) -> byte[] {
+U64 :: (value: uint64) -> byte[] {
     bytes: byte[] = [];
     rest := value;
     more := true;
@@ -250,18 +254,18 @@ U64 :: pure fn(value: uint64) -> byte[] {
     return bytes;
 }
 // Zigzag keeps small negative values, such as -1 for none, one byte long.
-Int :: pure fn(value: int) -> byte[] {
+Int :: (value: int) -> byte[] {
     wide := int64(value);
     return U64(uint64(wrap: wide << 1) ^ uint64(wrap: wide >> 63));
 }
-Bool :: pure fn(value: bool) -> byte[] {
+Bool :: (value: bool) -> byte[] {
     if (value) {
         return U64(1);
     }
     return U64(0);
 }
 // Absent text is 0; otherwise its byte length plus one, then its bytes.
-Text :: pure fn(value: string, present: bool) -> byte[] {
+Text :: (value: string, present: bool) -> byte[] {
     if (!present) {
         return U64(0);
     }
@@ -274,7 +278,7 @@ Text :: pure fn(value: string, present: bool) -> byte[] {
     }
     return bytes;
 }
-Zeros :: pure fn(count: int) -> byte[] {
+Zeros :: (count: int) -> byte[] {
     bytes: byte[] = [];
     while (length(bytes) < count) {
         bytes = array_add(bytes, byte(0));
@@ -282,7 +286,7 @@ Zeros :: pure fn(count: int) -> byte[] {
     return bytes;
 }
 // A value's own bytes; its nested values follow them. `bits` is its wide entry.
-ValueHead :: pure fn(v: Value, bits: uint64) -> byte[] {
+ValueHead :: (v: Value, bits: uint64) -> byte[] {
     bytes := Int(v.tag);
     bytes = append(bytes, Int(v.container));
     bytes = append(bytes, Text(v.type_name, v.has_type_name));
@@ -313,7 +317,7 @@ ValueHead :: pure fn(v: Value, bits: uint64) -> byte[] {
     return append(bytes, U64(bits));
 }
 // How many nested values follow a value's own bytes.
-Nested :: pure fn(v: Value) -> int {
+Nested :: (v: Value) -> int {
     aggregate := v.container != 0 || v.tag == StructTag || v.tag == UnionTag;
     if (aggregate && v.present) {
         return v.count;
@@ -321,14 +325,14 @@ Nested :: pure fn(v: Value) -> int {
     return 0;
 }
 // A zero flow value, as an empty observer type is written.
-FlowValue :: pure fn() -> byte[] {
+FlowValue :: () -> byte[] {
     bytes := Int(FlowTag);
     bytes = append(bytes, Int(0));
     bytes = append(bytes, Text("", false));
     bytes = append(bytes, Bool(false));
     return append(bytes, U64(0));
 }
-SourceBytes :: pure fn(v: Source, graph: uint64, call: uint64) -> byte[] {
+SourceBytes :: (v: Source, graph: uint64, call: uint64) -> byte[] {
     bytes := U64(graph);
     bytes = append(bytes, U64(call));
     bytes = append(bytes, Int(v.parent));
@@ -338,13 +342,13 @@ SourceBytes :: pure fn(v: Source, graph: uint64, call: uint64) -> byte[] {
     bytes = append(bytes, Int(v.line));
     return append(bytes, Int(v.column));
 }
-ReferenceBytes :: pure fn(v: Reference, function: uint64) -> byte[] {
+ReferenceBytes :: (v: Reference, function: uint64) -> byte[] {
     bytes := Int(v.imported);
     bytes = append(bytes, Int(v.own));
     bytes = append(bytes, U64(function));
     return append(bytes, Int(v.role));
 }
-PointBytes :: pure fn(v: Point, occurrence: uint64, meaning: uint64) -> byte[] {
+PointBytes :: (v: Point, occurrence: uint64, meaning: uint64) -> byte[] {
     bytes := U64(occurrence);
     bytes = append(bytes, U64(meaning));
     bytes = append(bytes, Int(v.start));
@@ -355,7 +359,7 @@ PointBytes :: pure fn(v: Point, occurrence: uint64, meaning: uint64) -> byte[] {
     return append(bytes, Bool(v.completion));
 }
 // An instruction up to its value; the value and its layout follow.
-InstructionHead :: pure fn(v: Instruction, node: uint64) -> byte[] {
+InstructionHead :: (v: Instruction, node: uint64) -> byte[] {
     bytes := Int(v.op);
     bytes = append(bytes, Int(v.type));
     bytes = append(bytes, Int(v.output));
@@ -371,7 +375,7 @@ InstructionHead :: pure fn(v: Instruction, node: uint64) -> byte[] {
     bytes = append(bytes, Int(v.component_index));
     return append(bytes, U64(node));
 }
-FunctionHead :: pure fn(v: Function) -> byte[] {
+FunctionHead :: (v: Function) -> byte[] {
     bytes := Int(v.argument_count);
     bytes = append(bytes, Int(v.result_count));
     bytes = append(bytes, Int(v.variable_count));
@@ -390,7 +394,7 @@ FunctionHead :: pure fn(v: Function) -> byte[] {
     return append(bytes, Bool(v.component_access));
 }
 // An entry before its body and subscription references.
-EntryHead :: pure fn(v: Entry, id: uint64, effects: uint64) -> byte[] {
+EntryHead :: (v: Entry, id: uint64, effects: uint64) -> byte[] {
     bytes := U64(id);
     // Event, event ABI and the observer's component, layout, field and offset.
     bytes = append(bytes, Zeros(6));
@@ -408,7 +412,7 @@ EntryHead :: pure fn(v: Entry, id: uint64, effects: uint64) -> byte[] {
 }
 
 // The complete inner module.
-Write :: pure fn(module: Module) -> byte[] {
+Write :: (module: Module) -> byte[] {
     switch module {
         case .Tables(id, owner_type, abi, wide, values, ints, requirements, fields, imports, functions, spans,
                      roots, instructions, locals, parameters, frames, sources, results, data,
@@ -442,7 +446,7 @@ Write :: pure fn(module: Module) -> byte[] {
             bytes = append(bytes, U64(id));
             bytes = append(bytes, U64(owner_type));
             bytes = append(bytes, Int(length(requirements)));
-            foreach (requirement in requirements) {
+            for (requirement in requirements) {
                 bytes = append(bytes, U64(wide[requirement.id]));
                 bytes = append(bytes, U64(wide[requirement.layout]));
                 bytes = append(bytes, Int(requirement.storage));
@@ -456,19 +460,21 @@ Write :: pure fn(module: Module) -> byte[] {
                         field := fields[requirement.first + index];
                         bytes = append(bytes, Text(field.name, true));
                         bytes = append(bytes, Int(field.kind));
+                        bytes = append(bytes, Text(field.type_name, field.has_type_name));
+                        bytes = append(bytes, Text(field.unit, field.has_unit));
                         index += 1;
                     }
                 }
             }
             bytes = append(bytes, Int(0));
             bytes = append(bytes, Int(length(imports)));
-            foreach (imported in imports) {
+            for (imported in imports) {
                 bytes = append(bytes, U64(wide[imported.id]));
                 bytes = append(bytes, U64(wide[imported.fingerprint]));
             }
 
             bytes = append(bytes, Int(length(functions)));
-            foreach (function in functions) {
+            for (function in functions) {
                 bytes = append(bytes, FunctionHead(function));
                 table: int = 0;
                 while (table < Tables) {
@@ -585,7 +591,7 @@ Write :: pure fn(module: Module) -> byte[] {
             // No states.
             bytes = append(bytes, Int(0));
             bytes = append(bytes, Int(length(entries)));
-            foreach (item in entries) {
+            for (item in entries) {
                 bytes = append(bytes, EntryHead(item, wide[item.id], wide[item.effects]));
                 body := references[item.body];
                 bytes = append(bytes, ReferenceBytes(body, wide[body.function]));
@@ -600,9 +606,9 @@ Write :: pure fn(module: Module) -> byte[] {
 }
 
 // FNV-1a over the module bytes, as import fingerprints use; zero becomes one.
-Fingerprint :: pure fn(bytes: byte[]) -> uint64 {
+Fingerprint :: (bytes: byte[]) -> uint64 {
     hash: uint64 = 14695981039346656037;
-    foreach (item in bytes) {
+    for (item in bytes) {
         hash = (hash ^ uint64(item)) * 1099511628211;
     }
     if (hash == 0) {
@@ -611,7 +617,7 @@ Fingerprint :: pure fn(bytes: byte[]) -> uint64 {
     return hash;
 }
 
-Word :: pure fn(value: uint64) -> byte[] {
+Word :: (value: uint64) -> byte[] {
     bytes: byte[] = [];
     index: int = 0;
     rest := value;
@@ -625,8 +631,8 @@ Word :: pure fn(value: uint64) -> byte[] {
 // CHIBICLO v1: header words "CHIBICLO", version, root id and row count, then
 // rows sorted bytewise by name: id, name length, module length, name, module.
 // Module bytes are data[starts[i], starts[i] + lengths[i]).
-Closure :: pure fn(root: uint64, ids: uint64[], names: string[], data: byte[],
-                   starts: int[], lengths: int[]) -> byte[] {
+Closure :: (root: uint64, ids: uint64[], names: string[], data: byte[],
+            starts: int[], lengths: int[]) -> byte[] {
     order: int[] = [];
     index: int = 0;
     while (index < length(names)) {
@@ -644,7 +650,7 @@ Closure :: pure fn(root: uint64, ids: uint64[], names: string[], data: byte[],
     bytes = append(bytes, Word(1));
     bytes = append(bytes, Word(root));
     bytes = append(bytes, Word(uint64(length(names))));
-    foreach (row in order) {
+    for (row in order) {
         name := names[row];
         size := strings.ByteLength(name);
         bytes = append(bytes, Word(ids[row]));

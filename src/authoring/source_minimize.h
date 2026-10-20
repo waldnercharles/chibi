@@ -11,5 +11,36 @@
  * This semantic simplification is separate from whitespace-only formatting.
  * Returns malloc-owned text; source that does not analyze cleanly is copied. */
 char *authoring_source_minimize(const char *text, const script_catalog *, const char *identity);
+/* Canonical authored source. Normalize whitespace before semantic reduction so
+ * statement separators can be removed in the first pass, then lay out the
+ * reduced source. Returns malloc-owned text or NULL with a formatting error. */
+char *authoring_source_canonical(
+    const char *,
+    const script_catalog *,
+    const char *identity,
+    char *error,
+    size_t size
+);
+/* One-time graph/project import. Accepts generated component accessors only
+ * while proving equivalent property rewrites, then requires strict ordinary
+ * analysis. Returns malloc-owned text or NULL with an actionable error. */
+char *authoring_source_migrate_generated(
+    const char *,
+    const script_catalog *,
+    const char *identity,
+    char *error,
+    size_t size
+);
+
+/* Additionally returns malloc-owned positions for each original byte offset,
+ * including EOF. Changed tokens map to their surviving replacement start. */
+char *authoring_source_migrate_generated_mapped(
+    const char *,
+    const script_catalog *,
+    const char *identity,
+    int **positions,
+    char *error,
+    size_t size
+);
 
 #endif

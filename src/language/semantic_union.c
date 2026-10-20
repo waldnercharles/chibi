@@ -114,7 +114,7 @@ void script_analyzer_union_types(analyzer *a, TSNode body)
             &a->out->constants,
             &facts,
             (script_nominal_context){
-                .lexical = { a->scope, a->function, a->package_scope, a->document_count },
+                .lexical = { a->scope, a->function, a->package_scope, a->document_count, a->specialization },
                 .program_kind = a->out->kind,
                 .program_name = a->out->name,
                 .pointer_size = sizeof(void *) },

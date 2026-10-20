@@ -17,10 +17,10 @@ Frame :: struct {
     next_arg: int;
 }
 
-FrameValue :: pure fn(expression: int, depth: int) -> Frame {
+FrameValue :: (expression: int, depth: int) -> Frame {
     return {expression: expression, depth: depth, next_arg: 0};
 }
-Frames :: pure fn(count: int) -> Frame[] {
+Frames :: (count: int) -> Frame[] {
     frames: Frame[] = [];
     index: int = 0;
     while (index < count) {
@@ -29,7 +29,7 @@ Frames :: pure fn(count: int) -> Frame[] {
     }
     return frames;
 }
-ScalarForm :: pure fn(expression: ir.Expression, type: ir.Type) -> bool {
+ScalarForm :: (expression: ir.Expression, type: ir.Type) -> bool {
     if (type.container != ir.Single || (type.flags & ~(ir.Untyped | ir.Literal)) != 0 ||
         type.storage < ir.Boolean || type.storage > ir.String) {
         return false;
@@ -37,7 +37,7 @@ ScalarForm :: pure fn(expression: ir.Expression, type: ir.Type) -> bool {
     return expression.kind == ir.Constant || expression.kind == ir.SymbolReference ||
            expression.kind == ir.Unary || expression.kind == ir.Binary || expression.kind == ir.Cast;
 }
-ChildCount :: pure fn(expression: ir.Expression) -> int {
+ChildCount :: (expression: ir.Expression) -> int {
     kind := expression.kind;
     if (kind == ir.Constant || kind == ir.Nil) {
         return 0;
@@ -53,7 +53,7 @@ ChildCount :: pure fn(expression: ir.Expression) -> int {
     }
     return -1;
 }
-Child :: pure fn(expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], arguments: ir.Argument[]) -> int {
+Child :: (expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], arguments: ir.Argument[]) -> int {
     kind := expression.kind;
     if (kind == ir.SymbolReference) {
         return symbols[expression.symbol].initializer;
@@ -73,8 +73,8 @@ Child :: pure fn(expression: ir.Expression, ordinal: int, symbols: ir.Symbol[], 
 // Each query starts a new proof generation. A depth of -1 means that no
 // successful proof belongs to this query. A deeper successful proof may be
 // reused at a shallower visit, without consuming another step.
-Check :: pure fn(expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-                 arguments: ir.Argument[], request: Request) -> Proof {
+Check :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+          arguments: ir.Argument[], request: Request) -> Proof {
     depths := resize([int(0)], length(expressions));
     index: int = 0;
     while (index < length(depths)) {

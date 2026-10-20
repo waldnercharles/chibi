@@ -1,4 +1,4 @@
-behavior SaveProbe {
+SaveProbe :: behavior {
     on Begin {
         saved := read_saved_text("best", "0")
         await set_saved_text("best", "1")

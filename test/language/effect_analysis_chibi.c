@@ -235,7 +235,11 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         for (int k = 0; k < 14; k++) {
             REQUIRE(put(v, keys[k], integer(values[k])));
         }
-        REQUIRE(put(v, "task", boolean(e->task)));
+        int range = location(e->range);
+        REQUIRE(
+            range >= 0 && put(v, "task", boolean(e->task)) &&
+            put(v, "range", integer(range))
+        );
         for (int j = 0; j < e->argument_count; j++) {
             row(&a[1], arg++)[0] = integer(e->arguments[j].value);
         }
@@ -257,6 +261,7 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         for (int k = 0; k < 11; k++) {
             REQUIRE(put(v, keys[k], integer(values[k])));
         }
+        REQUIRE(put(v, "symbol", integer(s->symbol)));
         for (int j = 0; j < s->child_count; j++) {
             row(&a[3], child++)[0] = integer(s->children[j]);
         }
@@ -281,7 +286,9 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
         REQUIRE(
             put(v, "kind", integer(s->kind)) && put(v, "scope", integer(s->scope)) &&
             put(v, "initializer", integer(s->initializer)) &&
-            put(v, "nominal_slot", integer(nominal)) && put(v, "range", integer(range))
+            put(v, "nominal_slot", integer(nominal)) &&
+            put(v, "range", integer(range)) &&
+            put(v, "flags", integer((int)s->type.flags))
         );
     }
     for (int i = 0; i < f->scope_count; i++) {
@@ -363,7 +370,7 @@ static bool pack(int b, const script_effect_facts *f, pin_value *out)
     }
     const script_catalog_variant *v = variant(b, "Environment", "Tables");
     REQUIRE(v);
-    REQUIRE(!pin_union_value(&input, v->tag, a, 15, out));
+    REQUIRE(!compiler_fixture_union(&input, v->tag, a, 15, out));
     return true;
 }
 static bool get(const pin_value *value, const char *name, pin_value *out)
@@ -527,7 +534,7 @@ static bool compare(const script_effect_facts *facts, int retain, script_effect_
         arena_free(&input);
         REQUIRE(owned(&detached, &result, 0) && result_value(&result, tag, &expected));
         if (retain >= 0) {
-            REQUIRE(!pin_value_snapshot_to_arena(&saved_storage[b], &saved[b][retain], &result));
+            REQUIRE(!compiler_fixture_snapshot(&saved_storage[b], &saved[b][retain], &result));
             saved_tags[b] = tag;
         }
     }
@@ -1118,7 +1125,8 @@ TEST_CASE(effect_analysis_raw_seeds_dependencies_and_restrictions_match)
         );
         script_effect_result expected;
         REQUIRE(compare(&r.facts, c == 23 ? 0 : -1, &expected));
-        const int count[] = { 0, 0, 0, 0, 0, 0, 1, 0, 5, 3, 1, 2,
+        /* Purity is inferred, so cases 6 and 8 report no declared-purity diagnostic. */
+        const int count[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 2,
                               1, 0, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2 };
         REQUIRE(expected.diagnostic_count == count[c]);
         if (c == 1) {
@@ -1281,12 +1289,12 @@ TEST_CASE(effect_analysis_actual_final_facts_replay_without_seed_discovery_claim
 {
     REQUIRE(prepared);
     const char *sources[] = {
-        "library E { Write :: fn() { mutate(); } Read :: pure fn() { Write(); "
-        "} }",
-        "system E(position: Position) where Deferred() { Deferred :: fn() -> "
+        "E :: system(position: Position) where Touch() { Touch :: () -> "
+        "bool { mutate(); return true; } }",
+        "E :: system(position: Position) where Deferred() { Deferred :: () -> "
         "bool { yield; return true; } }",
-        "system E(position: Position) { reduce position.x += position.y; }",
-        "behavior E { bind self.Position.x = self.Position.y; bind "
+        "E :: system(position: Position) { reduce position.x += position.y; }",
+        "E :: behavior { bind self.Position.x = self.Position.y; bind "
         "self.Position.y = self.Position.x; }"
     };
     script_catalog_field fields[] = {

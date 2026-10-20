@@ -1,20 +1,20 @@
-library ToolchainBuild {
-    Join :: fn(parts: string[]) -> string {
+ToolchainBuild :: library {
+    Join :: (parts: string[]) -> string {
         return BuildJoin(parts, "");
     }
-    Helper :: fn(name: string) -> string {
+    Helper :: (name: string) -> string {
         return BuildJoin([BuildProgramDirectory(), "..", name], "/");
     }
-    Definition :: fn(argument: string) -> string {
+    Definition :: (argument: string) -> string {
         if (!BuildStartsWith(argument, "-D")) {
             return "";
         }
         return BuildBefore(BuildBefore(BuildAfter(argument, "-D"), "="), ":");
     }
-    Normalize :: fn(arguments: string[]) -> string[] {
+    Normalize :: (arguments: string[]) -> string[] {
         result: string[] = [];
         split := false;
-        foreach (argument in arguments) {
+        for (argument in arguments) {
             if (split) {
                 result = BuildConcat(result, [Join(["-D", argument])]);
                 split = false;
@@ -29,20 +29,20 @@ library ToolchainBuild {
         }
         return result;
     }
-    Cached :: fn(cache: string, name: string) -> string {
+    Cached :: (cache: string, name: string) -> string {
         prefix := Join([name, ":"]);
-        foreach (line in BuildLines(cache)) {
+        for (line in BuildLines(cache)) {
             if (BuildStartsWith(line, prefix)) {
                 return BuildAfter(line, "=");
             }
         }
         return "";
     }
-    Contains :: fn(text: string, part: string) -> bool {
+    Contains :: (text: string, part: string) -> bool {
         return BuildBefore(text, part) != text;
     }
     // The kind of file a path names once links are followed, "" for none.
-    Kind :: fn(path: string) -> string {
+    Kind :: (path: string) -> string {
         resolved := BuildResolvePath(path);
         if (resolved == "") {
             return "";
@@ -50,10 +50,10 @@ library ToolchainBuild {
         return BuildFileKind(resolved);
     }
     // The separator that occurs first in text, or "" when none does.
-    Earliest :: fn(text: string, separators: string[]) -> string {
+    Earliest :: (text: string, separators: string[]) -> string {
         found := "";
         prefix := text;
-        foreach (separator in separators) {
+        for (separator in separators) {
             before := BuildBefore(text, separator);
             if (before != prefix && BuildStartsWith(prefix, before)) {
                 found = separator;
@@ -67,7 +67,7 @@ library ToolchainBuild {
     // their text, a backslash keeps the next byte, and inside double quotes
     // only a double quote or backslash can be escaped. An unclosed quote or a
     // trailing backslash splits into no words.
-    Words :: fn(text: string) -> string[] {
+    Words :: (text: string) -> string[] {
         unquoted := [" ", "\t", "\r", "\n", "'", "\"", "\\"];
         words: string[] = [];
         word := "";
@@ -104,7 +104,7 @@ library ToolchainBuild {
                     escapable = ["\"", "\\"];
                 }
                 escaped := "";
-                foreach (candidate in escapable) {
+                for (candidate in escapable) {
                     if (BuildStartsWith(rest, candidate)) {
                         escaped = candidate;
                     }
@@ -135,7 +135,7 @@ library ToolchainBuild {
     // The SDK the -isysroot of a compiler driver's -### report names, followed
     // through links, or "" when the driver cannot run or names no directory.
     // The report is data, so it stays out of the build's output.
-    CompilerSDK :: fn(compiler: string) -> string {
+    CompilerSDK :: (compiler: string) -> string {
         command := [compiler];
         if (Kind(compiler) != "file") {
             command = Words(compiler);
@@ -144,7 +144,7 @@ library ToolchainBuild {
             return "";
         }
         RunBuildProbe(BuildConcat(command, ["-###", "-x", "c", "-fsyntax-only", "-"]));
-        foreach (line in BuildLines(BuildLastStderr())) {
+        for (line in BuildLines(BuildLastStderr())) {
             if (!Contains(line, "-isysroot")) {
                 continue;
             }
@@ -162,13 +162,13 @@ library ToolchainBuild {
         }
         return "";
     }
-    NativeArguments :: fn(build: string, arguments: string[]) -> string[] {
+    NativeArguments :: (build: string, arguments: string[]) -> string[] {
         cachePath := Join([build, "/CMakeCache.txt"]);
         cache := BuildReadFile(cachePath);
         selected := BuildEnvironment("CC") != "" ||
                     BuildEnvironment("CXX") != "" ||
                     BuildEnvironment("CMAKE_TOOLCHAIN_FILE") != "";
-        foreach (argument in Normalize(arguments)) {
+        for (argument in Normalize(arguments)) {
             name := Definition(argument);
             if (name == "CMAKE_C_COMPILER" || name == "CMAKE_CXX_COMPILER" ||
                 name == "CMAKE_TOOLCHAIN_FILE" || argument == "--toolchain" ||
@@ -183,7 +183,7 @@ library ToolchainBuild {
         }
         return result;
     }
-    NativeSDK :: fn(cache: string, arguments: string[]) -> string {
+    NativeSDK :: (cache: string, arguments: string[]) -> string {
         sdk := BuildEnvironment("SDKROOT");
         compiler := BuildEnvironment("CC");
         if (compiler == "") {
@@ -197,7 +197,7 @@ library ToolchainBuild {
         if (cachedCompiler != "") {
             compiler = cachedCompiler;
         }
-        foreach (argument in Normalize(arguments)) {
+        for (argument in Normalize(arguments)) {
             name := Definition(argument);
             if (name == "CMAKE_OSX_SYSROOT") {
                 sdk = BuildAfter(argument, "=");
@@ -215,7 +215,7 @@ library ToolchainBuild {
         }
         return sdk;
     }
-    CacheRoot :: fn() -> string {
+    CacheRoot :: () -> string {
         root := BuildEnvironment("CHIBI_FETCHCONTENT_CACHE_DIR");
         if (root == "") {
             base := BuildEnvironment("XDG_CACHE_HOME");
@@ -233,7 +233,7 @@ library ToolchainBuild {
         }
         return BuildResolvePath(root);
     }
-    Signature :: fn(profile: string, build: string, arguments: string[]) -> string {
+    Signature :: (profile: string, build: string, arguments: string[]) -> string {
         if (!BuildFileExists(Join([build, "/CMakeCache.txt"]))) {
             return "";
         }
@@ -246,7 +246,7 @@ library ToolchainBuild {
         }
         return BuildTrim(BuildLastStdout());
     }
-    Configure :: fn(profile: string, build: string, arguments: string[]) -> int {
+    Configure :: (profile: string, build: string, arguments: string[]) -> int {
         stamp := Join([build, "/.chibi-toolchain-config-inputs"]);
         signature := Signature(profile, build, arguments);
         if (signature != "" && signature == BuildTrim(BuildReadFile(stamp))) {
@@ -306,7 +306,7 @@ library ToolchainBuild {
         } else {
             prepare := ["python3", Helper("fetchcontent_cache.py"), "prepare",
                         "--source-dir", root, "--build-dir", build, "--cache-root", cache];
-            foreach (argument in Normalize(selected)) {
+            for (argument in Normalize(selected)) {
                 if (Definition(argument) == "CHIBI_ENABLE_TRACY") {
                     value := BuildAfter(argument, "=");
                     if (value == "ON" || value == "TRUE" || value == "1") {
@@ -348,7 +348,7 @@ library ToolchainBuild {
         }
         return 0;
     }
-    Build :: fn() -> int {
+    Build :: () -> int {
         arguments := BuildArguments();
         if (BuildLength(arguments) < 2) {
             BuildReport("usage: native|tool-host BUILD_DIR [--target NAME] [--jobs N] [--configure-only] -- CMAKE_ARGUMENTS");

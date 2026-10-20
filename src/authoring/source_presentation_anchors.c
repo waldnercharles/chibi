@@ -15,7 +15,8 @@ static uint64_t key(const source_presentation_origin *o, bool rename)
     snprintf(
         shape,
         sizeof shape,
-        "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%u:%llu:%llu:%llu:%llu:%d:%d",
+        "%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%d:%u:%llu:%llu:%llu:%llu:%llu:%d:"
+        "%d",
         o->function,
         o->kind,
         o->record,
@@ -34,6 +35,7 @@ static uint64_t key(const source_presentation_origin *o, bool rename)
                                  ? 0
                                  : o->type.nominal),
         (unsigned long long)o->type.parameter,
+        (unsigned long long)o->type.collection,
         (unsigned long long)(rename ? 0 : o->port_name),
         (unsigned long long)(rename ? 0 : o->function_name),
         o->node_kind,

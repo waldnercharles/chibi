@@ -1,38 +1,38 @@
-behavior "WaveBehavior" {
-    state CountLimit: int = 8
-    state Interval: float = 1.5
-    state SpawnDistance: float = 260.0
-    state Elapsed: float = 0.0
-    state Spawned: int = 0
-    state Side: float = -1.0
+WaveBehavior :: behavior {
+    CountLimit: int = 8
+    Interval: float = 1.5
+    SpawnDistance: float = 260.0
+    Elapsed: float = 0.0
+    Spawned: int = 0
+    Side: float = -1.0
     on Tick {
-        if find_nearest_entity(self.Transform, 1000000.0, 1, engine["Self"]()).Found {
-            state."Elapsed" = state."Elapsed" + delta_time()
-            await "Spawn Within Wave Limit"(find_nearest_entity(self.Transform, 1000000.0, 1, engine["Self"]()).Position)
+        if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
+            Elapsed = Elapsed + delta_time()
+            await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
         }
     }
-    "Spawn Within Wave Limit" :: fn("Player Position": struct<"CF_V2"> = null) {
+    Spawn_Within_Wave_Limit :: (Player_Position: struct<CF_V2> = null) {
         after entry {
-            while state."Elapsed" >= max(state."Interval", B: float = 0.01) {
-                if state."Spawned" >= state."CountLimit" {
+            while Elapsed >= max(Interval, B: float = 0.01) {
+                if Spawned >= CountLimit {
                     return
                 } else {
-                    state."Elapsed" = state."Elapsed" - max(state."Interval", B: float = 0.01)
-                    await "Spawn Enemy"(entry."Player Position")
-                    state."Spawned" = add(state."Spawned", B: int = 1)
-                    state."Side" = state."Side" * -1.0
+                    Elapsed = Elapsed - max(Interval, B: float = 0.01)
+                    await Spawn_Enemy(entry.Player_Position)
+                    Spawned = add(Spawned, B: int = 1)
+                    Side = Side * -1.0
                 }
             }
             return
         }
     }
-    "Spawn Enemy" :: fn("Player Position": struct<"CF_V2"> = null) {
-        action spawn_prototype = engine["Spawn Prototype"]("Enemy")
+    Spawn_Enemy :: (Player_Position: struct<CF_V2> = null) {
+        action spawn_prototype_action = spawn_prototype(Enemy)
         after entry {
-            spawn_prototype()
+            spawn_prototype_action()
         }
-        after spawn_prototype {
-            spawn_prototype.Entity.Transform = make_transform(entry."Player Position".x + state."Side" * state."SpawnDistance", entry."Player Position".y)
+        after spawn_prototype_action {
+            spawn_prototype_action.Entity.Transform = make_transform(entry.Player_Position.x + Side * SpawnDistance, entry.Player_Position.y)
             return
         }
     }

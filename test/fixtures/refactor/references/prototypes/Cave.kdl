@@ -1,5 +1,5 @@
 name "Cave"
 components {
-    Shader material="Basalt"
     MaterialTerrain field="BasaltCave"
+    Shader material="Basalt"
 }

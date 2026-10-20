@@ -11,6 +11,8 @@ typedef struct
 typedef struct
 {
     int scope, function, document;
+    uint64_t specialization; /* Nonzero while analyzing one generic specialization. */
+    bool instantiating; /* Compile-time parameters are already bound. */
 } script_callable_context;
 enum
 {
@@ -81,15 +83,7 @@ script_callable_header script_callable_register(
     script_callable_context
 );
 /* Shared initialization/type policy for the analyzer's non-header callers. */
-script_function script_callable_function(
-    const script_function *,
-    int parent,
-    TSNode,
-    const char *source,
-    int document,
-    script_function_kind,
-    int symbol
-);
+script_function script_callable_function(int parent, TSNode, int document, script_function_kind, int symbol);
 script_type script_callable_result_type(uint64_t function, const script_type *results, int count);
 
 #endif

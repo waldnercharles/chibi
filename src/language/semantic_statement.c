@@ -855,8 +855,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         a->scope = old_scope;
         return script_analyzer_statement_add(a, result);
     }
-    if (script_analyzer_is(node, "for_statement") ||
-        script_analyzer_is(node, "foreach_statement")) {
+    if (script_analyzer_is(node, "for_statement")) {
         int old_scope = a->scope;
         a->scope = script_analyzer_scope_new(a, node);
         result.scope = a->scope;
@@ -864,6 +863,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                collection = script_analyzer_field(node, "value");
         bool range = !ts_node_is_null(first);
         result.kind = range ? SCRIPT_STMT_FOR : SCRIPT_STMT_FOREACH;
+        result.key_symbol = -1;
+        TSNode item_name = script_analyzer_field(node, "name");
+        bool reference_iteration = !ts_node_is_null(script_analyzer_field(node, "reference"));
         script_type element;
         if (range) {
             result.expression = script_analyzer_expression(a, first, (script_type){ .storage = PIN_I32 });
@@ -892,18 +894,58 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 (script_type){ .flags = SCRIPT_TYPE_UNTYPED }
             );
             element = script_analyzer_expr_type(a, result.expression);
-            if (element.container != PIN_CONTAINER_ARRAY) {
-                script_analyzer_diagnostic(a, collection, "Foreach requires an array");
+            bool text = element.container == PIN_CONTAINER_SINGLE &&
+                        element.storage == PIN_STR &&
+                        !(element.flags & SCRIPT_TYPE_OPTIONAL);
+            if (element.container != PIN_CONTAINER_ARRAY &&
+                element.container != PIN_CONTAINER_MAP && !text) {
+                script_analyzer_diagnostic(a, collection, "For requires an array, Map or string");
             }
-            element.container = PIN_CONTAINER_SINGLE;
+            TSNode key = script_analyzer_field(node, "key");
+            if (!ts_node_is_null(key)) {
+                if (text) {
+                    script_analyzer_diagnostic(a, key, "String iteration binds one Unicode scalar at a time");
+                }
+                if (element.container == PIN_CONTAINER_ARRAY) {
+                    /* Arrays bind item,index; Maps bind key,value. */
+                    result.key_symbol = script_analyzer_symbol_new(
+                        a,
+                        item_name,
+                        SCRIPT_LOCAL,
+                        (script_type){ .storage = PIN_I32 },
+                        false
+                    );
+                    item_name = key;
+                } else {
+                    result.key_symbol = script_analyzer_symbol_new(
+                        a,
+                        key,
+                        SCRIPT_LOCAL,
+                        script_catalog_key_type(a->catalog, element),
+                        false
+                    );
+                }
+            }
+            element = text ? (script_type){ .storage = PIN_STR }
+                           : script_catalog_element_type(a->catalog, element);
+            if (reference_iteration) {
+                const script_expression *source = &a->out->expressions[result.expression];
+                const script_symbol *binding = source->kind == SCRIPT_EXPR_SYMBOL &&
+                                                       source->symbol >= 0
+                                                 ? &a->out->symbols[source->symbol]
+                                                 : NULL;
+                if (source->type.container != PIN_CONTAINER_ARRAY || !binding ||
+                    !binding->writable ||
+                    (binding->type.flags & SCRIPT_TYPE_REFERENCE) ||
+                    (binding->kind != SCRIPT_LOCAL && binding->kind != SCRIPT_STATE &&
+                     binding->kind != SCRIPT_SHARED_STATE) ||
+                    result.key_symbol >= 0) {
+                    script_analyzer_diagnostic(a, collection, "Reference iteration requires one item and a mutable owned array binding");
+                }
+                element.flags |= SCRIPT_TYPE_REFERENCE;
+            }
         }
-        result.symbol = script_analyzer_symbol_new(
-            a,
-            script_analyzer_field(node, "name"),
-            SCRIPT_LOCAL,
-            element,
-            false
-        );
+        result.symbol = script_analyzer_symbol_new(a, item_name, SCRIPT_LOCAL, element, reference_iteration);
         a->loops++;
         result.body = script_analyzer_statement(a, script_analyzer_field(node, "body"));
         a->loops--;

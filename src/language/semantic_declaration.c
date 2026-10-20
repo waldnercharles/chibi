@@ -20,6 +20,9 @@ bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *w
 }
 void script_analyzer_declare_constant(analyzer *a, TSNode node)
 {
+    if (script_analyzer_generic_alias(a, node)) {
+        return;
+    }
     TSNode type = script_analyzer_field(node, "type");
     int symbol = script_analyzer_symbol_new(
         a,
@@ -36,17 +39,10 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
     script_symbol_kind kind = script_analyzer_is(node, "action_declaration")
                                 ? SCRIPT_ACTION
                             : script_analyzer_is(node, "event_declaration") ? SCRIPT_EVENT
-                            : script_analyzer_text_is(a, script_analyzer_field(node, "storage"), "shared")
+                            : a->out->kind == SCRIPT_PROGRAM_SYSTEM
                                 ? SCRIPT_SHARED_STATE
                                 : SCRIPT_STATE;
-    if (kind == SCRIPT_SHARED_STATE && a->out->kind != SCRIPT_PROGRAM_SYSTEM) {
-        script_analyzer_diagnostic(a, node, "Shared state is restricted to systems");
-    }
     script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "type"));
-    if (kind == SCRIPT_SHARED_STATE && (type.flags & SCRIPT_TYPE_TASK)) {
-        /* A task belongs to the entity that started it. */
-        script_analyzer_diagnostic(a, node, "Shared state cannot hold a task");
-    }
     int symbol = script_analyzer_symbol_new(
         a,
         script_analyzer_field(node, "name"),
@@ -57,13 +53,15 @@ void script_analyzer_declare_value(analyzer *a, TSNode node)
     a->out->symbols[symbol].disabled = script_analyzer_token_present(a, node, "disabled");
     apush(a->initializers, ((initializer){ symbol, script_analyzer_field(node, "value") }));
 }
-static script_callable_facts callable_facts(const analyzer *a)
+static script_callable_facts callable_facts(const analyzer *a, const script_signature_generic *generics)
 {
     return (script_callable_facts){
         .signature = { .named = script_analyzer_named_facts(a),
                        .functions = a->out->functions,
                        .function_count = acount(a->out->functions),
-                       .pointer_size = sizeof(void *) },
+                       .pointer_size = sizeof(void *),
+                       .generics = generics,
+                       .generic_count = acount(generics) },
         .scope_count = acount(a->out->scopes)
     };
 }
@@ -112,11 +110,10 @@ static void callable_function(analyzer *a, const script_callable_function_change
     script_function row = change->function;
     row.parameters = callable_members(row.parameters, row.parameter_count);
     row.results = callable_members(row.results, row.result_count);
-    row.type_parameters = callable_members(row.type_parameters, row.type_parameter_count);
     row.entry = row.entry ? xstrdup(row.entry) : NULL;
     /* Counts in helper output describe its flat transport spans. The analyzer
      * continues to derive its finalized counts in finish_analysis. */
-    row.parameter_count = row.result_count = row.type_parameter_count = 0;
+    row.parameter_count = row.result_count = 0;
     if (change->append) {
         assert(change->index == acount(a->out->functions));
         apush(a->out->functions, row);
@@ -125,10 +122,8 @@ static void callable_function(analyzer *a, const script_callable_function_change
     script_function *function = &a->out->functions[change->index];
     row.parameter_count = function->parameter_count;
     row.result_count = function->result_count;
-    row.type_parameter_count = function->type_parameter_count;
     afree(function->parameters);
     afree(function->results);
-    afree(function->type_parameters);
     free(function->entry);
     *function = row;
 }
@@ -164,10 +159,8 @@ static void callable_apply(analyzer *a, script_callable_header header)
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol)
 {
     script_function function = script_callable_function(
-        a->out->functions,
         a->function,
         node,
-        script_analyzer_syntax(a, node)->text,
         script_analyzer_range(a, node).document,
         kind,
         symbol
@@ -210,8 +203,8 @@ static bool test_attribute(analyzer *a, TSNode node)
     }
     return test;
 }
-/* A test is a package function with no parameters, results or type
- * parameters, so the runner can call it alone. Its declared header says so,
+/* A test is a package function with no parameters or results, so the
+ * runner can call it alone. Its declared header says so,
  * including a result its returns imply. */
 static void mark_test(analyzer *a, TSNode node, int function)
 {
@@ -220,8 +213,7 @@ static void mark_test(analyzer *a, TSNode node, int function)
         return;
     }
     script_function *declared = &a->out->functions[function];
-    if (acount(declared->parameters) || acount(declared->results) ||
-        acount(declared->type_parameters) || declared->inferred) {
+    if (acount(declared->parameters) || acount(declared->results) || declared->inferred) {
         script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
         return;
     }
@@ -229,18 +221,33 @@ static void mark_test(analyzer *a, TSNode node, int function)
 }
 void script_analyzer_declare_function(analyzer *a, TSNode node)
 {
-    bool test = test_attribute(a, node);
-    script_callable_facts facts = callable_facts(a);
+    bool test = !a->instantiating && test_attribute(a, node);
+    if (!a->instantiating && script_analyzer_generic_declare(a, node)) {
+        if (test) {
+            script_analyzer_diagnostic(a, node, "A @test function takes no parameters and returns nothing");
+        }
+        return;
+    }
+    script_signature_generic *generics = NULL;
+    script_analyzer_generic_types(a, script_analyzer_field(node, "parameters"), &generics);
+    script_analyzer_generic_types(a, script_analyzer_field(node, "results"), &generics);
+    script_callable_facts facts = callable_facts(a, generics);
     script_callable_header header = script_callable_register(
         &a->out->constants,
         &facts,
         node,
         script_analyzer_syntax(a, node)->text,
-        (script_callable_context){ a->scope,
-                                   a->function,
-                                   script_analyzer_range(a, node).document }
+        (script_callable_context){ .scope = a->scope,
+                                   .function = a->function,
+                                   .document = script_analyzer_range(a, node).document,
+                                   .specialization = a->specialization,
+                                   .instantiating = a->instantiating }
     );
+    afree(generics);
     callable_apply(a, header);
+    if (!a->instantiating && header.function >= 0) {
+        script_analyzer_generic_export(a, node, header.symbol);
+    }
     /* A name the package already declares has no function of its own; the
      * duplicate is diagnosed where it is registered. */
     if (test && header.function >= 0) {
@@ -818,30 +825,6 @@ void script_analyzer_value_declarations(analyzer *a, TSNode body)
             a->scope = script_analyzer_scope_new(a, script_analyzer_field(node, "body"));
             script_analyzer_declaration_pass(a, script_analyzer_field(node, "body"));
             a->scope = old;
-        } else if (
-            script_analyzer_is(node, "metadata_declaration") &&
-            script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "depth_limit")
-        ) {
-            TSNode value = script_analyzer_field(node, "value");
-            char *text = script_analyzer_text_copy(a, value), *end;
-            errno = 0;
-            long limit = strtol(text, &end, 10);
-            if (*end || errno == ERANGE || limit < 0 || limit > INT_MAX ||
-                a->function < 0) {
-                script_analyzer_diagnostic(a, node, "Callable depth limit must be a nonnegative integer");
-            } else {
-                a->out->functions[a->function].depth_limit = (int)limit;
-            }
-            free(text);
-        } else if (
-            script_analyzer_is(node, "metadata_declaration") &&
-            script_analyzer_text_is(a, script_analyzer_field(node, "kind"), "owner")
-        ) {
-            script_type owner = script_analyzer_type_node(a, script_analyzer_field(node, "value"));
-            if (owner.storage != PIN_HANDLE) {
-                script_analyzer_diagnostic(a, node, "Owner must be a nominal handle type");
-            }
-            a->out->owner_type = owner.nominal;
         }
     }
 }
@@ -1258,7 +1241,6 @@ bool script_analyzer_declaration_kind(TSNode node)
            script_analyzer_is(node, "macro_declaration") ||
            script_analyzer_is(node, "handler") ||
            script_analyzer_is(node, "events_declaration") ||
-           script_analyzer_is(node, "metadata_declaration") ||
            script_analyzer_is(node, "query_declaration") ||
            script_analyzer_is(node, "bind_declaration") ||
            script_analyzer_is(node, "entry_declaration") ||

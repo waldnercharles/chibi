@@ -27,40 +27,40 @@ static package_test *tests;
 static const char
     FACTS[] = "package facts\n"
               "import strings \"core:strings\"\n"
-              "Check :: fn(amount: int) {\n"
+              "Check :: (amount: int) {\n"
               "    expect(amount > 2, \"amount is large\");\n"
               "}\n"
               "@test\n"
-              "Passes :: fn() {\n"
+              "Passes :: () {\n"
               "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "@test\n"
-              "Fails :: fn() {\n"
+              "Fails :: () {\n"
               "    Check(1);\n"
               "}\n"
               "@test\n"
-              "Faults :: fn() {\n"
+              "Faults :: () {\n"
               "    values: int[] = [1];\n"
               "    expect(values[3] == 1, \"unreachable\");\n"
               "}\n"
               "@test\n"
-              "Spins :: fn() {\n"
+              "Spins :: () {\n"
               "    while (true) {\n"
               "    }\n"
               "}\n"
               "@test\n"
-              "Yields :: fn() {\n"
+              "Yields :: () {\n"
               "    yield\n"
               "}\n"
               "@test\n"
-              "Starts :: fn() {\n"
+              "Starts :: () {\n"
               "    Yields();\n"
               "}\n";
-static const char FIRST[] = "package facts\n@test\nFirst :: fn() {\n}\n";
+static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 /* The package at the root itself is named by its declaration. */
-static const char TOP[] = "package top\n@test\nTop :: fn() {\n}\n";
+static const char TOP[] = "package top\n@test\nTop :: () {\n}\n";
 /* A collection's tests belong to the collection, not to this project. */
-static const char MARKS[] = "package marks\n@test\nCollected :: fn() {\n}\n";
+static const char MARKS[] = "package marks\n@test\nCollected :: () {\n}\n";
 
 static void cleanup()
 {

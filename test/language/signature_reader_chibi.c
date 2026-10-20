@@ -34,7 +34,7 @@
  * The parser supplies complete raw nodes/fields/named/extra flags; no C reader
  * result is supplied as an authored input. Request3's owned environment feeds
  * request6 within the same48calls. Inputs stay below256bytes/256nodes/depth32;
- * the separate deep case stays below512bytes/512nodes/depth256.
+ * the separate deep case stays below640bytes/512nodes/depth256.
  * Compiler sources stay below32KiB. Inputs have2scopes/2symbols/1function/2documents,
  * 3catalog definitions/2variants/1import/export; one chained definition adds1.
  * Outputs:4publications/4newtypes/4uses/4diagnostics,64types/128IDs.
@@ -692,8 +692,8 @@ static const char *annotations[] = {
     "enum<Row>",
     "handle<Row>",
     "array",
-    "\"Row\"",
-    "\"\\u0000\"",
+    "Row",
+    "map",
     "Missing",
     "lib.Row",
     "u",
@@ -715,7 +715,7 @@ static bool execute(int index)
     int length = snprintf(
         source,
         sizeof source,
-        "library Facts { Run :: fn(value%s%s) {} }",
+        "Facts :: library { Run :: (value%s%s) {} }",
         annotations[index] ? ": " : "",
         annotations[index] ? annotations[index] : ""
     );
@@ -790,12 +790,12 @@ static bool execute(int index)
         if (index == 6) {
             REQUIRE(
                 chain_env[b].type == PIN_UNION && chain_env[b].ptr &&
-                !pin_value_snapshot_to_arena(&input, &values[0], &chain_env[b])
+                !compiler_fixture_snapshot(&input, &values[0], &chain_env[b])
             );
             arena_free(&chained[b]);
             chain_env[b] = (pin_value){ 0 };
         }
-        REQUIRE(!pin_value_snapshot_to_arena(&baseline_storage, &before, &values[0]));
+        REQUIRE(!compiler_fixture_snapshot(&baseline_storage, &before, &values[0]));
         values[2] = integer(target_index);
         values[3] = integer(1);
         values[4] = integer(document);
@@ -820,13 +820,13 @@ static bool execute(int index)
         if (index == 3) {
             REQUIRE(
                 reading.type_count == 1 && reading.use_count == 0 &&
-                !pin_value_snapshot_to_arena(&chained[b], &chain_env[b], updated)
+                !compiler_fixture_snapshot(&chained[b], &chain_env[b], updated)
             );
         }
         if (index == 7 || index == 21) {
             int slot = index == 7 ? 0 : 1;
             REQUIRE(
-                !pin_value_snapshot_to_arena(&retained[b][slot], &kept[b][slot], &result) &&
+                !compiler_fixture_snapshot(&retained[b][slot], &kept[b][slot], &result) &&
                 owned(&retained[b][slot], &kept[b][slot], 0) &&
                 serialize(&kept[b][slot], &golden[b][slot])
             );
@@ -924,13 +924,14 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
     REQUIRE(prepared && parser && calls == 48 && parses == 24);
     cleanup();
     facts_reset(false, false);
-    char deep_source[512];
+    char deep_source[640];
     compiler_fixture_node deep_nodes[512];
-    int length = snprintf(deep_source, sizeof deep_source, "library Facts { Run :: fn(value: ");
+    int length = snprintf(deep_source, sizeof deep_source, "Facts :: library { Run :: (value: ");
     REQUIRE(length > 0);
+    /* Nested arrays name collection types; nominal wrappers nest without them. */
     for (int i = 0; i < 65; i++) {
-        memcpy(deep_source + length, "array<", 6);
-        length += 6;
+        memcpy(deep_source + length, "struct<", 7);
+        length += 7;
     }
     memcpy(deep_source + length, "int", 3);
     length += 3;
@@ -973,7 +974,7 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
     REQUIRE(target_index >= 0);
     reading = script_signature_read(&oracle, &context, target, deep_source, 1, 0, false);
     REQUIRE(
-        reading.type.storage == PIN_I32 && reading.type.container == PIN_CONTAINER_ARRAY &&
+        reading.type.storage == PIN_I32 && reading.type.container == PIN_CONTAINER_SINGLE &&
         !reading.type.flags && !reading.type.nominal &&
         !reading.type.parameter && !reading.unit && !reading.diagnostic_count &&
         !reading.use_count && !reading.publication_count && !reading.type_count
@@ -986,7 +987,7 @@ TEST_CASE(signature_reader_deep_arrays_do_not_consume_callable_depth)
         REQUIRE(
             signature_fixture_environment(&fixture, b, &context, 2, &input, &values[0]) &&
             signature_fixture_tree(&fixture, b, deep_nodes, count, deep_source, &input, &values[1]) &&
-            !pin_value_snapshot_to_arena(&baseline_storage, &before, &values[0])
+            !compiler_fixture_snapshot(&baseline_storage, &before, &values[0])
         );
         values[2] = integer(target_index);
         values[3] = integer(1);
@@ -1076,10 +1077,10 @@ static int snapshot_calls, map_calls, view_calls, reader_calls, snapshot_parses;
 static int snapshot_max_nodes;
 static bool snapshot_named[2], snapshot_extra[2];
 static const char
-    snapshot_a[] = "package app\nimport lib \"project:lib\"\nA :: fn(value: "
+    snapshot_a[] = "package app\nimport lib \"project:lib\"\nA :: (value: "
                    "task<int>) {}\n",
-    snapshot_lib[] = "package lib\nLib :: fn(value: u /* gap */ / s) {}\n",
-    snapshot_b[] = "package app\nB :: fn(value: Missing) {}\n";
+    snapshot_lib[] = "package lib\nLib :: (value: u /* gap */ / s) {}\n",
+    snapshot_b[] = "package app\nB :: (value: Missing) {}\n";
 static const source_package_input snapshot_sources[] = {
     { "app/A.chibi", snapshot_a, sizeof snapshot_a - 1 },
     { "lib/Lib.chibi", snapshot_lib, sizeof snapshot_lib - 1 },
@@ -1400,7 +1401,7 @@ static bool snapshot_read(
     }
     REQUIRE(
         signature_fixture_environment(&fixture, b, &context, 2, &input, &values[0]) &&
-        !pin_value_snapshot_to_arena(&baseline_storage, &before, &values[0])
+        !compiler_fixture_snapshot(&baseline_storage, &before, &values[0])
     );
     values[1] = direct_tree;
     values[2] = integer(target_index);
@@ -1428,7 +1429,7 @@ static bool snapshot_read(
     if (retain_slot >= 0) {
         REQUIRE(retain_slot < 2);
         REQUIRE(
-            !pin_value_snapshot_to_arena(&retained[b][retain_slot], &kept[b][retain_slot], &adapted_result) &&
+            !compiler_fixture_snapshot(&retained[b][retain_slot], &kept[b][retain_slot], &adapted_result) &&
             serialize(&kept[b][retain_slot], &golden[b][retain_slot])
         );
     }

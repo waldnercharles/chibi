@@ -506,12 +506,12 @@ static const char
               "import strings \"core:strings\"\n"
               "\n"
               "@test\n"
-              "Passes :: fn() {\n"
+              "Passes :: () {\n"
               "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "\n"
               "@test\n"
-              "Fails :: fn() {\n"
+              "Fails :: () {\n"
               "    expect(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
               "}\n";
 
@@ -550,14 +550,14 @@ TEST_CASE(compiler_test_reports_each_test)
     REQUIRE(tool_run(run, root, output) == 0);
     REQUIRE(file_is("tests.log", "PASS facts.Passes\nPASS facts.Fails\n2 tests, 0 failed\n"));
 
-    write_file("broken/facts/Facts.chibi", "package facts\nBroken :: fn() -> int { return missing; }\n");
+    write_file("broken/facts/Facts.chibi", "package facts\nBroken :: () -> int { return missing; }\n");
     char broken[256];
     path(broken, "broken");
     const char *invalid[] = { compiler, "--project-root", broken, "--test", NULL };
     REQUIRE(tool_run(invalid, root, output) == 1);
     REQUIRE(file_has("tests.log", "/broken/facts/Facts.chibi:2:"));
 
-    write_file("game/sounds/Sounds.chibi", "package sounds\n@test\nQuiet :: fn() {\n    set_master_volume(0.5);\n}\n");
+    write_file("game/sounds/Sounds.chibi", "package sounds\n@test\nQuiet :: () {\n    set_master_volume(0.5);\n}\n");
     char game[256];
     path(game, "game");
     const char *service[] = { compiler, "--project-root", game, "--test", NULL };
@@ -663,7 +663,7 @@ TEST_CASE(fmt_formats_each_project)
 static const char
     MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
 static const char
-    MESSY_SOURCE[] = "behavior Spin {\n  angle: float = 0.0;\n"
+    MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
                      "  on Tick(dt) {   angle = angle + dt; }\n}\n";
 
 /* The real compiler's --format --check names the assets that are not
@@ -694,7 +694,7 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "behavior Spin {\n    angle: float = 0.0\n    on Tick(dt) {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick(dt) {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);
@@ -743,7 +743,7 @@ static void directory(const char *relative)
     assert(!mkdir(folder, 0700) || errno == EEXIST);
 }
 
-static const char MESSY_PACKAGE[] = "package lib\nDouble :: fn(x: int) -> int "
+static const char MESSY_PACKAGE[] = "package lib\nDouble :: (x: int) -> int "
                                     "{   return x*2; }\n";
 
 /* Below a folder without a project.kdl, the real compiler's --format formats
@@ -786,11 +786,11 @@ TEST_CASE(compiler_format_rewrites_package_sources)
     REQUIRE(tool_run(format, root, output) == 0);
     REQUIRE(file_is("packages.log", "formatted lib/Lib.chibi\n"));
     REQUIRE(
-        file_is("tree/lib/Lib.chibi", "package lib\nDouble :: fn(x: int) -> int {\n    return x * 2;\n}\n")
+        file_is("tree/lib/Lib.chibi", "package lib\nDouble :: (x: int) -> int {\n    return x * 2;\n}\n")
     );
     REQUIRE(tool_run(check, root, output) == 0);
 
-    write_file("tree/z/Broken.chibi", "package z\nBroken :: fn( {\n");
+    write_file("tree/z/Broken.chibi", "package z\nBroken :: ( {\n");
     REQUIRE(tool_run(check, root, output) == 1);
     REQUIRE(file_has("packages.log", "z/Broken.chibi: "));
 
@@ -1110,12 +1110,12 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     site_manifest("site/docs/site.kdl", "docs/guide.md", "guide.html");
     write_file(
         "site/docs/guide.md",
-        "# Guide\n\n```chibi\npackage sample\nDouble :: pure fn(n: int) -> int "
+        "# Guide\n\n```chibi\npackage sample\nDouble :: (n: int) -> int "
         "{\n"
         "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
     );
     REQUIRE(tool_run(docs, root, output) == 0);
-    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: fn() {\n    Missing();\n}\n```\n");
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: () {\n    Missing();\n}\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1);
     REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\nsystem {\n```\n");

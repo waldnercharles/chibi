@@ -52,9 +52,9 @@ retain constant payloads until calls finish. Loading is synchronous in this
 version. Fields keep their separate evaluator.
 
 Authoring graphs project resolved source records. Graph edits produce source
-edits, followed by analysis and preparation before adoption. Optional
-`.chibi.meta` holds layout and debugger presentation; it supplies no executable
-values or connections. Native shader/model/field graphs have separate compilers.
+edits, followed by analysis and preparation before adoption. Graphs lay out
+automatically; in-session layout, breakpoints and watches are editor state that
+projects never store. Native shader/model/field graphs have separate compilers.
 Their producer API rejects executable behavior domains and metadata-only nodes.
 
 ## Package boundaries

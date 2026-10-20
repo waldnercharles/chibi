@@ -1,3 +1,4 @@
+// Face aim; drive from movement input or boost along the ship heading.
 Movement :: behavior {
     on Tick {
         self.Orientation.Radians = atan2(self.Aim.Direction.y, self.Aim.Direction.x)

@@ -11,6 +11,7 @@
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/native_capabilities.h"
+#include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
@@ -1456,6 +1457,88 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     result = (compiler_host_result){ 0 };
     return true;
 }
+/* Whether a point is one this compiler places as stage zero does: a
+ * function's entry and completions and each statement's. */
+static bool placed(const behavior_source_point *point)
+{
+    return point->kind == BEHAVIOR_SOURCE_FUNCTION ||
+           point->kind == BEHAVIOR_SOURCE_STATEMENT;
+}
+static bool same_point(const behavior_source_point *x, const behavior_source_point *y)
+{
+    return x->kind == y->kind && x->occurrence == y->occurrence &&
+           x->start == y->start && x->end == y->end && x->line == y->line &&
+           x->column == y->column && x->completion == y->completion &&
+           (x->kind != BEHAVIOR_SOURCE_FUNCTION || x->meaning == y->meaning);
+}
+/* Each function of stage one's module has stage zero's function and
+ * statement points, as many of each, in any order. */
+static bool same_points(const execution_module *expected, const execution_module *actual)
+{
+    REQUIRE(expected->plan.function_count == actual->plan.function_count);
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const behavior_function *x = expected->plan.functions[i].body,
+                                *y = actual->plan.functions[i].body;
+        int count = acount(y->source_points);
+        bool *used = xcalloc((size_t)count + 1, sizeof *used);
+        bool alike = true;
+        int placed_count = 0;
+        for (int j = 0; alike && j < acount(x->source_points); j++) {
+            if (!placed(&x->source_points[j])) {
+                continue;
+            }
+            placed_count++;
+            int found = -1;
+            for (int k = 0; found < 0 && k < count; k++) {
+                found = !used[k] && same_point(&x->source_points[j], &y->source_points[k])
+                          ? k
+                          : -1;
+            }
+            alike = found >= 0;
+            if (alike) {
+                used[found] = true;
+            } else {
+                fprintf(
+                    stderr,
+                    "function %d lacks stage zero's point kind %d at %d..%d\n",
+                    i,
+                    x->source_points[j].kind,
+                    x->source_points[j].start,
+                    x->source_points[j].end
+                );
+            }
+        }
+        for (int k = 0; alike && k < count; k++) {
+            alike = !placed(&y->source_points[k]) || used[k];
+            placed_count -= placed(&y->source_points[k]);
+            if (!alike) {
+                fprintf(
+                    stderr,
+                    "function %d has an extra point at %d..%d\n",
+                    i,
+                    y->source_points[k].start,
+                    y->source_points[k].end
+                );
+            }
+        }
+        free(used);
+        if (!alike || placed_count != 0) {
+            for (int k = 0; k < count; k++) {
+                const behavior_source_point *p = &y->source_points[k];
+                fprintf(
+                    stderr,
+                    "  stage one point kind %d at %d..%d completion %d\n",
+                    p->kind,
+                    p->start,
+                    p->end,
+                    p->completion
+                );
+            }
+            return false;
+        }
+    }
+    return true;
+}
 /* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
@@ -1808,6 +1891,55 @@ static bool literals_agree()
     }
     return true;
 }
+/* Each module of stage one's closure has the function and statement points of
+ * the stage-zero module with its ID that oracle_closure prepared. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    char error[256];
+    native_capabilities *
+        native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    REQUIRE(native);
+    native_prepared_context context = { .native = native };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler points load: %s\n", error);
+    }
+    REQUIRE(packages);
+    const authoring_packages *owner = oracle.owners[0];
+    bool alike = package_collection_count(packages) == authoring_packages_count(owner);
+    for (int p = 0; alike && p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        const execution_module *expected = NULL;
+        for (int q = 0; !expected && q < authoring_packages_count(owner); q++) {
+            const execution_module *candidate = authoring_packages_at(owner, q)->module;
+            expected = execution_module_id(candidate) == execution_module_id(module)
+                         ? candidate
+                         : NULL;
+        }
+        alike = expected && same_points(expected, module);
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    return alike;
+}
 static bool run_samples(sample_group group)
 {
     REQUIRE(prepare());
@@ -1871,7 +2003,8 @@ static bool run_samples(sample_group group)
             size_t expected_length = 0;
             bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
                        (!s->boxed || reads_boxed(bytes, length)) &&
-                       (b || oracle_closure(s, &expected, &expected_length));
+                       (b || (oracle_closure(s, &expected, &expected_length) &&
+                              points_like_oracle(bytes, length)));
             for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
                 for (int backend = 0; ran && backend < 2; backend++) {
                     ran = run(bytes, length, &s->calls[c], backend);
@@ -2655,7 +2788,8 @@ static bool behaves_alike(int b, const behavior_sample *sample)
     execution_module *actual = NULL;
     bool same = expected &&
                 stage_one_behavior(b, sample->name, sample->source, &actual) &&
-                same_declarations(expected, actual) && plays_alike(expected, actual);
+                same_declarations(expected, actual) &&
+                same_points(expected, actual) && plays_alike(expected, actual);
     if (!same) {
         fprintf(stderr, "behavior %s differs on backend %d\n", sample->name, b);
     }
@@ -2732,20 +2866,42 @@ TEST_CASE(package_compiler_shares_its_arguments)
     REQUIRE(copying == 0);
     return true;
 }
-TEST_CASE(package_compiler_compiles_behaviors)
+/* The behavior samples from `first` before `last` compile alike on both
+ * backends. Stage one compiles slowest on the bytecode backend, so each
+ * selector takes half of them. */
+static bool samples_alike(size_t first, size_t last)
 {
-    REQUIRE(prepare());
     const type_desc *const reflected[] = { &spot_type };
     const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
     type_catalog_set_project(&pack);
     bool passed = true;
     for (int b = 0; passed && b < 2; b++) {
-        for (size_t i = 0;
-             passed && i < sizeof behavior_samples / sizeof *behavior_samples;
-             i++) {
+        for (size_t i = first; passed && i < last; i++) {
             passed = behaves_alike(b, &behavior_samples[i]);
         }
     }
+    type_catalog_set_project(NULL);
+    return passed;
+}
+enum
+{
+    SAMPLE_COUNT = sizeof behavior_samples / sizeof *behavior_samples
+};
+TEST_CASE(package_compiler_compiles_behaviors)
+{
+    REQUIRE(prepare());
+    REQUIRE(samples_alike(0, SAMPLE_COUNT / 2));
+    return true;
+}
+/* The other half of the samples, the rejections and the identities a
+ * project's path gives. */
+TEST_CASE(package_compiler_compiles_the_other_behaviors)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    bool passed = samples_alike(SAMPLE_COUNT / 2, SAMPLE_COUNT);
+    type_catalog_set_project(&pack);
     for (size_t i = 0;
          passed && i < sizeof behavior_rejections / sizeof *behavior_rejections;
          i++) {
@@ -2789,7 +2945,18 @@ void test_language_package_compiler_chibi_literals()
 void test_language_package_compiler_chibi_behaviors()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(package_compiler_shares_its_arguments);
     RUN_TEST_CASE(package_compiler_compiles_behaviors);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_behaviors_rest()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_sharing()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_shares_its_arguments);
     pu_clear_setup();
 }

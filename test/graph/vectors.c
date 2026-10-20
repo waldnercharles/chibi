@@ -146,9 +146,36 @@ TEST_CASE(vector_extremes_defaults_and_zero_scale)
     REQUIRE(direction_to());
     return true;
 }
+/* A vector of floats scaled by an integer, as `vec2(x, y) * 40` passes an
+ * untyped integer literal, scales each field by the integer's value, on
+ * either side and at each integer width. */
+TEST_CASE(vectors_scale_by_integers)
+{
+    arena memory;
+    arena_init(&memory, 256);
+    CF_V2 source = { 0.5f, -2 };
+    const pin_value scales[] = {
+        { .type = PIN_I32, .i = 40 },
+        { .type = PIN_I64, .i64 = 40 },
+        { .type = PIN_U64, .u64 = 40 },
+    };
+    for (int i = 0; i < (int)(sizeof scales / sizeof *scales); i++) {
+        pin_value vector = { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &source };
+        pin_value right[] = { vector, scales[i] }, left[] = { scales[i], vector };
+        pin_value scaled = native_arithmetic_multiply(right, 2, &memory);
+        REQUIRE(scaled.type == PIN_STRUCT && scaled.ptr);
+        REQUIRE(((CF_V2 *)scaled.ptr)->x == 20 && ((CF_V2 *)scaled.ptr)->y == -80);
+        scaled = native_arithmetic_multiply(left, 2, &memory);
+        REQUIRE(scaled.type == PIN_STRUCT && scaled.ptr);
+        REQUIRE(((CF_V2 *)scaled.ptr)->x == 20 && ((CF_V2 *)scaled.ptr)->y == -80);
+    }
+    arena_free(&memory);
+    return true;
+}
 void test_vector_nodes()
 {
     graph_palette_open();
     RUN_TEST_CASE(vector_extremes_defaults_and_zero_scale);
+    RUN_TEST_CASE(vectors_scale_by_integers);
     graph_palette_close();
 }

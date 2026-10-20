@@ -65,9 +65,7 @@ replacement start and `AUTHORING_FORMAT_AFTER` chooses its end. Consumers remain
 responsible for supplying valid UTF-8 caret boundaries.
 
 Free text with `free` and the map with `authoring_format_map_free`. Free an old
-map before passing it as an output again. Failure leaves the map empty. Existing
-`authoring_source_metadata_remap` remains the separate identity/metadata check;
-a caret map does not replace its source-hash and CST validation.
+map before passing it as an output again. Failure leaves the map empty.
 
 ## Semantic simplification and integration
 

@@ -4,20 +4,10 @@
     "sha256": "4f14f158cf83604f1691f31b28ae56a9d5b1abba2aef1be945741a5f878a4426",
     "source": "projects/arena2d/content/behaviors/Movement.chibi"
   },
-  "content/behaviors/Movement.chibi.meta": {
-    "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
-    "sha256": "c49af8dd0a91a5cf998c8e9c7929fa2d17ce48410fe26cded3529b354b959f82",
-    "source": "projects/arena2d/content/behaviors/Movement.chibi.meta"
-  },
   "content/behaviors/Weapon.chibi": {
     "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
     "sha256": "07175c210c1fc4366e54b00b46331e31d80ed4e49808b4362fe6e1e15b140b53",
     "source": "projects/arena2d/content/behaviors/Weapon.chibi"
-  },
-  "content/behaviors/Weapon.chibi.meta": {
-    "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
-    "sha256": "1978344e3128a034de9b105419e8cc68a9927efd1f4498b008ad89a95cce63bf",
-    "source": "projects/arena2d/content/behaviors/Weapon.chibi.meta"
   },
   "content/editor/Components.kdl": {
     "purpose": "reflected component labels and field grouping consumed by graph completion",
@@ -29,20 +19,10 @@
     "sha256": "5d71a37821b3a711385a89f64637fa2b2624029f7312a4aabaed26982aa36321",
     "source": "projects/arena2d/content/libraries/DirectionMath.chibi"
   },
-  "content/libraries/DirectionMath.chibi.meta": {
-    "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
-    "sha256": "99279ee363bc8fd0dfa8c7e0ef40aed6d633678983fd636fdcac580e9d4ab611",
-    "source": "projects/arena2d/content/libraries/DirectionMath.chibi.meta"
-  },
   "content/libraries/WeaponActions.chibi": {
     "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
     "sha256": "e7001582df4e6c2fc2cb7b9d3ef4c665bbe347bb7657b72ef3717cedd7febed6",
     "source": "projects/arena2d/content/libraries/WeaponActions.chibi"
-  },
-  "content/libraries/WeaponActions.chibi.meta": {
-    "purpose": "frozen executable graph and metadata for node identities, completions, layout and tab reopen",
-    "sha256": "8e0c20091261eae8609671d0c0fd1a2a03a4b0d33d5612c073564928ba7713fa",
-    "source": "projects/arena2d/content/libraries/WeaponActions.chibi.meta"
   },
   "content/prototypes/Camera.kdl": {
     "purpose": "camera overlay without camera choreography",

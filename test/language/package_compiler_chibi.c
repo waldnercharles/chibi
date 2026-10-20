@@ -732,6 +732,12 @@ static const sample samples[] = {
       .message = "for loops support only `for name in array`",
       .line = 2,
       .column = 20 },
+    { .name = "reverse for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for < x in xs { } "
+                "return 0; }",
+      .message = "for loops support only `for name in array`",
+      .line = 2,
+      .column = 29 },
     { .name = "for scalar",
       .source = "package facts\nOne :: (n: int) -> int { for (x in "
                 "n) { } return 0; }",

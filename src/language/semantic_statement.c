@@ -895,7 +895,14 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             if (!script_analyzer_scalar_constant(a, result.expression, PIN_I32, &low) &&
                 !script_analyzer_scalar_constant(a, result.second, PIN_I32, &high) &&
                 low.i > high.i) {
-                script_analyzer_diagnostic(a, node, "Range bounds descend; count down with for <");
+                script_analyzer_diagnostic(
+                    a,
+                    node,
+                    result.reverse
+                        ? "Range bounds descend; for < takes the low bound "
+                          "first, as in for < i in 0..10"
+                        : "Range bounds descend; count down with for <"
+                );
             }
         } else {
             result.expression = script_analyzer_expression(

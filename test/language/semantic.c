@@ -927,7 +927,7 @@ TEST_CASE(language_loops_reverse_explicitly)
     parse("L :: library { F :: () { for i in 10..0 {} } }");
     REQUIRE(diagnostic("Range bounds descend; count down with for <"));
     parse("L :: library { Top :: 10; F :: () { for < i in Top..<1 {} } }");
-    REQUIRE(diagnostic("Range bounds descend; count down with for <"));
+    REQUIRE(diagnostic("Range bounds descend; for < takes the low bound first, as in for < i in 0..10"));
     parse("L :: library { F :: () { for < c in \"ab\" {} } }");
     REQUIRE(diagnostic("for < reverses only ranges and arrays"));
     parse("L :: library { F :: (m: Map<string, int>) { for < k, v in m {} } }");

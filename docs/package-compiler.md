@@ -268,20 +268,20 @@ to 21 s.
 
 `make test-bootstrap` builds an unsanitized Release `test_language` and runs
 `tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
-one, which compiles the compiler's complete source set, 14 files in 11
-packages, to a 6.2 MB closure: stage two. The compiler host loads stage two
+one, which compiles the compiler's complete source set, 15 files in 11
+packages, to a 6.4 MB closure: stage two. The compiler host loads stage two
 and runs its `CompileClosure` on the same sources and arguments, as JSON, and
 the bytes must equal stage one's. Stage two then compiles every sample, and
 each `Compile` result, closure or rejection, must project to the same JSON as
 stage one's; the existing selectors check stage one's against stage zero and
-run its closures on bytecode and SLJIT. The run takes about 22 s, with a peak
-memory footprint of about 3.1 GB (macOS arm64, 2026-10-19): stage one compiles
-the compiler in 10.9 s of CPU time and stage two in 7.2 s, against 12.5 s and
-8.2 s before the changes above, and stage two's samples take 2.4 s. Stage one,
-stage zero's build, peaks at 2.7 GB; an earlier measurement put most of that in
+run its closures on bytecode and SLJIT. The run takes about 23 s, with a peak
+memory footprint of about 3.5 GB (macOS arm64, 2026-10-19): stage one compiles
+the compiler in 11.7 s of CPU time and stage two in 7.6 s, against 13.3 s,
+8.9 s and 4.2 GB before the changes above, and the closure shrank from 6.64 MB.
+An earlier measurement put most of stage one's footprint in
 the `prepared_writer.Write` frame writing the package compiler's module,
 against 92 MB for stage two's build of the same function on the same module.
-Each copy of the closure is about 250 MB as a `byte[]` of 40-byte values.
+Each copy of the closure is about 256 MB as a `byte[]` of 40-byte values.
 Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
@@ -289,5 +289,5 @@ descriptors on every snapshot, so this check runs only on the Release build.
 Stage two needs the compiler host's larger closure bounds: the package
 compiler's module needs about 113 M units of record-layout work and decodes to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
-prepared read, and its 6.2 MB closure, as a `byte[]` of 40-byte values, is
+prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, is
 past the host's former 1,000,000-value byte result.

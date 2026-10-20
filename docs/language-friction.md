@@ -18,14 +18,14 @@ Each entry starts with its class:
 A **Decision** records the owner's choice; nothing here is implemented unless
 the entry says so.
 
-## Untyped integer literals are doubles
+## Stage one rejects untyped locals
 
-Language. `xs = array_add(xs, 0)` appends a double, and `index := 0` declares
-a double, because an untyped number literal is a `number`. Integer code writes
-`int(0)` and `index: int = 0` instead; stage one rejects untyped locals for
-this reason. `core:strings` declares two dozen counters as `i: int = 0;`
-(#503). A floating value also narrows to an integer silently:
-`x: int = 0; x += 1.5` leaves 1.
+Stage one. Before #558 an untyped number literal was a `number`, so
+`xs = array_add(xs, 0)` appended a double and `index := 0` declared one.
+Integer code wrote `int(0)` and `index: int = 0` instead, and stage one
+rejects untyped locals for this reason. `core:strings` declares two dozen counters as `i: int = 0;`
+(#503). A floating value also narrowed to an integer silently:
+`x: int = 0; x += 1.5` left 1.
 
 - Go and Odin give an untyped constant its type from context and otherwise
   default by spelling: `1` is `int`, `1.0` is `float64`/`f64`.
@@ -45,6 +45,14 @@ as `elapsed := 0` followed by `elapsed += dt` then fails at the `+=` and
 becomes `elapsed := 0.0`. Inferring the type from later uses, as Haskell does,
 was rejected: an edit far from the declaration would silently switch `/`
 between integer and floating division.
+
+Implemented for stage zero in #558, with "Numeric literal has a fraction,
+which int cannot hold" for `count * 0.5` and "convert with int(value)" for
+a floating value stored in an integer. Stage one still rejects an untyped
+local such as `i := 0`, though its type is now settled.
+
+Suggestion: stage one accepts untyped locals typed by spelling, then the
+compiler and `core:strings` drop their `i: int = 0` declarations.
 
 ## Records hold only scalar fields
 

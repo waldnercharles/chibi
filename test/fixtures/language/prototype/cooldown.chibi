@@ -1,5 +1,5 @@
 Cooldown :: behavior {
-    remaining := 2
+    remaining := 2.0
     ready := false
 
     on Tick(dt) {

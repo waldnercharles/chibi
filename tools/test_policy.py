@@ -770,7 +770,7 @@ TOOLS = {
     # review, separate build, shared 60s; outside the language aggregate.
     'language-type-constructors-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                        '--type-constructors-chibi'],
-    # Four cases: 111 fixed requests, 222 calls with budget argument 50k.
+    # Four cases: 112 fixed requests, 224 calls with budget argument 50k.
     # Child activations inherit/reset it; not a global instruction ceiling.
     # Five compiler sources/backend (<32 KiB each): ten preparation parses.
     # Caps: 5 definitions, 8 variants/types, 4 uint64 IDs, 3 alias links.

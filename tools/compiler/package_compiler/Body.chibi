@@ -830,6 +830,22 @@ BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -
     return false;
 }
 // The next switch arm after `node` among its siblings, -1 when none.
+// Whether a range's bounds are both constant and the first is the greater.
+Descends :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
+             package: int, node: int) -> bool {
+    bounds: int64[] = [];
+    for (end in [Field(forest, node, "first"), Field(forest, node, "last")]) {
+        switch FoldConstant(forest, text, document, constants, names, package, end, IntStorage) {
+            case .Folded(bits):
+                bounds = array_add(bounds, int64(wrap: bits));
+            case .Failed(diagnostic):
+                return false;
+            case .Waiting:
+                return false;
+        }
+    }
+    return bounds[0] > bounds[1];
+}
 // The name an array loop gives each item: `x` in `for x in xs` and in the
 // keyed `for x, i in xs`, whose second name is the index.
 ItemField :: (forest: snapshot.SnapshotNode[], node: int) -> int {
@@ -1146,6 +1162,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 stepped = false;
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
                 if (Field(forest, item.node, "first") >= 0) {
+                    // Ranges never count down, so constant bounds that descend
+                    // are a mistake, as stage zero reports.
+                    if (Descends(forest, text, document, constants, names, callable.package, item.node)) {
+                        message := "Range bounds descend; count down with for <";
+                        if (Field(forest, item.node, "reverse") >= 0) {
+                            message = "Range bounds descend; for < takes the low bound first, as in for < i in 0..10";
+                        }
+                        return Body.Failed(Diagnose(forest, item.node, document, message));
+                    }
                     next = array_add(next, Expect(Field(forest, item.node, "first"), IntStorage, 0, -1));
                     next = array_add(next, Expect(Field(forest, item.node, "last"), IntStorage, 0, -1));
                     next = array_add(next, Resume(item.node, 5, 0, 0));
@@ -1624,6 +1649,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                           reverse: reverse, counted: false, bound: -1, empty: -1};
                             loops = array_add(loops, loop);
                             // `for x, i in xs` names the item, then the index the loop owns.
+                            if (Field(forest, item.node, "key") >= 0 &&
+                                Text(forest, text, Field(forest, item.node, "key")) ==
+                                Text(forest, text, Field(forest, item.node, "name"))) {
+                                return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
+                                                            format_text("Duplicate declaration '{}'",
+                                                                        Text(forest, text, Field(forest, item.node, "name")))));
+                            }
                             if (Field(forest, item.node, "key") >= 0) {
                                 key: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
                                              index: marks[2], storage: IntStorage, container: 0, record: -1,

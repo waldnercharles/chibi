@@ -46,9 +46,9 @@ import:
   parameters, results and locals; a `float` beside a `double` becomes one, and
   a number stored in a floating field converts as stage zero converts it;
   string literals decode as JSON strings, as stage zero reads them;
-- parameter defaults that are literals, `(name: string = "you", count: int =
-  1)`: a call that omits trailing arguments passes their defaults, as stage
-  zero does;
+- parameter defaults that are integer, bool or string literals, `(name:
+  string = "you", count: int = 1)`: a call that omits trailing arguments
+  passes their defaults, as stage zero does. A floating default is rejected;
 - named results, `Split :: (value: float) -> (whole: int, rest: float)`: each
   is a local, zero until the body sets it; `return (a, b)` gives each its
   value, and `return` or the body's end returns them. A call's `.name` reads

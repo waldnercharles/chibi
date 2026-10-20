@@ -133,6 +133,22 @@ Other languages:
 Suggestion: both compilers gain `a, b := F()` destructuring and
 `a, b = b, a`.
 
+## An integer vector times a float reads the wrong bits
+
+Runtime. A numeric aggregate native combines a record with a scalar field by
+field. Since #558 made `40` an `int`, `vec2(x, y) * 40` passed an int to a
+floating record, which read its bits as a float until the self-hosting
+thread's fix widened the integer (#557). The reverse still misreads: an
+integer record such as an `ivec2` scaled by `0.5` reads the double's bits as
+an int. Floating to integer is now explicit everywhere else.
+
+- Odin, Rust, Zig and Go refuse `[2]i32 * 0.5` without a conversion; GLSL
+  and HLSL convert the integer vector to a floating one.
+
+Suggestion: stage zero rejects an integer aggregate with a floating scalar,
+asking for a conversion of the aggregate or the scalar, as it does for
+`int * 0.5`.
+
 ## Integer overflow wraps silently
 
 Language. Integer arithmetic wraps without a sign: `int` 2147483647 + 1 is

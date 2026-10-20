@@ -1226,7 +1226,13 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             arity = count >= expected_count - 1;
         }
         if (found >= 0 && count < expected_count) {
-            arity = params[callables[found].first + count].has_default;
+            // Every omitted argument needs a default.
+            arity = true;
+            at_omitted := count;
+            while (at_omitted < expected_count) {
+                arity = arity && params[callables[found].first + at_omitted].has_default;
+                at_omitted += 1;
+            }
         }
         if (!arity) {
             return Fail(forest, item.node, document, "call has the wrong number of arguments");

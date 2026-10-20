@@ -754,7 +754,11 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
     } else if (unary && operator == "+") {
         result = left;
     } else if (unary && operator == "~") {
+        // An unsigned type's complement keeps only its own bits.
         result = ~left;
+        if (!Signed(storage) && storage != WordStorage) {
+            result = result & ((int64(1) << int64(Width(storage))) - 1);
+        }
     } else if (operator == "+") {
         result = left + right;
         exact = (left >= 0) != (right >= 0) || (result >= 0) == (left >= 0);
@@ -763,7 +767,8 @@ FoldConstant :: (forest: snapshot.SnapshotNode[], text: string, file: int, const
         exact = (left >= 0) == (right >= 0) || (result >= 0) == (left >= 0);
     } else if (operator == "*") {
         result = left * right;
-        exact = left == 0 || (result / left == right && !(left == -1 && right == Int64Min));
+        // Int64Min / -1 itself traps, so that pair is tested first.
+        exact = left == 0 || (!(left == -1 && right == Int64Min) && result / left == right);
     } else if (operator == "/" || operator == "%") {
         if (right == 0) {
             return Folding.Failed(Diagnose(forest, node, file, "Constant division by zero"));

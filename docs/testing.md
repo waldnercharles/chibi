@@ -1915,8 +1915,9 @@ takes about 6 s.
     behavior's identity and source. It compares the types with the
     requirements of the module stage zero writes (all 112, in order: ID,
     layout, storage, size and name), and the module's events (ID, ABI and
-    payload fields) and entity type, and that the operators that combine
-    records hold `+` as the native `add`.
+    payload fields) and entity type, that the operators that combine
+    records hold `+` as the native `add`, and that the globals hold `self` of
+    the owner's type.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.
@@ -1925,7 +1926,7 @@ takes about 6 s.
     unless every story played.
 
 `make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
-Counter and Motion with `chibi-compile` and with stage one's route,
+Counter, Motion and Controls with `chibi-compile` and with stage one's route,
 `tools/toolchain/StageOne.chibi`, and compares them as above. The route:
 1. recovers stage one from the bootstrap artifact and the compiler sources
    with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and

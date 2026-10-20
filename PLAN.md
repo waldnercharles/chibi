@@ -1044,15 +1044,18 @@ event handler, `self` and a component field write through the reference
 intrinsics, with the writer's state, event and component tables. It compiles
 Motion's drift, `self.Transform += self.Velocity * dt`: component reads
 through references, records combined by the game's `*` and `+` natives, and
-the sum written back through the reference it read. Its modules have stage
+the sum written back through the reference it read. It compiles Controls'
+pilot: a field's compound assignment through its reference, `float`
+arithmetic, a record field inside a game record, and `input.Jump.pressed`,
+an input action's name read by the game's native. Its modules have stage
 zero's identities and play as stage zero's do
 (`docs/package-compiler.md#behaviors`). Stage one's route,
-`tools/toolchain/StageOne.chibi`, rebuilds Counter and Motion as stage zero
-does: it recovers stage one from the bootstrap artifact, runs
+`tools/toolchain/StageOne.chibi`, rebuilds Counter, Motion and Controls as
+stage zero does: it recovers stage one from the bootstrap artifact, runs
 `CompileBehaviors` on the exported input, and assembles the artifact with
-`chibi-compile --modules` (`make test-stage-one`). Next: Controls, Results
-and Follow, in the stories' order, each added to that selector as stage one
-compiles it. See `docs/testing.md#game-equivalence`.
+`chibi-compile --modules` (`make test-stage-one`). Next: Results and Follow,
+in the stories' order, each added to that selector as stage one compiles
+it. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

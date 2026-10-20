@@ -2068,6 +2068,12 @@ static const behavior_sample behavior_samples[] = {
     { "Mark", "Mark :: behavior {\n    on tick {\n        self.Spot.x = 3\n    }\n}\n" },
     { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
     { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
+    { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Halve",
+      "Halve :: behavior {\n    on Tick(dt) {\n        self.Spot.y = "
+      "self.Spot.w / 2 - dt\n"
+      "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
+      "}\n    }\n}\n" },
     { "Pair",
       "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick {\n     "
       "   a *= 2\n"
@@ -2085,8 +2091,6 @@ static const behavior_rejection behavior_rejections[] = {
     { "Jump :: behavior {\n    on Jump {\n    }\n}\n", "Unknown event 'Jump'" },
     { "Fixed :: behavior {\n    on Tick {\n        self.Spot.w = 1\n    }\n}\n",
       "Assignment requires a writable value" },
-    { "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n",
-      "compound assignment to a component field is not supported yet" },
     { "Named :: behavior {\n    label: string = \"\"\n    on Tick {\n    "
       "}\n}\n",
       "state needs an integer type" },
@@ -2097,6 +2101,9 @@ static const behavior_rejection behavior_rejections[] = {
       "assigning a whole component is not supported yet" },
     { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
       "operator does not apply to these operands" },
+    { "Pace :: behavior {\n    on Tick {\n        self.Spot.x = pace\n    "
+      "}\n}\n",
+      "reading the global 'pace' is not supported yet" },
 };
 enum
 {
@@ -2105,7 +2112,7 @@ enum
     TICK = 11,
     OWNER = 30,
     ENTITY = 700,
-    BEHAVIOR_ARGUMENTS = 14,
+    BEHAVIOR_ARGUMENTS = 15,
     TICKS = 5
 };
 typedef struct
@@ -2156,11 +2163,12 @@ static const script_catalog_capability game_events[] = {
       .parameter_count = 1,
       .completion_outcome = -1 },
 };
-static const script_catalog_global game_owner = { .id = OWNER,
-                                                  .name = "self",
-                                                  .type = { .storage = PIN_HANDLE,
-                                                            .nominal = ENTITY } };
-/* The game: the Spot component and the entity type, Tick and `self`. */
+static const script_catalog_global game_globals[] = {
+    { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
+    { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
+};
+/* The game: the Spot component and the entity type, Tick, `self` and
+ * `pace`, a global stage one cannot read yet. */
 static script_catalog game_catalog()
 {
     static script_catalog_type types[2];
@@ -2181,8 +2189,8 @@ static script_catalog game_catalog()
                              .type_count = 2,
                              .capabilities = game_events,
                              .capability_count = 1,
-                             .globals = &game_owner,
-                             .global_count = 1,
+                             .globals = game_globals,
+                             .global_count = 2,
                              .entity_type = ENTITY,
                              .tick_event = TICK };
 }
@@ -2222,9 +2230,19 @@ static pin_value flag(bool value)
 {
     return (pin_value){ .type = PIN_BOOL, .b = value };
 }
+/* The index of the type `id` among the catalog's, -1 for none. */
+static int type_index(const script_catalog *catalog, uint64_t id)
+{
+    for (int i = 0; id && i < catalog->type_count; i++) {
+        if (catalog->types[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
 /* CompileBehavior's game arguments, as the game target exports them: each
  * event and its payload fields, each type and its fields, the entity type,
- * and no operators that combine records. */
+ * no operators that combine records, and the globals. */
 static bool game_arguments(int b, pin_value *out)
 {
     script_catalog catalog = game_catalog();
@@ -2266,6 +2284,9 @@ static bool game_arguments(int b, pin_value *out)
             REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
             REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
             REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
+            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
+            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
+            REQUIRE(put(&field, "read", -1));
             apush(fields, field);
         }
     }
@@ -2280,10 +2301,21 @@ static bool game_arguments(int b, pin_value *out)
         PIN_STRUCT,
         compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
     );
+    pin_value *globals = NULL;
+    for (int i = 0; i < catalog.global_count; i++) {
+        const script_catalog_global *g = &catalog.globals[i];
+        pin_value global = row(b, "GameGlobal");
+        REQUIRE(put_value(&global, "name", text(g->name)));
+        REQUIRE(put(&global, "storage", (int)g->type.storage));
+        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
+        apush(globals, global);
+    }
+    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
     afree(declared);
     afree(payloads);
     afree(types);
     afree(fields);
+    afree(globals);
     return true;
 }
 /* Stage one's Result for `source` on backend `b`, in `detached`. */

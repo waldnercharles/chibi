@@ -182,8 +182,8 @@ static bool write_text(const char *path, const char *text)
     return file && !fclose(file) && written;
 }
 /* Writes stage one's CompileBehaviors input for the project: its executable
- * sources, and what their modules link against in the catalog preparation
- * uses. */
+ * sources, and what their modules link against in the catalog they compile
+ * against. */
 static int stage_one_input(const char *project, const char *output)
 {
     char error[512] = { 0 };
@@ -206,13 +206,7 @@ static int stage_one_input(const char *project, const char *output)
             identities[i] = source_catalog_source_at(sources, i)->identity;
             texts[i] = source_catalog_source_at(sources, i)->text;
         }
-        json = compiler_behavior_input_json(
-            authoring_project_catalog_view(catalog),
-            identities,
-            texts,
-            count,
-            &length
-        );
+        json = compiler_behavior_input_json(source_catalog_view(sources), identities, texts, count, &length);
         free(identities);
         free(texts);
     }

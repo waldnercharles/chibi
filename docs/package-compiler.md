@@ -126,8 +126,8 @@ a cyclic dependency there, while stage one reads the parameter.
 `CompileBehavior(identity: string, source: string, target: Target, abi: uint64,
 names: string[], natives: Native[], ports: Port[], native_ids: uint64[],
 game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
-type_fields: GameField[], entity: uint64, operators: NumericOperator[]) ->
-Result`
+type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+globals: GameGlobal[]) -> Result`
 compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
 whose bytes are one prepared module of the game the arguments describe, or to
 `Rejected(diagnostic)`. `identity` names the source as the project does, such
@@ -142,10 +142,14 @@ The game arguments are flat tables, since records hold no arrays:
 - each event, with its ID, its ABI and a range of payload fields;
 - each type the game links, with its ID, layout, storage and size, its
   component ID when it is a component, and a range of fields with their
-  storage, offsets and whether they are writable;
+  storage, offsets, whether they are writable, their type as an index into
+  these types, whether one is a constant whose value is its name, such as an
+  input action, and the native that reads one, such as an action's
+  `pressed`;
 - the entity type that owns behaviors;
 - each native that combines numbers, and records of them field by field, for
-  a binary operator, as an index into the natives.
+  a binary operator, as an index into the natives;
+- each global the game binds, with its storage and type.
 
 As in stage zero, the module lists every type as a requirement, and lists the
 events its handlers take. `CompileBehaviors` takes the identities and sources
@@ -153,9 +157,10 @@ of a project's behavior assets, then the same arguments, and returns a
 CHIBICLO closure of their modules, or no bytes when it rejects one; then
 `BehaviorRejection` returns the first rejection's identity, line, column and
 message. `tools/toolchain/StageOne.chibi` runs both on the input `chibi-compile
---stage-one-input` exports (`docs/testing.md#game-equivalence`). Events and components match their names as the
-catalog matches them: exactly, else loosely, ignoring case, spaces,
-underscores and hyphens.
+--stage-one-input` exports from the catalog the project's sources compile
+against (`docs/testing.md#game-equivalence`). Events, components and the
+fields of game types match their names as the catalog matches them: exactly,
+else loosely, ignoring case, spaces, underscores and hyphens.
 
 A behavior may hold integer states with literal initial values, and `on`
 handlers of the game's events with scalar payloads. A handler takes the
@@ -173,9 +178,15 @@ record, the operator's native from `operators` combines it field by field,
 with a record whose fields have the same names or with a number, as stage
 zero resolves operators. The result has the type of the first record operand;
 an untyped literal operand is a double. `self.C op= v` reads the component,
-combines it with `v` and writes the result back through the same reference.
-`after` handlers, `self.C = v`, compound assignment to a component field and
-member procedures are not supported yet.
+combines it with `v` and writes the result back through the same reference;
+`self.C.f op= v` reads the field through its reference the same way. A game
+record's record field, such as `self.Input.Move`, is the address inside it.
+`float` and `double` values add, subtract, multiply, divide, negate and
+compare, and an untyped literal takes the other operand's floating type. A
+global's constant field, such as `input.Jump`, is its name, and a field a
+native reads, such as `input.Jump.pressed`, is a call of that native on the
+value. `after` handlers, `self.C = v`, reading a global itself and member
+procedures are not supported yet.
 
 A handler's function lists the components it reads or writes, and one write
 for each component it writes through a reference, where stage zero lists two,

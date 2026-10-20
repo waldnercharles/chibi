@@ -80,6 +80,8 @@ Ops :: struct {
     convert: int;
     source_point: int;
     source_watch: int;
+    // Whether the code carries debugger points and watches.
+    debug: bool;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -244,7 +246,7 @@ Position :: (items: int[], value: int) -> int {
     }
     return -1;
 }
-ResolveOps :: (names: string[]) -> Ops {
+ResolveOps :: (names: string[], debug: bool) -> Ops {
     return {constant: Ordinal(names, "CONSTANT"), argument: Ordinal(names, "ARGUMENT"),
             local: Ordinal(names, "LOCAL"), save: Ordinal(names, "SAVE"), context: Ordinal(names, "CONTEXT"),
             array: Ordinal(names, "ARRAY"), host_slot: Ordinal(names, "HOST_SLOT"),
@@ -261,7 +263,8 @@ ResolveOps :: (names: string[]) -> Ops {
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
             store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
-            source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH")};
+            source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH"),
+            debug: debug};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: (ops: Ops) -> bool {
@@ -611,6 +614,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
     }
     for (file in files) {
         text := documents[file].text;
+        solid := SolidOffsets(text);
         aliases := Aliases(links, file);
         member := FirstMember(forest, documents[file].syntax_root);
         while (member >= 0) {
@@ -624,8 +628,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                     FindConstant(constants, package, name) >= 0) {
                     return Declarations.Failed(Diagnose(forest, member, file, format_text("Duplicate declaration '{}'", name)));
                 }
-                switch FunctionSignature(forest, text, documents[file].key, types, aliases, package, file, member, name,
-                                         length(params)) {
+                switch FunctionSignature(forest, text, documents[file].key, solid, types, aliases, package, file,
+                                         member, name, length(params)) {
                     case .Failed(diagnostic):
                         return Declarations.Failed(diagnostic);
                     case .Read(callable, added):
@@ -655,9 +659,8 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                 named := forest[Field(forest, member, "name")];
                 constant: ConstDecl = {name: name, package: package, storage: storage, bits: 0,
                                        node: Field(forest, member, "value"), file: file, folded: false,
-                                       occurrence: Occurrence(documents[file].key, SymbolRecord,
-                                                              SolidBefore(text, named.start),
-                                                              SolidBefore(text, named.end))};
+                                       occurrence: Occurrence(documents[file].key, SymbolRecord, solid[named.start],
+                                                              solid[named.end])};
                 constants = array_add(constants, constant);
             } else if (!Is(forest, member, "package_header") && !Is(forest, member, "import_declaration") &&
                        !Is(forest, member, "record_declaration") && !Is(forest, member, "union_declaration")) {
@@ -877,7 +880,7 @@ LiteralDefault :: (forest: snapshot.SnapshotNode[], text: string, file: int, nod
 }
 // The signature of the function `member` named `name`, its params numbered
 // from `first`. A named result is a scalar.
-FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, types: TypeDecl[],
+FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string, solid: int[], types: TypeDecl[],
                       aliases: Name[], package: int, file: int, member: int, name: string, first: int) -> Signature {
     added: Param[] = [];
     parameter := FirstMember(forest, Field(forest, member, "parameters"));
@@ -894,8 +897,8 @@ FunctionSignature :: (forest: snapshot.SnapshotNode[], text: string, key: string
         default_value := Field(forest, parameter, "value");
         default_occurrence: uint64 = 0;
         if (default_value >= 0) {
-            default_occurrence = Occurrence(key, ExpressionRecord, SolidBefore(text, forest[default_value].start),
-                                            SolidBefore(text, forest[default_value].end));
+            default_occurrence = Occurrence(key, ExpressionRecord, solid[forest[default_value].start],
+                                            solid[forest[default_value].end]);
         }
         param: Param = {name: param_name, storage: declared.storage, container: declared.container,
                         record: declared.record, has_default: false, default_bits: 0, default_text: "",
@@ -1104,10 +1107,16 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     }
     seen := resize([false], length(constants));
     firsts := resize([uint64(0)], length(constants));
+    solid: int[] = [];
+    solid_document: int = -1;
     index := first_own;
     while (index < length(callables) && callables[index].package == package) {
         document := callables[index].document;
         text := documents[document].text;
+        if (document != solid_document) {
+            solid = SolidOffsets(text);
+            solid_document = document;
+        }
         aliases := Aliases(links, document);
         // The body's nodes in source order.
         pending: int[] = [Field(forest, callables[index].node, "body")];
@@ -1120,8 +1129,8 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
             }
             if (found >= 0 && constants[found].package != package && !seen[found]) {
                 seen[found] = true;
-                firsts[found] = Occurrence(documents[document].key, SymbolRecord, SolidBefore(text, forest[node].start),
-                                           SolidBefore(text, forest[node].end));
+                firsts[found] = Occurrence(documents[document].key, SymbolRecord, solid[forest[node].start],
+                                           solid[forest[node].end]);
             }
             children: int[] = [];
             child := forest[node].first_child;
@@ -1604,9 +1613,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
 pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
-                identities: uint64[]) -> Result {
-    ops := ResolveOps(names);
+                sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
+                ports: Port[], identities: uint64[]) -> Result {
+    ops := ResolveOps(names, debug);
     complete := length(identities) == 2 * length(natives);
     for (native_row in natives) {
         if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
@@ -1660,10 +1669,10 @@ pub Compile :: (project: string, collection_names: string[], collection_paths: s
 // Compile's closure, for a host that takes one byte[] result; empty when
 // Compile rejects the input, whose diagnostic Compile returns.
 pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                       sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
-                       ports: Port[], identities: uint64[]) -> byte[] {
-    switch Compile(project, collection_names, collection_paths, paths, sources, target, abi, names, natives, ports,
-                   identities) {
+                       sources: string[], debug: bool, target: Target, abi: uint64, names: string[],
+                       natives: Native[], ports: Port[], identities: uint64[]) -> byte[] {
+    switch Compile(project, collection_names, collection_paths, paths, sources, debug, target, abi, names, natives,
+                   ports, identities) {
         case .Rejected(diagnostic):
             return [];
         case .Compiled(module, bytes):

@@ -652,7 +652,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         // A push watches the array it reads, as the array argument and the
         // call's first input, and the item as its second.
         call := Field(forest, item.node, "value");
-        if (item.phase == PushPhase) {
+        if (item.phase == PushPhase && ops.debug) {
             slots = array_add(slots, address);
             read := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, header_slot, 0, 0, node);
             read.offset = target.payload_offset;
@@ -680,7 +680,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
         // The array a push leaves is the call's watched output.
-        if (item.phase == PushPhase) {
+        if (item.phase == PushPhase && ops.debug) {
             slots = array_add(slots, address);
             reread := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, header_slot, 0, 0, node);
             reread.offset = target.payload_offset;

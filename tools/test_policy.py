@@ -736,6 +736,10 @@ TOOLS = {
     # call. shared60s.
     'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-sharing'],
+    # Stage one compiles samples without debugger points and watches, as the
+    # bootstrap compiles the compiler: none remain, and they run. shared60s.
+    'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                  '--package-compiler-chibi-debug-free'],
     # The same case over the imports sample, which compiles all of
     # core:strings. Stage one compiling it on the bytecode backend under
     # sanitizers came within a few seconds of the ceiling once it placed

@@ -316,35 +316,16 @@ OccurrenceIn :: (document: uint64, kind: int, start: int, end: int) -> uint64 {
     }
     return hash;
 }
-// How many bytes of `text` before `offset` are not whitespace.
-SolidBefore :: (text: string, offset: int) -> int {
+// How many bytes of `text` before each offset, through its end, are not
+// whitespace. It reads the bytes at once: each ByteAt measures the text.
+SolidOffsets :: (text: string) -> int[] {
+    solid: int[] = [0];
     count: int = 0;
-    index: int = 0;
-    while (index < offset) {
-        byte := strings.ByteAt(text, index);
+    for (byte in strings.Bytes(text)) {
         if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
             count += 1;
         }
-        index += 1;
-    }
-    return count;
-}
-// How many bytes of `text` before each offset, through its end, are not
-// whitespace.
-SolidOffsets :: (text: string) -> int[] {
-    size := strings.ByteLength(text);
-    solid: int[] = [];
-    count: int = 0;
-    index: int = 0;
-    while (index <= size) {
         solid = array_add(solid, count);
-        if (index < size) {
-            byte := strings.ByteAt(text, index);
-            if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
-                count += 1;
-            }
-        }
-        index += 1;
     }
     return solid;
 }
@@ -498,6 +479,9 @@ LiteralWatch :: (forest: snapshot.SnapshotNode[], ops: Ops, slot: int, storage: 
 }
 // The owner read into slot `slot` and watched as the `self` at `node`.
 OwnerWatch :: (ops: Ops, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (!ops.debug) {
+        return [];
+    }
     watch := Instruction(ops.source_watch, HandleStorage, 1, slot, 0, Pending, node);
     watch.value_storage = HandleStorage;
     return [Instruction(ops.owner, HandleStorage, slot, 0, 0, 0, node), watch];
@@ -519,6 +503,30 @@ Located :: (code: Code) -> snapshot.SnapshotNode {
     return {kind: "", start: code.start, end: code.end, row: code.line - 1, column: code.column - 1, parent: -1,
             first_child: -1, next_sibling: -1, error: false, missing: false, has_error: false, field: "",
             is_named: false, is_extra: false};
+}
+// `code` without its points and watches. A jump or branch to one goes to the
+// next instruction kept.
+WithoutDebug :: (ops: Ops, code: Code[]) -> Code[] {
+    kept: int[] = [];
+    count: int = 0;
+    for (item in code) {
+        kept = array_add(kept, count);
+        if (item.op != ops.source_point && item.op != ops.source_watch) {
+            count += 1;
+        }
+    }
+    kept = array_add(kept, count);
+    stripped: Code[] = [];
+    for (item in code) {
+        if (item.op == ops.jump || item.op == ops.branch_if) {
+            moved := item;
+            moved.target = kept[item.target];
+            stripped = array_add(stripped, moved);
+        } else if (item.op != ops.source_point && item.op != ops.source_watch) {
+            stripped = array_add(stripped, item);
+        }
+    }
+    return stripped;
 }
 // The SOURCE_POINT of points[point].
 PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
@@ -1264,7 +1272,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
-        if (item.phase == 0 && Statement(kind)) {
+        if (ops.debug && item.phase == 0 && Statement(kind)) {
             points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, node, node));
             code = array_add(code, PointCode(ops, length(points) - 1, node));
             // Stage zero assigns each returned value to a result, a statement
@@ -1284,7 +1292,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         // Stage zero reads `-1` as one literal.
         negated := kind == "number" && Is(forest, node.parent, "unary_expression") &&
                    Text(forest, text, Field(forest, node.parent, "operator")) == "-";
-        if (item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
+        if (ops.debug && item.phase == 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node)) {
             points = array_add(points, PointIn(document_hash, solid, ExpressionRecord, node));
             code = array_add(code, PointCode(ops, length(points) - 1, node));
             // A name's symbol, or a package constant's, which is a symbol of
@@ -1933,13 +1941,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         // The value an expression produced is watched as its output; the
         // step that gives a number literal its type watches it.
-        if (produced.storage > 0 && Expression(kind) && !negated && !ConstantElement(forest, item.node) &&
-            !NumberLiteral(forest, item.node)) {
+        if (ops.debug && produced.storage > 0 && Expression(kind) && !negated &&
+            !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
             code = array_add(code, WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
                                              0, true, node, target));
         }
         // A call's several results are each watched, numbered.
-        if (kind == "call_expression" &&
+        if (ops.debug && kind == "call_expression" &&
             (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
             count: int = 0;
             if (produced.storage == FunctionResultsStorage) {
@@ -2004,6 +2012,10 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
     }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
+    if (!ops.debug) {
+        code = WithoutDebug(ops, code);
+        points = [];
+    }
     // The points the steps placed, each at its instruction's position. The
     // runtime numbers each instruction that suspends, an invocation or a
     // point, by its order, and a prepared module's bytes hold that number.

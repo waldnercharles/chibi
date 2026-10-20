@@ -46,7 +46,10 @@ static const char PACKAGE[] = "project:package_compiler";
 enum
 {
     CALLS = 10,
-    ARGUMENTS = 11,
+    ARGUMENTS = 12,
+    /* Compile's debug flag, then the six that describe the target. */
+    DEBUG_ARGUMENT = 5,
+    TARGET_ARGUMENT = 6,
     COMPILE_BUDGET = 20000000,
     SELF_BUDGET = 2000000000,
     TARGET_BUDGET = 100000
@@ -1470,7 +1473,8 @@ static pin_value files(const source_package_input *inputs, int count, bool sourc
     return (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = array };
 }
 /* Compile's arguments for `inputs`: the project, the core collection, the
- * files, this host's target and the natives it links. */
+ * files, debugger points and watches, this host's target and the natives it
+ * links. */
 static bool arguments(int b, const source_package_input *inputs, int count, pin_value args[ARGUMENTS])
 {
     const char *collection_names[] = { "core" };
@@ -1480,36 +1484,37 @@ static bool arguments(int b, const source_package_input *inputs, int count, pin_
     args[2] = strings(collection_paths, 1);
     args[3] = files(inputs, count, false);
     args[4] = files(inputs, count, true);
+    args[DEBUG_ARGUMENT] = (pin_value){ .type = PIN_BOOL, .b = true };
     const pin_record *record = compiler_fixture_record(&fixture, b, PACKAGE, "Target", &input);
     REQUIRE(record);
-    args[5] = (pin_value){ .type = PIN_STRUCT,
+    args[6] = (pin_value){ .type = PIN_STRUCT,
                            .ptr = arena_alloc(&input, record->type.size),
                            .record = record,
                            .type_name = record->type.name };
-    memset(args[5].ptr, 0, record->type.size);
-    REQUIRE(put(&args[5], "pointer_storage", BF_POINTER_TYPE));
-    REQUIRE(put(&args[5], "pointer_size", (int)sizeof(void *)));
-    REQUIRE(put(&args[5], "value_size", (int)sizeof(pin_value)));
-    REQUIRE(put(&args[5], "payload_offset", (int)offsetof(pin_value, d)));
-    REQUIRE(put(&args[5], "results_offset", (int)offsetof(behavior_function_context, results)));
-    REQUIRE(put(&args[5], "type_offset", (int)offsetof(pin_value, type)));
-    REQUIRE(put(&args[5], "container_offset", (int)offsetof(pin_value, container)));
-    REQUIRE(put(&args[5], "name_offset", (int)offsetof(pin_value, type_name)));
-    REQUIRE(put(&args[5], "record_offset", (int)offsetof(pin_value, record)));
-    REQUIRE(put(&args[5], "count_offset", (int)offsetof(pin_array, count)));
-    REQUIRE(put(&args[5], "items_offset", (int)offsetof(pin_array, items)));
-    REQUIRE(put(&args[5], "data_offset", (int)offsetof(pin_array, data)));
-    REQUIRE(put(&args[5], "stride_offset", (int)offsetof(pin_array, stride)));
-    REQUIRE(put(&args[5], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
-    REQUIRE(put(&args[5], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
-    args[6] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
+    memset(args[6].ptr, 0, record->type.size);
+    REQUIRE(put(&args[6], "pointer_storage", BF_POINTER_TYPE));
+    REQUIRE(put(&args[6], "pointer_size", (int)sizeof(void *)));
+    REQUIRE(put(&args[6], "value_size", (int)sizeof(pin_value)));
+    REQUIRE(put(&args[6], "payload_offset", (int)offsetof(pin_value, d)));
+    REQUIRE(put(&args[6], "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(put(&args[6], "type_offset", (int)offsetof(pin_value, type)));
+    REQUIRE(put(&args[6], "container_offset", (int)offsetof(pin_value, container)));
+    REQUIRE(put(&args[6], "name_offset", (int)offsetof(pin_value, type_name)));
+    REQUIRE(put(&args[6], "record_offset", (int)offsetof(pin_value, record)));
+    REQUIRE(put(&args[6], "count_offset", (int)offsetof(pin_array, count)));
+    REQUIRE(put(&args[6], "items_offset", (int)offsetof(pin_array, items)));
+    REQUIRE(put(&args[6], "data_offset", (int)offsetof(pin_array, data)));
+    REQUIRE(put(&args[6], "stride_offset", (int)offsetof(pin_array, stride)));
+    REQUIRE(put(&args[6], "data_failure", BEHAVIOR_FUNCTION_HOST_DATA));
+    REQUIRE(put(&args[6], "argument_failure", BEHAVIOR_FUNCTION_ARGUMENT));
+    args[7] = (pin_value){ .type = PIN_U64, .u64 = execution_prepared_abi() };
     int instructions = execution_prepared_instruction_count();
     pin_array *names = pin_array_snapshot_allocate(&input, PIN_STR, NULL, instructions);
     for (int i = 0; i < instructions; i++) {
         names->items[i] = text(execution_prepared_instruction_name(i));
     }
-    args[7] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
-    REQUIRE(natives(b, &args[8]));
+    args[8] = (pin_value){ .type = PIN_STR, .container = PIN_CONTAINER_ARRAY, .ptr = names };
+    REQUIRE(natives(b, &args[9]));
     return true;
 }
 static bool compile(int b, const source_package_input *inputs, int count, uintptr_t budget, pin_value *out)
@@ -2077,19 +2082,18 @@ static bool literals_agree()
     }
     return true;
 }
-/* Each module of stage one's closure has the function and statement points of
- * the stage-zero module with its ID that oracle_closure prepared. */
-static bool points_like_oracle(const unsigned char *bytes, size_t length)
+/* The packages of a closure, linked against the compiler host's natives,
+ * which `native` holds; NULL when it does not load. */
+static package_collection *read_packages(const unsigned char *bytes, size_t length, native_capabilities **native)
 {
     const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
                                              NATIVE_ARRAY_DEFINITION_PACK,
                                              COMPILER_JSON_DEFINITION_PACK,
                                              COMPILER_SYNTAX_DEFINITION_PACK };
     char error[256];
-    native_capabilities *
-        native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
-    REQUIRE(native);
-    native_prepared_context context = { .native = native };
+    *native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    assert(*native);
+    native_prepared_context context = { .native = *native };
     execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
     linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
     linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
@@ -2106,8 +2110,16 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
         sizeof error
     );
     if (!packages) {
-        fprintf(stderr, "package compiler points load: %s\n", error);
+        fprintf(stderr, "package compiler load: %s\n", error);
     }
+    return packages;
+}
+/* Each module of stage one's closure has the function and statement points of
+ * the stage-zero module with its ID that oracle_closure prepared. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length)
+{
+    native_capabilities *native;
+    package_collection *packages = read_packages(bytes, length, &native);
     REQUIRE(packages);
     const authoring_packages *owner = oracle.owners[0];
     bool alike = package_collection_count(packages) == authoring_packages_count(owner);
@@ -2206,6 +2218,55 @@ static bool run_samples(sample_group group, int b)
     }
     return true;
 }
+/* Without debugger points and watches, a closure's functions have none, and
+ * its loops and branches still run as they do with them. */
+TEST_CASE(package_compiler_omits_debug_info)
+{
+    REQUIRE(prepare());
+    const char *const names[] = { "loops", "control" };
+    for (size_t n = 0; n < sizeof names / sizeof *names; n++) {
+        const sample *s = samples;
+        while (strcmp(s->name, names[n])) {
+            s++;
+        }
+        source_package_input inputs[3];
+        int count = sample_inputs(s, inputs);
+        pin_value args[ARGUMENTS], out;
+        REQUIRE(arguments(1, inputs, count, args));
+        args[DEBUG_ARGUMENT].b = false;
+        REQUIRE(
+            compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+        );
+        const pin_union *value = out.ptr;
+        REQUIRE(out.type == PIN_UNION && value && value->tag == tag(1, "Compiled"));
+        size_t length;
+        unsigned char *bytes = closure_bytes(value, &length);
+        arena_free(&detached);
+        native_capabilities *native;
+        package_collection *packages = read_packages(bytes, length, &native);
+        REQUIRE(packages);
+        int debug = 0;
+        for (int p = 0; p < package_collection_count(packages); p++) {
+            const execution_module_plan *plan = &package_collection_module(packages, p)
+                                                     ->plan;
+            for (int i = 0; i < plan->function_count; i++) {
+                debug += acount(plan->functions[i].body->source_points) +
+                         acount(plan->functions[i].body->source_watches);
+            }
+        }
+        package_collection_free(packages);
+        native_capabilities_free(native);
+        bool ran = !debug;
+        for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
+            for (int backend = 0; ran && backend < 2; backend++) {
+                ran = run(bytes, length, &s->calls[c], backend);
+            }
+        }
+        free(bytes);
+        REQUIRE(ran);
+    }
+    return true;
+}
 TEST_CASE(package_compiler_builds_runnable_packages)
 {
     return run_samples(BASE_SAMPLES, 0);
@@ -2286,9 +2347,6 @@ static bool write_seed(const unsigned char *stage_two, size_t length, const char
     return !seed || (write_seed_file(seed, "compiler.chibip", stage_two, length) &&
                      write_seed_file(seed, "compile.json", json, json_length));
 }
-/* Stage two, loaded in `host`, compiles every sample as stage one does: its
- * Compile result projects to the same JSON, the same closure or the same
- * rejection. */
 /* Stage two reads the listed floating literals as stage one does: each
  * LiteralBits result projects to the same JSON. */
 static bool stage_two_literals()
@@ -2329,45 +2387,82 @@ static bool stage_two_literals()
     }
     return true;
 }
-static bool stage_two_samples()
+/* Whether stage two, loaded in `host`, compiles sample `s` as stage one does:
+ * to the same closure, or to the same rejection. A closure is compared as
+ * bytes, since its Result as JSON outgrows the host's projection limits. */
+static bool stage_two_sample(const sample *s)
 {
-    uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        source_package_input inputs[3];
-        int count = sample_inputs(&samples[i], inputs);
-        pin_value args[ARGUMENTS], out;
-        REQUIRE(arguments(1, inputs, count, args));
-        REQUIRE(
-            compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
-        );
-        size_t length, expected_length;
-        char *json = document_json(args, ARGUMENTS, &length);
-        char *expected = document_json(&out, 1, &expected_length);
-        arena_free(&detached);
-        bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
-        bool same = called && result.flow_status == FLOW_OK &&
-                    result.length == expected_length &&
-                    !memcmp(result.json, expected, expected_length);
+    source_package_input inputs[3];
+    int count = sample_inputs(s, inputs);
+    pin_value args[ARGUMENTS], out;
+    REQUIRE(arguments(1, inputs, count, args));
+    REQUIRE(
+        compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, COMPILE_BUDGET, &detached, &out)
+    );
+    const pin_union *value = out.ptr;
+    size_t length, expected_length;
+    char *json = document_json(args, ARGUMENTS, &length);
+    bool compiled = value->tag == tag(1, "Compiled");
+    unsigned char *expected = compiled
+                                ? closure_bytes(value, &expected_length)
+                                : (unsigned char *)document_json(&out, 1, &expected_length);
+    arena_free(&detached);
+    bool same;
+    if (compiled) {
+        compiler_host_bytes again = { 0 };
+        same = compiler_host_invoke_bytes(
+                   host,
+                   script_catalog_id("package-symbol", "project:package_compiler:1:CompileClosure:callable"),
+                   json,
+                   length,
+                   SELF_BUDGET,
+                   COMPILER_HOST_MAX_OUTPUT_BYTES,
+                   &again
+               ) &&
+               again.flow_status == FLOW_OK && again.length == expected_length &&
+               !memcmp(again.bytes, expected, expected_length);
         if (!same) {
             fprintf(
                 stderr,
                 "package compiler stage two %s: %s\n",
-                samples[i].name,
+                s->name,
+                again.diagnostic
+            );
+        }
+        free(again.bytes);
+    } else {
+        uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
+        bool called = compiler_host_invoke(host, entry, json, length, SELF_BUDGET, &result);
+        same = called && result.flow_status == FLOW_OK &&
+               result.length == expected_length &&
+               !memcmp(result.json, expected, expected_length);
+        if (!same) {
+            fprintf(
+                stderr,
+                "package compiler stage two %s: %s\n",
+                s->name,
                 called ? result.json : result.diagnostic
             );
         }
-        free(json);
-        free(expected);
         free(result.json);
         result = (compiler_host_result){ 0 };
-        REQUIRE(same);
+    }
+    free(json);
+    free(expected);
+    return same;
+}
+static bool stage_two_samples()
+{
+    for (int i = 0; i < (int)SAMPLES; i++) {
+        REQUIRE(stage_two_sample(&samples[i]));
     }
     return true;
 }
-/* Stage zero prepares stage one, which compiles its own packages to a closure:
- * stage two. Stage two, loaded by the compiler host, compiles the same
- * packages to the same bytes, every sample as stage one does, and reads the
- * listed floating literals as stage one does. */
+/* Stage zero prepares stage one, which compiles its own packages, without
+ * debugger points and watches, to a closure: stage two. Stage two, loaded by
+ * the compiler host, compiles the same packages to the same bytes, every
+ * sample as stage one does, and reads the listed floating literals as stage
+ * one does. */
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
@@ -2389,6 +2484,9 @@ TEST_CASE(package_compiler_compiles_itself)
     }
     pin_value args[ARGUMENTS], out;
     REQUIRE(arguments(1, inputs, count, args));
+    /* The compiler is compiled without debugger points and watches, which
+     * no one debugging a game steps through. */
+    args[DEBUG_ARGUMENT].b = false;
     REQUIRE(
         compiler_fixture_call(&fixture, 1, PACKAGE, "Compile", args, ARGUMENTS, SELF_BUDGET, &detached, &out)
     );
@@ -2772,7 +2870,7 @@ static bool compile_behavior(int b, const char *identity, const char *source, pi
     REQUIRE(arguments(b, NULL, 0, compile));
     args[0] = text(identity);
     args[1] = text(source);
-    memcpy(&args[2], &compile[5], 6 * sizeof *args);
+    memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
     REQUIRE(game_arguments(b, &args[8]));
     REQUIRE(
         compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
@@ -3184,5 +3282,11 @@ void test_language_package_compiler_chibi_sharing()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_shares_its_arguments);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_debug_free()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_omits_debug_info);
     pu_clear_setup();
 }

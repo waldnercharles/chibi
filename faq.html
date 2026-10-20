@@ -7,92 +7,138 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html">Testing</a>
-<a href="packages.html">Packages</a>
-<a href="examples.html">Examples</a>
-<a href="faq.html" aria-current="true">FAQ</a>
-<a href="grammar.html">Grammar</a>
-<a href="toolchain.html">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html" aria-current="page">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html">Toolchain</a></li>
 </ul>
 </nav>
-<main>
-<h1 id="faq">FAQ</h1>
-<h2 id="what-is-chibi">What is Chibi?</h2>
-<p>Chibi is a C23 scripting language, compiler and runtime for games. It has a separate editor, Studio. A game is a folder of <code>.chibi</code> source and KDL assets. The <code>chibi</code> command compiles, runs, tests and exports the game.</p>
-<h2 id="where-do-i-start">Where do I start?</h2>
-<ol>
-<li>Build the SDK.</li>
-<li>Use <code>chibi run</code> to run one of the projects in <a href="examples.html">Examples</a>.</li>
-</ol>
-<p>The <a href="language.html">language guide</a> describes the source. <a href="toolchain.html">Toolchain</a> describes each command.</p>
-<h2 id="do-i-need-studio">Do I need Studio?</h2>
-<p>No. Each asset is a text file that you can edit directly. <code>chibi fmt</code> keeps the files canonical. Studio edits the same files.</p>
-<h2 id="how-do-i-check-a-project-before-i-commit-it">How do I check a project before I commit it?</h2>
-<ul>
-<li><code>chibi check</code> validates the project and writes nothing.</li>
-<li><code>chibi fmt --check</code> reports the assets that are not canonical.</li>
-<li><code>chibi test</code> runs the package tests.</li>
-</ul>
-<p>Each command exits with a nonzero status when it finds a problem.</p>
-<h2 id="can-i-ship-to-the-web">Can I ship to the web?</h2>
-<p>Yes. <code>chibi export --web PLAYER</code> writes a static site for any host. While you develop, <code>chibi web</code> serves a site.</p>
-<h2 id="why-does-chibi-test-say-expected-package-header">Why does <code>chibi test</code> say &quot;Expected package header&quot;?</h2>
-<p>The ROOT of <code>chibi test</code> must contain only package files. Give it the folder of your packages. Do not give it a game project. The behaviors and libraries of a game project are not packages.</p>
-<h2 id="does-a-slow-test-hang-forever">Does a slow test hang forever?</h2>
-<p>No. Each test stops after 100 million instructions. <code>chibi test</code> reports it as failed.</p>
+<main id="main" tabindex="-1">
 <nav class="contents" aria-label="On this page">
-<p>On this page</p>
+<details open>
+<summary>On this page</summary>
 <ul>
-<li><a href="#what-is-chibi">What is Chibi?</a></li>
-<li><a href="#where-do-i-start">Where do I start?</a></li>
-<li><a href="#do-i-need-studio">Do I need Studio?</a></li>
-<li><a href="#how-do-i-check-a-project-before-i-commit-it">How do I check a project before I commit it?</a></li>
-<li><a href="#can-i-ship-to-the-web">Can I ship to the web?</a></li>
-<li><a href="#why-does-chibi-test-say-expected-package-header">Why does <code>chibi test</code> say &quot;Expected package header&quot;?</a></li>
-<li><a href="#does-a-slow-test-hang-forever">Does a slow test hang forever?</a></li>
+<li class="section"><a href="#where-do-i-start">Where do I start?</a></li>
+<li class="section"><a href="#do-i-need-studio">Do I need Studio?</a></li>
+<li class="section"><a href="#how-do-i-check-my-changes">How do I check my changes?</a></li>
+<li class="section"><a href="#can-i-ship-to-the-web">Can I ship to the web?</a></li>
+<li class="section"><a href="#why-does-a-test-report-expected-package-header">Why does a test report &quot;Expected package header&quot;?</a></li>
+<li class="section"><a href="#can-a-test-loop-forever">Can a test loop forever?</a></li>
 </ul>
+</details>
 </nav>
+<h1 id="faq">FAQ</h1>
+<div class="section-controls" hidden><button type="button" data-sections="open">Expand all</button><button type="button" data-sections="close">Collapse all</button></div>
+<details class="doc-section" open>
+<summary><h2 id="where-do-i-start">Where do I start?</h2>
+</summary>
+<p><a href="index.html#install">Install the SDK</a>, then read the <a href="language.html">language guide</a>. Use the <a href="examples.html">examples</a> to try common game programming tasks.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="do-i-need-studio">Do I need Studio?</h2>
+</summary>
+<p>No. Edit project files with any text editor:</p>
+<pre><code class="language-sh">chibi fmt /path/to/game
+chibi check /path/to/game
+chibi run /path/to/game
+</code></pre>
+<p>Studio edits the same files.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="how-do-i-check-my-changes">How do I check my changes?</h2>
+</summary>
+<p>For a game project:</p>
+<pre><code class="language-sh">chibi check /path/to/game
+chibi fmt --check /path/to/game
+</code></pre>
+<p>For packages:</p>
+<pre><code class="language-sh">chibi test /path/to/packages
+</code></pre>
+<p>Each command returns a nonzero status when it finds a problem.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="can-i-ship-to-the-web">Can I ship to the web?</h2>
+</summary>
+<p>Yes. <code>chibi export --web PLAYER</code> creates a static site. See <a href="toolchain.html#export-for-browsers">Export for browsers</a> for the build commands.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="why-does-a-test-report-expected-package-header">Why does a test report &quot;Expected package header&quot;?</h2>
+</summary>
+<p><code>chibi test</code> reads package source. Each file must start with <code>package NAME</code>. Give it your package folder, rather than the content folder of a game. Game behaviors and libraries use a different source format.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="can-a-test-loop-forever">Can a test loop forever?</h2>
+</summary>
+<p>Each test stops after 100 million instructions. The command reports the test as failed. See <a href="testing.html#test-limits">Testing</a> for other limits.</p>
+</details>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

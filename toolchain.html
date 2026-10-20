@@ -7,114 +7,214 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html">Testing</a>
-<a href="packages.html">Packages</a>
-<a href="examples.html">Examples</a>
-<a href="faq.html">FAQ</a>
-<a href="grammar.html">Grammar</a>
-<a href="toolchain.html" aria-current="true">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html" aria-current="page">Toolchain</a></li>
 </ul>
 </nav>
-<main>
-<h1 id="toolchain">Toolchain</h1>
-<p><code>chibi</code> is the one command that a Chibi project needs. You can run it from an installed SDK, as <code>PREFIX/bin/chibi</code>. You can also run it from the build of a checkout, as <code>build/sdk/chibi</code>. It finds the compiler, the player and the engine files beside itself.</p>
-<table>
-<thead>
-<tr><th>Command</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>chibi version</code></td><td>Prints the SDK version, the build, the compiler, the project format and the artifact formats.</td></tr>
-<tr><td><code>chibi doctor [--web PLAYER]</code></td><td>Reports the status of the SDK, the compiler, the player, the platform and the native backend. With <code>--web</code>, it also reports the status of browser export. Each status is supported, unavailable or broken. The command changes nothing.</td></tr>
-<tr><td><code>chibi build [PROJECT]</code></td><td>Compiles the project into <code>.chibi/build/game.chibip</code>. It does not start the player.</td></tr>
-<tr><td><code>chibi check [PROJECT]</code></td><td>Parses, resolves and validates the project in the same way as <code>build</code>. It does not migrate or write anything.</td></tr>
-<tr><td><code>chibi fmt [--check] [PATH...]</code></td><td>Rewrites the sources and KDL assets of a project in their canonical form. For a folder without a <code>project.kdl</code>, it formats the package sources. With <code>--check</code>, it only reports the changes that it would make.</td></tr>
-<tr><td><code>chibi test [ROOT]</code></td><td>Runs the <code>@test</code> functions of the packages below ROOT.</td></tr>
-<tr><td><code>chibi run [PROJECT] [--] [PLAYER OPTIONS]</code></td><td>Builds the project if it changed, then plays it.</td></tr>
-<tr><td><code>chibi export [PROJECT] --output DIR</code></td><td>Assembles a game that you can ship. On macOS, the result is an app. On Windows, it is a folder with an <code>.exe</code>. On Linux, it is a folder with a desktop entry. With <code>--web PLAYER</code>, the command writes a static site instead.</td></tr>
-<tr><td><code>chibi web [PROJECT] --player PLAYER</code></td><td>Exports the browser site into a temporary folder. Then it serves the site on <code>http://127.0.0.1:8000/</code> until you press Ctrl+C.</td></tr>
-<tr><td><code>chibi doc [ROOT] [--serve]</code></td><td>Writes the documentation site that <code>ROOT/docs/site.kdl</code> lists into <code>ROOT/build/docs</code>. With <code>--serve</code>, it also serves the site.</td></tr>
-</tbody>
-</table>
-<p>PROJECT is a project directory or its <code>project.kdl</code>. If you do not give a PROJECT, <code>chibi</code> uses the nearest <code>project.kdl</code> in or above the working directory.</p>
-<p>Each command prints its usage when you give <code>--help</code>. The exit status tells you the result:</p>
+<main id="main" tabindex="-1">
+<nav class="contents" aria-label="On this page">
+<details open>
+<summary>On this page</summary>
 <ul>
-<li>0: the command succeeded.</li>
-<li>2: the command could not start. Examples are an unknown option, a missing project and an older project.</li>
-<li>A different nonzero status: the work of the command failed.</li>
+<li class="section"><a href="#build-and-run">Build and run</a></li>
+<li class="section"><a href="#project-files">Project files</a></li>
+<li class="section"><a href="#format-files">Format files</a></li>
+<li class="section"><a href="#test-packages">Test packages</a></li>
+<li class="section"><a href="#export-a-game">Export a game</a>
+<ul>
+<li class="sub"><a href="#macos">macOS</a></li>
+<li class="sub"><a href="#linux">Linux</a></li>
+<li class="sub"><a href="#windows">Windows</a></li>
 </ul>
-<h2 id="a-project">A project</h2>
-<p>A project is a folder with a <code>project.kdl</code> manifest and a <code>content</code> folder:</p>
-<pre><code class="language-kdl">version 25
+</li>
+<li class="section"><a href="#export-for-browsers">Export for browsers</a></li>
+<li class="section"><a href="#check-the-sdk">Check the SDK</a></li>
+<li class="section"><a href="#generate-documentation">Generate documentation</a></li>
+<li class="section"><a href="#exit-status">Exit status</a></li>
+<li class="section"><a href="#platform-limits">Platform limits</a></li>
+</ul>
+</details>
+</nav>
+<h1 id="toolchain">Toolchain</h1>
+<p>Run <code>chibi</code> from an installed SDK or use <code>build/sdk/chibi</code> in an engine checkout. The command finds the compiler, player and engine resources beside itself.</p>
+<div class="section-controls" hidden><button type="button" data-sections="open">Expand all</button><button type="button" data-sections="close">Collapse all</button></div>
+<details class="doc-section" open>
+<summary><h2 id="build-and-run">Build and run</h2>
+</summary>
+<p>PROJECT is a project folder or its <code>project.kdl</code>. Without a path, these commands find the nearest <code>project.kdl</code> in or above the working directory.</p>
+<pre><code class="language-sh">chibi check /path/to/game
+chibi build /path/to/game
+chibi run /path/to/game
+</code></pre>
+<p><code>check</code> checks the project without writing files. <code>build</code> writes <code>.chibi/build/game.chibip</code>. <code>run</code> builds changed content and starts the player. Pass player options after <code>--</code>. Use <code>chibi-player --help</code> to list them.</p>
+<p>An older project must migrate before these commands can use it. The error message gives the migration command.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="project-files">Project files</h2>
+</summary>
+<p>A project has a <code>project.kdl</code> manifest and a content folder:</p>
+<pre><code class="language-kdl">version 29
 name &quot;My Game&quot;
 content &quot;content&quot;
 start_scene &quot;scenes/Main.kdl&quot;
 </code></pre>
-<p>Behaviors, libraries and systems are <code>.chibi</code> source. Scenes, prototypes, materials and the other assets are KDL. <code>chibi fmt</code> keeps both kinds canonical. <code>chibi check</code> is a quick gate for a pre-commit hook or for CI.</p>
-<h2 id="packages">Packages</h2>
-<p>A package is a folder of <code>.chibi</code> files that start with <code>package NAME</code>. A package imports other packages of the same tree as <code>project:NAME</code>. It imports the collection of the SDK as <code>core:NAME</code>. <code>chibi test</code> runs the tests of the packages. Refer to <a href="testing.html">Testing</a>. <code>chibi fmt FOLDER</code> formats the packages.</p>
-<h2 id="browsers">Browsers</h2>
-<p><code>make package-web-player</code> builds the browser player separately. Use its folder in these ways:</p>
+<p>The start scene path is relative to the content folder. Behaviors, libraries and systems use <code>.chibi</code>. Scenes, prototypes and materials use KDL.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="format-files">Format files</h2>
+</summary>
+<pre><code class="language-sh">chibi fmt /path/to/game
+chibi fmt --check /path/to/game
+</code></pre>
+<p><code>fmt</code> rewrites sources and KDL assets in their canonical form. It keeps UI markup unchanged. <code>--check</code> reports files that need formatting and writes nothing.</p>
+<p>For a folder without <code>project.kdl</code>, <code>fmt</code> formats package sources instead. Each source file must start with <code>package NAME</code>.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="test-packages">Test packages</h2>
+</summary>
+<pre><code class="language-sh">chibi test /path/to/packages
+</code></pre>
+<p>The folder contains package files, rather than game behaviors or libraries. Tests import local packages with <code>project:NAME</code> and SDK packages with <code>core:NAME</code>. See <a href="testing.html">Testing</a> for a complete example.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="export-a-game">Export a game</h2>
+</summary>
+<p>Use an installed SDK to assemble a release:</p>
+<pre><code class="language-sh">chibi export /path/to/game --output /path/to/release
+</code></pre>
+<p>The output contains the player, compiled game and resources. It also contains engine shaders, licenses and identity files. Add <code>--archive</code> to create a <code>.tar.gz</code> archive beside the output.</p>
+<p><strong>Export replaces an earlier export, including files you added to it.</strong> The exporter uses its <code>.chibi-export</code> marker to identify its output. It refuses to replace an existing folder without that marker.</p>
+<h3 id="macos">macOS</h3>
+<p>The output is <code>/path/to/release.app</code>, with an <code>Info.plist</code> and an ad hoc signature. A project icon must be a square PNG. Supported sizes are 16, 32, 64, 128, 256, 512 and 1024 pixels.</p>
+<h3 id="linux">Linux</h3>
+<p>The output folder contains an executable named after the project and a desktop entry. To install the entry:</p>
+<ol>
+<li>Create a symlink to the executable in a directory on <code>PATH</code>.</li>
+<li>Install the project icon in your icon theme with the name from the entry's <code>Icon</code> field.</li>
+<li>Copy the desktop entry to <code>~/.local/share/applications</code>.</li>
+</ol>
+<h3 id="windows">Windows</h3>
+<p>The output folder contains an <code>.exe</code> and a <code>data</code> folder. A project icon must be a square PNG of at most 256 pixels. The executable embeds the icon. The SDK links the release C runtime statically, so the export needs no Visual C++ redistributable.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="export-for-browsers">Export for browsers</h2>
+</summary>
+<p>Build the browser player from the engine checkout. This step needs Emscripten. Browser compilation also needs Node.js.</p>
+<pre><code class="language-sh">make package-web-player
+chibi export /path/to/game --web dist/web-player --output /path/to/site
+python3 -m http.server -d /path/to/site
+</code></pre>
+<p>Open <code>http://localhost:8000</code>. The site contains the browser player and the same game resources as a native export. It fetches those resources before the game starts. Use a web server or static host. A <code>file://</code> URL does not work.</p>
+<p>For a temporary local preview:</p>
+<pre><code class="language-sh">chibi web /path/to/game --player /path/to/dist/web-player
+</code></pre>
+<p><code>web</code> serves on <code>http://127.0.0.1:8000/</code> until you press Ctrl+C. It then removes the temporary export. Use <code>--port NUMBER</code> to select a port. Port 0 selects a free port.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="check-the-sdk">Check the SDK</h2>
+</summary>
+<pre><code class="language-sh">chibi version
+chibi doctor
+chibi doctor --web /path/to/dist/web-player
+</code></pre>
+<p><code>version</code> prints the SDK version, build identity, compiler and format versions. <code>doctor</code> reports each checked capability as supported, unavailable or broken. It changes nothing. It fails only when a checked capability is broken.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="generate-documentation">Generate documentation</h2>
+</summary>
+<pre><code class="language-sh">chibi doc /path/to/repository
+chibi doc /path/to/repository --serve
+</code></pre>
+<p><code>doc</code> publishes the pages listed in <code>docs/site.kdl</code> to <code>build/docs</code>. The manifest can select Markdown, package references and grammar rules. Other files stay private. <code>--serve</code> previews the result locally. It accepts the same <code>--port</code> option as <code>web</code>.</p>
+<p>Each <code>chibi</code> code block must parse. A complete package must also pass analysis. A link to an unpublished file becomes plain text and produces a warning.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="exit-status">Exit status</h2>
+</summary>
+<p>Each command accepts <code>--help</code>.</p>
 <ul>
-<li>Give it to <code>chibi export --web</code> to make a static site that you can host anywhere.</li>
-<li>Give it to <code>chibi web</code> while you develop.</li>
+<li>0 means success.</li>
+<li>2 means the command could not start, such as an unknown option or missing project.</li>
+<li>Another nonzero status means the command failed.</li>
 </ul>
-<p><code>chibi doctor --web PLAYER</code> checks the folder and the <code>node</code> that runs its compiler.</p>
-<h2 id="platforms">Platforms</h2>
-<p>Linux and macOS support all commands. On Windows, these limits apply:</p>
-<ul>
-<li><code>chibi web</code> does not serve yet.</li>
-<li><code>chibi test</code> and <code>chibi doc</code> cannot read package sources yet.</li>
-</ul>
-<nav class="contents" aria-label="On this page">
-<p>On this page</p>
-<ul>
-<li><a href="#a-project">A project</a></li>
-<li><a href="#packages">Packages</a></li>
-<li><a href="#browsers">Browsers</a></li>
-<li><a href="#platforms">Platforms</a></li>
-</ul>
-</nav>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="platform-limits">Platform limits</h2>
+</summary>
+<p>Linux and macOS support all commands.</p>
+<p>TODO: Windows support for reading package sources in <code>test</code> and <code>doc</code>.</p>
+<p>TODO: Windows support for the local server in <code>web</code> and <code>doc --serve</code>.</p>
+</details>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

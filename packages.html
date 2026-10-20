@@ -7,243 +7,31 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html">Testing</a>
-<a href="packages.html" aria-current="true">Packages</a>
-<a href="examples.html">Examples</a>
-<a href="faq.html">FAQ</a>
-<a href="grammar.html">Grammar</a>
-<a href="toolchain.html">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html" aria-current="page">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html">Toolchain</a></li>
 </ul>
 </nav>
-<main>
-<h1 id="the-core-packages">The core packages</h1>
-<p>Each package's declarations and the comments written above them in its source.</p>
-<h2 id="strings">strings</h2>
-<p>Import it as <code>core:strings</code>.</p>
-<h3 id="bytelength">ByteLength</h3>
-<pre><code class="language-chibi">ByteLength :: (value: string) -&gt; int
-</code></pre>
-<p>Compiler text operations use bytes, including bytes inside UTF-8 sequences.</p>
-<h3 id="byteat">ByteAt</h3>
-<pre><code class="language-chibi">ByteAt :: (value: string, index: int) -&gt; int
-</code></pre>
-<p>Returns -1 outside the string; valid bytes are unsigned values from 0 to 255. Each call measures the string, so a loop over a long one should read Bytes.</p>
-<h3 id="bytes">Bytes</h3>
-<pre><code class="language-chibi">Bytes :: (value: string) -&gt; int[]
-</code></pre>
-<p>Every byte of the string, from 0 to 255, read in one pass.</p>
-<h3 id="slice">Slice</h3>
-<pre><code class="language-chibi">Slice :: (value: string, start: int, count: int) -&gt; string
-</code></pre>
-<p>Start clamps to the string and count clamps to its remaining bytes.</p>
-<h3 id="compare">Compare</h3>
-<pre><code class="language-chibi">Compare :: (left: string, right: string) -&gt; int
-</code></pre>
-<h3 id="isidentifier">IsIdentifier</h3>
-<pre><code class="language-chibi">IsIdentifier :: (value: string) -&gt; bool
-</code></pre>
-<h3 id="basename">BaseName</h3>
-<pre><code class="language-chibi">BaseName :: (path: string) -&gt; string
-</code></pre>
-<h3 id="contains">Contains</h3>
-<pre><code class="language-chibi">Contains :: (s: string, substr: string) -&gt; bool
-</code></pre>
-<h3 id="containsany">ContainsAny</h3>
-<pre><code class="language-chibi">ContainsAny :: (s: string, chars: string) -&gt; bool
-</code></pre>
-<h3 id="hasprefix">HasPrefix</h3>
-<pre><code class="language-chibi">HasPrefix :: (s: string, prefix: string) -&gt; bool
-</code></pre>
-<h3 id="hassuffix">HasSuffix</h3>
-<pre><code class="language-chibi">HasSuffix :: (s: string, suffix: string) -&gt; bool
-</code></pre>
-<h3 id="indexbyte">IndexByte</h3>
-<pre><code class="language-chibi">IndexByte :: (s: string, c: int) -&gt; int
-</code></pre>
-<h3 id="lastindexbyte">LastIndexByte</h3>
-<pre><code class="language-chibi">LastIndexByte :: (s: string, c: int) -&gt; int
-</code></pre>
-<h3 id="index">Index</h3>
-<pre><code class="language-chibi">Index :: (s: string, substr: string) -&gt; int
-</code></pre>
-<p>Rabin-Karp with Odin's 32-bit rolling hash, kept in int64 and masked; pow is the prime to the substring's length. An empty substring is found at 0.</p>
-<h3 id="lastindex">LastIndex</h3>
-<pre><code class="language-chibi">LastIndex :: (s: string, substr: string) -&gt; int
-</code></pre>
-<p>Index's search from the end. An empty substring is found at the length of s.</p>
-<h3 id="indexany">IndexAny</h3>
-<pre><code class="language-chibi">IndexAny :: (s: string, chars: string) -&gt; int
-</code></pre>
-<p>The offset of the first byte of s that is any byte of chars.</p>
-<h3 id="lastindexany">LastIndexAny</h3>
-<pre><code class="language-chibi">LastIndexAny :: (s: string, chars: string) -&gt; int
-</code></pre>
-<h3 id="count">Count</h3>
-<pre><code class="language-chibi">Count :: (s: string, substr: string) -&gt; int
-</code></pre>
-<p>Non-overlapping occurrences. An empty substring occurs at every byte boundary, one more than the byte length.</p>
-<h3 id="truncatetobyte">TruncateToByte</h3>
-<pre><code class="language-chibi">TruncateToByte :: (s: string, c: int) -&gt; string
-</code></pre>
-<p>Everything before the first c, or all of s when c is absent.</p>
-<h3 id="equalfold">EqualFold</h3>
-<pre><code class="language-chibi">EqualFold :: (u: string, v: string) -&gt; bool
-</code></pre>
-<p>ASCII letters match in either case; every other byte must be equal.</p>
-<h3 id="tolower">ToLower</h3>
-<pre><code class="language-chibi">ToLower :: (s: string) -&gt; string
-</code></pre>
-<p>ASCII letters only; other bytes, including those of UTF-8 sequences, stay.</p>
-<h3 id="toupper">ToUpper</h3>
-<pre><code class="language-chibi">ToUpper :: (s: string) -&gt; string
-</code></pre>
-<h3 id="isasciispace">IsAsciiSpace</h3>
-<pre><code class="language-chibi">IsAsciiSpace :: (c: int) -&gt; bool
-</code></pre>
-<p>Tab, line feed, vertical tab, form feed, carriage return and space.</p>
-<h3 id="trimleft">TrimLeft</h3>
-<pre><code class="language-chibi">TrimLeft :: (s: string, cutset: string) -&gt; string
-</code></pre>
-<p>Removes the leading bytes that are bytes of cutset.</p>
-<h3 id="trimright">TrimRight</h3>
-<pre><code class="language-chibi">TrimRight :: (s: string, cutset: string) -&gt; string
-</code></pre>
-<h3 id="trim">Trim</h3>
-<pre><code class="language-chibi">Trim :: (s: string, cutset: string) -&gt; string
-</code></pre>
-<h3 id="trimleftspace">TrimLeftSpace</h3>
-<pre><code class="language-chibi">TrimLeftSpace :: (s: string) -&gt; string
-</code></pre>
-<h3 id="trimrightspace">TrimRightSpace</h3>
-<pre><code class="language-chibi">TrimRightSpace :: (s: string) -&gt; string
-</code></pre>
-<h3 id="trimspace">TrimSpace</h3>
-<pre><code class="language-chibi">TrimSpace :: (s: string) -&gt; string
-</code></pre>
-<h3 id="trimprefix">TrimPrefix</h3>
-<pre><code class="language-chibi">TrimPrefix :: (s: string, prefix: string) -&gt; string
-</code></pre>
-<h3 id="trimsuffix">TrimSuffix</h3>
-<pre><code class="language-chibi">TrimSuffix :: (s: string, suffix: string) -&gt; string
-</code></pre>
-<h3 id="cut">Cut</h3>
-<pre><code class="language-chibi">Cut :: (s: string, offset: int, count: int) -&gt; string
-</code></pre>
-<p>The count bytes from offset, or all bytes from offset when count is below 1. As in Odin, an offset outside s keeps all of s, and a count past the end keeps the rest.</p>
-<h3 id="splitkeeping">SplitKeeping</h3>
-<pre><code class="language-chibi">SplitKeeping :: (s: string, sep: string, keep: int, n: int) -&gt; string[]
-</code></pre>
-<p>Odin's _split: at most n parts, or every part when n is negative; the last part holds the rest of s. Each other part keeps the first keep bytes of the separator after it. An empty separator splits s into bytes.</p>
-<h3 id="split">Split</h3>
-<pre><code class="language-chibi">Split :: (s: string, sep: string) -&gt; string[]
-</code></pre>
-<h3 id="splitn">SplitN</h3>
-<pre><code class="language-chibi">SplitN :: (s: string, sep: string, n: int) -&gt; string[]
-</code></pre>
-<h3 id="splitafter">SplitAfter</h3>
-<pre><code class="language-chibi">SplitAfter :: (s: string, sep: string) -&gt; string[]
-</code></pre>
-<h3 id="splitaftern">SplitAfterN</h3>
-<pre><code class="language-chibi">SplitAfterN :: (s: string, sep: string, n: int) -&gt; string[]
-</code></pre>
-<h3 id="splitlineskeeping">SplitLinesKeeping</h3>
-<pre><code class="language-chibi">SplitLinesKeeping :: (s: string, keep: int, n: int) -&gt; string[]
-</code></pre>
-<p>Splits at line feeds; a line that ends in a carriage return loses it.</p>
-<h3 id="splitlines">SplitLines</h3>
-<pre><code class="language-chibi">SplitLines :: (s: string) -&gt; string[]
-</code></pre>
-<h3 id="splitlinesn">SplitLinesN</h3>
-<pre><code class="language-chibi">SplitLinesN :: (s: string, n: int) -&gt; string[]
-</code></pre>
-<h3 id="splitlinesafter">SplitLinesAfter</h3>
-<pre><code class="language-chibi">SplitLinesAfter :: (s: string) -&gt; string[]
-</code></pre>
-<h3 id="splitlinesaftern">SplitLinesAfterN</h3>
-<pre><code class="language-chibi">SplitLinesAfterN :: (s: string, n: int) -&gt; string[]
-</code></pre>
-<h3 id="fields">Fields</h3>
-<pre><code class="language-chibi">Fields :: (s: string) -&gt; string[]
-</code></pre>
-<p>The runs of bytes between ASCII spaces.</p>
-<h3 id="join">Join</h3>
-<pre><code class="language-chibi">Join :: (a: string[], sep: string) -&gt; string
-</code></pre>
-<h3 id="concatenate">Concatenate</h3>
-<pre><code class="language-chibi">Concatenate :: (a: string[]) -&gt; string
-</code></pre>
-<h3 id="repeat">Repeat</h3>
-<pre><code class="language-chibi">Repeat :: (s: string, count: int) -&gt; string
-</code></pre>
-<p>Doubles what it has built, as Odin copies. Where Odin panics on a negative count, a count below 1 gives an empty string, as Slice clamps counts.</p>
-<h3 id="replace">Replace</h3>
-<pre><code class="language-chibi">Replace :: (s: string, old: string, new: string, n: int) -&gt; string
-</code></pre>
-<p>Replaces the first n non-overlapping matches of old, or all of them when n is negative. An empty old matches at every byte boundary.</p>
-<h3 id="replaceall">ReplaceAll</h3>
-<pre><code class="language-chibi">ReplaceAll :: (s: string, old: string, new: string) -&gt; string
-</code></pre>
-<h3 id="remove">Remove</h3>
-<pre><code class="language-chibi">Remove :: (s: string, key: string, n: int) -&gt; string
-</code></pre>
-<h3 id="removeall">RemoveAll</h3>
-<pre><code class="language-chibi">RemoveAll :: (s: string, key: string) -&gt; string
-</code></pre>
-<h3 id="parts">Parts</h3>
-<pre><code class="language-chibi">Parts :: struct {
-    head: string;
-    match: string;
-    tail: string;
-}
-</code></pre>
-<h3 id="partition">Partition</h3>
-<pre><code class="language-chibi">Partition :: (str: string, sep: string) -&gt; Parts
-</code></pre>
-<p>The text before the first sep, sep and the text after it; when sep is absent, head is all of str and the others are empty.</p>
+<main id="main" tabindex="-1">
 <nav class="contents" aria-label="On this page">
-<p>On this page</p>
+<details open>
+<summary>On this page</summary>
 <ul>
-<li><a href="#strings">strings</a></li>
+<li class="section"><a href="#strings">strings</a>
+<ul>
 <li class="sub"><a href="#bytelength">ByteLength</a></li>
 <li class="sub"><a href="#byteat">ByteAt</a></li>
 <li class="sub"><a href="#bytes">Bytes</a></li>
@@ -276,12 +64,10 @@
 <li class="sub"><a href="#trimprefix">TrimPrefix</a></li>
 <li class="sub"><a href="#trimsuffix">TrimSuffix</a></li>
 <li class="sub"><a href="#cut">Cut</a></li>
-<li class="sub"><a href="#splitkeeping">SplitKeeping</a></li>
 <li class="sub"><a href="#split">Split</a></li>
 <li class="sub"><a href="#splitn">SplitN</a></li>
 <li class="sub"><a href="#splitafter">SplitAfter</a></li>
 <li class="sub"><a href="#splitaftern">SplitAfterN</a></li>
-<li class="sub"><a href="#splitlineskeeping">SplitLinesKeeping</a></li>
 <li class="sub"><a href="#splitlines">SplitLines</a></li>
 <li class="sub"><a href="#splitlinesn">SplitLinesN</a></li>
 <li class="sub"><a href="#splitlinesafter">SplitLinesAfter</a></li>
@@ -297,8 +83,242 @@
 <li class="sub"><a href="#parts">Parts</a></li>
 <li class="sub"><a href="#partition">Partition</a></li>
 </ul>
+</li>
+</ul>
+</details>
 </nav>
+<h1 id="the-core-packages">The core packages</h1>
+<p>Each package's pub declarations and the comments written above them in its source.</p>
+<h2 id="strings">strings</h2>
+<p>Import it as <code>core:strings</code>.</p>
+<h3 id="bytelength">ByteLength</h3>
+<pre><code class="language-chibi">pub ByteLength :: (value: string) -&gt; int
+</code></pre>
+<p>Compiler text operations use bytes, including bytes inside UTF-8 sequences.</p>
+<h3 id="byteat">ByteAt</h3>
+<pre><code class="language-chibi">pub ByteAt :: (value: string, index: int) -&gt; int
+</code></pre>
+<p>Returns -1 outside the string; valid bytes are unsigned values from 0 to 255. Each call measures the string, so a loop over a long one should read Bytes.</p>
+<h3 id="bytes">Bytes</h3>
+<pre><code class="language-chibi">pub Bytes :: (value: string) -&gt; int[]
+</code></pre>
+<p>Every byte of the string, from 0 to 255, read in one pass.</p>
+<h3 id="slice">Slice</h3>
+<pre><code class="language-chibi">pub Slice :: (value: string, start: int, count: int) -&gt; string
+</code></pre>
+<p>Start clamps to the string and count clamps to its remaining bytes.</p>
+<h3 id="compare">Compare</h3>
+<pre><code class="language-chibi">pub Compare :: (left: string, right: string) -&gt; int
+</code></pre>
+<h3 id="isidentifier">IsIdentifier</h3>
+<pre><code class="language-chibi">pub IsIdentifier :: (value: string) -&gt; bool
+</code></pre>
+<h3 id="basename">BaseName</h3>
+<pre><code class="language-chibi">pub BaseName :: (path: string) -&gt; string
+</code></pre>
+<h3 id="contains">Contains</h3>
+<pre><code class="language-chibi">pub Contains :: (s: string, substr: string) -&gt; bool
+</code></pre>
+<h3 id="containsany">ContainsAny</h3>
+<pre><code class="language-chibi">pub ContainsAny :: (s: string, chars: string) -&gt; bool
+</code></pre>
+<h3 id="hasprefix">HasPrefix</h3>
+<pre><code class="language-chibi">pub HasPrefix :: (s: string, prefix: string) -&gt; bool
+</code></pre>
+<h3 id="hassuffix">HasSuffix</h3>
+<pre><code class="language-chibi">pub HasSuffix :: (s: string, suffix: string) -&gt; bool
+</code></pre>
+<h3 id="indexbyte">IndexByte</h3>
+<pre><code class="language-chibi">pub IndexByte :: (s: string, c: int) -&gt; int
+</code></pre>
+<h3 id="lastindexbyte">LastIndexByte</h3>
+<pre><code class="language-chibi">pub LastIndexByte :: (s: string, c: int) -&gt; int
+</code></pre>
+<h3 id="index">Index</h3>
+<pre><code class="language-chibi">pub Index :: (s: string, substr: string) -&gt; int
+</code></pre>
+<p>Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.</p>
+<h3 id="lastindex">LastIndex</h3>
+<pre><code class="language-chibi">pub LastIndex :: (s: string, substr: string) -&gt; int
+</code></pre>
+<p>Index's search from the end. An empty substring is found at the length of s.</p>
+<h3 id="indexany">IndexAny</h3>
+<pre><code class="language-chibi">pub IndexAny :: (s: string, chars: string) -&gt; int
+</code></pre>
+<p>The offset of the first byte of s that is any byte of chars.</p>
+<h3 id="lastindexany">LastIndexAny</h3>
+<pre><code class="language-chibi">pub LastIndexAny :: (s: string, chars: string) -&gt; int
+</code></pre>
+<h3 id="count">Count</h3>
+<pre><code class="language-chibi">pub Count :: (s: string, substr: string) -&gt; int
+</code></pre>
+<p>Non-overlapping occurrences. An empty substring occurs at every byte boundary, one more than the byte length.</p>
+<h3 id="truncatetobyte">TruncateToByte</h3>
+<pre><code class="language-chibi">pub TruncateToByte :: (s: string, c: int) -&gt; string
+</code></pre>
+<p>Everything before the first c, or all of s when c is absent.</p>
+<h3 id="equalfold">EqualFold</h3>
+<pre><code class="language-chibi">pub EqualFold :: (u: string, v: string) -&gt; bool
+</code></pre>
+<p>ASCII letters match in either case; every other byte must be equal.</p>
+<h3 id="tolower">ToLower</h3>
+<pre><code class="language-chibi">pub ToLower :: (s: string) -&gt; string
+</code></pre>
+<p>ASCII letters only; other bytes, including those of UTF-8 sequences, stay.</p>
+<h3 id="toupper">ToUpper</h3>
+<pre><code class="language-chibi">pub ToUpper :: (s: string) -&gt; string
+</code></pre>
+<h3 id="isasciispace">IsAsciiSpace</h3>
+<pre><code class="language-chibi">pub IsAsciiSpace :: (c: int) -&gt; bool
+</code></pre>
+<p>Tab, line feed, vertical tab, form feed, carriage return and space.</p>
+<h3 id="trimleft">TrimLeft</h3>
+<pre><code class="language-chibi">pub TrimLeft :: (s: string, cutset: string) -&gt; string
+</code></pre>
+<p>Removes the leading bytes that are bytes of cutset.</p>
+<h3 id="trimright">TrimRight</h3>
+<pre><code class="language-chibi">pub TrimRight :: (s: string, cutset: string) -&gt; string
+</code></pre>
+<h3 id="trim">Trim</h3>
+<pre><code class="language-chibi">pub Trim :: (s: string, cutset: string) -&gt; string
+</code></pre>
+<h3 id="trimleftspace">TrimLeftSpace</h3>
+<pre><code class="language-chibi">pub TrimLeftSpace :: (s: string) -&gt; string
+</code></pre>
+<h3 id="trimrightspace">TrimRightSpace</h3>
+<pre><code class="language-chibi">pub TrimRightSpace :: (s: string) -&gt; string
+</code></pre>
+<h3 id="trimspace">TrimSpace</h3>
+<pre><code class="language-chibi">pub TrimSpace :: (s: string) -&gt; string
+</code></pre>
+<h3 id="trimprefix">TrimPrefix</h3>
+<pre><code class="language-chibi">pub TrimPrefix :: (s: string, prefix: string) -&gt; string
+</code></pre>
+<h3 id="trimsuffix">TrimSuffix</h3>
+<pre><code class="language-chibi">pub TrimSuffix :: (s: string, suffix: string) -&gt; string
+</code></pre>
+<h3 id="cut">Cut</h3>
+<pre><code class="language-chibi">pub Cut :: (s: string, offset: int, count: int) -&gt; string
+</code></pre>
+<p>The count bytes from offset, or all bytes from offset when count is below 1. An offset outside s keeps all of s. A count past the end keeps the rest.</p>
+<h3 id="split">Split</h3>
+<pre><code class="language-chibi">pub Split :: (s: string, sep: string) -&gt; string[]
+</code></pre>
+<h3 id="splitn">SplitN</h3>
+<pre><code class="language-chibi">pub SplitN :: (s: string, sep: string, n: int) -&gt; string[]
+</code></pre>
+<h3 id="splitafter">SplitAfter</h3>
+<pre><code class="language-chibi">pub SplitAfter :: (s: string, sep: string) -&gt; string[]
+</code></pre>
+<h3 id="splitaftern">SplitAfterN</h3>
+<pre><code class="language-chibi">pub SplitAfterN :: (s: string, sep: string, n: int) -&gt; string[]
+</code></pre>
+<h3 id="splitlines">SplitLines</h3>
+<pre><code class="language-chibi">pub SplitLines :: (s: string) -&gt; string[]
+</code></pre>
+<h3 id="splitlinesn">SplitLinesN</h3>
+<pre><code class="language-chibi">pub SplitLinesN :: (s: string, n: int) -&gt; string[]
+</code></pre>
+<h3 id="splitlinesafter">SplitLinesAfter</h3>
+<pre><code class="language-chibi">pub SplitLinesAfter :: (s: string) -&gt; string[]
+</code></pre>
+<h3 id="splitlinesaftern">SplitLinesAfterN</h3>
+<pre><code class="language-chibi">pub SplitLinesAfterN :: (s: string, n: int) -&gt; string[]
+</code></pre>
+<h3 id="fields">Fields</h3>
+<pre><code class="language-chibi">pub Fields :: (s: string) -&gt; string[]
+</code></pre>
+<p>The runs of bytes between ASCII spaces.</p>
+<h3 id="join">Join</h3>
+<pre><code class="language-chibi">pub Join :: (a: string[], sep: string) -&gt; string
+</code></pre>
+<h3 id="concatenate">Concatenate</h3>
+<pre><code class="language-chibi">pub Concatenate :: (a: string[]) -&gt; string
+</code></pre>
+<h3 id="repeat">Repeat</h3>
+<pre><code class="language-chibi">pub Repeat :: (s: string, count: int) -&gt; string
+</code></pre>
+<p>Doubles the result until it reaches the requested length. A count below 1 gives an empty string.</p>
+<h3 id="replace">Replace</h3>
+<pre><code class="language-chibi">pub Replace :: (s: string, old: string, new: string, n: int) -&gt; string
+</code></pre>
+<p>Replaces the first n non-overlapping matches of old, or all of them when n is negative. An empty old matches at every byte boundary.</p>
+<h3 id="replaceall">ReplaceAll</h3>
+<pre><code class="language-chibi">pub ReplaceAll :: (s: string, old: string, new: string) -&gt; string
+</code></pre>
+<h3 id="remove">Remove</h3>
+<pre><code class="language-chibi">pub Remove :: (s: string, key: string, n: int) -&gt; string
+</code></pre>
+<h3 id="removeall">RemoveAll</h3>
+<pre><code class="language-chibi">pub RemoveAll :: (s: string, key: string) -&gt; string
+</code></pre>
+<h3 id="parts">Parts</h3>
+<pre><code class="language-chibi">pub Parts :: struct {
+    head: string;
+    match: string;
+    tail: string;
+}
+</code></pre>
+<h3 id="partition">Partition</h3>
+<pre><code class="language-chibi">pub Partition :: (str: string, sep: string) -&gt; Parts
+</code></pre>
+<p>The text before the first sep, sep and the text after it; when sep is absent, head is all of str and the others are empty.</p>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

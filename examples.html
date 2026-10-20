@@ -7,86 +7,304 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html">Testing</a>
-<a href="packages.html">Packages</a>
-<a href="examples.html" aria-current="true">Examples</a>
-<a href="faq.html">FAQ</a>
-<a href="grammar.html">Grammar</a>
-<a href="toolchain.html">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html" aria-current="page">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html">Toolchain</a></li>
 </ul>
 </nav>
-<main>
-<h1 id="examples">Examples</h1>
-<p>Chibi has no separate example projects. Studio and these documents teach the engine. Each project that you can learn from is checked in beside the code that it uses. Thus each project migrates with the engine, and the engine tests it.</p>
-<p>To open one of the projects in Studio, run this command:</p>
-<pre><code class="language-sh">make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=test/fixtures/feature-coverage
-</code></pre>
-<table>
-<thead>
-<tr><th>To see</th><th>Open</th></tr>
-</thead>
-<tbody>
-<tr><td>Each reflected component, native function and event in a running scene</td><td><code>test/fixtures/feature-coverage</code>. It has one scene for each area, for example Audio, Entities, Flow, Input, Materials, Particles, Physics2D, Physics3D, Rendering3D, Rhythm, Save, Tilemap and Ui. Its <code>coverage-gaps.txt</code> lists the items that no scene uses yet, with the reasons.</td></tr>
-<tr><td>A small game that you can play: movement, live terrain cuts, save and load, and a HUD</td><td><code>test/fixtures/terrain-lab</code></td></tr>
-<tr><td>3D rooms and shapes</td><td><code>test/fixtures/scene3d</code></td></tr>
-<tr><td>2.5D HRC lighting</td><td><code>test/fixtures/courtyard</code></td></tr>
-<tr><td>Sprite frames</td><td><code>test/fixtures/sprites</code></td></tr>
-<tr><td>A large authored project: RmlUi documents, behaviors and virtual lists</td><td>The <code>projects/studio</code> project of Studio, in <a href="https://github.com/waldnercharles/chibi-studio">chibi-studio</a>. A new project starts from <code>projects/starter</code>.</td></tr>
-<tr><td>One UI widget alone, with a log of its actions</td><td>The Canvas of Studio. Open a ui asset.</td></tr>
-</tbody>
-</table>
-<p>To start a project, use the <code>new_project</code> operation of the controller. It writes <code>project.kdl</code> and an empty start scene.</p>
-<p>To publish the browser player and the <code>/dev/</code> editor of a game, use the game web workflow. Copy it into the game repository as <code>.github/workflows/web.yml</code>.</p>
-<p>No checked-in project saves a declarative model yet.</p>
-<h2 id="retired-repositories">Retired repositories</h2>
-<p>On 2026-10-17, the separate example and game repositories were retired and archived. Their Terrain Lab moved to this repository as <code>test/fixtures/terrain-lab</code>. Nothing else from them was migrated. No engine check reads them.</p>
+<main id="main" tabindex="-1">
 <nav class="contents" aria-label="On this page">
-<p>On this page</p>
+<details open>
+<summary>On this page</summary>
 <ul>
-<li><a href="#retired-repositories">Retired repositories</a></li>
+<li class="section"><a href="#use-a-recipe">Use a recipe</a></li>
+<li class="section"><a href="#move-with-input">Move with input</a></li>
+<li class="section"><a href="#react-to-a-button-press">React to a button press</a></li>
+<li class="section"><a href="#move-every-matching-entity">Move every matching entity</a></li>
+<li class="section"><a href="#spawn-an-object">Spawn an object</a></li>
+<li class="section"><a href="#remove-an-object-after-a-delay">Remove an object after a delay</a></li>
+<li class="section"><a href="#check-for-an-obstacle">Check for an obstacle</a></li>
+<li class="section"><a href="#react-to-a-collision">React to a collision</a></li>
+<li class="section"><a href="#sum-a-collection">Sum a collection</a></li>
+<li class="section"><a href="#change-hud-text">Change HUD text</a></li>
 </ul>
+</details>
 </nav>
+<h1 id="examples">Examples</h1>
+<p>Choose a task below. Each recipe shows the code and the assets it needs. Put behavior files in <code>content/behaviors</code> and prototype files in <code>content/prototypes</code>.</p>
+<div class="section-controls" hidden><button type="button" data-sections="open">Expand all</button><button type="button" data-sections="close">Collapse all</button></div>
+<details class="doc-section" open>
+<summary><h2 id="use-a-recipe">Use a recipe</h2>
+</summary>
+<p>For the first movement recipe, create these files in an empty project directory. Save its behavior as <code>content/behaviors/MovePlayer.chibi</code>.</p>
+<p><code>project.kdl</code>:</p>
+<pre><code class="language-kdl">version 29
+name &quot;Movement&quot;
+content &quot;content&quot;
+start_scene &quot;scenes/Main.kdl&quot;
+</code></pre>
+<p><code>content/prototypes/Player.kdl</code>:</p>
+<pre><code class="language-kdl">name &quot;Player&quot;
+components {
+    Appearance color=0x72ead4ff height=16.0 width=16.0
+    (object)Input
+    (object)Transform
+}
+(array)behaviors &quot;MovePlayer&quot;
+</code></pre>
+<p><code>content/prototypes/View.kdl</code>:</p>
+<pre><code class="language-kdl">name &quot;View&quot;
+components {
+    Camera height=360.0 width=640.0
+    (object)Transform
+}
+</code></pre>
+<p><code>content/scenes/Main.kdl</code>:</p>
+<pre><code class="language-kdl">version 1
+name &quot;Main&quot;
+(array)entities {
+    - name=&quot;Player&quot; prototype=&quot;Player&quot;
+    - name=&quot;View&quot; prototype=&quot;View&quot;
+}
+</code></pre>
+<p>The scene contains a visible player and a camera. For another recipe, change the prototype's behavior name and add the components that recipe needs. To add another prototype, add an entity with its name under <code>(array)entities</code>.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="move-with-input">Move with input</h2>
+</summary>
+<p>Attach this behavior to an entity with <code>Input</code> and <code>Transform</code> components. <code>Move</code> supplies a direction. <code>dt</code> is the time in seconds since the previous tick.</p>
+<pre><code class="language-chibi">MovePlayer :: behavior {
+    on Tick :: (dt: s) {
+        self.Transform += self.Input.Move * 105 * dt
+    }
+}
+</code></pre>
+<p>This moves the position directly. For a physics character, set <code>Velocity</code> instead. Keep its vertical velocity when changing horizontal movement:</p>
+<pre><code class="language-chibi">MovePlayer :: behavior {
+    on Tick :: () {
+        self.Velocity = vec2(self.Input.Move.x * 105, self.Velocity.y)
+    }
+}
+</code></pre>
+<p>The second version also needs <code>Velocity</code> and a configured physics body.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="react-to-a-button-press">React to a button press</h2>
+</summary>
+<p>Declare an action in <code>content/input.kdl</code>:</p>
+<pre><code class="language-kdl">Shoot {
+    (array)sources &quot;Space&quot;
+}
+</code></pre>
+<p>Use <code>pressed</code> for one action per press. Use <code>held</code> for continuous input.</p>
+<pre><code class="language-chibi">Shoot :: behavior {
+    on Input :: () {
+        if input.Shoot.pressed {
+            print_string(&quot;Fire&quot;)
+        }
+    }
+}
+</code></pre>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="move-every-matching-entity">Move every matching entity</h2>
+</summary>
+<p>A system selects entities by their components. This system needs <code>Transform</code> and <code>Velocity</code> on each matching entity.</p>
+<pre><code class="language-chibi">Drift :: system(position: Transform, velocity: Velocity)
+    on Tick :: (dt: s) {
+    position += velocity * dt
+}
+</code></pre>
+<p>Save it in <code>content/systems/Drift.chibi</code>. Register it on an entity with the <code>EngineSystem</code> component:</p>
+<pre><code class="language-kdl">name &quot;MovementSystem&quot;
+components {
+    EngineSystem asset=&quot;Drift&quot;
+}
+</code></pre>
+<p>Use this for entities whose position your system controls. A physics body already integrates velocity, so it does not need this system.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="spawn-an-object">Spawn an object</h2>
+</summary>
+<p>Create a <code>Projectile</code> prototype with a <code>Transform</code> component. Attach this behavior to an entity that also has <code>Transform</code>:</p>
+<pre><code class="language-chibi">FireProjectile :: behavior {
+    on Input :: () {
+        if input.Shoot.pressed {
+            projectile := await spawn_prototype(Projectile)
+            projectile.Transform = self.Transform
+        }
+    }
+}
+</code></pre>
+<p>The <code>Shoot</code> action uses the input declaration from the previous recipe. <code>await</code> waits for the spawn result before the code writes the new entity's position. Add motion and appearance to the <code>Projectile</code> prototype.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="remove-an-object-after-a-delay">Remove an object after a delay</h2>
+</summary>
+<p>Store the countdown on the entity. Declare <code>content/components/Lifetime.chibi</code>:</p>
+<pre><code class="language-chibi">Lifetime :: component {
+    remaining: s
+}
+</code></pre>
+<p>Create <code>content/behaviors/Expire.chibi</code>:</p>
+<pre><code class="language-chibi">Expire :: behavior {
+    on Tick :: (dt: s) {
+        self.Lifetime.remaining -= dt
+        if self.Lifetime.remaining &lt;= 0 {
+            destroy_entity(self)
+        }
+    }
+}
+</code></pre>
+<p>Give a prototype a two-second lifetime in <code>content/prototypes/TimedObject.chibi</code>:</p>
+<pre><code class="language-chibi">TimedObject :: prototype {
+    Lifetime { remaining: 2 }
+    behaviors: [Expire]
+}
+</code></pre>
+<p>Each instance has its own countdown. Add visible components to the prototype to see it disappear.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="check-for-an-obstacle">Check for an obstacle</h2>
+</summary>
+<p>This ray checks 200 world units to the right. It selects collision category bit 1, ignores the calling entity, and excludes sensors. The behavior needs <code>Transform</code> and <code>Velocity</code> components.</p>
+<pre><code class="language-chibi">AvoidObstacle :: behavior {
+    on Tick :: () {
+        hit := raycast(self.Transform, self.Transform + vec2(200, 0), 1, self, false)
+        if hit.Found {
+            self.Velocity = self.Velocity * 0.5
+        }
+    }
+}
+</code></pre>
+<p>The obstacle needs a collider in the selected category. Change the endpoint to check a different direction or distance.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="react-to-a-collision">React to a collision</h2>
+</summary>
+<p>Attach this behavior to a 2D physics body with <code>Body</code> and <code>Collider</code> components. It applies an impulse when contact begins:</p>
+<pre><code class="language-chibi">Bounce :: behavior {
+    on ContactBegin :: () {
+        apply_impulse(self, vec2(0, self.Body.mass * 20))
+    }
+}
+</code></pre>
+<p>The impulse changes velocity once per contact event. Use <code>apply_force</code> during <code>Tick</code> for a continuous force.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="sum-a-collection">Sum a collection</h2>
+</summary>
+<p>Use an array for a sequence of scores. A <code>for</code> loop visits each value.</p>
+<pre><code class="language-chibi">Scores :: behavior {
+    TotalScore :: (points: int[]) -&gt; int {
+        total: int = 0
+        for point in points {
+            total += point
+        }
+        return total
+    }
+
+    on Begin :: () {
+        points: int[] = [10, 20, 5]
+        points = array_add(points, 15)
+        print_string(format_text(&quot;Score: {}&quot;, TotalScore(points)))
+    }
+}
+</code></pre>
+<p>This prints <code>Score: 50</code>. <code>array_add</code> returns the array with the appended value.</p>
+</details>
+<details class="doc-section" open>
+<summary><h2 id="change-hud-text">Change HUD text</h2>
+</summary>
+<p>Create <code>content/ui/Hud.rml</code> with an element whose ID is <code>score</code>:</p>
+<pre><code class="language-html">&lt;span id=&quot;score&quot;&gt;Score: 0&lt;/span&gt;
+</code></pre>
+<p>Create a UI prototype in <code>content/prototypes/Hud.kdl</code>:</p>
+<pre><code class="language-kdl">name &quot;Hud&quot;
+components {
+    (object)Transform
+    Ui document=&quot;Hud&quot;
+}
+(array)behaviors &quot;ScoreLabel&quot;
+</code></pre>
+<p>Define <code>content/behaviors/ScoreLabel.chibi</code>:</p>
+<pre><code class="language-chibi">ScoreLabel :: behavior {
+    on Begin :: () {
+        await set_ui_text(Element: &quot;#score&quot;, Text: &quot;Score: 50&quot;)
+    }
+}
+</code></pre>
+<p>Place an instance of <code>Hud</code> in your scene. The selector <code>#score</code> addresses its element.</p>
+</details>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

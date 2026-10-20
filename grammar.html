@@ -7,55 +7,158 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html">Testing</a>
-<a href="packages.html">Packages</a>
-<a href="examples.html">Examples</a>
-<a href="faq.html">FAQ</a>
-<a href="grammar.html" aria-current="true">Grammar</a>
-<a href="toolchain.html">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html" aria-current="page">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html">Toolchain</a></li>
 </ul>
 </nav>
-<main>
+<main id="main" tabindex="-1">
+<nav class="contents" aria-label="On this page">
+<details open>
+<summary>On this page</summary>
+<ul>
+<li class="sub"><a href="#source_file">source_file</a></li>
+<li class="sub"><a href="#package_header">package_header</a></li>
+<li class="sub"><a href="#import_declaration">import_declaration</a></li>
+<li class="sub"><a href="#prototype_declaration">prototype_declaration</a></li>
+<li class="sub"><a href="#prototype_bases">prototype_bases</a></li>
+<li class="sub"><a href="#prototype_body">prototype_body</a></li>
+<li class="sub"><a href="#prototype_component">prototype_component</a></li>
+<li class="sub"><a href="#relationship_declaration">relationship_declaration</a></li>
+<li class="sub"><a href="#behavior">behavior</a></li>
+<li class="sub"><a href="#library">library</a></li>
+<li class="sub"><a href="#system">system</a></li>
+<li class="sub"><a href="#component">component</a></li>
+<li class="sub"><a href="#component_body">component_body</a></li>
+<li class="sub"><a href="#component_field">component_field</a></li>
+<li class="sub"><a href="#measure">measure</a></li>
+<li class="sub"><a href="#range_type">range_type</a></li>
+<li class="sub"><a href="#_bound">_bound</a></li>
+<li class="sub"><a href="#_negative_number">_negative_number</a></li>
+<li class="sub"><a href="#unit">unit</a></li>
+<li class="sub"><a href="#measured_type">measured_type</a></li>
+<li class="sub"><a href="#_signature_type">_signature_type</a></li>
+<li class="sub"><a href="#_compound_unit">_compound_unit</a></li>
+<li class="sub"><a href="#_unit_term">_unit_term</a></li>
+<li class="sub"><a href="#without_clause">without_clause</a></li>
+<li class="sub"><a href="#declaration_body">declaration_body</a></li>
+<li class="sub"><a href="#library_body">library_body</a></li>
+<li class="sub"><a href="#record_declaration">record_declaration</a></li>
+<li class="sub"><a href="#_public_record">_public_record</a></li>
+<li class="sub"><a href="#record_body">record_body</a></li>
+<li class="sub"><a href="#record_field">record_field</a></li>
+<li class="sub"><a href="#system_body">system_body</a></li>
+<li class="sub"><a href="#_declaration">_declaration</a></li>
+<li class="sub"><a href="#_common_declaration">_common_declaration</a></li>
+<li class="sub"><a href="#state_declaration">state_declaration</a></li>
+<li class="sub"><a href="#_explicit_state_declaration">_explicit_state_declaration</a></li>
+<li class="sub"><a href="#_state_declaration_value">_state_declaration_value</a></li>
+<li class="sub"><a href="#action_declaration">action_declaration</a></li>
+<li class="sub"><a href="#event_declaration">event_declaration</a></li>
+<li class="sub"><a href="#_computation_declaration">_computation_declaration</a></li>
+<li class="sub"><a href="#bind_declaration">bind_declaration</a></li>
+<li class="sub"><a href="#handler">handler</a></li>
+<li class="sub"><a href="#_handler_name">_handler_name</a></li>
+<li class="sub"><a href="#_handler_path">_handler_path</a></li>
+<li class="sub"><a href="#attribute">attribute</a></li>
+<li class="sub"><a href="#function_declaration">function_declaration</a></li>
+<li class="sub"><a href="#_public_function">_public_function</a></li>
+<li class="sub"><a href="#constant_declaration">constant_declaration</a></li>
+<li class="sub"><a href="#_public_constant">_public_constant</a></li>
+<li class="sub"><a href="#union_declaration">union_declaration</a></li>
+<li class="sub"><a href="#_public_union">_public_union</a></li>
+<li class="sub"><a href="#union_variant">union_variant</a></li>
+<li class="sub"><a href="#macro_declaration">macro_declaration</a></li>
+<li class="sub"><a href="#_callable_declaration">_callable_declaration</a></li>
+<li class="sub"><a href="#_callable_signature">_callable_signature</a></li>
+<li class="sub"><a href="#callable_body">callable_body</a></li>
+<li class="sub"><a href="#parameter_list">parameter_list</a></li>
+<li class="sub"><a href="#query_parameter_list">query_parameter_list</a></li>
+<li class="sub"><a href="#query_join">query_join</a></li>
+<li class="sub"><a href="#query_generator">query_generator</a></li>
+<li class="sub"><a href="#parameter">parameter</a></li>
+<li class="sub"><a href="#events_declaration">events_declaration</a></li>
+<li class="sub"><a href="#entry_declaration">entry_declaration</a></li>
+<li class="sub"><a href="#exit_declaration">exit_declaration</a></li>
+<li class="sub"><a href="#query_declaration">query_declaration</a></li>
+<li class="sub"><a href="#type">type</a></li>
+<li class="sub"><a href="#union_type">union_type</a></li>
+<li class="sub"><a href="#_single_type">_single_type</a></li>
+<li class="sub"><a href="#type_name">type_name</a></li>
+<li class="sub"><a href="#type_binder">type_binder</a></li>
+<li class="sub"><a href="#type_application">type_application</a></li>
+<li class="sub"><a href="#type_argument_list">type_argument_list</a></li>
+<li class="sub"><a href="#block">block</a></li>
+<li class="sub"><a href="#_statement">_statement</a></li>
+<li class="sub"><a href="#local_declaration">local_declaration</a></li>
+<li class="sub"><a href="#assignment">assignment</a></li>
+<li class="sub"><a href="#expression_statement">expression_statement</a></li>
+<li class="sub"><a href="#reduce_statement">reduce_statement</a></li>
+<li class="sub"><a href="#if_statement">if_statement</a></li>
+<li class="sub"><a href="#while_statement">while_statement</a></li>
+<li class="sub"><a href="#for_statement">for_statement</a></li>
+<li class="sub"><a href="#_range_header">_range_header</a></li>
+<li class="sub"><a href="#_foreach_header">_foreach_header</a></li>
+<li class="sub"><a href="#switch_statement">switch_statement</a></li>
+<li class="sub"><a href="#switch_arm">switch_arm</a></li>
+<li class="sub"><a href="#_case_statements">_case_statements</a></li>
+<li class="sub"><a href="#variant_pattern">variant_pattern</a></li>
+<li class="sub"><a href="#pattern_bindings">pattern_bindings</a></li>
+<li class="sub"><a href="#sequence_statement">sequence_statement</a></li>
+<li class="sub"><a href="#branch_statement">branch_statement</a></li>
+<li class="sub"><a href="#return_statement">return_statement</a></li>
+<li class="sub"><a href="#goto_statement">goto_statement</a></li>
+<li class="sub"><a href="#break_statement">break_statement</a></li>
+<li class="sub"><a href="#continue_statement">continue_statement</a></li>
+<li class="sub"><a href="#yield_statement">yield_statement</a></li>
+<li class="sub"><a href="#cancel_statement">cancel_statement</a></li>
+<li class="sub"><a href="#label_statement">label_statement</a></li>
+<li class="sub"><a href="#_expression">_expression</a></li>
+<li class="sub"><a href="#builtin_reference">builtin_reference</a></li>
+<li class="sub"><a href="#member_expression">member_expression</a></li>
+<li class="sub"><a href="#index_expression">index_expression</a></li>
+<li class="sub"><a href="#call_expression">call_expression</a></li>
+<li class="sub"><a href="#_call_target">_call_target</a></li>
+<li class="sub"><a href="#argument_list">argument_list</a></li>
+<li class="sub"><a href="#named_argument">named_argument</a></li>
+<li class="sub"><a href="#typed_argument">typed_argument</a></li>
+<li class="sub"><a href="#argument_name">argument_name</a></li>
+<li class="sub"><a href="#is_expression">is_expression</a></li>
+<li class="sub"><a href="#_negated_is_pattern">_negated_is_pattern</a></li>
+<li class="sub"><a href="#as_expression">as_expression</a></li>
+<li class="sub"><a href="#parenthesized_expression">parenthesized_expression</a></li>
+<li class="sub"><a href="#await_expression">await_expression</a></li>
+<li class="sub"><a href="#unary_expression">unary_expression</a></li>
+<li class="sub"><a href="#binary_expression">binary_expression</a></li>
+<li class="sub"><a href="#array_expression">array_expression</a></li>
+<li class="sub"><a href="#struct_expression">struct_expression</a></li>
+<li class="sub"><a href="#struct_field">struct_field</a></li>
+<li class="sub"><a href="#_name">_name</a></li>
+<li class="sub"><a href="#_member_name">_member_name</a></li>
+<li class="sub"><a href="#identifier">identifier</a></li>
+<li class="sub"><a href="#number">number</a></li>
+<li class="sub"><a href="#boolean">boolean</a></li>
+<li class="sub"><a href="#nil">nil</a></li>
+<li class="sub"><a href="#string">string</a></li>
+<li class="sub"><a href="#character">character</a></li>
+<li class="sub"><a href="#comment">comment</a></li>
+<li class="sub"><a href="#_end">_end</a></li>
+</ul>
+</details>
+</nav>
 <h1 id="grammar">Grammar</h1>
 <p>The syntax of <code>.chibi</code> source, rule by rule, as the parser defines it. A rule whose name starts with <code>_</code> shapes others without appearing in syntax trees.</p>
 <h3 id="source_file">source_file</h3>
@@ -69,6 +172,10 @@
       $.function_declaration, $.constant_declaration,
       $.state_declaration, $.record_declaration, $.union_declaration,
       $.macro_declaration,
+      alias($._public_function, $.function_declaration),
+      alias($._public_constant, $.constant_declaration),
+      alias($._public_record, $.record_declaration),
+      alias($._public_union, $.union_declaration),
     ))),
   ),
 </code></pre>
@@ -127,6 +234,9 @@
     repeat(field(&quot;join&quot;, $.query_join)),
     optional(field(&quot;without&quot;, $.without_clause)),
     optional(seq(K.where, field(&quot;where&quot;, $._expression))),
+    // `on Tick :: (dt: s)` names the fields of the step's payload it reads.
+    optional(seq(K.on, field(&quot;event&quot;, $._handler_name), field(&quot;binding&quot;, &quot;::&quot;),
+      field(&quot;payload&quot;, $.parameter_list))),
     field(&quot;body&quot;, $.system_body),
   ),
 </code></pre>
@@ -199,10 +309,11 @@
 <pre><code class="language-js">library_body: ($) =&gt; seq(&quot;{&quot;, repeat(choice($._declaration, $.record_declaration)), &quot;}&quot;),
 </code></pre>
 <h3 id="record_declaration">record_declaration</h3>
-<pre><code class="language-js">record_declaration: ($) =&gt;
-  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.struct,
-    optional(field(&quot;parameters&quot;, $.parameter_list)),
-    field(&quot;body&quot;, $.record_body), optional(&quot;;&quot;)),
+<pre><code class="language-js">record_declaration: ($) =&gt; record($, []),
+</code></pre>
+<h3 id="_public_record">_public_record</h3>
+<p><code>pub</code> exports a package's declaration to the packages that import it.</p>
+<pre><code class="language-js">_public_record: ($) =&gt; record($, [field(&quot;visibility&quot;, K.pub)]),
 </code></pre>
 <h3 id="record_body">record_body</h3>
 <pre><code class="language-js">record_body: ($) =&gt; seq(&quot;{&quot;, repeat($.record_field), &quot;}&quot;),
@@ -297,13 +408,23 @@
   ),
 </code></pre>
 <h3 id="handler">handler</h3>
+<p><code>on X :: (a: T)</code> names payload fields; the other form is migrating away.</p>
 <pre><code class="language-js">handler: ($) =&gt;
-  seq(
-    field(&quot;kind&quot;, choice(K.on, K.after)),
-    field(&quot;name&quot;, $._handler_name),
-    optional(seq(K.as, field(&quot;alias&quot;, $._name))),
-    optional(field(&quot;parameters&quot;, $.parameter_list)),
-    field(&quot;body&quot;, $.block),
+  choice(
+    seq(
+      field(&quot;kind&quot;, K.on),
+      field(&quot;name&quot;, $._handler_name),
+      field(&quot;binding&quot;, &quot;::&quot;),
+      field(&quot;parameters&quot;, $.parameter_list),
+      field(&quot;body&quot;, $.block),
+    ),
+    seq(
+      field(&quot;kind&quot;, choice(K.on, K.after)),
+      field(&quot;name&quot;, $._handler_name),
+      optional(seq(K.as, field(&quot;alias&quot;, $._name))),
+      optional(field(&quot;parameters&quot;, $.parameter_list)),
+      field(&quot;body&quot;, $.block),
+    ),
   ),
 </code></pre>
 <h3 id="_handler_name">_handler_name</h3>
@@ -328,19 +449,22 @@
 <pre><code class="language-js">attribute: ($) =&gt; seq(&quot;@&quot;, field(&quot;name&quot;, $.identifier)),
 </code></pre>
 <h3 id="function_declaration">function_declaration</h3>
-<pre><code class="language-js">function_declaration: ($) =&gt;
-  seq(repeat(field(&quot;attribute&quot;, $.attribute)), field(&quot;name&quot;, $._name), &quot;::&quot;,
-    $._callable_signature, optional(&quot;;&quot;)),
+<pre><code class="language-js">function_declaration: ($) =&gt; functionDeclaration($, []),
+</code></pre>
+<h3 id="_public_function">_public_function</h3>
+<pre><code class="language-js">_public_function: ($) =&gt; functionDeclaration($, [field(&quot;visibility&quot;, K.pub)]),
 </code></pre>
 <h3 id="constant_declaration">constant_declaration</h3>
-<pre><code class="language-js">constant_declaration: ($) =&gt;
-  seq(field(&quot;name&quot;, $._name), choice(&quot;::&quot;, seq(&quot;:&quot;, field(&quot;type&quot;, $.type), &quot;:&quot;)),
-    field(&quot;value&quot;, $._expression), $._end),
+<pre><code class="language-js">constant_declaration: ($) =&gt; constant($, []),
+</code></pre>
+<h3 id="_public_constant">_public_constant</h3>
+<pre><code class="language-js">_public_constant: ($) =&gt; constant($, [field(&quot;visibility&quot;, K.pub)]),
 </code></pre>
 <h3 id="union_declaration">union_declaration</h3>
-<pre><code class="language-js">union_declaration: ($) =&gt;
-  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.union, &quot;{&quot;,
-    $.union_variant, repeat(seq(&quot;|&quot;, $.union_variant)), optional(&quot;|&quot;), &quot;}&quot;, optional(&quot;;&quot;)),
+<pre><code class="language-js">union_declaration: ($) =&gt; union($, []),
+</code></pre>
+<h3 id="_public_union">_public_union</h3>
+<pre><code class="language-js">_public_union: ($) =&gt; union($, [field(&quot;visibility&quot;, K.pub)]),
 </code></pre>
 <h3 id="union_variant">union_variant</h3>
 <pre><code class="language-js">union_variant: ($) =&gt; choice(
@@ -539,9 +663,11 @@
   seq(K.while, field(&quot;condition&quot;, $._expression), field(&quot;body&quot;, $.block)),
 </code></pre>
 <h3 id="for_statement">for_statement</h3>
+<p><code>for &lt;</code> iterates in reverse, as Jai's does.</p>
 <pre><code class="language-js">for_statement: ($) =&gt;
   seq(
     K.for,
+    optional(field(&quot;reverse&quot;, &quot;&lt;&quot;)),
     choice(
       $._range_header,
       $._foreach_header,
@@ -556,7 +682,7 @@
     field(&quot;name&quot;, $._name),
     K.in,
     field(&quot;first&quot;, $._expression),
-    &quot;..&quot;,
+    field(&quot;bound&quot;, choice(&quot;..&quot;, &quot;..&lt;&quot;)),
     field(&quot;last&quot;, $._expression),
   ),
 </code></pre>
@@ -855,134 +981,62 @@
 <h3 id="_end">_end</h3>
 <pre><code class="language-js">_end: ($) =&gt; choice(&quot;;&quot;, $._automatic_terminator),
 </code></pre>
-<nav class="contents" aria-label="On this page">
-<p>On this page</p>
-<ul>
-<li class="sub"><a href="#source_file">source_file</a></li>
-<li class="sub"><a href="#package_header">package_header</a></li>
-<li class="sub"><a href="#import_declaration">import_declaration</a></li>
-<li class="sub"><a href="#prototype_declaration">prototype_declaration</a></li>
-<li class="sub"><a href="#prototype_bases">prototype_bases</a></li>
-<li class="sub"><a href="#prototype_body">prototype_body</a></li>
-<li class="sub"><a href="#prototype_component">prototype_component</a></li>
-<li class="sub"><a href="#relationship_declaration">relationship_declaration</a></li>
-<li class="sub"><a href="#behavior">behavior</a></li>
-<li class="sub"><a href="#library">library</a></li>
-<li class="sub"><a href="#system">system</a></li>
-<li class="sub"><a href="#component">component</a></li>
-<li class="sub"><a href="#component_body">component_body</a></li>
-<li class="sub"><a href="#component_field">component_field</a></li>
-<li class="sub"><a href="#measure">measure</a></li>
-<li class="sub"><a href="#range_type">range_type</a></li>
-<li class="sub"><a href="#_bound">_bound</a></li>
-<li class="sub"><a href="#_negative_number">_negative_number</a></li>
-<li class="sub"><a href="#unit">unit</a></li>
-<li class="sub"><a href="#measured_type">measured_type</a></li>
-<li class="sub"><a href="#_signature_type">_signature_type</a></li>
-<li class="sub"><a href="#_compound_unit">_compound_unit</a></li>
-<li class="sub"><a href="#_unit_term">_unit_term</a></li>
-<li class="sub"><a href="#without_clause">without_clause</a></li>
-<li class="sub"><a href="#declaration_body">declaration_body</a></li>
-<li class="sub"><a href="#library_body">library_body</a></li>
-<li class="sub"><a href="#record_declaration">record_declaration</a></li>
-<li class="sub"><a href="#record_body">record_body</a></li>
-<li class="sub"><a href="#record_field">record_field</a></li>
-<li class="sub"><a href="#system_body">system_body</a></li>
-<li class="sub"><a href="#_declaration">_declaration</a></li>
-<li class="sub"><a href="#_common_declaration">_common_declaration</a></li>
-<li class="sub"><a href="#state_declaration">state_declaration</a></li>
-<li class="sub"><a href="#_explicit_state_declaration">_explicit_state_declaration</a></li>
-<li class="sub"><a href="#_state_declaration_value">_state_declaration_value</a></li>
-<li class="sub"><a href="#action_declaration">action_declaration</a></li>
-<li class="sub"><a href="#event_declaration">event_declaration</a></li>
-<li class="sub"><a href="#_computation_declaration">_computation_declaration</a></li>
-<li class="sub"><a href="#bind_declaration">bind_declaration</a></li>
-<li class="sub"><a href="#handler">handler</a></li>
-<li class="sub"><a href="#_handler_name">_handler_name</a></li>
-<li class="sub"><a href="#_handler_path">_handler_path</a></li>
-<li class="sub"><a href="#attribute">attribute</a></li>
-<li class="sub"><a href="#function_declaration">function_declaration</a></li>
-<li class="sub"><a href="#constant_declaration">constant_declaration</a></li>
-<li class="sub"><a href="#union_declaration">union_declaration</a></li>
-<li class="sub"><a href="#union_variant">union_variant</a></li>
-<li class="sub"><a href="#macro_declaration">macro_declaration</a></li>
-<li class="sub"><a href="#_callable_declaration">_callable_declaration</a></li>
-<li class="sub"><a href="#_callable_signature">_callable_signature</a></li>
-<li class="sub"><a href="#callable_body">callable_body</a></li>
-<li class="sub"><a href="#parameter_list">parameter_list</a></li>
-<li class="sub"><a href="#query_parameter_list">query_parameter_list</a></li>
-<li class="sub"><a href="#query_join">query_join</a></li>
-<li class="sub"><a href="#query_generator">query_generator</a></li>
-<li class="sub"><a href="#parameter">parameter</a></li>
-<li class="sub"><a href="#events_declaration">events_declaration</a></li>
-<li class="sub"><a href="#entry_declaration">entry_declaration</a></li>
-<li class="sub"><a href="#exit_declaration">exit_declaration</a></li>
-<li class="sub"><a href="#query_declaration">query_declaration</a></li>
-<li class="sub"><a href="#type">type</a></li>
-<li class="sub"><a href="#union_type">union_type</a></li>
-<li class="sub"><a href="#_single_type">_single_type</a></li>
-<li class="sub"><a href="#type_name">type_name</a></li>
-<li class="sub"><a href="#type_binder">type_binder</a></li>
-<li class="sub"><a href="#type_application">type_application</a></li>
-<li class="sub"><a href="#type_argument_list">type_argument_list</a></li>
-<li class="sub"><a href="#block">block</a></li>
-<li class="sub"><a href="#_statement">_statement</a></li>
-<li class="sub"><a href="#local_declaration">local_declaration</a></li>
-<li class="sub"><a href="#assignment">assignment</a></li>
-<li class="sub"><a href="#expression_statement">expression_statement</a></li>
-<li class="sub"><a href="#reduce_statement">reduce_statement</a></li>
-<li class="sub"><a href="#if_statement">if_statement</a></li>
-<li class="sub"><a href="#while_statement">while_statement</a></li>
-<li class="sub"><a href="#for_statement">for_statement</a></li>
-<li class="sub"><a href="#_range_header">_range_header</a></li>
-<li class="sub"><a href="#_foreach_header">_foreach_header</a></li>
-<li class="sub"><a href="#switch_statement">switch_statement</a></li>
-<li class="sub"><a href="#switch_arm">switch_arm</a></li>
-<li class="sub"><a href="#_case_statements">_case_statements</a></li>
-<li class="sub"><a href="#variant_pattern">variant_pattern</a></li>
-<li class="sub"><a href="#pattern_bindings">pattern_bindings</a></li>
-<li class="sub"><a href="#sequence_statement">sequence_statement</a></li>
-<li class="sub"><a href="#branch_statement">branch_statement</a></li>
-<li class="sub"><a href="#return_statement">return_statement</a></li>
-<li class="sub"><a href="#goto_statement">goto_statement</a></li>
-<li class="sub"><a href="#break_statement">break_statement</a></li>
-<li class="sub"><a href="#continue_statement">continue_statement</a></li>
-<li class="sub"><a href="#yield_statement">yield_statement</a></li>
-<li class="sub"><a href="#cancel_statement">cancel_statement</a></li>
-<li class="sub"><a href="#label_statement">label_statement</a></li>
-<li class="sub"><a href="#_expression">_expression</a></li>
-<li class="sub"><a href="#builtin_reference">builtin_reference</a></li>
-<li class="sub"><a href="#member_expression">member_expression</a></li>
-<li class="sub"><a href="#index_expression">index_expression</a></li>
-<li class="sub"><a href="#call_expression">call_expression</a></li>
-<li class="sub"><a href="#_call_target">_call_target</a></li>
-<li class="sub"><a href="#argument_list">argument_list</a></li>
-<li class="sub"><a href="#named_argument">named_argument</a></li>
-<li class="sub"><a href="#typed_argument">typed_argument</a></li>
-<li class="sub"><a href="#argument_name">argument_name</a></li>
-<li class="sub"><a href="#is_expression">is_expression</a></li>
-<li class="sub"><a href="#_negated_is_pattern">_negated_is_pattern</a></li>
-<li class="sub"><a href="#as_expression">as_expression</a></li>
-<li class="sub"><a href="#parenthesized_expression">parenthesized_expression</a></li>
-<li class="sub"><a href="#await_expression">await_expression</a></li>
-<li class="sub"><a href="#unary_expression">unary_expression</a></li>
-<li class="sub"><a href="#binary_expression">binary_expression</a></li>
-<li class="sub"><a href="#array_expression">array_expression</a></li>
-<li class="sub"><a href="#struct_expression">struct_expression</a></li>
-<li class="sub"><a href="#struct_field">struct_field</a></li>
-<li class="sub"><a href="#_name">_name</a></li>
-<li class="sub"><a href="#_member_name">_member_name</a></li>
-<li class="sub"><a href="#identifier">identifier</a></li>
-<li class="sub"><a href="#number">number</a></li>
-<li class="sub"><a href="#boolean">boolean</a></li>
-<li class="sub"><a href="#nil">nil</a></li>
-<li class="sub"><a href="#string">string</a></li>
-<li class="sub"><a href="#character">character</a></li>
-<li class="sub"><a href="#comment">comment</a></li>
-<li class="sub"><a href="#_end">_end</a></li>
-</ul>
-</nav>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

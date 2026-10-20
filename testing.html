@@ -7,62 +7,39 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="bar">
 <a class="site" href="index.html">Chibi</a>
-<nav aria-label="Sections">
-<a href="index.html">Overview</a>
-<a href="language.html">Learn</a>
-<a href="testing.html" aria-current="true">Testing</a>
-<a href="packages.html">Packages</a>
-<a href="examples.html">Examples</a>
-<a href="faq.html">FAQ</a>
-<a href="grammar.html">Grammar</a>
-<a href="toolchain.html">Toolchain</a>
-</nav>
+<span class="context">Documentation</span>
 </header>
 <div class="page">
 <nav class="pages" aria-label="Pages">
-<h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
-</ul>
-<h2>Learn</h2>
-<ul>
 <li><a href="language.html">The Chibi language</a></li>
-</ul>
-<h2>Testing</h2>
-<ul>
 <li><a href="testing.html" aria-current="page">Testing</a></li>
-</ul>
-<h2>Packages</h2>
-<ul>
 <li><a href="packages.html">Core packages</a></li>
-</ul>
-<h2>Examples</h2>
-<ul>
 <li><a href="examples.html">Examples</a></li>
-</ul>
-<h2>FAQ</h2>
-<ul>
 <li><a href="faq.html">FAQ</a></li>
-</ul>
-<h2>Grammar</h2>
-<ul>
 <li><a href="grammar.html">Grammar</a></li>
-</ul>
-<h2>Toolchain</h2>
-<ul>
 <li><a href="toolchain.html">Toolchain</a></li>
 </ul>
 </nav>
-<main>
+<main id="main" tabindex="-1">
+<nav class="contents" aria-label="On this page">
+<details open>
+<summary>On this page</summary>
+<ul>
+<li class="section"><a href="#write-a-test">Write a test</a></li>
+<li class="section"><a href="#read-a-failure">Read a failure</a></li>
+<li class="section"><a href="#test-limits">Test limits</a></li>
+</ul>
+</details>
+</nav>
 <h1 id="testing">Testing</h1>
-<p>A test is a Chibi function. To write a test:</p>
-<ol>
-<li>Declare a package-level function that has no parameters and no result.</li>
-<li>Put <code>@test</code> before the function.</li>
-<li>Use <code>expect</code> to check the values that the function calculates.</li>
-</ol>
+<p>Use <code>@test</code> on a package function with no parameters and no result. Use <code>assert</code> to check its output.</p>
+<h2 id="write-a-test">Write a test</h2>
+<p>Save this file as <code>packages/scoring/Scoring.chibi</code>:</p>
 <pre><code class="language-chibi">package scoring
 
 Double :: (points: int) -&gt; int {
@@ -71,37 +48,89 @@ Double :: (points: int) -&gt; int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, &quot;three doubles to six&quot;);
+    assert(Double(3) == 6, &quot;three doubles to six&quot;);
 }
 </code></pre>
-<p><code>expect(condition, message)</code> does nothing when the condition is true. When the condition is false, the test fails with <code>Expectation failed: message</code>. The failure shows the position of the <code>expect</code> call. This is also true when the <code>expect</code> call is in a function that the test calls.</p>
-<h2 id="running-tests">Running tests</h2>
-<p><code>chibi test [ROOT]</code> prepares each package below ROOT and runs each test alone. ROOT is the working directory by default.</p>
-<pre><code class="language-text">PASS scoring.DoublesPoints
-FAIL scoring.HalvesPoints
-  /work/scoring/Scoring.chibi:14:5: Expectation failed: four halves to two
-2 tests, 1 failed
+<p>Run the package tests:</p>
+<pre><code class="language-sh">chibi test packages
 </code></pre>
-<p>The command exits with 0 when all tests pass. It exits with 1 when a test fails or a package is not valid. Thus you can use it in a pre-commit hook or in CI.</p>
-<h2 id="what-a-test-can-do">What a test can do</h2>
-<p>A test runs without a game. Its packages can call the functions that do not need a running game: core, text, arrays, vectors, math and value operations. A package that calls a different function, such as an audio or entity function, does not compile for <code>chibi test</code>. The command reports the location.</p>
-<p>A test also fails in these conditions:</p>
+<pre><code class="language-text">PASS scoring.DoublesPoints
+1 tests, 0 failed
+</code></pre>
+<p><code>chibi test [ROOT]</code> finds each package below ROOT. Without a path, it uses the working directory. Each package source starts with <code>package NAME</code>. Keep tests beside the package functions they check.</p>
+<h2 id="read-a-failure">Read a failure</h2>
+<p><code>assert(condition, message)</code> fails when the condition is false. The failure reports the location of the assertion, including assertions in called functions:</p>
+<pre><code class="language-text">FAIL scoring.DoublesPoints
+  /work/packages/scoring/Scoring.chibi:9:5: Assertion failed: three doubles to six
+1 tests, 1 failed
+</code></pre>
+<p>Without a message, <code>assert</code> reports the condition's source text. The command exits with 0 when all tests pass. It exits with 1 when a test fails or a package is invalid.</p>
+<h2 id="test-limits">Test limits</h2>
+<p>Each test runs alone, without a game. Packages can use core, text, array, vector, math and value operations. Functions that need a running game, such as audio or entity functions, cannot compile for <code>chibi test</code>.</p>
+<p>A test fails when it:</p>
 <ul>
-<li>A runtime failure occurs, such as a read past the end of an array.</li>
-<li>The test waits with <code>await</code> or <code>yield</code>, or it starts a task. Nothing would resume the test.</li>
-<li>The test runs for 100 million instructions. Thus a loop that does not end still stops.</li>
+<li>reads past an array boundary or causes another runtime error</li>
+<li>waits with <code>await</code> or <code>yield</code></li>
+<li>starts a task</li>
+<li>reaches 100 million instructions</li>
 </ul>
-<h2 id="where-tests-live">Where tests live</h2>
-<p>ROOT contains only package files. Each file starts with <code>package NAME</code>. Tests are beside the code that they check. The behaviors and libraries of a game project are not packages. Thus they contain no tests yet.</p>
-<nav class="contents" aria-label="On this page">
-<p>On this page</p>
-<ul>
-<li><a href="#running-tests">Running tests</a></li>
-<li><a href="#what-a-test-can-do">What a test can do</a></li>
-<li><a href="#where-tests-live">Where tests live</a></li>
-</ul>
-</nav>
+<p>TODO: Tests in game behavior and library source. The command currently accepts package source only.</p>
 </main>
 </div>
+<script>
+(() => {
+  const sections = [...document.querySelectorAll('.doc-section')];
+  const controls = document.querySelector('.section-controls');
+  if (controls) {
+    controls.hidden = false;
+    controls.addEventListener('click', event => {
+      const button = event.target.closest('button[data-sections]');
+      if (button) sections.forEach(section => { section.open = button.dataset.sections === 'open'; });
+    });
+  }
+  const contents = document.querySelector('.contents');
+  const disclosure = contents?.querySelector('details');
+  const narrow = matchMedia('(max-width: 64rem)');
+  if (disclosure) {
+    disclosure.open = !narrow.matches;
+    narrow.addEventListener('change', event => { disclosure.open = !event.matches; });
+  }
+  const links = contents ? [...contents.querySelectorAll('a[href^="#"]')] : [];
+  const reveal = hash => {
+    let id;
+    try { id = decodeURIComponent(hash.slice(1)); } catch { return null; }
+    const target = document.getElementById(id);
+    if (!target) return null;
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent.tagName === 'DETAILS') parent.open = true;
+    }
+    links.forEach(link => {
+      if (link.hash === hash) link.setAttribute('aria-current', 'location');
+      else link.removeAttribute('aria-current');
+    });
+    return target;
+  };
+  contents?.addEventListener('click', event => {
+    const link = event.target.closest('a[href^="#"]');
+    if (link) reveal(link.hash);
+  });
+  const visit = () => { const target = reveal(location.hash); if (target) target.scrollIntoView(); };
+  addEventListener('hashchange', visit);
+  visit();
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.filter(entry => entry.isIntersecting);
+      if (visible.length) {
+        const id = visible[visible.length - 1].target.id;
+        links.forEach(link => {
+          if (decodeURIComponent(link.hash.slice(1)) === id) link.setAttribute('aria-current', 'location');
+          else link.removeAttribute('aria-current');
+        });
+      }
+    }, { rootMargin: '-10% 0px -65% 0px' });
+    document.querySelectorAll('main h2[id], main h3[id], main h4[id]').forEach(heading => observer.observe(heading));
+  }
+})();
+</script>
 </body>
 </html>

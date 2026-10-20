@@ -266,20 +266,17 @@ a byte: `ToLower` slices its letter out of `"abcdefghijklmnopqrstuvwxyz"`.
 Suggestion: `string(bytes)` and `byte[](s)` conversions, and an in-place
 `s = append(s, t)` on a local string, as arrays already update in place.
 
-### A pure function cannot fail on purpose
+### Stage one cannot compile assert
 
-Language. Odin's `repeat` panics on a negative count. Purity is inferred since
-#420, and `expect` has an effect, so calling it would make `Repeat` impure;
-`core:strings` returns an empty string instead and hides the caller's mistake.
-Only a checked conversion or an out-of-bounds read fails a pure call.
+Stage one. Since #534, stage zero has a pure
+`assert(condition, message)` in place of `expect`: it fails the call as a
+checked conversion does, keeps its caller pure, and fails compilation when it
+fails while the compiler evaluates a constant. Stage one does not compile it,
+so `core:strings`, which stage one compiles, still returns an empty string
+where Odin's `repeat` panics on a negative count, hiding the caller's mistake.
 
-- Odin has `assert` and `panic`; Rust `assert!` and `panic!`; Zig `@panic`
-  and `unreachable`; C `assert`; C# and F# throw.
-
-Decision (2026-10-20): a pure `assert(condition, message)`, with an optional
-message, replaces `expect`. A false condition fails the call as a checked
-conversion does, and no optimization removes the call; failing while the
-compiler evaluates a constant is a compile error.
+Suggestion: stage one lowers `assert` to the same `ASSERT` instruction, then
+`Repeat` asserts its count.
 
 ### No runes
 
@@ -391,7 +388,7 @@ callee package's declarations in scope, as Odin does.
 ## A pattern test fails as a call argument
 
 Language. `found := r is .Found` and `if Find(n) is .Found { ... }` compile,
-but `expect(r is .Found, "...")` reports "Unknown type '.Found'".
+but `assert(r is .Found, "...")` reports "Unknown type '.Found'".
 
 - Rust's `matches!(r, R::Found(_))`, C#'s `r is Found` and Odin's
   `_, ok := r.(Found)` are expressions usable anywhere a value is.

@@ -247,7 +247,7 @@ Double :: (points: int) -> int {
 
 @test
 DoublesPoints :: () {
-    expect(Double(3) == 6, "three doubles to six");
+    assert(Double(3) == 6, "three doubles to six");
 }
 ```
 
@@ -255,13 +255,18 @@ DoublesPoints :: () {
 
 A test passes when it returns. A test fails in these conditions:
 
-- `expect(condition, message)` sees a false condition. This fails the call
-  with `Expectation failed: message` at the `expect` call's position.
+- `assert(condition, message)` sees a false condition. This fails the call
+  with `Assertion failed: message` at the `assert` call's position.
 - Any other runtime failure occurs, such as an out-of-bounds read or a checked
   conversion.
 
-`expect` is a core function with an effect. Thus a function that calls it is
-not pure, and no optimization removes the call.
+Without a message, `assert` reports the condition's source text instead, such
+as `Assertion failed: n >= 0`, as Odin's `assert` does. The message must be a
+string constant.
+
+`assert` is pure. Thus a function that calls it stays pure, and no
+optimization removes the call. When the compiler evaluates a constant, a false
+`assert` is a compile error.
 
 Tests are ordinary functions. They compile into the package like any other
 function. They run only when something calls them.

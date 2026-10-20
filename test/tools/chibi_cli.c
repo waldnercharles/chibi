@@ -507,12 +507,12 @@ static const char
               "\n"
               "@test\n"
               "Passes :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "\n"
               "@test\n"
               "Fails :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
               "}\n";
 
 /* The real compiler's --test runs each test of the packages below the root
@@ -538,7 +538,7 @@ TEST_CASE(compiler_test_reports_each_test)
         expected,
         sizeof expected,
         "PASS facts.Passes\nFAIL facts.Fails\n  %s/facts/Facts.chibi:11:5: "
-        "Expectation failed: four bytes\n2 tests, 1 failed\n",
+        "Assertion failed: four bytes\n2 tests, 1 failed\n",
         tests
     );
     REQUIRE(file_is("tests.log", expected));
@@ -1408,7 +1408,7 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *run[] = { launcher, "test", tree, NULL };
     REQUIRE(tool_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
-    REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+    REQUIRE(file_has("installed.log", "Assertion failed: four bytes\n2 tests, 1 failed\n"));
 
     directory("packages/lib");
     write_file("packages/lib/Lib.chibi", MESSY_PACKAGE);

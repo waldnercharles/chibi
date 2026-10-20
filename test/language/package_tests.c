@@ -18,7 +18,7 @@
 enum
 {
     BUDGET = 100000,
-    TESTS = 8
+    TESTS = 9
 };
 static native_capabilities *table;
 static authoring_packages *packages;
@@ -28,11 +28,11 @@ static const char
     FACTS[] = "package facts\n"
               "import strings \"core:strings\"\n"
               "Check :: (amount: int) {\n"
-              "    expect(amount > 2, \"amount is large\");\n"
+              "    assert(amount > 2, \"amount is large\");\n"
               "}\n"
               "@test\n"
               "Passes :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "@test\n"
               "Fails :: () {\n"
@@ -41,7 +41,7 @@ static const char
               "@test\n"
               "Faults :: () {\n"
               "    values: int[] = [1];\n"
-              "    expect(values[3] == 1, \"unreachable\");\n"
+              "    assert(values[3] == 1, \"unreachable\");\n"
               "}\n"
               "@test\n"
               "Spins :: () {\n"
@@ -55,6 +55,10 @@ static const char
               "@test\n"
               "Starts :: () {\n"
               "    Yields();\n"
+              "}\n"
+              "@test\n"
+              "Unsure :: () {\n"
+              "    assert(strings.ByteLength(\"ab\") == 3);\n"
               "}\n";
 static const char FIRST[] = "package facts\n@test\nFirst :: () {\n}\n";
 /* The package at the root itself is named by its declaration. */
@@ -124,6 +128,7 @@ TEST_CASE(package_tests_find_the_project_tests_in_order)
         { "facts", "Spins", "/project/facts/Facts.chibi", 20 },
         { "facts", "Yields", "/project/facts/Facts.chibi", 25 },
         { "facts", "Starts", "/project/facts/Facts.chibi", 29 },
+        { "facts", "Unsure", "/project/facts/Facts.chibi", 33 },
     };
     for (int i = 0; i < TESTS; i++) {
         REQUIRE(!strcmp(tests[i].package, expected[i].package));
@@ -135,7 +140,7 @@ TEST_CASE(package_tests_find_the_project_tests_in_order)
 }
 
 /* A test passes when it returns; otherwise the innermost failure explains it:
- * the expect that failed, an out-of-range read or the exhausted budget. A
+ * the assert that failed, an out-of-range read or the exhausted budget. A
  * test runs alone, so one that waits or starts a task fails. */
 TEST_CASE(package_tests_report_where_each_failure_stopped)
 {
@@ -149,7 +154,7 @@ TEST_CASE(package_tests_report_where_each_failure_stopped)
         }
 
         REQUIRE(!package_test_run(&tests[3], backends[b], BUDGET, &failure));
-        REQUIRE(!strcmp(failure.message, "Expectation failed: amount is large"));
+        REQUIRE(!strcmp(failure.message, "Assertion failed: amount is large"));
         REQUIRE(failure.path && !strcmp(failure.path, "/project/facts/Facts.chibi"));
         REQUIRE(failure.line == 4 && failure.column == 5);
 
@@ -166,6 +171,11 @@ TEST_CASE(package_tests_report_where_each_failure_stopped)
         REQUIRE(failure.line == 26 && failure.column == 5);
         REQUIRE(!package_test_run(&tests[7], backends[b], BUDGET, &failure));
         REQUIRE(!strcmp(failure.message, "a test cannot start a task"));
+
+        /* Without a message, the condition's text from its own file. */
+        REQUIRE(!package_test_run(&tests[8], backends[b], BUDGET, &failure));
+        REQUIRE(!strcmp(failure.message, "Assertion failed: strings.ByteLength(\"ab\") == 3"));
+        REQUIRE(failure.line == 34 && failure.column == 5);
     }
     return true;
 }

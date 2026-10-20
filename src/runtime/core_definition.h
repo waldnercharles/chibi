@@ -21,8 +21,8 @@
 #define CORE_BREAK_SOURCE "break"
 #define CORE_DELAY_NAME "Delay"
 #define CORE_DELAY_SOURCE "delay"
-#define CORE_EXPECT_NAME "Expect"
-#define CORE_EXPECT_SOURCE "expect"
+#define CORE_ASSERT_NAME "Assert"
+#define CORE_ASSERT_SOURCE "assert"
 #define CORE_PRINT_NAME "Print String"
 #define CORE_PRINT_SOURCE "print_string"
 #define CORE_GET_NAME "Get Variable"
@@ -107,7 +107,7 @@
 #define CORE_DELAY_OUTPUTS(X) CORE_EXEC_PORT(X, "Completed")
 #define CORE_PRINT_INPUTS(X)                                                   \
     CORE_EXEC_INPUTS(X) CORE_DATA_PORT(X, "InString", PIN_STR, "const char *")
-#define CORE_EXPECT_INPUTS(X)                                                  \
+#define CORE_ASSERT_INPUTS(X)                                                  \
     CORE_DATA_PORT(X, "Condition", PIN_BOOL, "bool")                           \
     CORE_DATA_PORT(X, "Message", PIN_STR, "const char *")
 #define CORE_VARIABLE_DATA(X) CORE_DATA_PORT(X, "Value", PIN_I32, "int")
@@ -226,9 +226,10 @@ extern const native_definition_pack CORE_DEFINITION_PACK;
     .keywords = "wait timer seconds after later",                              \
     .description = "Waits Duration seconds, then fires Completed; a Duration " \
                    "of zero or less continues at once."
-#define CORE_EXPECT_PRESENTATION                                               \
-    .keywords = "assert check test",                                           \
-    .description = "Fails the call with Message when Condition is false."
+#define CORE_ASSERT_PRESENTATION                                               \
+    .keywords = "check expect test",                                           \
+    .description = "Fails the call with Message, or Condition's source "       \
+                   "text, when Condition is false."
 #define CORE_PRINT_PRESENTATION                                                \
     .keywords = "log debug message",                                           \
     .description = "Writes InString to the behavior log, then fires Then."

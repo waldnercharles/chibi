@@ -511,6 +511,7 @@ module.exports = grammar({
         alias("self", $.identifier),
         $.string,
         $.number,
+        $.character,
         $.boolean,
         $.nil,
         $.builtin_reference,
@@ -668,6 +669,8 @@ module.exports = grammar({
     boolean: ($) => choice(K.true, K.false),
     nil: ($) => choice(K.nil, K.null),
     string: ($) => token(seq('"', repeat(choice(/[^"\\\n]/, /\\[^\n]/)), '"')),
+    // One character: semantic analysis rejects an empty or longer body.
+    character: ($) => token(seq("'", repeat(choice(/[^'\\\n]/, /\\[^\n]/)), "'")),
     comment: ($) =>
       choice(
         token(seq("//", /[^\n]*/)),

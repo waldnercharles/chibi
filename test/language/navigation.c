@@ -422,6 +422,28 @@ TEST_CASE(intelligence_signatures_and_semantic_highlights)
     return true;
 }
 
+/* A character literal highlights as a string, and char names its type. */
+TEST_CASE(intelligence_presents_character_literals_and_char)
+{
+    const char *sources[] = {
+        "Text :: library { Next :: (c: char) -> char { d := 'b'; return d; } }"
+    };
+    REQUIRE(project(sources, 1));
+    const char *text = documents[0].syntax->text;
+    int literal = (int)(strstr(text, "'b'") - text), count = 0;
+    highlights = authoring_source_highlights(navigation, 0, &count);
+    bool string = false;
+    for (int i = 0; i < count; i++) {
+        string |= highlights[i].range.start == literal &&
+                  !strcmp(highlights[i].cls, "tok-string");
+    }
+    REQUIRE(string);
+    edited = authoring_source_hover(navigation, 0, (int)(strstr(text, "d :=") - text));
+    REQUIRE(edited && !strcmp(edited, "d: char"));
+    authoring_source_complete(navigation, 0, (int)(strstr(text, "char)") - text) + 2, &completions);
+    REQUIRE(completion("char"));
+    return true;
+}
 TEST_CASE(intelligence_describes_retained_storage_and_owner)
 {
     const char *sources[] = {
@@ -1742,6 +1764,7 @@ void test_language_navigation()
     RUN_TEST_CASE(rename_groups_event_alias_handlers);
     RUN_TEST_CASE(intelligence_scope_identity_and_owned_outputs);
     RUN_TEST_CASE(intelligence_signatures_and_semantic_highlights);
+    RUN_TEST_CASE(intelligence_presents_character_literals_and_char);
     RUN_TEST_CASE(intelligence_describes_retained_storage_and_owner);
     RUN_TEST_CASE(library_signatures_infer_results_from_returns);
     RUN_TEST_CASE(rename_implicit_results_cannot_edit_return_type_or_expression);

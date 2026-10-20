@@ -2,39 +2,43 @@
 
 ## What is Chibi?
 
-A C23 scripting language, compiler and runtime for games, with a separate
-editor, Studio. Games are folders of `.chibi` source and KDL assets that the
-`chibi` command compiles, runs, tests and exports.
+Chibi is a C23 scripting language, compiler and runtime for games. It has a
+separate editor, Studio. A game is a folder of `.chibi` source and KDL assets.
+The `chibi` command compiles, runs, tests and exports the game.
 
 ## Where do I start?
 
-Build the SDK, then run one of the projects listed under
-[Examples](../examples.md) with `chibi run`. The [language guide](../code-language.md)
-describes the source, and [Toolchain](toolchain.md) every command.
+1. Build the SDK.
+2. Use `chibi run` to run one of the projects in [Examples](../examples.md).
+
+The [language guide](../code-language.md) describes the source.
+[Toolchain](toolchain.md) describes each command.
 
 ## Do I need Studio?
 
-No. Every asset is a text file you can edit directly, and `chibi fmt` keeps
-them canonical. Studio edits the same files.
+No. Each asset is a text file that you can edit directly. `chibi fmt` keeps the
+files canonical. Studio edits the same files.
 
-## How do I check a project before committing?
+## How do I check a project before I commit it?
 
-`chibi check` validates it without writing anything, `chibi fmt --check`
-reports assets that are not canonical, and `chibi test` runs package tests.
-Each exits nonzero on a problem.
+- `chibi check` validates the project and writes nothing.
+- `chibi fmt --check` reports the assets that are not canonical.
+- `chibi test` runs the package tests.
+
+Each command exits with a nonzero status when it finds a problem.
 
 ## Can I ship to the web?
 
-Yes. `chibi export --web PLAYER` writes a static site for any host, and
-`chibi web` serves one while you develop.
+Yes. `chibi export --web PLAYER` writes a static site for any host. While you
+develop, `chibi web` serves a site.
 
 ## Why does `chibi test` say "Expected package header"?
 
-Its ROOT must hold only package files. Point it at the folder of your
-packages, not at a game project, whose behaviors and libraries are not
-packages.
+The ROOT of `chibi test` must contain only package files. Give it the folder of
+your packages. Do not give it a game project. The behaviors and libraries of a
+game project are not packages.
 
 ## Does a slow test hang forever?
 
-No. Each test stops after 100 million instructions and is reported as
+No. Each test stops after 100 million instructions. `chibi test` reports it as
 failed.

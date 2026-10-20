@@ -83,7 +83,7 @@ static const char *lexical(TSNode n, const char *text)
     if (kind(n, "comment")) {
         return "tok-comment";
     }
-    if (kind(n, "string")) {
+    if (kind(n, "string") || kind(n, "character")) {
         return "tok-string";
     }
     if (kind(n, "number")) {
@@ -212,7 +212,7 @@ static void type_text(char **out, const script_catalog *catalog, script_type typ
         append(out, spelling ? spelling : name);
         free(spelling);
     } else {
-        append(out, script_scalar_name(type.storage));
+        append(out, script_numeric_name(type));
     }
     if (type.container == PIN_CONTAINER_ARRAY) {
         append(out, "[]");
@@ -1194,7 +1194,8 @@ void authoring_source_complete(
         prior ? (uint32_t)prior - 1 : 0,
         prior ? (uint32_t)prior - 1 : 0
     );
-    if (kind(previous, "comment") || kind(node, "comment") || kind(node, "string")) {
+    if (kind(previous, "comment") || kind(node, "comment") ||
+        kind(node, "string") || kind(node, "character")) {
         return;
     }
     if (asset_completions(doc, catalog, node, word, length, out) || !a) {
@@ -1373,7 +1374,7 @@ void authoring_source_complete(
         }
     }
     if (types) {
-        const char *names[] = { "Map",       "Type",      "number",
+        const char *names[] = { "Map",       "Type",      "number",      "char",
                                 "Prototype", "Component", "Relationship" };
         for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
             offer(

@@ -1075,7 +1075,14 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         }
         value = script_analyzer_field(value, "value");
     }
-    script_type literal = mode == BEHAVIOR_CAST_EXACT
+    bool character = script_type_char(type);
+    if (character && mode != BEHAVIOR_CAST_EXACT) {
+        script_analyzer_diagnostic(a, node, "char converts only with char(value)");
+        mode = BEHAVIOR_CAST_EXACT;
+    }
+    /* char(literal) checks the literal as the conversion would check it. */
+    script_type literal = character ? (script_type){ .storage = PIN_I64 }
+                        : mode == BEHAVIOR_CAST_EXACT
                             ? type
                             : script_analyzer_conversion_operand(a, value);
     script_expression result = { .kind = SCRIPT_EXPR_CAST,
@@ -1093,6 +1100,9 @@ static int conversion(analyzer *a, TSNode node, script_type type)
         !(actual.flags & SCRIPT_TYPE_ERROR)) {
         script_analyzer_diagnostic(a, node, "wrap and clamp convert between integer types");
     }
+    if (character && numeric && !integers) {
+        script_analyzer_diagnostic(a, node, "char converts from an integer");
+    }
     if (!numeric && script_catalog_type_assignable(a->catalog, type, actual)) {
         return result.left;
     }
@@ -1101,9 +1111,18 @@ static int conversion(analyzer *a, TSNode node, script_type type)
     }
     /* A compile-time integer that does not fit is an error, not a runtime trap. */
     pin_value constant, converted;
-    if (integers && mode == BEHAVIOR_CAST_EXACT &&
+    if (character && integers && !script_type_char(actual) &&
+        !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant)) {
+        uint64_t bits = behavior_scalar_bits(constant);
+        bool negative = behavior_scalar_signed(constant.type) && (int64_t)bits < 0;
+        if (negative || bits > 0x10FFFF || (bits >= 0xD800 && bits <= 0xDFFF)) {
+            script_analyzer_diagnostic(a, node, "Constant does not fit in char");
+        }
+    } else if (
+        integers && mode == BEHAVIOR_CAST_EXACT &&
         !script_analyzer_scalar_constant(a, result.left, actual.storage, &constant) &&
-        !behavior_scalar_cast(constant, type.storage, mode, &converted)) {
+        !behavior_scalar_cast(constant, type.storage, mode, &converted)
+    ) {
         script_analyzer_diagnostic(
             a,
             node,

@@ -10,13 +10,15 @@ compiler sources.
 ## Entry
 
 `Compile(project: string, collection_names: string[], collection_paths:
-string[], paths: string[], sources: string[], target: Target, abi: uint64,
-names: string[], natives: Native[], ports: Port[], identities: uint64[]) ->
-Result` returns `Compiled(module, bytes)`, a CHIBICLO closure with a module
-for every package, or `Rejected(diagnostic)`. `paths` and `sources` hold the
-files of every package, those of imported collections such as `core` under
-their collection's path; the package of `paths[0]` is the closure's root. The
-target supplies what Chibi cannot see:
+string[], paths: string[], sources: string[], debug: bool, target: Target,
+abi: uint64, names: string[], natives: Native[], ports: Port[], identities:
+uint64[]) -> Result` returns `Compiled(module, bytes)`, a CHIBICLO closure
+with a module for every package, or `Rejected(diagnostic)`. `paths` and
+`sources` hold the files of every package, those of imported collections such
+as `core` under their collection's path; the package of `paths[0]` is the
+closure's root. With `debug`, each function has stage zero's debugger points
+and watches (see [Output](#output)); without it, none, as the bootstrap
+compiles the compiler. The target supplies what Chibi cannot see:
 
 - `Target`: pointer width, the offsets of a value header's and an array's
   members, and the failure kinds a host call and a failed assertion report;
@@ -338,6 +340,12 @@ value, with its expression as origin and its type's header as initial value:
 
 A behavior's handles are its entities, so their watches name the entity type.
 
+Without `debug`, a body places none of these. Steps still leave some
+placeholders, which the body drops at its end, sending a jump or branch to one
+to the instruction after it. `tool language-package-compiler-chibi-debug-free`
+compiles the loops and control samples that way, checks that no point or
+watch remains, and runs them on both backends.
+
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A
 literal that overflows, or a nonzero one whose binary64 is zero or subnormal,
@@ -468,13 +476,25 @@ to 21 s.
 
 `make test-bootstrap` builds an unsanitized Release `test_language` and runs
 `tool language-package-compiler-chibi-bootstrap`. Stage zero prepares stage
-one, which compiles the compiler's complete source set, 15 files in 11
-packages, to a 6.4 MB closure: stage two. The compiler host loads stage two
-and runs its `CompileClosure` on the same sources and arguments, as JSON, and
-the bytes must equal stage one's. Stage two then compiles every sample, and
-each `Compile` result, closure or rejection, must project to the same JSON as
-stage one's; the existing selectors check stage one's against stage zero and
-run its closures on bytecode and SLJIT. The run takes about 23 s, with a peak
+one, which compiles the compiler's complete source set, without debugger
+points and watches, to a 9.6 MB closure: stage two. The compiler host loads
+stage two and runs its `CompileClosure` on the same sources and arguments, as
+JSON, and the bytes must equal stage one's. Stage two then compiles every
+sample with them: its `CompileClosure` must give stage one's closure, and a
+rejection its `Compile` JSON; the existing selectors check stage one's against
+stage zero and run its closures on bytecode and SLJIT.
+
+With watches, stage two was a 20.6 MB closure, past the host's 16 MiB byte
+result, its million prepared values and its layout work; raising every bound
+took about 10 GB to load it and still failed. On 2026-10-20, in about 41 s of
+wall time at a load average of 12, stage one compiled the compiler in about
+20 s of CPU time and stage two in about 13 s. Before then, every constant,
+default and first use counted whitespace with `ByteAt` from its document's
+start, and each `ByteAt` measures the text. A profile of stage one now puts
+over half of its time in `pin_record_valid` and the layout hash it recomputes
+on every record value it copies.
+
+On 2026-10-19, before points and watches, the run took about 23 s, with a peak
 memory footprint of about 3.5 GB (macOS arm64, 2026-10-19): stage one compiles
 the compiler in 11.7 s of CPU time and stage two in 7.6 s, against 13.3 s,
 8.9 s and 4.2 GB before the changes above, and the closure shrank from 6.64 MB.
@@ -486,8 +506,8 @@ Under Debug and the sanitizers one
 compile takes about two minutes, about 40% of it validating record
 descriptors on every snapshot, so this check runs only on the Release build.
 
-Stage two needs the compiler host's larger closure bounds: the package
-compiler's module needs about 113 M units of record-layout work and decodes to
+Stage two needs the compiler host's larger closure bounds. On 2026-10-19 the
+package compiler's module needed about 113 M units of record-layout work and decoded to
 about 80 MB with its verification scratch, past the 64 MiB defaults of every
-prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, is
+prepared read, and its 6.4 MB closure, as a `byte[]` of 40-byte values, was
 past the host's former 1,000,000-value byte result.

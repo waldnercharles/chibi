@@ -845,7 +845,9 @@ The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
 story; stage one rebuilds all five as stage zero does since 2026-10-20.
 Since 2026-10-20 stage one's functions also have all of stage zero's
 debugger points (function, statement, completion, expression and symbol) and
-watches (`docs/package-compiler.md#output`). Next action: the bootstrap
+watches (`docs/package-compiler.md#output`). The bootstrap compiles the
+compiler without them, since with watches stage two outgrew the compiler
+host's bounds. Next action: the bootstrap
 sequence on every supported host configuration.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration

@@ -15,17 +15,21 @@ char *compiler_target_json(const script_catalog *, size_t *length);
  * then what a behavior links against:
  * - each event's name, ID, signature ABI and range of payload fields, then
  *   each payload field's name, storage, nominal type ID and defaults;
- * - each type a module requires, as stage zero lists them: every type that is
- *   not internal, a namespace or a union, with its ID, layout hash, storage,
- *   size, component ID (0 for none) and range of fields, then each field's
- *   name, storage, byte offset, whether it is writable, the index of its
- *   nominal type among these types, whether it is a constant whose value is
- *   its name, and the index among the natives of the one that reads it (-1
- *   for no type or native);
+ * - each type that is not internal or a union, in catalog order, with whether
+ *   a module requires it, as stage zero requires every one but the
+ *   namespaces, the index of its underlying type, its ID, layout hash,
+ *   storage, size, component ID (0 for none) and range of fields, then each
+ *   field's name, storage, byte offset, whether it is writable, the index of
+ *   its nominal type among these types, whether it is a constant whose value
+ *   is its name, the index among the natives of the one that reads it (-1 for
+ *   no type or native) and the key it reads with ("" for none);
  * - the entity type's ID;
  * - each native that combines numbers, and records of them field by field,
  *   for a binary operator: its index among the natives and the operator;
- * - each global's name, storage and the index of its nominal type.
+ * - each global's name, storage and the index of its nominal type;
+ * - each native that makes a record of its arguments, with the record's type
+ *   and where its fields start, then for each argument the position of the
+ *   record field it gives.
  * Malloc-owned; release with free(). */
 char *compiler_behavior_input_json(
     const script_catalog *,

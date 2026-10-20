@@ -160,20 +160,19 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_c
         }
     }
 }
-/* Whether stage zero lists a type as a requirement: every one that is not
- * internal, a namespace or a union. */
-static bool required(const script_catalog_type *t)
+/* Whether the input lists a type: every one that is not internal or a union.
+ * Stage zero requires each of them but the namespaces. */
+static bool exported(const script_catalog_type *t)
 {
-    return !t->internal &&
-           !(t->type.flags & (SCRIPT_TYPE_NAMESPACE | SCRIPT_TYPE_UNION));
+    return !t->internal && !(t->type.flags & SCRIPT_TYPE_UNION);
 }
-/* The index among the required types of the type `id`; -1 for none. */
+/* The index among the exported types of the type `id`; -1 for none. */
 static int type_index(const script_catalog *catalog, uint64_t id)
 {
     int index = 0;
     for (int i = 0; id && i < catalog->type_count; i++) {
         const script_catalog_type *t = &catalog->types[i];
-        if (!required(t)) {
+        if (!exported(t)) {
             continue;
         }
         if (t->id == id) {
@@ -183,8 +182,7 @@ static int type_index(const script_catalog *catalog, uint64_t id)
     }
     return -1;
 }
-/* Each type stage zero lists as a requirement, with a range of fields, then
- * the fields. */
+/* Each exported type, with a range of fields, then the fields. */
 static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
 {
     yyjson_mut_val *types = yyjson_mut_arr_add_arr(doc, root);
@@ -192,10 +190,12 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
     size_t first = 0;
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *t = &catalog->types[i];
-        if (!required(t)) {
+        if (!exported(t)) {
             continue;
         }
         yyjson_mut_val *type = yyjson_mut_arr_add_obj(doc, types);
+        yyjson_mut_obj_add_bool(doc, type, "required", !(t->type.flags & SCRIPT_TYPE_NAMESPACE));
+        yyjson_mut_obj_add_int(doc, type, "underlying", type_index(catalog, t->underlying));
         yyjson_mut_obj_add_str(doc, type, "name", t->name);
         yyjson_mut_obj_add_uint(doc, type, "id", t->id);
         yyjson_mut_obj_add_uint(doc, type, "layout", t->layout);
@@ -220,6 +220,7 @@ static void add_types(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_ca
             );
             yyjson_mut_obj_add_bool(doc, field, "constant", f->constant);
             yyjson_mut_obj_add_int(doc, field, "read", f->read ? native_index(catalog, f->read) : -1);
+            yyjson_mut_obj_add_str(doc, field, "read_key", f->read_key ? f->read_key : "");
         }
     }
 }
@@ -239,6 +240,37 @@ static void add_operators(yyjson_mut_doc *doc, yyjson_mut_val *root, const scrip
             yyjson_mut_val *row = yyjson_mut_arr_add_obj(doc, operators);
             yyjson_mut_obj_add_int(doc, row, "native", native);
             yyjson_mut_obj_add_str(doc, row, "operator", c->operator_name);
+        }
+        native++;
+    }
+}
+/* Each callable native that makes a record of its arguments, with the
+ * record's type and where its fields start, then for each argument the
+ * position of the record field it gives. */
+static void add_makes(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_catalog *catalog)
+{
+    yyjson_mut_val *makes = yyjson_mut_arr_add_arr(doc, root);
+    yyjson_mut_val *fields = yyjson_mut_arr_add_arr(doc, root);
+    int native = 0;
+    size_t first = 0;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (!callable(c)) {
+            continue;
+        }
+        const script_catalog_type *record = script_catalog_type_by_id(catalog, c->aggregate);
+        if (c->struct_access == SCRIPT_STRUCT_ACCESS_MAKE && record) {
+            yyjson_mut_val *make = yyjson_mut_arr_add_obj(doc, makes);
+            yyjson_mut_obj_add_int(doc, make, "native", native);
+            yyjson_mut_obj_add_int(doc, make, "record", type_index(catalog, c->aggregate));
+            yyjson_mut_obj_add_uint(doc, make, "first", first);
+            for (int j = 0; j < c->parameter_count; j++, first++) {
+                int field = -1;
+                for (int k = 0; field < 0 && k < record->field_count; k++) {
+                    field = record->fields[k].id == c->parameters[j].member ? k : -1;
+                }
+                yyjson_mut_arr_add_int(doc, fields, field);
+            }
         }
         native++;
     }
@@ -283,5 +315,6 @@ char *compiler_behavior_input_json(
     yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
     add_operators(doc, root, catalog);
     add_globals(doc, root, catalog);
+    add_makes(doc, root, catalog);
     return written(doc, length);
 }

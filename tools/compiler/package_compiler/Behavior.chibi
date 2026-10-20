@@ -28,8 +28,12 @@ GameEventField :: struct {
     default_owner: bool;
 }
 // A type the game links, a component when `component` is its component ID;
-// its fields are type_fields[first, first + count).
+// its fields are type_fields[first, first + count). A module requires every
+// type but a namespace, such as SceneGlobals; types[underlying], when that is
+// not -1, is the type it stands for.
 GameType :: struct {
+    required: bool;
+    underlying: int;
     name: string;
     id: uint64;
     layout: uint64;
@@ -41,7 +45,7 @@ GameType :: struct {
 }
 // A game type's field: of the type types[record] when that is not -1; a
 // constant whose value is its name; read by natives[read] when that is not
-// -1.
+// -1, with the key `read_key` instead of the value when that is not "".
 GameField :: struct {
     name: string;
     storage: int;
@@ -50,6 +54,14 @@ GameField :: struct {
     record: int;
     constant: bool;
     read: int;
+    read_key: string;
+}
+// A native that makes a record of type types[record] of its arguments;
+// argument i gives the record's field make_fields[first + i].
+NativeMake :: struct {
+    native: int;
+    record: int;
+    first: int;
 }
 // A name the game binds in every behavior, of the type types[record] when
 // that is not -1.
@@ -77,7 +89,8 @@ StateDecl :: struct {
 Game :: union {
     Package
     | Behavior(kept: StateDecl[], handled: int[], declared: GameEvent[], payloads: GameEventField[],
-               entity: uint64, operators: NumericOperator[], globals: GameGlobal[])
+               entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+               make_fields: int[])
 }
 // Prepared function kinds.
 HandlerFunction: int : 1;
@@ -158,13 +171,18 @@ Effects :: (ops: Ops, code: Code[], reads_components: bool, writes_components: b
     }
     return effects;
 }
-// The game's types as native declarations of package 0, in order; their
-// fields are members.
+// The game's types as native declarations of package 0, in order, a
+// namespace as one no module requires; their fields are members, and a
+// native type's parent is its underlying type.
 NativeTypes :: (types: GameType[]) -> TypeDecl[] {
     declared: TypeDecl[] = [];
     for (linked in types) {
-        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, kind: NativeDecl,
-                         first: linked.first, count: linked.count, size: linked.size, parent: -1,
+        kind := NativeDecl;
+        if (!linked.required) {
+            kind = NamespaceDecl;
+        }
+        row: TypeDecl = {name: linked.name, type_name: linked.name, package: 0, kind: kind,
+                         first: linked.first, count: linked.count, size: linked.size, parent: linked.underlying,
                          storage: linked.storage, id: linked.id, layout: linked.layout, component: linked.component};
         declared = array_add(declared, row);
     }
@@ -175,7 +193,7 @@ NativeFields :: (type_fields: GameField[]) -> TypeMember[] {
     for (linked in type_fields) {
         row: TypeMember = {name: linked.name, storage: linked.storage, container: 0, record: linked.record,
                            offset: linked.offset, writable: linked.writable, constant: linked.constant,
-                           read: linked.read};
+                           read: linked.read, read_key: linked.read_key};
         fields = array_add(fields, row);
     }
     return fields;
@@ -217,12 +235,14 @@ ScalarPayload :: (declared: GameEvent, event_fields: GameEventField[]) -> bool {
 }
 // `identity` names the source as the project does, such as
 // "behaviors/Counter.chibi"; the module, states and handlers take their IDs
-// from it. The target, natives, events, types, entity, operators and globals
-// are the game's, as `chibi-compile --stage-one-input` exports them.
+// from it. The target, natives, events, types, entity, operators, globals and
+// record makes are the game's, as `chibi-compile --stage-one-input` exports
+// them.
 CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
                     natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                     event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                    entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> Result {
+                    entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                    make_fields: int[]) -> Result {
     ops := ResolveOps(names);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
@@ -259,12 +279,25 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
             declared := ReadType(forest, source, declared_types, no_names, 0, Field(forest, member, "type"));
-            if (!Integer(declared.storage) || declared.container != 0) {
-                return Result.Rejected(Diagnose(forest, member, 0, "state needs an integer type"));
+            if (!Numeric(declared.storage) || declared.container != 0) {
+                return Result.Rejected(Diagnose(forest, member, 0, "state needs a number type"));
             }
             bits: uint64 = 0;
             value := Field(forest, member, "value");
-            if (value >= 0) {
+            if (value >= 0 && Floating(declared.storage)) {
+                literal := Typed(-1, NumberStorage, 0, value);
+                if (!Is(forest, value, "number") && !Is(forest, value, "unary_expression")) {
+                    return Result.Rejected(Diagnose(forest, value, 0, "state value must be a number literal"));
+                }
+                switch FloatConstantStep(forest, source, 0, literal, declared.storage, ops, NoBases(), forest[value]) {
+                    case .Failed(diagnostic):
+                        return Result.Rejected(diagnostic);
+                    case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
+                                  typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
+                                  typed_marks):
+                        bits = typed_code[0].payload;
+                }
+            } else if (value >= 0) {
                 switch ParseNumber(forest, source, value) {
                     case .Invalid:
                         return Result.Rejected(Diagnose(forest, value, 0, "state value must be an integer literal"));
@@ -341,7 +374,8 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
     constants: ConstDecl[] = [];
     return Assemble(forest, [document], 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids, ops, target, abi,
-                    Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals));
+                    Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
+                                  make_fields));
 }
 // The modules of a project's behavior assets, `identities[i]` holding
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
@@ -350,7 +384,8 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
 CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                      natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                      event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                     entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> byte[] {
+                     entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                     make_fields: int[]) -> byte[] {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return [];
     }
@@ -362,7 +397,7 @@ CompileBehaviors :: (identities: string[], sources: string[], target: Target, ab
     while (index < length(identities)) {
         switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
                                game_events, event_fields, types, type_fields, entity, operators,
-                               globals) {
+                               globals, makes, make_fields) {
             case .Rejected(diagnostic):
                 return [];
             case .Compiled(module, bytes):
@@ -380,7 +415,8 @@ CompileBehaviors :: (identities: string[], sources: string[], target: Target, ab
 BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
                       natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
                       event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                      entity: uint64, operators: NumericOperator[], globals: GameGlobal[]) -> string {
+                      entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                      make_fields: int[]) -> string {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return "the behaviors' identities and sources differ in number, or there are none";
     }
@@ -388,7 +424,7 @@ BehaviorRejection :: (identities: string[], sources: string[], target: Target, a
     while (index < length(identities)) {
         switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
                                game_events, event_fields, types, type_fields, entity, operators,
-                               globals) {
+                               globals, makes, make_fields) {
             case .Rejected(diagnostic):
                 return format_text("{}:{}:{}: {}", identities[index], diagnostic.line, diagnostic.column,
                                    diagnostic.message);

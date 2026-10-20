@@ -33,8 +33,6 @@
 #define STORY_COUNT 5
 #define HARNESS_ARGUMENTS (5 + 2 * STORY_COUNT)
 #define STAGE_ONE "tools/toolchain/StageOne.chibi"
-/* The stories stage one compiles so far, from the first. */
-#define STAGE_ONE_STORIES 4
 
 /* The stories, in the order the stage-one increments reach them. */
 static const char *const story_names[STORY_COUNT] = { "Counter",
@@ -358,29 +356,34 @@ static bool observe_motion(const char *artifact, const char *trace)
     return tool_run(argv, scratch, log_path) == 0;
 }
 
-/* The pluggable compilers rebuild every story to the same declarations and
- * the same play: today both are stage zero until stage one compiles them. */
-TEST_CASE(stories_play_alike_under_both_compilers)
+/* The harness rebuilds every story with the reference and with `candidate`,
+ * in the scratch folder `name`, and finds them alike. */
+static bool rebuilds_alike(const char *name, const char *candidate)
 {
     char folder[128], projects[STORY_COUNT][4096], scenarios[STORY_COUNT][4096];
-    path(folder, sizeof folder, "compare");
+    path(folder, sizeof folder, name);
     const char *arguments[HARNESS_ARGUMENTS] = { build_host_path,
                                                  reference_path,
-                                                 candidate_path,
+                                                 candidate,
                                                  observer_path,
                                                  folder };
-    int count = 5;
     for (int i = 0; i < STORY_COUNT; i++) {
         story_path(projects[i], sizeof projects[i], story_names[i], "");
         story_path(scenarios[i], sizeof scenarios[i], story_names[i], SCENARIO);
-        arguments[count++] = projects[i];
-        arguments[count++] = scenarios[i];
+        arguments[5 + 2 * i] = projects[i];
+        arguments[6 + 2 * i] = scenarios[i];
     }
-    REQUIRE(harness("Rebuild", arguments, count) == 0);
+    REQUIRE(harness("Rebuild", arguments, HARNESS_ARGUMENTS) == 0);
     REQUIRE(
         log_has("the candidate matches the reference in Counter, Motion, Controls, Results, Follow")
     );
     return true;
+}
+/* The pluggable compilers rebuild every story to the same declarations and
+ * the same play. */
+TEST_CASE(stories_play_alike_under_both_compilers)
+{
+    return rebuilds_alike("compare", candidate_path);
 }
 
 /* A candidate whose behavior differs is named in its story at the first
@@ -529,13 +532,16 @@ enum
     INPUT_ENTITY,
     INPUT_OPERATORS,
     INPUT_GLOBALS,
+    INPUT_MAKES,
+    INPUT_MAKE_FIELDS,
     INPUT_ARGUMENTS
 };
 /* Whether the exported input holds the story's behavior and lists the type
  * requirements and events of the module stage zero prepared for it, in
  * order, as a stage-one module must, the binary operators of the natives
- * stage zero calls for records, + among them, and the globals, `self` of the
- * owner's type among them. */
+ * stage zero calls for records, + among them, the globals, `self` of the
+ * owner's type among them, and the natives that make records, vec2 making a
+ * CF_V2 of its x and y among them. */
 static bool target_matches(yyjson_val *root, const execution_module *module, const char *source)
 {
     const execution_module_plan *plan = &module->plan;
@@ -546,16 +552,21 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
     REQUIRE(!strcmp(yyjson_get_str(yyjson_arr_get(identities, 0)), "behaviors/Counter.chibi"));
     REQUIRE(source && !strcmp(yyjson_get_str(yyjson_arr_get(sources, 0)), source));
     yyjson_val *types = yyjson_arr_get(root, INPUT_TYPES);
-    REQUIRE(yyjson_arr_size(types) == (size_t)plan->type_count);
-    for (int i = 0; i < plan->type_count; i++) {
-        yyjson_val *type = yyjson_arr_get(types, (size_t)i);
-        const execution_type_requirement *expected = &plan->types[i];
+    int required = 0;
+    for (size_t i = 0; i < yyjson_arr_size(types); i++) {
+        yyjson_val *type = yyjson_arr_get(types, i);
+        if (!yyjson_get_bool(yyjson_obj_get(type, "required"))) {
+            continue;
+        }
+        REQUIRE(required < plan->type_count);
+        const execution_type_requirement *expected = &plan->types[required++];
         REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "id")) == expected->id);
         REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "layout")) == expected->layout);
         REQUIRE(yyjson_get_int(yyjson_obj_get(type, "storage")) == (int)expected->storage);
         REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "size")) == expected->size);
         REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(type, "name")), expected->name));
     }
+    REQUIRE(required == plan->type_count);
     yyjson_val *events = yyjson_arr_get(root, INPUT_EVENTS);
     yyjson_val *fields = yyjson_arr_get(root, INPUT_EVENT_FIELDS);
     for (int i = 0; i < plan->event_count; i++) {
@@ -611,6 +622,21 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
                  yyjson_get_uint(yyjson_obj_get(type, "id")) == plan->owner_type;
     }
     REQUIRE(owner);
+    yyjson_val *makes = yyjson_arr_get(root, INPUT_MAKES);
+    yyjson_val *make_fields = yyjson_arr_get(root, INPUT_MAKE_FIELDS);
+    bool vector = false;
+    for (size_t i = 0; i < yyjson_arr_size(makes); i++) {
+        yyjson_val *make = yyjson_arr_get(makes, i);
+        yyjson_val *native = yyjson_arr_get(natives, yyjson_get_uint(yyjson_obj_get(make, "native")));
+        yyjson_val *record = yyjson_arr_get(types, yyjson_get_uint(yyjson_obj_get(make, "record")));
+        size_t first = yyjson_get_uint(yyjson_obj_get(make, "first"));
+        vector |= !strcmp(yyjson_get_str(yyjson_obj_get(native, "name")), "vec2") &&
+                  record &&
+                  !strcmp(yyjson_get_str(yyjson_obj_get(record, "name")), "CF_V2") &&
+                  yyjson_get_int(yyjson_arr_get(make_fields, first)) == 0 &&
+                  yyjson_get_int(yyjson_arr_get(make_fields, first + 1)) == 1;
+    }
+    REQUIRE(vector);
     return true;
 }
 /* chibi-compile --stage-one-input exports stage one's input for a story: its
@@ -702,32 +728,16 @@ TEST_CASE(stories_assemble_from_their_own_modules)
     }
     return true;
 }
-/* Stage one's route rebuilds the first STAGE_ONE_STORIES stories as stage zero
- * does: it recovers stage one from the bootstrap artifact and the compiler
- * sources, compiles each story's behaviors with it, and has chibi-compile
- * assemble the artifact from those modules. Recovery takes one or two compiles
- * of the compiler the first time its sources change, and none once its
- * closure is kept. */
+/* Stage one's route rebuilds every story as stage zero does: it recovers stage
+ * one from the bootstrap artifact and the compiler sources, compiles each
+ * story's behaviors with it, and has chibi-compile assemble the artifact from
+ * those modules. Recovery takes one or two compiles of the compiler the first
+ * time its sources change, and none once its closure is kept. */
 TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does)
 {
-    char folder[128], route[4096], projects[STAGE_ONE_STORIES][4096],
-        scenarios[STAGE_ONE_STORIES][4096];
-    path(folder, sizeof folder, "stage-one");
+    char route[4096];
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
-    const char *arguments[5 + 2 * STAGE_ONE_STORIES] = { build_host_path,
-                                                         reference_path,
-                                                         route,
-                                                         observer_path,
-                                                         folder };
-    for (int i = 0; i < STAGE_ONE_STORIES; i++) {
-        story_path(projects[i], sizeof projects[i], story_names[i], "");
-        story_path(scenarios[i], sizeof scenarios[i], story_names[i], SCENARIO);
-        arguments[5 + 2 * i] = projects[i];
-        arguments[6 + 2 * i] = scenarios[i];
-    }
-    REQUIRE(harness("Rebuild", arguments, 5 + 2 * STAGE_ONE_STORIES) == 0);
-    REQUIRE(log_has("the candidate matches the reference in Counter, Motion, Controls, Results"));
-    return true;
+    return rebuilds_alike("stage-one", route);
 }
 static void prepare_scratch()
 {

@@ -96,6 +96,7 @@ static const char *symbol_text(script_operator op)
         case SCRIPT_OP_LE: return "<=";
         case SCRIPT_OP_GT: return ">";
         case SCRIPT_OP_GE: return ">=";
+        case SCRIPT_OP_COALESCE: return "??";
         default: return NULL;
     }
 }
@@ -170,7 +171,8 @@ static script_unit operation(pass *p, script_range range, script_operator op, in
         case SCRIPT_OP_DIV: return product(p, range, x, y, -1);
         case SCRIPT_OP_ADD:
         case SCRIPT_OP_SUB:
-        case SCRIPT_OP_MOD: return match(p, range, x, symbol_text(op), y);
+        case SCRIPT_OP_MOD:
+        case SCRIPT_OP_COALESCE: return match(p, range, x, symbol_text(op), y);
         case SCRIPT_OP_EQ:
         case SCRIPT_OP_NE:
         case SCRIPT_OP_LT:

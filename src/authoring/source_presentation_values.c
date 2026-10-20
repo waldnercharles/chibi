@@ -13,8 +13,8 @@ static const char *operator_name(script_operator op)
     static const char *names[] = { "Value", "+",  "-",  "*",  "/",  "%",
                                    "-",     "!",  "&&", "||", "==", "!=",
                                    "<",     "<=", ">",  ">=", "&",  "|",
-                                   "^",     "<<", ">>", "~" };
-    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_BIT_NOT);
+                                   "^",     "<<", ">>", "~",  "??" };
+    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_COALESCE);
     return names[op];
 }
 static const char *expression_name(source_projection *p, const script_expression *e)
@@ -175,7 +175,8 @@ node *source_view_expression(source_projection *p, int index)
     bool lazy = (e->effects & ~(SCRIPT_EFFECT_READ | SCRIPT_EFFECT_INVOCATION_READ)) &&
                 (e->kind == SCRIPT_EXPR_FALLBACK ||
                  (e->kind == SCRIPT_EXPR_BINARY &&
-                  (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR)));
+                  (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR ||
+                   e->op == SCRIPT_OP_COALESCE)));
     /* Keep read-only formulas as one editable source expression. Calls and
      * members retain their ports; operations with effects stay explicit. */
     bool formula = lazy ||

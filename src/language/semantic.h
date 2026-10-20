@@ -121,6 +121,7 @@ typedef enum
     SCRIPT_OP_SHIFT_LEFT,
     SCRIPT_OP_SHIFT_RIGHT,
     SCRIPT_OP_BIT_NOT,
+    SCRIPT_OP_COALESCE,
 } script_operator;
 typedef struct
 {

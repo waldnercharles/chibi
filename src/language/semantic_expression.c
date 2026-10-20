@@ -809,6 +809,31 @@ static int map_method(analyzer *a, TSNode node)
     }
     return script_analyzer_map_operation(a, node, SCRIPT_EXPR_MAP_HAS, map, ts_node_named_child(arguments, 0));
 }
+/* `a ?? b` reads a's value, or b when a is nil, as Swift's `??` and Odin's
+ * `or_else` do. b runs only then; an optional b keeps the result optional. */
+static int coalesce(analyzer *a, TSNode node, script_expression result)
+{
+    TSNode left = script_analyzer_field(node, "left"),
+           right = script_analyzer_field(node, "right");
+    script_type optional = script_analyzer_expr_type(a, result.left), value = optional;
+    value.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    if ((!(optional.flags & SCRIPT_TYPE_BOXED_OPTIONAL) ||
+         (optional.flags & SCRIPT_TYPE_TASK)) &&
+        !(optional.flags & SCRIPT_TYPE_ERROR)) {
+        script_analyzer_diagnostic(a, left, "?? requires an optional value on its left");
+        value = script_analyzer_bad_type();
+    }
+    result.right = script_analyzer_expression(a, right, value);
+    script_type actual = script_analyzer_expr_type(a, result.right);
+    result.type = (actual.flags & SCRIPT_TYPE_OPTIONAL) &&
+                          !(value.flags & SCRIPT_TYPE_ERROR)
+                    ? optional
+                    : value;
+    script_analyzer_require(a, right, result.type, actual);
+    result.effects = script_analyzer_expr_effects(a, result.left) |
+                     script_analyzer_expr_effects(a, result.right);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -1114,6 +1139,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, left, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+        if (result.op == SCRIPT_OP_COALESCE) {
+            return coalesce(a, node, result);
+        }
         if (result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR) {
             narrowing *saved = NULL;
             for (int i = 0; i < acount(a->narrowed); i++) {

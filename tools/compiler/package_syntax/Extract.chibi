@@ -14,7 +14,7 @@ File :: struct {
     header_document: int;
 }
 
-Import :: struct {
+pub Import :: struct {
     file: int;
     alias: string;
     explicit_alias: bool;
@@ -35,7 +35,7 @@ Import :: struct {
     alias_document: int;
 }
 
-Result :: union {
+pub Result :: union {
     Accepted(file: File, imports: Import[])
     | Rejected(diagnostic: syntax.Diagnostic)
 }
@@ -53,8 +53,8 @@ FindField :: (nodes: syntax.Node[], fields: string[], node: int, name: string) -
     return -1;
 }
 
-Extract :: (nodes: syntax.Node[], fields: string[], text: string,
-            root: int, file: int, path: string, directory: string) -> Result {
+pub Extract :: (nodes: syntax.Node[], fields: string[], text: string,
+                root: int, file: int, path: string, directory: string) -> Result {
     diagnostics := syntax.Diagnose(nodes, root);
     if (length(diagnostics) > 0) {
         return Result.Rejected(diagnostics[0]);

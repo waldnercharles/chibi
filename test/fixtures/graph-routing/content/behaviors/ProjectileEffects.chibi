@@ -1,7 +1,7 @@
 ProjectileEffects :: behavior {
 
     action spawn_prototype_action = spawn_prototype(Prototype: TrailEmitter);
-    on Begin as begin() {
+    on Begin :: () {
         spawn_prototype_action();
     }
     after spawn_prototype_action {

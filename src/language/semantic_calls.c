@@ -264,6 +264,27 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             }
         );
     }
+    bool hidden = false;
+    if (a->import_count && script_analyzer_is(object, "identifier")) {
+        char *qualified = script_analyzer_qualified_name(a, node);
+        hidden = script_analyzer_private_member(a, node, qualified);
+        if (hidden) {
+            script_analyzer_diagnostic(a, node, SCRIPT_PRIVATE_MEMBER, qualified);
+        }
+        free(qualified);
+    }
+    if (hidden) {
+        free(name);
+        return script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = SCRIPT_EXPR_ERROR,
+                                 .type = script_analyzer_bad_type(),
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 }
+        );
+    }
     if (script_analyzer_is(object, "builtin_reference") &&
         script_analyzer_text_is(a, object, "state")) {
         int symbol = script_analyzer_lookup_storage(a, member, SCRIPT_STATE);
@@ -1319,6 +1340,8 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         }
         if (!capability && function_index < 0 && !strcmp(name, "cast")) {
             script_analyzer_diagnostic(a, target, "cast<T>(value) was removed; write T(value)");
+        } else if (!capability && function_index < 0 && script_analyzer_private_member(a, target, name)) {
+            script_analyzer_diagnostic(a, target, SCRIPT_PRIVATE_MEMBER, name);
         } else if (!capability && function_index < 0) {
             script_analyzer_diagnostic(a, target, "%s callable '%s'", index == -2 ? "Ambiguous" : "Unknown", name);
         }

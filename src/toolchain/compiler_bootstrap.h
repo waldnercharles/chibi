@@ -17,6 +17,7 @@ typedef struct
     const char *core;     /* The core collection the sources import. */
     const char *seed;     /* write: the seed's closure and arguments. */
     const char *revision; /* write: the sources' revision, recorded as given. */
+    const char *output;   /* check: where to write the recovered compiler. */
 } compiler_bootstrap;
 
 /* Writes the artifact from a seed folder: compiler.chibip and compile.json,
@@ -30,7 +31,8 @@ bool compiler_bootstrap_write(const compiler_bootstrap *, char *error, size_t si
  * bytes; otherwise the compiler it compiles must compile them to itself. An
  * unknown format, a damaged closure, another target or a version older than
  * the sources' minimum is rejected first. False with why; on success, report
- * says what was recovered. */
+ * says what was recovered, and the recovered compiler is written to `output`
+ * when there is one. */
 bool compiler_bootstrap_check(const compiler_bootstrap *, char *report, size_t size);
 
 #endif

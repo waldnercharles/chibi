@@ -120,8 +120,8 @@ static void tree(const char *project_root, const char *core_root)
     directory(core_root, "base");
     write_source(project_root, "app/a.chibi", main_text);
     write_source(project_root, "app/z.chibi", "package app\nAdd :: (value: int) -> int { return value + 1; }\n");
-    write_source(project_root, "math/a.chibi", "package numbers\nOffset :: () -> int { return 2; }\n");
-    write_source(core_root, "base/a.chibi", "package base\nBias :: () -> int { return 3; }\n");
+    write_source(project_root, "math/a.chibi", "package numbers\npub Offset :: () -> int { return 2; }\n");
+    write_source(core_root, "base/a.chibi", "package base\npub Bias :: () -> int { return 3; }\n");
 }
 static void setup()
 {
@@ -281,12 +281,12 @@ TEST_CASE(package_files_relocation_preserves_logical_identity)
 TEST_CASE(package_files_reload_reuses_and_invalidates_dependents)
 {
     for (int b = 0; b < 2; b++) {
-        write_source(project, "math/a.chibi", "package numbers\nOffset :: () -> int { return 2; }\n");
+        write_source(project, "math/a.chibi", "package numbers\npub Offset :: () -> int { return 2; }\n");
         REQUIRE(prepare(0, -1, backends[b], project, core));
         REQUIRE(prepare(1, 0, backends[b], project, core));
         REQUIRE(authoring_packages_reused(owners[1]) == 3);
         REQUIRE(app(0)->generation == app(1)->generation);
-        write_source(project, "math/a.chibi", "package numbers\nOffset :: () -> int { return 5; }\n");
+        write_source(project, "math/a.chibi", "package numbers\npub Offset :: () -> int { return 5; }\n");
         REQUIRE(prepare(2, 1, backends[b], project, core));
         REQUIRE(
             authoring_packages_reused(owners[2]) == 1 &&
@@ -403,7 +403,7 @@ TEST_CASE(package_files_duplicate_physical_roots_reject_and_overlaps_scan_once)
     directory(hidden_parent, "core");
     path(hidden_core, hidden_parent, "core");
     directory(hidden_core, "base");
-    write_source(hidden_core, "base/a.chibi", "package base\nBias :: () -> int { return 3; }\n");
+    write_source(hidden_core, "base/a.chibi", "package base\npub Bias :: () -> int { return 3; }\n");
     write_source(project, "app/a.chibi", main_text);
     snapshot = load(project, hidden_core);
     REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));

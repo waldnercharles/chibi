@@ -314,13 +314,14 @@ static int compiler_driver(int argc, char **argv)
 int main(int argc, char **argv)
 {
     /* Emulate earlier private hosts: the M1 host does not recognize this
-     * query, and one named for protocol 2 answers it but lacks today's
+     * query, and one named for protocol N answers N but lacks today's
      * capabilities. */
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
-        if (!strstr(argv[0], "protocol-2")) {
+        const char *named = strstr(argv[0], "protocol-");
+        if (!named) {
             return 2;
         }
-        puts("2");
+        printf("%d\n", atoi(named + strlen("protocol-")));
         return 0;
     }
     /* xcrun prints the SDK named by xcrun-sdk in the working directory. */

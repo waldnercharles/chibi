@@ -1,31 +1,30 @@
 package strings
 
-// A port of Odin's core:strings over bytes. Where Odin decodes runes, these
-// procedures compare, count and offset bytes, and spaces and case are ASCII.
-// Offsets are byte offsets, and -1 means not found.
+// String operations compare, count and offset bytes.
+// Spaces and case use ASCII. Offsets are byte offsets, and -1 means not found.
 
 // Compiler text operations use bytes, including bytes inside UTF-8 sequences.
-ByteLength :: (value: string) -> int {
+pub ByteLength :: (value: string) -> int {
     return text_byte_length(value);
 }
 
 // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
 // Each call measures the string, so a loop over a long one should read Bytes.
-ByteAt :: (value: string, index: int) -> int {
+pub ByteAt :: (value: string, index: int) -> int {
     return text_byte_at(value, index);
 }
 
 // Every byte of the string, from 0 to 255, read in one pass.
-Bytes :: (value: string) -> int[] {
+pub Bytes :: (value: string) -> int[] {
     return text_bytes(value);
 }
 
 // Start clamps to the string and count clamps to its remaining bytes.
-Slice :: (value: string, start: int, count: int) -> string {
+pub Slice :: (value: string, start: int, count: int) -> string {
     return text_slice(value, start, count);
 }
 
-Compare :: (left: string, right: string) -> int {
+pub Compare :: (left: string, right: string) -> int {
     leftLength := ByteLength(left);
     rightLength := ByteLength(right);
     index: int = 0;
@@ -49,7 +48,7 @@ Compare :: (left: string, right: string) -> int {
     return 0;
 }
 
-IsIdentifier :: (value: string) -> bool {
+pub IsIdentifier :: (value: string) -> bool {
     size := ByteLength(value);
     if (size == 0) {
         return false;
@@ -66,7 +65,7 @@ IsIdentifier :: (value: string) -> bool {
     return true;
 }
 
-BaseName :: (path: string) -> string {
+pub BaseName :: (path: string) -> string {
     size := ByteLength(path);
     start: int = 0;
     index: int = 0;
@@ -79,26 +78,26 @@ BaseName :: (path: string) -> string {
     return Slice(path, start, size - start);
 }
 
-Contains :: (s: string, substr: string) -> bool {
+pub Contains :: (s: string, substr: string) -> bool {
     return Index(s, substr) >= 0;
 }
 
-ContainsAny :: (s: string, chars: string) -> bool {
+pub ContainsAny :: (s: string, chars: string) -> bool {
     return IndexAny(s, chars) >= 0;
 }
 
-HasPrefix :: (s: string, prefix: string) -> bool {
+pub HasPrefix :: (s: string, prefix: string) -> bool {
     size := ByteLength(prefix);
     return ByteLength(s) >= size && Slice(s, 0, size) == prefix;
 }
 
-HasSuffix :: (s: string, suffix: string) -> bool {
+pub HasSuffix :: (s: string, suffix: string) -> bool {
     size := ByteLength(s);
     count := ByteLength(suffix);
     return size >= count && Slice(s, size - count, count) == suffix;
 }
 
-IndexByte :: (s: string, c: int) -> int {
+pub IndexByte :: (s: string, c: int) -> int {
     size := ByteLength(s);
     i: int = 0;
     while (i < size) {
@@ -110,7 +109,7 @@ IndexByte :: (s: string, c: int) -> int {
     return -1;
 }
 
-LastIndexByte :: (s: string, c: int) -> int {
+pub LastIndexByte :: (s: string, c: int) -> int {
     i: int = ByteLength(s) - 1;
     while (i >= 0) {
         if (ByteAt(s, i) == c) {
@@ -121,9 +120,8 @@ LastIndexByte :: (s: string, c: int) -> int {
     return -1;
 }
 
-// Rabin-Karp with Odin's 32-bit rolling hash, kept in int64 and masked; pow
-// is the prime to the substring's length. An empty substring is found at 0.
-Index :: (s: string, substr: string) -> int {
+// Uses a 32-bit Rabin-Karp rolling hash. An empty substring is found at 0.
+pub Index :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
     if (n == 0) {
@@ -165,7 +163,7 @@ Index :: (s: string, substr: string) -> int {
 }
 
 // Index's search from the end. An empty substring is found at the length of s.
-LastIndex :: (s: string, substr: string) -> int {
+pub LastIndex :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     size := ByteLength(s);
     if (n == 0) {
@@ -209,7 +207,7 @@ LastIndex :: (s: string, substr: string) -> int {
 }
 
 // The offset of the first byte of s that is any byte of chars.
-IndexAny :: (s: string, chars: string) -> int {
+pub IndexAny :: (s: string, chars: string) -> int {
     size := ByteLength(s);
     i: int = 0;
     while (i < size) {
@@ -221,7 +219,7 @@ IndexAny :: (s: string, chars: string) -> int {
     return -1;
 }
 
-LastIndexAny :: (s: string, chars: string) -> int {
+pub LastIndexAny :: (s: string, chars: string) -> int {
     i: int = ByteLength(s) - 1;
     while (i >= 0) {
         if (IndexByte(chars, ByteAt(s, i)) >= 0) {
@@ -234,7 +232,7 @@ LastIndexAny :: (s: string, chars: string) -> int {
 
 // Non-overlapping occurrences. An empty substring occurs at every byte
 // boundary, one more than the byte length.
-Count :: (s: string, substr: string) -> int {
+pub Count :: (s: string, substr: string) -> int {
     n := ByteLength(substr);
     if (n == 0) {
         return ByteLength(s) + 1;
@@ -263,7 +261,7 @@ Count :: (s: string, substr: string) -> int {
 }
 
 // Everything before the first c, or all of s when c is absent.
-TruncateToByte :: (s: string, c: int) -> string {
+pub TruncateToByte :: (s: string, c: int) -> string {
     n := IndexByte(s, c);
     if (n < 0) {
         return s;
@@ -272,7 +270,7 @@ TruncateToByte :: (s: string, c: int) -> string {
 }
 
 // ASCII letters match in either case; every other byte must be equal.
-EqualFold :: (u: string, v: string) -> bool {
+pub EqualFold :: (u: string, v: string) -> bool {
     size := ByteLength(u);
     if (size != ByteLength(v)) {
         return false;
@@ -295,7 +293,7 @@ EqualFold :: (u: string, v: string) -> bool {
 }
 
 // ASCII letters only; other bytes, including those of UTF-8 sequences, stay.
-ToLower :: (s: string) -> string {
+pub ToLower :: (s: string) -> string {
     size := ByteLength(s);
     result: string = "";
     start: int = 0;
@@ -315,7 +313,7 @@ ToLower :: (s: string) -> string {
     return format_text("{}{}", result, Slice(s, start, size - start));
 }
 
-ToUpper :: (s: string) -> string {
+pub ToUpper :: (s: string) -> string {
     size := ByteLength(s);
     result: string = "";
     start: int = 0;
@@ -336,12 +334,12 @@ ToUpper :: (s: string) -> string {
 }
 
 // Tab, line feed, vertical tab, form feed, carriage return and space.
-IsAsciiSpace :: (c: int) -> bool {
+pub IsAsciiSpace :: (c: int) -> bool {
     return c == 32 || (c >= 9 && c <= 13);
 }
 
 // Removes the leading bytes that are bytes of cutset.
-TrimLeft :: (s: string, cutset: string) -> string {
+pub TrimLeft :: (s: string, cutset: string) -> string {
     size := ByteLength(s);
     i: int = 0;
     while (i < size && IndexByte(cutset, ByteAt(s, i)) >= 0) {
@@ -350,7 +348,7 @@ TrimLeft :: (s: string, cutset: string) -> string {
     return Slice(s, i, size - i);
 }
 
-TrimRight :: (s: string, cutset: string) -> string {
+pub TrimRight :: (s: string, cutset: string) -> string {
     i := ByteLength(s);
     while (i > 0 && IndexByte(cutset, ByteAt(s, i - 1)) >= 0) {
         i -= 1;
@@ -358,11 +356,11 @@ TrimRight :: (s: string, cutset: string) -> string {
     return Slice(s, 0, i);
 }
 
-Trim :: (s: string, cutset: string) -> string {
+pub Trim :: (s: string, cutset: string) -> string {
     return TrimRight(TrimLeft(s, cutset), cutset);
 }
 
-TrimLeftSpace :: (s: string) -> string {
+pub TrimLeftSpace :: (s: string) -> string {
     size := ByteLength(s);
     i: int = 0;
     while (i < size && IsAsciiSpace(ByteAt(s, i))) {
@@ -371,7 +369,7 @@ TrimLeftSpace :: (s: string) -> string {
     return Slice(s, i, size - i);
 }
 
-TrimRightSpace :: (s: string) -> string {
+pub TrimRightSpace :: (s: string) -> string {
     i := ByteLength(s);
     while (i > 0 && IsAsciiSpace(ByteAt(s, i - 1))) {
         i -= 1;
@@ -379,18 +377,18 @@ TrimRightSpace :: (s: string) -> string {
     return Slice(s, 0, i);
 }
 
-TrimSpace :: (s: string) -> string {
+pub TrimSpace :: (s: string) -> string {
     return TrimRightSpace(TrimLeftSpace(s));
 }
 
-TrimPrefix :: (s: string, prefix: string) -> string {
+pub TrimPrefix :: (s: string, prefix: string) -> string {
     if (HasPrefix(s, prefix)) {
         return Slice(s, ByteLength(prefix), ByteLength(s));
     }
     return s;
 }
 
-TrimSuffix :: (s: string, suffix: string) -> string {
+pub TrimSuffix :: (s: string, suffix: string) -> string {
     if (HasSuffix(s, suffix)) {
         return Slice(s, 0, ByteLength(s) - ByteLength(suffix));
     }
@@ -398,9 +396,8 @@ TrimSuffix :: (s: string, suffix: string) -> string {
 }
 
 // The count bytes from offset, or all bytes from offset when count is below 1.
-// As in Odin, an offset outside s keeps all of s, and a count past the end
-// keeps the rest.
-Cut :: (s: string, offset: int, count: int) -> string {
+// An offset outside s keeps all of s. A count past the end keeps the rest.
+pub Cut :: (s: string, offset: int, count: int) -> string {
     rest: string = s;
     size := ByteLength(s);
     if (offset >= 0 && offset < size) {
@@ -412,9 +409,9 @@ Cut :: (s: string, offset: int, count: int) -> string {
     return Slice(rest, 0, count);
 }
 
-// Odin's _split: at most n parts, or every part when n is negative; the last
-// part holds the rest of s. Each other part keeps the first keep bytes of the
-// separator after it. An empty separator splits s into bytes.
+// Produces at most n parts, or every part when n is negative.
+// The last part holds the rest of s. Each other part keeps the first keep
+// bytes of the separator after it. An empty separator splits s into bytes.
 SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
     parts: string[] = [];
     size := ByteLength(sep);
@@ -451,19 +448,19 @@ SplitKeeping :: (s: string, sep: string, keep: int, n: int) -> string[] {
     return parts;
 }
 
-Split :: (s: string, sep: string) -> string[] {
+pub Split :: (s: string, sep: string) -> string[] {
     return SplitKeeping(s, sep, 0, -1);
 }
 
-SplitN :: (s: string, sep: string, n: int) -> string[] {
+pub SplitN :: (s: string, sep: string, n: int) -> string[] {
     return SplitKeeping(s, sep, 0, n);
 }
 
-SplitAfter :: (s: string, sep: string) -> string[] {
+pub SplitAfter :: (s: string, sep: string) -> string[] {
     return SplitKeeping(s, sep, ByteLength(sep), -1);
 }
 
-SplitAfterN :: (s: string, sep: string, n: int) -> string[] {
+pub SplitAfterN :: (s: string, sep: string, n: int) -> string[] {
     return SplitKeeping(s, sep, ByteLength(sep), n);
 }
 
@@ -476,24 +473,24 @@ SplitLinesKeeping :: (s: string, keep: int, n: int) -> string[] {
     return lines;
 }
 
-SplitLines :: (s: string) -> string[] {
+pub SplitLines :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 0, -1);
 }
 
-SplitLinesN :: (s: string, n: int) -> string[] {
+pub SplitLinesN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 0, n);
 }
 
-SplitLinesAfter :: (s: string) -> string[] {
+pub SplitLinesAfter :: (s: string) -> string[] {
     return SplitLinesKeeping(s, 1, -1);
 }
 
-SplitLinesAfterN :: (s: string, n: int) -> string[] {
+pub SplitLinesAfterN :: (s: string, n: int) -> string[] {
     return SplitLinesKeeping(s, 1, n);
 }
 
 // The runs of bytes between ASCII spaces.
-Fields :: (s: string) -> string[] {
+pub Fields :: (s: string) -> string[] {
     fields: string[] = [];
     size := ByteLength(s);
     start: int = -1;
@@ -515,7 +512,7 @@ Fields :: (s: string) -> string[] {
     return fields;
 }
 
-Join :: (a: string[], sep: string) -> string {
+pub Join :: (a: string[], sep: string) -> string {
     if (length(a) == 0) {
         return "";
     }
@@ -528,13 +525,13 @@ Join :: (a: string[], sep: string) -> string {
     return result;
 }
 
-Concatenate :: (a: string[]) -> string {
+pub Concatenate :: (a: string[]) -> string {
     return Join(a, "");
 }
 
-// Doubles what it has built, as Odin copies. Where Odin panics on a negative
-// count, a count below 1 gives an empty string, as Slice clamps counts.
-Repeat :: (s: string, count: int) -> string {
+// Doubles the result until it reaches the requested length.
+// A count below 1 gives an empty string.
+pub Repeat :: (s: string, count: int) -> string {
     if (count < 1) {
         return "";
     }
@@ -549,7 +546,7 @@ Repeat :: (s: string, count: int) -> string {
 
 // Replaces the first n non-overlapping matches of old, or all of them when n is
 // negative. An empty old matches at every byte boundary.
-Replace :: (s: string, old: string, new: string, n: int) -> string {
+pub Replace :: (s: string, old: string, new: string, n: int) -> string {
     if (old == new || n == 0) {
         return s;
     }
@@ -581,19 +578,19 @@ Replace :: (s: string, old: string, new: string, n: int) -> string {
     return format_text("{}{}", result, Slice(s, start, size - start));
 }
 
-ReplaceAll :: (s: string, old: string, new: string) -> string {
+pub ReplaceAll :: (s: string, old: string, new: string) -> string {
     return Replace(s, old, new, -1);
 }
 
-Remove :: (s: string, key: string, n: int) -> string {
+pub Remove :: (s: string, key: string, n: int) -> string {
     return Replace(s, key, "", n);
 }
 
-RemoveAll :: (s: string, key: string) -> string {
+pub RemoveAll :: (s: string, key: string) -> string {
     return Remove(s, key, -1);
 }
 
-Parts :: struct {
+pub Parts :: struct {
     head: string;
     match: string;
     tail: string;
@@ -601,7 +598,7 @@ Parts :: struct {
 
 // The text before the first sep, sep and the text after it; when sep is
 // absent, head is all of str and the others are empty.
-Partition :: (str: string, sep: string) -> Parts {
+pub Partition :: (str: string, sep: string) -> Parts {
     i := Index(str, sep);
     if (i < 0) {
         return {head: str, match: "", tail: ""};

@@ -690,6 +690,10 @@ static void handler_alias(collector *c, TSNode handler)
 static void handler(collector *c, TSNode node)
 {
     TSNode parameters = field(node, "parameters");
+    /* `on X :: (a: T)` names the payload fields it reads, with their types. */
+    if (!ts_node_is_null(field(node, "binding"))) {
+        return;
+    }
     if (!ts_node_is_null(field(node, "alias"))) {
         handler_alias(c, node);
     }
@@ -1357,40 +1361,7 @@ static bool accepts(const oracle *o, const char *text)
     return same;
 }
 /* One round of a pass; returns the new text, or NULL when nothing applied. */
-static int edit_order(const void *a, const void *b)
-{
-    const text_edit *x = a, *y = b;
-    return (x->start > y->start) - (x->start < y->start);
-}
-static void remap_positions(int *positions, int count, const rewrite *rewrites, const bool *accepted)
-{
-    text_edit *edits = NULL;
-    for (int i = 0; i < acount(rewrites); i++) {
-        if (accepted[i]) {
-            for (int j = 0; j < acount(rewrites[i].edits); j++) {
-                apush(edits, rewrites[i].edits[j]);
-            }
-        }
-    }
-    qsort(edits, (size_t)acount(edits), sizeof *edits, edit_order);
-    for (int i = 0; i < count; i++) {
-        int position = positions[i], delta = 0;
-        for (int j = 0; j < acount(edits); j++) {
-            const text_edit *e = &edits[j];
-            if (position < e->start) {
-                break;
-            }
-            if (position < e->end) {
-                position = e->start;
-                break;
-            }
-            delta += (int)strlen(e->text) - (e->end - e->start);
-        }
-        positions[i] = position + delta;
-    }
-    afree(edits);
-}
-static char *round_text(const oracle *o, const char *text, pass phase, int *positions, int position_count)
+static char *round_text(const oracle *o, const char *text, pass phase)
 {
     script_syntax *syntax = script_parse(text);
     script_analysis *analysis = analyze_source(syntax, o->catalog, o->identity, o->migration);
@@ -1426,9 +1397,6 @@ static char *round_text(const oracle *o, const char *text, pass phase, int *posi
         }
         result = kept ? apply(text, c.rewrites, accepted, -1) : NULL;
     }
-    if (result && positions) {
-        remap_positions(positions, position_count, c.rewrites, accepted);
-    }
     for (int i = 0; i < count; i++) {
         rewrite_free(&c.rewrites[i]);
     }
@@ -1440,21 +1408,8 @@ static char *round_text(const oracle *o, const char *text, pass phase, int *posi
     return result;
 }
 
-static char *minimize(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    bool migration,
-    int **mapping
-)
+static char *minimize(const char *text, const script_catalog *catalog, const char *identity, bool migration)
 {
-    int position_count = (int)strlen(text) + 1;
-    if (mapping) {
-        *mapping = xmalloc((size_t)position_count * sizeof **mapping);
-        for (int i = 0; i < position_count; i++) {
-            (*mapping)[i] = i;
-        }
-    }
     script_syntax *syntax = script_parse(text);
     script_analysis *original = analyze_source(syntax, catalog, identity, migration);
     char *current = xstrdup(text);
@@ -1468,9 +1423,7 @@ static char *minimize(
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
             /* Each round accepts at least one rewrite, so this ends when
              * nothing is left to drop. */
-            for (char *next; (
-                     next = round_text(&o, current, phase, mapping ? *mapping : NULL, position_count)
-                 );) {
+            for (char *next; (next = round_text(&o, current, phase));) {
                 free(current);
                 current = next;
             }
@@ -1484,7 +1437,7 @@ static char *minimize(
 
 char *authoring_source_minimize(const char *text, const script_catalog *catalog, const char *identity)
 {
-    return minimize(text, catalog, identity, false, NULL);
+    return minimize(text, catalog, identity, false);
 }
 char *authoring_source_canonical(
     const char *text,
@@ -1507,17 +1460,6 @@ char *authoring_source_canonical(
     char *result = authoring_source_format(syntax, error, size);
     script_syntax_free(syntax);
     return result;
-}
-
-char *authoring_source_migrate_generated(
-    const char *text,
-    const script_catalog *catalog,
-    const char *identity,
-    char *error,
-    size_t size
-)
-{
-    return authoring_source_migrate_generated_mapped(text, catalog, identity, NULL, error, size);
 }
 
 /* A configured action is a deferred invocation, not a statement. Preserve its
@@ -1764,7 +1706,6 @@ static char *wrap_remaining_writes(
     const char *text,
     const script_catalog *catalog,
     const char *identity,
-    int **positions,
     char *error,
     size_t size
 )
@@ -1795,11 +1736,6 @@ static char *wrap_remaining_writes(
         );
     }
     if (valid) {
-        int count = (int)strlen(text) + 1;
-        *positions = xmalloc((size_t)count * sizeof **positions);
-        for (int i = 0; i < count; i++) {
-            (*positions)[i] = i;
-        }
         if (acount(writers)) {
             TSNode body = field(ts_node_named_child(root, 0), "body");
             apush(definitions, 0);
@@ -1809,9 +1745,6 @@ static char *wrap_remaining_writes(
                 accepted[i] = true;
             }
             result = apply(text, c.rewrites, accepted, -1);
-            if (result) {
-                remap_positions(*positions, count, c.rewrites, accepted);
-            }
             free(accepted);
         } else {
             result = xstrdup(text);
@@ -1827,35 +1760,20 @@ static char *wrap_remaining_writes(
     script_syntax_free(syntax);
     return result;
 }
-char *authoring_source_migrate_generated_mapped(
+char *authoring_source_migrate_generated(
     const char *text,
     const script_catalog *catalog,
     const char *identity,
-    int **positions,
     char *error,
     size_t size
 )
 {
-    int *first = NULL, *wrapped_positions = NULL, *last = NULL;
-    char *reduced = minimize(text, catalog, identity, true, &first);
-    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, &wrapped_positions, error, size);
-    char *current = wrapped ? minimize(wrapped, catalog, identity, true, &last) : NULL;
-    if (current && positions) {
-        *positions = first;
-        first = NULL;
-        for (size_t i = 0; i <= strlen(text); i++) {
-            (*positions)[i] = last[wrapped_positions[(*positions)[i]]];
-        }
-    }
-    free(first);
-    free(wrapped_positions);
-    free(last);
+    char *reduced = minimize(text, catalog, identity, true);
+    char *wrapped = wrap_remaining_writes(reduced, catalog, identity, error, size);
+    char *current = wrapped ? minimize(wrapped, catalog, identity, true) : NULL;
     free(reduced);
     free(wrapped);
     if (!current) {
-        if (positions) {
-            *positions = NULL;
-        }
         return NULL;
     }
     script_syntax *syntax = script_parse(current);
@@ -1880,10 +1798,6 @@ char *authoring_source_migrate_generated_mapped(
     script_syntax_free(syntax);
     if (!valid) {
         free(current);
-        if (positions) {
-            free(*positions);
-            *positions = NULL;
-        }
         return NULL;
     }
     return current;

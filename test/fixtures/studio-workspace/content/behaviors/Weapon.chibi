@@ -1,10 +1,12 @@
+// Aim at the nearest enemy when manual aim is absent; emit shots only while
+// Fire is held.
 Weapon :: behavior {
     macro AdvanceElapsed(elapsed: ref float, dt: double) {
         elapsed = float(double(elapsed) + dt)
     }
     elapsed: float = 0.125
     action elapsed_dt = AdvanceElapsed(elapsed, delta)
-    on Tick {
+    on Tick :: () {
         if self.Aim.Manual {
             elapsed_dt()
         } else {

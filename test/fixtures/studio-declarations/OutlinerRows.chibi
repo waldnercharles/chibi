@@ -19,7 +19,7 @@ behavior "OutlinerRows" {
         scene_objects();
     }
     after scene_objects {
-        await set_ui_data(Entity: 0, Name: "rootShown", Value: bool = (double(state.First) == 0));
+        await set_ui_data(Entity: 0, Name: "rootShown", Value: bool = (cast<double>(state.First) == 0));
         Shown := scene_objects.Shown
         await set_ui_data(Entity: 0, Name: "count", Value: int = Shown);
         await set_ui_data(Entity: 0, Name: "root.label", Value: string = scene_info().Title);

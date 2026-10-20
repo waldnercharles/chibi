@@ -1,40 +1,52 @@
 # FAQ
 
-## What is Chibi?
-
-A C23 scripting language, compiler and runtime for games, with a separate
-editor, Studio. Games are folders of `.chibi` source and KDL assets that the
-`chibi` command compiles, runs, tests and exports.
-
 ## Where do I start?
 
-Build the SDK, then run one of the projects listed under
-[Examples](../examples.md) with `chibi run`. The [language guide](../code-language.md)
-describes the source, and [Toolchain](toolchain.md) every command.
+[Install the SDK](../../README.md#install), then read the
+[language guide](../code-language.md). Use the [examples](../examples.md) to try
+common game programming tasks.
 
 ## Do I need Studio?
 
-No. Every asset is a text file you can edit directly, and `chibi fmt` keeps
-them canonical. Studio edits the same files.
+No. Edit project files with any text editor:
 
-## How do I check a project before committing?
+```sh
+chibi fmt /path/to/game
+chibi check /path/to/game
+chibi run /path/to/game
+```
 
-`chibi check` validates it without writing anything, `chibi fmt --check`
-reports assets that are not canonical, and `chibi test` runs package tests.
-Each exits nonzero on a problem.
+Studio edits the same files.
+
+## How do I check my changes?
+
+For a game project:
+
+```sh
+chibi check /path/to/game
+chibi fmt --check /path/to/game
+```
+
+For packages:
+
+```sh
+chibi test /path/to/packages
+```
+
+Each command returns a nonzero status when it finds a problem.
 
 ## Can I ship to the web?
 
-Yes. `chibi export --web PLAYER` writes a static site for any host, and
-`chibi web` serves one while you develop.
+Yes. `chibi export --web PLAYER` creates a static site. See
+[Export for browsers](toolchain.md#export-for-browsers) for the build commands.
 
-## Why does `chibi test` say "Expected package header"?
+## Why does a test report "Expected package header"?
 
-Its ROOT must hold only package files. Point it at the folder of your
-packages, not at a game project, whose behaviors and libraries are not
-packages.
+`chibi test` reads package source. Each file must start with `package NAME`.
+Give it your package folder, rather than the content folder of a game.
+Game behaviors and libraries use a different source format.
 
-## Does a slow test hang forever?
+## Can a test loop forever?
 
-No. Each test stops after 100 million instructions and is reported as
-failed.
+Each test stops after 100 million instructions. The command reports the test
+as failed. See [Testing](testing.md#test-limits) for other limits.

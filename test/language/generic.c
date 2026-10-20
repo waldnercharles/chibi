@@ -27,10 +27,21 @@ static behavior_function_activation activation;
 static behavior_run_scope runs;
 static arena storage;
 static pin_value result;
-static const script_catalog_capability run = { .id = 10,
-                                               .name = "Run",
-                                               .kind = SCRIPT_CAPABILITY_EVENT };
-static const script_catalog catalog = { .capabilities = &run, .capability_count = 1 };
+static const script_catalog_parameter assert_parameters[] = {
+    { .name = "Condition", .type = { .storage = PIN_BOOL }, .has_default = true },
+    { .name = "Message", .type = { .storage = PIN_STR }, .has_default = true },
+};
+static const script_catalog_capability capabilities[] = {
+    { .id = 10, .name = "Run", .kind = SCRIPT_CAPABILITY_EVENT },
+    { .id = 11,
+      .name = "assert",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = assert_parameters,
+      .parameter_count = 2,
+      .pure = true },
+};
+static const script_catalog catalog = { .capabilities = capabilities,
+                                        .capability_count = 2 };
 
 static void cleanup()
 {
@@ -375,6 +386,54 @@ TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensio
         pin_read_field(result.ptr, &result.record->type.fields[0], &amount);
         REQUIRE(amount.type == PIN_F64 && amount.d == 12);
     }
+    return true;
+}
+static bool reported(const char *message)
+{
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        if (!strcmp(analysis->diagnostics[i].message, message)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* assert runs at compile time too, where a false one is a compile error. */
+TEST_CASE(generic_compile_time_assert_fails_compilation)
+{
+    REQUIRE(analyze(
+        "Good :: library { Half :: (n: int) -> int { assert(n >= 0); return n "
+        "/ 2 } "
+        "Size :: Half(4) }"
+    ));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0, \"n is "
+        "negative\"); "
+        "return n / 2 } Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n is negative"));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0); return n / "
+        "2 } "
+        "Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
+    /* Arguments bind by name or position; an empty message is no message. */
+    REQUIRE(analyze(
+        "Good :: library { Half :: (n: int) -> int { "
+        "assert(message: \"negative\", condition: n >= 0); return n / 2 } "
+        "Size :: Half(4) }"
+    ));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { "
+        "assert(n >= 0, message: \"negative\"); return n / 2 } Size :: "
+        "Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: negative"));
+    REQUIRE(!analyze(
+        "Bad :: library { Half :: (n: int) -> int { assert(n >= 0, \"\"); "
+        "return n / 2 } Size :: Half(-4) }"
+    ));
+    REQUIRE(reported("Compile-time evaluation: Assertion failed: n >= 0"));
     return true;
 }
 TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded)
@@ -736,6 +795,7 @@ TEST_SUITE(language_generic_suite)
     RUN_TEST_CASE(generic_array_binders_preserve_nested_collection_descriptors);
     RUN_TEST_CASE(generic_reference_arguments_copy_unless_the_parameter_declares_ref);
     RUN_TEST_CASE(generic_constructed_units_compute_return_types_without_stored_dimensions);
+    RUN_TEST_CASE(generic_compile_time_assert_fails_compilation);
     RUN_TEST_CASE(generic_constraints_and_compile_time_execution_are_bounded);
     RUN_TEST_CASE(generic_empty_record_bindings_specialize_once);
     RUN_TEST_CASE(compile_time_calls_preserve_numeric_names_and_owned_strings);

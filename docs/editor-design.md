@@ -1331,8 +1331,8 @@ Behavior event graphs also expose their typed event outputs in the same input
 binding picker. Choosing an event output stores the event and pin identity on
 the target input, so the value can be used anywhere in that event's graph
 without another data edge. `Delta Time` remains a compact context node; when
-the active event declares a real `DeltaSeconds` or `Delta Seconds` output, its
-payload supplies that context automatically.
+the active event declares a real `dt` output, its payload supplies that context
+automatically.
 
 Material, Shape, and Shader Library nodes stack outputs above options and inputs.
 Inputs use the node width for labeled numeric values, vector axes, range endpoints,

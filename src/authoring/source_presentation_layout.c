@@ -1,4 +1,3 @@
-#include "authoring/source_metadata.h"
 #include "authoring/source_presentation_anchors.h"
 #include "authoring/source_presentation_details.h"
 #include "authoring/source_presentation_internal.h"
@@ -6,9 +5,31 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <yyjson.h>
+
+/* Editor state snapshots record a hash of the exact text they describe. */
+static void text_hash(const char *text, char out[17])
+{
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (size_t i = 0; text[i]; i++) {
+        hash = (hash ^ (unsigned char)text[i]) * UINT64_C(1099511628211);
+    }
+    snprintf(out, 17, "%016llx", (unsigned long long)hash);
+}
+static bool bound_to(const char *json, const char *text)
+{
+    assert(json);
+    yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
+    const char *bound = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(doc), "source_hash"));
+    char expected[17];
+    text_hash(text, expected);
+    bool matches = bound && !strcmp(bound, expected);
+    yyjson_doc_free(doc);
+    return matches;
+}
 
 char *authoring_source_presentation_metadata(const authoring_source_presentation *p)
 {
@@ -16,7 +37,10 @@ char *authoring_source_presentation_metadata(const authoring_source_presentation
     yyjson_mut_val *root = yyjson_mut_obj(doc), *nodes = yyjson_mut_arr(doc),
                    *watches = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, root);
+    char hash[17];
+    text_hash(p->text, hash);
     yyjson_mut_obj_add_uint(doc, root, "version", 2);
+    yyjson_mut_obj_add_strcpy(doc, root, "source_hash", hash);
     yyjson_mut_obj_add_val(doc, root, "source_layout", nodes);
     yyjson_mut_obj_add_val(doc, root, "source_pin_watches", watches);
     source_presentation_anchors_write(doc, root, p);
@@ -66,9 +90,7 @@ char *authoring_source_presentation_metadata(const authoring_source_presentation
     }
     char *json = yyjson_mut_write(doc, 0, NULL);
     yyjson_mut_doc_free(doc);
-    char *bound = json ? authoring_source_metadata_bind(json, p->text) : NULL;
-    free(json);
-    return bound;
+    return json;
 }
 static bool valid_record(const yyjson_val *record)
 {
@@ -95,9 +117,6 @@ static bool valid_record(const yyjson_val *record)
 }
 static bool restore(authoring_source_presentation *p, const char *json)
 {
-    if (!authoring_source_metadata_matches(json, p->text)) {
-        return false;
-    }
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     yyjson_val *root = yyjson_doc_get_root(doc);
     yyjson_val *version = yyjson_obj_get(root, "version");
@@ -164,7 +183,7 @@ static bool restore(authoring_source_presentation *p, const char *json)
             break;
         }
     }
-    /* The sidecar is a complete watch snapshot, including clearing removed watches. */
+    /* The snapshot lists every watch, so restoring it clears removed ones. */
     for (int j = 0; j < acount(p->origins); j++) {
         const source_presentation_origin *o = &p->origins[j];
         if (!o->node || !o->pin || o->flow) {
@@ -192,7 +211,7 @@ static bool restore(authoring_source_presentation *p, const char *json)
 
 bool authoring_source_presentation_restore(authoring_source_presentation *p, const char *json)
 {
-    if (!authoring_source_metadata_matches(json, p->text)) {
+    if (!bound_to(json, p->text)) {
         return false;
     }
     char *resolved = source_presentation_anchors_resolve(json, p);

@@ -1,13 +1,17 @@
 #include "package_compiler_chibi.h"
 
 #include "compiler_fixture.h"
+#include "ecs/ecs.h"
 #include "execution/definition.h"
 #include "execution/module.h"
+#include "execution/module_internal.h"
 #include "execution/prepared.h"
 #include "execution/status.h"
+#include "language/lower.h"
 #include "package_compiler_chibi_source.h"
 #include "runtime/arrays_definition.h"
 #include "runtime/native_capabilities.h"
+#include "runtime/native_prepared.h"
 #include "runtime/text_definition.h"
 #include "support/array.h"
 #include "support/asset_json.h"
@@ -18,6 +22,7 @@
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
 #include "types/array.h"
+#include "types/catalog.h"
 #include "types/copy.h"
 #include "types/union.h"
 #include "types/value_document.h"
@@ -80,6 +85,16 @@ static const sample samples[] = {
     { .name = "constant",
       .source = "package facts\nAnswer :: () -> int { return 42; }",
       .calls = { { "Answer", "[]", "[42]" } } },
+    { .name = "named results",
+      .source = "package facts\nPair :: (x: int) -> (kind: int, end: int) {\n  "
+                "  end = x + 1;\n"
+                "    return (x, end);\n}\nRest :: (x: int) -> (low: int, high: "
+                "int) {\n    low = x - 1;\n    return;\n}\n"
+                "Use :: (x: int) -> int {\n    p := Pair(x);\n    q := "
+                "Rest(x);\n"
+                "    return p.kind * 10 + p.end + Pair(x).end * 100 + q.low * "
+                "1000 + q.high;\n}",
+      .calls = { { "Use", "[3]", "[2434]" } } },
     { .name = "parameters",
       .source = "package facts\nAdd :: (a: int, b: int) -> int { return "
                 "a + b * 2 - (a - b) % 3; }",
@@ -153,6 +168,160 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* Records and union payloads hold float and double values; an integer
+     * stored there converts as stage zero converts it. */
+    { .name = "floating fields",
+      .source = "package facts\n"
+                "V :: struct { x: float; y: double; n: int; }\n"
+                "Shape :: union { Circle(radius: double) | Dot }\n"
+                "Make :: (x: float, n: int) -> double {\n"
+                "    v: V = {x: x, y: 2.5, n: n};\n    v.y += v.x;\n    v.x = "
+                "n;\n"
+                "    return v.y + v.x;\n}\n"
+                "Area :: (r: double) -> double {\n"
+                "    switch Shape.Circle(r) { case .Circle(radius): return "
+                "radius * radius; case .Dot: return 0.0; }\n"
+                "}\n",
+      .calls = { { "Make", "[1.5,3]", "[7.0]" }, { "Area", "[1.5]", "[2.25]" } } },
+    /* int8, int16, uint16 and uint as stage zero computes them: mixed
+     * operands widen to the type that holds both, and records hold them. */
+    { .name = "narrow integers",
+      .source = "package facts\n"
+                "P :: struct { a: int8; b: uint16; }\n"
+                "Narrow :: (a: int8, b: uint16, c: uint, d: int16) -> int64 {\n"
+                "    x: int8 = a - 1;\n    y: uint = c / 2;\n"
+                "    return int64(x) + int64(b) * 2 + int64(y) - int64(d);\n}\n"
+                "Mixed :: (a: int8, b: byte) -> int { return a + b; }\n"
+                "Big :: (a: uint, b: int) -> int64 { return a + b; }\n"
+                "Store :: () -> uint16 { v: uint16 = 65535; return v; }\n"
+                "Make :: (a: int8) -> int { p: P = {a: a, b: 7}; return "
+                "int(p.a) + int(p.b); }\n",
+      .calls = { { "Narrow", "[-5,300,9,-7]", "[605]" },
+                 { "Mixed", "[-3,200]", "[197]" },
+                 { "Big", "[4000000000,-1]", "[3999999999]" },
+                 { "Store", "[]", "[65535]" },
+                 { "Make", "[-2]", "[5]" } } },
+    /* uint64 and byte have every operator, unsigned ordering and division
+     * included, as stage zero computes them. */
+    { .name = "unsigned arithmetic",
+      .source =
+          "package facts\n"
+          "Diff :: (a: uint64, b: uint64) -> uint64 { return a - b; }\n"
+          "Less :: (a: uint64, b: uint64) -> bool { return a < b; }\n"
+          "Div :: (a: uint64, b: uint64) -> uint64 { return a / b + a % b; }\n"
+          "Bytes :: (a: byte, b: byte) -> byte { return a + b * 2 - 1; }\n"
+          "Order :: (a: byte, b: byte) -> bool { return a > b && a >= 3; }\n"
+          "Shift :: (a: byte) -> byte { return (a << 1) >> 2; }\n",
+      .calls = { { "Diff", "[10,3]", "[7]" },
+                 { "Less", "[9223372036854775808,1]", "[false]" },
+                 { "Less", "[1,9223372036854775808]", "[true]" },
+                 { "Div", "[18446744073709551615,10]", "[1844674407370955166]" },
+                 { "Bytes", "[20,30]", "[79]" },
+                 { "Order", "[5,3]", "[true]" },
+                 { "Shift", "[12]", "[6]" } } },
+    /* Constants fold integer expressions of literals and other constants,
+     * declared in any order and in an imported package. */
+    { .name = "constant expressions",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "import lib \"project:lib\"\n"
+                "Area :: Width * Height;\n"
+                "Width :: (Unit << 2) + 1;\n"
+                "Height: int : -(Width - 7) / 2 % 3;\n"
+                "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
+                "Small: byte : 0x10 | 2;\n"
+                "Low: byte : ~0x0F;\n"
+                "Unit :: 2;\n"
+                "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
+                "int64(Small) + int64(Low); }\n",
+      .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
+      .calls = { { "Folded", "[]", "[56553]" } } },
+    /* An omitted argument takes its parameter's literal default. */
+    { .name = "defaults",
+      .source = "package facts\n"
+                "Add :: (a: int, b: int = -10, c: int64 = 0x10) -> int64 { "
+                "return int64(a + b) + c; }\n"
+                "Greet :: (name: string = \"you\", loud: bool = true) -> "
+                "string {\n"
+                "    if (loud) { return format_text(\"HI {}\", name); }\n"
+                "    return name;\n}\n"
+                "Use :: () -> int64 { return Add(1) + Add(1, 2) + Add(1, 2, "
+                "3); }\n"
+                "Hello :: () -> string { return Greet(); }\n",
+      .calls = { { "Add", "[5,6,7]", "[18]" },
+                 { "Use", "[]", "[32]" },
+                 { "Hello", "[]", "[\"HI you\"]" },
+                 { "Greet", "[\"ada\",false]", "[\"ada\"]" } } },
+    /* An integer switch tests its arms in order and runs the default arm
+     * after them all, wherever it is written. */
+    { .name = "integer switch",
+      .source = "package facts\n"
+                "Kind :: (c: int) -> int {\n"
+                "    switch c {\n"
+                "        case 61: return 1;\n"
+                "        case: return 0;\n"
+                "        case -62: return 2;\n"
+                "    }\n"
+                "}\n"
+                "Spaces :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for x in xs {\n"
+                "        b := byte(x);\n"
+                "        switch b { case 32: total += 1; case 10: total += "
+                "100; }\n"
+                "    }\n"
+                "    return total;\n}\n",
+      .calls = { { "Kind", "[61]", "[1]" },
+                 { "Kind", "[-62]", "[2]" },
+                 { "Kind", "[7]", "[0]" },
+                 { "Spaces", "[[32,10,32,5]]", "[102]" } } },
+    /* Range loops count as stage zero's do: inclusive and half-open,
+     * forward and reversed, ending at a bound without wrapping; `for x, i`
+     * names an array's item and its index, and `for <` walks it backwards. */
+    { .name = "ranges",
+      .source = "package facts\n"
+                "Sum :: (first: int, last: int) -> int {\n"
+                "    total: int = 0;\n    for i in first..last { total += i; "
+                "}\n"
+                "    return total;\n}\n"
+                "Below :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for i in 0..<n { if (i == 2) { continue; } total += i; }\n"
+                "    return total;\n}\n"
+                "Down :: (n: int) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < i in 0..n { total = total * 10 + i; if (i == 1) { "
+                "break; } }\n"
+                "    return total;\n}\n"
+                "DownBelow :: (n: int) -> int {\n"
+                "    total: int = 0;\n    for < i in 0..<n { total = total * "
+                "10 + i; }\n"
+                "    return total;\n}\n"
+                "Count :: (first: int, last: int) -> int {\n"
+                "    count: int = 0;\n    for i in first..last { count += 1; "
+                "}\n"
+                "    for < i in first..last { count += 1; }\n"
+                "    return count;\n}\n"
+                "Small :: (b: byte) -> int {\n"
+                "    total: int = 0;\n    for i in 0..b { total += 1; }\n"
+                "    return total;\n}\n"
+                "Keys :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n    for x, i in xs { total += i * x; }\n"
+                "    return total;\n}\n"
+                "Back :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for < x, i in xs { total = total * 100 + x * 10 + i; }\n"
+                "    return total;\n}\n",
+      .calls = { { "Sum", "[1,4]", "[10]" },
+                 { "Below", "[5]", "[8]" },
+                 { "Down", "[3]", "[321]" },
+                 { "DownBelow", "[3]", "[210]" },
+                 { "DownBelow", "[0]", "[0]" },
+                 { "Count", "[2147483646,2147483647]", "[4]" },
+                 { "Count", "[-2147483648,-2147483647]", "[4]" },
+                 { "Small", "[3]", "[4]" },
+                 { "Keys", "[[5,6,7]]", "[20]" },
+                 { "Back", "[[1,2,3]]", "[322110]" } } },
     { .name = "arrays",
       .source = "package facts\n"
                 "Point :: struct { x: int; y: int; }\n"
@@ -295,17 +464,18 @@ static const sample samples[] = {
                 "lib.Point[] = [lib.Make(n, n)]; return points; }",
       .library = "package lib\n"
                  "import text \"core:strings\"\n"
-                 "Point :: struct { x: int; y: int; }\n"
-                 "Shape :: union { Dot(at: Point) | Line(size: int) | Nothing "
+                 "pub Point :: struct { x: int; y: int; }\n"
+                 "pub Shape :: union { Dot(at: Point) | Line(size: int) | "
+                 "Nothing "
                  "}\n"
-                 "Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
+                 "pub Make :: (x: int, y: int) -> Point { p: Point = {x: x, "
                  "y: y}; return p; }\n"
-                 "Sum :: (p: Point) -> int { return p.x + p.y; }\n"
-                 "Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
+                 "pub Sum :: (p: Point) -> int { return p.x + p.y; }\n"
+                 "pub Twice :: (n: int) -> int { return Helper(n) * 2; }\n"
                  "Helper :: (n: int) -> int { return n + 1; }\n"
-                 "Width :: (s: string) -> int { return "
+                 "pub Width :: (s: string) -> int { return "
                  "text.ByteLength(s); }\n"
-                 "Size :: (shape: Shape) -> int {\n"
+                 "pub Size :: (shape: Shape) -> int {\n"
                  "    switch shape {\n"
                  "        case .Dot(at): return Sum(at);\n"
                  "        case .Line(size): return size;\n"
@@ -335,10 +505,10 @@ static const sample samples[] = {
                 "    return 0;\n}\n"
                 "Scale :: () -> int { return lib.Scaled(2); }",
       .library = "package lib\n"
-                 "Step: int : 100;\n"
-                 "Low: int : -2147483648;\n"
-                 "High: int : 2147483647;\n"
-                 "Scaled :: (n: int) -> int { return n * Step; }",
+                 "pub Step: int : 100;\n"
+                 "pub Low: int : -2147483648;\n"
+                 "pub High: int : 2147483647;\n"
+                 "pub Scaled :: (n: int) -> int { return n * Step; }",
       .calls = { { "Sum", "[3]", "[148]" },
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
@@ -726,12 +896,51 @@ static const sample samples[] = {
       .message = "index needs an int",
       .line = 2,
       .column = 39 },
-    { .name = "range for",
-      .source = "package facts\nOne :: () -> int { for i in 0..3 { } return 0; "
-                "}",
-      .message = "for loops support only `for name in array`",
+    { .name = "reference for",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for x: ref in xs { "
+                "} "
+                "return 0; }",
+      .message = "for loops do not support `ref` yet",
+      .line = 2,
+      .column = 29 },
+    { .name = "descending range",
+      .source = "package facts\nTop :: 3;\nOne :: () -> int { for i in Top..1 "
+                "{ } "
+                "return 0; }",
+      .message = "Range bounds descend; count down with for <",
+      .line = 3,
+      .column = 20 },
+    { .name = "descending reverse range",
+      .source = "package facts\nOne :: () -> int { for < i in 10..0 { } "
+                "return 0; }",
+      .message = "Range bounds descend; for < takes the low bound first, as in "
+                 "for < i in 0..10",
       .line = 2,
       .column = 20 },
+    { .name = "duplicate keyed binding",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for x, x in xs { } "
+                "return 0; }",
+      .message = "Duplicate declaration 'x'",
+      .line = 2,
+      .column = 36 },
+    { .name = "missing default",
+      .source = "package facts\nF :: (a: int = 1, b: int) -> int { return a + "
+                "b; "
+                "}\nOne :: () -> int { return F(); }",
+      .message = "call has the wrong number of arguments",
+      .line = 3,
+      .column = 27 },
+    { .name = "multiplication overflow",
+      .source = "package facts\nA: int64 : -1 * -9223372036854775808;",
+      .message = "Constant value is outside the range of int64",
+      .line = 2,
+      .column = 12 },
+    { .name = "range assignment",
+      .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
+                "return 0; }",
+      .message = "Assignment requires a writable value",
+      .line = 2,
+      .column = 36 },
     { .name = "for scalar",
       .source = "package facts\nOne :: (n: int) -> int { for (x in "
                 "n) { } return 0; }",
@@ -750,12 +959,18 @@ static const sample samples[] = {
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 35 },
-    { .name = "switch scalar",
+    { .name = "switch scalar pattern",
       .source = "package facts\nU :: union { A | B }\nOne :: (n: int) "
                 "-> int { switch n { case .A: return 1; } return 0; }",
-      .message = "switch needs a union value",
+      .message = "an integer switch's arms need values",
       .line = 3,
-      .column = 33 },
+      .column = 42 },
+    { .name = "switch string",
+      .source = "package facts\nOne :: (s: string) -> int { switch s { "
+                "case \"a\": return 1; } return 0; }",
+      .message = "switch needs a union or integer value",
+      .line = 2,
+      .column = 36 },
     { .name = "unknown variant",
       .source = "package facts\nU :: union { A | B }\nOne :: () -> U { "
                 "return U.C; }",
@@ -785,21 +1000,21 @@ static const sample samples[] = {
     { .name = "unknown imported function",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib.Missing(1); }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown function 'Missing'",
       .line = 3,
       .column = 31 },
     { .name = "alias conflict",
       .source = "package facts\nimport lib \"project:lib\"\nlib :: () "
                 "-> int { return 1; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Package import alias conflicts with a package declaration",
       .line = 2,
       .column = 1 },
     { .name = "alias value",
       .source = "package facts\nimport lib \"project:lib\"\nOne :: () "
                 "-> int { return lib; }",
-      .library = "package lib\nTwo :: () -> int { return 2; }",
+      .library = "package lib\npub Two :: () -> int { return 2; }",
       .message = "Unknown name 'lib'",
       .line = 3,
       .column = 27 },
@@ -808,9 +1023,14 @@ static const sample samples[] = {
       .message = "constant type is not supported yet",
       .line = 2,
       .column = 5 },
-    { .name = "constant expression",
-      .source = "package facts\nA: int : 1 + 2;",
-      .message = "constant value must be an integer literal",
+    { .name = "constant cycle",
+      .source = "package facts\nA: int : B + 1;\nB: int : A;",
+      .message = "Constant 'A' depends on itself",
+      .line = 2,
+      .column = 10 },
+    { .name = "constant overflow",
+      .source = "package facts\nA: int : 65536 * 65536 / 65536;",
+      .message = "Constant value is outside the range of int",
       .line = 2,
       .column = 10 },
     { .name = "constant clash",
@@ -892,24 +1112,11 @@ static const sample samples[] = {
                  "int(value)",
       .line = 2,
       .column = 47 },
-    { .name = "unsigned subtraction",
-      .source = "package facts\nOne :: (a: uint64, b: uint64) -> uint64 "
-                "{ return a - b; }",
+    { .name = "unsigned negation",
+      .source = "package facts\nOne :: (a: uint64) -> uint64 { return -a; }",
       .message = "unsupported arithmetic type",
       .line = 2,
-      .column = 50 },
-    { .name = "byte arithmetic",
-      .source = "package facts\nOne :: (a: byte) -> byte { return a + "
-                "1; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 35 },
-    { .name = "unsigned ordering",
-      .source = "package facts\nOne :: (a: uint64, b: uint64) -> bool { "
-                "return a < b; }",
-      .message = "unsupported arithmetic type",
-      .line = 2,
-      .column = 48 },
+      .column = 39 },
     { .name = "byte literal range",
       .source = "package facts\nOne :: () -> byte { return 256; }",
       .message = "Numeric literal is outside the range of byte",
@@ -939,12 +1146,11 @@ static const sample samples[] = {
       .message = "A conversion argument may only be named wrap or clamp",
       .line = 2,
       .column = 33 },
-    { .name = "untyped constant",
-      .source = "package facts\nTwo :: 2;",
-      .message = "an untyped number is a double; give the constant an integer "
-                 "type",
+    { .name = "floating constant",
+      .source = "package facts\nHalf :: 0.5;",
+      .message = "only integer constants are supported yet",
       .line = 2,
-      .column = 8 },
+      .column = 9 },
     { .name = "negative zero byte",
       .source = "package facts\nOne :: () -> byte { x: byte = -0; "
                 "return x; }",
@@ -1358,6 +1564,88 @@ static bool run(const unsigned char *bytes, size_t length, const sample_call *ca
     result = (compiler_host_result){ 0 };
     return true;
 }
+/* Whether a point is one this compiler places as stage zero does: a
+ * function's entry and completions and each statement's. */
+static bool placed(const behavior_source_point *point)
+{
+    return point->kind == BEHAVIOR_SOURCE_FUNCTION ||
+           point->kind == BEHAVIOR_SOURCE_STATEMENT;
+}
+static bool same_point(const behavior_source_point *x, const behavior_source_point *y)
+{
+    return x->kind == y->kind && x->occurrence == y->occurrence &&
+           x->start == y->start && x->end == y->end && x->line == y->line &&
+           x->column == y->column && x->completion == y->completion &&
+           (x->kind != BEHAVIOR_SOURCE_FUNCTION || x->meaning == y->meaning);
+}
+/* Each function of stage one's module has stage zero's function and
+ * statement points, as many of each, in any order. */
+static bool same_points(const execution_module *expected, const execution_module *actual)
+{
+    REQUIRE(expected->plan.function_count == actual->plan.function_count);
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const behavior_function *x = expected->plan.functions[i].body,
+                                *y = actual->plan.functions[i].body;
+        int count = acount(y->source_points);
+        bool *used = xcalloc((size_t)count + 1, sizeof *used);
+        bool alike = true;
+        int placed_count = 0;
+        for (int j = 0; alike && j < acount(x->source_points); j++) {
+            if (!placed(&x->source_points[j])) {
+                continue;
+            }
+            placed_count++;
+            int found = -1;
+            for (int k = 0; found < 0 && k < count; k++) {
+                found = !used[k] && same_point(&x->source_points[j], &y->source_points[k])
+                          ? k
+                          : -1;
+            }
+            alike = found >= 0;
+            if (alike) {
+                used[found] = true;
+            } else {
+                fprintf(
+                    stderr,
+                    "function %d lacks stage zero's point kind %d at %d..%d\n",
+                    i,
+                    x->source_points[j].kind,
+                    x->source_points[j].start,
+                    x->source_points[j].end
+                );
+            }
+        }
+        for (int k = 0; alike && k < count; k++) {
+            alike = !placed(&y->source_points[k]) || used[k];
+            placed_count -= placed(&y->source_points[k]);
+            if (!alike) {
+                fprintf(
+                    stderr,
+                    "function %d has an extra point at %d..%d\n",
+                    i,
+                    y->source_points[k].start,
+                    y->source_points[k].end
+                );
+            }
+        }
+        free(used);
+        if (!alike || placed_count != 0) {
+            for (int k = 0; k < count; k++) {
+                const behavior_source_point *p = &y->source_points[k];
+                fprintf(
+                    stderr,
+                    "  stage one point kind %d at %d..%d completion %d\n",
+                    p->kind,
+                    p->start,
+                    p->end,
+                    p->completion
+                );
+            }
+            return false;
+        }
+    }
+    return true;
+}
 /* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
@@ -1710,6 +1998,55 @@ static bool literals_agree()
     }
     return true;
 }
+/* Each module of stage one's closure has the function and statement points of
+ * the stage-zero module with its ID that oracle_closure prepared. */
+static bool points_like_oracle(const unsigned char *bytes, size_t length)
+{
+    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
+                                             NATIVE_ARRAY_DEFINITION_PACK,
+                                             COMPILER_JSON_DEFINITION_PACK,
+                                             COMPILER_SYNTAX_DEFINITION_PACK };
+    char error[256];
+    native_capabilities *
+        native = native_capabilities_from_definition_packs(NULL, 0, packs, 4, error, sizeof error);
+    REQUIRE(native);
+    native_prepared_context context = { .native = native };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    linker.decoded_bytes = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    linker.layout_work = COMPILER_HOST_MAX_LAYOUT_WORK;
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    uint64_t root = 0;
+    package_collection *packages = compiler_artifact_read(
+        bytes,
+        length,
+        &linker,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        &root,
+        error,
+        sizeof error
+    );
+    if (!packages) {
+        fprintf(stderr, "package compiler points load: %s\n", error);
+    }
+    REQUIRE(packages);
+    const authoring_packages *owner = oracle.owners[0];
+    bool alike = package_collection_count(packages) == authoring_packages_count(owner);
+    for (int p = 0; alike && p < package_collection_count(packages); p++) {
+        const execution_module *module = package_collection_module(packages, p);
+        const execution_module *expected = NULL;
+        for (int q = 0; !expected && q < authoring_packages_count(owner); q++) {
+            const execution_module *candidate = authoring_packages_at(owner, q)->module;
+            expected = execution_module_id(candidate) == execution_module_id(module)
+                         ? candidate
+                         : NULL;
+        }
+        alike = expected && same_points(expected, module);
+    }
+    package_collection_free(packages);
+    native_capabilities_free(native);
+    return alike;
+}
 static bool run_samples(sample_group group)
 {
     REQUIRE(prepare());
@@ -1773,7 +2110,8 @@ static bool run_samples(sample_group group)
             size_t expected_length = 0;
             bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
                        (!s->boxed || reads_boxed(bytes, length)) &&
-                       (b || oracle_closure(s, &expected, &expected_length));
+                       (b || (oracle_closure(s, &expected, &expected_length) &&
+                              points_like_oracle(bytes, length)));
             for (int c = 0; ran && c < CALLS && s->calls[c].function; c++) {
                 for (int backend = 0; ran && backend < 2; backend++) {
                     ran = run(bytes, length, &s->calls[c], backend);
@@ -2032,6 +2370,655 @@ TEST_CASE(package_compiler_reads_float_literals)
     REQUIRE(prepare());
     return literals_agree();
 }
+/* Behavior assets. Stage one compiles each against a game this test declares,
+ * on both compiler backends; its module declares stage zero's identities and
+ * plays as stage zero's does. Counter is the Counter story's behavior: a
+ * retained state, and a Tick handler that increments it and writes it,
+ * converted to a float, to a field of the owner's component. */
+typedef struct
+{
+    const char *name, *source;
+} behavior_sample;
+static const char COUNTER[] = "// Behavior state that survives between steps, "
+                              "written to a component.\n"
+                              "Counter :: behavior {\n"
+                              "    steps: int = 0\n"
+                              "\n"
+                              "    on Tick {\n"
+                              "        steps += 1\n"
+                              "        self.Spot.x = steps\n"
+                              "    }\n"
+                              "}\n";
+static const behavior_sample behavior_samples[] = {
+    { "Counter", COUNTER },
+    { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick {\n        steps = 7\n    }\n}\n" },
+    { "Glide", "Glide :: behavior {\n    on Tick(dt) {\n        self.Spot.y = dt\n    }\n}\n" },
+    { "Mark", "Mark :: behavior {\n    on tick {\n        self.Spot.x = 3\n    }\n}\n" },
+    { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
+    { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
+    { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Swap", "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "Turn",
+      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick(dt) {\n        "
+      "angle += dt * 2\n"
+      "        self.Spot.x = angle\n    }\n}\n" },
+    { "Fold",
+      "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
+      "{\n"
+      "        if value > limit {\n            return value - limit * 2\n      "
+      "  }\n        return value\n    }\n"
+      "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
+      "whole = int(value)\n"
+      "        rest = value - whole\n        return (whole, rest)\n    }\n    "
+      "on Tick {\n"
+      "        self.Spot.x = Wrap(self.Spot.x + 7, 20)\n        parts := "
+      "Split(self.Spot.x)\n"
+      "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
+    { "Halve",
+      "Halve :: behavior {\n    on Tick(dt) {\n        self.Spot.y = "
+      "self.Spot.w / 2 - dt\n"
+      "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
+      "}\n    }\n}\n" },
+    { "Pair",
+      "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick {\n     "
+      "   a *= 2\n"
+      "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
+      " }\n}\n" },
+};
+/* Sources stage one rejects, with its message. */
+typedef struct
+{
+    const char *source, *message;
+} behavior_rejection;
+static const behavior_rejection behavior_rejections[] = {
+    { "Late :: behavior {\n    after Tick {\n    }\n}\n",
+      "only `on Event` handlers are supported yet" },
+    { "Jump :: behavior {\n    on Jump {\n    }\n}\n", "Unknown event 'Jump'" },
+    { "Fixed :: behavior {\n    on Tick {\n        self.Spot.w = 1\n    }\n}\n",
+      "Assignment requires a writable value" },
+    { "Named :: behavior {\n    label: string = \"\"\n    on Tick {\n    "
+      "}\n}\n",
+      "state needs a number type" },
+    { "Extra :: behavior {\n    on Tick(dt, more) {\n    }\n}\n",
+      "the event has no such parameter" },
+    { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
+      "operator does not apply to these operands" },
+    { "Pace :: behavior {\n    on Tick {\n        self.Spot.x = pace\n    "
+      "}\n}\n",
+      "reading the global 'pace' is not supported yet" },
+};
+enum
+{
+    SPOT = 101,
+    SPOT_COMPONENT = 901,
+    TICK = 11,
+    OWNER = 30,
+    ENTITY = 700,
+    BEHAVIOR_ARGUMENTS = 17,
+    TICKS = 5
+};
+typedef struct
+{
+    float x, y, w;
+} spot;
+static const type_field spot_fields[] = {
+    { .name = "x",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, x),
+      .size = sizeof(float) },
+    { .name = "y",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, y),
+      .size = sizeof(float) },
+    { .name = "w",
+      .type = PIN_F32,
+      .type_name = "float",
+      .offset = offsetof(spot, w),
+      .size = sizeof(float) },
+};
+static const type_desc spot_type = { .name = "Spot",
+                                     .size = sizeof(spot),
+                                     .fields = spot_fields,
+                                     .field_count = 3 };
+static const script_catalog_field spot_members[] = {
+    { .id = 811,
+      .name = "x",
+      .type = { .storage = PIN_F32 },
+      .offset = offsetof(spot, x),
+      .writable = true },
+    { .id = 812,
+      .name = "y",
+      .type = { .storage = PIN_F32 },
+      .offset = offsetof(spot, y),
+      .writable = true },
+    { .id = 813, .name = "w", .type = { .storage = PIN_F32 }, .offset = offsetof(spot, w) },
+};
+static const script_catalog_parameter delta_seconds = { .name = "DeltaSeconds",
+                                                        .type = { .storage = PIN_F32 } };
+static const script_catalog_capability game_events[] = {
+    { .id = TICK,
+      .name = "Tick",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = &delta_seconds,
+      .parameter_count = 1,
+      .completion_outcome = -1 },
+};
+static const script_catalog_global game_globals[] = {
+    { .id = OWNER, .name = "self", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
+    { .id = OWNER + 1, .name = "pace", .type = { .storage = PIN_F32 } },
+};
+/* The game: the Spot component and the entity type, Tick, `self` and
+ * `pace`, a global stage one cannot read yet. */
+static script_catalog game_catalog()
+{
+    static script_catalog_type types[2];
+    types[0] = (script_catalog_type){ .id = SPOT,
+                                      .name = spot_type.name,
+                                      .type = { .storage = PIN_STRUCT, .nominal = SPOT },
+                                      .fields = spot_members,
+                                      .field_count = 3,
+                                      .size = spot_type.size,
+                                      .layout = type_layout_hash(&spot_type),
+                                      .component_id = SPOT_COMPONENT,
+                                      .component = true };
+    types[1] = (script_catalog_type){ .id = ENTITY,
+                                      .name = "ecs.entity",
+                                      .type = { .storage = PIN_HANDLE, .nominal = ENTITY },
+                                      .size = sizeof(uint64_t) };
+    return (script_catalog){ .types = types,
+                             .type_count = 2,
+                             .capabilities = game_events,
+                             .capability_count = 1,
+                             .globals = game_globals,
+                             .global_count = 2,
+                             .entity_type = ENTITY,
+                             .tick_event = TICK };
+}
+static bool game_global(void *, uint64_t id, behavior_function_instruction *out)
+{
+    if (id != OWNER) {
+        return false;
+    }
+    *out = (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE };
+    return true;
+}
+/* Stage zero's module of `source`. */
+static execution_module *stage_zero_behavior(const char *source)
+{
+    script_catalog catalog = game_catalog();
+    script_syntax *syntax = script_parse(source);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    const script_lower_bindings bindings = { .global = game_global };
+    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    char error[256] = { 0 };
+    execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
+                                 ? NULL
+                                 : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "stage zero behavior: %s\n", error);
+    }
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    return module;
+}
+static pin_value u64(uint64_t value)
+{
+    return (pin_value){ .type = PIN_U64, .u64 = value };
+}
+static pin_value flag(bool value)
+{
+    return (pin_value){ .type = PIN_BOOL, .b = value };
+}
+/* The index of the type `id` among the catalog's, -1 for none. */
+static int type_index(const script_catalog *catalog, uint64_t id)
+{
+    for (int i = 0; id && i < catalog->type_count; i++) {
+        if (catalog->types[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+/* CompileBehavior's game arguments, as the game target exports them: each
+ * event and its payload fields, each type and its fields, the entity type,
+ * no operators that combine records, the globals, and no record makes. */
+static bool game_arguments(int b, pin_value *out)
+{
+    script_catalog catalog = game_catalog();
+    pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
+    for (int i = 0; i < catalog.capability_count; i++) {
+        const script_catalog_capability *c = &catalog.capabilities[i];
+        pin_value event = row(b, "GameEvent");
+        REQUIRE(put_value(&event, "name", text(c->name)));
+        REQUIRE(put_value(&event, "id", u64(c->id)));
+        REQUIRE(put_value(&event, "abi", u64(script_catalog_capability_abi(&catalog, c))));
+        REQUIRE(put(&event, "first", acount(payloads)));
+        REQUIRE(put(&event, "count", c->parameter_count));
+        apush(declared, event);
+        for (int j = 0; j < c->parameter_count; j++) {
+            pin_value payload = row(b, "GameEventField");
+            REQUIRE(put_value(&payload, "name", text(c->parameters[j].name)));
+            REQUIRE(put(&payload, "storage", (int)c->parameters[j].type.storage));
+            REQUIRE(put_value(&payload, "nominal", u64(c->parameters[j].type.nominal)));
+            REQUIRE(put_value(&payload, "has_default", flag(c->parameters[j].has_default)));
+            REQUIRE(put_value(&payload, "default_owner", flag(c->parameters[j].default_owner)));
+            apush(payloads, payload);
+        }
+    }
+    for (int i = 0; i < catalog.type_count; i++) {
+        const script_catalog_type *t = &catalog.types[i];
+        pin_value type = row(b, "GameType");
+        REQUIRE(put_value(&type, "required", flag(true)));
+        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
+        REQUIRE(put_value(&type, "name", text(t->name)));
+        REQUIRE(put_value(&type, "id", u64(t->id)));
+        REQUIRE(put_value(&type, "layout", u64(t->layout)));
+        REQUIRE(put(&type, "storage", (int)t->type.storage));
+        REQUIRE(put(&type, "size", (int)t->size));
+        REQUIRE(put_value(&type, "component", u64(t->component ? t->component_id : 0)));
+        REQUIRE(put(&type, "first", acount(fields)));
+        REQUIRE(put(&type, "count", t->field_count));
+        apush(types, type);
+        for (int j = 0; j < t->field_count; j++) {
+            pin_value field = row(b, "GameField");
+            REQUIRE(put_value(&field, "name", text(t->fields[j].name)));
+            REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
+            REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
+            REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
+            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
+            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
+            REQUIRE(put(&field, "read", -1));
+            REQUIRE(put_value(&field, "read_key", text("")));
+            apush(fields, field);
+        }
+    }
+    out[0] = rows(declared, acount(declared), PIN_STRUCT, declared[0].record);
+    out[1] = rows(payloads, acount(payloads), PIN_STRUCT, payloads[0].record);
+    out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
+    out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
+    out[4] = u64(catalog.entity_type);
+    out[5] = rows(
+        NULL,
+        0,
+        PIN_STRUCT,
+        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
+    );
+    pin_value *globals = NULL;
+    for (int i = 0; i < catalog.global_count; i++) {
+        const script_catalog_global *g = &catalog.globals[i];
+        pin_value global = row(b, "GameGlobal");
+        REQUIRE(put_value(&global, "name", text(g->name)));
+        REQUIRE(put(&global, "storage", (int)g->type.storage));
+        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
+        apush(globals, global);
+    }
+    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
+    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
+    out[8] = rows(NULL, 0, PIN_I32, NULL);
+    afree(declared);
+    afree(payloads);
+    afree(types);
+    afree(fields);
+    afree(globals);
+    return true;
+}
+/* Stage one's Result for `source` on backend `b`, in `detached`. */
+static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
+{
+    pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
+    REQUIRE(arguments(b, NULL, 0, compile));
+    args[0] = text(identity);
+    args[1] = text(source);
+    memcpy(&args[2], &compile[5], 6 * sizeof *args);
+    REQUIRE(game_arguments(b, &args[8]));
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
+    );
+    REQUIRE(out->type == PIN_UNION && out->ptr);
+    return true;
+}
+/* The game's types and events, as the player links them. */
+static bool link_game_type(void *user, uint64_t id, execution_prepared_type *out)
+{
+    const script_catalog *catalog = user;
+    for (int i = 0; i < catalog->type_count; i++) {
+        const script_catalog_type *t = &catalog->types[i];
+        if (t->id == id) {
+            *out = (execution_prepared_type){ .name = t->name,
+                                              .type = t->id == SPOT ? &spot_type : NULL,
+                                              .storage = t->type.storage,
+                                              .size = t->size,
+                                              .layout = t->layout };
+            return true;
+        }
+    }
+    return false;
+}
+static bool link_game_event(void *user, uint64_t id, uint64_t abi)
+{
+    const script_catalog *catalog = user;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *c = &catalog->capabilities[i];
+        if (c->kind == SCRIPT_CAPABILITY_EVENT && c->id == id) {
+            return script_catalog_capability_abi(catalog, c) == abi;
+        }
+    }
+    return false;
+}
+/* The module stage one compiles `source` to on backend `b`, linked against
+ * the game. */
+static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
+{
+    *module = NULL;
+    pin_value out;
+    REQUIRE(compile_behavior(b, identity, source, &out));
+    const pin_union *value = out.ptr;
+    if (value->tag != tag(b, "Compiled")) {
+        pin_value message, line, column;
+        get(&value->values[0], "message", &message);
+        get(&value->values[0], "line", &line);
+        get(&value->values[0], "column", &column);
+        fprintf(
+            stderr,
+            "stage one behavior %s rejected: %s at %d:%d\n",
+            identity,
+            message.str,
+            line.i,
+            column.i
+        );
+        arena_free(&detached);
+        return false;
+    }
+    size_t length;
+    unsigned char *bytes = closure_bytes(value, &length);
+    arena_free(&detached);
+    script_catalog catalog = game_catalog();
+    execution_prepared_linker linker = { .user = &catalog,
+                                         .type = link_game_type,
+                                         .event = link_game_event };
+    char error[256] = { 0 };
+    *module = execution_prepared_read(bytes, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!*module) {
+        fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
+    }
+    free(bytes);
+    return *module != NULL;
+}
+/* A behavior module playing in its own world, on one owner holding a Spot. */
+typedef struct
+{
+    ecs_world *world;
+    execution_program *program;
+    execution_instance *instance;
+    ecs_entity owner;
+} player;
+static bool play(execution_module *module, player *out)
+{
+    out->world = ecs_world_new();
+    const ecs_component_desc component = { .id = SPOT_COMPONENT,
+                                           .key = "test.spot",
+                                           .name = spot_type.name,
+                                           .element_size = sizeof(spot),
+                                           .type = &spot_type };
+    REQUIRE(ecs_world_register_component(out->world, &component, NULL) == ECS_OK);
+    out->program = execution_program_new(module, out->world, NULL);
+    REQUIRE(out->program);
+    out->owner = ecs_world_create_entity(out->world);
+    spot initial = { .w = 9 };
+    REQUIRE(ecs_world_record_add(out->world, out->owner, SPOT_COMPONENT, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(out->world) == ECS_OK);
+    out->instance = execution_program_attach(out->program, ecs_entity_to_u64(out->owner));
+    REQUIRE(out->instance);
+    return true;
+}
+static void stop(player *p)
+{
+    execution_program_free(p->program);
+    ecs_world_free(p->world);
+    *p = (player){ 0 };
+}
+/* Stage one's module declares what stage zero's does: the module, its owner,
+ * types, services, states, events and handlers, with the same identities,
+ * ABIs, kinds and effects. */
+static bool same_declarations(const execution_module *expected, const execution_module *actual)
+{
+    const execution_module_plan *e = &expected->plan, *a = &actual->plan;
+    REQUIRE(a->id == e->id && a->owner_type == e->owner_type);
+    REQUIRE(a->type_count == e->type_count);
+    for (int i = 0; i < e->type_count; i++) {
+        REQUIRE(
+            a->types[i].id == e->types[i].id &&
+            a->types[i].layout == e->types[i].layout
+        );
+        REQUIRE(
+            a->types[i].storage == e->types[i].storage &&
+            a->types[i].size == e->types[i].size
+        );
+        REQUIRE(
+            !strcmp(a->types[i].name, e->types[i].name) &&
+            !a->types[i].record == !e->types[i].record
+        );
+    }
+    REQUIRE(a->service_count == e->service_count);
+    for (int i = 0; i < e->service_count; i++) {
+        REQUIRE(!strcmp(a->services[i], e->services[i]));
+    }
+    REQUIRE(a->state_count == e->state_count);
+    for (int i = 0; i < e->state_count; i++) {
+        REQUIRE(a->states[i].id == e->states[i].id);
+        REQUIRE(a->states[i].initial.type == e->states[i].initial.type);
+        REQUIRE(a->states[i].initial.i == e->states[i].initial.i);
+    }
+    REQUIRE(a->event_count == e->event_count);
+    for (int i = 0; i < e->event_count; i++) {
+        const execution_module_event_declaration *x = &e->events[i],
+                                                 *y = &a->events[i];
+        REQUIRE(y->id == x->id && y->abi == x->abi && !strcmp(y->name, x->name));
+        REQUIRE(y->field_count == x->field_count);
+        for (int j = 0; j < x->field_count; j++) {
+            REQUIRE(
+                !strcmp(y->fields[j].name, x->fields[j].name) &&
+                y->fields[j].nominal == x->fields[j].nominal
+            );
+            REQUIRE(y->fields[j].has_default == x->fields[j].has_default);
+            REQUIRE(y->fields[j].default_owner == x->fields[j].default_owner);
+            REQUIRE(y->fields[j].initial.type == x->fields[j].initial.type);
+        }
+    }
+    REQUIRE(a->function_count == e->function_count);
+    for (int i = 0; i < e->function_count; i++) {
+        const execution_module_function *x = &e->functions[i], *y = &a->functions[i];
+        REQUIRE(y->id == x->id && y->event == x->event && y->event_abi == x->event_abi);
+        REQUIRE(y->kind == x->kind && y->effects == x->effects);
+        REQUIRE(!y->event_name == !x->event_name && !y->entry == !x->entry);
+        REQUIRE(!x->event_name || !strcmp(y->event_name, x->event_name));
+        REQUIRE(y->body->argument_count == x->body->argument_count);
+        REQUIRE(y->body->result_count == x->body->result_count);
+        REQUIRE(y->body->variable_count == x->body->variable_count);
+        REQUIRE(y->body->component_access == x->body->component_access);
+        REQUIRE(acount(y->body->components) == acount(x->body->components));
+        for (int j = 0; j < acount(x->body->components); j++) {
+            REQUIRE(y->body->components[j].id == x->body->components[j].id);
+        }
+    }
+    return true;
+}
+/* Each Tick, both modules' owners hold the same Spot and states. */
+static bool plays_alike(execution_module *expected, execution_module *actual)
+{
+    player e = { 0 }, a = { 0 };
+    bool alike = play(expected, &e) && play(actual, &a);
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    for (int tick = 0; alike && tick < TICKS; tick++) {
+        int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
+        int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
+        const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
+        const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
+        alike = left == FLOW_OK && right == FLOW_OK && x && y &&
+                !memcmp(x, y, sizeof *x);
+        for (int i = 0; alike && i < expected->plan.state_count; i++) {
+            const pin_value *kept = execution_instance_state(
+                e.instance,
+                expected->plan.states[i].id
+            );
+            const pin_value *held = execution_instance_state(
+                a.instance,
+                expected->plan.states[i].id
+            );
+            alike = kept && held && kept->type == held->type && kept->i == held->i;
+        }
+        if (!alike) {
+            fprintf(
+                stderr,
+                "behavior tick %d: flow %d/%d x %g/%g y %g/%g\n",
+                tick,
+                left,
+                right,
+                x ? x->x : -1.0,
+                y ? y->x : -1.0,
+                x ? x->y : -1.0,
+                y ? y->y : -1.0
+            );
+        }
+    }
+    stop(&e);
+    stop(&a);
+    return alike;
+}
+/* Stage one's module of `sample` against stage zero's, on backend `b`. */
+static bool behaves_alike(int b, const behavior_sample *sample)
+{
+    execution_module *expected = stage_zero_behavior(sample->source);
+    execution_module *actual = NULL;
+    bool same = expected &&
+                stage_one_behavior(b, sample->name, sample->source, &actual) &&
+                same_declarations(expected, actual) &&
+                same_points(expected, actual) && plays_alike(expected, actual);
+    if (!same) {
+        fprintf(stderr, "behavior %s differs on backend %d\n", sample->name, b);
+    }
+    execution_module_free(actual);
+    execution_module_free(expected);
+    return same;
+}
+/* Stage one rejects the source with exactly the message. */
+static bool rejects(int b, const behavior_rejection *rejection)
+{
+    pin_value out, message;
+    REQUIRE(compile_behavior(b, "Rejected", rejection->source, &out));
+    const pin_union *value = out.ptr;
+    bool rejected = value->tag == tag(b, "Rejected") &&
+                    get(&value->values[0], "message", &message) &&
+                    !strcmp(message.str, rejection->message);
+    if (!rejected) {
+        fprintf(stderr, "behavior rejection: wanted '%s'\n", rejection->message);
+    }
+    arena_free(&detached);
+    return rejected;
+}
+/* A project names a behavior by its path, and the IDs follow it. */
+static bool takes_project_identities(int b)
+{
+    const char *identity = "behaviors/Counter.chibi";
+    execution_module *module = NULL;
+    REQUIRE(stage_one_behavior(b, identity, COUNTER, &module));
+    char handler[128];
+    snprintf(handler, sizeof handler, "%s:%d:1", identity, (int)(strstr(COUNTER, "on Tick") - COUNTER));
+    const execution_module_plan *p = &module->plan;
+    bool named = p->id == script_catalog_id("module", identity) &&
+                 p->state_count == 1 &&
+                 p->states[0].id ==
+                     script_catalog_id("symbol", "behaviors/Counter.chibi:1:steps") &&
+                 p->function_count == 1 &&
+                 p->functions[0].id == script_catalog_id("function", handler);
+    execution_module_free(module);
+    REQUIRE(named);
+    return true;
+}
+/* Stage zero's build of stage one passes arguments without copying them to
+ * every function but those that run once per compile. One that pushes onto an
+ * array argument, or stores a uint64 into a field of a local record, copies
+ * every argument on each call, and so does every function that calls it;
+ * each took stage one compiling itself past its 60-second ceiling. */
+TEST_CASE(package_compiler_shares_its_arguments)
+{
+    REQUIRE(prepare());
+    const char *const once[] = { "Compile",           "CompileClosure",
+                                 "CompileBehavior",   "CompileBehaviors",
+                                 "BehaviorRejection", "Declare",
+                                 "DeclarePackage" };
+    const execution_module_plan *p = &compiler_fixture_package(&fixture, 1, PACKAGE)
+                                          ->module->plan;
+    int copying = 0;
+    for (int i = 0; i < p->function_count; i++) {
+        const behavior_function *body = p->functions[i].body;
+        bool allowed = false;
+        for (size_t j = 0; j < sizeof once / sizeof *once; j++) {
+            char name[128];
+            snprintf(name, sizeof name, "%s:1:%s:callable", PACKAGE, once[j]);
+            allowed |= p->functions[i].id == script_catalog_id("package-symbol", name);
+        }
+        if (body && body->argument_sharing != BEHAVIOR_SHARING_SAFE && !allowed) {
+            fprintf(
+                stderr,
+                "package compiler function %016llx copies its arguments\n",
+                (unsigned long long)p->functions[i].id
+            );
+            copying++;
+        }
+    }
+    REQUIRE(copying == 0);
+    return true;
+}
+/* The behavior samples from `first` before `last` compile alike on both
+ * backends. Stage one compiles slowest on the bytecode backend, so each
+ * selector takes half of them. */
+static bool samples_alike(size_t first, size_t last)
+{
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    bool passed = true;
+    for (int b = 0; passed && b < 2; b++) {
+        for (size_t i = first; passed && i < last; i++) {
+            passed = behaves_alike(b, &behavior_samples[i]);
+        }
+    }
+    type_catalog_set_project(NULL);
+    return passed;
+}
+enum
+{
+    SAMPLE_COUNT = sizeof behavior_samples / sizeof *behavior_samples
+};
+TEST_CASE(package_compiler_compiles_behaviors)
+{
+    REQUIRE(prepare());
+    REQUIRE(samples_alike(0, SAMPLE_COUNT / 2));
+    return true;
+}
+/* The other half of the samples, the rejections and the identities a
+ * project's path gives. */
+TEST_CASE(package_compiler_compiles_the_other_behaviors)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    bool passed = samples_alike(SAMPLE_COUNT / 2, SAMPLE_COUNT);
+    type_catalog_set_project(&pack);
+    for (size_t i = 0;
+         passed && i < sizeof behavior_rejections / sizeof *behavior_rejections;
+         i++) {
+        passed = rejects(1, &behavior_rejections[i]);
+    }
+    passed = passed && takes_project_identities(1);
+    type_catalog_set_project(NULL);
+    REQUIRE(passed);
+    return true;
+}
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -2060,5 +3047,23 @@ void test_language_package_compiler_chibi_literals()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_reads_float_literals);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_behaviors()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compiles_behaviors);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_behaviors_rest()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_sharing()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_shares_its_arguments);
     pu_clear_setup();
 }

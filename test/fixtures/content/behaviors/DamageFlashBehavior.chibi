@@ -1,9 +1,11 @@
+// Begin and Damage flash the bound material for 0.18 seconds. The material
+// exposes Flash as a scalar parameter.
 DamageFlashBehavior :: behavior {
     action set_material_parameter_action = set_material_parameter(self, "Flash", Value: float = 3.0)
-    on Begin {
+    on Begin :: () {
         set_material_parameter_action()
     }
-    on Damage {
+    on Damage :: () {
         set_material_parameter_action()
     }
     after set_material_parameter_action {

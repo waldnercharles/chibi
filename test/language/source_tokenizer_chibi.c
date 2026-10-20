@@ -23,13 +23,13 @@ const TSLanguage *tree_sitter_chibi();
  * cover it, and in a corpus file it would fail the comparison as an extra
  * tokenizer terminator rather than pass unseen. Files Tree-sitter rejects
  * compare their leaves only, since its recovery places their terminators.
- * Workload: about 140 files, under 1 MiB, each at most 128 KiB, one
+ * Workload: about 150 files, under 1 MiB, each at most 256 KiB, one
  * compiled-backend call per file; the fixed sources and cases run on both
  * backends. Calls are capped at 64 steps per byte (they take under 20). No
  * children, services or GPU; shared 60 s. */
 enum
 {
-    MAX_SOURCE = 128 * 1024,
+    MAX_SOURCE = 256 * 1024,
     MAX_DEPTH = 1024,
     MAX_KINDS = 256,
     STEPS_PER_BYTE = 64,
@@ -432,6 +432,25 @@ static void collect(const char *directory, char ***paths)
     }
     closedir(dir);
 }
+/* A corpus file that cannot be read or is over the cap fails by name, so the
+ * files after it are not skipped silently. */
+static bool corpus_file(const char *path)
+{
+    char *text = file_read_text(path);
+    if (!text) {
+        fprintf(stderr, "source tokenizer: cannot read %s\n", path);
+        return false;
+    }
+    size_t size = strlen(text);
+    bool valid = size <= MAX_SOURCE;
+    if (!valid) {
+        fprintf(stderr, "source tokenizer: %s is %zu bytes, over %d\n", path, size, MAX_SOURCE);
+    }
+    valid = valid && differential(path, text, COMPILED);
+    bytes += (int)size;
+    free(text);
+    return valid;
+}
 TEST_CASE(source_tokenizer_corpus)
 {
     REQUIRE(prepare());
@@ -445,11 +464,7 @@ TEST_CASE(source_tokenizer_corpus)
     /* Finding the corpus at all. */
     bool valid = alen(paths) > 100;
     for (int i = 0; valid && i < alen(paths); i++) {
-        char *text = file_read_text(paths[i]);
-        valid = text && strlen(text) <= MAX_SOURCE &&
-                differential(paths[i], text, COMPILED);
-        bytes += text ? (int)strlen(text) : 0;
-        free(text);
+        valid = corpus_file(paths[i]);
         files++;
     }
     for (int i = 0; i < alen(paths); i++) {

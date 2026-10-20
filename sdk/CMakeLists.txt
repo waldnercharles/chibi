@@ -464,17 +464,22 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate26.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate29.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser27.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser28.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser29.c"
         PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
@@ -535,7 +540,6 @@ if(CHIBI_SDK_BUILD_COMPILER)
         "${CHIBI_SDK_ROOT}/src/authoring/source_prepare.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_link.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_format.c"
-        "${CHIBI_SDK_ROOT}/src/authoring/source_metadata.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_navigation.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_prototype_flow.c"
         "${CHIBI_SDK_ROOT}/src/authoring/source_rename.c"
@@ -543,7 +547,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(Chibi::authoring ALIAS chibi_authoring)
     set_target_properties(chibi_authoring PROPERTIES EXPORT_NAME authoring)
     chibi_sdk_headers(chibi_authoring PUBLIC authoring/source_prepare.h authoring/source_link.h
-        authoring/source_format.h authoring/source_metadata.h authoring/source_navigation.h
+        authoring/source_format.h authoring/source_navigation.h
         authoring/source_prototype_flow.h
         authoring/source_rename.h authoring/source_intelligence.h authoring/source_declaration.h
         authoring/native_bindings.h authoring/source_literal.h authoring/source_references.h)

@@ -104,7 +104,7 @@ help:
 		'make clean          Remove default engine build outputs'
 
 build:
-	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 3 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
+	@if [ -x "$(BUILD_HOST)" ] && [ "$$("$(BUILD_HOST)" --protocol-version 2>/dev/null)" = 4 ]; then $(MAKE) toolchain-build; else $(MAKE) stage-zero-build; fi
 
 .PHONY: toolchain-build stage-zero-build
 toolchain-build:
@@ -274,7 +274,7 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-materials test-projects test-bootstrap bootstrap-artifact bootstrap-recover test-recovery test-short test-policy-inventory tools-build test-stage-one
 agent-list:
 	@python3 tools/agent.py list
 
@@ -298,11 +298,12 @@ test-materials: test-build
 # validate-project starts chibi_ctl dozens of times, and each start builds the
 # authoring catalog, which sanitizers make too slow for one 60-second deadline.
 # The project selectors run against an unsanitized Release chibi_ctl instead, and
-# published-docs against a Release chibi-compile, whose --docs takes about a
-# second where the sanitized one takes five or more.
+# published-docs and chibi-cli against the Release chibi launcher and the
+# chibi-compile and chibi-player it builds: their --docs runs take about a
+# second each where sanitized ones take five or more.
 test-projects: test-build
-	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi-compile'
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
+	@$(MAKE) build-release BUILD_TARGET='chibi_ctl chibi'
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" CHIBI_CLI="$(RELEASE_BUILD_DIR)/sdk/chibi" CHIBI_COMPILE="$(RELEASE_BUILD_DIR)/sdk/chibi-compile" python3 tools/test_policy.py group projects
 
 # Stage one compiling itself, and stage two compiling the same sources to the
 # same bytes, take about two minutes each under sanitizers, so the bootstrap
@@ -333,6 +334,12 @@ bootstrap-recover:
 test-recovery: test-build
 	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
 	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" CHIBI_BOOTSTRAP_ARTIFACT="$(BOOTSTRAP_ARTIFACT)" python3 tools/test_policy.py tool bootstrap-recovery
+
+# Stage one's route rebuilds Counter as chibi-compile does. Recovering stage
+# one compiles the compiler, so it runs on a Release compiler host.
+test-stage-one: test-build
+	@$(MAKE) build-release BUILD_TARGET=chibi-compiler-host
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_RELEASE_COMPILER_HOST="$(RELEASE_BUILD_DIR)/sdk/chibi-compiler-host" python3 tools/test_policy.py tool game-equivalence-stage-one
 
 test: test-short
 

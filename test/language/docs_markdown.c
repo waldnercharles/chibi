@@ -10,10 +10,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Eight cases on bytecode and the compiled backend. One preparation of the
+/* Eleven cases on bytecode and the compiled backend. One preparation of the
  * shipped site generator packages with core:strings per case; each call
- * renders, lays out or reports on one page of at most a few hundred bytes with
- * a 2,000,000-instruction budget. No filesystem, processes or frames. */
+ * renders, lays out, styles or reports on one small page with a
+ * 2,000,000-instruction budget. No filesystem, processes or frames. */
 enum
 {
     BUDGET = 2000000
@@ -82,7 +82,11 @@ static char *call(int backend, const char *identity, const char *name, const pin
 static pin_value lines(const char *markdown)
 {
     int count = 0;
-    const char *items[64];
+    size_t capacity = 1;
+    for (const char *at = markdown; *at; at++) {
+        capacity += *at == '\n';
+    }
+    const char **items = xmalloc(capacity * sizeof(*items));
     for (const char *line = markdown; *line; count++) {
         const char *end = strchr(line, '\n');
         size_t size = end ? (size_t)(end - line) : strlen(line);
@@ -92,7 +96,9 @@ static pin_value lines(const char *markdown)
         items[count] = copy;
         line = end ? end + 1 : line + size;
     }
-    return strings(items, count);
+    pin_value result = strings(items, count);
+    free(items);
+    return result;
 }
 /* What markdown's `name` makes of the page at `page` with the site map below,
  * as one string. */
@@ -128,7 +134,8 @@ static bool reports(int backend, const char *markdown, const char *page, const c
 }
 
 /* Headings carry GitHub's anchors; paragraphs join their lines; text is
- * escaped; fenced code keeps its lines and names its language. */
+ * escaped; fenced code keeps its lines and names its language. Lines lose
+ * their spaces, tabs and carriage returns at either end. */
 TEST_CASE(docs_markdown_renders_blocks)
 {
     REQUIRE(prepare());
@@ -153,6 +160,104 @@ TEST_CASE(docs_markdown_renders_blocks)
             "<ol>\n<li>first</li>\n<li><em>second</em></li>\n</ol>\n"
             "<blockquote><p>quoted text</p></blockquote>\n"
         ));
+        REQUIRE(
+            renders(b, "# Title\t\r\n\r\n\tOne \t\r\ntwo\r\n", "README.md", "<h1 id=\"title\">Title</h1>\n<p>One two</p>\n")
+        );
+    }
+    return true;
+}
+
+/* Contents preserve heading hierarchy and omit code. Long pages expose native
+ * section disclosures, with each section closed before the next one. */
+TEST_CASE(docs_markdown_lists_contents)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(renders(
+            b,
+            "# Title\n\n## First `one`\n\n```sh\n## not a heading\n```\n\n"
+            "### Second part\n\n#### Deep\n### Sibling\n## Last\n",
+            "README.md",
+            "<nav class=\"contents\" aria-label=\"On this page\">\n"
+            "<details open>\n<summary>On this page</summary>\n<ul>\n"
+            "<li class=\"section\"><a href=\"#first-one\">First "
+            "<code>one</code></a>\n<ul>\n"
+            "<li class=\"sub\"><a href=\"#second-part\">Second part</a>\n<ul>\n"
+            "<li class=\"sub\"><a href=\"#deep\">Deep</a></li>\n</ul>\n</li>\n"
+            "<li class=\"sub\"><a "
+            "href=\"#sibling\">Sibling</a></li>\n</ul>\n</li>\n"
+            "<li class=\"section\"><a href=\"#last\">Last</a></li>\n"
+            "</ul>\n</details>\n</nav>\n"
+            "<h1 id=\"title\">Title</h1>\n"
+            "<h2 id=\"first-one\">First <code>one</code></h2>\n"
+            "<pre><code class=\"language-sh\">## not a heading\n</code></pre>\n"
+            "<h3 id=\"second-part\">Second part</h3>\n"
+            "<h4 id=\"deep\">Deep</h4>\n"
+            "<h3 id=\"sibling\">Sibling</h3>\n<h2 id=\"last\">Last</h2>\n"
+        ));
+        char *long_page = page_call(
+            b,
+            "Render",
+            "# Title\nIntro.\n## One\nText.\n### Child\n- item\n## Two\n"
+            "```chibi\n## fake\n```\n## Three\n## Four\n## Five\n## Six\n"
+            "Last paragraph.\n# Appendix\nOutside.\n",
+            "README.md"
+        );
+        REQUIRE(long_page);
+        REQUIRE(strstr(
+            long_page,
+            "<h1 id=\"title\">Title</h1>\n<p>Intro.</p>\n"
+            "<div class=\"section-controls\" hidden>"
+        ));
+        REQUIRE(strstr(long_page, "data-sections=\"open\">Expand all</button>"));
+        REQUIRE(strstr(long_page, "data-sections=\"close\">Collapse all</button>"));
+        REQUIRE(strstr(
+            long_page,
+            "<details class=\"doc-section\" open>\n<summary>"
+            "<h2 id=\"one\">One</h2>\n</summary>\n<p>Text.</p>\n"
+            "<h3 "
+            "id=\"child\">Child</h3>\n<ul>\n<li>item</li>\n</ul>\n</details>\n"
+            "<details class=\"doc-section\" open>\n<summary>"
+            "<h2 id=\"two\">Two</h2>\n</summary>\n"
+            "<pre><code class=\"language-chibi\">## "
+            "fake\n</code></pre>\n</details>\n"
+        ));
+        REQUIRE(strstr(
+            long_page,
+            "<p>Last paragraph.</p>\n</details>\n"
+            "<h1 id=\"appendix\">Appendix</h1>\n<p>Outside.</p>\n"
+        ));
+        REQUIRE(!strstr(long_page, "href=\"#fake\""));
+        free(long_page);
+
+        /* Five real sections and one fenced heading do not cross the cutoff. */
+        char *short_page = page_call(
+            b,
+            "Render",
+            "## One\n## Two\n## Three\n## Four\n## Five\n```\n## fake\n```\n",
+            "README.md"
+        );
+        REQUIRE(short_page);
+        REQUIRE(!strstr(short_page, "doc-section"));
+        REQUIRE(!strstr(short_page, "section-controls"));
+        free(short_page);
+
+        /* Two sections become collapsible at the line-count cutoff. */
+        char length_page[256] = "## First\n## Last\n";
+        size_t used = strlen(length_page);
+        for (int line = 2; line < 160; line++) {
+            length_page[used++] = '\n';
+        }
+        length_page[used] = '\0';
+        char *by_length = page_call(b, "Render", length_page, "README.md");
+        REQUIRE(by_length);
+        REQUIRE(strstr(by_length, "<h2 id=\"last\">Last</h2>\n</summary>\n</details>\n"));
+        free(by_length);
+        length_page[used - 1] = '\0';
+        by_length = page_call(b, "Render", length_page, "README.md");
+        REQUIRE(by_length);
+        REQUIRE(!strstr(by_length, "doc-section"));
+        free(by_length);
     }
     return true;
 }
@@ -197,6 +302,9 @@ TEST_CASE(docs_markdown_maps_links_to_pages)
             "href=\"#top\">here</a> "
             "and plans.</p>\n"
         ));
+        REQUIRE(
+            renders(b, "[Generated](code-language.html#types) [Unlisted](missing.html)\n", "docs/code-language.md", "<p><a href=\"code-language.html#types\">Generated</a> Unlisted</p>\n")
+        );
         REQUIRE(renders(
             b,
             "[home](../README.md) [`code`](examples.md) [out](../../x.md)\n",
@@ -268,8 +376,9 @@ TEST_CASE(docs_markdown_reports_unpublished_links)
     return true;
 }
 
-/* A page's head names it and the site, links the stylesheet and lists every
- * page under its section, marking this one. */
+/* The header names the site without repeating page navigation. A skip link
+ * reaches the focusable content. Only sections with several pages get labels,
+ * and both grouped and standalone pages can carry the current marker. */
 TEST_CASE(docs_site_lays_out_navigation)
 {
     REQUIRE(prepare());
@@ -287,54 +396,132 @@ TEST_CASE(docs_site_lays_out_navigation)
         bool laid_out = head && foot &&
                         strstr(head, "<title>Tests &amp; more · Chibi</title>") &&
                         strstr(head, "<link rel=\"stylesheet\" href=\"style.css\">") &&
+                        strstr(head, "<a class=\"skip\" href=\"#main\">Skip to content</a>\n<header") &&
                         strstr(
                             head,
-                            "<h2>Overview</h2>\n<ul>\n<li><a "
-                            "href=\"index.html\">Chibi</a></li>\n</ul>\n"
-                            "<h2>Learn</h2>\n<ul>\n<li><a "
-                            "href=\"language.html\">Language</a></li>\n"
+                            "<header class=\"bar\">\n<a class=\"site\" "
+                            "href=\"index.html\">Chibi</a>\n"
+                            "<span "
+                            "class=\"context\">Documentation</span>\n</header>"
+                        ) &&
+                        !strstr(head, "aria-label=\"Sections\"") &&
+                        !strstr(head, "<h2>Overview</h2>") &&
+                        strstr(
+                            head,
+                            "<nav class=\"pages\" aria-label=\"Pages\">\n<ul>\n"
+                            "<li><a href=\"index.html\">Chibi</a></li>\n"
+                            "<li class=\"page-group\"><h2>Learn</h2>\n<ul>\n"
+                            "<li><a href=\"language.html\">Language</a></li>\n"
                             "<li><a href=\"tests.html\" "
                             "aria-current=\"page\">Tests &amp; more</a></li>\n"
-                            "</ul>\n</nav>\n<main>\n"
+                            "</ul>\n</li>\n</ul>\n</nav>\n"
                         ) &&
-                        !strcmp(foot, "</main>\n</body>\n</html>\n");
+                        strstr(head, "<main id=\"main\" tabindex=\"-1\">\n") &&
+                        strstr(foot, "</main>\n</div>\n<script>\n") &&
+                        strstr(foot, "querySelector('.section-controls')") &&
+                        strstr(foot, "controls.hidden = false") &&
+                        strstr(foot, "button.dataset.sections === 'open'") &&
+                        strstr(foot, "matchMedia('(max-width: 64rem)')") &&
+                        strstr(foot, "decodeURIComponent(hash.slice(1))") &&
+                        strstr(foot, "parent.tagName === 'DETAILS') parent.open = true") &&
+                        strstr(foot, "addEventListener('hashchange', visit)") &&
+                        strstr(foot, "visit();") &&
+                        strstr(foot, "</script>\n</body>\n</html>\n");
         free(head);
         free(foot);
         REQUIRE(laid_out);
+        arguments[4].i = 0;
+        head = call(b, "project:site", "Head", arguments, 5);
+        REQUIRE(head);
+        REQUIRE(strstr(head, "<li><a href=\"index.html\" aria-current=\"page\">Chibi</a></li>"));
+        REQUIRE(!strstr(head, "href=\"tests.html\" aria-current="));
+        free(head);
+    }
+    return true;
+}
+
+/* The stylesheet takes every colour from custom properties, which a dark
+ * palette redefines when the system prefers a dark scheme. */
+TEST_CASE(docs_site_follows_color_scheme)
+{
+    REQUIRE(prepare());
+    static const char *const properties[] = { "--text:",  "--muted:", "--page:",
+                                              "--panel:", "--line:",  "--link:",
+                                              "--code:" };
+    for (int b = 0; b < 2; b++) {
+        char *style = call(b, "project:site", "Style", NULL, 0);
+        REQUIRE(style);
+        char *light = strstr(style, ":root { color-scheme: light dark;");
+        char *dark = strstr(style, "@media (prefers-color-scheme: dark) {\n  :root {");
+        char *rules = dark ? strstr(dark, "\n}\n") : NULL;
+        bool themed = light == style && dark && rules && !strchr(rules, '#');
+        for (size_t i = 0; themed && i < sizeof properties / sizeof *properties; i++) {
+            char *defined = strstr(light, properties[i]);
+            char *redefined = strstr(dark, properties[i]);
+            themed = defined && defined < dark && redefined && redefined < rules;
+        }
+        free(style);
+        REQUIRE(themed);
+    }
+    return true;
+}
+
+/* The bar keeps one row of a fixed height, which the anchor offset clears.
+ * A narrow window keeps the page list, which holds the only links to a
+ * section's later pages, and draws it where it is in the page, so focus
+ * order and visual order agree. */
+TEST_CASE(docs_site_keeps_navigation_in_reach)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        char *style = call(b, "project:site", "Style", NULL, 0);
+        REQUIRE(style);
+        char *narrow = strstr(style, "@media (max-width: 48rem) {");
+        char *end = narrow ? strchr(narrow, '\n') : NULL;
+        if (end) {
+            *end = '\0';
+        }
+        bool reachable = end && strstr(style, "; height: 3.5rem;") &&
+                         strstr(style, "scroll-margin-top: 4.5rem;") &&
+                         !strstr(style, "flex-wrap: wrap") &&
+                         strstr(narrow, ".pages li { display: inline-block;") &&
+                         !strstr(narrow, ".pages { display: none") &&
+                         !strstr(narrow, "order:");
+        free(style);
+        REQUIRE(reachable);
     }
     return true;
 }
 
 /* The package reference lists each package once, with its import path, and
- * each top-level declaration's signature, up to its body, with the comment
- * written right above it. */
+ * each pub declaration's signature, up to its body, with the comment written
+ * right above it. */
 TEST_CASE(docs_reference_lists_declarations)
 {
     REQUIRE(prepare());
     static const char *const paths[] = { "shapes/A.chibi", "shapes/B.chibi" };
-    static const char *const files[] = {
-        "package shapes",
-        "",
-        "// The area of a square.",
-        "Area :: (side: int,",
-        "                 scale: int) -> int {",
-        "    return side * side;",
-        "}",
-        "package shapes",
-        "Sides: int : 4;",
-        "// Not attached.",
-        "",
-        "Shape :: struct { sides: int; }",
-        "Greeting :: \"Hello {}\";",
-        "@test",
-        "Checks :: () {",
-        "}",
-        "@test Also :: () {}",
-        "Vec :: struct {",
-        "    // Horizontal.",
-        "    x: int;",
-        "}"
-    };
+    static const char *const files[] = { "package shapes",
+                                         "",
+                                         "// The area of a square.",
+                                         "pub Area :: (side: int,",
+                                         "             scale: int) -> int {",
+                                         "    return side * side;",
+                                         "}",
+                                         "package shapes",
+                                         "pub Sides: int : 4;",
+                                         "// Not attached.",
+                                         "",
+                                         "pub Shape :: struct { sides: int; }",
+                                         "pub Greeting :: \"Hello {}\";",
+                                         "Hidden :: 3;",
+                                         "@test",
+                                         "Checks :: () {",
+                                         "}",
+                                         "@test Also :: () {}",
+                                         "pub Vec :: struct {",
+                                         "    // Horizontal.",
+                                         "    x: int;",
+                                         "}" };
     for (int b = 0; b < 2; b++) {
         pin_value starts = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
         pin_array *offsets = pin_array_snapshot_allocate(&input, PIN_I32, NULL, 2);
@@ -343,7 +530,7 @@ TEST_CASE(docs_reference_lists_declarations)
         starts.ptr = offsets;
         static const char *const none[] = { "README.md" };
         pin_value arguments[] = { text("core"),     strings(paths, 2),
-                                  starts,           strings(files, 21),
+                                  starts,           strings(files, 22),
                                   text("packages"), strings(none, 1),
                                   strings(none, 1) };
         char *html = call(b, "project:reference", "Render", arguments, 7);
@@ -353,15 +540,16 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\">Area :: (side: "
+                          "class=\"language-chibi\">pub Area :: (side: "
                           "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
                           "area of a square.</p>"
                       ) &&
-                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">Sides: int : 4;\n") &&
-                      strstr(html, "Shape :: struct { sides: int; }\n") &&
-                      strstr(html, "Greeting :: &quot;Hello {}&quot;;\n") &&
-                      !strstr(html, "Checks") && !strstr(html, "Also") &&
-                      strstr(html, "Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
+                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">pub Sides: int : 4;\n") &&
+                      strstr(html, "pub Shape :: struct { sides: int; }\n") &&
+                      strstr(html, "pub Greeting :: &quot;Hello {}&quot;;\n") &&
+                      !strstr(html, "Hidden") && !strstr(html, "Checks") &&
+                      !strstr(html, "Also") &&
+                      strstr(html, "pub Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
@@ -423,12 +611,12 @@ TEST_CASE(docs_generated_pages_report_unpublished_links)
         "// Not [attached](a.md).",
         "",
         "// The [area](area.md).",
-        "Area :: () -> int {",
+        "pub Area :: () -> int {",
         "    return 1;",
         "}",
         "package shapes",
         "// Four [sides](PLAN.md#sides), as [Area](#area).",
-        "Sides: int : 4;"
+        "pub Sides: int : 4;"
     };
     static const char *const grammar[] = {
         "  rules: {",
@@ -469,10 +657,13 @@ void test_language_docs_markdown()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(docs_markdown_renders_blocks);
+    RUN_TEST_CASE(docs_markdown_lists_contents);
     RUN_TEST_CASE(docs_markdown_renders_tables);
     RUN_TEST_CASE(docs_markdown_maps_links_to_pages);
     RUN_TEST_CASE(docs_markdown_reports_unpublished_links);
     RUN_TEST_CASE(docs_site_lays_out_navigation);
+    RUN_TEST_CASE(docs_site_follows_color_scheme);
+    RUN_TEST_CASE(docs_site_keeps_navigation_in_reach);
     RUN_TEST_CASE(docs_reference_lists_declarations);
     RUN_TEST_CASE(docs_grammar_lists_rules);
     RUN_TEST_CASE(docs_generated_pages_report_unpublished_links);

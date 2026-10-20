@@ -1,5 +1,5 @@
 EntityProbe :: behavior {
-    on Begin {
+    on Begin :: () {
         spawner := globals.Spawner
         await set_global_variable("Spawned", Value: int = 0)
         drone := await spawn_prototype(Drone)
@@ -20,7 +20,7 @@ EntityProbe :: behavior {
             }
         }
     }
-    on Probe_Signal {
+    on Probe_Signal :: (Count: int) {
         self.Health.current -= Count
     }
 }

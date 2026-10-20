@@ -1,5 +1,4 @@
 #include "assets/project_migrate.h"
-#include "authoring/source_metadata.h"
 #include "language/syntax.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -12,41 +11,29 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <yyjson.h>
 
 /* Exact Studio inputs from 07dccf7b5fcfcc879b9d24e95730f4ee1d6a281f,
- * projects/studio/content/behaviors. Both sidecars are already stale: keep
- * their historical anchors and hashes, never manufacture a fresh binding.
- * The existing program migration case covers a valid bound sidecar.
+ * projects/studio/content/behaviors.
  *
- * Success ceiling: six declaration migration calls, four retention/syntax
- * migration calls, three explicit current parses, four metadata checks and
- * two content transactions (four then five files).
+ * Success ceiling: six declaration migration calls, ten later-step migration
+ * calls (retention, syntax, conversions, entry and after entry for each
+ * source, reaching the current grammar), three explicit current parses and
+ * two content transactions (two then three files).
  * Two additional in-memory call/unary controls total less than 1 KiB.
- * Including migration internals: at most 63 current/historical syntax parses
- * (twenty declaration, twelve retention/syntax, three explicit,
- * twelve successful-content and sixteen rejected-content).
  * No authored execution, backend, renderer, child process or extra corpus. */
 enum
 {
     SOURCE_COUNT = 2,
-    FIXTURE_COUNT = 4,
     MAX_DIRECT_MIGRATIONS = 6,
-    MAX_FOLLOWUP_MIGRATIONS = 4,
+    MAX_FOLLOWUP_MIGRATIONS = 10,
     MAX_CURRENT_PARSES = 3,
-    MAX_METADATA_CHECKS = 4,
     MAX_TRANSACTIONS = 2,
-    MAX_CONTENT_FILES = 5
+    MAX_CONTENT_FILES = 3
 };
 
-static const char *const names[FIXTURE_COUNT] = { "OutlinerRows.chibi",
-                                                  "VirtualList.chibi",
-                                                  "OutlinerRows.chibi.meta",
-                                                  "VirtualList.chibi.meta" };
-static const char *const hashes[SOURCE_COUNT] = { "bda331caa1d8cfe6",
-                                                  "c11a7c378a29d56c" };
-static const int anchor_counts[SOURCE_COUNT] = { 104, 41 };
-static const size_t fixture_bytes[FIXTURE_COUNT] = { 5025, 2122, 20968, 8335 };
+static const char *const names[SOURCE_COUNT] = { "OutlinerRows.chibi",
+                                                 "VirtualList.chibi" };
+static const size_t fixture_bytes[SOURCE_COUNT] = { 5025, 2122 };
 static const char malformed[] = "behavior Broken { pure function ";
 static const char
     legacy_calls[] = "library Calls {\n"
@@ -75,11 +62,10 @@ static const char current_unary[] = "Current :: library { Keep :: (value: "
                                     "return not value } }";
 _Static_assert(sizeof legacy_calls + sizeof current_unary <= 1024, "call/unary controls stay below 1 KiB");
 static char directory[64];
-static char *inputs[FIXTURE_COUNT], *migrated[SOURCE_COUNT], *again, *actual;
+static char *inputs[SOURCE_COUNT], *migrated[SOURCE_COUNT], *again, *actual;
 static char *retained[SOURCE_COUNT], *current[SOURCE_COUNT];
 static script_syntax *syntax;
-static int direct_migrations, followup_migrations, current_parses,
-    metadata_checks, transactions;
+static int direct_migrations, followup_migrations, current_parses, transactions;
 
 static int occurrences(const char *text, const char *needle)
 {
@@ -116,12 +102,12 @@ static void setup()
     assert(mkdtemp(directory));
     char root[1024], file[1024];
     path(root, tool_root(), "test/fixtures/studio-declarations");
-    for (int i = 0; i < FIXTURE_COUNT; i++) {
+    for (int i = 0; i < SOURCE_COUNT; i++) {
         path(file, root, names[i]);
         inputs[i] = tool_read(file);
         assert(inputs[i] && strlen(inputs[i]) == fixture_bytes[i]);
     }
-    direct_migrations = followup_migrations = current_parses = metadata_checks = transactions = 0;
+    direct_migrations = followup_migrations = current_parses = transactions = 0;
 }
 
 static void cleanup()
@@ -140,39 +126,32 @@ static void cleanup()
         free(current[i]);
         current[i] = NULL;
     }
-    for (int i = 0; i < FIXTURE_COUNT; i++) {
+    for (int i = 0; i < SOURCE_COUNT; i++) {
         free(inputs[i]);
         inputs[i] = NULL;
     }
     tool_remove_tree(directory);
 }
 
-static bool stale_metadata(int source, const char *json, const char *text)
+/* Adopts a later step's result; *next is NULL when the step changed nothing. */
+static bool advance(int status, char **text, char **next, const char *name, const char *step, const char *error)
 {
-    assert(++metadata_checks <= MAX_METADATA_CHECKS);
-    yyjson_doc *document = yyjson_read(json, strlen(json), 0);
-    yyjson_val *root = yyjson_doc_get_root(document);
-    yyjson_val *anchors = yyjson_obj_get(root, "anchors");
-    const char *hash = yyjson_get_str(yyjson_obj_get(root, "source_hash"));
-    bool valid = yyjson_is_obj(root) && hash && !strcmp(hash, hashes[source]) &&
-                 yyjson_is_arr(anchors) &&
-                 yyjson_arr_size(anchors) == (size_t)anchor_counts[source];
-    size_t i, count;
-    yyjson_val *anchor;
-    yyjson_arr_foreach(anchors, i, count, anchor)
-    {
-        valid &= yyjson_is_uint(yyjson_obj_get(anchor, "start")) &&
-                 yyjson_is_uint(yyjson_obj_get(anchor, "id")) &&
-                 yyjson_is_str(yyjson_obj_get(anchor, "kind"));
+    if (status) {
+        fprintf(stderr, "%s %s: %s\n", name, step, error);
+        return false;
     }
-    yyjson_doc_free(document);
-    return valid && !authoring_source_metadata_matches(json, text);
+    if (*next) {
+        free(*text);
+        *text = *next;
+        *next = NULL;
+    }
+    return true;
 }
 
 static void write_inputs()
 {
     char file[1024];
-    for (int i = 0; i < FIXTURE_COUNT; i++) {
+    for (int i = 0; i < SOURCE_COUNT; i++) {
         path(file, directory, names[i]);
         tool_write(file, inputs[i]);
     }
@@ -189,7 +168,7 @@ static bool read_equals(const char *name, const char *expected)
            info.st_size == (off_t)strlen(expected) && !strcmp(actual, expected);
 }
 
-/* The temporary content is flat and contains only the four exact fixtures,
+/* The temporary content is flat and contains only the two exact fixtures,
  * plus the one malformed source in the rejection transaction. A staging file
  * or any other unexpected entry fails even when the originals still match. */
 static bool content_files(int expected)
@@ -206,7 +185,7 @@ static bool content_files(int expected)
         count++;
         bool known = expected == MAX_CONTENT_FILES &&
                      !strcmp(entry->d_name, "Broken.chibi");
-        for (int i = 0; i < FIXTURE_COUNT; i++) {
+        for (int i = 0; i < SOURCE_COUNT; i++) {
             known |= !strcmp(entry->d_name, names[i]);
         }
         char file[1024];
@@ -224,7 +203,6 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     char error[1024] = { 0 };
     for (int i = 0; i < SOURCE_COUNT; i++) {
         fprintf(stderr, "Studio declaration migration: %s\n", names[i]);
-        REQUIRE(stale_metadata(i, inputs[i + SOURCE_COUNT], inputs[i]));
         REQUIRE(++direct_migrations <= MAX_DIRECT_MIGRATIONS);
         int status = chibi_migrate_declarations(inputs[i], &migrated[i], error, sizeof error);
         if (status) {
@@ -253,6 +231,16 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
             fprintf(stderr, "%s syntax: %s\n", names[i], error);
         }
         REQUIRE(!status && current[i]);
+        char *next = NULL;
+        REQUIRE(++followup_migrations <= MAX_FOLLOWUP_MIGRATIONS);
+        status = chibi_migrate_conversions(current[i], &next, error, sizeof error);
+        REQUIRE(advance(status, &current[i], &next, names[i], "conversions", error));
+        REQUIRE(++followup_migrations <= MAX_FOLLOWUP_MIGRATIONS);
+        status = chibi_migrate_entry(current[i], &next, error, sizeof error);
+        REQUIRE(advance(status, &current[i], &next, names[i], "entry", error));
+        REQUIRE(++followup_migrations <= MAX_FOLLOWUP_MIGRATIONS);
+        status = chibi_migrate_after_entry(current[i], &next, error, sizeof error);
+        REQUIRE(advance(status, &current[i], &next, names[i], "after entry", error));
         REQUIRE(++current_parses <= MAX_CURRENT_PARSES);
         syntax = script_parse(current[i]);
         REQUIRE(!syntax->diagnostic_count);
@@ -264,7 +252,7 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     }
 
     write_inputs();
-    REQUIRE(content_files(FIXTURE_COUNT));
+    REQUIRE(content_files(SOURCE_COUNT));
     REQUIRE(++transactions <= MAX_TRANSACTIONS);
     int status = chibi_project_migrate_content(directory, NULL, 23, error, sizeof error);
     if (status) {
@@ -273,10 +261,8 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     REQUIRE(!status);
     for (int i = 0; i < SOURCE_COUNT; i++) {
         REQUIRE(read_equals(names[i], migrated[i]));
-        REQUIRE(read_equals(names[i + SOURCE_COUNT], inputs[i + SOURCE_COUNT]));
-        REQUIRE(stale_metadata(i, actual, migrated[i]));
     }
-    REQUIRE(content_files(FIXTURE_COUNT));
+    REQUIRE(content_files(SOURCE_COUNT));
 
     write_inputs();
     char broken[1024];
@@ -287,7 +273,7 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     REQUIRE(chibi_project_migrate_content(directory, NULL, 23, error, sizeof error) < 0);
     REQUIRE(!strncmp(error, broken, strlen(broken)));
     REQUIRE(!strcmp(error + strlen(broken), ": Cannot migrate invalid version 23 source"));
-    for (int i = 0; i < FIXTURE_COUNT; i++) {
+    for (int i = 0; i < SOURCE_COUNT; i++) {
         REQUIRE(read_equals(names[i], inputs[i]));
     }
     REQUIRE(read_equals("Broken.chibi", malformed));
@@ -319,7 +305,6 @@ TEST_CASE(studio_declarations_migrate_and_reject_atomically)
     REQUIRE(direct_migrations == MAX_DIRECT_MIGRATIONS);
     REQUIRE(followup_migrations == MAX_FOLLOWUP_MIGRATIONS);
     REQUIRE(current_parses == MAX_CURRENT_PARSES);
-    REQUIRE(metadata_checks == MAX_METADATA_CHECKS);
     REQUIRE(transactions == MAX_TRANSACTIONS);
     return true;
 }

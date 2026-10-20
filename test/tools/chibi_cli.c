@@ -507,12 +507,12 @@ static const char
               "\n"
               "@test\n"
               "Passes :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n"
               "}\n"
               "\n"
               "@test\n"
               "Fails :: () {\n"
-              "    expect(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
+              "    assert(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n"
               "}\n";
 
 /* The real compiler's --test runs each test of the packages below the root
@@ -538,7 +538,7 @@ TEST_CASE(compiler_test_reports_each_test)
         expected,
         sizeof expected,
         "PASS facts.Passes\nFAIL facts.Fails\n  %s/facts/Facts.chibi:11:5: "
-        "Expectation failed: four bytes\n2 tests, 1 failed\n",
+        "Assertion failed: four bytes\n2 tests, 1 failed\n",
         tests
     );
     REQUIRE(file_is("tests.log", expected));
@@ -694,7 +694,7 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick(dt) {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);
@@ -1115,6 +1115,37 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
     );
     REQUIRE(tool_run(docs, root, output) == 0);
+    /* Package fences share this page's virtual workspace and real core imports. */
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\n// score/Bonus.chibi\npackage score\n"
+        "Twice :: (n: int) -> int { return n * 2 }\n"
+        "pub Reward :: () -> int { return Twice(5) }\n```\n"
+        "```chibi\npackage score\npub More :: () -> int { return Twice(6) "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "import strings \"core:strings\"\n"
+        "pub Ready :: () -> bool { return strings.HasPrefix(\"reward\", "
+        "\"re\") && score.Reward() > 0 }\n```\n"
+        "```chibi\npackage relative\nimport score \"../score\"\n"
+        "pub Points :: () -> int { return score.More() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 0);
+    REQUIRE(file_has("site/build/docs/guide.html", "core:strings"));
+    write_file(
+        "site/docs/guide.md",
+        "# Guide\n\n```chibi\npackage score\nSecret :: () -> int { return 10 "
+        "}\n```\n"
+        "```chibi\npackage rewards\nimport score \"project:score\"\n"
+        "pub Points :: () -> int { return score.Secret() }\n```\n"
+    );
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:10:"));
+    REQUIRE(file_has("docs.log", "'score.Secret' is private"));
+    write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage rewards\nimport missing \"project:missing\"\n```\n");
+    REQUIRE(tool_run(docs, root, output) == 1);
+    REQUIRE(file_has("docs.log", "docs/guide.md:5:"));
+    REQUIRE(file_has("docs.log", "Imported package is missing"));
     write_file("site/docs/guide.md", "# Guide\n\n```chibi\npackage sample\nTwice :: () {\n    Missing();\n}\n```\n");
     REQUIRE(tool_run(docs, root, output) == 1);
     REQUIRE(file_has("docs.log", "docs/guide.md:6:5: example: Unknown callable 'Missing'"));
@@ -1169,7 +1200,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         directory(folders[i]);
     }
     write_file("generated/README.md", "# Home\n\nSee [the grammar](grammar.js).\n");
-    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\nSides: int : 4;\n");
+    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\npub Sides: int : 4;\n");
     write_file("generated/grammar.js", "  rules: {\n    // One [item](item.md).\n    item: ($) => \"x\",\n  },\n");
     generated_site("lib", "lib");
     char site[256], output[256];
@@ -1179,7 +1210,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
     REQUIRE(
-        file_has("generated/build/docs/packages.html", "Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
+        file_has("generated/build/docs/packages.html", "pub Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
     );
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")
@@ -1408,7 +1439,7 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *run[] = { launcher, "test", tree, NULL };
     REQUIRE(tool_run(run, root, output) == 1);
     REQUIRE(file_has("installed.log", "PASS facts.Passes\nFAIL facts.Fails\n"));
-    REQUIRE(file_has("installed.log", "Expectation failed: four bytes\n2 tests, 1 failed\n"));
+    REQUIRE(file_has("installed.log", "Assertion failed: four bytes\n2 tests, 1 failed\n"));
 
     directory("packages/lib");
     write_file("packages/lib/Lib.chibi", MESSY_PACKAGE);

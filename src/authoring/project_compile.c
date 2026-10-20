@@ -186,7 +186,15 @@ void authoring_application_end(authoring_application *application)
     authoring_graph_catalog_free(application->graphs);
     native_capabilities_free(application->native);
 }
-int authoring_project_compile(const char *project, const char *scene, const char *output)
+/* Prepares the project, or assembles it from `modules` when there are any,
+ * and writes the artifact to `output` when there is one. */
+static int compile(
+    const char *project,
+    const char *scene,
+    const package_module *modules,
+    int count,
+    const char *output
+)
 {
     char error[512] = { 0 };
     authoring_application application;
@@ -202,7 +210,9 @@ int authoring_project_compile(const char *project, const char *scene, const char
                                                           REGISTRY_COMPONENT_COUNT },
                                           .modules = WORLD_MODULES_ALL,
                                           .read_only = !output };
-    bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
+    bool valid = modules
+                   ? authoring_project_assemble(&options, modules, count, &artifact, error, sizeof error)
+                   : authoring_project_prepare(&options, &artifact, error, sizeof error);
     authoring_application_end(&application);
     if (valid && output) {
         valid = write_artifact(output, &artifact, error, sizeof error);
@@ -216,6 +226,20 @@ int authoring_project_compile(const char *project, const char *scene, const char
     }
     authoring_project_artifact_free(&artifact);
     return valid ? 0 : 1;
+}
+int authoring_project_compile(const char *project, const char *scene, const char *output)
+{
+    return compile(project, scene, NULL, 0, output);
+}
+int authoring_project_compile_modules(
+    const char *project,
+    const package_module *modules,
+    int count,
+    const char *output
+)
+{
+    assert(modules && count > 0 && output);
+    return compile(project, NULL, modules, count, output);
 }
 
 static void print_diagnostic(const char *path, const script_diagnostic *diagnostic)
@@ -693,7 +717,9 @@ typedef struct
     const behavior_function *render[DOCS_KINDS], *unpublished[DOCS_KINDS];
     const behavior_function *head, *foot, *style;
     behavior_backend backend;
-    const script_catalog *catalog; /* Names a published example may use. */
+    const native_capabilities *native;
+    const authoring_packages *packages;
+    const char *core;
 } docs_generator;
 
 /* Reports a diagnostic of an example that starts after line `fence` of the
@@ -718,45 +744,155 @@ static void example_error(
     );
 }
 
-/* One example: it parses, and a package also analyzes. */
-static bool check_example(
+typedef struct
+{
+    source_package_input file;
+    int fence;
+} docs_example;
+
+/* Map package-local diagnostics back to their original fenced example. */
+static void package_example_error(
     const char *source,
-    int fence,
-    const char *code,
-    const script_catalog *catalog,
+    const docs_example *examples,
+    const char *path,
+    const script_diagnostic *diagnostic,
     char *error,
     size_t size
 )
 {
-    script_syntax *syntax = script_parse(code);
-    bool valid = !syntax->diagnostic_count;
-    if (!valid) {
-        example_error(source, fence, &syntax->diagnostics[0], error, size);
-    }
-    if (valid && !strncmp(code, "package ", strlen("package "))) {
-        script_package_document document = { source, source, syntax };
-        const script_package_options options = { .documents = &document,
-                                                 .document_count = 1,
-                                                 .identity = "project:example",
-                                                 .native = catalog };
-        script_analysis *analysis = script_analyze_package(&options);
-        valid = !analysis->diagnostic_count;
-        if (!valid) {
-            example_error(source, fence, &analysis->diagnostics[0], error, size);
+    for (int i = 0; i < acount(examples); i++) {
+        if (path && !strcmp(path, examples[i].file.path)) {
+            example_error(source, examples[i].fence, diagnostic, error, size);
+            return;
         }
-        script_analysis_free(analysis);
     }
-    script_syntax_free(syntax);
+    snprintf(
+        error,
+        size,
+        "%s:%d:%d: example dependency: %s",
+        path ? path : source,
+        diagnostic->range.line,
+        diagnostic->range.column,
+        diagnostic->message
+    );
+}
+
+/* Each page is a package workspace. A package header selects its folder, so
+ * sibling fences share declarations and relative imports use normal rules.
+ * The shipped core sources remain in their real collection. */
+static bool check_package_examples(
+    const docs_generator *generator,
+    const char *source,
+    const docs_example *examples,
+    char *error,
+    size_t size
+)
+{
+    if (!acount(examples)) {
+        return true;
+    }
+    source_package_input *files = NULL;
+    const source_package_snapshot *original = authoring_packages_snapshot(
+        generator->packages
+    );
+    const source_packages *graph = source_package_snapshot_graph(original);
+    int count;
+    const script_package_document *documents = source_package_snapshot_documents(original, &count);
+    for (int i = 0; i < source_packages_count(graph); i++) {
+        if (strncmp(source_package_snapshot_identity(original, i), "core:", 5)) {
+            continue;
+        }
+        const source_package *package = source_packages_at(graph, i);
+        for (int j = 0; j < package->file_count; j++) {
+            const script_package_document *document = &documents[package->files[j]];
+            apush(
+                files,
+                ((source_package_input){ document->path,
+                                         document->syntax->text,
+                                         strlen(document->syntax->text) })
+            );
+        }
+    }
+    for (int i = 0; i < acount(examples); i++) {
+        apush(files, examples[i].file);
+    }
+    char *core = realpath(generator->core, NULL);
+    source_package_collection collections[] = { { "core", core } };
+    source_package_snapshot_options options = { "/docs-examples",
+                                                files,
+                                                acount(files),
+                                                collections,
+                                                1 };
+    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
+    free(core);
+    const source_package_snapshot_error *failure = source_package_snapshot_error_at(snapshot);
+    bool valid = !failure;
+    if (failure) {
+        documents = source_package_snapshot_documents(snapshot, &count);
+        int at = failure->diagnostic.range.document;
+        package_example_error(
+            source,
+            examples,
+            at >= 0 && at < count ? documents[at].path : NULL,
+            &failure->diagnostic,
+            error,
+            size
+        );
+    }
+    authoring_packages *packages = NULL;
+    if (valid) {
+        script_lower_bindings bindings = authoring_native_bindings(generator->native);
+        packages = authoring_packages_prepare(
+            snapshot,
+            native_capabilities_catalog(generator->native),
+            &bindings,
+            generator->backend,
+            generator->packages
+        );
+        valid = authoring_packages_valid(packages);
+        if (!valid) {
+            snprintf(
+                error,
+                size,
+                "%s: example: %s",
+                source,
+                authoring_packages_error(packages) ? authoring_packages_error(packages)
+                                                   : "Invalid package example"
+            );
+            const source_packages *resolved = source_package_snapshot_graph(snapshot);
+            documents = source_package_snapshot_documents(snapshot, &count);
+            for (int i = 0; i < authoring_packages_count(packages); i++) {
+                int index = source_packages_order(resolved, i);
+                const authoring_package *package = authoring_packages_at(packages, index);
+                if (!package->diagnostic_count) {
+                    continue;
+                }
+                const script_diagnostic *diagnostic = &package->diagnostics[0];
+                int at = diagnostic->range.document;
+                const source_package *membership = source_packages_at(resolved, index);
+                const char *path = at >= 0 && at < membership->file_count
+                                     ? documents[membership->files[at]].path
+                                     : NULL;
+                package_example_error(source, examples, path, diagnostic, error, size);
+                break;
+            }
+        }
+    }
+    if (packages) {
+        authoring_packages_free(packages);
+    } else {
+        source_package_snapshot_free(snapshot);
+    }
+    afree(files);
     return valid;
 }
 
-/* Every example fenced as chibi on a page parses, and one that is a whole
- * package also analyzes against the natives a test may call, so published
- * examples stay true to the language. */
+/* Every chibi fence parses. Complete packages also resolve imports and compile
+ * together, using the same package APIs and natives as standalone tests. */
 static bool check_examples(
+    const docs_generator *generator,
     const char *source,
     const char *text,
-    const script_catalog *catalog,
     char *error,
     size_t size
 )
@@ -765,12 +901,41 @@ static bool check_examples(
     int line = 1, fence = 0;
     bool inside = false, valid = true;
     char *code = NULL;
+    docs_example *examples = NULL;
     for (const char *at = text; valid && *at; line++) {
         const char *end = strchr(at, '\n');
         size_t length = end ? (size_t)(end - at) : strlen(at);
         if (inside && !strncmp(at, "```", 3)) {
             apush(code, '\0');
-            valid = check_example(source, fence, code, catalog, error, size);
+            script_syntax *syntax = script_parse(code);
+            valid = !syntax->diagnostic_count;
+            if (!valid) {
+                example_error(source, fence, &syntax->diagnostics[0], error, size);
+            } else {
+                TSNode header = ts_node_child_by_field_name(
+                    ts_tree_root_node(syntax->tree),
+                    "package",
+                    7
+                );
+                if (!ts_node_is_null(header)) {
+                    TSNode name = ts_node_child_by_field_name(header, "name", 4);
+                    script_range range = script_node_range(name);
+                    char path[4096];
+                    snprintf(
+                        path,
+                        sizeof path,
+                        "/docs-examples/%.*s/Example%d.chibi",
+                        range.end - range.start,
+                        code + range.start,
+                        fence
+                    );
+                    apush(
+                        examples,
+                        ((docs_example){ { xstrdup(path), xstrdup(code), strlen(code) }, fence })
+                    );
+                }
+            }
+            script_syntax_free(syntax);
             asetlen(code, 0);
             inside = false;
         } else if (inside) {
@@ -784,6 +949,12 @@ static bool check_examples(
         }
         at = end ? end + 1 : at + length;
     }
+    valid = valid && check_package_examples(generator, source, examples, error, size);
+    for (int i = 0; i < acount(examples); i++) {
+        free((char *)examples[i].file.path);
+        free((char *)examples[i].file.text);
+    }
+    afree(examples);
     afree(code);
     return valid;
 }
@@ -838,7 +1009,7 @@ static bool page_body(
     }
     char *text = body->texts[0];
     if (page->kind == DOCS_MARKDOWN &&
-        !check_examples(page->source, text, generator->catalog, error, size)) {
+        !check_examples(generator, page->source, text, error, size)) {
         return false;
     }
     split_lines(text, &body->lines);
@@ -1085,7 +1256,9 @@ int authoring_project_docs(const char *root, const char *generator_root, const c
             .foot = generator_function(packages, "project:site", "Foot", 0),
             .style = generator_function(packages, "project:site", "Style", 0),
             .backend = behavior_default_backend(),
-            .catalog = native_capabilities_catalog(native)
+            .native = native,
+            .packages = packages,
+            .core = core
         };
         for (int kind = 0; kind < DOCS_KINDS; kind++) {
             generator.render[kind] = generator_function(

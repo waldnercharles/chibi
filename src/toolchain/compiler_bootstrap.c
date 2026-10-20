@@ -87,6 +87,25 @@ static bool write_bytes(const char *folder, const char *name, const void *bytes,
     return written;
 }
 
+/* Replaces the file at path with bytes, as write_bytes does. */
+static bool write_path(const char *path, const void *bytes, size_t length)
+{
+    const char *slash = strrchr(path, '/');
+    if (!slash) {
+        return write_bytes(".", path, bytes, length);
+    }
+    size_t size = (size_t)(slash - path);
+    char *folder = xmalloc(size + 2);
+    memcpy(folder, path, size);
+    folder[size ? size : 1] = 0;
+    if (!size) {
+        folder[0] = '/';
+    }
+    bool written = write_bytes(folder, slash + 1, bytes, length);
+    free(folder);
+    return written;
+}
+
 /* Makes the folder unless it already is one. */
 static bool make_folder(const char *path)
 {
@@ -597,15 +616,26 @@ static char *disk_arguments(
     return json;
 }
 
+/* Writes the recovered compiler to output when there is one. */
+static bool written(const char *output, const unsigned char *bytes, size_t length, char *report, size_t size)
+{
+    if (output && !write_path(output, bytes, length)) {
+        snprintf(report, size, "%s cannot be written", output);
+        return false;
+    }
+    return true;
+}
 /* Compiles the sources with the artifact loaded in host, which this frees:
  * the artifact's own bytes when they are the sources it recorded, otherwise a
- * compiler that compiles them to itself. */
+ * compiler that compiles them to itself. Writes that compiler to `output`
+ * when there is one. */
 static bool recover(
     compiler_host *host,
     const artifact *a,
     const char *json,
     size_t length,
     int changed,
+    const char *output,
     char *report,
     size_t size
 )
@@ -634,6 +664,7 @@ static bool recover(
         } else {
             snprintf(report, size, "the artifact compiles the sources it records to %zu other bytes", first_length);
         }
+        valid = valid && written(output, first, first_length, report, size);
         free(first);
         return valid;
     }
@@ -657,6 +688,7 @@ static bool recover(
     } else if (second) {
         snprintf(report, size, "the recovered compiler compiles the sources to %zu other bytes", second_length);
     }
+    valid = valid && written(output, first, first_length, report, size);
     free(second);
     compiler_host_free(next);
     free(first);
@@ -678,7 +710,8 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
                             : NULL;
     bool targeted = host &&
                     target_matches(host, yyjson_obj_get(a.root, "target"), 0, report, size);
-    valid = targeted && recover(host, &a, json, length, changed, report, size);
+    valid = targeted &&
+            recover(host, &a, json, length, changed, b->output, report, size);
     if (!targeted) {
         compiler_host_free(host);
     }

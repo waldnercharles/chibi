@@ -24,6 +24,7 @@ typedef struct
     const script_catalog *metadata;
     const script_lower_package_result *lowered;
     script_package_export *members;
+    const char **private_names;
     script_catalog_capability *functions, *capabilities;
     script_catalog_type *types;
 } exports_builder;
@@ -182,6 +183,10 @@ static bool members(exports_builder *b)
             (symbol->kind == SCRIPT_FUNCTION && symbol->function < 0)) {
             continue;
         }
+        if (!symbol->pub) {
+            apush(b->private_names, symbol->name);
+            continue;
+        }
         script_package_export member = { .name = symbol->name,
                                          .id = symbol->id,
                                          .type = symbol->type,
@@ -317,16 +322,23 @@ source_package_exports *source_package_exports_new(
                 break;
             }
         }
+        const char **hidden = arena_alloc(&owner->storage, (size_t)acount(b.private_names) * sizeof *hidden);
+        for (int i = 0; i < acount(b.private_names); i++) {
+            hidden[i] = own(owner, b.private_names[i]);
+        }
         if (!owner->error[0]) {
             owner->view = (script_package_exports){
                 .identity = own(owner, analysis->identity),
                 .metadata = &owner->metadata,
                 .members = retained,
-                .member_count = acount(b.members)
+                .member_count = acount(b.members),
+                .private_names = hidden,
+                .private_count = acount(b.private_names)
             };
         }
     }
     afree(b.members);
+    afree(b.private_names);
     afree(b.functions);
     afree(b.types);
     afree(b.capabilities);

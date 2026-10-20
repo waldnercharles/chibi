@@ -59,7 +59,7 @@ Cell :: struct {
     storage: int;
     container: int;
     record: int;
-    constant: int;
+    constant: uint64;
     variant: int;
     kind: int;
 }
@@ -71,13 +71,15 @@ Invocation :: struct {
     result_count: int;
 }
 // A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
-// when `linked` is not -1.
+// when `linked` is not -1. A component reference's make is `written` when
+// the body writes through the reference.
 Host :: struct {
     intrinsic: int;
     linked: int;
     first: int;
     result_first: int;
     result_count: int;
+    written: bool;
 }
 // A slot holding a record or array pointer the collector must trace.
 Root :: struct {
@@ -89,8 +91,27 @@ Root :: struct {
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
-              hosts: Host[], roots: Root[])
+              hosts: Host[], roots: Root[], points: SourcePoint[])
 }
+// A debugger point: a record of stage zero's kind at a source range, which
+// breakpoints find by its occurrence; `meaning` names what it is, such as the
+// event a handler takes, and a function's completion points mark its returns.
+SourcePoint :: struct {
+    occurrence: uint64;
+    meaning: uint64;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    kind: int;
+    completion: bool;
+}
+// Record kinds, as the SDK numbers them.
+FunctionRecord: int : 1;
+StatementRecord: int : 3;
+// The point index of a step's SOURCE_POINT that EmitBody makes the function's
+// completion point at the statement.
+CompletionPoint: int : -2;
 // A scheduled visit. Storage, container and record are the type a literal at
 // `node` takes from its context; storage 0 means none.
 Work :: struct {
@@ -110,8 +131,8 @@ Value :: struct {
     record: int;
 }
 // A name in scope: a locals-bank value, a record or array held in a data
-// cell, or a record or array parameter read in place. Pattern bindings are
-// not writable.
+// cell, a record or array parameter read in place, or a behavior's state or
+// owner. Pattern bindings are not writable.
 Name :: struct {
     name: string;
     place: int;
@@ -123,7 +144,10 @@ Name :: struct {
 }
 // A loop being emitted. A while loop's continues jump to `head`; a for
 // loop patches them to its increment, and owns its index local, the names to
-// drop and its exit jump, `leave`.
+// drop and its exit jump, `leave`. A for loop counts down when `reverse`; a
+// range loop keeps its other end in the `bound` local and, when `counted`,
+// stops once the index reaches it, before a step that could wrap; `empty`
+// skips a reversed `..<` range that holds nothing.
 Loop :: struct {
     head: int;
     first_break: int;
@@ -132,11 +156,17 @@ Loop :: struct {
     index: int;
     mark: int;
     leave: int;
+    reverse: bool;
+    counted: bool;
+    bound: int;
+    empty: int;
 }
 // A switch being emitted: the local holding its union, where its exit jumps
 // start in `exits` and its matched variants in `covered`, whether it has a
 // default arm, the pending jump past the current arm, and the names the arm's
-// bindings start at.
+// bindings start at. A switch on an integer of `storage` compares the value
+// with each arm's in turn and runs its default arm, `fallback`, after them
+// all, as stage zero does; -2 once that arm is emitted.
 Switch :: struct {
     subject: int;
     held: int;
@@ -145,6 +175,9 @@ Switch :: struct {
     defaulted: bool;
     skip: int;
     mark: int;
+    value: bool;
+    storage: int;
+    fallback: int;
 }
 // The size of each table when a step starts.
 Bases :: struct {
@@ -177,6 +210,12 @@ AliasPlace: int : 3;
 // A local holding a native call's several results: its index is the first
 // result's cell and its record the native.
 ResultsPlace: int : 4;
+// A behavior's retained state; its index is the state's.
+StatePlace: int : 5;
+// `self`, the entity that owns the behavior.
+SelfPlace: int : 6;
+// A name the game binds; its index is the global's.
+GlobalPlace: int : 7;
 ArrayContainer: int : 1;
 // A jump whose target a later instruction supplies.
 Pending: int : -1;
@@ -187,6 +226,7 @@ ArrayStoreIntrinsic: int : 28;
 ArrayExtendIntrinsic: int : 29;
 ReferenceMakeIntrinsic: int : 3;
 ReferenceFieldIntrinsic: int : 4;
+ReferenceReadIntrinsic: int : 5;
 ReferenceWriteIntrinsic: int : 6;
 UnionMakeIntrinsic: int : 20;
 UnionTestIntrinsic: int : 21;
@@ -197,7 +237,92 @@ RetainedPhase: int : 2;
 PushPhase: int : 3;
 StorePhase: int : 4;
 FieldPhase: int : 5;
+ComponentPhase: int : 6;
+// The phase of a binary operator or compound assignment whose two values on
+// top are records, which a numeric aggregate native combines.
+AggregatePhase: int : 7;
+ComponentAssignPhase: int : 8;
+// The phase of a compound assignment that combines the two values on top with
+// its operator.
+CombinePhase: int : 9;
+// The phase of `return (a, b)` once each named result's value is ready.
+ReturnsPhase: int : 10;
 
+// The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
+// a word into an identity.
+MixWord :: (hash: uint64, value: uint64) -> uint64 {
+    mixed := hash;
+    rest := value;
+    index: int = 0;
+    while (index < 8) {
+        mixed = (mixed ^ (rest & 255)) * 1099511628211;
+        rest = rest >> 8;
+        index += 1;
+    }
+    return mixed;
+}
+// A record's occurrence, as the SDK's script_occurrence gives it: its
+// document `key`, its kind and its range counted in bytes that are not
+// whitespace.
+Occurrence :: (key: string, kind: int, start: int, end: int) -> uint64 {
+    hash := binding.ID("source-occurrence", "");
+    count := strings.ByteLength(key);
+    hash = MixWord(hash, uint64(count));
+    index: int = 0;
+    while (index < count) {
+        hash = (hash ^ uint64(strings.ByteAt(key, index))) * 1099511628211;
+        index += 1;
+    }
+    hash = MixWord(MixWord(MixWord(hash, uint64(kind)), uint64(start)), uint64(end));
+    if (hash == 0) {
+        return 1;
+    }
+    return hash;
+}
+// How many bytes of `text` before each offset, through its end, are not
+// whitespace.
+SolidOffsets :: (text: string) -> int[] {
+    size := strings.ByteLength(text);
+    solid: int[] = [];
+    count: int = 0;
+    index: int = 0;
+    while (index <= size) {
+        solid = array_add(solid, count);
+        if (index < size) {
+            byte := strings.ByteAt(text, index);
+            if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
+                count += 1;
+            }
+        }
+        index += 1;
+    }
+    return solid;
+}
+// The point at `node` of the record of `kind` at `record`, in the document
+// `key` whose bytes `solid` counts. A completion point is its function's, at
+// a return.
+PointAt :: (key: string, solid: int[], kind: int, meaning: uint64, completion: bool, record: snapshot.SnapshotNode,
+            node: snapshot.SnapshotNode) -> SourcePoint {
+    return {occurrence: Occurrence(key, kind, solid[record.start], solid[record.end]), meaning: meaning,
+            start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
+            completion: completion};
+}
+// A return's SOURCE_POINT, which EmitBody makes the function's completion
+// point at the return.
+CompletionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, CompletionPoint, 0, 0, node);
+}
+// The SOURCE_POINT of points[point].
+PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, point, 0, 0, node);
+}
+// Whether stage zero lowers a node of `kind` as a statement, with a point.
+Statement :: (kind: string) -> bool {
+    return kind == "callable_body" || kind == "block" || kind == "if_statement" || kind == "while_statement" ||
+           kind == "for_statement" || kind == "switch_statement" || kind == "break_statement" ||
+           kind == "continue_statement" || kind == "local_declaration" || kind == "assignment" ||
+           kind == "expression_statement" || kind == "return_statement";
+}
 Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
                 item: snapshot.SnapshotNode) -> Code {
     return {op: op, type: type, output: output, left: left, right: right, target: target,
@@ -213,6 +338,10 @@ Expect :: (node: int, storage: int, container: int, record: int) -> Work {
 }
 Resume :: (node: int, phase: int, a: int, b: int) -> Work {
     return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
+}
+// Bases for a step whose code stands alone, such as a state's initial value.
+NoBases :: () -> Bases {
+    return {pc: 0, slot: 0, local: 0, cell: 0, host: 0, call: 0};
 }
 NoValue :: () -> Value {
     return {slot: -1, storage: 0, container: 0, record: -1};
@@ -309,48 +438,61 @@ ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Lit
     }
     return Literal.Number(negative, magnitude);
 }
+Int8Storage: int : 2;
 ByteStorage: int : 3;
+Int16Storage: int : 4;
+Uint16Storage: int : 5;
+UintStorage: int : 7;
 Int64Storage: int : 8;
 // A value no instruction holds yet: an integer literal its use gives a type.
 NumberStorage: int : -3;
 // The several results of a native call: the value's slot is the cell of the
 // first result and its record the native; `.name` reads one result.
 ResultsStorage: int : -4;
+// The named results of a function's call, as ResultsStorage, but the record
+// is the callable.
+FunctionResultsStorage: int : -5;
 // The integer types this compiler emits.
 Integer :: (storage: int) -> bool {
-    return storage == ByteStorage || storage == IntStorage || storage == Int64Storage || storage == WordStorage;
+    return storage >= Int8Storage && storage <= WordStorage;
+}
+Signed :: (storage: int) -> bool {
+    return storage == Int8Storage || storage == Int16Storage || storage == IntStorage || storage == Int64Storage;
+}
+// An integer type's width in bits.
+Width :: (storage: int) -> int {
+    if (storage == Int8Storage || storage == ByteStorage) {
+        return 8;
+    }
+    if (storage == Int16Storage || storage == Uint16Storage) {
+        return 16;
+    }
+    if (storage == IntStorage || storage == UintStorage) {
+        return 32;
+    }
+    return 64;
 }
 TypeName :: (storage: int) -> string {
-    if (storage == ByteStorage) {
-        return "byte";
+    if (!Integer(storage)) {
+        return "";
     }
-    if (storage == IntStorage) {
-        return "int";
-    }
-    if (storage == Int64Storage) {
-        return "int64";
-    }
-    return "uint64";
+    names: string[] = ["int8", "byte", "int16", "uint16", "int", "uint", "int64", "uint64"];
+    return names[storage - Int8Storage];
 }
 // Whether a literal's value fits an integer type.
 Fits :: (negative: bool, magnitude: uint64, storage: int) -> bool {
     // Stage zero rejects any signed literal of an unsigned type, -0 included.
-    if (negative && (storage == ByteStorage || storage == WordStorage)) {
+    if (negative && !Signed(storage)) {
         return false;
     }
     if (magnitude == 0) {
         return true;
     }
-    if (storage == ByteStorage) {
-        return (magnitude >> 8) == 0;
+    if (!Signed(storage)) {
+        return storage == WordStorage || (magnitude >> uint64(Width(storage))) == 0;
     }
-    if (storage == IntStorage) {
-        return (magnitude >> 31) == 0 || (negative && magnitude == 0x80000000);
-    }
-    if (storage == Int64Storage) {
-        return (magnitude >> 63) == 0 || (negative && magnitude == 0x8000000000000000);
-    }
-    return !negative;
+    bits := uint64(Width(storage) - 1);
+    return (magnitude >> bits) == 0 || (negative && magnitude == (uint64(1) << bits));
 }
 // A literal's bits in an integer type it fits, sign-extended when negative.
 Bits :: (negative: bool, magnitude: uint64) -> uint64 {
@@ -359,41 +501,48 @@ Bits :: (negative: bool, magnitude: uint64) -> uint64 {
     }
     return magnitude;
 }
-// The type both integer operands convert to without loss: the wider one, or
-// int for a byte and an int; -1 when there is none, as for a signed type with
-// uint64.
+// The type both integer operands convert to without loss, as stage zero's
+// behavior_scalar_common_integer chooses it: the wider operand, or int or
+// int64 for a signed and unsigned pair; -1 when there is none, as for int64
+// with uint64.
 CommonInteger :: (left: int, right: int) -> int {
-    if (left == right) {
-        return left;
-    }
-    if (left == ByteStorage) {
+    if (IntegerWidens(left, right)) {
         return right;
     }
-    if (right == ByteStorage) {
+    if (IntegerWidens(right, left)) {
         return left;
     }
-    if ((left == IntStorage && right == Int64Storage) || (left == Int64Storage && right == IntStorage)) {
+    if (IntegerWidens(left, IntStorage) && IntegerWidens(right, IntStorage)) {
+        return IntStorage;
+    }
+    if (IntegerWidens(left, Int64Storage) && IntegerWidens(right, Int64Storage)) {
         return Int64Storage;
     }
     return -1;
+}
+// Whether every value of the integer type `from` fits `to`.
+IntegerWidens :: (from: int, to: int) -> bool {
+    if (Signed(from) && !Signed(to)) {
+        return false;
+    }
+    if (!Signed(from) && Signed(to)) {
+        return Width(to) > Width(from);
+    }
+    return Width(to) >= Width(from);
 }
 // Whether an integer converts to another without loss, as stores do
 // implicitly.
 Widens :: (from: int, to: int) -> bool {
     return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
 }
-// Whether the runtime computes `op` in an integer type: any comparison for
-// equality and bit operation, the rest for int and int64, and only addition
-// and multiplication for uint64.
+// Whether the runtime computes `op` in a number type: arithmetic other than
+// remainders, and comparisons, for floats; every operator for the integers,
+// negation for the signed ones only.
 Computes :: (ops: Ops, op: int, storage: int) -> bool {
-    if (op == ops.eq || op == ops.ne || op == ops.bit_and || op == ops.bit_or || op == ops.bit_xor ||
-        op == ops.bit_not || op == ops.shl || op == ops.shr) {
-        return true;
+    if (Floating(storage)) {
+        return op == ops.add || op == ops.sub || op == ops.mul || op == ops.div || op == ops.neg || Comparison(ops, op);
     }
-    if (storage == IntStorage || storage == Int64Storage) {
-        return true;
-    }
-    return storage == WordStorage && (op == ops.add || op == ops.mul);
+    return op != ops.neg || Signed(storage);
 }
 // A constant of an integer or bool type. One literal holds `bits`: stage
 // zero takes any uint64 for a pointer, and storing one into a local record's
@@ -411,6 +560,10 @@ CastCode :: (ops: Ops, storage: int, output: int, input: int, mode: int, node: s
     cast.message = format_text("Value does not fit in {}", TypeName(storage));
     cast.has_message = true;
     return cast;
+}
+// The floating types this compiler emits.
+Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
 }
 // The instruction a binary operator lowers to; -1 for logic and unknown ones.
 BinaryOp :: (ops: Ops, operator: string) -> int {
@@ -485,15 +638,29 @@ FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     }
     return -1;
 }
+// The field of types[record] named `name`; a native type's matches as the
+// catalog matches it: an exact name first, else the one that matches
+// loosely. -1 for none or several.
 FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+    found: int = -1;
     at := types[record].first;
     while (at < types[record].first + types[record].count) {
         if (members[at].name == name) {
             return at;
         }
+        if (types[record].kind >= NativeDecl && NameMatches(members[at].name, name)) {
+            if (found != -1) {
+                found = -2;
+            } else {
+                found = at;
+            }
+        }
         at += 1;
     }
-    return -1;
+    if (found < 0) {
+        return -1;
+    }
+    return found;
 }
 // The innermost binding of `wanted`, -1 when none.
 Lookup :: (names: Name[], wanted: string) -> int {
@@ -663,6 +830,30 @@ BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -
     return false;
 }
 // The next switch arm after `node` among its siblings, -1 when none.
+// Whether a range's bounds are both constant and the first is the greater.
+Descends :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
+             package: int, node: int) -> bool {
+    bounds: int64[] = [];
+    for (end in [Field(forest, node, "first"), Field(forest, node, "last")]) {
+        switch FoldConstant(forest, text, document, constants, names, package, end, IntStorage) {
+            case .Folded(bits):
+                bounds = array_add(bounds, int64(wrap: bits));
+            case .Failed(diagnostic):
+                return false;
+            case .Waiting:
+                return false;
+        }
+    }
+    return bounds[0] > bounds[1];
+}
+// The name an array loop gives each item: `x` in `for x in xs` and in the
+// keyed `for x, i in xs`, whose second name is the index.
+ItemField :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Field(forest, node, "key") >= 0) {
+        return Field(forest, node, "key");
+    }
+    return Field(forest, node, "name");
+}
 NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
     at := NextMember(forest, node);
     while (at >= 0 && !Is(forest, at, "switch_arm")) {
@@ -767,8 +958,9 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], aliases: Name[],
-             function: int, ops: Ops, target: Target) -> Body {
+             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+             solid: int[], meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -823,6 +1015,25 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         index += 1;
     }
+    // The function's point, its statements' and its completions', as stage
+    // zero places them.
+    points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
+    code = array_add(code, PointCode(ops, 0, declaration));
+    // Named results are locals from `named` on, zero until the body sets them.
+    named := length(locals);
+    index = 0;
+    while (index < callable.results) {
+        result := params[callable.first + callable.count + index];
+        slots = array_add(slots, ValueLocal(result.storage));
+        code = array_add(code, ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+        locals = array_add(locals, ValueLocal(result.storage));
+        code = array_add(code, Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
+                                           declaration));
+        bound: Name = {name: result.name, place: LocalPlace, index: length(locals) - 1, storage: result.storage,
+                       container: 0, record: result.record, writable: true};
+        names = array_add(names, bound);
+        index += 1;
+    }
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
@@ -838,6 +1049,23 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         operator := Text(forest, text, Field(forest, item.node, "operator"));
         logic := kind == "binary_expression" &&
                  (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
+        if (item.phase == 0 && Statement(kind)) {
+            points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, node, node));
+            code = array_add(code, PointCode(ops, length(points) - 1, node));
+            // Stage zero assigns each returned value to a result, a statement
+            // of its own.
+            value := Field(forest, item.node, "value");
+            returned: int[] = [];
+            if (kind == "return_statement" && Is(forest, value, "argument_list")) {
+                returned = Members(forest, value);
+            } else if (kind == "return_statement" && value >= 0) {
+                returned = [value];
+            }
+            for (each in returned) {
+                points = array_add(points, PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
+                code = array_add(code, PointCode(ops, length(points) - 1, forest[each]));
+            }
+        }
         // The step a node other than control flow takes.
         stepped := true;
         at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
@@ -882,7 +1110,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 if (kind == "while_statement") {
                     field = "body";
                     loop: Loop = {head: item.a, first_break: length(breaks), first_continue: length(continues),
-                                  each: false, index: -1, mark: length(names), leave: length(code) - 1};
+                                  each: false, index: -1, mark: length(names), leave: length(code) - 1,
+                                  reverse: false, counted: false, bound: -1, empty: -1};
                     loops = array_add(loops, loop);
                 }
                 next = array_add(next, Visit(Field(forest, item.node, field)));
@@ -927,14 +1156,105 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             }
         } else if (kind == "for_statement") {
             if (item.phase == 0) {
-                if (Field(forest, item.node, "first") >= 0 || Field(forest, item.node, "key") >= 0 ||
-                    Field(forest, item.node, "reference") >= 0) {
-                    return Body.Failed(Diagnose(forest, item.node, document, "for loops support only `for name in array`"));
+                if (Field(forest, item.node, "reference") >= 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "for loops do not support `ref` yet"));
                 }
                 stepped = false;
                 code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
-                next = array_add(next, Visit(Field(forest, item.node, "value")));
-                next = array_add(next, Resume(item.node, 1, 0, 0));
+                if (Field(forest, item.node, "first") >= 0) {
+                    // Ranges never count down, so constant bounds that descend
+                    // are a mistake, as stage zero reports.
+                    if (Descends(forest, text, document, constants, names, callable.package, item.node)) {
+                        message := "Range bounds descend; count down with for <";
+                        if (Field(forest, item.node, "reverse") >= 0) {
+                            message = "Range bounds descend; for < takes the low bound first, as in for < i in 0..10";
+                        }
+                        return Body.Failed(Diagnose(forest, item.node, document, message));
+                    }
+                    next = array_add(next, Expect(Field(forest, item.node, "first"), IntStorage, 0, -1));
+                    next = array_add(next, Expect(Field(forest, item.node, "last"), IntStorage, 0, -1));
+                    next = array_add(next, Resume(item.node, 5, 0, 0));
+                } else {
+                    next = array_add(next, Visit(Field(forest, item.node, "value")));
+                    next = array_add(next, Resume(item.node, 1, 0, 0));
+                }
+            } else if (item.phase == 5) {
+                // A range loop, as stage zero emits it: the index starts at
+                // `first`, or at `last` counting down, and the other end waits
+                // in a local. `..<` stops before `last`; reversed, it starts at
+                // `last - 1` only once `first < last` shows that cannot wrap.
+                stepped = false;
+                value_top -= 2;
+                ends: int[] = [];
+                end_index: int = 0;
+                while (end_index < 2) {
+                    end := values[value_top + end_index];
+                    if (end.container != 0 || !Integer(end.storage) ||
+                        (end.storage != IntStorage && !Widens(end.storage, IntStorage))) {
+                        return Body.Failed(Diagnose(forest, item.node, document, "range bounds need int values"));
+                    }
+                    if (end.storage != IntStorage) {
+                        slots = array_add(slots, ValueLocal(IntStorage));
+                        code = array_add(code, CastCode(ops, IntStorage, length(slots) - 1, end.slot, 0, node));
+                        end = Typed(length(slots) - 1, IntStorage, 0, -1);
+                    }
+                    ends = array_add(ends, end.slot);
+                    end_index += 1;
+                }
+                reverse := Field(forest, item.node, "reverse") >= 0;
+                exclusive := Text(forest, text, Field(forest, item.node, "bound")) == "..<";
+                start := ends[0];
+                stop := ends[1];
+                if (reverse) {
+                    start = ends[1];
+                    stop = ends[0];
+                }
+                empty: int = -1;
+                if (reverse && exclusive) {
+                    slots = array_add(slots, ValueLocal(BoolStorage));
+                    code = array_add(code, Instruction(ops.lt, IntStorage, length(slots) - 1, ends[0], ends[1], -1, node));
+                    code = array_add(code, Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+                    empty = length(code);
+                    code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                    slots = array_add(slots, ValueLocal(IntStorage));
+                    code = array_add(code, ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+                    slots = array_add(slots, ValueLocal(IntStorage));
+                    code = array_add(code, Instruction(ops.sub, IntStorage, length(slots) - 1, ends[1], length(slots) - 2,
+                                                       -1, node));
+                    start = length(slots) - 1;
+                }
+                locals = array_add(locals, ValueLocal(IntStorage));
+                index_local := length(locals) - 1;
+                code = array_add(code, Instruction(ops.save, IntStorage, 0, start, 0, index_local, node));
+                locals = array_add(locals, ValueLocal(IntStorage));
+                bound_local := length(locals) - 1;
+                code = array_add(code, Instruction(ops.save, IntStorage, 0, stop, 0, bound_local, node));
+                head := length(code);
+                code = array_add(code, Instruction(ops.check, 0, 0, 0, 0, 0, node));
+                slots = array_add(slots, ValueLocal(IntStorage));
+                code = array_add(code, Instruction(ops.local, IntStorage, length(slots) - 1, index_local, 0, 0, node));
+                slots = array_add(slots, ValueLocal(IntStorage));
+                code = array_add(code, Instruction(ops.local, IntStorage, length(slots) - 1, bound_local, 0, 0, node));
+                compare := ops.lt;
+                if (reverse) {
+                    compare = ops.ge;
+                } else if (!exclusive) {
+                    compare = ops.le;
+                }
+                slots = array_add(slots, ValueLocal(BoolStorage));
+                code = array_add(code, Instruction(compare, IntStorage, length(slots) - 1, length(slots) - 3,
+                                                   length(slots) - 2, -1, node));
+                code = array_add(code, Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+                loop: Loop = {head: head, first_break: length(breaks), first_continue: length(continues), each: true,
+                              index: index_local, mark: length(names), leave: length(code), reverse: reverse,
+                              counted: !exclusive || reverse, bound: bound_local, empty: empty};
+                code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                loops = array_add(loops, loop);
+                binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
+                                 index: index_local, storage: IntStorage, container: 0, record: -1, writable: false};
+                names = array_add(names, binding);
+                next = array_add(next, Visit(Field(forest, item.node, "body")));
+                next = array_add(next, Resume(item.node, 4, 0, 0));
             } else if (item.phase == 1) {
                 // The loop walks its own copy, whatever the body changes.
                 stepped = false;
@@ -948,18 +1268,19 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             } else if (item.phase == 2) {
                 // The copy is in the last cell; the step loads each element.
                 value_top -= 1;
-                if (Text(forest, text, Field(forest, item.node, "name")) == "") {
-                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
+                if (Text(forest, text, ItemField(forest, item.node)) == "") {
+                    return Body.Failed(Diagnose(forest, ItemField(forest, item.node), document,
                                                 "Invalid string or embedded NUL"));
                 }
                 array := values[value_top];
-                step = ForStep(array, Packable(array.storage, array.record, types, members), ops, target, at, node);
+                step = ForStep(array, Packable(array.storage, array.record, types, members),
+                               Field(forest, item.node, "reverse") >= 0, ops, target, at, node);
             } else if (item.phase == 3) {
                 // A record element was copied into the last cell.
                 stepped = false;
                 value_top -= 1;
                 kept := values[value_top];
-                binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: CellPlace,
+                binding: Name = {name: Text(forest, text, ItemField(forest, item.node)), place: CellPlace,
                                  index: length(cells) - 1, storage: StructStorage, container: 0, record: kept.record, writable: false};
                 names = array_add(names, binding);
                 next = array_add(next, Visit(Field(forest, item.node, "body")));
@@ -976,22 +1297,40 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     at_continue += 1;
                 }
                 continues = slice(continues, 0, loop.first_continue);
-                number: Slot = {storage: IntStorage, kind: ValueKind};
-                slots = array_add(slots, number);
-                code = array_add(code, Instruction(ops.local, IntStorage, length(slots) - 1, loop.index, 0, 0, node));
-                slots = array_add(slots, number);
-                constant := Instruction(ops.constant, IntStorage, length(slots) - 1, 0, 0, 0, node);
-                constant.value_storage = IntStorage;
-                constant.payload = 1;
-                code = array_add(code, constant);
-                slots = array_add(slots, number);
-                code = array_add(code, Instruction(ops.add, IntStorage, length(slots) - 1, length(slots) - 3,
-                                                   length(slots) - 2, -1, node));
+                slots = array_add(slots, ValueLocal(IntStorage));
+                current := length(slots) - 1;
+                code = array_add(code, Instruction(ops.local, IntStorage, current, loop.index, 0, 0, node));
+                // An inclusive or reversed range ends once the index reaches
+                // its bound, so neither INT_MAX nor INT_MIN wraps.
+                at_bound: int = -1;
+                if (loop.counted) {
+                    slots = array_add(slots, ValueLocal(IntStorage));
+                    code = array_add(code, Instruction(ops.local, IntStorage, length(slots) - 1, loop.bound, 0, 0, node));
+                    slots = array_add(slots, ValueLocal(BoolStorage));
+                    code = array_add(code, Instruction(ops.eq, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                                                       -1, node));
+                    at_bound = length(code);
+                    code = array_add(code, Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, Pending, node));
+                }
+                slots = array_add(slots, ValueLocal(IntStorage));
+                code = array_add(code, ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+                step_op := ops.add;
+                if (loop.reverse) {
+                    step_op = ops.sub;
+                }
+                slots = array_add(slots, ValueLocal(IntStorage));
+                code = array_add(code, Instruction(step_op, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                                                   -1, node));
                 code = array_add(code, Instruction(ops.save, IntStorage, 0, length(slots) - 1, 0, loop.index, node));
                 code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
-                done := code[loop.leave];
-                done.target = length(code);
-                code[loop.leave] = done;
+                exits_here: int[] = [loop.leave, at_bound, loop.empty];
+                for (pending in exits_here) {
+                    if (pending >= 0) {
+                        done := code[pending];
+                        done.target = length(code);
+                        code[pending] = done;
+                    }
+                }
                 at_break := loop.first_break;
                 while (at_break < length(breaks)) {
                     escape := code[breaks[at_break]];
@@ -1013,19 +1352,34 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 stepped = false;
                 value_top -= 1;
                 subject := values[value_top];
-                if (!Single(subject, UnionStorage)) {
-                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "switch needs a union value"));
+                value_switch := subject.container == 0 && Integer(subject.storage);
+                if (!Single(subject, UnionStorage) && !value_switch) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document,
+                                                "switch needs a union or integer value"));
                 }
-                locals = array_add(locals, ValueLocal(UnionStorage));
-                code = array_add(code, Instruction(ops.save, UnionStorage, 0, subject.slot, 0, length(locals) - 1, node));
+                locals = array_add(locals, ValueLocal(subject.storage));
+                code = array_add(code, Instruction(ops.save, subject.storage, 0, subject.slot, 0, length(locals) - 1, node));
                 current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
-                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names)};
+                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names),
+                                   value: value_switch, storage: subject.storage, fallback: -1};
                 switches = array_add(switches, current);
                 next = array_add(next, Resume(item.node, 2, NextArm(forest, Field(forest, item.node, "value")), 0));
+            } else if (item.phase == 2 && item.a < 0 && switches[length(switches) - 1].fallback >= 0) {
+                // Every value arm missed: the default arm runs last.
+                stepped = false;
+                current := switches[length(switches) - 1];
+                arm := current.fallback;
+                current.fallback = -2;
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes = array_add(scopes, length(names));
+                next = array_add(next, Visit(Field(forest, arm, "body")));
+                next = array_add(next, Resume(item.node, 3, arm, 1));
             } else if (item.phase == 2 && item.a < 0) {
                 stepped = false;
                 current := switches[length(switches) - 1];
-                if (!current.defaulted && length(covered) - current.first_cover < types[current.held].count) {
+                if (!current.value && !current.defaulted &&
+                    length(covered) - current.first_cover < types[current.held].count) {
                     return Body.Failed(Diagnose(forest, item.node, document,
                                                 "Non-exhaustive switch: a union alternative is missing"));
                 }
@@ -1039,6 +1393,53 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     at_exit += 1;
                 }
                 exits = slice(exits, 0, current.first_exit);
+            } else if (item.phase == 2 && switches[length(switches) - 1].value) {
+                stepped = false;
+                current := switches[length(switches) - 1];
+                pattern := Field(forest, item.a, "value");
+                if (pattern < 0) {
+                    if (current.fallback != -1) {
+                        return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm"));
+                    }
+                    current.fallback = item.a;
+                    switches[length(switches) - 1] = current;
+                    next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                } else if (Is(forest, pattern, "variant_pattern")) {
+                    return Body.Failed(Diagnose(forest, pattern, document, "an integer switch's arms need values"));
+                } else {
+                    next = array_add(next, Expect(pattern, current.storage, 0, -1));
+                    next = array_add(next, Resume(item.node, 4, item.a, 0));
+                }
+            } else if (item.phase == 4) {
+                // An integer arm's test: past the arm unless the value equals it.
+                stepped = false;
+                value_top -= 1;
+                candidate := values[value_top];
+                current := switches[length(switches) - 1];
+                if (candidate.container == 0 && Integer(candidate.storage) && candidate.storage != current.storage &&
+                    Widens(candidate.storage, current.storage)) {
+                    slots = array_add(slots, ValueLocal(current.storage));
+                    code = array_add(code, CastCode(ops, current.storage, length(slots) - 1, candidate.slot, 0, node));
+                    candidate = Typed(length(slots) - 1, current.storage, 0, -1);
+                }
+                if (!Single(candidate, current.storage)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.a, "value"), document,
+                                                "case value differs from the switch value"));
+                }
+                slots = array_add(slots, ValueLocal(current.storage));
+                code = array_add(code, Instruction(ops.local, current.storage, length(slots) - 1, current.subject, 0, 0,
+                                                   node));
+                slots = array_add(slots, ValueLocal(BoolStorage));
+                code = array_add(code, Instruction(ops.eq, current.storage, length(slots) - 1, length(slots) - 2,
+                                                   candidate.slot, -1, node));
+                code = array_add(code, Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+                current.skip = length(code);
+                code = array_add(code, Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes = array_add(scopes, length(names));
+                next = array_add(next, Visit(Field(forest, item.a, "body")));
+                next = array_add(next, Resume(item.node, 3, item.a, 0));
             } else if (item.phase == 2) {
                 current := switches[length(switches) - 1];
                 current.mark = length(names);
@@ -1095,7 +1496,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 switches[length(switches) - 1] = current;
                 names = slice(names, 0, current.mark);
                 scopes = slice(scopes, 0, length(scopes) - 1);
-                next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                if (item.b == 1) {
+                    // The default arm of an integer switch was the last.
+                    next = array_add(next, Resume(item.node, 2, -1, 0));
+                } else {
+                    next = array_add(next, Resume(item.node, 2, NextArm(forest, item.a), 0));
+                }
             }
         } else if (kind == "break_statement" || kind == "continue_statement") {
             stepped = false;
@@ -1153,19 +1559,25 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 code = array_add(code, Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
                 produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
             }
+        } else if (item.phase == CombinePhase) {
+            step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
+        } else if (item.phase == AggregatePhase) {
+            step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
+                                 target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement") {
-            step = StatementStep(forest, text, document, callables, types, members, natives, identities, names, scopes[length(scopes) - 1],
-                                 callable.package, values, value_top, function, item, ops, target, at);
+            step = StatementStep(forest, text, document, callables, params, types, members, natives, identities, names,
+                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named, item,
+                                 ops, target, at);
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
-            step = ValueStep(forest, text, document, types, members, constants, natives, ports, names,
-                             callable.package, values, value_top, item, ops, target, at);
+            step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+                             names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names,
-                            callable.package, values, value_top, item, ops, target, at);
+            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
+                            make_fields, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {
@@ -1197,7 +1609,17 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         return Body.Failed(diagnostic);
                     case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
                                   added_calls, added_names, scheduled, popped, value, kept, marks):
+                        // A return's completion point.
+                        added_at := length(code);
                         code = append(code, added_code);
+                        while (added_at < length(code)) {
+                            if (code[added_at].op == ops.source_point && code[added_at].left == CompletionPoint) {
+                                points = array_add(points, PointAt(key, solid, FunctionRecord, meaning, true,
+                                                                   declaration, node));
+                                code[added_at] = PointCode(ops, length(points) - 1, node);
+                            }
+                            added_at += 1;
+                        }
                         slots = append(slots, added_slots);
                         locals = append(locals, added_locals);
                         cells = append(cells, added_cells);
@@ -1221,9 +1643,25 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                         }
                         if (length(marks) == 3) {
                             // A for head: its loop, then its element's binding.
+                            reverse := Field(forest, item.node, "reverse") >= 0;
                             loop: Loop = {head: marks[0], first_break: length(breaks), first_continue: length(continues),
-                                          each: true, index: marks[2], mark: length(names), leave: marks[1]};
+                                          each: true, index: marks[2], mark: length(names), leave: marks[1],
+                                          reverse: reverse, counted: false, bound: -1, empty: -1};
                             loops = array_add(loops, loop);
+                            // `for x, i in xs` names the item, then the index the loop owns.
+                            if (Field(forest, item.node, "key") >= 0 &&
+                                Text(forest, text, Field(forest, item.node, "key")) ==
+                                Text(forest, text, Field(forest, item.node, "name"))) {
+                                return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
+                                                            format_text("Duplicate declaration '{}'",
+                                                                        Text(forest, text, Field(forest, item.node, "name")))));
+                            }
+                            if (Field(forest, item.node, "key") >= 0) {
+                                key: Name = {name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
+                                             index: marks[2], storage: IntStorage, container: 0, record: -1,
+                                             writable: false};
+                                names = array_add(names, key);
+                            }
                             element := produced;
                             produced = NoValue();
                             if (element.storage == StructStorage) {
@@ -1233,7 +1671,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                                 locals = array_add(locals, ValueLocal(element.storage));
                                 code = array_add(code, Instruction(ops.save, element.storage, 0, element.slot, 0,
                                                                    length(locals) - 1, node));
-                                binding: Name = {name: Text(forest, text, Field(forest, item.node, "name")),
+                                binding: Name = {name: Text(forest, text, ItemField(forest, item.node)),
                                                  place: LocalPlace, index: length(locals) - 1, storage: element.storage,
                                                  container: 0, record: element.record, writable: false};
                                 names = array_add(names, binding);
@@ -1265,6 +1703,28 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             at_next -= 1;
         }
     }
+    // A function completes at its end, and one with named results returns
+    // them.
+    points = array_add(points, PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
+    code = array_add(code, PointCode(ops, length(points) - 1, declaration));
+    if (callable.results > 0) {
+        code = append(code, NamedResultsCode(ops, params, callable, named, length(slots), declaration));
+        slots = append(slots, NamedResultsSlots(params, callable));
+        code = array_add(code, Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
+    }
     code = array_add(code, Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
-    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots);
+    // The runtime numbers each instruction that suspends, an invocation or a
+    // point, by its order, and a prepared module's bytes hold that number.
+    suspension: int = 0;
+    at_code: int = 0;
+    while (at_code < length(code)) {
+        if (code[at_code].op == ops.invoke || code[at_code].op == ops.source_point) {
+            numbered := code[at_code];
+            numbered.target = suspension;
+            code[at_code] = numbered;
+            suspension += 1;
+        }
+        at_code += 1;
+    }
+    return Body.Emitted(slots, locals, cells, code, calls, hosts, roots, points);
 }

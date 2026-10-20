@@ -8,7 +8,7 @@ bytecode and SLJIT. Neither changes the game catalog or compiler grammar.
 
 `test/language/BuildWorkflow.chibi` is an ordinary library whose `Build`
 function constructs argv arrays, requests configuration, stops on failure and
-requests the build only after success. Its `RunBuildStep` capability exists only
+requests the build only after success. Its `build.run` capability exists only
 in the C test's private catalog. The host copies borrowed arguments into fixed
 recording storage and supplies deterministic statuses. Nothing launches CMake.
 CMake embeds the one source fixture into the existing language test driver.
@@ -50,9 +50,15 @@ supports SLJIT. Tests verify backend entry counters. Source preparation and
 execution share the invocation budget. A supervised invocation may omit
 `--timeout-ms`; an unsupervised invocation must supply a finite positive budget.
 
-The private catalog includes `RunBuildStep(arguments: string[]) -> int`,
-`RunBuildProbe(arguments: string[]) -> int` and
-`BuildEnvironment(name: string) -> string`. A step runs direct argv in the root
+Every private native is named under `build.`, as Zig's build API sits under
+`std.Build`: `build.run`, `build.read_file`, `build.join` and so on. The
+qualifier is part of each native's catalog name, the way an imported package's
+functions are named, so a build program needs no import, and an unqualified or
+`Build`-prefixed name is an unknown callable.
+
+The private catalog includes `build.run(arguments: string[]) -> int`,
+`build.probe(arguments: string[]) -> int` and
+`build.environment(name: string) -> string`. A step runs direct argv in the root
 directory. PATH lookup selects the executable separately from the authored
 `argv[0]`, preserving every argument, including empty strings and shell syntax.
 No shell interprets the arguments. The host copies the root, arguments and
@@ -63,11 +69,12 @@ The environment snapshot includes compiler, flags, CMake, SDK, cache-directory,
 ccache, locale and sanitizer controls, together with PATH, HOME, temporary paths,
 the GitHub CLI's `GH_TOKEN` for archive downloads and the inherited test
 deadline. `environment_names` in `build_host.c` owns the explicit allowlist.
-Missing allowed names read as empty strings; other names are capability errors. `BuildEnvironmentNames()` lists the allowed names the
+Missing allowed names read as empty strings; other names are capability errors.
+`build.environment_names()` lists the allowed names the
 snapshot holds, so set-but-empty differs from unset. The snapshot is limited to
 1 MiB. Each invocation permits 64 steps, probes included, and each step permits
 256 arguments totaling 64 KiB. A step's own stdout and stderr each hold up to
-1 MiB, one build text value, for `BuildLastStdout` and `BuildLastStderr`. A
+1 MiB, one build text value, for `build.last_stdout` and `build.last_stderr`. A
 reported step also adds its output to the invocation's result, which retains at
 most 4,095 bytes of each across reported steps; truncation remains visible in
 the result and CLI. A probe's output is data only: compiler reports and tool
@@ -113,10 +120,11 @@ definitions come last. Repeated `--target` selects build targets, `--jobs` selec
 parallelism, and `--configure-only` stops before compilation. Arguments after
 `--` pass directly to CMake. The public `chibi build` still builds authored games.
 
-`make build` uses this program when its private host reports protocol version 3
+`make build` uses this program when its private host reports protocol version 4
 through `--protocol-version`. The protocol rises, with the Makefile gate, whenever
 `Build.chibi` needs a capability or syntax an older host lacks; version 3 adds the
-file primitives and probes and the redesigned syntax. A cold build or an older host
+file primitives and probes and the redesigned syntax, and version 4 names the
+natives under `build.`. A cold build or an older host
 uses `make stage-zero-build`, which retains the existing shell/CMake recovery
 path and builds the host for subsequent invocations. `BUILD_HOST` and
 `BUILD_PROGRAM` can select a relocated installation. The explicit recovery
@@ -175,13 +183,13 @@ interprocess lock they needed, went away rather than moved.
 
 | Primitive | Result |
 | --- | --- |
-| `BuildFileKind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
-| `BuildFileStamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
-| `BuildListDirectory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
-| `BuildCopyFile(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
-| `BuildRename(source, destination) -> bool` | `rename(2)`. |
-| `BuildRemove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
-| `BuildHashFile(path) -> string`, `BuildHashText(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
+| `build.file_kind(path) -> string` | `file`, `directory`, `link` or `other` for the path itself, not a link's target; `""` when nothing is there. Follow links by resolving the path first. |
+| `build.file_stamp(path) -> string` | Opaque change stamp of the file a path names after links: device, inode, size, mode, and modification and change times, as Python's configuration signature records. `""` when nothing is there. |
+| `build.list_directory(path) -> string[]` | Entry names except `.` and `..`, sorted by byte; no names for a missing directory. At most 8,192 names and 1 MiB of names. |
+| `build.copy_file(source, destination) -> bool` | Replaces destination atomically with a regular file's bytes and permission bits through a temporary beside it, removed on failure. Follows a source link. |
+| `build.rename(source, destination) -> bool` | `rename(2)`. |
+| `build.remove(path) -> bool` | Removes a file, link or empty directory; true when nothing is there. |
+| `build.hash_file(path) -> string`, `build.hash_text(text) -> string` | Lowercase SHA-256 hex of a regular file's bytes, streamed, or of text; a missing file hashes to `""`. |
 
 Queries return a capability error for failures other than absence; mutations
 return false. Every primitive checks the deadline and cancellation, and copies
@@ -190,7 +198,7 @@ the bootstrap artifact's digests.
 
 These primitives do not yet cover everything the Python does. The configuration
 signature hashes the full environment; children see only the allowlist, so
-`BuildEnvironmentNames` suffices. It no longer tracks dependency packages or
+`build.environment_names` suffices. It no longer tracks dependency packages or
 source caches. Packaging also needs sizes,
 modification-time order, symbolic-link reads and unique staging directories.
 Each invocation has a 100,000-step execution budget, which bounds authored
@@ -260,8 +268,11 @@ The existing Linux/Darwin `chibi-compiler-host` has an optional private
 `--output-artifact FILE` mode. Its other arguments remain `--artifact FILE`,
 `--entry HEXID`, `--input FILE`, `--backend bytecode|sljit`, `--budget N` and a
 finite `--timeout-ms N` or inherited `CHIBI_TEST_DEADLINE`. Binary output and
-`--batch` are mutually exclusive. Without the new switch, JSON stdout and JSON
-batch behavior are unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
+`--batch` are mutually exclusive. `--output-bytes FILE` writes a `byte[]`
+result that is not a compiler, such as stage one's closure of a game's
+modules, without loading it as one, and fails when the entry returns no
+bytes. Without either switch, JSON stdout and JSON batch behavior are
+unchanged. Public `chibi`, `chibi-compile` and `chibi-build`
 selection, cache and installed-format contracts do not change.
 
 `compiler_host_invoke_bytes` accepts the existing owned JSON argument array and
@@ -392,7 +403,8 @@ check takes one compile, about 11 s, or two when the sources changed, about
 A clean checkout recovers the compiler with `make bootstrap-recover`. It runs
 `chibi-compiler-host --bootstrap tools/compiler/bootstrap --compiler
 tools/compiler --core packages/core` and needs neither stage zero, nor a
-compiler built from Chibi, nor a network. Git stores the artifact by content,
+compiler built from Chibi, nor a network. `--recover FILE` also writes the
+compiler it recovers, which `tools/toolchain/StageOne.chibi` runs. Git stores the artifact by content,
 and the manifest pins the closure's SHA-256, so a damaged closure is refused
 before it loads. The closure is 6.4 MB, which Git stores in about 1 MB. Its
 target is the value layout and prepared ABI rather than an operating system,

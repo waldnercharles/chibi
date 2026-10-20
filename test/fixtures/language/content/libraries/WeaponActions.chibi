@@ -1,9 +1,7 @@
 WeaponActions :: library {
     Spawn_Prototype_At :: (Prototype: Prototype, Transform: struct<Transform> = null) -> (Entity: handle<ecs.entity> = 0) {
         action spawn_prototype_action = spawn_prototype(Prototype)
-        after entry {
-            spawn_prototype_action()
-        }
+        spawn_prototype_action()
         after spawn_prototype_action {
             spawn_prototype_action.Entity.Transform = convert<transform_to_cf>(Transform)
             return spawn_prototype_action.Entity
@@ -11,9 +9,7 @@ WeaponActions :: library {
     }
     Fire_Projectile :: (Origin: struct<CF_V2> = null, Direction: struct<CF_V2> = null, Damage: int = 0, Prototype: Prototype = Projectile, Shooter: handle<ecs.entity> = 0) -> (Entity: handle<ecs.entity> = 0) {
         action spawn_prototype_at = Spawn_Prototype_At(Prototype, convert<transform_to_cf>(Origin))
-        after entry {
-            spawn_prototype_at()
-        }
+        spawn_prototype_at()
         after spawn_prototype_at {
             spawn_prototype_at.Entity.Velocity = vec2_norm(Direction).Result * spawn_prototype_at.Entity.Projectile.speed
             spawn_prototype_at.Entity.Orientation = DirectionMath.Direction_Orientation(vec2_norm(Direction).Result.x, vec2_norm(Direction).Result.y)

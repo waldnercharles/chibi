@@ -7,14 +7,14 @@ import strings "core:strings"
 // All tables contain analyzer/catalog facts. A negative ID slot denotes zero;
 // symbol_types is aligned with the lexical symbol table. Nonnegative indices
 // and spans retain the owning analyzer's structural invariants.
-Type :: struct {
+pub Type :: struct {
     storage: int;
     container: int;
     flags: int;
     nominal_slot: int;
     parameter_slot: int;
 }
-Entry :: struct {
+pub Entry :: struct {
     name: string;
     source_name: string;
     key: string;
@@ -25,7 +25,7 @@ Entry :: struct {
     internal: bool;
     component: bool;
 }
-Import :: struct {
+pub Import :: struct {
     alias: string;
     identity: string;
     document: int;
@@ -33,12 +33,12 @@ Import :: struct {
     export_count: int;
     has_alias: bool;
 }
-Export :: struct {
+pub Export :: struct {
     name: string;
     kind: int;
     id_slot: int;
 }
-Use :: struct {
+pub Use :: struct {
     kind: int;
     symbol: int;
     member_slot: int;
@@ -48,7 +48,7 @@ Use :: struct {
     column: int;
     document: int;
 }
-Request :: struct {
+pub Request :: struct {
     text: string;
     scope: int;
     start: int;
@@ -57,35 +57,35 @@ Request :: struct {
     column: int;
     document: int;
 }
-TypeUse :: union {
+pub TypeUse :: union {
     Absent | Reference(symbol: int, member: uint64, start: int, end: int, line: int, column: int, document: int)
 }
-Resolution :: union {
+pub Resolution :: union {
     Resolved(storage: int, container: int, flags: int, nominal: uint64,
              parameter: uint64, use: TypeUse, diagnostics: syntax.Diagnostic[])
 }
-Environment :: union {
+pub Environment :: union {
     Tables(lexical: binding.Environment, types: Type[], ids: uint64[],
            merged: Entry[], own: Entry[], native: Entry[], symbol_types: int[],
            imports: Import[], exports: Export[], uses: Use[], identity: string,
            package_scope: int, has_native: bool, has_documents: bool, entity_id: uint64)
 }
-Value :: union {
+pub Value :: union {
     Typed(storage: int, container: int, flags: int, nominal: uint64, parameter: uint64)
 }
 
-IDAt :: (ids: uint64[], slot: int) -> uint64 {
+pub IDAt :: (ids: uint64[], slot: int) -> uint64 {
     if (slot < 0) {
         return 0;
     }
     return ids[slot];
 }
-TypeAt :: (types: Type[], ids: uint64[], index: int) -> Value {
+pub TypeAt :: (types: Type[], ids: uint64[], index: int) -> Value {
     type := types[index];
     return Value.Typed(type.storage, type.container, type.flags,
                        IDAt(ids, type.nominal_slot), IDAt(ids, type.parameter_slot));
 }
-Builtin :: (name: string) -> Value {
+pub Builtin :: (name: string) -> Value {
     if (name == "Cancelled") {
         return Value.Typed(18, 0, 512, 0x63616e63656c6c65, 0);
     }
@@ -115,7 +115,7 @@ Builtin :: (name: string) -> Value {
     }
     return Value.Typed(0, 0, 1, 0, 0);
 }
-Bad :: (value: Value) -> bool {
+pub Bad :: (value: Value) -> bool {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             return (flags & 1) != 0;
@@ -167,16 +167,8 @@ Matches :: (left: string, right: string) -> bool {
     }
 }
 ShortName :: (name: string) -> string {
-    start: int = 0;
-    index: int = 0;
-    count := strings.ByteLength(name);
-    while (index < count) {
-        if (strings.ByteAt(name, index) == 46) {
-            start = index + 1;
-        }
-        index += 1;
-    }
-    return strings.Slice(name, start, count - start);
+    start := strings.LastIndexByte(name, 46) + 1;
+    return strings.Slice(name, start, strings.ByteLength(name) - start);
 }
 FindCatalog :: (entries: Entry[], name: string) -> int {
     found: int = -1;
@@ -202,7 +194,7 @@ FindCatalog :: (entries: Entry[], name: string) -> int {
     }
     return found;
 }
-TypeIndex :: (entries: Entry[], ids: uint64[], id: uint64) -> int {
+pub TypeIndex :: (entries: Entry[], ids: uint64[], id: uint64) -> int {
     index: int = 0;
     while (index < length(entries)) {
         if (IDAt(ids, entries[index].id_slot) == id) {
@@ -219,12 +211,8 @@ Namespace :: (environment: Environment, scope: int, document: int, name: string)
             if (!has_documents) {
                 return -1;
             }
-            dot: int = 0;
-            count := strings.ByteLength(name);
-            while (dot < count && strings.ByteAt(name, dot) != 46) {
-                dot += 1;
-            }
-            if (dot == 0 || dot == count) {
+            dot := strings.IndexByte(name, 46);
+            if (dot <= 0) {
                 return -1;
             }
             alias := strings.Slice(name, 0, dot);
@@ -249,16 +237,13 @@ Namespace :: (environment: Environment, scope: int, document: int, name: string)
             return -1;
     }
 }
-FindType :: (environment: Environment, scope: int, document: int, name: string) -> int {
+pub FindType :: (environment: Environment, scope: int, document: int, name: string) -> int {
     importedIndex := Namespace(environment, scope, document, name);
     switch environment {
         case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
                      identity, package_scope, has_native, has_documents, entity_id):
             if (importedIndex >= 0) {
-                dot: int = 0;
-                while (strings.ByteAt(name, dot) != 46) {
-                    dot += 1;
-                }
+                dot := strings.IndexByte(name, 46);
                 member := strings.Slice(name, dot + 1, strings.ByteLength(name) - dot - 1);
                 imported := imports[importedIndex];
                 if (imported.identity == identity) {
@@ -410,61 +395,45 @@ BindName :: (environment: Environment, request: Request, name: string,
 }
 // Parsed names are decoded ordinary type leaves. Constructor arguments,
 // structural union/task assembly and measured signatures remain separate.
-Parsed :: (environment: Environment, request: Request, tokens: string[]) -> Resolution {
+pub Parsed :: (environment: Environment, request: Request, tokens: string[]) -> Resolution {
     return BindName(environment, request, request.text, true, tokens, -1, 0);
 }
-Whitespace :: (byte: int) -> bool {
-    return byte == 32 || (byte >= 9 && byte <= 13);
-}
-Text :: (environment: Environment, request: Request) -> Resolution {
-    name := "";
-    index: int = 0;
-    count := strings.ByteLength(request.text);
-    while (index < count) {
-        if (!Whitespace(strings.ByteAt(request.text, index))) {
-            name = format_text("{}{}", name, strings.Slice(request.text, index, 1));
-        }
-        index += 1;
-    }
+pub Text :: (environment: Environment, request: Request) -> Resolution {
+    name := strings.Concatenate(strings.Fields(request.text));
     flags: int = 0;
-    count = strings.ByteLength(name);
-    if (strings.Slice(name, 0, 3) == "ref" && count > 3) {
-        name = strings.Slice(name, 3, count - 3);
-        count -= 3;
+    if (strings.HasPrefix(name, "ref") && name != "ref") {
+        name = strings.TrimPrefix(name, "ref");
         flags = flags | 4;
     }
-    if (count > 0 && strings.ByteAt(name, count - 1) == 63) {
-        count -= 1;
-        name = strings.Slice(name, 0, count);
+    if (strings.HasSuffix(name, "?")) {
+        name = strings.TrimSuffix(name, "?");
         flags = flags | 2;
     }
     container: int = 0;
-    if (count >= 2 && strings.Slice(name, count - 2, 2) == "[]") {
-        count -= 2;
-        name = strings.Slice(name, 0, count);
+    if (strings.HasSuffix(name, "[]")) {
+        name = strings.TrimSuffix(name, "[]");
         container = 1;
     }
     prefixes: string[] = ["set<", "map<", "array<"];
     containers: int[] = [2, 3, 1];
-    index = 0;
+    index: int = 0;
     while (index < length(prefixes)) {
         prefix := prefixes[index];
-        size := strings.ByteLength(prefix);
-        if (strings.Slice(name, 0, size) == prefix && count > size && strings.ByteAt(name, count - 1) == 62) {
+        if (strings.HasPrefix(name, prefix) && strings.HasSuffix(name, ">")) {
             container = containers[index];
-            count -= size + 1;
-            name = strings.Slice(name, size, count);
+            name = strings.TrimSuffix(strings.TrimPrefix(name, prefix), ">");
             break;
         }
         index += 1;
     }
-    if ((strings.Slice(name, 0, 7) == "struct<" || strings.Slice(name, 0, 7) == "handle<") &&
-        count > 7 && strings.ByteAt(name, count - 1) == 62) {
-        name = strings.Slice(name, 7, count - 8);
-    } else if (strings.Slice(name, 0, 5) == "enum<" && count > 5 && strings.ByteAt(name, count - 1) == 62) {
-        name = strings.Slice(name, 5, count - 6);
+    wrappers: string[] = ["struct<", "handle<", "enum<"];
+    for (wrapper in wrappers) {
+        if (strings.HasPrefix(name, wrapper) && strings.HasSuffix(name, ">")) {
+            name = strings.TrimSuffix(strings.TrimPrefix(name, wrapper), ">");
+            break;
+        }
     }
-    if (strings.ByteAt(name, 0) == 34) {
+    if (strings.HasPrefix(name, "\"")) {
         decoded := compiler_json_string(name);
         // Legacy fallback copies the decoded C-string prefix, including when
         // JSON contains NUL. Parsed-name validation is a different entry path.

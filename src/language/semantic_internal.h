@@ -90,6 +90,7 @@ typedef struct
     TSNode awaited; /* The call an enclosing await applies to. */
     int scope, function, loops, depth;
     bool declarations_only, migration_import;
+    bool query; /* Analyzing a system's `where`, which reports its own reads. */
 } analyzer;
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
@@ -105,6 +106,8 @@ bool script_analyzer_native_capability(const analyzer *, uint64_t);
 int script_analyzer_package_function(analyzer *, TSNode, const char *);
 int script_analyzer_package_constant(analyzer *, TSNode);
 bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
+/* Whether a qualified name names a declaration its package keeps private. */
+bool script_analyzer_private_member(const analyzer *, TSNode, const char *name);
 bool script_analyzer_generic_declare(analyzer *, TSNode);
 void script_analyzer_generic_prepare(analyzer *, TSNode);
 int script_analyzer_generic_call(analyzer *, TSNode, int symbol, int **arguments);
@@ -199,6 +202,7 @@ int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_ca
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected);
+script_type script_analyzer_char_operand(script_type operand, script_type other);
 script_type script_analyzer_arithmetic_type(script_type left, script_type right);
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
@@ -224,6 +228,16 @@ void script_analyzer_declaration_pass(analyzer *a, TSNode body);
 void script_analyzer_value_declarations(analyzer *a, TSNode body);
 int script_analyzer_scope_at(const analyzer *a, TSNode body);
 void script_analyzer_handler(analyzer *a, TSNode node);
+/* Binds the payload fields `list` names, by name, as parameters of function
+ * in payload order; unlisted fields bind unnamed parameters. */
+void script_analyzer_named_payload(
+    analyzer *a,
+    int function,
+    TSNode list,
+    const script_catalog_parameter *payload,
+    int count,
+    const char *event
+);
 uint64_t script_analyzer_expression_path(const script_analysis *out, int index);
 void script_analyzer_binding_reads(analyzer *a, script_binding *binding, int index, int depth);
 void script_analyzer_binding(analyzer *a, TSNode node);

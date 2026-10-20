@@ -3,7 +3,6 @@
 #include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "backend.h"
 #include "ecs/ecs.h"
@@ -543,6 +542,29 @@ static bool compile_pack(const char *source, behavior_backend backend, const nat
     program = execution_program_new(module, world, NULL);
     return program != NULL;
 }
+/* Whether lowering source against a definition pack reports message. */
+static bool lowering_reports(const char *source, const native_definition_pack *pack, const char *message)
+{
+    const native_capability_pack base = {
+        .catalog = &catalog,
+        .layouts = reflected_types,
+        .layout_count = 2,
+    };
+    char error[256];
+    const native_definition_pack packs[] = { *pack, CORE_DEFINITION_PACK };
+    state_native = native_capabilities_from_definition_packs(&base, 1, packs, 2, error, sizeof error);
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, native_capabilities_catalog(state_native));
+    const script_lower_bindings bindings = { .global = global, .host = pack_host };
+    execution_module_plan
+        *plan = script_lower(analysis, native_capabilities_catalog(state_native), &bindings);
+    bool found = false;
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        found |= !strcmp(plan->diagnostics[i].message, message);
+    }
+    execution_module_plan_free(plan);
+    return found;
+}
 static bool compile(const char *source, behavior_backend backend)
 {
     if (!compile_module(source, backend)) {
@@ -553,7 +575,13 @@ static bool compile(const char *source, behavior_backend backend)
 }
 /* Historical migration cases assert their intermediate spelling, then run
  * it through every later source step: version 23 declarations, 24
- * retention, 25 syntax, 26 conversions and 27 parameter names. */
+ * retention, 25 syntax, 26 conversions, 27 parameter names, 28 function
+ * bodies and 29 handler payloads, with the test catalog's Impulse declared. */
+static const char *const
+    IMPULSE_DECLARATION = "version 3\nname \"Impulse\"\ndomain "
+                          "\"event\"\n(array)variables {\n"
+                          "    - id=1 name=\"amount\" type=\"double\"\n    - "
+                          "id=2 name=\"enabled\" type=\"bool\"\n}\n";
 static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
 {
     switch (step) {
@@ -562,13 +590,16 @@ static int migrate_step(int step, const char *source, char **migrated, char *err
         case 1: return chibi_migrate_retention(source, migrated, error, size);
         case 2: return chibi_migrate_syntax(source, migrated, error, size);
         case 3: return chibi_migrate_conversions(source, migrated, error, size);
-        default: return chibi_migrate_entry(source, migrated, error, size);
+        case 4: return chibi_migrate_entry(source, migrated, error, size);
+        case 5: return chibi_migrate_after_entry(source, migrated, error, size);
+        default:
+            return chibi_migrate_handlers(source, &IMPULSE_DECLARATION, 1, migrated, error, size);
     }
 }
 static char *current_source(const char *source)
 {
     char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 5; step++) {
+    for (int step = 0; step < 7; step++) {
         char *migrated = NULL;
         if (migrate_step(step, current, &migrated, error, sizeof error)) {
             fprintf(stderr, "migration: %s\n", error);
@@ -688,6 +719,68 @@ TEST_CASE(program_nested_typed_records_preserve_explicit_labels)
     return true;
 }
 
+/* `on X :: (a: T)` names payload fields in any order and any subset; the
+ * fields it leaves out keep their slots, so each name reads its own field. */
+TEST_CASE(program_handlers_name_payload_fields)
+{
+    const char *sources[] = {
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (enabled: bool, amount: double) { if (enabled) { "
+        "total += amount; } } }",
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (enabled: bool) { if (enabled) { total += 7; } } }",
+        "A :: behavior { total: double = 0;\n"
+        "    on Impulse :: (Amount: double) { total += Amount; } }",
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int s = 0; s < 3; s++) {
+        for (int i = 0; i < 2; i++) {
+            prepare();
+            REQUIRE(compile(sources[s], backends[i]));
+            ecs_entity owner = ecs_world_create_entity(world);
+            uint64_t handle = ecs_entity_to_u64(owner);
+            execution_instance *instance = execution_program_attach(program, handle);
+            REQUIRE(instance && state_id("total"));
+            pin_value payload[] = { { .type = PIN_F64, .d = 7 },
+                                    { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, payload, 2, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_state(instance, state_id("total"))->d == 7);
+        }
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "A :: behavior { on Impulse :: (force: double) { } }",
+          "Impulse has no payload field 'force'" },
+        { "A :: behavior { on Impulse :: (amount: double, Amount: double) { } "
+          "}",
+          "listed twice" },
+        { "A :: behavior { on Impulse :: (amount) { } }",
+          "Write the type of payload field 'amount'" },
+        { "A :: behavior { on Impulse :: (amount: bool) { } }", "" },
+        { "A :: behavior { on Impulse :: (amount: double = 1) { } }", "takes no default" },
+        { "A :: behavior { x: double = 0; on Impulse :: () { x = amount; } }", "" },
+        { "A :: behavior { x: double = 0; on Impulse :: () { x = event.amount; "
+          "} }",
+          "list the field instead" },
+        { "M :: system(p: Position) { on Impulse :: (enabled: bool) { p.x = "
+          "event.dt; } }",
+          "list the field instead" },
+    };
+    for (int i = 0; i < 8; i++) {
+        prepare();
+        syntax = script_parse(refused[i].source);
+        REQUIRE(!syntax->diagnostic_count);
+        analysis = script_analyze(syntax, &catalog);
+        bool found = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
+        }
+        REQUIRE(!analysis->valid && found);
+    }
+    return true;
+}
 TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
 {
     const char *source = "Accumulator :: behavior {\n"
@@ -727,6 +820,92 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
     return true;
 }
 
+/* A system names the fields of its step's payload in its header, as a
+ * handler does; only its body reads them, and it has no `event`. */
+TEST_CASE(program_systems_name_their_step)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity moving = positioned(1, true);
+        REQUIRE(compile(
+            "Motion :: system(position: Position, velocity: Velocity) on Tick "
+            ":: (dt: double) { position.x += velocity.x * dt; }",
+            backends[backend]
+        ));
+        REQUIRE(execution_program_step(program, 0, .5, 1000) == FLOW_OK);
+        const program_position *position = ecs_component_data_const(world, moving, 501);
+        REQUIRE(position && position->x == 3);
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "Motion :: system(p: Position) on Impulse :: (amount: double) { p.x "
+          "+= amount; }",
+          "A system runs on Tick" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) { p.x += "
+          "event.dt; }",
+          "Unknown value" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) { Step :: () "
+          "-> double { return dt; } p.x += Step(); }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) on Tick :: (step: double) { p.x += 1; "
+          "}",
+          "Tick has no payload field 'step'" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "Step :: () { return dt; }\np.x += Step(); }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "on Impulse :: (amount: double) { p.x += dt; } }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) on Tick :: () { p.x += 1; }",
+          "List the step's fields" },
+        { "Motion :: system(p: Position) on Tick :: (dt: double) {\n"
+          "bind self.Position.x = dt;\np.x += 1; }",
+          "Read the step in the system's body" },
+        { "Motion :: system(p: Position) { p.x += event.dt; }", "Unknown value 'event'" },
+        { "Motion :: system(p: Position) where dt > 0 on Tick :: (dt: double) "
+          "{ p.x += dt; }",
+          "Query predicate cannot read" },
+    };
+    for (int i = 0; i < 10; i++) {
+        prepare();
+        syntax = script_parse(refused[i].source);
+        REQUIRE(!syntax->diagnostic_count);
+        analysis = script_analyze(syntax, &catalog);
+        bool found = false, inner = false;
+        for (int d = 0; d < analysis->diagnostic_count; d++) {
+            found |= strstr(analysis->diagnostics[d].message, refused[i].message) != NULL;
+            inner |= strstr(analysis->diagnostics[d].message, "Read the step") != NULL;
+        }
+        REQUIRE(!analysis->valid && found);
+        /* A query reads no callable's step; it says so once. */
+        REQUIRE(i != 9 || !inner);
+    }
+    /* Lowering reads Tick's one field as the step, so a Tick with more
+     * fields has no system step. */
+    script_catalog_capability wider[64];
+    REQUIRE(catalog.capability_count <= 64);
+    memcpy(wider, catalog.capabilities, (size_t)catalog.capability_count * sizeof *wider);
+    for (int i = 0; i < catalog.capability_count; i++) {
+        if (wider[i].id == catalog.tick_event) {
+            wider[i].parameters = impulse_parameters;
+            wider[i].parameter_count = 2;
+        }
+    }
+    script_catalog two = catalog;
+    two.capabilities = wider;
+    prepare();
+    syntax = script_parse("Motion :: system(p: Position) on Tick :: (amount: double) { p.x += amount; }");
+    analysis = script_analyze(syntax, &two);
+    bool step = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        step |= strstr(analysis->diagnostics[d].message, "reads only the step") != NULL;
+    }
+    REQUIRE(!analysis->valid && step);
+    return true;
+}
 TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -2487,16 +2666,81 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
     }
     return true;
 }
-/* expect passes a true condition and fails the call with its message at its
- * own position otherwise, on each backend. */
-TEST_CASE(program_expect_fails_with_its_message_and_position)
+/* assert passes a true condition and fails the call at its own position
+ * otherwise, with its message or else its condition's text, on each backend.
+ * It is pure, and a helper that only asserts still runs. */
+TEST_CASE(program_assert_fails_with_its_message_or_condition)
 {
-    const char *source = "Checks :: behavior {\n"
-                         "  on Impulse(amount, enabled) {\n"
-                         "    expect(enabled, \"enabled is set\");\n"
-                         "    expect(amount > 2.0, \"amount is large\");\n"
-                         "  }\n"
-                         "}";
+    const char
+        *source = "Checks :: behavior {\n"
+                  "  Positive :: (value: double) { assert(value > 0.0); }\n"
+                  "  on Impulse(amount, enabled) {\n"
+                  "    assert(enabled, \"enabled is set\");\n"
+                  "    Positive(amount);\n"
+                  "    assert(amount > 2.0, \"amount is large\");\n"
+                  "  }\n"
+                  "}";
+    static const struct
+    {
+        double amount;
+        const char *message;
+        int line, column;
+    } cases[] = {
+        { 3, NULL, 0, 0 },
+        { 1, "Assertion failed: amount is large", 6, 5 },
+        { -1, "Assertion failed: value > 0.0", 2, 33 },
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        for (int c = 0; c < 3; c++) {
+            prepare();
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_TEXT_DEFINITION_PACK));
+            ecs_entity owner = ecs_world_create_entity(world);
+            execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance != NULL);
+            pin_value args[] = { { .type = PIN_F64, .d = cases[c].amount },
+                                 { .type = PIN_BOOL, .b = true } };
+            int status = execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000);
+            const execution_program_failure *failure = execution_program_error(program);
+            if (!cases[c].message) {
+                REQUIRE(status >= 0 && failure == NULL);
+            } else {
+                REQUIRE(status < 0 && failure && failure->kind == BEHAVIOR_FUNCTION_DATA);
+                REQUIRE(!strcmp(failure->message, cases[c].message));
+                REQUIRE(
+                    failure->line == cases[c].line &&
+                    failure->column == cases[c].column
+                );
+            }
+            execution_program_free(program);
+            program = NULL;
+        }
+    }
+    /* The message is fixed when the call is compiled. */
+    prepare();
+    REQUIRE(lowering_reports(
+        "Checks :: behavior { on Impulse(amount, enabled) { "
+        "assert(enabled, format_text(\"{}\", amount)); } }",
+        &NATIVE_TEXT_DEFINITION_PACK,
+        "assert's message is a string constant"
+    ));
+    return true;
+}
+/* Named arguments bind as for any call, and an asserting helper is pure, so
+ * a narrowed optional stays narrowed across it. */
+TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure)
+{
+    const char *
+        source = "Named :: behavior {\n"
+                 "  total: double = 0;\n"
+                 "  Check :: (n: double) { assert(n >= 0.0); }\n"
+                 "  on Impulse(amount, enabled) {\n"
+                 "    local: double? = amount;\n"
+                 "    if local != nil { Check(amount); total = local + 1.0; }\n"
+                 "    assert(message: \"too small\", condition: amount > "
+                 "2.0);\n"
+                 "  }\n"
+                 "}";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2504,16 +2748,13 @@ TEST_CASE(program_expect_fails_with_its_message_and_position)
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance != NULL);
-        pin_value args[] = { { .type = PIN_F64, .d = 3 },
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
                              { .type = PIN_BOOL, .b = true } };
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
-        REQUIRE(execution_program_error(program) == NULL);
-        args[0].d = 1;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 1, 0, 1000) < 0);
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) < 0);
         const execution_program_failure *failure = execution_program_error(program);
-        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
-        REQUIRE(!strcmp(failure->message, "Expectation failed: amount is large"));
-        REQUIRE(failure->line == 4 && failure->column == 5);
+        REQUIRE(failure && !strcmp(failure->message, "Assertion failed: too small"));
+        REQUIRE(failure->line == 7 && failure->column == 5);
+        REQUIRE(number_state(instance, "total", 2));
         execution_program_free(program);
         program = NULL;
     }
@@ -2709,6 +2950,57 @@ TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates)
             execution_program_free(program);
             program = NULL;
         }
+    }
+    return true;
+}
+/* `..<` stops before its last bound and `for <` counts down, over ranges and
+ * arrays alike; neither wraps at the int bounds or runs an empty range. */
+TEST_CASE(program_loops_count_half_open_and_in_reverse)
+{
+    const char *
+        source = "Loops :: behavior {\n"
+                 "  up: int = 0; half: int = 0; down: int = 0; back: int = 0;\n"
+                 "  empty: int = 0; skips: int = 0; items: int = 0; order: int "
+                 "= 0;\n"
+                 "  edges: int = 0;\n"
+                 "  on Impulse(amount, enabled) {\n"
+                 "    for i in 1..4 { up = up * 10 + i; }\n"
+                 "    for i in 1..<4 { half = half * 10 + i; }\n"
+                 "    for < i in 1..4 { down = down * 10 + i; }\n"
+                 "    for < i in 1..<4 { back = back * 10 + i; }\n"
+                 "    n: int = 0;\n"
+                 "    for i in 0..<n { empty += 1; }\n"
+                 "    for < i in 0..<n { empty += 1; }\n"
+                 "    for < i in 1..4 { if i == 3 { continue; } skips = skips "
+                 "* 10 + i; }\n"
+                 "    xs: int[] = [1, 2, 3];\n"
+                 "    for < x, i in xs { items = items * 10 + x; order = order "
+                 "* 10 + i; }\n"
+                 "    for < i in -2147483648..-2147483647 { edges += 1; }\n"
+                 "    for i in 2147483646..<2147483647 { edges += 1; }\n"
+                 "  }\n"
+                 "}";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) >= 0);
+        REQUIRE(int_state(instance, "up", PIN_I32, 1234));
+        REQUIRE(int_state(instance, "half", PIN_I32, 123));
+        REQUIRE(int_state(instance, "down", PIN_I32, 4321));
+        REQUIRE(int_state(instance, "back", PIN_I32, 321));
+        REQUIRE(int_state(instance, "empty", PIN_I32, 0));
+        REQUIRE(int_state(instance, "skips", PIN_I32, 421));
+        REQUIRE(int_state(instance, "items", PIN_I32, 321));
+        REQUIRE(int_state(instance, "order", PIN_I32, 210));
+        REQUIRE(int_state(instance, "edges", PIN_I32, 3));
+        execution_program_free(program);
+        program = NULL;
     }
     return true;
 }
@@ -3220,6 +3512,80 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
     return true;
 }
 
+/* How many bytes of text before `offset` are not whitespace. */
+static int solid_count(const char *text, int offset)
+{
+    int count = 0;
+    for (int i = 0; i < offset; i++) {
+        count += !strchr(" \t\n\r", text[i]);
+    }
+    return count;
+}
+/* Each record's occurrence is the same after whitespace-only formatting, and
+ * script_occurrence gives it from the source alone: its key, the record's
+ * kind and its range counted in bytes that are not whitespace. */
+TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source)
+{
+    static const char tight[] =
+        "Debugger :: behavior { calls:double=0; observed:double=0; Work :: "
+        "()->(Value:double,Text:string){calls+=1;return(calls,\"a b\");} "
+        "on Tick { values:=Work(); observed=values.Value; observed+=10; } }";
+    static const char loose
+        [] = "Debugger :: behavior {\n    calls: double = 0;\n    observed: "
+             "double = 0;\n"
+             "    Work :: () -> (Value: double, Text: string) {\n        calls "
+             "+= 1;\n"
+             "        return (calls, \"a b\");\n    }\n\n    on Tick {\n"
+             "        values := Work();\n        observed = values.Value;\n"
+             "        observed += 10;\n    }\n}\n";
+    script_syntax *syntaxes[2] = { script_parse(tight), script_parse(loose) };
+    script_analysis *analyses[2] = { script_analyze(syntaxes[0], &catalog),
+                                     script_analyze(syntaxes[1], &catalog) };
+    script_occurrences *occurrences[2] = { script_occurrences_new(analyses[0]),
+                                           script_occurrences_new(analyses[1]) };
+    const script_analysis *a = analyses[0], *b = analyses[1];
+    bool alike = a->valid && b->valid && a->statement_count == b->statement_count &&
+                 a->expression_count == b->expression_count &&
+                 a->symbol_count == b->symbol_count &&
+                 a->function_count == b->function_count;
+    const struct
+    {
+        script_record_kind kind;
+        int count;
+    } kinds[] = { { SCRIPT_RECORD_STATEMENT, a->statement_count },
+                  { SCRIPT_RECORD_EXPRESSION, a->expression_count },
+                  { SCRIPT_RECORD_SYMBOL, a->symbol_count },
+                  { SCRIPT_RECORD_FUNCTION, a->function_count } };
+    for (int k = 0; alike && k < 4; k++) {
+        for (int i = 0; alike && i < kinds[k].count; i++) {
+            uint64_t id = script_record_id(occurrences[0], kinds[k].kind, i);
+            alike = id && id == script_record_id(occurrences[1], kinds[k].kind, i);
+        }
+    }
+    for (int i = 0; alike && i < a->statement_count; i++) {
+        const script_range r = a->statements[i].range;
+        uint64_t id = script_record_id(occurrences[0], SCRIPT_RECORD_STATEMENT, i);
+        alike = id == script_occurrence(
+                          a->identity,
+                          SCRIPT_RECORD_STATEMENT,
+                          solid_count(tight, r.start),
+                          solid_count(tight, r.end)
+                      );
+        for (int j = 0; alike && j < i; j++) {
+            const script_range other = a->statements[j].range;
+            alike = (other.start == r.start && other.end == r.end) ||
+                    id != script_record_id(occurrences[0], SCRIPT_RECORD_STATEMENT, j);
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        script_occurrences_free(occurrences[i]);
+        script_analysis_free(analyses[i]);
+        script_syntax_free(syntaxes[i]);
+    }
+    REQUIRE(alike);
+    return true;
+}
+
 TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
 {
     const char *source = "Debugger :: behavior { calls:double=0; "
@@ -3256,7 +3622,9 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         for (int n = 0; n < analysis->expression_count; n++) {
             const script_expression *e = &analysis->expressions[n];
             if (e->kind == SCRIPT_EXPR_CALL && e->right >= 0) {
-                call = script_record_id(analysis, SCRIPT_RECORD_EXPRESSION, n);
+                script_occurrences *occurrences = script_occurrences_new(analysis);
+                call = script_record_id(occurrences, SCRIPT_RECORD_EXPRESSION, n);
+                script_occurrences_free(occurrences);
             }
         }
         REQUIRE(handler && call);
@@ -4252,7 +4620,7 @@ TEST_CASE(program_many_tasks_collect_in_linear_mark_work)
         *source = "Many :: behavior { done: double = 0;Wait :: (n: double) -> "
                   "() { row: double[] = [n, n];await Delay(1); done += row[0] "
                   "- n + 1; }on Impulse(amount, enabled) { for (i in "
-                  "1..amount) { Wait(i) } } }";
+                  "1..int(amount)) { Wait(i) } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -4321,11 +4689,11 @@ TEST_CASE(program_handler_payloads_do_not_hide_parameters)
         "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
         "Value * 2) } "
         "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
-        "after entry { doubled(); } after doubled { return Value; } } }",
+        "doubled(); after doubled { return Value; } } }",
         "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
         "Value * 2) } "
         "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
-        "after entry { doubled(); } after doubled(twice) { return Value; } } }",
+        "doubled(); after doubled(twice) { return Value; } } }",
     };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -4338,6 +4706,20 @@ TEST_CASE(program_handler_payloads_do_not_hide_parameters)
         }
         REQUIRE(hidden == !i && analysis->valid == (i == 1));
     }
+    /* Only a handler that returns lets the function's body end without one. */
+    prepare();
+    syntax = script_parse(
+        "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
+        "Value * 2) } "
+        "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
+        "after entry { doubled(); } after doubled(twice) { } } }"
+    );
+    analysis = script_analyze(syntax, &catalog);
+    bool missing = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        missing |= !strcmp(analysis->diagnostics[d].message, "Missing return");
+    }
+    REQUIRE(!analysis->valid && missing);
     return true;
 }
 TEST_CASE(program_nested_functions_wait_for_themselves)
@@ -4429,6 +4811,26 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     }
     free(migrated);
     return true;
+}
+/* The test catalog's Impulse event, declared as a project declares it, so
+ * the version 30 migration can type a handler's payload. */
+static void declare_impulse(const char *root, bool declared)
+{
+    char path[300];
+    snprintf(path, sizeof path, "%s/content/Impulse.kdl", root);
+    if (!declared) {
+        unlink(path);
+        return;
+    }
+    FILE *file = fopen(path, "wb");
+    assert(file);
+    fputs(
+        "version 3\nname \"Impulse\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"amount\" type=\"double\"\n    - id=2 "
+        "name=\"enabled\" type=\"bool\"\n}\n",
+        file
+    );
+    fclose(file);
 }
 TEST_CASE(program_version_12_results_migrate_to_returns)
 {
@@ -4572,7 +4974,13 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     );
     fclose(file);
     REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 12);
+    declare_impulse(root, true);
+    int upgraded = chibi_project_migrate(root, error, sizeof error);
+    declare_impulse(root, false);
+    if (upgraded < 0) {
+        fprintf(stderr, "migration: %s\n", error);
+    }
+    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 12);
     char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
@@ -4718,7 +5126,13 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
         file
     );
     fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 10);
+    declare_impulse(root, true);
+    int upgraded = chibi_project_migrate(root, error, sizeof error);
+    declare_impulse(root, false);
+    if (upgraded < 0) {
+        fprintf(stderr, "migration: %s\n", error);
+    }
+    REQUIRE(upgraded == CHIBI_PROJECT_VERSION - 10);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
     char text[1024];
     file = fopen(path, "rb");
@@ -6595,56 +7009,38 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     free(retained);
     free(current_expected);
     current_expected = current;
+    current = NULL;
+    REQUIRE(!chibi_migrate_handlers(current_expected, NULL, 0, &current, error, sizeof error));
+    if (current) {
+        free(current_expected);
+        current_expected = current;
+    }
     char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    size_t old_anchor = (size_t)(strstr(source, "game_move_transform(p") - source),
-           new_anchor = (size_t)(strstr(current_expected, "move_transform(p") -
-                                 current_expected);
-    char metadata[1024];
-    snprintf(
-        metadata,
-        sizeof metadata,
-        "{\"version\":2,\"description\":\"GameTransform\","
-        "\"graphs\":[{\"nodes\":[{\"id\":42,\"type\":\"Break_GameTransform\","
-        "\"x\":17,\"inputs\":[{\"id\":43,\"name\":\"GameTransform\","
-        "\"parents\":[\"GameTransform\"]}]}],"
-        "\"edges\":[{\"from\":\"42.GameTransform\",\"to\":\"44.Value\"}]}],"
-        "\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":\"node\"}]}",
-        old_anchor
-    );
-    char *bound = authoring_source_metadata_bind(metadata, source);
-    REQUIRE(bound);
     const char *files[][2] = {
         { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
         { "content/B.chibi", source },
-        { "content/B.chibi.meta", bound },
         { "content/Scene.kdl", asset },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 3; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         REQUIRE(file);
         fputs(files[i][1], file);
         fclose(file);
     }
-    free(bound);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    snprintf(path, sizeof path, "%s/content/B.chibi.meta", root);
+    snprintf(path, sizeof path, "%s/content/B.chibi", root);
     FILE *file = fopen(path, "rb");
     REQUIRE(file);
-    char text[2048], anchor[64];
+    char text[2048];
     text[fread(text, 1, sizeof text - 1, file)] = '\0';
     fclose(file);
-    snprintf(anchor, sizeof anchor, "\"start\":%zu", new_anchor);
-    REQUIRE(authoring_source_metadata_matches(text, current_expected));
-    REQUIRE(strstr(text, "\"type\":\"Break_Transform\"") && strstr(text, anchor));
-    REQUIRE(strstr(text, "\"description\":\"GameTransform\"") && strstr(text, "\"x\":17"));
-    REQUIRE(strstr(text, "\"name\":\"Transform\"") && strstr(text, "\"parents\":[\"Transform\"]"));
-    REQUIRE(strstr(text, "\"from\":\"42.Transform\"") && strstr(text, "\"to\":\"44.Value\""));
-    for (int i = 0; i < 4; i++) {
+    REQUIRE(!strcmp(text, current_expected));
+    for (int i = 0; i < 3; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -6731,38 +7127,35 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
     free(retained);
     free(current_library);
     current_library = current;
+    char **targets[] = { &current_expected, &current_library };
+    for (int i = 0; i < 2; i++) {
+        current = NULL;
+        REQUIRE(!chibi_migrate_handlers(*targets[i], NULL, 0, &current, error, sizeof error));
+        if (current) {
+            free(*targets[i]);
+            *targets[i] = current;
+        }
+    }
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    char metadata[256];
-    snprintf(
-        metadata,
-        sizeof metadata,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "self.GameTransform") - source)
-    );
-    char *bound = authoring_source_metadata_bind(metadata, source);
-    REQUIRE(bound);
     const char *files[][2] = {
         { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
         { "content/B.chibi", source },
-        { "content/B.chibi.meta", bound },
         { "content/Helpers.chibi", library },
         { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         REQUIRE(file);
         fputs(files[i][1], file);
         fclose(file);
     }
-    free(bound);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
     REQUIRE(!chibi_project_migrate(root, error, sizeof error));
-    bool source_matches = false, library_matches = false, metadata_matches = false;
-    for (int i = 1; i <= 3; i++) {
+    bool source_matches = false, library_matches = false;
+    for (int i = 1; i <= 2; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "rb");
         REQUIRE(file);
@@ -6776,21 +7169,10 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
             }
         }
         if (i == 2) {
-            char anchor[64];
-            snprintf(
-                anchor,
-                sizeof anchor,
-                "\"start\":%zu",
-                (size_t)(strstr(current_expected, "self.Transform") - current_expected)
-            );
-            metadata_matches = authoring_source_metadata_matches(text, current_expected) &&
-                               strstr(text, anchor);
-        }
-        if (i == 3) {
             library_matches = !strcmp(text, current_library);
         }
     }
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -6799,7 +7181,7 @@ TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
     rmdir(root);
     free(current_expected);
     free(current_library);
-    REQUIRE(source_matches && library_matches && metadata_matches);
+    REQUIRE(source_matches && library_matches);
     return true;
 }
 TEST_CASE(program_constant_definitions_execute)
@@ -6869,43 +7251,21 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
     script_syntax_free(syntax);
     REQUIRE(!chibi_migrate_declarations(migrated, &again, error, sizeof error));
     REQUIRE(!again);
-    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], sidecar[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "pure /* keep */") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Damage.chibi", "Damage.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Damage.chibi", root);
+    write_whole(path, source);
+    /* A leftover sidecar from before they were dropped is left alone. */
+    const char *leftover = "{\"version\":2,\"anchors\":[{\"start\":0}]}";
+    snprintf(sidecar, sizeof sidecar, "%s.meta", path);
+    write_whole(sidecar, leftover);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
-    snprintf(path, sizeof path, "%s/Damage.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
     /* migrate_content advances exactly one version, unlike project_migrate. */
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "DamageFor ::") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated));
-    REQUIRE(strstr(remapped, json));
-    REQUIRE(strstr(remapped, "\"id\":41"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    const char *written = read_whole(path);
+    REQUIRE(written && !strcmp(written, migrated));
+    written = read_whole(sidecar);
+    REQUIRE(written && !strcmp(written, leftover));
+    REQUIRE(!unlink(path) && !unlink(sidecar));
     REQUIRE(!rmdir(root));
     free(migrated);
     free(current);
@@ -6999,7 +7359,7 @@ TEST_CASE(program_version_23_not_calls_migrate_with_native_identity)
 TEST_CASE(program_version_24_retention_migrates_and_executes)
 {
     const char *source = "behavior Retention {\n"
-                         "implicit := 0\n"
+                         "implicit := 0.0\n"
                          "state inferred := 1\n"
                          "state typed: int = 2\n"
                          "state int backwards = 3\n"
@@ -7033,7 +7393,7 @@ TEST_CASE(program_version_24_retention_migrates_and_executes)
             );
         }
         REQUIRE(execution_instance_state(instance, state_id("implicit"))->d == 3);
-        REQUIRE(execution_instance_state(instance, state_id("inferred"))->d == 1);
+        REQUIRE(execution_instance_state(instance, state_id("inferred"))->i == 1);
     }
     free(migrated);
 
@@ -7093,32 +7453,18 @@ TEST_CASE(program_version_24_retention_migrates_and_executes)
     return true;
 }
 
-TEST_CASE(program_version_24_retention_preserves_source_metadata)
+TEST_CASE(program_version_24_retention_content_is_all_or_nothing)
 {
     const char *source = "behavior B {\nstate /* keep */ int count = 0\n"
                          "on Impulse(amount, enabled) { count += 1 }\n}\n";
     char error[192] = { 0 }, *migrated = NULL;
     REQUIRE(!chibi_migrate_retention(source, &migrated, error, sizeof error));
     REQUIRE(migrated);
-    char root[] = "/tmp/chibi-retention-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-retention-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "state /* keep */") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "B.chibi", "B.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file && fputs(contents[i], file) >= 0 && !fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/B.chibi", root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
     /* One invalid source prevents every staged replacement in this step. */
     snprintf(path, sizeof path, "%s/Bad.chibi", root);
     FILE *bad = fopen(path, "wb");
@@ -7134,19 +7480,12 @@ TEST_CASE(program_version_24_retention_preserves_source_metadata)
     error[0] = '\0';
     REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
     REQUIRE(!chibi_project_migrate_content(root, NULL, 24, error, sizeof error));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
+    file = fopen(path, "rb");
     REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "count: retain") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated));
-    REQUIRE(strstr(remapped, json) && strstr(remapped, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    char written[512];
+    written[fread(written, 1, sizeof written - 1, file)] = '\0';
+    REQUIRE(!fclose(file) && !strcmp(written, migrated));
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -7232,43 +7571,26 @@ TEST_CASE(program_version_25_syntax_preserves_storage_and_comments)
     return true;
 }
 
-TEST_CASE(program_version_25_syntax_preserves_header_metadata)
+TEST_CASE(program_version_25_syntax_content_preserves_header_comments)
 {
     const char *source = "// authored source\nbehavior /* header */ Counter { "
                          "count := 0 }";
     char error[192] = { 0 }, *migrated = NULL;
     REQUIRE(!chibi_migrate_syntax(source, &migrated, error, sizeof error) && migrated);
-    char root[] = "/tmp/chibi-syntax-XXXXXX", path[256], json[256];
+    REQUIRE(strstr(migrated, "// authored source") && strstr(migrated, "/* header */"));
+    char root[] = "/tmp/chibi-syntax-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "behavior") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "B.chibi", "B.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file && fputs(contents[i], file) >= 0 && !fclose(file));
-    }
-    free(metadata);
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    FILE *file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(migrated, "Counter ::") - migrated));
-    REQUIRE(authoring_source_metadata_matches(remapped, migrated) && strstr(remapped, json));
-    const char *per_row = "system S { visits: retain int = 0 }";
     snprintf(path, sizeof path, "%s/B.chibi", root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file && fputs(source, file) >= 0 && !fclose(file));
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
+    file = fopen(path, "rb");
+    REQUIRE(file);
+    char written[1024];
+    written[fread(written, 1, sizeof written - 1, file)] = '\0';
+    REQUIRE(!fclose(file) && !strcmp(written, migrated));
+    const char *per_row = "system S { visits: retain int = 0 }";
     file = fopen(path, "wb");
     REQUIRE(file && fputs(per_row, file) >= 0 && !fclose(file));
     REQUIRE(chibi_project_migrate_content(root, NULL, 25, error, sizeof error) < 0);
@@ -7278,15 +7600,7 @@ TEST_CASE(program_version_25_syntax_preserves_header_metadata)
     char unchanged[1024];
     unchanged[fread(unchanged, 1, sizeof unchanged - 1, file)] = '\0';
     REQUIRE(!fclose(file) && !strcmp(unchanged, per_row));
-    snprintf(path, sizeof path, "%s/B.chibi.meta", root);
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    unchanged[fread(unchanged, 1, sizeof unchanged - 1, file)] = '\0';
-    REQUIRE(!fclose(file) && !strcmp(unchanged, remapped));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -7371,22 +7685,12 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
         FILE *file = fopen(path, "wb");
         REQUIRE(file && fputs(sources[i], file) >= 0 && !fclose(file));
     }
-    char *metadata = authoring_source_metadata_bind(
-        "{\"version\":2,\"anchors\":[{\"start\":0,\"id\":42,\"kind\":\"node\"}]"
-        "}",
-        sources[1]
-    );
-    REQUIRE(metadata);
-    snprintf(path, sizeof path, "%s/App.chibi.meta", root);
-    FILE *file = fopen(path, "wb");
-    REQUIRE(file && fputs(metadata, file) >= 0 && !fclose(file));
-    free(metadata);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
     REQUIRE(!chibi_project_migrate_content(root, NULL, 25, error, sizeof error));
     char contents[2][2048];
     for (int i = 0; i < 2; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        file = fopen(path, "rb");
+        FILE *file = fopen(path, "rb");
         REQUIRE(file);
         contents[i][fread(contents[i], 1, sizeof contents[i] - 1, file)] = 0;
         REQUIRE(!fclose(file));
@@ -7402,14 +7706,7 @@ TEST_CASE(program_version_25_reference_flow_crosses_library_parameters)
     REQUIRE(strstr(contents[1], "add_component(Health)"));
     REQUIRE(strstr(contents[1], "hit:=self.Health.current"));
     REQUIRE(strstr(contents[1], "print_string(\"Drone\")"));
-    snprintf(path, sizeof path, "%s/App.chibi.meta", root);
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char remapped[1024];
-    remapped[fread(remapped, 1, sizeof remapped - 1, file)] = 0;
-    REQUIRE(!fclose(file));
-    REQUIRE(authoring_source_metadata_matches(remapped, contents[1]));
-    REQUIRE(!unlink(path) && !rmdir(root));
+    REQUIRE(!rmdir(root));
     char *migrated = NULL;
     REQUIRE(
         chibi_migrate_syntax(
@@ -7527,40 +7824,14 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
         REQUIRE(chibi_migrate_entry(captured[i], &unchanged, error, sizeof error) < 0);
         REQUIRE(!unchanged && strstr(error, "a binding of the same name hides"));
     }
-    char root[] = "/tmp/chibi-entry-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-entry-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "Twice ::") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Moves.chibi", "Moves.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Moves.chibi", root);
+    write_whole(path, source);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 27, error, sizeof error));
-    snprintf(path, sizeof path, "%s/%s", root, files[0]);
     const char *text = read_whole(path);
     REQUIRE(text && !strcmp(text, expected));
-    snprintf(path, sizeof path, "%s/%s", root, files[1]);
-    text = read_whole(path);
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Twice ::") - expected));
-    REQUIRE(text && authoring_source_metadata_matches(text, expected));
-    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     script_syntax *refused = script_parse(
         "L :: library { F :: (a: int) -> int { return entry.a } }"
@@ -7568,6 +7839,357 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
     bool rejected = refused->diagnostic_count > 0;
     script_syntax_free(refused);
     REQUIRE(rejected);
+    return true;
+}
+/* Version 30 handlers name the payload fields they read, typed from the
+ * engine's version 29 events or the project's event declarations. */
+TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
+{
+    const char *damage = "version 3\nname \"Damage\"\ndomain "
+                         "\"event\"\n(array)variables {\n"
+                         "    - id=2 name=\"Amount\" type=\"int\"\n"
+                         "    - id=3 name=\"Source\" type=\"handle\" "
+                         "type_name=\"ecs.entity\"\n}\n";
+    const char *declarations[] = {
+        damage,
+        "version 3\nname \"Died\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"Source\" type=\"handle\" "
+        "type_name=\"ecs.entity\"\n}\n",
+        "version 3\nname \"Big\"\ndomain \"event\"\n(array)variables {\n"
+        "    - id=1 name=\"Count\" type=\"int64\"\n"
+        "    - id=2 name=\"Tags\" type=\"int\" container=\"set\"\n"
+        "    - id=3 name=\"Level\" type=\"int\" type_name=\"int\"\n}\n",
+    };
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "B :: behavior { x: float = 0; on Tick(dt) { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick as tick(DeltaSeconds: float = "
+          "0.0) { x += tick.DeltaSeconds + "
+          "DeltaSeconds } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "B :: behavior { on Contact_Begin { destroy(event.Other) } }", "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { destroy(Other) } }" },
+        { "B :: behavior { on Begin { } on Tick { } }",
+          "B :: behavior { on Begin :: () { } on Tick :: () { } }" },
+        { "B :: behavior { total: int = 0; on Damage as hit { total += "
+          "hit.Amount } }",
+          "B :: behavior { total: int = 0; on Damage :: (Amount: int) { total "
+          "+= Amount } }" },
+        { "B :: behavior { last: handle<ecs.entity> = 0; on Died as "
+          "died(Source: handle<ecs.entity> = 0) { last = "
+          "Source } }",
+          "B :: behavior { last: handle<ecs.entity> = 0; on Died :: (Source: "
+          "handle<ecs.entity>) { last = Source } }" },
+        { "B :: behavior { on Repair as repair() { } }",
+          "B :: behavior { on Repair :: () { } }" },
+        /* `event.F` names a field before a listed parameter. */
+        { "B :: behavior { on Contact_Begin(Point, Other) { last = "
+          "event.Other; at = Other } }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>, "
+          "Point: struct<CF_V2>) { last = Other; at = Point } }" },
+        { "B :: behavior { on Contact_Begin(point, other) { "
+          "destroy(event.other) "
+          "} }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "destroy(Other) } }" },
+        { "B :: behavior { on Contact_Begin(other, point) { last = event.Other "
+          "} }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "last = Other } }" },
+        /* An empty list binds the fields' own names, and comments take no
+         * position. */
+        { "B :: behavior { on Damage() { total += Amount } }",
+          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
+        { "B :: behavior { on Damage as d() { total += d.Amount } }",
+          "B :: behavior { on Damage :: (Amount: int) { total += Amount } }" },
+        { "B :: behavior { on Contact_Begin(/* note */ o, p) { destroy(o) } }",
+          "B :: behavior { on Contact_Begin :: (Other: handle<ecs.entity>) { "
+          "destroy(Other) } }" },
+        /* An alias declared in source names the event. */
+        { "B :: behavior { event hurt = Damage; on hurt { total += Amount } }",
+          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
+          "total += Amount } }" },
+        { "B :: behavior { Watch :: () { event moved = Died; on moved(a) { "
+          "last = a } } event moved = Damage; on moved(a, b) { total += a } }",
+          "B :: behavior { Watch :: () { event moved = Died; on moved :: "
+          "(Source: handle<ecs.entity>) { last = Source } } event moved = "
+          "Damage; on moved :: (Amount: int) { total += Amount } }" },
+        { "B :: behavior { event hurt = Damage; on hurt(a: int, s: "
+          "handle<ecs.entity>) { total += a } }",
+          "B :: behavior { event hurt = Damage; on hurt :: (Amount: int) { "
+          "total += Amount } }" },
+        /* A computed key reads its value; a function's own parameter and a
+         * named argument do not read an alias. */
+        { "B :: behavior { on Damage(a, s) { values := { [a]: 1 } } }",
+          "B :: behavior { on Damage :: (Amount: int) { values := { [Amount]: "
+          "1 } } }" },
+        { "B :: behavior { Add :: (hit: int) { total += hit } on Damage as hit "
+          "{ Add(hit: hit.Amount) } }",
+          "B :: behavior { Add :: (hit: int) { total += hit } on Damage :: "
+          "(Amount: int) { Add(hit: Amount) } }" },
+        { "B :: behavior { on Vanished(Source: handle<ecs.entity>, Count: int) "
+          "{ last = Source } }",
+          "B :: behavior { on Vanished :: (Source: handle<ecs.entity>) { last "
+          "= Source } }" },
+        /* Every scalar spells as itself, and a field the migration cannot
+         * spell stops only a handler that reads it. */
+        { "B :: behavior { on Big { steps += Count + Level } }",
+          "B :: behavior { on Big :: (Count: int64, Level: int) { steps += "
+          "Count + Level } }" },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_handlers(cases[i].source, declarations, 3, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        if (!migrated || strcmp(migrated, cases[i].expected)) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(migrated && !strcmp(migrated, cases[i].expected));
+        free(migrated);
+        REQUIRE(
+            !chibi_migrate_handlers(cases[i].expected, declarations, 3, &migrated, error, sizeof error)
+        );
+        REQUIRE(!migrated);
+    }
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "B :: behavior { action show = Show(menu.Key); on Damage as menu { "
+          "show() } }",
+          "outside the handler" },
+        { "B :: behavior { on Damage { Keep(event) } }", "the whole `event`" },
+        { "B :: behavior { on Damage as hit { Keep(hit) } }", "the whole payload" },
+        { "B :: behavior { x: float = 0; on Tick(t) { dt := 1.0; x += t } }",
+          "declares a name that a payload field" },
+        { "B :: behavior { Other: int = 0; on Contact_Begin(o) { Other = 1; "
+          "destroy(o) } }",
+          "another meaning" },
+        { "B :: behavior { on Damage { Keep(event.Force) } }", "does not have" },
+        /* A local, loop or pattern that rebinds a listed parameter. */
+        { "B :: behavior { on Contact_Begin(o, p) { o := self; last = o } }",
+          "declares a name that a payload parameter" },
+        { "B :: behavior { on Contact_Begin(o, p) { for o in items { Keep(o) } "
+          "} }",
+          "declares a name that a payload parameter" },
+        { "B :: behavior { on Contact_Begin(o, p) { if p is Point o { Keep(o) "
+          "} } }",
+          "declares a name that a payload parameter" },
+        { "B :: behavior { on Damage as m { for m in items { total += m.Amount "
+          "} } }",
+          "its payload alias" },
+        { "B :: behavior { Peek :: () -> float { if total > 0 { m := 1.0 } "
+          "return m.x } on Damage as m { total += m.Amount } }",
+          "outside the handler" },
+        /* An event the migration cannot find has only the fields of a typed
+         * list. */
+        { "B :: behavior { on Vanished(source) { } }", "untyped payload field" },
+        { "B :: behavior { on Vanished { Keep(event.Source) } }", "does not have" },
+        { "B :: behavior { event a = Damage; event b = a; on b { } }", "alias of an alias" },
+        { "B :: behavior { on Big { Keep(Tags) } }", "cannot spell" },
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(
+            chibi_migrate_handlers(refused[i].source, declarations, 3, &migrated, error, sizeof error) < 0
+        );
+        if (!strstr(error, refused[i].message)) {
+            fprintf(stderr, "refusal %zu: %s\n", i, error);
+        }
+        REQUIRE(!migrated && strstr(error, refused[i].message));
+    }
+    /* A project's own event declarations type its handlers' payloads. */
+    char root[] = "/tmp/chibi-handlers-XXXXXX", path[300];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/events", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
+    write_whole(path, damage);
+    snprintf(path, sizeof path, "%s/Hurt.chibi", root);
+    write_whole(path, "Hurt :: behavior { total: int = 0; on Damage { total += Amount } }");
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 29, error, sizeof error));
+    const char *text = read_whole(path);
+    REQUIRE(
+        text && !strcmp(text, "Hurt :: behavior { total: int = 0; on Damage :: (Amount: int) { total += Amount } }")
+    );
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/events/Damage.kdl", root);
+    REQUIRE(!unlink(path));
+    snprintf(path, sizeof path, "%s/events", root);
+    REQUIRE(!rmdir(path));
+    REQUIRE(!rmdir(root));
+    return true;
+}
+/* An upgrade that fails after its steps wrote, for example in finalization,
+ * leaves scripts at the current version under an older manifest. Its rerun
+ * starts at that version, and every step leaves those scripts alone. */
+TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated)
+{
+    const char *current = "Lead :: behavior {\n    on Tick :: (dt: float s) "
+                          "{\n    }\n}\n";
+    char root[] = "/tmp/chibi-rerun-XXXXXX", path[300], error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/Lead.chibi", root);
+    write_whole(path, current);
+    for (int from = 23; from < CHIBI_PROJECT_VERSION; from++) {
+        if (chibi_project_migrate_content(root, NULL, from, error, sizeof error)) {
+            fprintf(stderr, "step %d: %s\n", from, error);
+        }
+        REQUIRE(!error[0]);
+        const char *text = read_whole(path);
+        REQUIRE(text && !strcmp(text, current));
+    }
+    REQUIRE(!unlink(path));
+    REQUIRE(!rmdir(root));
+    return true;
+}
+/* Version 29 runs a function's own body: the statements of `after entry`
+ * move after the function's statements, before the handlers that follow, and
+ * macros keep theirs. The current analyzer refuses `after entry` in a
+ * function. */
+TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
+{
+    const char *source = "Moves :: library {\n"
+                         "Step :: (Speed: float) -> float {\n"
+                         "    scale := 2.0\n"
+                         "    after entry {\n"
+                         "        // Doubles the speed.\n"
+                         "        if Speed > 1.0 {\n"
+                         "            return Speed * scale\n"
+                         "        }\n"
+                         "        return 0.0\n"
+                         "    }\n"
+                         "}\n"
+                         "Spawn :: (Prototype: Prototype) {\n"
+                         "    action spawned = spawn_prototype(Prototype)\n"
+                         "    after entry {\n"
+                         "        spawned()\n"
+                         "    }\n"
+                         "    after spawned {\n"
+                         "        return\n"
+                         "    }\n"
+                         "}\n"
+                         "Last :: () {\n"
+                         "    after entry { log('d') }\n"
+                         "}\n"
+                         "Once :: (Value: int) -> int { after entry { return "
+                         "Value } }\n"
+                         "}";
+    const char *expected = "Moves :: library {\n"
+                           "Step :: (Speed: float) -> float {\n"
+                           "    scale := 2.0\n"
+                           "    // Doubles the speed.\n"
+                           "    if Speed > 1.0 {\n"
+                           "        return Speed * scale\n"
+                           "    }\n"
+                           "    return 0.0\n"
+                           "}\n"
+                           "Spawn :: (Prototype: Prototype) {\n"
+                           "    action spawned = spawn_prototype(Prototype)\n"
+                           "    spawned()\n"
+                           "    after spawned {\n"
+                           "        return\n"
+                           "    }\n"
+                           "}\n"
+                           "Last :: () {\n"
+                           "    log('d')\n"
+                           "}\n"
+                           "Once :: (Value: int) -> int { return Value }\n"
+                           "}";
+    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_after_entry(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    free(migrated);
+    REQUIRE(!chibi_migrate_after_entry(expected, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    const char *macro = "M :: library { macro Go() -> () { exit Then; after "
+                        "entry { } } }";
+    REQUIRE(!chibi_migrate_after_entry(macro, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "L :: library { F :: (a: int) { after entry { b := event }\n} }", "reads `event`" },
+        { "L :: library { F :: (a: int) { after entry as e { b := e.a }\n} }",
+          "names the payload" },
+        { "L :: library { F :: (a: int) { b := 1; after entry { b := 2 }\n} }", "also uses" },
+        { "L :: library { F :: (a: int) { after entry { a := 2 }\n} }", "also uses" },
+        { "L :: library { F :: (a: int) { after entry { b := 1 } after entry { "
+          "b := 2 }\n} }",
+          "also uses" },
+        { "L :: library { F :: (p: Prototype) { action spawned = "
+          "spawn_prototype(p); "
+          "after entry { spawned := 2 }\n} }",
+          "also uses" },
+        { "L :: library { F :: (a: int) { a = 2; after entry { b := a }\n} }",
+          "assign or pass" },
+        { "L :: library { F :: (p: Point) { p.x = 2; after entry { b := p }\n} "
+          "}",
+          "assign or pass" },
+        { "L :: library { Bump :: (x: ref int) { x += 1 }\nF :: (v: int) -> "
+          "int { Bump(v); "
+          "after entry { return v }\n} }",
+          "pass by reference" },
+        { "L :: library { F :: (a: int) { b := 1; after entry { c := a } } }",
+          "on one line" },
+    };
+    for (int i = 0; i < 10; i++) {
+        REQUIRE(chibi_migrate_after_entry(refused[i].source, &unchanged, error, sizeof error) < 0);
+        REQUIRE(!unchanged && strstr(error, refused[i].message));
+    }
+    /* A statement that reads a parameter, passes it to a callable taking
+     * copies, or changes one the handler does not read, leaves the handler's
+     * reads as they were. */
+    const char *kept = "L :: library { F :: (a: int, b: int) -> int { b = 2; "
+                       "Log(a); c := a; "
+                       "after entry { return a + c }\n} }";
+    REQUIRE(!chibi_migrate_after_entry(kept, &migrated, error, sizeof error));
+    REQUIRE(migrated && strstr(migrated, "return a + c") && !strstr(migrated, "after entry"));
+    free(migrated);
+    /* A call names its own library's callable or a qualified one, so a
+     * callable of the same name in another library takes copies. */
+    char project[] = "/tmp/chibi-after-entry-ref-XXXXXX", file[288];
+    REQUIRE(mkdtemp(project));
+    const char *names[] = { "W.chibi", "C.chibi", "L.chibi" };
+    const char *libraries[] = {
+        "W :: library { Bump :: (x: ref int) { x += 1 } }",
+        "C :: library { Bump :: (x: int) { } }",
+        "L :: library { F :: (v: int) { C.Bump(v); after entry { G(v) }\n} }",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        write_whole(file, libraries[i]);
+    }
+    REQUIRE(!chibi_project_migrate_content(project, NULL, 28, error, sizeof error));
+    write_whole(file, "L :: library { F :: (v: int) { W.Bump(v); after entry { G(v) }\n} }");
+    REQUIRE(chibi_project_migrate_content(project, NULL, 28, error, sizeof error) < 0);
+    REQUIRE(strstr(error, "pass by reference"));
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        REQUIRE(!unlink(file));
+    }
+    REQUIRE(!rmdir(project));
+    char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/Moves.chibi", root);
+    write_whole(path, source);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 28, error, sizeof error));
+    const char *text = read_whole(path);
+    REQUIRE(text && !strcmp(text, expected));
+    REQUIRE(!unlink(path));
+    REQUIRE(!rmdir(root));
+    prepare();
+    syntax = script_parse("L :: library { F :: (a: int) -> int { after entry { return a } } }");
+    analysis = script_analyze(syntax, &catalog);
+    bool function_refused = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        function_refused |= strstr(analysis->diagnostics[d].message, "A function runs its own body") !=
+                            NULL;
+    }
+    REQUIRE(function_refused && !analysis->valid);
     return true;
 }
 TEST_CASE(program_version_26_casts_migrate_to_conversions)
@@ -7608,40 +8230,14 @@ TEST_CASE(program_version_26_casts_migrate_to_conversions)
         ) < 0
     );
     REQUIRE(!unchanged && strstr(error, "no T(value) spelling"));
-    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256], json[256];
+    char root[] = "/tmp/chibi-conversions-XXXXXX", path[256];
     REQUIRE(mkdtemp(root));
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
-        "\"node\"}]}",
-        (size_t)(strstr(source, "Low ::") - source)
-    );
-    char *metadata = authoring_source_metadata_bind(json, source);
-    REQUIRE(metadata);
-    const char *files[] = { "Bits.chibi", "Bits.chibi.meta" };
-    const char *contents[] = { source, metadata };
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        FILE *file = fopen(path, "wb");
-        REQUIRE(file);
-        REQUIRE(fputs(contents[i], file) >= 0);
-        REQUIRE(!fclose(file));
-    }
-    free(metadata);
+    snprintf(path, sizeof path, "%s/Bits.chibi", root);
+    write_whole(path, source);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 26, error, sizeof error));
-    snprintf(path, sizeof path, "%s/%s", root, files[0]);
     const char *text = read_whole(path);
     REQUIRE(text && !strcmp(text, expected));
-    snprintf(path, sizeof path, "%s/%s", root, files[1]);
-    text = read_whole(path);
-    snprintf(json, sizeof json, "\"start\":%zu", (size_t)(strstr(expected, "Low ::") - expected));
-    REQUIRE(text && authoring_source_metadata_matches(text, expected));
-    REQUIRE(strstr(text, json) && strstr(text, "\"id\":42"));
-    for (int i = 0; i < 2; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, files[i]);
-        REQUIRE(!unlink(path));
-    }
+    REQUIRE(!unlink(path));
     REQUIRE(!rmdir(root));
     free(migrated);
     return true;
@@ -7874,12 +8470,13 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
     const char
         *source = "N :: behavior { n: double = 0; w: int = 4; a: double[] = "
                   "[1, 2, 3];Leaf :: () -> (v: double) { j := 1.5; "
-                  "return(a[j]) }Inner :: () -> (v: double) { return(Leaf() + "
+                  "return(a[int(j)]) }Inner :: () -> (v: double) { "
+                  "return(Leaf() + "
                   "1) }Start :: () -> (v: double) { return(Inner()) }Bump :: "
                   "() { n += 1 } Relay :: () { Bump() }Kick :: () { Relay() "
                   "}on Impulse(amount, enabled) { i := 2; a[i] = 10;n = "
                   "Start() + a[2] + clamp(amount, 0, w); Kick();j := 1.5; for "
-                  "(k in 1..j) { n += k } } }";
+                  "(k in 1..int(j)) { n += k } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -7896,13 +8493,14 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
     return true;
 }
 /* Found animating Celeste's sprite: a result takes the type of its first
- * return, a literal settles to a number, and other returns convert to it. */
+ * return, a literal settles by its spelling, and other returns convert to
+ * it. */
 TEST_CASE(program_returns_convert_to_their_result_type)
 {
     const char
         *source = "M :: behavior { n: double = 0; k: int = 3;Half :: (v: int) "
                   "{ return v % 2 }First :: () { if k == 2 { return 8.5 } "
-                  "return Half(k) }Literal :: () { if k == 2 { return 8 } "
+                  "return Half(k) }Literal :: () { if k == 2 { return 8.0 } "
                   "return Half(k) }Declared :: () -> (r: double) { return "
                   "Half(k) }on Impulse(amount, enabled) {n = First() * 0.5 + "
                   "Literal() * 0.5 + Declared() } }";
@@ -8445,7 +9043,7 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     const char *source =
         "UnionValues :: behavior { AttackState :: union { Idle | "
         "Windup(remaining: number) | Active(damage: number) }; Status :: union "
-        "{ \"Yes\" | \"No\" }; total := 0; phase: AttackState = "
+        "{ \"Yes\" | \"No\" }; total := 0.0; phase: AttackState = "
         "AttackState.Windup(0.3); authored: Status = \"Yes\"; zero: number? = "
         "0; Empty :: () -> number? { return nil; } Default :: () -> (value: "
         "AttackState = AttackState.Idle) { return; } Extract :: (value: number "
@@ -8591,7 +9189,9 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                                 .name,
                             "finished"
                         )) {
-                        point = script_record_id(analysis, SCRIPT_RECORD_STATEMENT, i);
+                        script_occurrences *occurrences = script_occurrences_new(analysis);
+                        point = script_record_id(occurrences, SCRIPT_RECORD_STATEMENT, i);
+                        script_occurrences_free(occurrences);
                     }
                 }
                 REQUIRE(function && point);
@@ -8698,8 +9298,11 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_handlers_name_payload_fields);
+    RUN_TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source);
     RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
+    RUN_TEST_CASE(program_systems_name_their_step);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
@@ -8724,8 +9327,10 @@ void test_language_program()
     RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
-    RUN_TEST_CASE(program_expect_fails_with_its_message_and_position);
+    RUN_TEST_CASE(program_assert_fails_with_its_message_or_condition);
+    RUN_TEST_CASE(program_assert_binds_names_and_keeps_helpers_pure);
     RUN_TEST_CASE(program_integer_conversions_check_wrap_and_clamp);
+    RUN_TEST_CASE(program_loops_count_half_open_and_in_reverse);
     RUN_TEST_CASE(program_char_conversions_and_arithmetic_stay_unicode_scalars);
     RUN_TEST_CASE(program_char_compares_with_ints_and_steps_below_surrogates);
     RUN_TEST_CASE(program_local_array_survives_collection_mid_build);
@@ -8782,13 +9387,16 @@ void test_language_program()
     RUN_TEST_CASE(program_version_23_declarations_and_switch_migrate);
     RUN_TEST_CASE(program_version_23_not_calls_migrate_with_native_identity);
     RUN_TEST_CASE(program_version_24_retention_migrates_and_executes);
-    RUN_TEST_CASE(program_version_24_retention_preserves_source_metadata);
+    RUN_TEST_CASE(program_version_24_retention_content_is_all_or_nothing);
     RUN_TEST_CASE(program_version_25_syntax_preserves_storage_and_comments);
-    RUN_TEST_CASE(program_version_25_syntax_preserves_header_metadata);
+    RUN_TEST_CASE(program_version_25_syntax_content_preserves_header_comments);
     RUN_TEST_CASE(program_version_25_symbol_names_and_native_shadows_migrate);
     RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
     RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
+    RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
+    RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
+    RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

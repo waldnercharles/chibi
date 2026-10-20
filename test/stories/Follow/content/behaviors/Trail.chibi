@@ -1,6 +1,6 @@
 // Reads another entity's component through a named scene global.
 Trail :: behavior {
-    on Tick {
+    on Tick :: () {
         self.Transform += (globals.Leader.Transform - self.Transform) * 0.25
     }
 }

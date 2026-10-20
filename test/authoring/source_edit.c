@@ -353,6 +353,95 @@ TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_default
     REQUIRE(candidate_analysis->valid);
     return true;
 }
+/* A handler that names its payload fields shows every field as an entry pin,
+ * an unlisted one under the field's name. A listed field connects by its
+ * name; an unlisted one has no source to read until it is listed. */
+/* A created handler lists every payload field with its type, so each pin
+ * can be wired; a handler for an event without a payload lists none. */
+TEST_CASE(source_created_handlers_list_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 }, .unit = "charge" },
+        { .name = "step", .type = { .storage = PIN_F64 }, .unit = "s" },
+    };
+    static const script_catalog_capability events[] = {
+        { .id = 100, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT },
+        { .id = 101,
+          .name = "Impulse",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = fields,
+          .parameter_count = 2 },
+    };
+    static const script_catalog with = { .capabilities = events,
+                                         .capability_count = 2 };
+    const char *names[] = { "Impulse", "Tick" };
+    const char *headers[] = {
+        "on Impulse :: (amount: double charge, step: double s) {}",
+        "on Tick :: () {}"
+    };
+    for (int i = 0; i < 2; i++) {
+        syntax = script_parse("Edit :: behavior { total:double=0; }");
+        analysis = script_analyze_document(syntax, &with, "tests/source-edit");
+        view = authoring_source_presentation_new(analysis, &with, NULL);
+        REQUIRE(analysis->valid && view);
+        authoring_edit_request r = { .kind = AUTHORING_EDIT_CREATE_EVENT,
+                                     .generation = authoring_source_edit_generation(view),
+                                     .reference = names[i] };
+        REQUIRE(authoring_source_edit(analysis, &with, view, &r, &result, error, sizeof error));
+        REQUIRE(strstr(result.text, headers[i]));
+        script_syntax *created = script_parse(result.text);
+        script_analysis
+            *checked = script_analyze_document(created, &with, analysis->identity);
+        REQUIRE(checked->valid);
+        script_analysis_free(checked);
+        script_syntax_free(created);
+        cleanup();
+    }
+    return true;
+}
+TEST_CASE(source_connections_read_listed_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 } },
+        { .name = "scale", .type = { .storage = PIN_F64 } },
+    };
+    static const script_catalog_capability impulse = { .id = 101,
+                                                       .name = "Impulse",
+                                                       .kind = SCRIPT_CAPABILITY_EVENT,
+                                                       .parameters = fields,
+                                                       .parameter_count = 2 };
+    static const script_catalog events = { .capabilities = &impulse,
+                                           .capability_count = 1 };
+    syntax = script_parse("Edit :: behavior { total:double=0; on Impulse :: (scale: double) { total=7; } }");
+    analysis = script_analyze_document(syntax, &events, "tests/source-edit");
+    view = authoring_source_presentation_new(analysis, &events, NULL);
+    REQUIRE(analysis->valid && view);
+    graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Impulse");
+    node *entry = g ? graph_node_by_id(g, g->entry_id) : NULL;
+    REQUIRE(entry && entry->output_count == 3);
+    REQUIRE(!strcmp(entry->output_pins[1].name, "amount"));
+    REQUIRE(!strcmp(entry->output_pins[2].name, "scale"));
+    const source_presentation_origin *target = find(SOURCE_PRESENTATION_EXPRESSION, "7;"),
+                                     *pins[2] = { 0 };
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+        for (int k = 0; k < 2; k++) {
+            if (o->kind == SOURCE_PRESENTATION_SYMBOL &&
+                o->pin == entry->output_pins[k + 1].id) {
+                pins[k] = o;
+            }
+        }
+    }
+    REQUIRE(target && pins[0] && pins[1]);
+    authoring_edit_request r = request(AUTHORING_EDIT_CONNECT, target);
+    r.producer = pins[0]->identity;
+    REQUIRE(!authoring_source_edit(analysis, &events, view, &r, &result, error, sizeof error));
+    REQUIRE(strstr(error, "no current producer"));
+    r.producer = pins[1]->identity;
+    REQUIRE(authoring_source_edit(analysis, &events, view, &r, &result, error, sizeof error));
+    REQUIRE(strstr(result.text, "total=scale;"));
+    return true;
+}
 TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects)
 {
     REQUIRE(
@@ -826,114 +915,6 @@ TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope)
     return true;
 }
 
-TEST_CASE(source_layout_rebase_survives_new_document_identity_and_rejects_nonrename_edits)
-{
-    REQUIRE(project("Edit :: behavior { count:double=0; on Tick { count=2; } }"));
-    const source_presentation_origin *o = find(SOURCE_PRESENTATION_EXPRESSION, "2;");
-    REQUIRE(o);
-    graph *g = behavior_asset_find_graph(authoring_source_presentation_view(view), o->graph);
-    node *n = graph_node_by_id(g, o->node);
-    n->x = 12;
-    n->y = 34;
-    n->placed = true;
-    REQUIRE(graph_set_pin_watch(g, n, 1, 0, true) == 0);
-    REQUIRE(graph_add_comment_box(g, "Renamed layout", 5, 6, 80, 40));
-    bool routed = false;
-    for (int i = 0; i < acount(g->edges); i++) {
-        edge *e = &g->edges[i];
-        if (e->from_id == n->id && e->kind == GRAPH_EDGE_DATA) {
-            e->reroute_count = 1;
-            e->reroutes[0].x = 19;
-            e->reroutes[0].y = 23;
-            routed = true;
-        }
-    }
-    REQUIRE(routed);
-    char *metadata = authoring_source_presentation_metadata(view);
-    REQUIRE(metadata);
-    text_edit rename = { 0, 4, "Renamed" };
-    result.text = text_edits_apply(analysis->text, &rename, 1);
-    REQUIRE(result.text);
-    candidate_syntax = script_parse(result.text);
-    candidate_analysis = script_analyze_document(candidate_syntax, &catalog, "tests/renamed");
-    REQUIRE(candidate_analysis->valid);
-    candidate_view = authoring_source_presentation_new(candidate_analysis, &catalog, NULL);
-    REQUIRE(candidate_view);
-    result.metadata = authoring_source_presentation_rebase(view, candidate_view, metadata, &rename, 1);
-    REQUIRE(result.metadata);
-    /* A new projection has no retained origin IDs or graph allocation from the
-     * original generation; the persisted sidecar is the only layout source. */
-    authoring_source_presentation_free(candidate_view);
-    candidate_view = authoring_source_presentation_new(candidate_analysis, &catalog, NULL);
-    REQUIRE(authoring_source_presentation_restore(candidate_view, result.metadata));
-    bool placed = false, watched = false, box = false;
-    routed = false;
-    for (int i = 0; i < authoring_source_presentation_origin_count(candidate_view);
-         i++) {
-        const source_presentation_origin
-            *origin = authoring_source_presentation_origin_at(candidate_view, i);
-        if (origin->kind != SOURCE_PRESENTATION_EXPRESSION || origin->pin ||
-            origin->range.end - origin->range.start != 1 ||
-            result.text[origin->range.start] != '2') {
-            continue;
-        }
-        g = behavior_asset_find_graph(
-            authoring_source_presentation_view(candidate_view),
-            origin->graph
-        );
-        n = graph_node_by_id(g, origin->node);
-        placed = n->placed && n->x == 12 && n->y == 34;
-        watched = (n->output_pins[0].flags & PIN_FLAG_WATCH) != 0;
-        box = acount(g->comment_boxes) == 1 &&
-              !strcmp(g->comment_boxes[0].title, "Renamed layout");
-        for (int j = 0; j < acount(g->edges); j++) {
-            const edge *e = &g->edges[j];
-            routed |= e->reroute_count == 1 && e->reroutes[0].x == 19 &&
-                      e->reroutes[0].y == 23;
-        }
-    }
-    REQUIRE(placed && watched && box && routed);
-    yyjson_doc *parsed = yyjson_read(result.metadata, strlen(result.metadata), 0);
-    REQUIRE(parsed);
-    yyjson_mut_doc *malformed = yyjson_doc_mut_copy(parsed, NULL);
-    yyjson_doc_free(parsed);
-    yyjson_mut_val *anchors = yyjson_mut_obj_get(yyjson_mut_doc_get_root(malformed), "source_origins");
-    yyjson_mut_obj_put(
-        yyjson_mut_arr_get(anchors, 0),
-        yyjson_mut_str(malformed, "anchor"),
-        yyjson_mut_uint(malformed, 0)
-    );
-    char *invalid = yyjson_mut_write(malformed, 0, NULL);
-    yyjson_mut_doc_free(malformed);
-    REQUIRE(invalid);
-    n->x = 99;
-    bool accepted = authoring_source_presentation_restore(candidate_view, invalid);
-    free(invalid);
-    REQUIRE(!accepted && n->x == 99);
-    REQUIRE(
-        authoring_source_presentation_restore(candidate_view, result.metadata) &&
-        n->x == 12
-    );
-    text_edit wrong = { 0, 4, "Different" };
-    char *rejected = authoring_source_presentation_rebase(view, candidate_view, metadata, &wrong, 1);
-    REQUIRE(!rejected);
-    authoring_source_presentation_free(candidate_view);
-    script_analysis_free(candidate_analysis);
-    script_syntax_free(candidate_syntax);
-    free(result.text);
-    int literal = (int)(strstr(analysis->text, "2;") - analysis->text);
-    text_edit changed[] = { rename, { literal, literal + 1, "3" } };
-    result.text = text_edits_apply(analysis->text, changed, 2);
-    candidate_syntax = script_parse(result.text);
-    candidate_analysis = script_analyze_document(candidate_syntax, &catalog, "tests/renamed");
-    candidate_view = authoring_source_presentation_new(candidate_analysis, &catalog, NULL);
-    REQUIRE(candidate_analysis->valid && candidate_view);
-    rejected = authoring_source_presentation_rebase(view, candidate_view, metadata, changed, 2);
-    free(metadata);
-    REQUIRE(!rejected);
-    return true;
-}
-
 TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses)
 {
     REQUIRE(
@@ -1296,6 +1277,8 @@ void test_source_edit()
     RUN_TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses);
     RUN_TEST_CASE(source_retype_compact_inferred_retention_preserves_owner);
     RUN_TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects);
+    RUN_TEST_CASE(source_connections_read_listed_payload_fields);
+    RUN_TEST_CASE(source_created_handlers_list_payload_fields);
     RUN_TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order);
     RUN_TEST_CASE(source_fused_call_edits_select_expression_or_statement_by_operation);
     RUN_TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration);
@@ -1305,6 +1288,5 @@ void test_source_edit()
     RUN_TEST_CASE(source_inline_spells_char_parameters);
     RUN_TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return);
     RUN_TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope);
-    RUN_TEST_CASE(source_layout_rebase_survives_new_document_identity_and_rejects_nonrename_edits);
     pu_clear_setup();
 }

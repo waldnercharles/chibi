@@ -19,14 +19,20 @@ targets.
   not hold up M5. Only the tokenizer exists so far, on the odin-tokenizer
   branch.
 - **`entry`.** Removed from the language. Phase 1 (project version 28):
-  `entry.X` and a bare `entry` became the parameter's own name. Phase 2,
-  under discussion: `after entry` and macro entry and exit paths become
-  ordinary functions returning a union.
+  `entry.X` and a bare `entry` became the parameter's own name. Phase 2a
+  (project version 29): a function has no `after entry`; its statements
+  moved into the function's body. Still under discussion: macro entry and
+  exit paths becoming ordinary functions returning a union, and whether
+  `after` goes entirely.
 - **Named results.** A named, defaulted single result whose name adds nothing
   is dropped. Named results remain where natives need them.
-- **Events.** Under discussion: declare events name-first with a typed
-  payload, along the lines of `Tick :: event (dt: Seconds)`. See "One way to
-  read the step".
+- **Events.** Decided: a handler is written `on Tick :: (dt: s) { ... }`. It
+  names the payload fields it reads, in any order and any subset, each with
+  its type, and `on Begin :: () { }` takes none. Systems declare the step the
+  same way, and `event` goes. Tick's payload is `dt` in seconds (#551).
+  Project version 30 migrates every handler to the new form; a later change
+  removes the old forms from the language. Declarations name-first, `Tick :: event (dt: s)`, may follow.
+  See "One way to read the step".
 
 The remaining entries are proposals.
 
@@ -156,10 +162,10 @@ All four mean the same thing (`docs/code-language.md` on main, lines
 - Unity reads a global, `Time.deltaTime`.
 - Bevy injects `Res<Time>`.
 
-Change: one form. The owner proposes declaring events name-first with a
-typed payload, `Tick :: event (dt: Seconds)`, as other declarations are. A
-handler then lists that payload, checked against the declaration, and the
-other three forms go. Godot's `signal tick(dt: float)` and Pony's
+Change (decided): one form. Events are declared name-first with a typed
+payload, `Tick :: event (dt: s)`, as other declarations are. A handler is
+written `on Tick :: (dt: s) { ... }`; its parameters are checked against the
+declaration, and the other three forms go. Godot's `signal tick(dt: float)` and Pony's
 `be tick(dt: F64)` declare events with typed payloads the same way.
 
 ## Single named results with defaults

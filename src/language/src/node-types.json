@@ -1767,6 +1767,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     }
   },
@@ -2115,6 +2125,20 @@
           }
         ]
       },
+      "bound": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "..",
+            "named": false
+          },
+          {
+            "type": "..<",
+            "named": false
+          }
+        ]
+      },
       "first": {
         "multiple": false,
         "required": false,
@@ -2301,6 +2325,16 @@
           }
         ]
       },
+      "reverse": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "<",
+            "named": false
+          }
+        ]
+      },
       "value": {
         "multiple": false,
         "required": false,
@@ -2446,6 +2480,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     }
   },
@@ -2476,6 +2520,16 @@
           {
             "type": "identifier",
             "named": true
+          }
+        ]
+      },
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "::",
+            "named": false
           }
         ]
       },
@@ -4123,6 +4177,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     }
   },
@@ -5135,12 +5199,40 @@
     "type": "system",
     "named": true,
     "fields": {
+      "binding": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "::",
+            "named": false
+          }
+        ]
+      },
       "body": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "system_body",
+            "named": true
+          }
+        ]
+      },
+      "event": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "member_expression",
             "named": true
           }
         ]
@@ -5168,6 +5260,16 @@
       "parameters": {
         "multiple": false,
         "required": true,
+        "types": [
+          {
+            "type": "parameter_list",
+            "named": true
+          }
+        ]
+      },
+      "payload": {
+        "multiple": false,
+        "required": false,
         "types": [
           {
             "type": "parameter_list",
@@ -5855,6 +5957,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     },
     "children": {
@@ -6160,6 +6272,10 @@
     "named": false
   },
   {
+    "type": "..<",
+    "named": false
+  },
+  {
     "type": "/",
     "named": false
   },
@@ -6413,6 +6529,10 @@
   },
   {
     "type": "prototype",
+    "named": false
+  },
+  {
+    "type": "pub",
     "named": false
   },
   {

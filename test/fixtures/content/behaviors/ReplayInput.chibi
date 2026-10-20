@@ -1,5 +1,6 @@
+// Fire sets velocity so replay exercises an authored input action.
 ReplayInput :: behavior {
-    on Fire {
+    on Fire :: () {
         self.Velocity = {
             x: 1.0,
             y: 0.0

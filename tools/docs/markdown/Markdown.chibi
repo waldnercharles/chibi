@@ -4,10 +4,10 @@ import strings "core:strings"
 
 // Renders the Markdown of one documentation page as HTML. It covers what the
 // public pages use: headings, paragraphs, lists, block quotes, fenced code,
-// pipe tables, and inline code, emphasis and links. Links between pages
-// follow the site's own map from source files to pages; a link to a file the
-// site does not publish keeps only its text, and Unpublished names each such
-// link at its line.
+// pipe tables, and inline code, emphasis and links. It lists the page's level
+// 2 and 3 headings as its contents. Links between pages follow the site's own
+// map from source files to pages; a link to a file the site does not publish
+// keeps only its text, and Unpublished names each such link at its line.
 
 Space :: 32;
 Quote :: 34;
@@ -531,18 +531,35 @@ Locate :: (lines: string[], first: int, end: int, targets: string[]) -> int[] {
     return found;
 }
 
+// The entry in a page's contents that links to the heading at line, of level 2
+// or 3, with the heading's inline content.
+Entry :: (line: string, level: int, page: string, sources: string[], outputs: string[]) -> string {
+    title := Trim(From(line, level + 1));
+    inline := Inline(title, page, sources, outputs);
+    kind: string = "";
+    if (level == 3) {
+        kind = " class=\"sub\"";
+    }
+    return format_text("<li{}><a href=\"#{}\">{}</a></li>\n", kind, Slug(title), inline.html);
+}
+
 // The page's Markdown, given as its lines, as HTML pieces to write in order,
-// and the line index and target of each link written as text. page is the
-// page's source path, and sources and outputs map published sources to their
-// pages for links. Lines arrive split because reading a byte of a string costs
-// the length of the string.
+// the line index and target of each link written as text, and an entry for
+// each heading of level 2 or 3. page is the page's source path, and sources
+// and outputs map published sources to their pages for links. Lines arrive
+// split because reading a byte of a string costs the length of the string.
 Page :: (lines: string[], page: string, sources: string[],
-         outputs: string[]) -> (html: string[], at: int[], targets: string[]) {
+         outputs: string[]) -> (html: string[], at: int[], targets: string[], contents: string[]) {
     index: int = 0;
     while (index < length(lines)) {
-        if (Trim(lines[index]) == "") {
+        line := Trim(lines[index]);
+        if (line == "") {
             index += 1;
             continue;
+        }
+        level := HeadingLevel(line);
+        if (level == 2 || level == 3) {
+            contents = array_add(contents, Entry(line, level, page, sources, outputs));
         }
         block := Block(lines, index, page, sources, outputs);
         html = append(html, block.html);
@@ -550,13 +567,19 @@ Page :: (lines: string[], page: string, sources: string[],
         targets = append(targets, block.dropped);
         index = block.end;
     }
-    return (html: html, at: at, targets: targets);
+    return (html: html, at: at, targets: targets, contents: contents);
 }
 
-// The page's HTML pieces, as Page renders them.
+// The page's HTML pieces, as Page renders them, followed by its contents when
+// it has headings of level 2 or 3.
 Render :: (lines: string[], page: string, sources: string[], outputs: string[]) -> string[] {
     rendered := Page(lines, page, sources, outputs);
-    return rendered.html;
+    if (length(rendered.contents) == 0) {
+        return rendered.html;
+    }
+    html := array_add(rendered.html, "<nav class=\"contents\" aria-label=\"On this page\">\n<p>On this page</p>\n<ul>\n");
+    html = append(html, rendered.contents);
+    return array_add(html, "</ul>\n</nav>\n");
 }
 
 // items followed by item until there are count of them; generated pages use

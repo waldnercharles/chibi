@@ -573,3 +573,19 @@ templates therefore work differently in a game than in a package.
 
 Suggestion: a game's libraries become packages, with `entry` gone as
 `docs/design-notes.md` decided, so `pub` and imports mean the same everywhere.
+
+## A string literal cannot span lines
+
+Language. A string literal ends at its line, and nothing marks one as raw, so
+text with its own line structure becomes an array of quoted lines with `\n`
+and escaped quotes. The documentation site's stylesheet in
+`tools/docs/site/Site.chibi` is 35 such lines, and `Head` escapes every
+attribute quote of its HTML (#535).
+
+- Odin and Go have raw strings in backticks that may span lines; Rust has
+  `r#"..."#`; Zig has `\\` line literals; C# has `"""` raw string literals;
+  Python has triple quotes; Jai has `#string` here-strings; C joins adjacent
+  literals.
+
+Suggestion: Odin's backtick raw string, which may span lines and takes no
+escapes.

@@ -146,25 +146,22 @@ as C#'s `unchecked(expr)`: `hash = uint64(wrap: (hash ^ b) * Prime)`. Trapping
 can be relaxed later without breaking code; wrapping could not be tightened
 later without breaking code that relied on it.
 
-## No character literals
+## Stage one has no character literals
 
-Language. Bytes are compared by code: `48` for `'0'`, `46` for `'.'`, `101`
-for `'e'`. `core:strings` writes `ByteAt(path, index) == 47` for `'/'`, and
-`ToLower` tests `c >= 65 && c <= 90` (#503); the tokenizer writes `c == 34` for
-`'"'` (#518).
+Stage one. Stage zero has character literals and `char` since #530: `'a'`
+takes an integer type from context, as in `c: byte = 'a'` or
+`ByteAt(s, i) == '/'`, and is otherwise a `char`, a 32-bit Unicode scalar with
+integer arithmetic. Stage one rejects them, and it compiles
+the compiler, `core:strings` and the tokenizer, so those still compare bytes
+by code: `48` for `'0'`, `46` for `'.'`, `101` for `'e'`; `core:strings` writes
+`ByteAt(path, index) == 47` for `'/'` and tests `c >= 65 && c <= 90` (#503);
+the tokenizer writes `c == 34` for `'"'` (#518).
 
 - C, C++, C#, Odin and Zig have `'0'`; Rust has `'0'` and `b'0'`; Python uses
   `ord("0")`.
-- Odin's `'a'` is an untyped rune constant; Rust's `char` and Odin's `rune`
-  are 32-bit Unicode code points.
 
-Decision (2026-10-20): `'a'` is an untyped character constant. Context gives
-it a type it fits, as in `c: byte = 'a'` or `ByteAt(s, i) == '/'`; otherwise
-it is a `char`. `char` is a distinct 32-bit Unicode scalar, Rust's `char` and
-Odin's `rune`, with integer arithmetic as Odin's. It widens to `int`
-implicitly; `char(n)`, and arithmetic whose result is not a Unicode scalar,
-fail the call. A character literal holds one scalar and takes the escapes
-string literals take, plus `\'`.
+Suggestion: stage one types character literals from context as stage zero
+does, then those sources replace their codes.
 
 ## Strings have no indexing or slicing syntax
 

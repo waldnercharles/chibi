@@ -16,10 +16,19 @@ script_type script_analyzer_arithmetic_type(script_type left, script_type right)
         if (!(right.flags & SCRIPT_TYPE_UNTYPED)) {
             return right;
         }
-        return (script_type){ .storage = PIN_F64, .flags = SCRIPT_TYPE_UNTYPED };
+        script_type untyped = script_type_char(left) || script_type_char(right)
+                                ? script_char_type()
+                                : (script_type){ .storage = PIN_F64 };
+        untyped.flags = SCRIPT_TYPE_UNTYPED;
+        return untyped;
     }
     if (right.flags & SCRIPT_TYPE_UNTYPED) {
         return left;
+    }
+    /* A char widens to any other operand, as it does to int. */
+    if (script_type_char(left) != script_type_char(right)) {
+        left.nominal = script_type_char(left) ? 0 : left.nominal;
+        right.nominal = script_type_char(right) ? 0 : right.nominal;
     }
     if (left.storage == PIN_F64 || right.storage == PIN_F64) {
         return (script_type){ .storage = PIN_F64 };
@@ -299,6 +308,9 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
         fits = parsed <= UINT64_MAX && text[0] != '-' && !*end &&
                errno != ERANGE && exact <= maximum;
     }
+    if (script_type_char(result.type) && fits) {
+        fits = (value >= 0 && value < 0xD800) || (value > 0xDFFF && value <= 0x10FFFF);
+    }
     if (!fits) {
         exact = 0;
         exact_signed = 0;
@@ -306,7 +318,7 @@ script_expression script_analyzer_number_literal(analyzer *a, TSNode node, scrip
             a,
             node,
             "Numeric literal is outside the range of %s",
-            script_scalar_name(result.type.storage)
+            script_numeric_name(result.type)
         );
         value = 0;
     }
@@ -336,6 +348,44 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
 {
     return script_analyzer_expr_add(a, script_analyzer_number_literal(a, node, expected, negate));
 }
+/* A character literal takes an integer type from context when its scalar
+ * fits, as Odin types an untyped rune constant, and is a char otherwise. */
+static int character_constant(analyzer *a, TSNode node, script_type expected)
+{
+    expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+    int value = 0;
+    script_analyzer_character_value(a, node, &value);
+    script_expression result = { .kind = SCRIPT_EXPR_CONSTANT,
+                                 .type = script_char_type(),
+                                 .constant = { .type = PIN_I32, .i = value },
+                                 .range = script_analyzer_range(a, node),
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1 };
+    bool typed = script_type_numeric(expected) &&
+                 !(expected.flags & SCRIPT_TYPE_UNTYPED);
+    if (!typed) {
+        result.type.flags |= expected.flags & SCRIPT_TYPE_UNTYPED;
+        return script_analyzer_expr_add(a, result);
+    }
+    if (expected.storage > PIN_U64) {
+        script_analyzer_diagnostic(a, node, "A character literal needs an integer or char type");
+        result.type = script_analyzer_bad_type();
+        return script_analyzer_expr_add(a, result);
+    }
+    if (value < behavior_scalar_integer_low(expected.storage) ||
+        (uint64_t)value > behavior_scalar_integer_high(expected.storage)) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "Character literal is outside the range of %s",
+            script_numeric_name(expected)
+        );
+    }
+    result.type = expected;
+    result.constant = behavior_scalar_from_bits(expected.storage, (uint64_t)value);
+    return script_analyzer_expr_add(a, result);
+}
 
 static void contextual_numeric(analyzer *a, int index, script_type type)
 {
@@ -354,7 +404,9 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
         if (script_analyzer_is(node, "unary_expression")) {
             node = script_analyzer_field(node, "operand");
         }
-        int converted = number_constant(a, node, type, negative);
+        int converted = script_analyzer_is(node, "character")
+                          ? character_constant(a, node, type)
+                          : number_constant(a, node, type, negative);
         a->out->expressions[index] = a->out->expressions[converted];
         a->out->expressions[index].range = range;
         return;
@@ -581,6 +633,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     }
     if (script_analyzer_is(node, "number")) {
         return number_constant(a, node, expected, false);
+    }
+    if (script_analyzer_is(node, "character")) {
+        return character_constant(a, node, expected);
     }
     if (script_analyzer_is(node, "boolean")) {
         result.kind = SCRIPT_EXPR_CONSTANT;
@@ -866,9 +921,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                 node,
                 "%s and %s operands need an explicit conversion, such as "
                 "%s(value)",
-                script_scalar_name(x.storage),
-                script_scalar_name(y.storage),
-                script_scalar_name(x.storage)
+                script_numeric_name(x),
+                script_numeric_name(y),
+                script_numeric_name(x)
             );
         }
         if (script_type_numeric(x) && script_type_numeric(y)) {

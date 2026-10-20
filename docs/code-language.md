@@ -663,6 +663,29 @@ Building an array this way is linear, as with Odin's dynamic arrays. A write
 outside the array fails with "Array index out of range". Other values that
 hold the array keep their copy.
 
+### Character literals
+
+A character literal holds exactly one Unicode scalar. Examples are `'a'`,
+`'\n'` and `'🐈'`. It takes the escapes that a string literal takes, plus
+`\'`.
+
+Like an untyped integer, a character literal takes an integer type from
+context when its value fits:
+
+- `ByteAt(path, i) == '/'` compares ints.
+- `c: byte = 'é'` holds 233.
+
+Otherwise the literal is a `char`. A `char` is one Unicode scalar in 32 bits,
+as Odin's `rune` and Rust's `char` are.
+
+A `char` has integer arithmetic and comparisons. Thus `digit - '0'` is a
+`char`. A `char` converts implicitly to `int`, `uint`, `int64` and `uint64`.
+`c + n` with an `int` `n` is an `int`.
+
+`char(n)` converts an integer back. It fails the call with "Value does not fit
+in char" when `n` is not a Unicode scalar. `char` arithmetic whose result is
+not a Unicode scalar fails in the same way.
+
 ### Scalar conversions
 
 An explicit scalar conversion calls the type: `double(value)`, `float(value)`

@@ -105,6 +105,55 @@ char *script_analyzer_name_copy(analyzer *a, TSNode node)
     free(text);
     return result;
 }
+/* A character literal reads as a string literal does, with \' for its own
+ * quote, as Odin's rune literals take the string escapes. */
+bool script_analyzer_character_value(analyzer *a, TSNode node, int *value)
+{
+    char *text = script_analyzer_text_copy(a, node);
+    size_t size = strlen(text);
+    char *json = xmalloc(2 * size + 1);
+    size_t length = 0;
+    json[length++] = '"';
+    for (size_t i = 1; i + 1 < size; i++) {
+        if (text[i] == '"') {
+            json[length++] = '\\';
+        } else if (text[i] == '\\' && text[i + 1] == '\'' && i + 2 < size) {
+            i++;
+        } else if (text[i] == '\\') {
+            json[length++] = text[i++];
+        }
+        json[length++] = text[i];
+    }
+    json[length++] = '"';
+    yyjson_doc *document = yyjson_read(json, length, 0);
+    yyjson_val *string = document ? yyjson_doc_get_root(document) : NULL;
+    bool valid = yyjson_is_str(string);
+    const unsigned char *bytes = valid ? (const unsigned char *)yyjson_get_str(string)
+                                       : NULL;
+    size_t count = valid ? yyjson_get_len(string) : 0;
+    /* yyjson checked the UTF-8; the lead byte gives the scalar's length. */
+    size_t expected = !count          ? 0
+                    : bytes[0] < 0x80 ? 1
+                    : bytes[0] < 0xe0 ? 2
+                    : bytes[0] < 0xf0 ? 3
+                                      : 4;
+    if (!valid) {
+        script_analyzer_diagnostic(a, node, "Invalid character literal");
+    } else if (!count || count != expected) {
+        script_analyzer_diagnostic(a, node, "A character literal holds exactly one character");
+        valid = false;
+    } else {
+        int scalar = expected == 1 ? bytes[0] : bytes[0] & (0x7f >> expected);
+        for (size_t i = 1; i < expected; i++) {
+            scalar = (scalar << 6) | (bytes[i] & 0x3f);
+        }
+        *value = scalar;
+    }
+    yyjson_doc_free(document);
+    free(json);
+    free(text);
+    return valid;
+}
 int script_analyzer_scope_new(analyzer *a, TSNode node)
 {
     apush(a->out->scopes, ((script_scope){ a->scope, a->function, script_analyzer_range(a, node) }));
@@ -209,9 +258,9 @@ void script_analyzer_require(analyzer *a, TSNode node, script_type expected, scr
             a,
             node,
             "Incompatible types: expected %s, got %s; convert with %s(value)",
-            script_scalar_name(expected.storage),
-            script_scalar_name(actual.storage),
-            script_scalar_name(expected.storage)
+            script_numeric_name(expected),
+            script_numeric_name(actual),
+            script_numeric_name(expected)
         );
         return;
     }
@@ -219,9 +268,9 @@ void script_analyzer_require(analyzer *a, TSNode node, script_type expected, scr
         a,
         node,
         "Incompatible types: expected %s%s, got %s%s",
-        script_scalar_name(expected.storage),
+        script_numeric_name(expected),
         expected.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "",
-        script_scalar_name(actual.storage),
+        script_numeric_name(actual),
         actual.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
     );
 }

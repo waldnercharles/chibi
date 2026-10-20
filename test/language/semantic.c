@@ -933,6 +933,10 @@ TEST_CASE(language_functions_with_results_must_return)
         "case 2: return 2; } } }",
         "L :: library { F :: (n: int) -> int { while (n > 0) { return 1; } } }",
         "L :: library { F :: (n: int) -> int { for i in 0..n { return i; } } }",
+        "L :: library { F :: (n: int) -> int { while (true) { switch n { case "
+        "1: break; case: return 1; } } } }",
+        "L :: library { F :: (n: int) { if n > 0 { return 1; } } }",
+        "Run :: behavior { F :: () -> int { on Begin { } } }",
     };
     for (size_t i = 0; i < sizeof missing / sizeof *missing; i++) {
         parse(missing[i]);
@@ -951,11 +955,17 @@ TEST_CASE(language_functions_with_results_must_return)
         "F :: (n: int) -> Choice { while (true) { if n > 0 { return Choice.A; "
         "} return Choice.B; } } }",
         "L :: library { F :: (n: int) { if n > 0 { return; } } }",
+        "L :: library { F :: (n: int) -> int { if n > 0 { return 1; } else if "
+        "n < 0 { return -1; } else { return 0; } } }",
+
     };
     for (size_t i = 0; i < sizeof ending / sizeof *ending; i++) {
         parse(ending[i]);
         REQUIRE(analysis->valid);
     }
+    /* A union result still needs a value on every return path. */
+    parse("L :: library { Choice :: union { A | B }; F :: () -> (value: Choice) { return; } }");
+    REQUIRE(diagnostic("Union result 'value' requires a value on every return path"));
     /* The diagnostic sits on the closing brace that control would fall past. */
     parse("L :: library { F :: (n: int) -> int { if n > 0 { return 1; } } }");
     const script_diagnostic *error = diagnostic("Missing return");

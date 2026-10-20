@@ -1453,7 +1453,8 @@ These statements terminate:
   every arm terminates;
 - a `while (true)` that no `break` leaves.
 
-A function whose `after` handlers return its results is exempt.
+A function with `after` handlers is exempt: they may return its results after
+the body ends.
 
 ### Inferred results
 

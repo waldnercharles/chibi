@@ -194,12 +194,15 @@ static bool union_result_paths(
     *falls = !endless(a, s);
     return initialized;
 }
-/* A function with action handlers may return from them instead. */
+/* A function with `after` handlers or macro entries may return from them
+ * after its body ends; `on` handlers cannot return its results. */
 static bool handles_actions(const analyzer *a, int function)
 {
     for (int i = 0; i < acount(a->out->functions); i++) {
-        if (a->out->functions[i].parent == function &&
-            a->out->functions[i].kind != SCRIPT_FUNCTION_AUTHORED) {
+        const script_function *child = &a->out->functions[i];
+        if (child->parent == function &&
+            (child->kind == SCRIPT_FUNCTION_CONTINUATION ||
+             child->kind == SCRIPT_FUNCTION_MACRO_ENTRY)) {
             return true;
         }
     }
@@ -210,8 +213,7 @@ void script_analyzer_union_results(analyzer *a, int function, TSNode body)
     const script_function *f = &a->out->functions[function];
     if (f->kind == SCRIPT_FUNCTION_AUTHORED && acount(f->results) &&
         !ends(a->out, f->body) && !handles_actions(a, function)) {
-        uint32_t count = ts_node_child_count(body);
-        script_analyzer_diagnostic(a, count ? ts_node_child(body, count - 1) : body, "Missing return");
+        script_analyzer_diagnostic(a, ts_node_child(body, ts_node_child_count(body) - 1), "Missing return");
         return;
     }
     for (int i = 0; i < acount(f->results); i++) {

@@ -6,12 +6,12 @@ returns nothing with `@test`, and check what it computes with `expect`:
 ```chibi
 package scoring
 
-Double :: pure fn(points: int) -> int {
+Double :: (points: int) -> int {
     return points * 2;
 }
 
 @test
-DoublesPoints :: fn() {
+DoublesPoints :: () {
     expect(Double(3) == 6, "three doubles to six");
 }
 ```

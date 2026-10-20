@@ -149,7 +149,7 @@ without a game: it may call the natives that need none, such as text, array
 and math functions, and fails when it waits or starts a task, or after 100
 million instructions.
 
-The [versioned contract snapshot](language-contracts/v1.md) pins source evidence,
+The versioned contract snapshot in the repository, `docs/language-contracts/v1.md`, pins source evidence,
 existing C conformance cases and unresolved migration semantics separately at its
 recorded revision, before the version-25 retained-binding migration. Its source
 audit is not fresh runtime or cross-backend validation.
@@ -197,9 +197,9 @@ payloads are declarative configuration, not executable behavior source.
 Authored asset declarations use the same name-first headers as executable source:
 `Health :: component { ... }`, `Enemy :: prototype { ... }` and
 `Targets :: relationship { ... }`. A composed prototype names ordered bases,
-such as `Elite :: prototype(Enemy, Armored) { ... }`. See
-[authored prototypes and relationships](runtime-authoring.md#authored-prototypes-and-relationships)
-for sparse defaults, instance-local links, relationship traits and typed pair edits.
+such as `Elite :: prototype(Enemy, Armored) { ... }`. The repository's
+`docs/runtime-authoring.md` covers sparse defaults, instance-local links,
+relationship traits and typed pair edits.
 
 ## Executable source
 
@@ -265,7 +265,7 @@ or a reflected interface needs them. Formatting keeps a declared type unless inf
 
 An explicit retained binding puts its lifetime after the name and colon:
 
-```chibi
+```code
 visits: retain int = 0
 elapsed: retain = 0
 ```
@@ -342,7 +342,7 @@ Language declarations, bindings and member names use identifiers. Quotes denote
 string values, including user-facing text and literal union alternatives.
 Prototype, component and relationship symbols produce typed reference values:
 
-```chibi
+```code
 asset: Prototype = MovementEmitter
 component: Component = Health
 relation: Relationship = Targets
@@ -423,7 +423,7 @@ universal speedup.
 Maps retain separate key and value types. A complete type can be explicit or
 inferred from a nonempty initializer:
 
-```chibi
+```code
 scores: Map<string, int> = {"Ada": 3, "Bo": 5}
 inferred: Map = {"Ada": 3}
 more := {"Ada": 3}
@@ -446,7 +446,7 @@ Array iteration binds the item first and the optional zero-based index second.
 String iteration yields one string per Unicode scalar, not one byte or one
 grapheme cluster. Both take a value snapshot before entering the loop:
 
-```chibi
+```code
 for item,index in items { total += item * index }
 for character in "Aé🐈" { append_character(character) }
 for item: ref in items { item += 1 }
@@ -819,7 +819,7 @@ Recursive functions, and functions that call each other in a cycle, declare thei
 known at compilation. Specialization keeps concrete storage types and reuses the
 same instantiation for identical bindings:
 
-```chibi
+```code
 Identity :: (value: $T) -> T { return value }
 Scale :: (value: $T, $N: int) -> T { return value * N }
 Factorial :: (n: int) -> int {

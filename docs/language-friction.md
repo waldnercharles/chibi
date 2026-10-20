@@ -312,8 +312,16 @@ stage one compiles, has no iterators.
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
+A call does not mark a reference argument either: `Nudge(v)` may write `v`,
+and only the callee's declaration says so. The version 29 migration
+collects every authored callable with a `ref` parameter to learn whether a
+call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
+Odin and Zig (`&v`) all mark the call site, so readers and tools see the
+write.
+
 Suggestion: stage one compiles `ref` parameters of locals, then
-`core:strings` gains Odin's iterators.
+`core:strings` gains Odin's iterators. Consider marking reference
+arguments at the call site.
 
 ### Stage one has no default parameter values
 
@@ -558,15 +566,16 @@ record type's layout once, and inline small pure functions.
 
 Language. Tools and `core:` are Odin-style packages (`package strings`,
 `import strings "core:strings"`), but game projects declare
-`MovementActions :: library { ... }` blocks that the project catalog resolves
-and whose functions still read `entry.direction`. Visibility, imports and
+`MovementActions :: library { ... }` blocks that the project catalog resolves.
+Until project version 28 their functions read `entry.direction`, and until
+version 29 they wrapped their bodies in `after entry`. Visibility, imports and
 templates therefore work differently in a game than in a package.
 
 - Odin, Go and Zig have one unit, the package or file, for libraries and
   programs alike; Rust has crates and modules for both.
 
-Suggestion: a game's libraries become packages, with `entry` gone as
-`docs/design-notes.md` decided, so `pub` and imports mean the same everywhere.
+Suggestion: a game's libraries become packages, now that functions no longer
+use `entry`, so `pub` and imports mean the same everywhere.
 
 ## A string literal cannot span lines
 

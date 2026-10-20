@@ -576,7 +576,8 @@ static bool compile(const char *source, behavior_backend backend)
 }
 /* Historical migration cases assert their intermediate spelling, then run
  * it through every later source step: version 23 declarations, 24
- * retention, 25 syntax, 26 conversions and 27 parameter names. */
+ * retention, 25 syntax, 26 conversions, 27 parameter names and 28 function
+ * bodies. */
 static int migrate_step(int step, const char *source, char **migrated, char *error, size_t size)
 {
     switch (step) {
@@ -585,13 +586,15 @@ static int migrate_step(int step, const char *source, char **migrated, char *err
         case 1: return chibi_migrate_retention(source, migrated, error, size);
         case 2: return chibi_migrate_syntax(source, migrated, error, size);
         case 3: return chibi_migrate_conversions(source, migrated, error, size);
-        default: return chibi_migrate_entry(source, migrated, error, size);
+        case 4: return chibi_migrate_entry(source, migrated, error, size);
+        default:
+            return chibi_migrate_after_entry(source, migrated, error, size);
     }
 }
 static char *current_source(const char *source)
 {
     char error[192], *current = xstrdup(source);
-    for (int step = 0; step < 5; step++) {
+    for (int step = 0; step < 6; step++) {
         char *migrated = NULL;
         if (migrate_step(step, current, &migrated, error, sizeof error)) {
             fprintf(stderr, "migration: %s\n", error);
@@ -4457,11 +4460,11 @@ TEST_CASE(program_handler_payloads_do_not_hide_parameters)
         "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
         "Value * 2) } "
         "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
-        "after entry { doubled(); } after doubled { return Value; } } }",
+        "doubled(); after doubled { return Value; } } }",
         "L :: library { Twice :: (Value: int) -> (Value: int) { return (Value: "
         "Value * 2) } "
         "Run :: (Value: int) -> int { action doubled = Twice(Value: Value); "
-        "after entry { doubled(); } after doubled(twice) { return Value; } } }",
+        "doubled(); after doubled(twice) { return Value; } } }",
     };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -7706,6 +7709,199 @@ TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names)
     REQUIRE(rejected);
     return true;
 }
+/* Version 29 runs a function's own body: the statements of `after entry`
+ * move after the function's statements, before the handlers that follow, and
+ * macros keep theirs. The current analyzer refuses `after entry` in a
+ * function. */
+TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
+{
+    const char *source = "Moves :: library {\n"
+                         "Step :: (Speed: float) -> float {\n"
+                         "    scale := 2.0\n"
+                         "    after entry {\n"
+                         "        // Doubles the speed.\n"
+                         "        if Speed > 1.0 {\n"
+                         "            return Speed * scale\n"
+                         "        }\n"
+                         "        return 0.0\n"
+                         "    }\n"
+                         "}\n"
+                         "Spawn :: (Prototype: Prototype) {\n"
+                         "    action spawned = spawn_prototype(Prototype)\n"
+                         "    after entry {\n"
+                         "        spawned()\n"
+                         "    }\n"
+                         "    after spawned {\n"
+                         "        return\n"
+                         "    }\n"
+                         "}\n"
+                         "Last :: () {\n"
+                         "    after entry { log('d') }\n"
+                         "}\n"
+                         "Once :: (Value: int) -> int { after entry { return "
+                         "Value } }\n"
+                         "}";
+    const char *expected = "Moves :: library {\n"
+                           "Step :: (Speed: float) -> float {\n"
+                           "    scale := 2.0\n"
+                           "    // Doubles the speed.\n"
+                           "    if Speed > 1.0 {\n"
+                           "        return Speed * scale\n"
+                           "    }\n"
+                           "    return 0.0\n"
+                           "}\n"
+                           "Spawn :: (Prototype: Prototype) {\n"
+                           "    action spawned = spawn_prototype(Prototype)\n"
+                           "    spawned()\n"
+                           "    after spawned {\n"
+                           "        return\n"
+                           "    }\n"
+                           "}\n"
+                           "Last :: () {\n"
+                           "    log('d')\n"
+                           "}\n"
+                           "Once :: (Value: int) -> int { return Value }\n"
+                           "}";
+    char error[192] = { 0 }, *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_after_entry(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    free(migrated);
+    REQUIRE(!chibi_migrate_after_entry(expected, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    const char *macro = "M :: library { macro Go() -> () { exit Then; after "
+                        "entry { } } }";
+    REQUIRE(!chibi_migrate_after_entry(macro, &unchanged, error, sizeof error));
+    REQUIRE(!unchanged);
+    const struct
+    {
+        const char *source, *message;
+    } refused[] = {
+        { "L :: library { F :: (a: int) { after entry { b := event }\n} }", "reads `event`" },
+        { "L :: library { F :: (a: int) { after entry as e { b := e.a }\n} }",
+          "names the payload" },
+        { "L :: library { F :: (a: int) { b := 1; after entry { b := 2 }\n} }", "also uses" },
+        { "L :: library { F :: (a: int) { after entry { a := 2 }\n} }", "also uses" },
+        { "L :: library { F :: (a: int) { after entry { b := 1 } after entry { "
+          "b := 2 }\n} }",
+          "also uses" },
+        { "L :: library { F :: (p: Prototype) { action spawned = "
+          "spawn_prototype(p); "
+          "after entry { spawned := 2 }\n} }",
+          "also uses" },
+        { "L :: library { F :: (a: int) { a = 2; after entry { b := a }\n} }",
+          "assign or pass" },
+        { "L :: library { F :: (p: Point) { p.x = 2; after entry { b := p }\n} "
+          "}",
+          "assign or pass" },
+        { "L :: library { Bump :: (x: ref int) { x += 1 }\nF :: (v: int) -> "
+          "int { Bump(v); "
+          "after entry { return v }\n} }",
+          "pass by reference" },
+        { "L :: library { F :: (a: int) { b := 1; after entry { c := a } } }",
+          "on one line" },
+    };
+    for (int i = 0; i < 10; i++) {
+        REQUIRE(chibi_migrate_after_entry(refused[i].source, &unchanged, error, sizeof error) < 0);
+        REQUIRE(!unchanged && strstr(error, refused[i].message));
+    }
+    /* A statement that reads a parameter, passes it to a callable taking
+     * copies, or changes one the handler does not read, leaves the handler's
+     * reads as they were. */
+    const char *kept = "L :: library { F :: (a: int, b: int) -> int { b = 2; "
+                       "Log(a); c := a; "
+                       "after entry { return a + c }\n} }";
+    REQUIRE(!chibi_migrate_after_entry(kept, &migrated, error, sizeof error));
+    REQUIRE(migrated && strstr(migrated, "return a + c") && !strstr(migrated, "after entry"));
+    free(migrated);
+    /* A call names its own library's callable or a qualified one, so a
+     * callable of the same name in another library takes copies. */
+    char project[] = "/tmp/chibi-after-entry-ref-XXXXXX", file[288];
+    REQUIRE(mkdtemp(project));
+    const char *names[] = { "W.chibi", "C.chibi", "L.chibi" };
+    const char *libraries[] = {
+        "W :: library { Bump :: (x: ref int) { x += 1 } }",
+        "C :: library { Bump :: (x: int) { } }",
+        "L :: library { F :: (v: int) { C.Bump(v); after entry { G(v) }\n} }",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        write_whole(file, libraries[i]);
+    }
+    REQUIRE(!chibi_project_migrate_content(project, NULL, 28, error, sizeof error));
+    write_whole(file, "L :: library { F :: (v: int) { W.Bump(v); after entry { G(v) }\n} }");
+    REQUIRE(chibi_project_migrate_content(project, NULL, 28, error, sizeof error) < 0);
+    REQUIRE(strstr(error, "pass by reference"));
+    for (int i = 0; i < 3; i++) {
+        snprintf(file, sizeof file, "%s/%s", project, names[i]);
+        REQUIRE(!unlink(file));
+    }
+    REQUIRE(!rmdir(project));
+    char root[] = "/tmp/chibi-after-entry-XXXXXX", path[256], json[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(
+        json,
+        sizeof json,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"},"
+        "{\"start\":%zu,\"id\":43,\"kind\":\"node\"},"
+        "{\"start\":%zu,\"id\":44,\"kind\":\"graph\"}]}",
+        (size_t)(strstr(source, "return Speed") - source),
+        (size_t)(strstr(source, "Spawn ::") - source),
+        (size_t)(strstr(source, "after entry {\n        //") - source)
+    );
+    char *metadata = authoring_source_metadata_bind(json, source);
+    REQUIRE(metadata);
+    const char *files[] = { "Moves.chibi", "Moves.chibi.meta" };
+    const char *contents[] = { source, metadata };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        REQUIRE(fputs(contents[i], file) >= 0);
+        REQUIRE(!fclose(file));
+    }
+    free(metadata);
+    REQUIRE(!chibi_project_migrate_content(root, NULL, 28, error, sizeof error));
+    snprintf(path, sizeof path, "%s/%s", root, files[0]);
+    const char *text = read_whole(path);
+    REQUIRE(text && !strcmp(text, expected));
+    snprintf(path, sizeof path, "%s/%s", root, files[1]);
+    text = read_whole(path);
+    REQUIRE(text && authoring_source_metadata_matches(text, expected));
+    /* Every anchor still starts a token, so the sidecar survives formatting;
+     * one on the handler lands on its first statement. */
+    script_syntax *formatted = script_parse(expected);
+    char *remapped = authoring_source_metadata_remap(text, formatted, formatted);
+    REQUIRE(remapped);
+    free(remapped);
+    script_syntax_free(formatted);
+    const char *moved[] = { "return Speed", "Spawn ::", "// Doubles" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(
+            json,
+            sizeof json,
+            "\"start\":%zu,\"id\":%d",
+            (size_t)(strstr(expected, moved[i]) - expected),
+            42 + i
+        );
+        REQUIRE(strstr(text, json));
+    }
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i]);
+        REQUIRE(!unlink(path));
+    }
+    REQUIRE(!rmdir(root));
+    prepare();
+    syntax = script_parse("L :: library { F :: (a: int) -> int { after entry { return a } } }");
+    analysis = script_analyze(syntax, &catalog);
+    bool function_refused = false;
+    for (int d = 0; d < analysis->diagnostic_count; d++) {
+        function_refused |= strstr(analysis->diagnostics[d].message, "A function runs its own body") !=
+                            NULL;
+    }
+    REQUIRE(function_refused && !analysis->valid);
+    return true;
+}
 TEST_CASE(program_version_26_casts_migrate_to_conversions)
 {
     const char
@@ -8927,6 +9123,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_25_reference_flow_crosses_library_parameters);
     RUN_TEST_CASE(program_version_26_casts_migrate_to_conversions);
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
+    RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

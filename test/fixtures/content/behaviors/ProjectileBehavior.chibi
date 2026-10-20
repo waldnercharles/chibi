@@ -18,17 +18,15 @@ ProjectileBehavior :: behavior {
         }
     }
     Face_Direction :: (X: float = 0.0, Y: float = 0.0) {
-        after entry {
-            if self.Orientation {
-                if 0.0 >= Direction_Magnitude(X, Y) {
-                    return
-                } else {
-                    self.Orientation = DirectionMath.Direction_Orientation(X, Y)
-                    return
-                }
+        if self.Orientation {
+            if 0.0 >= Direction_Magnitude(X, Y) {
+                return
             } else {
+                self.Orientation = DirectionMath.Direction_Orientation(X, Y)
                 return
             }
+        } else {
+            return
         }
     }
     Direction_Magnitude :: (x: float = 0.0, y: float = 0.0) -> (Result: float = 0.0) {

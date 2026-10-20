@@ -85,8 +85,8 @@ const source_presentation_origin *authoring_source_presentation_origin(
 );
 /* Editor state: in-session layout, breakpoints, watches and comments, as an
  * owned JSON snapshot bound to the exact source text and semantic origin IDs.
- * Projects never store it. Restore ignores a malformed or stale snapshot
- * before any presentation mutation. */
+ * Projects never store it. Restore takes a snapshot and ignores a malformed
+ * or stale one before any presentation mutation. */
 char *authoring_source_presentation_metadata(const authoring_source_presentation *);
 bool authoring_source_presentation_restore(authoring_source_presentation *, const char *json);
 /* Replaces the exact source region identified by this generation. Returns

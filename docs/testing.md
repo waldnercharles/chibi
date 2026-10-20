@@ -2746,8 +2746,8 @@ review covered the grammar, semantic kinds, authoring equivalence and migration.
   check per-owner helper retention, system versus query-row ownership, copied
   values, membership reentry and publication/restart identity. Each dispatch has
   a 1000-instruction budget. Two migration cases use small literal sources and
-  one temporary directory to check execution, idempotence, metadata remapping
-  and refusal before staged replacement.
+  one temporary directory to check execution, idempotence and refusal before
+  staged replacement.
 - `language`, `language-semantic`, `language-format` and `language-navigation`:
   accepted/rejected binding forms, ordinary value types, storage restrictions,
   formatter/minimizer ownership preservation and source intelligence. Numeric

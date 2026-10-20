@@ -3588,7 +3588,6 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
 {
     corpus context = { .sources = (const char *const *)sources };
     script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
-    replacement **edits = xcalloc((size_t)count, sizeof *edits);
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count; i++) {
         if (has_suffix(paths[i], ".chibi")) {
@@ -3604,8 +3603,10 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
     }
     for (int i = 0; i < count && !error[0]; i++) {
         if (syntax[i]) {
-            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits[i]);
-            migrated[i] = prefix_apply(sources[i], edits[i]);
+            replacement *edits = NULL;
+            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits);
+            migrated[i] = prefix_apply(sources[i], edits);
+            prefix_edits_free(edits);
         } else {
             migrated[i] = chibi_migrate_prefixes(sources[i], false, error, error_size);
         }
@@ -3614,10 +3615,8 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
         if (syntax[i]) {
             script_syntax_free(syntax[i]);
         }
-        prefix_edits_free(edits[i]);
     }
     free(syntax);
-    free(edits);
     afree(context.functions);
     return migrated;
 }
@@ -5866,32 +5865,26 @@ static int after_entry_rewrite(const char *source, entry_body_rewrite *rewrite, 
     script_syntax_free(syntax);
     return 0;
 }
-/* Moves the statements of each `after entry` with rewrite's edits. */
-static int migrate_entry_bodies(
-    const char *source,
-    char **migrated,
-    entry_body_rewrite *rewrite,
-    char *error,
-    size_t size
-)
+/* Moves the statements of each `after entry`; references are the callables
+ * that take a parameter by reference. */
+static int migrate_entry_bodies(const char *source, char **references, char **migrated, char *error, size_t size)
 {
     *migrated = NULL;
-    if (after_entry_rewrite(source, rewrite, error, size)) {
-        return -1;
+    entry_body_rewrite rewrite = { .references = references };
+    int status = after_entry_rewrite(source, &rewrite, error, size);
+    if (!status && acount(rewrite.edits)) {
+        char *result = prefix_apply(source, rewrite.edits);
+        status = accept_migrated(source, result, "After entry", 29, migrated, error, size);
     }
-    if (!acount(rewrite->edits)) {
-        return 0;
-    }
-    char *result = prefix_apply(source, rewrite->edits);
-    return accept_migrated(source, result, "After entry", 29, migrated, error, size);
+    prefix_edits_free(rewrite.edits);
+    return status;
 }
 int chibi_migrate_after_entry(const char *source, char **migrated, char *error, size_t size)
 {
-    entry_body_rewrite rewrite = { 0 };
-    collect_source_references(source, &rewrite.references);
-    int status = migrate_entry_bodies(source, migrated, &rewrite, error, size);
-    prefix_edits_free(rewrite.edits);
-    reference_callables_free(rewrite.references);
+    char **references = NULL;
+    collect_source_references(source, &references);
+    int status = migrate_entry_bodies(source, references, migrated, error, size);
+    reference_callables_free(references);
     return status;
 }
 static char **migrate_after_entry(char **sources, char **paths, int count, char *error, size_t size)
@@ -5907,13 +5900,11 @@ static char **migrate_after_entry(char **sources, char **paths, int count, char 
         if (!has_suffix(paths[i], ".chibi")) {
             continue;
         }
-        entry_body_rewrite rewrite = { .references = references };
-        if (migrate_entry_bodies(sources[i], &migrated[i], &rewrite, error, size)) {
+        if (migrate_entry_bodies(sources[i], references, &migrated[i], error, size)) {
             char *message = xstrdup(error);
             snprintf(error, size, "%s: %s", paths[i], message);
             free(message);
         }
-        prefix_edits_free(rewrite.edits);
     }
     reference_callables_free(references);
     return migrated;

@@ -19,12 +19,9 @@ static void text_hash(const char *text, char out[17])
     }
     snprintf(out, 17, "%016llx", (unsigned long long)hash);
 }
-/* False for a missing snapshot. */
 static bool bound_to(const char *json, const char *text)
 {
-    if (!json) {
-        return false;
-    }
+    assert(json);
     yyjson_doc *doc = yyjson_read(json, strlen(json), 0);
     const char *bound = yyjson_get_str(yyjson_obj_get(yyjson_doc_get_root(doc), "source_hash"));
     char expected[17];

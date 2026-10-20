@@ -103,10 +103,6 @@ char *source_presentation_anchors_resolve(const char *json, const authoring_sour
     }
     yyjson_val *source_root = yyjson_doc_get_root(source);
     yyjson_val *records = yyjson_obj_get(source_root, "source_origins");
-    if (!records) {
-        yyjson_doc_free(source);
-        return xstrdup(json);
-    }
     yyjson_val *root_id = yyjson_obj_get(source_root, "source_root");
     bool valid = yyjson_is_arr(records) && yyjson_is_uint(root_id) &&
                  yyjson_get_uint(root_id) &&

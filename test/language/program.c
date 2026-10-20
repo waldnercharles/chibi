@@ -7112,22 +7112,21 @@ TEST_CASE(program_version_23_declarations_and_switch_migrate)
     script_syntax_free(syntax);
     REQUIRE(!chibi_migrate_declarations(migrated, &again, error, sizeof error));
     REQUIRE(!again);
-    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256];
+    char root[] = "/tmp/chibi-declarations-XXXXXX", path[256], sidecar[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/Damage.chibi", root);
-    FILE *file = fopen(path, "wb");
-    REQUIRE(file);
-    REQUIRE(fputs(source, file) >= 0);
-    REQUIRE(!fclose(file));
+    write_whole(path, source);
+    /* A leftover sidecar from before they were dropped is left alone. */
+    const char *leftover = "{\"version\":2,\"anchors\":[{\"start\":0}]}";
+    snprintf(sidecar, sizeof sidecar, "%s.meta", path);
+    write_whole(sidecar, leftover);
     REQUIRE(!chibi_project_migrate_content(root, NULL, 23, error, sizeof error));
-    file = fopen(path, "rb");
-    REQUIRE(file);
-    char written[1024];
-    written[fread(written, 1, sizeof written - 1, file)] = '\0';
-    REQUIRE(!fclose(file));
     /* migrate_content advances exactly one version, unlike project_migrate. */
-    REQUIRE(!strcmp(written, migrated));
-    REQUIRE(!unlink(path));
+    const char *written = read_whole(path);
+    REQUIRE(written && !strcmp(written, migrated));
+    written = read_whole(sidecar);
+    REQUIRE(written && !strcmp(written, leftover));
+    REQUIRE(!unlink(path) && !unlink(sidecar));
     REQUIRE(!rmdir(root));
     free(migrated);
     free(current);

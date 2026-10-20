@@ -662,3 +662,27 @@ attribute quote of its HTML (#535).
 
 Suggestion: Odin's backtick raw string, which may span lines and takes no
 escapes.
+
+## Declarations have no documentation or grouping form
+
+Language. A description is an ordinary `//` comment, and nothing groups a
+behavior's variables. When `.chibi.meta` sidecars were dropped, each file
+description became a leading comment, and each variable category became a
+`// State` or `// Wave` line above its variables (see
+`test/fixtures/content/behaviors/WaveBehavior.chibi`). A tool cannot tell those
+comments from any other, so Studio cannot show a declaration's description in
+hover, completion or the graph, or group variables by category (#PR).
+
+- Go and Odin treat a comment directly above a declaration, with no blank line,
+  as its documentation; `go doc` and Odin's `core:odin/ast` attach it to the
+  declaration. Rust and Zig use `///` for an item and `//!` for the enclosing
+  module or file. C# uses `///` XML comments, and Python a docstring as the
+  first statement.
+- For grouping, Unity has `[Header("Wave")]`, Unreal `UPROPERTY(Category =
+  "Wave")` and Godot `@export_group("Wave")`; all three are attributes the
+  inspector reads.
+
+Suggestion: Go and Odin's rule, a comment block directly above a declaration
+documents it, which needs no new syntax; the frontend keeps it on the
+declaration for the presentation and the language server. Leave grouping to a
+later attribute syntax.

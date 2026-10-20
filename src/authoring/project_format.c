@@ -24,7 +24,6 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -129,17 +128,20 @@ static char *canonical_source(const formatter *f, const char *text, const char *
         snprintf(error, size, "source exceeds formatter byte limit");
         return NULL;
     }
-    script_syntax *source = script_parse(text);
-    const char *identity = NULL;
     for (int i = 0; i < source_catalog_source_count(f->sources); i++) {
         const source_catalog_source *entry = source_catalog_source_at(f->sources, i);
         if (!strcmp(entry->path, path)) {
-            identity = entry->identity;
+            return authoring_source_canonical(
+                text,
+                source_catalog_view(f->sources),
+                entry->identity,
+                error,
+                size
+            );
         }
     }
-    char *saved = identity
-                    ? authoring_source_canonical(text, source_catalog_view(f->sources), identity, error, size)
-                    : authoring_source_format(source, error, size);
+    script_syntax *source = script_parse(text);
+    char *saved = authoring_source_format(source, error, size);
     script_syntax_free(source);
     return saved;
 }

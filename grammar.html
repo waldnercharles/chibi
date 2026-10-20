@@ -97,12 +97,14 @@
 <li class="sub"><a href="#type">type</a></li>
 <li class="sub"><a href="#union_type">union_type</a></li>
 <li class="sub"><a href="#_single_type">_single_type</a></li>
+<li class="sub"><a href="#map_type">map_type</a></li>
 <li class="sub"><a href="#type_name">type_name</a></li>
 <li class="sub"><a href="#type_binder">type_binder</a></li>
 <li class="sub"><a href="#type_application">type_application</a></li>
 <li class="sub"><a href="#type_argument_list">type_argument_list</a></li>
 <li class="sub"><a href="#block">block</a></li>
 <li class="sub"><a href="#_statement">_statement</a></li>
+<li class="sub"><a href="#delete_statement">delete_statement</a></li>
 <li class="sub"><a href="#local_declaration">local_declaration</a></li>
 <li class="sub"><a href="#assignment">assignment</a></li>
 <li class="sub"><a href="#expression_statement">expression_statement</a></li>
@@ -143,7 +145,10 @@
 <li class="sub"><a href="#await_expression">await_expression</a></li>
 <li class="sub"><a href="#unary_expression">unary_expression</a></li>
 <li class="sub"><a href="#binary_expression">binary_expression</a></li>
+<li class="sub"><a href="#not_in">not_in</a></li>
 <li class="sub"><a href="#array_expression">array_expression</a></li>
+<li class="sub"><a href="#map_expression">map_expression</a></li>
+<li class="sub"><a href="#map_entry">map_entry</a></li>
 <li class="sub"><a href="#struct_expression">struct_expression</a></li>
 <li class="sub"><a href="#struct_field">struct_field</a></li>
 <li class="sub"><a href="#_name">_name</a></li>
@@ -408,7 +413,7 @@
   ),
 </code></pre>
 <h3 id="handler">handler</h3>
-<p><code>on X :: (a: T)</code> names payload fields; the other form is migrating away.</p>
+<p><code>on X :: (a: T)</code> names payload fields; <code>after X</code> binds an action's results.</p>
 <pre><code class="language-js">handler: ($) =&gt;
   choice(
     seq(
@@ -419,9 +424,8 @@
       field(&quot;body&quot;, $.block),
     ),
     seq(
-      field(&quot;kind&quot;, choice(K.on, K.after)),
+      field(&quot;kind&quot;, K.after),
       field(&quot;name&quot;, $._handler_name),
-      optional(seq(K.as, field(&quot;alias&quot;, $._name))),
       optional(field(&quot;parameters&quot;, $.parameter_list)),
       field(&quot;body&quot;, $.block),
     ),
@@ -549,26 +553,35 @@
 <h3 id="_single_type">_single_type</h3>
 <pre><code class="language-js">_single_type: ($) =&gt;
   seq(
-    repeat(
-      field(
-        &quot;trait&quot;,
+    choice(
+      seq(
+        repeat(
+          field(
+            &quot;trait&quot;,
+            choice(
+              K.plain,
+              K.ref,
+              K.service,
+              &quot;self&quot;,
+              K.setting,
+              seq(K.wildcard, &quot;(&quot;, $.number, &quot;)&quot;),
+            ),
+          ),
+        ),
         choice(
-          K.plain,
-          K.ref,
-          K.service,
-          &quot;self&quot;,
-          K.setting,
-          seq(K.wildcard, &quot;(&quot;, $.number, &quot;)&quot;),
+          seq(field(&quot;name&quot;, choice($.type_name, $.type_binder)),
+            optional(field(&quot;arguments&quot;, $.type_argument_list))),
+          $.type_application,
         ),
       ),
-    ),
-    choice(
-      seq(field(&quot;name&quot;, choice($.type_name, $.type_binder)),
-        optional(field(&quot;arguments&quot;, $.type_argument_list))),
-      $.type_application,
+      field(&quot;map&quot;, $.map_type),
     ),
     repeat(choice(seq(&quot;[&quot;, &quot;]&quot;), &quot;?&quot;)),
   ),
+</code></pre>
+<h3 id="map_type">map_type</h3>
+<p><code>[string: int]</code> maps keys of one type to values of another.</p>
+<pre><code class="language-js">map_type: ($) =&gt; seq(&quot;[&quot;, field(&quot;key&quot;, $.type), &quot;:&quot;, field(&quot;value&quot;, $.type), &quot;]&quot;),
 </code></pre>
 <h3 id="type_name">type_name</h3>
 <pre><code class="language-js">type_name: ($) =&gt; seq($._name, repeat(seq(&quot;.&quot;, $._name))),
@@ -606,7 +619,12 @@
     $.yield_statement,
     $.cancel_statement,
     $.label_statement,
+    $.delete_statement,
   ),
+</code></pre>
+<h3 id="delete_statement">delete_statement</h3>
+<p><code>delete m[k]</code> removes a key from a map.</p>
+<pre><code class="language-js">delete_statement: ($) =&gt; seq(K.delete, field(&quot;target&quot;, $.index_expression), $._end),
 </code></pre>
 <h3 id="local_declaration">local_declaration</h3>
 <pre><code class="language-js">local_declaration: ($) =&gt;
@@ -770,6 +788,7 @@
     $.unary_expression,
     $.binary_expression,
     $.array_expression,
+    $.map_expression,
     $.struct_expression,
     $.await_expression,
   ),
@@ -905,6 +924,7 @@
       [P.comparison, &quot;&lt;=&quot;],
       [P.comparison, &quot;&gt;&quot;],
       [P.comparison, &quot;&gt;=&quot;],
+      [P.comparison, K.in],
       [P.shift, &quot;&lt;&lt;&quot;],
       [P.shift, &quot;&gt;&gt;&quot;],
       [P.sum, &quot;+&quot;],
@@ -922,21 +942,39 @@
         ),
       ),
     ),
+    prec.left(P.comparison, seq(
+      field(&quot;left&quot;, $._expression),
+      field(&quot;operator&quot;, $.not_in),
+      field(&quot;right&quot;, $._expression),
+    )),
+    // `a ?? b ?? c` groups as `a ?? (b ?? c)`.
+    prec.right(P.coalesce, seq(
+      field(&quot;left&quot;, $._expression),
+      field(&quot;operator&quot;, &quot;??&quot;),
+      field(&quot;right&quot;, $._expression),
+    )),
   ),
+</code></pre>
+<h3 id="not_in">not_in</h3>
+<p><code>k not in m</code>.</p>
+<pre><code class="language-js">not_in: ($) =&gt; seq(K.not, K.in),
 </code></pre>
 <h3 id="array_expression">array_expression</h3>
 <pre><code class="language-js">array_expression: ($) =&gt; seq(&quot;[&quot;, optional(comma($._expression)), &quot;]&quot;),
+</code></pre>
+<h3 id="map_expression">map_expression</h3>
+<p><code>[&quot;Ada&quot;: 3]</code>, and <code>[:]</code> for an empty map, as Swift writes them.</p>
+<pre><code class="language-js">map_expression: ($) =&gt; seq(&quot;[&quot;, choice(&quot;:&quot;, comma($.map_entry)), &quot;]&quot;),
+</code></pre>
+<h3 id="map_entry">map_entry</h3>
+<pre><code class="language-js">map_entry: ($) =&gt; seq(field(&quot;key&quot;, $._expression), &quot;:&quot;, field(&quot;value&quot;, $._expression)),
 </code></pre>
 <h3 id="struct_expression">struct_expression</h3>
 <pre><code class="language-js">struct_expression: ($) =&gt; seq(&quot;{&quot;, optional(comma($.struct_field)), &quot;}&quot;),
 </code></pre>
 <h3 id="struct_field">struct_field</h3>
 <pre><code class="language-js">struct_field: ($) =&gt;
-  seq(choice(
-    field(&quot;name&quot;, choice($._member_name, $.string)),
-    field(&quot;key&quot;, $.number),
-    seq(&quot;[&quot;, field(&quot;key&quot;, $._expression), &quot;]&quot;),
-  ), &quot;:&quot;, field(&quot;value&quot;, $._expression)),
+  seq(field(&quot;name&quot;, $._member_name), &quot;:&quot;, field(&quot;value&quot;, $._expression)),
 </code></pre>
 <h3 id="_name">_name</h3>
 <p>Keep the callable path alive beside unary <code>not</code> until arguments resolve it; otherwise <code>not(Value: value)</code> commits to a parenthesized operand.</p>

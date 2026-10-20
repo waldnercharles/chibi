@@ -1,6 +1,6 @@
-:root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; }
+:root { color-scheme: light dark; --text: #1d1d1f; --muted: #6e6e73; --page: #ffffff; --panel: #f5f5f7; --line: #d2d2d7; --link: #0066cc; --code: #c7254e; --syntax-keyword: #8250df; --syntax-string: #0a6533; --syntax-number: #0550ae; --syntax-comment: #62666d; }
 @media (prefers-color-scheme: dark) {
-  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; }
+  :root { --text: #f5f5f7; --muted: #a1a1a6; --page: #1d1d1f; --panel: #2c2c2e; --line: #48484a; --link: #4da3ff; --code: #ff7eb6; --syntax-keyword: #d2a8ff; --syntax-string: #a5d6a7; --syntax-number: #79c0ff; --syntax-comment: #a1a1a6; }
 }
 body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--text); background: var(--page); }
 a { color: var(--link); }
@@ -49,6 +49,10 @@ pre { font: 0.875rem/1.5 ui-monospace, monospace; background: var(--panel); bord
 code { font: 0.9em ui-monospace, monospace; color: var(--code); }
 pre code { font-size: 0.875rem; line-height: 1.5; }
 pre code, a code { color: inherit; }
+pre .chibi-keyword { color: var(--syntax-keyword); }
+pre .chibi-string { color: var(--syntax-string); }
+pre .chibi-number { color: var(--syntax-number); }
+pre .chibi-comment { color: var(--syntax-comment); }
 table { display: block; overflow-x: auto; border-collapse: collapse; }
 th, td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
 th { background: var(--panel); }

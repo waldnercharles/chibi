@@ -234,19 +234,20 @@ hangs (#503).
 Suggestion: `core:strings` and the compiler replace their counting `while`
 loops with range loops, and stage one compiles `ref` loops.
 
-## Stage one constants are literals only
+## Stage one has no constant arrays
 
-Stage one. Stage zero folds constant expressions, constant arrays and calls
-whose body runs at compile time, `while` loops included, but stage one accepts
-only literal constants. A lookup table is therefore a local array built on
-every call: `PowerStep` in `Number.chibi`, and the tokenizer's byte-class,
-keyword and terminator tables in `Tokenize` (#518).
+Stage one. Since #564 stage one folds constant integer expressions, in
+any order and across imports, but stage zero also folds constant arrays and
+calls whose body runs at compile time, `while` loops included. A lookup
+table is therefore a local array built on every call: `PowerStep` in
+`Number.chibi`, and the tokenizer's byte-class, keyword and terminator tables
+in `Tokenize` (#518).
 
 - Odin and Go fold constant expressions; Odin also has constant arrays. Zig
   evaluates `comptime` code, C++ `constexpr` and Rust `const` items.
 
-Suggestion: stage one folds the constant expressions stage zero accepts, and
-constant arrays such as `Steps :: [1, 3, 6]`.
+Suggestion: stage one folds constant arrays such as `Steps :: [1, 3, 6]`,
+then calls stage zero runs at compile time.
 
 ## From the core:strings port
 

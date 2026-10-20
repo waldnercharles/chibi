@@ -168,6 +168,21 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* Records and union payloads hold float and double values; an integer
+     * stored there converts as stage zero converts it. */
+    { .name = "floating fields",
+      .source = "package facts\n"
+                "V :: struct { x: float; y: double; n: int; }\n"
+                "Shape :: union { Circle(radius: double) | Dot }\n"
+                "Make :: (x: float, n: int) -> double {\n"
+                "    v: V = {x: x, y: 2.5, n: n};\n    v.y += v.x;\n    v.x = "
+                "n;\n"
+                "    return v.y + v.x;\n}\n"
+                "Area :: (r: double) -> double {\n"
+                "    switch Shape.Circle(r) { case .Circle(radius): return "
+                "radius * radius; case .Dot: return 0.0; }\n"
+                "}\n",
+      .calls = { { "Make", "[1.5,3]", "[7.0]" }, { "Area", "[1.5]", "[2.25]" } } },
     /* int8, int16, uint16 and uint as stage zero computes them: mixed
      * operands widen to the type that holds both, and records hold them. */
     { .name = "narrow integers",

@@ -404,6 +404,12 @@ FieldSize :: (storage: int, target: Target) -> int {
     if (Integer(storage)) {
         return Width(storage) / 8;
     }
+    if (storage == FloatStorage) {
+        return 4;
+    }
+    if (storage == DoubleStorage) {
+        return 8;
+    }
     return 1;
 }
 AlignTo :: (size: int, alignment: int) -> int {
@@ -514,9 +520,9 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                             return Declarations.Failed(Diagnose(forest, Field(forest, item, "name"), file, "Invalid string or embedded NUL"));
                         }
                         storage := ScalarStorage(Text(forest, text, Field(forest, item, "type")));
-                        if (storage == 0 || Floating(storage) || Field(forest, item, "value") >= 0) {
+                        if (storage == 0 || Field(forest, item, "value") >= 0) {
                             return Declarations.Failed(Diagnose(forest, item, file,
-                                                                "record field needs an integer, bool or string type and no default"));
+                                                                "record field needs a number, bool or string type and no default"));
                         }
                         at := declared.first;
                         while (at < length(members)) {
@@ -565,7 +571,7 @@ pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Docu
                         parameter := FirstMember(forest, Field(forest, variant, "parameters"));
                         while (parameter >= 0) {
                             payload := ReadType(forest, text, types, aliases, package, Field(forest, parameter, "type"));
-                            if (payload.storage == 0 || Floating(payload.storage)) {
+                            if (payload.storage == 0) {
                                 return Declarations.Failed(Diagnose(forest, parameter, file, "payload type is not supported yet"));
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),

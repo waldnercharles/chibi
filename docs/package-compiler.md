@@ -41,10 +41,11 @@ Packages of functions, records, unions and constants, and the packages they
 import:
 
 - `int`, `bool`, `string`, `int8`, `byte`, `int16`, `uint16`, `uint`,
-  `int64` and `uint64` values, records of those, unions whose variants carry any of them, and arrays of any of these,
-  as parameters, results and locals; `float` and `double` values as
-  parameters, results and locals; string literals decode as JSON strings, as
-  stage zero reads them;
+  `int64`, `uint64`, `float` and `double` values, records of those, unions
+  whose variants carry any of them, and arrays of the non-floating ones, as
+  parameters, results and locals; a `float` beside a `double` becomes one, and
+  a number stored in a floating field converts as stage zero converts it;
+  string literals decode as JSON strings, as stage zero reads them;
 - parameter defaults that are literals, `(name: string = "you", count: int =
   1)`: a call that omits trailing arguments passes their defaults, as stage
   zero does;
@@ -121,8 +122,7 @@ import:
   constant, and `alias.T` names an imported record or union in types,
   literals and `alias.U.V` variants. A local hides an alias of the same name.
 
-Anything else is rejected with its source position. Floating record fields
-and payloads, implicit widening of call arguments,
+Anything else is rejected with its source position. Implicit widening of call arguments,
 element stores, literal
 members, payloads and in-place natives, constants of other types, constant
 arrays and constants computed by calls, type patterns, record field defaults, fields of array elements, named

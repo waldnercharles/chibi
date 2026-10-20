@@ -626,7 +626,7 @@ TOOLS = {
     'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--syntax-chibi'],
     # Three cases: every .chibi file below packages/, test/ and tools/ (about
-    # 140, under 1MiB, each <=128KiB) read at run time and tokenized once on
+    # 150, under 1MiB, each <=256KiB) read at run time and tokenized once on
     # SLJIT against Tree-sitter's leaves and terminators; seventeen fixed sources and
     # ten hand-written token/error cases on bytecode and SLJIT. Calls capped at
     # 64 steps per byte. One owner per backend prepares Tokenizer.chibi. No

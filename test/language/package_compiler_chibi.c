@@ -230,11 +230,12 @@ static const sample samples[] = {
                 "Height: int : -(Width - 7) / 2 % 3;\n"
                 "Mask: int64 : ~lib.Bits & 0xFFFF;\n"
                 "Small: byte : 0x10 | 2;\n"
+                "Low: byte : ~0x0F;\n"
                 "Unit :: 2;\n"
                 "Folded :: () -> int64 { return int64(Area) * 1000 + Mask + "
-                "int64(Small); }\n",
+                "int64(Small) + int64(Low); }\n",
       .library = "package lib\npub Bits: int64 : 1 << 40 | 0xF0;\n",
-      .calls = { { "Folded", "[]", "[56313]" } } },
+      .calls = { { "Folded", "[]", "[56553]" } } },
     /* An omitted argument takes its parameter's literal default. */
     { .name = "defaults",
       .source = "package facts\n"
@@ -902,6 +903,38 @@ static const sample samples[] = {
       .message = "for loops do not support `ref` yet",
       .line = 2,
       .column = 29 },
+    { .name = "descending range",
+      .source = "package facts\nTop :: 3;\nOne :: () -> int { for i in Top..1 "
+                "{ } "
+                "return 0; }",
+      .message = "Range bounds descend; count down with for <",
+      .line = 3,
+      .column = 20 },
+    { .name = "descending reverse range",
+      .source = "package facts\nOne :: () -> int { for < i in 10..0 { } "
+                "return 0; }",
+      .message = "Range bounds descend; for < takes the low bound first, as in "
+                 "for < i in 0..10",
+      .line = 2,
+      .column = 20 },
+    { .name = "duplicate keyed binding",
+      .source = "package facts\nOne :: (xs: int[]) -> int { for x, x in xs { } "
+                "return 0; }",
+      .message = "Duplicate declaration 'x'",
+      .line = 2,
+      .column = 36 },
+    { .name = "missing default",
+      .source = "package facts\nF :: (a: int = 1, b: int) -> int { return a + "
+                "b; "
+                "}\nOne :: () -> int { return F(); }",
+      .message = "call has the wrong number of arguments",
+      .line = 3,
+      .column = 27 },
+    { .name = "multiplication overflow",
+      .source = "package facts\nA: int64 : -1 * -9223372036854775808;",
+      .message = "Constant value is outside the range of int64",
+      .line = 2,
+      .column = 12 },
     { .name = "range assignment",
       .source = "package facts\nOne :: () -> int { for i in 0..3 { i = 1; } "
                 "return 0; }",

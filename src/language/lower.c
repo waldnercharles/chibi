@@ -50,6 +50,7 @@ typedef struct
     int cached_argument, cached_value;
     bool pattern_cached;
     int pattern_expression, pattern_value;
+    script_occurrences *occurrences; /* Made by the first debugger point. */
 } lower;
 static uint64_t document_id(const script_analysis *analysis, script_range range)
 {
@@ -4163,13 +4164,18 @@ static void discard_call_results(lower *l, const script_expression *e, int first
 }
 static behavior_source_point debug_origin(lower *l, script_record_kind kind, int record, script_range range)
 {
-    return (behavior_source_point){ .occurrence = script_record_id(l->a, kind, record),
-                                    .meaning = script_record_meaning(l->a, kind, record),
-                                    .start = range.start,
-                                    .end = range.end,
-                                    .line = range.line,
-                                    .column = range.column,
-                                    .kind = kind };
+    if (!l->occurrences) {
+        l->occurrences = script_occurrences_new(l->a);
+    }
+    return (behavior_source_point){
+        .occurrence = script_record_id(l->occurrences, kind, record),
+        .meaning = script_record_meaning(l->a, kind, record),
+        .start = range.start,
+        .end = range.end,
+        .line = range.line,
+        .column = range.column,
+        .kind = kind
+    };
 }
 static void debug_point(lower *l, script_record_kind kind, int record, script_range range)
 {
@@ -6470,6 +6476,7 @@ behavior_function_builder *script_lower_evaluator_reference(
     }
     emit_value_evaluator(&l, expressions, types, count, range);
     free(l.variables);
+    script_occurrences_free(l.occurrences);
     if (l.failed) {
         snprintf(
             message,
@@ -7683,6 +7690,7 @@ static execution_module_plan *lower_analysis(
     }
     free(l.constant_values);
     afree(l.loops);
+    script_occurrences_free(l.occurrences);
     m->diagnostic_count = acount(m->diagnostics);
     m->valid = !l.failed;
     if (!m->valid) {

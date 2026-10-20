@@ -45,8 +45,10 @@ retain the display path of that document after the analysis is freed.
 ### Stable identities
 
 Exported identities depend on package identity and declaration. They do not
-depend on input order or on unrelated sibling files. Debug record ordinals and
-byte offsets are not durable identities.
+depend on input order or on unrelated sibling files. Byte offsets are not
+durable identities. A debugger occurrence names a record by its document, kind
+and range counted without whitespace, so whitespace-only formatting keeps it
+and every compiler computes the same one.
 
 ### Source package snapshots
 

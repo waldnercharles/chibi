@@ -3359,6 +3359,80 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
     return true;
 }
 
+/* How many bytes of text before `offset` are not whitespace. */
+static int solid_count(const char *text, int offset)
+{
+    int count = 0;
+    for (int i = 0; i < offset; i++) {
+        count += !strchr(" \t\n\r", text[i]);
+    }
+    return count;
+}
+/* Each record's occurrence is the same after whitespace-only formatting, and
+ * script_occurrence gives it from the source alone: its key, the record's
+ * kind and its range counted in bytes that are not whitespace. */
+TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source)
+{
+    static const char tight[] =
+        "Debugger :: behavior { calls:double=0; observed:double=0; Work :: "
+        "()->(Value:double,Text:string){calls+=1;return(calls,\"a b\");} "
+        "on Tick { values:=Work(); observed=values.Value; observed+=10; } }";
+    static const char loose
+        [] = "Debugger :: behavior {\n    calls: double = 0;\n    observed: "
+             "double = 0;\n"
+             "    Work :: () -> (Value: double, Text: string) {\n        calls "
+             "+= 1;\n"
+             "        return (calls, \"a b\");\n    }\n\n    on Tick {\n"
+             "        values := Work();\n        observed = values.Value;\n"
+             "        observed += 10;\n    }\n}\n";
+    script_syntax *syntaxes[2] = { script_parse(tight), script_parse(loose) };
+    script_analysis *analyses[2] = { script_analyze(syntaxes[0], &catalog),
+                                     script_analyze(syntaxes[1], &catalog) };
+    script_occurrences *occurrences[2] = { script_occurrences_new(analyses[0]),
+                                           script_occurrences_new(analyses[1]) };
+    const script_analysis *a = analyses[0], *b = analyses[1];
+    bool alike = a->valid && b->valid && a->statement_count == b->statement_count &&
+                 a->expression_count == b->expression_count &&
+                 a->symbol_count == b->symbol_count &&
+                 a->function_count == b->function_count;
+    const struct
+    {
+        script_record_kind kind;
+        int count;
+    } kinds[] = { { SCRIPT_RECORD_STATEMENT, a->statement_count },
+                  { SCRIPT_RECORD_EXPRESSION, a->expression_count },
+                  { SCRIPT_RECORD_SYMBOL, a->symbol_count },
+                  { SCRIPT_RECORD_FUNCTION, a->function_count } };
+    for (int k = 0; alike && k < 4; k++) {
+        for (int i = 0; alike && i < kinds[k].count; i++) {
+            uint64_t id = script_record_id(occurrences[0], kinds[k].kind, i);
+            alike = id && id == script_record_id(occurrences[1], kinds[k].kind, i);
+        }
+    }
+    for (int i = 0; alike && i < a->statement_count; i++) {
+        const script_range r = a->statements[i].range;
+        uint64_t id = script_record_id(occurrences[0], SCRIPT_RECORD_STATEMENT, i);
+        alike = id == script_occurrence(
+                          a->identity,
+                          SCRIPT_RECORD_STATEMENT,
+                          solid_count(tight, r.start),
+                          solid_count(tight, r.end)
+                      );
+        for (int j = 0; alike && j < i; j++) {
+            const script_range other = a->statements[j].range;
+            alike = (other.start == r.start && other.end == r.end) ||
+                    id != script_record_id(occurrences[0], SCRIPT_RECORD_STATEMENT, j);
+        }
+    }
+    for (int i = 0; i < 2; i++) {
+        script_occurrences_free(occurrences[i]);
+        script_analysis_free(analyses[i]);
+        script_syntax_free(syntaxes[i]);
+    }
+    REQUIRE(alike);
+    return true;
+}
+
 TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
 {
     const char *source = "Debugger :: behavior { calls:double=0; "
@@ -3395,7 +3469,9 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
         for (int n = 0; n < analysis->expression_count; n++) {
             const script_expression *e = &analysis->expressions[n];
             if (e->kind == SCRIPT_EXPR_CALL && e->right >= 0) {
-                call = script_record_id(analysis, SCRIPT_RECORD_EXPRESSION, n);
+                script_occurrences *occurrences = script_occurrences_new(analysis);
+                call = script_record_id(occurrences, SCRIPT_RECORD_EXPRESSION, n);
+                script_occurrences_free(occurrences);
             }
         }
         REQUIRE(handler && call);
@@ -8937,7 +9013,9 @@ TEST_CASE(program_reduction_updates_preserve_clock_and_event_order)
                                 .name,
                             "finished"
                         )) {
-                        point = script_record_id(analysis, SCRIPT_RECORD_STATEMENT, i);
+                        script_occurrences *occurrences = script_occurrences_new(analysis);
+                        point = script_record_id(occurrences, SCRIPT_RECORD_STATEMENT, i);
+                        script_occurrences_free(occurrences);
                     }
                 }
                 REQUIRE(function && point);
@@ -9044,6 +9122,7 @@ void test_language_program()
     RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
+    RUN_TEST_CASE(program_occurrences_survive_whitespace_and_follow_the_source);
     RUN_TEST_CASE(program_nested_typed_records_preserve_explicit_labels);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
     RUN_TEST_CASE(program_query_owner_snapshots_preserve_parallel_effects);

@@ -30,8 +30,8 @@ make test-materials      # the material simulation selectors, one 60-second dead
 make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # admitted native language aggregate, one 60-second deadline
 make test-bootstrap      # stage one compiles itself, stage two matches it (Release build)
-make bootstrap-artifact  # stage two as the checksummed recovery artifact (Release build)
-make bootstrap-recover   # recover the compiler from the published artifact (needs gh)
+make bootstrap-artifact  # rewrite the checked-in recovery artifact from stage two (Release build)
+make bootstrap-recover   # recover the compiler from that artifact and the sources on disk
 make test-recovery       # recover the compiler from that artifact and HEAD's sources
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -1814,7 +1814,7 @@ activation. The existing array capability pack supplies the append operation.
 
 ## Compiler bootstrap checks
 
-`python3 tools/test_policy.py tool compiler-bootstrap` selects eight cases. They
+`python3 tools/test_policy.py tool compiler-bootstrap` selects seven cases. They
 check that the compiler host's `--bootstrap` mode refuses bad input before any
 compile runs:
 - mixed or missing options;
@@ -1823,7 +1823,6 @@ compile runs:
 - a folder with no manifest, or a closure its manifest doesn't record;
 - a missing source, or a package that gained a file;
 - a closure recorded for another target;
-- with `--published`, a manifest other than the one `bootstrap.kdl` pins;
 - a seed folder without a seed, or a seed whose sources aren't on disk.
 
 The SHA-256 check is pinned by four digests: FIPS 180-2's for "abc", and those
@@ -1834,7 +1833,7 @@ twenty host children on tiny folders. The target case loads the closure that
 `python3 tools/test_policy.py tool bootstrap-recovery` (`make test-recovery`)
 selects one case. It exports HEAD's `tools/compiler` and `packages/core` with
 `git archive` and has the unsanitized Release host recover the compiler from
-`build-release/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
+the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPILER_HOST` or
 `CHIBI_BOOTSTRAP_ARTIFACT` to use another host or artifact.
 
 ## Game equivalence

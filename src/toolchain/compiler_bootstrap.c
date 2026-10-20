@@ -172,13 +172,11 @@ static bool same(const unsigned char *a, size_t a_length, const unsigned char *b
     return a_length == b_length && !memcmp(a, b, a_length);
 }
 
-/* The sources' bootstrap contract: their bootstrap version, the oldest
- * version that compiles them and the SHA-256 of the published artifact's
- * manifest, empty when none is published. */
+/* The sources' bootstrap contract: their bootstrap version and the oldest
+ * version that compiles them. */
 typedef struct
 {
     int version, minimum;
-    char manifest[65];
 } contract;
 
 static bool read_contract(const char *compiler, contract *c, char *error, size_t size)
@@ -189,11 +187,8 @@ static bool read_contract(const char *compiler, contract *c, char *error, size_t
     char reason[256] = "it cannot be read";
     av_doc *doc = text ? av_doc_read(text, reason, sizeof reason) : NULL;
     av_value *root = doc ? av_doc_root(doc) : NULL;
-    const char *pin = root ? av_get_str(av_obj_get(av_obj_get(root, "published"), "manifest"))
-                           : NULL;
     *c = (contract){ .version = root ? av_get_int(av_obj_get(root, "version")) : 0,
                      .minimum = root ? av_get_int(av_obj_get(root, "minimum")) : 0 };
-    snprintf(c->manifest, sizeof c->manifest, "%s", pin && strlen(pin) == 64 ? pin : "");
     bool valid = c->minimum >= 1 && c->minimum <= c->version;
     if (!valid) {
         snprintf(error, size, "%s: %s", path, doc ? "needs a version and a minimum from 1 to it" : reason);
@@ -536,7 +531,6 @@ typedef struct
     unsigned char *closure;
     size_t closure_length;
     char *text;
-    size_t text_length;
     yyjson_doc *doc;
     yyjson_val *root;
 } artifact;
@@ -554,10 +548,10 @@ static void free_artifact(artifact *a)
 static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a, char *error, size_t size)
 {
     char *path = join(b->folder, MANIFEST_FILE), *file = join(b->folder, CLOSURE_FILE);
-    a->text = (char *)read_bytes(path, COMPILER_HOST_MAX_BYTES, &a->text_length);
-    a->doc = a->text
-               ? yyjson_read(a->text, a->text_length, YYJSON_READ_ALLOW_INVALID_UNICODE)
-               : NULL;
+    size_t length = 0;
+    a->text = (char *)read_bytes(path, COMPILER_HOST_MAX_BYTES, &length);
+    a->doc = a->text ? yyjson_read(a->text, length, YYJSON_READ_ALLOW_INVALID_UNICODE)
+                     : NULL;
     a->root = yyjson_doc_get_root(a->doc);
     a->closure = read_bytes(file, COMPILER_HOST_MAX_OUTPUT_BYTES, &a->closure_length);
     free(file);
@@ -607,29 +601,6 @@ static bool read_artifact(const compiler_bootstrap *b, int minimum, artifact *a,
             a->closure ? a->closure_length : 0,
             digest,
             MANIFEST_FILE
-        );
-        return false;
-    }
-    return true;
-}
-
-/* Whether the artifact's manifest is the published one the contract pins. */
-static bool published_manifest(const contract *c, const artifact *a, char *error, size_t size)
-{
-    char digest[65];
-    sha256_hex((const unsigned char *)a->text, a->text_length, digest);
-    if (!c->manifest[0]) {
-        snprintf(error, size, "%s publishes no artifact", CONTRACT_FILE);
-        return false;
-    }
-    if (strcmp(digest, c->manifest)) {
-        snprintf(
-            error,
-            size,
-            "%s, with SHA-256 %s, is not the published manifest %s pins",
-            MANIFEST_FILE,
-            digest,
-            CONTRACT_FILE
         );
         return false;
     }
@@ -772,8 +743,7 @@ bool compiler_bootstrap_check(const compiler_bootstrap *b, char *report, size_t 
     size_t length = 0;
     int changed = 0;
     bool valid = read_contract(b->compiler, &c, report, size) &&
-                 read_artifact(b, c.minimum, &a, report, size) &&
-                 (!b->published || published_manifest(&c, &a, report, size));
+                 read_artifact(b, c.minimum, &a, report, size);
     char *json = valid ? disk_arguments(b, a.root, &length, &changed, report, size)
                        : NULL;
     compiler_host *host = json

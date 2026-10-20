@@ -191,7 +191,9 @@ Current integration constraints:
   (main's v26 syntax step, then this branch's conversions step over a frozen
   v26 parser) and prepared schema 18. Stage one reads packed arrays and `for`
   loops, and its twins follow main's expression kinds and inferred purity.
-  The published bootstrap artifact predates schema 18 and must be republished.
+  The bootstrap artifact is checked in at `tools/compiler/bootstrap` and was
+  rebuilt from the merged tree (#512); the earlier published prerelease
+  predates schema 18 and is refused.
   PRs #504 (`text_bytes`) and #509 (reference type checks), which landed on
   this branch during the integration, are merged in as well. #509's storage
   check now accepts two unnamed unions, because main's lowering gives union
@@ -556,15 +558,15 @@ Step 5 is implemented for the package compiler on 2026-10-19:
   another target and a version older than the sources' minimum. It then requires the artifact's own bytes, or a
   fixpoint when the sources changed.
 - `make test-recovery` runs that recovery from sources exported from HEAD in
-  about 12 s: one compile, or two when the sources changed.
+  about 18 s: one compile, or two when the sources changed.
 
-At the owner's direction the clean-checkout artifact is published as a release
-asset, not checked in. The current prerelease,
-`compiler-bootstrap-1-fd1b5aaf8c6c`, was built from revision `da03e96dd`
-after `text_bytes` joined the host's natives, and `tools/compiler/bootstrap.kdl`
-pins its manifest's SHA-256.
-`make bootstrap-recover` downloads that release with `gh` and recovers the
-compiler from it, about 11 s on macOS arm64. See
+At the owner's direction on 2026-10-19 the clean-checkout artifact is checked
+in at `tools/compiler/bootstrap`, as Zig checks in `zig1.wasm`, replacing the
+earlier release-asset download. It was rebuilt on 2026-10-20 from revision
+`94858a96c`, after #420's syntax and prepared target reached the compiler
+sources; the artifact published before that is refused ("prepared target ABI
+differs"). `make bootstrap-recover` recovers the
+compiler from it and the sources on disk without a network. See
 `docs/self-hosting-build.md`.
 
 Make stage one the normal compiler only after this sequence passes on every
@@ -794,8 +796,10 @@ in the source arena, runtime array copies that scanned every source element for
 packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
-Next action: land the integration PR into `main`, then republish the
-bootstrap artifact from the merged revision after confirmation.
+The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
+#512 rebuilt the checked-in bootstrap artifact from it. Next action: M5 step
+4, following `docs/design-notes.md`: gate each stage-one feature on a
+purpose-made example before rebuilding a whole game.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.

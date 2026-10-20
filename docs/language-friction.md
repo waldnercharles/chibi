@@ -563,7 +563,7 @@ each value.
 
 ### A switch arm takes one value
 
-Language. Since #SWITCHPR both compilers switch on an integer,
+Language. Since #561 both compilers switch on an integer,
 `switch c { case 61: ... }`, but an arm takes exactly one value, so the
 tokenizer's operator table stays a chain of `if (c == 61) { return Eq; }`
 and a letter test is `c >= 97 && c <= 122`.

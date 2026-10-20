@@ -121,6 +121,29 @@ TEST_CASE(language_shadowing_resolves_nearest_declaration)
     REQUIRE(analysis->symbols[state].type.storage == PIN_F64);
     return true;
 }
+/* pub exports a package's top-level declarations; nothing else takes it. */
+TEST_CASE(language_pub_marks_only_package_declarations)
+{
+    cleanup();
+    syntax = script_parse(
+        "package facts\n@test pub F :: () {}\npub L: int : 3;\npub C :: 4;\n"
+        "pub S :: struct { x: int; }\npub U :: union { A | B }\n"
+    );
+    REQUIRE(!syntax->diagnostic_count);
+    const char *invalid[] = {
+        "L :: library { pub F :: () {} }",
+        "B :: behavior { pub Limit :: 3; }",
+        "package facts\nF :: () { pub Limit :: 3; }",
+        "package facts\npub x := 1;",
+        "package facts\npub import strings \"core:strings\"\n",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        cleanup();
+        syntax = script_parse(invalid[i]);
+        REQUIRE(syntax->diagnostic_count);
+    }
+    return true;
+}
 TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity)
 {
     parse(
@@ -2194,6 +2217,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
+    RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity);
     RUN_TEST_CASE(language_inferred_map_requires_an_initializer);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);

@@ -1169,7 +1169,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         directory(folders[i]);
     }
     write_file("generated/README.md", "# Home\n\nSee [the grammar](grammar.js).\n");
-    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\nSides: int : 4;\n");
+    write_file("generated/lib/shapes/Shapes.chibi", "package shapes\n\n// Four [sides](sides.md).\npub Sides: int : 4;\n");
     write_file("generated/grammar.js", "  rules: {\n    // One [item](item.md).\n    item: ($) => \"x\",\n  },\n");
     generated_site("lib", "lib");
     char site[256], output[256];
@@ -1179,7 +1179,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
     REQUIRE(
-        file_has("generated/build/docs/packages.html", "Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
+        file_has("generated/build/docs/packages.html", "pub Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
     );
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")

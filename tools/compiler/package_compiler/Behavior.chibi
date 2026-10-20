@@ -13,14 +13,14 @@ import writer "project:prepared_writer"
 // states and handlers take the IDs stage zero gives them.
 
 // An event the game declares; its payload is event_fields[first, first + count).
-GameEvent :: struct {
+pub GameEvent :: struct {
     name: string;
     id: uint64;
     abi: uint64;
     first: int;
     count: int;
 }
-GameEventField :: struct {
+pub GameEventField :: struct {
     name: string;
     storage: int;
     nominal: uint64;
@@ -31,7 +31,7 @@ GameEventField :: struct {
 // its fields are type_fields[first, first + count). A module requires every
 // type but a namespace, such as SceneGlobals; types[underlying], when that is
 // not -1, is the type it stands for.
-GameType :: struct {
+pub GameType :: struct {
     required: bool;
     underlying: int;
     name: string;
@@ -46,7 +46,7 @@ GameType :: struct {
 // A game type's field: of the type types[record] when that is not -1; a
 // constant whose value is its name; read by natives[read] when that is not
 // -1, with the key `read_key` instead of the value when that is not "".
-GameField :: struct {
+pub GameField :: struct {
     name: string;
     storage: int;
     offset: int;
@@ -58,21 +58,21 @@ GameField :: struct {
 }
 // A native that makes a record of type types[record] of its arguments;
 // argument i gives the record's field make_fields[first + i].
-NativeMake :: struct {
+pub NativeMake :: struct {
     native: int;
     record: int;
     first: int;
 }
 // A name the game binds in every behavior, of the type types[record] when
 // that is not -1.
-GameGlobal :: struct {
+pub GameGlobal :: struct {
     name: string;
     storage: int;
     record: int;
 }
 // A native that combines numbers, and records of them field by field, for a
 // binary operator: natives[native].
-NumericOperator :: struct {
+pub NumericOperator :: struct {
     native: int;
     operator: string;
 }
@@ -238,11 +238,11 @@ ScalarPayload :: (declared: GameEvent, event_fields: GameEventField[]) -> bool {
 // from it. The target, natives, events, types, entity, operators, globals and
 // record makes are the game's, as `chibi-compile --stage-one-input` exports
 // them.
-CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
-                    natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
-                    event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                    entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                    make_fields: int[]) -> Result {
+pub CompileBehavior :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
+                        natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                        event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                        entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                        make_fields: int[]) -> Result {
     ops := ResolveOps(names);
     if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
         return InputFailure(-1, "unsupported compiler input or target");
@@ -381,11 +381,11 @@ CompileBehavior :: (identity: string, source: string, target: Target, abi: uint6
 // `sources[i]`, as a CHIBICLO closure rooted at the first, for a host that
 // takes one byte[] result; empty when stage one rejects any of them, which
 // BehaviorRejection then says why.
-CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                     natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
-                     event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                     entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                     make_fields: int[]) -> byte[] {
+pub CompileBehaviors :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                         natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                         make_fields: int[]) -> byte[] {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return [];
     }
@@ -412,11 +412,11 @@ CompileBehaviors :: (identities: string[], sources: string[], target: Target, ab
 }
 // The first of CompileBehaviors' behaviors stage one rejects, as
 // "identity:line:column: message"; "" when it compiles them all.
-BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
-                      natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
-                      event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
-                      entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
-                      make_fields: int[]) -> string {
+pub BehaviorRejection :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                          natives: Native[], ports: Port[], native_ids: uint64[], game_events: GameEvent[],
+                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                          make_fields: int[]) -> string {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return "the behaviors' identities and sources differ in number, or there are none";
     }

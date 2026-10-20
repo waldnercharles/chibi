@@ -105,6 +105,8 @@ bool script_analyzer_native_capability(const analyzer *, uint64_t);
 int script_analyzer_package_function(analyzer *, TSNode, const char *);
 int script_analyzer_package_constant(analyzer *, TSNode);
 bool script_analyzer_import_namespace(analyzer *, TSNode, const char *);
+/* Whether a qualified name names a declaration its package keeps private. */
+bool script_analyzer_private_member(const analyzer *, TSNode, const char *name);
 bool script_analyzer_generic_declare(analyzer *, TSNode);
 void script_analyzer_generic_prepare(analyzer *, TSNode);
 int script_analyzer_generic_call(analyzer *, TSNode, int symbol, int **arguments);

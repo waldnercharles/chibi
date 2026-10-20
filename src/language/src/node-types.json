@@ -1767,6 +1767,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     }
   },
@@ -2468,6 +2478,16 @@
           {
             "type": "unit",
             "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
           }
         ]
       }
@@ -4145,6 +4165,16 @@
           {
             "type": "parameter_list",
             "named": true
+          }
+        ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
           }
         ]
       }
@@ -5879,6 +5909,16 @@
             "named": true
           }
         ]
+      },
+      "visibility": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pub",
+            "named": false
+          }
+        ]
       }
     },
     "children": {
@@ -6441,6 +6481,10 @@
   },
   {
     "type": "prototype",
+    "named": false
+  },
+  {
+    "type": "pub",
     "named": false
   },
   {

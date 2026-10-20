@@ -15,7 +15,7 @@ import strings "core:strings"
 // An explicit package source snapshot is the complete input. No native source
 // analyzer, package preparer, finalizer or old compiler is reachable from this
 // entry; only the raw parser is native. Stage zero still builds this closure.
-Result :: union {
+pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) |
     Compiled(module: uint64, function_id: uint64, bytes: byte[])
 }
@@ -265,8 +265,8 @@ CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
 
 // `prepared_abi` is the target's prepared header ABI, and `opcodes` the
 // instruction each scalar wire opcode names on it.
-Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
-            prepared_abi: uint64, opcodes: int[]) -> Result {
+pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
+                prepared_abi: uint64, opcodes: int[]) -> Result {
     if (length(paths) < 1 || length(paths) > 3 || length(sources) != length(paths)) {
         return InputFailure(-1, "bounded compiler requires one to three complete source files");
     }

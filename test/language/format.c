@@ -143,6 +143,20 @@ TEST_CASE(source_format_keeps_attributes_on_their_line)
     REQUIRE(!strcmp(text, "package facts\n@test\nAdds :: () {}\n@test Second :: () {}\n"));
     return true;
 }
+TEST_CASE(source_format_spaces_pub_and_aligns_after_it)
+{
+    REQUIRE(format(
+        "package facts\n@test pub   Adds :: () { }\npub Limit:int:5;\n"
+        "pub Sum :: (first: int,\nsecond: int) -> int {\n    return first;\n}\n"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "package facts\n@test pub Adds :: () {}\npub Limit: int : 5;\n"
+        "pub Sum :: (first: int,\n            second: int) -> int {\n    "
+        "return first;\n}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_format_spaces_variant_patterns)
 {
     const char
@@ -1716,6 +1730,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
+    RUN_TEST_CASE(source_format_spaces_pub_and_aligns_after_it);
     RUN_TEST_CASE(source_format_spaces_variant_patterns);
     RUN_TEST_CASE(source_format_aligns_bracket_continuations);
     RUN_TEST_CASE(source_format_aligns_operator_continuations);

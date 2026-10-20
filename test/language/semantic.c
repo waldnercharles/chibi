@@ -917,6 +917,19 @@ TEST_CASE(language_char_widens_to_int_and_narrows_explicitly)
         "B :: () -> Box(int) { return A(); } }"
     );
     REQUIRE(!analysis->valid);
+    /* Beside a wide unsigned operand a char takes part as uint, not int64. */
+    parse("L :: library { F :: (c: char, u: uint) -> uint { return c + u; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, u: uint64) -> uint64 { return c + u; } }");
+    REQUIRE(analysis->valid);
+    parse("L :: library { F :: (c: char, b: byte) -> int { return c + b; } }");
+    REQUIRE(analysis->valid);
+    /* A compile-time call keeps its declared char result. */
+    parse(
+        "L :: library { Code :: () -> char { return 'a'; } Folded :: Code(); "
+        "F :: () -> char { return Folded; } }"
+    );
+    REQUIRE(analysis->valid);
     return true;
 }
 /* Ranges never count down: `for <` reverses a range or an array instead. */

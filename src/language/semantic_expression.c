@@ -10,6 +10,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Beside another integer, a char takes part as int, or as uint beside a
+ * 32- or 64-bit unsigned operand, since every Unicode scalar fits both; the
+ * result is then the other operand's type, as int's would be. */
+script_type script_analyzer_char_operand(script_type operand, script_type other)
+{
+    if (!script_type_char(operand) || script_type_char(other) ||
+        (other.flags & SCRIPT_TYPE_UNTYPED)) {
+        return operand;
+    }
+    bool wide_unsigned = other.storage == PIN_U32 || other.storage == PIN_U64;
+    return (script_type){ .storage = wide_unsigned ? PIN_U32 : PIN_I32,
+                          .flags = operand.flags };
+}
 script_type script_analyzer_arithmetic_type(script_type left, script_type right)
 {
     if (left.flags & SCRIPT_TYPE_UNTYPED) {
@@ -25,11 +38,8 @@ script_type script_analyzer_arithmetic_type(script_type left, script_type right)
     if (right.flags & SCRIPT_TYPE_UNTYPED) {
         return left;
     }
-    /* A char widens to any other operand, as it does to int. */
-    if (script_type_char(left) != script_type_char(right)) {
-        left.nominal = script_type_char(left) ? 0 : left.nominal;
-        right.nominal = script_type_char(right) ? 0 : right.nominal;
-    }
+    left = script_analyzer_char_operand(left, right);
+    right = script_analyzer_char_operand(right, left);
     if (left.storage == PIN_F64 || right.storage == PIN_F64) {
         return (script_type){ .storage = PIN_F64 };
     }
@@ -915,7 +925,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         if (script_type_numeric(x) && script_type_numeric(y) &&
             !((x.flags | y.flags) & SCRIPT_TYPE_UNTYPED) &&
             x.storage <= PIN_U64 && y.storage <= PIN_U64 &&
-            behavior_scalar_common_integer(x.storage, y.storage) == PIN_FLOW) {
+            behavior_scalar_common_integer(
+                script_analyzer_char_operand(x, y).storage,
+                script_analyzer_char_operand(y, x).storage
+            ) == PIN_FLOW) {
             script_analyzer_diagnostic(
                 a,
                 node,

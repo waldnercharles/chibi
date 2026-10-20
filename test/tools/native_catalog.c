@@ -92,6 +92,11 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
     /* No host event takes an action's name, so a map may name Fire or Dash. */
     REQUIRE(script_catalog_find_capability(catalog, "Tick", SCRIPT_CAPABILITY_EVENT) >= 0);
     REQUIRE(script_catalog_find_capability(catalog, "Fire", SCRIPT_CAPABILITY_EVENT) < 0);
+    /* Tick's payload is the step, dt, measured in seconds. */
+    const script_catalog_capability *
+        tick = &catalog->capabilities[script_catalog_find_capability(catalog, "Tick", SCRIPT_CAPABILITY_EVENT)];
+    REQUIRE(tick->parameter_count == 1 && !strcmp(tick->parameters[0].name, "dt"));
+    REQUIRE(tick->parameters[0].unit && !strcmp(tick->parameters[0].unit, "s"));
     REQUIRE(script_catalog_find_capability(catalog, "Dash", SCRIPT_CAPABILITY_EVENT) < 0);
     native_capabilities_free(native);
     native = NULL;

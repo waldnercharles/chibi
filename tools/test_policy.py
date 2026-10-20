@@ -270,8 +270,8 @@ TOOLS = {
                            '--bootstrap-recovery',
                            str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host')),
                            str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'tools/compiler/bootstrap'))],
-    # Six fixed orchestration cases: 38 API invocations on both backends, one CLI,
-    # ten tiny Git roots, controlled CMake workers and Make routing; no engine builds.
+    # Seven fixed orchestration cases: 50 API invocations on both backends, one CLI,
+    # twelve tiny Git roots, controlled CMake workers and Make routing; no engine builds.
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),

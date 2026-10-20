@@ -2072,16 +2072,16 @@ limits, and atomic write failure cleanup. Their fixed file workload is about
 7 MiB. The original eight `language-build-workflow` recording cases remain an
 independent admitted route.
 
-`python3 tools/test_policy.py tool build-toolchain` selects six C cases for the
-installed authored build program. Four cases make 38 API invocations across
-bytecode and SLJIT; one runs the host CLI with exact tail arguments. Ten tiny
-Git roots and at most 53 controlled CMake attempts cover compiler/environment/
+`python3 tools/test_policy.py tool build-toolchain` selects seven C cases for the
+installed authored build program. Five cases make 50 API invocations across
+bytecode and SLJIT; one runs the host CLI with exact tail arguments. Twelve tiny
+Git roots and at most 57 controlled CMake attempts cover compiler/environment/
 cache precedence, explicit typed and split definitions, loaded inputs, compiler
-identity, private dependency overrides, failure/retry and exact argument
-forwarding. The sixth case uses the production Makefile to select recovery for
-missing/old hosts and authored orchestration for a compatible host, including
-paths with spaces; three outer and three recursive Make calls run marker recipes
-only. The process route also tests the private protocol query used by this
+identity, private dependency overrides and their precedence over the cache,
+failure/retry and exact argument forwarding. The seventh case uses the
+production Makefile to select recovery for missing/old hosts and authored
+orchestration for a compatible host, including paths with spaces; three outer
+and three recursive Make calls run marker recipes only. The process route also tests the private protocol query used by this
 transition. Python runs only the production input probes; no Python tests are
 introduced. These cases never configure or build the engine. Actual clean-source
 configuration and compilation are separate build evidence.

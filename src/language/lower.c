@@ -504,6 +504,49 @@ static int convert_mode(lower *l, int slot, script_type from, script_type to, be
         range
     );
 }
+/* The source text of a range in its own document. */
+static const char *range_text(const lower *l, script_range range)
+{
+    return l->a->document_count ? l->a->documents[range.document].text : l->a->text;
+}
+/* assert fails the call, as a checked conversion does, with its message or,
+ * as Odin's #caller_expression, its condition's source text. */
+static int assertion(lower *l, const script_expression *e)
+{
+    int condition = -1;
+    const char *message = NULL;
+    script_range text = { 0 };
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_expression *value = &l->a->expressions[e->arguments[i].value];
+        if (e->arguments[i].parameter == 0) {
+            condition = expression(l, e->arguments[i].value);
+            text = value->range;
+            continue;
+        }
+        if (value->kind != SCRIPT_EXPR_CONSTANT) {
+            error(l, value->range, "assert's message is a string constant");
+            return -1;
+        }
+        message = value->constant.str;
+    }
+    if (condition < 0) {
+        return -1;
+    }
+    bool own = !message || !*message;
+    int length = own ? text.end - text.start : (int)strlen(message);
+    size_t size = sizeof "Assertion failed: " + (size_t)length;
+    char *failure = arena_alloc(&l->module->storage, size);
+    snprintf(failure, size, "Assertion failed: %.*s", length, own ? range_text(l, text) + text.start : message);
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_ASSERT,
+                                         .left = condition,
+                                         .target = BEHAVIOR_FUNCTION_DATA,
+                                         .message = failure },
+        e->range
+    );
+    return -1;
+}
 /* A fractional value, such as a `number`, truncates to the int an array index
  * or a range bound takes. Integers keep their width: casts only narrow floats. */
 static int int_slot(lower *l, int value, script_range range)
@@ -3030,14 +3073,17 @@ static int call(lower *l, const script_expression *e)
             linked = l->bindings->host(l->bindings->user, e->capability, &host);
         }
     }
-    if (!linked || (!host.call && !host.function && !host.command &&
-                    !host.query && host.intrinsic != BF_DELAY &&
-                    host.intrinsic != BF_OWNER && host.intrinsic != BF_DELTA)) {
+    if (!linked || (!host.call && !host.function && !host.command && !host.query &&
+                    host.intrinsic != BF_DELAY && host.intrinsic != BF_OWNER &&
+                    host.intrinsic != BF_DELTA && host.intrinsic != BF_ASSERT)) {
         error(l, e->range, "Callable capability has no linked execution contract");
         return -1;
     }
     if (host.function) {
         return external_call(l, e, cap, host);
+    }
+    if (host.intrinsic == BF_ASSERT) {
+        return assertion(l, e);
     }
     if (host.intrinsic == BF_OWNER || host.intrinsic == BF_DELTA) {
         if (l->initializing || e->argument_count || cap->parameter_count ||

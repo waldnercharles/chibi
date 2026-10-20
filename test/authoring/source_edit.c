@@ -356,6 +356,49 @@ TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_default
 /* A handler that names its payload fields shows every field as an entry pin,
  * an unlisted one under the field's name. A listed field connects by its
  * name; an unlisted one has no source to read until it is listed. */
+/* A created handler lists every payload field with its type, so each pin
+ * can be wired; a handler for an event without a payload lists none. */
+TEST_CASE(source_created_handlers_list_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 }, .unit = "charge" },
+        { .name = "step", .type = { .storage = PIN_F64 }, .unit = "s" },
+    };
+    static const script_catalog_capability events[] = {
+        { .id = 100, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT },
+        { .id = 101,
+          .name = "Impulse",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = fields,
+          .parameter_count = 2 },
+    };
+    static const script_catalog with = { .capabilities = events,
+                                         .capability_count = 2 };
+    const char *names[] = { "Impulse", "Tick" };
+    const char *headers[] = {
+        "on Impulse :: (amount: double charge, step: double s) {}",
+        "on Tick :: () {}"
+    };
+    for (int i = 0; i < 2; i++) {
+        syntax = script_parse("Edit :: behavior { total:double=0; }");
+        analysis = script_analyze_document(syntax, &with, "tests/source-edit");
+        view = authoring_source_presentation_new(analysis, &with, NULL);
+        REQUIRE(analysis->valid && view);
+        authoring_edit_request r = { .kind = AUTHORING_EDIT_CREATE_EVENT,
+                                     .generation = authoring_source_edit_generation(view),
+                                     .reference = names[i] };
+        REQUIRE(authoring_source_edit(analysis, &with, view, &r, &result, error, sizeof error));
+        REQUIRE(strstr(result.text, headers[i]));
+        script_syntax *created = script_parse(result.text);
+        script_analysis
+            *checked = script_analyze_document(created, &with, analysis->identity);
+        REQUIRE(checked->valid);
+        script_analysis_free(checked);
+        script_syntax_free(created);
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(source_connections_read_listed_payload_fields)
 {
     static const script_catalog_parameter fields[] = {
@@ -1343,6 +1386,7 @@ void test_source_edit()
     RUN_TEST_CASE(source_retype_compact_inferred_retention_preserves_owner);
     RUN_TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects);
     RUN_TEST_CASE(source_connections_read_listed_payload_fields);
+    RUN_TEST_CASE(source_created_handlers_list_payload_fields);
     RUN_TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order);
     RUN_TEST_CASE(source_fused_call_edits_select_expression_or_statement_by_operation);
     RUN_TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration);

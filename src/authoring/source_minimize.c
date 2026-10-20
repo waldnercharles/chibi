@@ -690,6 +690,10 @@ static void handler_alias(collector *c, TSNode handler)
 static void handler(collector *c, TSNode node)
 {
     TSNode parameters = field(node, "parameters");
+    /* `on X :: (a: T)` names the payload fields it reads, with their types. */
+    if (!ts_node_is_null(field(node, "binding"))) {
+        return;
+    }
     if (!ts_node_is_null(field(node, "alias"))) {
         handler_alias(c, node);
     }

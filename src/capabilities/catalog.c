@@ -284,10 +284,14 @@ bool script_type_numeric(script_type type)
            !(type.flags & (SCRIPT_TYPE_ERROR | SCRIPT_TYPE_OPTIONAL |
                            SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK));
 }
+/* Integers widen to integers and to floating types; a floating value
+ * becomes an integer only through an explicit conversion. */
 bool script_numeric_implicit(pin_type from, pin_type to)
 {
-    bool integers = from <= PIN_U64 && to <= PIN_U64;
-    return !integers || behavior_scalar_integer_widens(from, to);
+    if (to > PIN_U64) {
+        return true;
+    }
+    return from <= PIN_U64 && behavior_scalar_integer_widens(from, to);
 }
 bool script_type_assignable(script_type expected, script_type actual)
 {

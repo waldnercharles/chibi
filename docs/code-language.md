@@ -716,21 +716,42 @@ not a Unicode scalar fails in the same way.
 ### Scalar conversions
 
 An explicit scalar conversion calls the type: `double(value)`, `float(value)`
-or `byte(value)`. Most code needs no explicit conversion. These conversions
-are implicit:
+or `byte(value)`. These conversions are implicit:
 
 - A literal takes its expected type.
 - An integer converts implicitly to an integer type that holds every value
   (`byte` to `int`, `uint16` to `uint`).
-- Conversions that involve `number`, `double` or `float` stay implicit.
+- An integer converts implicitly to `number`, `double` or `float`, and the
+  floating types convert to one another.
 
-Only narrowing between integer types needs a conversion:
+A floating value becomes an integer only through a conversion, `int(x)`, as
+in Go, Odin and Rust. Narrowing between integer types also needs one:
 
 ```code
 low := byte(value)          // checked: fails when value does not fit
 bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
 level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
 ```
+
+### Untyped literals
+
+A literal without a type from context takes one from its spelling, as in Go,
+Odin and C#. An integer such as `0` or `0xFF` is an `int`, or the first of
+`int64` and `uint64` that holds it. A decimal point or an exponent makes a
+`number`: `0.0`, `1e3`.
+
+```code
+count := 0       // int
+elapsed := 0.0   // number
+half := 1 / 2    // 0: integer division
+ratio := 1 / 2.0 // 0.5
+```
+
+So `elapsed := 0` followed by `elapsed += dt` is an error; write
+`elapsed := 0.0`. Beside a typed operand an untyped literal takes that
+operand's type, so `count * 0.5` with an `int` `count` is an error and
+`number(count) * 0.5` is not. A union with one numeric alternative, such as
+`number | Cancelled`, gives a literal that alternative's type.
 
 ### Conversion rules
 
@@ -901,12 +922,31 @@ decimal point alone does not require double precision.
 
 ### Host event payloads
 
-Host events infer their registered payload:
+A handler names the payload fields that it reads, with their types:
 
-- `on Tick(dt) { ... }` binds the registered Tick delta to `dt`.
-- `on Tick { ... }` needs no explicit payload list.
-- `event.dt` also reads that payload, independently of the general frame clock.
-- A handler may name its entire payload with `on Tick as tick { ... }`.
+```code
+on Tick :: (dt: s) { ... }
+on ContactBegin :: (other: entity) { ... }
+on Begin :: () { ... }
+```
+
+- Each name selects one payload field. The match ignores case, `_`, spaces
+  and `-`, so `other` reads the field `Other`.
+- List any subset of the fields, in any order. List each field only once.
+- Write the type of each field. A written unit must match the field's unit.
+- A payload parameter takes no default, source or `$`.
+- A handler that reads no field writes `()`.
+- The handler cannot read the fields that it does not list, and it cannot read
+  `event`.
+
+Tick's payload is `dt`, the time in seconds since the last frame.
+
+These older forms still work until a project-format migration rewrites them:
+
+- `on Tick(dt) { ... }` binds the payload fields in order.
+- `on Tick { ... }` binds each field by its own name.
+- `event.dt` reads a field of the payload.
+- `on Tick as tick { ... }` names the whole payload.
 
 Event payload members are read-only unless their reflected signature supplies a
 reference.

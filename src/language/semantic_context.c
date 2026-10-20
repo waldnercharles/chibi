@@ -253,7 +253,7 @@ void script_analyzer_require(analyzer *a, TSNode node, script_type expected, scr
         return;
     }
     if (script_type_numeric(expected) && script_type_numeric(actual)) {
-        /* Only integer narrowing and sign changes reach here. */
+        /* Integer narrowing, sign changes and floating to integer reach here. */
         script_analyzer_diagnostic(
             a,
             node,

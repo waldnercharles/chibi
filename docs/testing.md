@@ -1615,9 +1615,9 @@ Independently review before the first run, build separately and use one shared
 
 `python3 tools/test_policy.py tool language-type-relations-chibi` selects four
 C/pico_unit cases for the five pure catalog type relations. The finite tables
-contain 18 equality, 15 numeric, 36 assignment, 33 catalog-assignment and nine
-canonicalization requests: 111 requests, each once on bytecode and SLJIT, for
-222 direct authored calls with a supplied budget argument of 50,000. Outlined
+contain 18 equality, 15 numeric, 37 assignment, 33 catalog-assignment and nine
+canonicalization requests: 112 requests, each once on bytecode and SLJIT, for
+224 direct authored calls with a supplied budget argument of 50,000. Outlined
 and inline child activations inherit/reset that budget; it is not a complete
 invocation or aggregate instruction ceiling. Five fixed compiler sources below
 32 KiB per backend produce ten preparation parses. Raw maxima are

@@ -1,5 +1,5 @@
 Recharge :: behavior {
-    charge := 0
+    charge := 0.0
     capacity := 100
     rate := 12
 

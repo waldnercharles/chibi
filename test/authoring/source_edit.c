@@ -353,6 +353,95 @@ TEST_CASE(source_variable_creation_uses_identifiers_and_keeps_nonliteral_default
     REQUIRE(candidate_analysis->valid);
     return true;
 }
+/* A handler that names its payload fields shows every field as an entry pin,
+ * an unlisted one under the field's name. A listed field connects by its
+ * name; an unlisted one has no source to read until it is listed. */
+/* A created handler lists every payload field with its type, so each pin
+ * can be wired; a handler for an event without a payload lists none. */
+TEST_CASE(source_created_handlers_list_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 }, .unit = "charge" },
+        { .name = "step", .type = { .storage = PIN_F64 }, .unit = "s" },
+    };
+    static const script_catalog_capability events[] = {
+        { .id = 100, .name = "Tick", .kind = SCRIPT_CAPABILITY_EVENT },
+        { .id = 101,
+          .name = "Impulse",
+          .kind = SCRIPT_CAPABILITY_EVENT,
+          .parameters = fields,
+          .parameter_count = 2 },
+    };
+    static const script_catalog with = { .capabilities = events,
+                                         .capability_count = 2 };
+    const char *names[] = { "Impulse", "Tick" };
+    const char *headers[] = {
+        "on Impulse :: (amount: double charge, step: double s) {}",
+        "on Tick :: () {}"
+    };
+    for (int i = 0; i < 2; i++) {
+        syntax = script_parse("Edit :: behavior { total:double=0; }");
+        analysis = script_analyze_document(syntax, &with, "tests/source-edit");
+        view = authoring_source_presentation_new(analysis, &with, NULL);
+        REQUIRE(analysis->valid && view);
+        authoring_edit_request r = { .kind = AUTHORING_EDIT_CREATE_EVENT,
+                                     .generation = authoring_source_edit_generation(view),
+                                     .reference = names[i] };
+        REQUIRE(authoring_source_edit(analysis, &with, view, &r, &result, error, sizeof error));
+        REQUIRE(strstr(result.text, headers[i]));
+        script_syntax *created = script_parse(result.text);
+        script_analysis
+            *checked = script_analyze_document(created, &with, analysis->identity);
+        REQUIRE(checked->valid);
+        script_analysis_free(checked);
+        script_syntax_free(created);
+        cleanup();
+    }
+    return true;
+}
+TEST_CASE(source_connections_read_listed_payload_fields)
+{
+    static const script_catalog_parameter fields[] = {
+        { .name = "amount", .type = { .storage = PIN_F64 } },
+        { .name = "scale", .type = { .storage = PIN_F64 } },
+    };
+    static const script_catalog_capability impulse = { .id = 101,
+                                                       .name = "Impulse",
+                                                       .kind = SCRIPT_CAPABILITY_EVENT,
+                                                       .parameters = fields,
+                                                       .parameter_count = 2 };
+    static const script_catalog events = { .capabilities = &impulse,
+                                           .capability_count = 1 };
+    syntax = script_parse("Edit :: behavior { total:double=0; on Impulse :: (scale: double) { total=7; } }");
+    analysis = script_analyze_document(syntax, &events, "tests/source-edit");
+    view = authoring_source_presentation_new(analysis, &events, NULL);
+    REQUIRE(analysis->valid && view);
+    graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Impulse");
+    node *entry = g ? graph_node_by_id(g, g->entry_id) : NULL;
+    REQUIRE(entry && entry->output_count == 3);
+    REQUIRE(!strcmp(entry->output_pins[1].name, "amount"));
+    REQUIRE(!strcmp(entry->output_pins[2].name, "scale"));
+    const source_presentation_origin *target = find(SOURCE_PRESENTATION_EXPRESSION, "7;"),
+                                     *pins[2] = { 0 };
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+        for (int k = 0; k < 2; k++) {
+            if (o->kind == SOURCE_PRESENTATION_SYMBOL &&
+                o->pin == entry->output_pins[k + 1].id) {
+                pins[k] = o;
+            }
+        }
+    }
+    REQUIRE(target && pins[0] && pins[1]);
+    authoring_edit_request r = request(AUTHORING_EDIT_CONNECT, target);
+    r.producer = pins[0]->identity;
+    REQUIRE(!authoring_source_edit(analysis, &events, view, &r, &result, error, sizeof error));
+    REQUIRE(strstr(error, "no current producer"));
+    r.producer = pins[1]->identity;
+    REQUIRE(authoring_source_edit(analysis, &events, view, &r, &result, error, sizeof error));
+    REQUIRE(strstr(result.text, "total=scale;"));
+    return true;
+}
 TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects)
 {
     REQUIRE(
@@ -1188,6 +1277,8 @@ void test_source_edit()
     RUN_TEST_CASE(source_variable_types_preserve_comments_values_and_checked_uses);
     RUN_TEST_CASE(source_retype_compact_inferred_retention_preserves_owner);
     RUN_TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effects);
+    RUN_TEST_CASE(source_connections_read_listed_payload_fields);
+    RUN_TEST_CASE(source_created_handlers_list_payload_fields);
     RUN_TEST_CASE(source_statement_moves_keep_comments_and_validate_declaration_order);
     RUN_TEST_CASE(source_fused_call_edits_select_expression_or_statement_by_operation);
     RUN_TEST_CASE(source_fused_action_call_mute_edits_its_owned_declaration);

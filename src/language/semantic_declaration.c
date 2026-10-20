@@ -861,6 +861,141 @@ static script_catalog_parameter *authored_payload(const analyzer *a, const int *
     }
     return payload;
 }
+/* A payload parameter the source does not name: a handler without a
+ * parameter list binds each field by its own name, and one that lists fields
+ * by name keeps an unnamed slot for each field it leaves out. */
+static int hidden_payload(analyzer *a, int function, const script_catalog_parameter *field, const char *name)
+{
+    script_symbol hidden = { .name = xstrdup(name),
+                             .unit = field->unit ? xstrdup(field->unit) : NULL,
+                             .kind = SCRIPT_PARAMETER,
+                             .id = script_catalog_id("payload-port", field->name),
+                             .type = field->type,
+                             .scope = a->scope,
+                             .initializer = -1,
+                             .function = function,
+                             .declaration = { .start = -1, .end = -1 },
+                             .writable = (field->type.flags &
+                                          SCRIPT_TYPE_REFERENCE) != 0 };
+    apush(a->out->symbols, hidden);
+    return acount(a->out->symbols) - 1;
+}
+/* A payload parameter the source names, typed by field and checked against
+ * a written type and unit; field is NULL past the end of the payload. */
+static int payload_symbol(analyzer *a, TSNode parameter, const script_catalog_parameter *field)
+{
+    TSNode name = script_analyzer_is(parameter, "parameter")
+                    ? script_analyzer_field(parameter, "name")
+                    : parameter;
+    script_type type = field ? field->type : script_analyzer_bad_type();
+    TSNode annotation = script_analyzer_field(parameter, "type");
+    char *unit = NULL;
+    if (!ts_node_is_null(annotation)) {
+        script_analyzer_require(a, annotation, type, script_analyzer_signature_type(a, annotation, &unit));
+        if (field) {
+            script_analyzer_signature_unit(a, annotation, field->unit, unit);
+        }
+    }
+    int symbol = script_analyzer_symbol_new(
+        a,
+        name,
+        SCRIPT_PARAMETER,
+        type,
+        (type.flags & SCRIPT_TYPE_REFERENCE) != 0
+    );
+    free(a->out->symbols[symbol].unit);
+    a->out->symbols[symbol].unit = unit                 ? unit
+                                 : field && field->unit ? xstrdup(field->unit)
+                                                        : NULL;
+    return symbol;
+}
+/* `on X(a, b)` binds payload fields in order, and `on X` binds each by its
+ * own name. */
+static void positional_payload(
+    analyzer *a,
+    int function,
+    TSNode list,
+    const script_catalog_parameter *payload,
+    int count
+)
+{
+    int ordinal = 0;
+    for (uint32_t i = 0; i < script_analyzer_named_count(list); i++) {
+        TSNode parameter = ts_node_named_child(list, i);
+        if (ts_node_is_extra(parameter)) {
+            continue;
+        }
+        int symbol = payload_symbol(a, parameter, ordinal < count ? &payload[ordinal] : NULL);
+        apush(a->out->functions[function].parameters, symbol);
+        ordinal++;
+    }
+    if (!script_analyzer_named_count(list)) {
+        for (int i = 0; i < count; i++) {
+            int symbol = hidden_payload(a, function, &payload[i], payload[i].name);
+            apush(a->out->functions[function].parameters, symbol);
+        }
+    }
+    if (script_analyzer_named_count(list) && ordinal != count) {
+        script_analyzer_diagnostic(a, list, "Expected %d payload parameters, got %d", count, ordinal);
+    }
+}
+/* `on X :: (a: T)` names payload fields in any order. Each listed field binds
+ * a parameter of its written type; each other field an unnamed one, so the
+ * parameters keep the payload's order and slots. */
+static void named_payload(
+    analyzer *a,
+    int function,
+    TSNode list,
+    const script_catalog_parameter *payload,
+    int count,
+    const char *event
+)
+{
+    TSNode *listed = NULL;
+    for (int k = 0; k < count; k++) {
+        apush(listed, (TSNode){ 0 });
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(list); i++) {
+        TSNode parameter = ts_node_named_child(list, i);
+        if (ts_node_is_extra(parameter)) {
+            continue;
+        }
+        TSNode name = script_analyzer_field(parameter, "name");
+        char *spelled = script_analyzer_name_copy(a, name);
+        int k = 0;
+        while (k < count && !script_name_matches(payload[k].name, spelled)) {
+            k++;
+        }
+        if (k == count) {
+            script_analyzer_diagnostic(a, name, "%s has no payload field '%s'", event, spelled);
+        } else if (!ts_node_is_null(listed[k])) {
+            script_analyzer_diagnostic(
+                a,
+                name,
+                "Payload field '%s' is listed twice",
+                payload[k].name
+            );
+        } else {
+            listed[k] = parameter;
+        }
+        if (ts_node_is_null(script_analyzer_field(parameter, "type"))) {
+            script_analyzer_diagnostic(a, name, "Write the type of payload field '%s'", spelled);
+        }
+        if (!ts_node_is_null(script_analyzer_field(parameter, "value")) ||
+            !ts_node_is_null(script_analyzer_field(parameter, "source")) ||
+            !ts_node_is_null(script_analyzer_field(parameter, "comptime"))) {
+            script_analyzer_diagnostic(a, parameter, "A payload parameter takes no default, source or `$`");
+        }
+        free(spelled);
+    }
+    for (int k = 0; k < count; k++) {
+        int symbol = ts_node_is_null(listed[k])
+                       ? hidden_payload(a, function, &payload[k], "")
+                       : payload_symbol(a, listed[k], &payload[k]);
+        apush(a->out->functions[function].parameters, symbol);
+    }
+    afree(listed);
+}
 void script_analyzer_handler(analyzer *a, TSNode node)
 {
     TSNode name_node = script_analyzer_field(node, "name"),
@@ -1045,72 +1180,21 @@ void script_analyzer_handler(analyzer *a, TSNode node)
     a->scope = script_analyzer_scope_new(a, body);
     a->out->functions[function].scope = a->scope;
     TSNode parameter_nodes = script_analyzer_field(node, "parameters");
-    int ordinal = 0;
     const script_catalog_parameter *payload = signature ? after ? signature->results
                                                                 : signature->parameters
                                                         : NULL;
     int count = signature ? after ? signature->result_count : signature->parameter_count
                           : 0;
-    for (uint32_t i = 0; i < script_analyzer_named_count(parameter_nodes); i++) {
-        TSNode parameter = ts_node_named_child(parameter_nodes, i);
-        if (ts_node_is_extra(parameter)) {
-            continue;
-        }
-        TSNode parameter_name = script_analyzer_is(parameter, "parameter")
-                                  ? script_analyzer_field(parameter, "name")
-                                  : parameter;
-        script_type type = ordinal < count ? payload[ordinal].type
-                                           : script_analyzer_bad_type();
-        TSNode annotation = script_analyzer_field(parameter, "type");
-        char *unit = NULL;
-        if (!ts_node_is_null(annotation)) {
-            script_analyzer_require(
-                a,
-                annotation,
-                type,
-                script_analyzer_signature_type(a, annotation, &unit)
-            );
-            if (ordinal < count) {
-                script_analyzer_signature_unit(a, annotation, payload[ordinal].unit, unit);
-            }
-        }
-        int symbol = script_analyzer_symbol_new(
-            a,
-            parameter_name,
-            SCRIPT_PARAMETER,
-            type,
-            (type.flags & SCRIPT_TYPE_REFERENCE) != 0
-        );
-        free(a->out->symbols[symbol].unit);
-        a->out->symbols[symbol].unit = unit ? unit
-                                     : ordinal < count && payload[ordinal].unit
-                                         ? xstrdup(payload[ordinal].unit)
-                                         : NULL;
-        apush(a->out->functions[function].parameters, symbol);
-        ordinal++;
+    bool named = !ts_node_is_null(script_analyzer_field(node, "binding"));
+    a->out->functions[function].named = named;
+    if (named) {
+        named_payload(a, function, parameter_nodes, payload, count, name);
+    } else {
+        positional_payload(a, function, parameter_nodes, payload, count);
     }
-    if (!script_analyzer_named_count(parameter_nodes)) {
-        for (int i = 0; i < count; i++) {
-            script_symbol hidden = {
-                .name = xstrdup(payload[i].name),
-                .unit = payload[i].unit ? xstrdup(payload[i].unit) : NULL,
-                .kind = SCRIPT_PARAMETER,
-                .id = script_catalog_id("payload-port", payload[i].name),
-                .type = payload[i].type,
-                .scope = a->scope,
-                .initializer = -1,
-                .function = function,
-                .declaration = { .start = -1, .end = -1 },
-                .writable = (payload[i].type.flags & SCRIPT_TYPE_REFERENCE) != 0
-            };
-            apush(a->out->symbols, hidden);
-            apush(a->out->functions[function].parameters, acount(a->out->symbols) - 1);
-        }
-    }
-    if (script_analyzer_named_count(parameter_nodes) && ordinal != count) {
-        script_analyzer_diagnostic(a, parameter_nodes, "Expected %d payload parameters, got %d", count, ordinal);
-    }
-    /* The payload aggregate has a semantic identity, independent of aliases. */
+    /* The payload aggregate has a semantic identity, independent of aliases.
+     * A handler that names its fields still declares it, so that it hides an
+     * enclosing system's `event`, but reading it is an error. */
     script_symbol event = { .name = xstrdup("event"),
                             .kind = SCRIPT_PARAMETER,
                             .id = script_catalog_id("payload", name),

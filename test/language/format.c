@@ -118,6 +118,13 @@ static bool map_reproduces_source()
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types. */
+TEST_CASE(source_format_keeps_named_payload_fields)
+{
+    REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
+    REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
+    return true;
+}
 TEST_CASE(source_format_spaces_typed_constant_colons)
 {
     REQUIRE(format("L :: library {\n    Limit:int:5\n    Mask :: 255\n}\n"));
@@ -988,20 +995,46 @@ TEST_CASE(source_format_and_minimize_remain_separate)
     REQUIRE(minimize_valid(
         &catalog,
         input,
-        "Demo :: library { count: int = 0\n"
-        "F :: () -> (r: int) { local: retain int = 1\n"
+        "Demo :: library { count := 0\n"
+        "F :: () -> (r: int) { local: retain = 1\n"
         "r = (/* keep */ count + local); return } }"
     ));
     free(again);
     char error[192];
     again = authoring_source_format(formatted, error, sizeof error);
     REQUIRE(again);
-    REQUIRE(strstr(again, "count: int = 0") && !strstr(again, "count: retain"));
-    REQUIRE(strstr(again, "local: retain int = 1"));
+    REQUIRE(strstr(again, "count := 0") && !strstr(again, "count: retain"));
+    REQUIRE(strstr(again, "local: retain = 1"));
     REQUIRE(strstr(again, "r = (/* keep */ count + local)"));
     return true;
 }
 
+/* A handler that names its payload fields keeps the list and its types; the
+ * older positional list that repeats the payload's names still drops. */
+TEST_CASE(source_minimize_keeps_named_payload_fields)
+{
+    REQUIRE(minimize(
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick(dt) {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n",
+        "Demo :: behavior {\n"
+        "    angle: float = 0.0\n"
+        "    on Tick :: (dt: float) {\n"
+        "        angle = angle + dt\n"
+        "    }\n"
+        "    on Tick {\n"
+        "        angle = angle - dt\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
 TEST_CASE(source_minimize_keeps_argument_order)
 {
     /* Arguments run in source order, so out-of-order labels stay. */
@@ -1564,9 +1597,9 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "F :: () -> number { count: retain number = 1\n"
         "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
         "}",
-        "Demo :: system() { total: retain = 0\n"
-        "F :: () -> number { count: retain = 1\n"
-        "integer: retain int = 1\nfractional: retain float = 1\nreturn count } "
+        "Demo :: system() { total: retain number = 0\n"
+        "F :: () -> number { count: retain number = 1\n"
+        "integer: retain = 1\nfractional: retain float = 1\nreturn count } "
         "}"
     ));
     cleanup();
@@ -1575,7 +1608,7 @@ TEST_CASE(source_format_and_minimize_preserve_retained_lifetimes)
         "Demo :: behavior { count: retain = 1\nAdvance :: (dt: number) { "
         "elapsed: retain number = 0\nelapsed += dt } }",
         "Demo :: behavior { count:= 1\nAdvance :: (dt: number) { "
-        "elapsed: retain = 0\nelapsed += dt } }"
+        "elapsed: retain number = 0\nelapsed += dt } }"
     ));
     return true;
 }
@@ -1627,6 +1660,7 @@ void test_language_root_state()
 void test_language_format()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_format_keeps_named_payload_fields);
     RUN_TEST_CASE(source_format_spaces_typed_constant_colons);
     RUN_TEST_CASE(source_format_spaces_reverse_and_half_open_loops);
     RUN_TEST_CASE(source_format_keeps_attributes_on_their_line);
@@ -1667,6 +1701,7 @@ void test_language_format()
     RUN_TEST_CASE(source_minimize_distinguishes_comments_from_strings);
     RUN_TEST_CASE(source_format_options_compose_with_comment_preserving_minimizer);
     RUN_TEST_CASE(source_format_and_minimize_remain_separate);
+    RUN_TEST_CASE(source_minimize_keeps_named_payload_fields);
     RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);

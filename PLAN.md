@@ -576,7 +576,7 @@ until the clean-checkout artifact recovery test passes.
 ### M6. Replace the internal build graph
 
 Move product profiles, generated prerequisites, native/cross compilation,
-include/link ownership, install layouts, dependency cache policy, and artifact
+include/link ownership, install layouts, vendored dependency builds, and artifact
 assembly into Chibi modules. Preserve installed CMake package files while Studio
 or another supported consumer needs them; generate those files rather than using
 them as the internal source of truth.
@@ -774,16 +774,21 @@ it from Git), and `tools/compare_neon_frames.mjs` with `tools/png-check.mjs`,
 a frame diff for a game no longer in this repository. `Build.chibi` now decides
 whether private dependency sources decline immutable packages, which was
 `configure_inputs.py package-enabled`; the `build-toolchain` cases passed
-unchanged against both implementations. Its `compiler-sdk` probe cannot follow
-yet: Apple clang's `cc -###` prints 4,147 bytes and a build step's output is
-capped at 4 KiB. Waiting on a decision: `.github/scripts/` (the M5 owner
+unchanged against both implementations. Compiler SDK discovery followed it
+from `configure_inputs.py compiler-sdk`; the new `build-toolchain` macOS case
+passed against both implementations. A step's own output now holds 1 MiB
+rather than 4 KiB, probes keep tool reports out of the build's output, and the
+build host gained the file primitives in `docs/self-hosting-build.md`. Owner
+decision (2026-10-19): vendor dependencies as Odin does. The dependency fetch,
+`dependency_package.py` and `fetchcontent_cache.py` are then deleted rather
+than ported, and the configuration signature shrinks before it moves. Waiting
+on a decision: `.github/scripts/` (the M5 owner
 confirms its hosted runs are finished), the CUT61 analysis scripts (owner
 review of the stale record), and game runtime installation (whether the
 `update-game-runtime` workflow outlived the retired game repositories).
-Everything else is blocked. Most packaging, dependency-cache and
-configuration-signature work waits on the same missing build-host
-primitives: file metadata, directory walks, binary copy, rename and remove,
-permissions, hashing, environment enumeration, locks and resource limits.
+Everything else is blocked. Packaging still needs sizes, modification-time
+order, link reads and staging directories from the host, and the Blender
+launcher needs child resource limits.
 The build graph waits on M6, the executables and runtime on a native backend,
 and engine modules on M9.
 
@@ -1019,9 +1024,17 @@ modules into a game artifact. Project preparation is now split for it:
 `authoring_project_assemble` writes the artifact from the project's
 declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
-its own artifact's modules reproduces that artifact byte for byte. Still to
-come: the route itself, a Chibi program per the owner's decision, which runs
-stage one and then this assembly through a narrow binding. See `docs/testing.md#game-equivalence`.
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
+behavior links against: Compile's six target arguments, then the catalog's
+events, the type requirements stage zero lists, and the entity type. Next,
+in order:
+1. Stage one compiles a behavior asset, Counter first: retained state, an
+   event handler, `self` and a component field write through the reference
+   intrinsics, with the writer's state, event and component tables.
+2. The route: a Chibi program that runs stage one on a story with that
+   target, then this assembly through a narrow binding, as game-equivalence's
+   candidate.
+3. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

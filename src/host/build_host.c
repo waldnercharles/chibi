@@ -167,7 +167,9 @@ char *build_host_executable(build_host *host, const char *name)
     }
     return NULL;
 }
-const char *build_host_run_step(void *service, const pin_value *arguments, pin_value *results)
+/* A reported step adds its output to the invocation's result; a probe's
+ * output is only data for BuildLastStdout and BuildLastStderr. */
+static const char *run_step(void *service, const pin_value *arguments, pin_value *results, bool reported)
 {
     build_host *host = service;
     if (!host) {
@@ -213,9 +215,9 @@ const char *build_host_run_step(void *service, const pin_value *arguments, pin_v
     argv[array->count] = NULL;
     chibi_build_result *result = host->result;
     chibi_process_output out = { .data = host->last_stdout,
-                                 .capacity = sizeof(host->last_stdout) };
+                                 .capacity = BUILD_STEP_OUTPUT_CAPACITY };
     chibi_process_output err = { .data = host->last_stderr,
-                                 .capacity = sizeof(host->last_stderr) };
+                                 .capacity = BUILD_STEP_OUTPUT_CAPACITY };
     result->steps++;
     chibi_process_capture_result child = chibi_process_capture(
         program,
@@ -232,18 +234,20 @@ const char *build_host_run_step(void *service, const pin_value *arguments, pin_v
     }
     free(argv);
     free(program);
-    size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
-    size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
-    size_t out_copy = out.size < out_remaining ? out.size : out_remaining;
-    size_t err_copy = err.size < err_remaining ? err.size : err_remaining;
-    memcpy(result->stdout_text + result->stdout_size, out.data, out_copy);
-    memcpy(result->stderr_text + result->stderr_size, err.data, err_copy);
-    result->stdout_size += out_copy;
-    result->stderr_size += err_copy;
-    result->stdout_text[result->stdout_size] = 0;
-    result->stderr_text[result->stderr_size] = 0;
-    result->stdout_truncated |= out.truncated || out_copy != out.size;
-    result->stderr_truncated |= err.truncated || err_copy != err.size;
+    if (reported) {
+        size_t out_remaining = sizeof(result->stdout_text) - result->stdout_size - 1;
+        size_t err_remaining = sizeof(result->stderr_text) - result->stderr_size - 1;
+        size_t out_copy = out.size < out_remaining ? out.size : out_remaining;
+        size_t err_copy = err.size < err_remaining ? err.size : err_remaining;
+        memcpy(result->stdout_text + result->stdout_size, out.data, out_copy);
+        memcpy(result->stderr_text + result->stderr_size, err.data, err_copy);
+        result->stdout_size += out_copy;
+        result->stderr_size += err_copy;
+        result->stdout_text[result->stdout_size] = 0;
+        result->stderr_text[result->stderr_size] = 0;
+        result->stdout_truncated |= out.truncated || out_copy != out.size;
+        result->stderr_truncated |= err.truncated || err_copy != err.size;
+    }
     host->last_stdout_size = out.size;
     host->last_stderr_size = err.size;
     host->last_stdout_truncated = out.truncated;
@@ -258,6 +262,14 @@ const char *build_host_run_step(void *service, const pin_value *arguments, pin_v
         case CHIBI_PROCESS_HOST_FAILED: return "build process host failure";
     }
     return "build process host failure";
+}
+const char *build_host_run_step(void *service, const pin_value *arguments, pin_value *results)
+{
+    return run_step(service, arguments, results, true);
+}
+const char *build_host_run_probe(void *service, const pin_value *arguments, pin_value *results)
+{
+    return run_step(service, arguments, results, false);
 }
 const char *build_host_environment(void *service, const pin_value *arguments, pin_value *results)
 {
@@ -280,6 +292,35 @@ const char *build_host_environment(void *service, const pin_value *arguments, pi
         }
     }
     return "build environment name is not allowed";
+}
+const char *build_host_environment_names(void *service, const pin_value *, pin_value *results)
+{
+    build_host *host = service;
+    if (!host) {
+        return "build host service is unavailable";
+    }
+    const char *failure = build_host_ready(host);
+    if (failure) {
+        return failure;
+    }
+    int count = 0;
+    while (host->environment[count]) {
+        count++;
+    }
+    pin_array *names = build_values_array(&host->values, count);
+    if (!names) {
+        return host->values.error;
+    }
+    for (int i = 0; i < count; i++) {
+        const char *row = host->environment[i];
+        char *name = build_values_text(&host->values, row, strcspn(row, "="));
+        if (!name) {
+            return host->values.error;
+        }
+        names->items[i] = (pin_value){ .type = PIN_STR, .str = name };
+    }
+    results[0].ptr = names;
+    return NULL;
 }
 static void diagnose(chibi_build_result *result, const char *message)
 {
@@ -306,6 +347,9 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
         diagnose(result, "invalid build root");
         return false;
     }
+    host.last_stdout = xmalloc(BUILD_STEP_OUTPUT_CAPACITY);
+    host.last_stderr = xmalloc(BUILD_STEP_OUTPUT_CAPACITY);
+    host.last_stdout[0] = host.last_stderr[0] = 0;
     char *program_path = options->source_path[0] == '/'
                            ? xstrdup(options->source_path)
                            : join(host.root, options->source_path);
@@ -317,6 +361,8 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
     free(program_path);
     if (!host.program_directory) {
         free(host.root);
+        free(host.last_stdout);
+        free(host.last_stderr);
         diagnose(result, "invalid build program directory");
         return false;
     }
@@ -476,6 +522,8 @@ done:
     }
     free(host.root);
     free(host.program_directory);
+    free(host.last_stdout);
+    free(host.last_stderr);
     arena_free(&host.values.memory);
     return success;
 }

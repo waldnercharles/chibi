@@ -402,15 +402,15 @@ TEST_CASE(intelligence_scope_identity_and_owned_outputs)
     const authoring_reference *inner = at(0, "x:=2");
     REQUIRE(item && inner);
     REQUIRE(authoring_target_equal(item->target, inner->target));
-    REQUIRE(!strcmp(item->detail, "x: double"));
+    REQUIRE(!strcmp(item->detail, "x: int"));
     REQUIRE(completions.range.start == cursor - 1 && completions.range.end == cursor);
     REQUIRE(completions.range.line == 1 && completions.range.column == cursor);
     edited = authoring_source_hover(navigation, 0, cursor - 1);
-    REQUIRE(edited && !strcmp(edited, "x: double"));
+    REQUIRE(edited && !strcmp(edited, "x: int"));
     /* Owned presentation data outlives the borrowed navigation generation. */
     authoring_navigation_free(navigation);
     navigation = NULL;
-    REQUIRE(!strcmp(item->insert, "x") && !strcmp(edited, "x: double"));
+    REQUIRE(!strcmp(item->insert, "x") && !strcmp(edited, "x: int"));
     return true;
 }
 

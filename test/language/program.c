@@ -4529,7 +4529,7 @@ TEST_CASE(program_many_tasks_collect_in_linear_mark_work)
         *source = "Many :: behavior { done: double = 0;Wait :: (n: double) -> "
                   "() { row: double[] = [n, n];await Delay(1); done += row[0] "
                   "- n + 1; }on Impulse(amount, enabled) { for (i in "
-                  "1..amount) { Wait(i) } } }";
+                  "1..int(amount)) { Wait(i) } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -7290,7 +7290,7 @@ TEST_CASE(program_version_23_not_calls_migrate_with_native_identity)
 TEST_CASE(program_version_24_retention_migrates_and_executes)
 {
     const char *source = "behavior Retention {\n"
-                         "implicit := 0\n"
+                         "implicit := 0.0\n"
                          "state inferred := 1\n"
                          "state typed: int = 2\n"
                          "state int backwards = 3\n"
@@ -7324,7 +7324,7 @@ TEST_CASE(program_version_24_retention_migrates_and_executes)
             );
         }
         REQUIRE(execution_instance_state(instance, state_id("implicit"))->d == 3);
-        REQUIRE(execution_instance_state(instance, state_id("inferred"))->d == 1);
+        REQUIRE(execution_instance_state(instance, state_id("inferred"))->i == 1);
     }
     free(migrated);
 
@@ -8358,12 +8358,13 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
     const char
         *source = "N :: behavior { n: double = 0; w: int = 4; a: double[] = "
                   "[1, 2, 3];Leaf :: () -> (v: double) { j := 1.5; "
-                  "return(a[j]) }Inner :: () -> (v: double) { return(Leaf() + "
+                  "return(a[int(j)]) }Inner :: () -> (v: double) { "
+                  "return(Leaf() + "
                   "1) }Start :: () -> (v: double) { return(Inner()) }Bump :: "
                   "() { n += 1 } Relay :: () { Bump() }Kick :: () { Relay() "
                   "}on Impulse(amount, enabled) { i := 2; a[i] = 10;n = "
                   "Start() + a[2] + clamp(amount, 0, w); Kick();j := 1.5; for "
-                  "(k in 1..j) { n += k } } }";
+                  "(k in 1..int(j)) { n += k } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -8380,13 +8381,14 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
     return true;
 }
 /* Found animating Celeste's sprite: a result takes the type of its first
- * return, a literal settles to a number, and other returns convert to it. */
+ * return, a literal settles by its spelling, and other returns convert to
+ * it. */
 TEST_CASE(program_returns_convert_to_their_result_type)
 {
     const char
         *source = "M :: behavior { n: double = 0; k: int = 3;Half :: (v: int) "
                   "{ return v % 2 }First :: () { if k == 2 { return 8.5 } "
-                  "return Half(k) }Literal :: () { if k == 2 { return 8 } "
+                  "return Half(k) }Literal :: () { if k == 2 { return 8.0 } "
                   "return Half(k) }Declared :: () -> (r: double) { return "
                   "Half(k) }on Impulse(amount, enabled) {n = First() * 0.5 + "
                   "Literal() * 0.5 + Declared() } }";
@@ -8929,7 +8931,7 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     const char *source =
         "UnionValues :: behavior { AttackState :: union { Idle | "
         "Windup(remaining: number) | Active(damage: number) }; Status :: union "
-        "{ \"Yes\" | \"No\" }; total := 0; phase: AttackState = "
+        "{ \"Yes\" | \"No\" }; total := 0.0; phase: AttackState = "
         "AttackState.Windup(0.3); authored: Status = \"Yes\"; zero: number? = "
         "0; Empty :: () -> number? { return nil; } Default :: () -> (value: "
         "AttackState = AttackState.Idle) { return; } Extract :: (value: number "

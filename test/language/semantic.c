@@ -118,7 +118,42 @@ TEST_CASE(language_shadowing_resolves_nearest_declaration)
     REQUIRE(parameter >= 0 && state >= 0 && parameter != state);
     const script_use *use = script_use_at(analysis, (int)(strstr(source, "= sample") - source) + 2);
     REQUIRE(use && use->symbol == parameter);
-    REQUIRE(analysis->symbols[state].type.storage == PIN_F64);
+    /* An integer literal is an int unless its context says otherwise. */
+    REQUIRE(analysis->symbols[state].type.storage == PIN_I32);
+    return true;
+}
+static pin_type local_storage(const char *name)
+{
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (!strcmp(analysis->symbols[i].name, name)) {
+            return analysis->symbols[i].type.storage;
+        }
+    }
+    return PIN_FLOW;
+}
+/* Without context a literal is typed by its spelling: an integer is int, or
+ * the first of int64 and uint64 that holds it, and a decimal point or an
+ * exponent makes a number. A floating value becomes an integer only through
+ * int(x). */
+TEST_CASE(language_literals_are_typed_by_spelling)
+{
+    parse(
+        "L :: library { F :: () { count := 0; ratio := 0.5; power := 1e3; "
+        "mask := 0xFF; big := 3000000000; huge := 0xFFFFFFFFFFFFFFFF; "
+        "half := 1 / 2; mixed := 1 / 2.0; scaled: number = 1; } }"
+    );
+    REQUIRE(analysis->valid);
+    REQUIRE(local_storage("count") == PIN_I32 && local_storage("mask") == PIN_I32);
+    REQUIRE(local_storage("ratio") == PIN_F64 && local_storage("power") == PIN_F64);
+    REQUIRE(local_storage("big") == PIN_I64 && local_storage("huge") == PIN_U64);
+    REQUIRE(local_storage("half") == PIN_I32 && local_storage("mixed") == PIN_F64);
+    REQUIRE(local_storage("scaled") == PIN_F64);
+    parse("L :: library { F :: (v: number) { count := 0; count = v; } }");
+    REQUIRE(diagnostic("Incompatible types: expected int, got double; convert with int(value)"));
+    parse("L :: library { F :: (v: number) { count := 0; count += 1.5; } }");
+    REQUIRE(diagnostic("Numeric literal has a fraction, which int cannot hold"));
+    parse("L :: library { F :: (v: number) -> int { return int(v) + 1; } }");
+    REQUIRE(analysis->valid);
     return true;
 }
 /* pub exports a package's top-level declarations; nothing else takes it. */
@@ -1530,7 +1565,7 @@ TEST_CASE(language_units_combine_through_arithmetic)
         "body.x %= body.x\n"
         "body.angle = -body.angle\n"
         "body.count = body.count + body.x\n"
-        "n := 0\n"
+        "n := 0.0\n"
         "n = body.angle\n"
         /* A literal factor may carry any unit. */
         "body.angle += 3 * dt\n"
@@ -1757,7 +1792,7 @@ TEST_CASE(language_units_check_callable_contracts)
     for (int i = 0; i < analysis->symbol_count; i++) {
         const script_symbol *s = &analysis->symbols[i];
         if (!strcmp(s->name, "count")) {
-            plain = s->type.storage == PIN_F64 && !s->unit;
+            plain = s->type.storage == PIN_I32 && !s->unit;
         }
         if (!strcmp(s->name, "speed")) {
             measured_parameter = s->type.storage == PIN_F64 && s->unit &&
@@ -2218,6 +2253,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
+    RUN_TEST_CASE(language_literals_are_typed_by_spelling);
     RUN_TEST_CASE(language_authored_map_intrinsic_names_preserve_callable_identity);
     RUN_TEST_CASE(language_inferred_map_requires_an_initializer);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);

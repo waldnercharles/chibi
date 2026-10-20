@@ -45,11 +45,15 @@ pub Numeric :: (value: named.Value) -> bool {
                    storage >= 2 && storage <= 11 && (flags & 75) == 0;
     }
 }
-// Integers convert implicitly only when every value fits; floats always do.
+// Integers convert implicitly only when every value fits, and to a float
+// always; a float becomes an integer only explicitly.
 // Storage 2..9 alternates signed and unsigned 8, 16, 32 and 64-bit integers.
 NumericImplicit :: (from: int, to: int) -> bool {
-    if (from > 9 || to > 9) {
+    if (to > 9) {
         return true;
+    }
+    if (from > 9) {
+        return false;
     }
     from_signed := from % 2 == 0;
     to_signed := to % 2 == 0;

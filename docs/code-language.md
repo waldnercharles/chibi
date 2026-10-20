@@ -2108,34 +2108,27 @@ values are not written.
 
 ### Relationship implementation
 
-The compiler and execution runtime implement the relationship. `.chibi.meta`
-cannot provide it.
+The compiler and execution runtime implement the relationship.
 
 The authoring graph projects the resolved binding and its editable value and
 target. Compiler-generated maintenance work is not an independent editable
 graph operation.
 
-## Authoring metadata and reconciliation
+## Authoring state and reconciliation
 
-### Metadata files
+### Source is the whole asset
 
 Project manifests use version 29. Executable files contain no generated
-identity annotations or embedded authoring footer.
+identity annotations or embedded authoring footer, and no file beside a
+`.chibi` source describes it. Descriptions are comments in the source. Graphs
+lay out automatically when they open.
 
-Optional `<asset>.chibi.meta` JSON stores:
+### Editor state
 
-- identities
-- layout
-- comments
-- watches
-- breakpoint settings
-
-It cannot supply executable values or connections. Deleting it leaves the code
-independently compilable. The deletion loses only presentation/debug identity.
-
-### Stale and ambiguous metadata
-
-Disk metadata is bound to exact source bytes. Stale metadata is ignored.
+Editors keep in-session layout, comments, watches and breakpoints as editor
+state. A snapshot of it binds to the exact source text and semantic origin
+identities. Projects never store it. A stale snapshot is ignored. It cannot
+supply executable values or connections.
 
 Matching ambiguity during an edit does not invalidate executable code.
 Uncertain identities are replaced. Runtime state compatibility decides whether

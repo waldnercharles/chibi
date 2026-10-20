@@ -1,6 +1,5 @@
 #include "authoring/source_presentation_anchors.h"
 
-#include "authoring/source_metadata.h"
 #include "support/xalloc.h"
 
 #include <stdio.h>
@@ -9,7 +8,7 @@
 
 #define ANCHOR_MAX_RECORDS 262144
 
-static uint64_t key(const source_presentation_origin *o, bool rename)
+static uint64_t key(const source_presentation_origin *o)
 {
     char shape[512];
     snprintf(
@@ -31,13 +30,11 @@ static uint64_t key(const source_presentation_origin *o, bool rename)
         o->type.storage,
         o->type.container,
         o->type.flags,
-        (unsigned long long)((rename && (o->type.flags & SCRIPT_TYPE_RESULTS))
-                                 ? 0
-                                 : o->type.nominal),
+        (unsigned long long)o->type.nominal,
         (unsigned long long)o->type.parameter,
         (unsigned long long)o->type.collection,
-        (unsigned long long)(rename ? 0 : o->port_name),
-        (unsigned long long)(rename ? 0 : o->function_name),
+        (unsigned long long)o->port_name,
+        (unsigned long long)o->function_name,
         o->node_kind,
         o->node_record
     );
@@ -60,7 +57,7 @@ void source_presentation_anchors_write(
     for (int i = 0; i < acount(p->origins); i++) {
         yyjson_mut_val *record = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, record, "identity", p->origins[i].identity);
-        yyjson_mut_obj_add_uint(doc, record, "anchor", key(&p->origins[i], false));
+        yyjson_mut_obj_add_uint(doc, record, "anchor", key(&p->origins[i]));
         yyjson_mut_arr_add_val(records, record);
     }
 }
@@ -98,11 +95,7 @@ static bool translate(
     yyjson_mut_obj_put(object, yyjson_mut_str(doc, field), yyjson_mut_uint(doc, id));
     return true;
 }
-static char *resolve(
-    const char *json,
-    const authoring_source_presentation *previous,
-    const authoring_source_presentation *p
-)
+char *source_presentation_anchors_resolve(const char *json, const authoring_source_presentation *p)
 {
     yyjson_doc *source = yyjson_read(json, strlen(json), 0);
     if (!source) {
@@ -118,8 +111,7 @@ static char *resolve(
     bool valid = yyjson_is_arr(records) && yyjson_is_uint(root_id) &&
                  yyjson_get_uint(root_id) &&
                  yyjson_arr_size(records) <= ANCHOR_MAX_RECORDS &&
-                 yyjson_arr_size(records) == (size_t)acount(p->origins) &&
-                 acount(previous->origins) == acount(p->origins);
+                 yyjson_arr_size(records) == (size_t)acount(p->origins);
     int pair_count = acount(p->origins) + 1;
     anchor_pair *pairs = valid ? xmalloc((size_t)pair_count * sizeof *pairs) : NULL;
     for (int i = 0; valid && i < acount(p->origins); i++) {
@@ -128,9 +120,7 @@ static char *resolve(
                    *anchor = yyjson_obj_get(record, "anchor");
         valid = yyjson_is_obj(record) && yyjson_is_uint(id) &&
                 yyjson_get_uint(id) && yyjson_is_uint(anchor) &&
-                yyjson_get_uint(anchor) == key(&previous->origins[i], false) &&
-                (previous == p ||
-                 key(&previous->origins[i], true) == key(&p->origins[i], true));
+                yyjson_get_uint(anchor) == key(&p->origins[i]);
         pairs[i] = (anchor_pair){ yyjson_get_uint(id), p->origins[i].identity };
     }
     if (valid) {
@@ -186,137 +176,4 @@ static char *resolve(
     yyjson_mut_doc_free(copy);
     yyjson_doc_free(source);
     return out;
-}
-
-char *source_presentation_anchors_resolve(const char *json, const authoring_source_presentation *p)
-{
-    return resolve(json, p, p);
-}
-
-static int edit_compare(const void *left, const void *right)
-{
-    const text_edit *a = left, *b = right;
-    return (a->start > b->start) - (a->start < b->start);
-}
-static bool rename_tree(
-    TSNode old,
-    TSNode next,
-    const char *before,
-    const char *after,
-    const text_edit *edits,
-    int count,
-    int depth,
-    int *budget
-)
-{
-    if (depth > 256 || --*budget < 0 || strcmp(ts_node_type(old), ts_node_type(next)) ||
-        ts_node_child_count(old) != ts_node_child_count(next)) {
-        return false;
-    }
-    uint32_t children = ts_node_child_count(old);
-    if (children) {
-        for (uint32_t i = 0; i < children; i++) {
-            if (!rename_tree(
-                    ts_node_child(old, i),
-                    ts_node_child(next, i),
-                    before,
-                    after,
-                    edits,
-                    count,
-                    depth + 1,
-                    budget
-                )) {
-                return false;
-            }
-        }
-        return true;
-    }
-    int start = (int)ts_node_start_byte(old), end = (int)ts_node_end_byte(old);
-    int to = (int)ts_node_start_byte(next), last = (int)ts_node_end_byte(next);
-    if (end - start == last - to &&
-        !memcmp(before + start, after + to, (size_t)(end - start))) {
-        return true;
-    }
-    const char *type = ts_node_type(old);
-    if (strcmp(type, "identifier") && strcmp(type, "string") &&
-        strcmp(type, "string_content")) {
-        return false;
-    }
-    int low = 0, high = count;
-    while (low < high) {
-        int mid = low + (high - low) / 2;
-        if (edits[mid].start <= start) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
-    }
-    return low > 0 && edits[low - 1].end >= end;
-}
-char *authoring_source_presentation_rebase(
-    const authoring_source_presentation *before,
-    const authoring_source_presentation *after,
-    const char *metadata,
-    const text_edit *edits,
-    int count
-)
-{
-    if (count < 0 || count > ANCHOR_MAX_RECORDS || (count && !edits) ||
-        strlen(before->text) > 8 * 1024 * 1024 || strlen(after->text) > 8 * 1024 * 1024 ||
-        !authoring_source_metadata_matches(metadata, before->text)) {
-        return NULL;
-    }
-    for (int i = 0; i < count; i++) {
-        if (edits[i].start < 0 || edits[i].end <= edits[i].start || !edits[i].text) {
-            return NULL;
-        }
-    }
-    char *expected = text_edits_apply(before->text, edits, count);
-    bool valid = expected && !strcmp(expected, after->text);
-    free(expected);
-    if (!valid) {
-        return NULL;
-    }
-    text_edit *sorted = count ? xmalloc((size_t)count * sizeof *sorted) : NULL;
-    if (count) {
-        memcpy(sorted, edits, (size_t)count * sizeof *sorted);
-        qsort(sorted, (size_t)count, sizeof *sorted, edit_compare);
-    }
-    script_syntax *old = script_parse(before->text),
-                  *next = script_parse(after->text);
-    int budget = ANCHOR_MAX_RECORDS;
-    valid = !old->diagnostic_count && !next->diagnostic_count &&
-            rename_tree(
-                ts_tree_root_node(old->tree),
-                ts_tree_root_node(next->tree),
-                before->text,
-                after->text,
-                sorted,
-                count,
-                0,
-                &budget
-            );
-    script_syntax_free(old);
-    script_syntax_free(next);
-    free(sorted);
-    if (!valid) {
-        return NULL;
-    }
-    authoring_source_presentation *source = authoring_source_presentation_clone(before);
-    valid = authoring_source_presentation_restore(source, metadata);
-    char *complete = valid ? authoring_source_presentation_metadata(source) : NULL;
-    authoring_source_presentation_free(source);
-    char *mapped = complete ? resolve(complete, before, after) : NULL;
-    free(complete);
-    char *bound = mapped ? authoring_source_metadata_bind(mapped, after->text) : NULL;
-    free(mapped);
-    if (!bound) {
-        return NULL;
-    }
-    authoring_source_presentation *destination = authoring_source_presentation_clone(after);
-    valid = authoring_source_presentation_restore(destination, bound);
-    free(bound);
-    char *result = valid ? authoring_source_presentation_metadata(destination) : NULL;
-    authoring_source_presentation_free(destination);
-    return result;
 }

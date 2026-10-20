@@ -481,7 +481,7 @@ TEST_CASE(controller_inspection_and_execution_status)
     send();
     REQUIRE(run() != 0 && ok(0) && !ok(1));
     REQUIRE(uint_is(get(get(result(0), "graph"), "id"), graph_id));
-    REQUIRE(yyjson_get_str(get(result(0), "metadata")));
+    REQUIRE(!get(result(0), "metadata"));
     nodes = get(get(result(0), "graph"), "nodes");
     yyjson_arr_foreach(nodes, i, count, node)
     {

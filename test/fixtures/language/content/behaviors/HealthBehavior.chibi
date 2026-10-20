@@ -1,3 +1,5 @@
+// Applies accepted damage and reports actual health loss. Died handlers run
+// before destruction; active dashes reject Damage.
 HealthBehavior :: behavior {
 
     macro HealthChanged(Current: double, RemainingHealth: double) -> () {

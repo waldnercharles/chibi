@@ -18,8 +18,9 @@ systems use `.chibi`. RML and RCSS remain separate formats.
 Source text owns executable operations, declarations and comments. The shared
 frontend retains a concrete syntax tree (CST) and resolves typed semantic records.
 Graph views project those records; graph edits produce source edits and prepare
-a new candidate before adoption. Optional `.chibi.meta` stores presentation and
-debug metadata. Execution remains valid without it. Invalid candidates retain
+a new candidate before adoption. Graphs lay out automatically, and descriptions
+are source comments. Breakpoints and watches are editor state outside the
+project. Invalid candidates retain
 diagnostics and cannot replace an applied executable generation.
 
 The [language reference](code-language.md) records supported source forms.

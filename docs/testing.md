@@ -58,9 +58,8 @@ an M-series Mac under load; the sanitized one took 5–9 s.
 `chibi-cli` runs nineteen launcher cases: each command over a fake sibling
 compiler and player, the launcher's own `version` and `doctor`, and the real
 `chibi-compile`'s `--check`, `--test`, `--format` and `--docs` on fixture
-projects, package trees and sites. Its two `--docs` cases start the compiler 19
-times, so it took 22–26 s against the sanitized build and 5.6–8.0 s
-against the Release one, under load average 13–19.
+projects, package trees and sites. Its two `--docs` cases start the compiler 22
+times, including three fixtures for package imports.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and those Release tools, except
@@ -1264,7 +1263,7 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects six fixed C
+`python3 tools/test_policy.py tool language-docs-markdown` selects eleven fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
 `markdown`, `site`, `reference` and `grammar` packages with `core:strings` per
 case, rendering blocks, tables and site links, laying out navigation and

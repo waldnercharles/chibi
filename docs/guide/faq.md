@@ -1,44 +1,52 @@
 # FAQ
 
-## What is Chibi?
-
-Chibi is a C23 scripting language, compiler and runtime for games. It has a
-separate editor, Studio. A game is a folder of `.chibi` source and KDL assets.
-The `chibi` command compiles, runs, tests and exports the game.
-
 ## Where do I start?
 
-1. Build the SDK.
-2. Use `chibi run` to run one of the projects in [Examples](../examples.md).
-
-The [language guide](../code-language.md) describes the source.
-[Toolchain](toolchain.md) describes each command.
+[Install the SDK](../../README.md#install), then read the
+[language guide](../code-language.md). Use the [examples](../examples.md) to try
+common game programming tasks.
 
 ## Do I need Studio?
 
-No. Each asset is a text file that you can edit directly. `chibi fmt` keeps the
-files canonical. Studio edits the same files.
+No. Edit project files with any text editor:
 
-## How do I check a project before I commit it?
+```sh
+chibi fmt /path/to/game
+chibi check /path/to/game
+chibi run /path/to/game
+```
 
-- `chibi check` validates the project and writes nothing.
-- `chibi fmt --check` reports the assets that are not canonical.
-- `chibi test` runs the package tests.
+Studio edits the same files.
 
-Each command exits with a nonzero status when it finds a problem.
+## How do I check my changes?
+
+For a game project:
+
+```sh
+chibi check /path/to/game
+chibi fmt --check /path/to/game
+```
+
+For packages:
+
+```sh
+chibi test /path/to/packages
+```
+
+Each command returns a nonzero status when it finds a problem.
 
 ## Can I ship to the web?
 
-Yes. `chibi export --web PLAYER` writes a static site for any host. While you
-develop, `chibi web` serves a site.
+Yes. `chibi export --web PLAYER` creates a static site. See
+[Export for browsers](toolchain.md#export-for-browsers) for the build commands.
 
-## Why does `chibi test` say "Expected package header"?
+## Why does a test report "Expected package header"?
 
-The ROOT of `chibi test` must contain only package files. Give it the folder of
-your packages. Do not give it a game project. The behaviors and libraries of a
-game project are not packages.
+`chibi test` reads package source. Each file must start with `package NAME`.
+Give it your package folder, rather than the content folder of a game.
+Game behaviors and libraries use a different source format.
 
-## Does a slow test hang forever?
+## Can a test loop forever?
 
-No. Each test stops after 100 million instructions. `chibi test` reports it as
-failed.
+Each test stops after 100 million instructions. The command reports the test
+as failed. See [Testing](testing.md#test-limits) for other limits.

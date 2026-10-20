@@ -107,6 +107,79 @@ TokenClass :: (name: string) -> string {
     return "";
 }
 
+// The spellings accepted by script_builtin_type in src/capabilities/catalog.c,
+// including its scalar and reference names. Keywords such as struct keep their
+// lexical class; a capital initial alone never identifies a type.
+BuiltinType :: (word: string) -> bool {
+    return word == "void" || word == "bool" || word == "int8" || word == "byte" ||
+           word == "int16" || word == "uint16" || word == "int" || word == "uint" ||
+           word == "int64" || word == "uint64" || word == "float" || word == "double" ||
+           word == "name" || word == "string" || word == "handle" || word == "enum" ||
+           word == "number" || word == "char" || word == "exec" || word == "flow" ||
+           word == "entity" || word == "task" || word == "any" || word == "Prototype" ||
+           word == "Component" || word == "Relationship" || word == "Cancelled";
+}
+
+TokenName :: (names: string[], index: int) -> string {
+    if (index < 0 || index >= length(names)) {
+        return "";
+    }
+    return names[index];
+}
+
+// Comments do not change a token's context. Semicolons (including inserted,
+// zero-width ones), braces and EOF do: never look through them for a name.
+Neighbor :: (names: string[], index: int, step: int) -> int {
+    index += step;
+    while (TokenName(names, index) == "Comment") {
+        index += step;
+    }
+    return index;
+}
+
+// These are local lexical cues, not name resolution. They work for incomplete
+// snippets without requiring their imports, declarations or expressions to
+// compile. Uncertain names, ordinary variables and properties stay neutral.
+IdentifierClass :: (names: string[], words: string[], index: int) -> string {
+    previous := TokenName(names, Neighbor(names, index, -1));
+    next := Neighbor(names, index, 1);
+    following := TokenName(names, next);
+    if (previous == "@") {
+        return "chibi-attribute";
+    }
+    if (following == "::") {
+        declaration := Neighbor(names, next, 1);
+        kind := TokenName(names, declaration);
+        if (kind == "struct" || kind == "union" || kind == "component" ||
+            (kind == "Ident" && words[declaration] == "enum")) {
+            return "chibi-type";
+        }
+        if (kind == "(") {
+            parameter := Neighbor(names, declaration, 1);
+            first := TokenName(names, parameter);
+            // Empty or named parameters identify a signature; a parenthesized
+            // constant such as Limit :: (1 + 2) does not.
+            if (first == ")" ||
+                (first == "Ident" && TokenName(names, Neighbor(names, parameter, 1)) == ":")) {
+                return "chibi-function";
+            }
+        }
+        return "";
+    }
+    // A builtin spelling can also be a binding or argument label. Keep map
+    // keys [string: int] and typed constants Sides: int : 4 as types instead.
+    if (following == ":=" || (following == ":" && previous != "[" && previous != ":")) {
+        return "";
+    }
+    if (previous != "." && BuiltinType(words[index])) {
+        return "chibi-type";
+    }
+    if (following == "(") {
+        return "chibi-function";
+    }
+    return "";
+}
+
 // Scan the whole fence so multiline tokens keep their boundaries. Render
 // original byte slices, including gaps, rather than spelling tokens again.
 // Lexical errors are only a presentation fallback: the docs compiler checks
@@ -118,6 +191,12 @@ Highlight :: (source: string) -> string {
                       error_offsets, error_rows, error_columns):
             if (length(errors) > 0) {
                 return Escape(source);
+            }
+            token_names: string[] = [];
+            words: string[] = [];
+            for (kind, token in kinds) {
+                token_names = array_add(token_names, names[kind]);
+                words = array_add(words, strings.Slice(source, starts[token], ends[token] - starts[token]));
             }
             pieces: string[] = [];
             offset: int = 0;
@@ -134,6 +213,9 @@ Highlight :: (source: string) -> string {
                 pieces = array_add(pieces, Escape(strings.Slice(source, offset, start - offset)));
                 text := Escape(strings.Slice(source, start, end - start));
                 style := TokenClass(name);
+                if (name == "Ident") {
+                    style = IdentifierClass(token_names, words, index - 1);
+                }
                 if (style != "") {
                     text = format_text("<span class=\"{}\">{}</span>", style, text);
                 }

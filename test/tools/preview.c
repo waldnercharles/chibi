@@ -240,7 +240,7 @@ TEST_CASE(preview_loads_declared_components_before_sources_and_keeps_them_alive)
     snprintf(manifest, sizeof manifest, "version %d\nname \"Preview\"\ncontent \"content\"\nstart_scene \"Test\"\n", CHIBI_PROJECT_VERSION);
     write_file("project.kdl", manifest);
     write_file("content/components/PreviewCounter.chibi", "PreviewCounter :: component { value:int }\n");
-    write_file("content/behaviors/Count.chibi", "Count :: behavior { on Begin { self.PreviewCounter.value += 2; } on Tick { self.PreviewCounter.value += 1; } }\n");
+    write_file("content/behaviors/Count.chibi", "Count :: behavior { on Begin :: () { self.PreviewCounter.value += 2; } on Tick :: () { self.PreviewCounter.value += 1; } }\n");
     write_file(
         "content/prototypes/Counter.kdl",
         "name \"Counter\"\ncomponents { PreviewCounter value=7; }\n"

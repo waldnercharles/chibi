@@ -2,30 +2,30 @@
   "format": 1,
   "version": 3,
   "minimum": 2,
-  "revision": "97b92d9891f75497a689878acfb43ba1f9d8600b",
+  "revision": "d449a615bf2d705b248d7a6aa3b502fc22624def",
   "entry": "0x140a9546d9e8c296",
   "closure": {
     "file": "compiler.chibip",
-    "bytes": 9184739,
-    "sha256": "d40ecfcc1a29455e14053c46ebcaa437dc78c64b2e535f9e52fdb13eeec60ff6"
+    "bytes": 15090302,
+    "sha256": "b68692d6d1da67379f9c38ee7b244d6aa7e7fadcc021a877c7e3f36d77e6e213"
   },
   "project": "/project",
   "core": "/sdk/core",
   "sources": [
     {
       "path": "package_compiler/Compile.chibi",
-      "bytes": 66865,
-      "sha256": "02f8052925fc52b8a2cc74db662a66fc8c763cab524715ff761daa664288393a"
+      "bytes": 80593,
+      "sha256": "0718e0ae73c1bd259a001e69aea98a02af2d50db14be77ff4252989222e3e280"
     },
     {
       "path": "package_compiler/Body.chibi",
-      "bytes": 64721,
-      "sha256": "8ecdf64498ecaece7ca9324445278ece3838fbe31d0b6c3b2e852c0cf88a9cda"
+      "bytes": 90053,
+      "sha256": "689dc72bf6434325dd320792e4b469e355e251c2475f323e68450bc393a5cbd7"
     },
     {
       "path": "package_compiler/Steps.chibi",
-      "bytes": 157690,
-      "sha256": "533545f0c6ae9bf554e2fa9c463264875f0b722ad838c4152ea348c4ab31e6ab"
+      "bytes": 165713,
+      "sha256": "9e5368f3bb79b846eaaa1bf6d0cface07a0515a1e3fa2331674c6971e8323aef"
     },
     {
       "path": "package_compiler/Tree.chibi",
@@ -39,8 +39,8 @@
     },
     {
       "path": "package_compiler/Behavior.chibi",
-      "bytes": 20167,
-      "sha256": "b7b2a800342f1d875a4feec99ecdb4c11e2febf1d8ac5281880e82085f41dcd8"
+      "bytes": 20558,
+      "sha256": "9355316b8364ae89f1c31030c0d4f314abbc492c8b557dc17f6d704a91483c82"
     },
     {
       "path": "syntax_diagnostics/Diagnostics.chibi",
@@ -49,8 +49,8 @@
     },
     {
       "path": "/sdk/core/strings/Strings.chibi",
-      "bytes": 16154,
-      "sha256": "c561c3b6769d203204719622a59096d4264635823721885539b0c15afe197a7e"
+      "bytes": 15929,
+      "sha256": "81b4edce97afc571eb44c45b0a83381ceb2757170bf054b5587277c532274fa6"
     },
     {
       "path": "source_snapshot/Snapshot.chibi",
@@ -111,7 +111,7 @@
       "data_failure": 4,
       "argument_failure": 7
     },
-    12562910418336368338,
+    6013132290787666680,
     [
       "CONSTANT",
       "VARIABLE",

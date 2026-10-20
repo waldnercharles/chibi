@@ -1,6 +1,7 @@
 #include "compiler_fixture.h"
 #include "docs_markdown_source.h"
 #include "package_core_source.h"
+#include "source_tokenizer_chibi_source.h"
 #include "support/arena.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -10,7 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Eleven cases on bytecode and the compiled backend. One preparation of the
+/* Fourteen cases on bytecode and the compiled backend. One preparation of the
  * shipped site generator packages with core:strings per case; each call
  * renders, lays out, styles or reports on one small page with a
  * 2,000,000-instruction budget. No filesystem, processes or frames. */
@@ -40,8 +41,11 @@ static bool prepare()
           DOCS_REFERENCE_SOURCE,
           strlen(DOCS_REFERENCE_SOURCE) },
         { "/compiler/grammar/Grammar.chibi", DOCS_GRAMMAR_SOURCE, strlen(DOCS_GRAMMAR_SOURCE) },
+        { "/compiler/source_tokenizer/Tokenizer.chibi",
+          SOURCE_TOKENIZER_CHIBI_SOURCE,
+          strlen(SOURCE_TOKENIZER_CHIBI_SOURCE) },
     };
-    REQUIRE(compiler_fixture_prepare(&fixture, files, 5));
+    REQUIRE(compiler_fixture_prepare(&fixture, files, 6));
     return true;
 }
 static pin_value text(const char *value)
@@ -163,6 +167,121 @@ TEST_CASE(docs_markdown_renders_blocks)
         REQUIRE(
             renders(b, "# Title\t\r\n\r\n\tOne \t\r\ntwo\r\n", "README.md", "<h1 id=\"title\">Title</h1>\n<p>One two</p>\n")
         );
+    }
+    return true;
+}
+
+/* Highlight original byte slices across the whole fence. Unknown names and
+ * an unfinished program are displayable; inserted semicolons and EOF are not
+ * source text. Tabs, blank lines and UTF-8 retain their original positions. */
+TEST_CASE(docs_markdown_highlights_chibi_fences)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(renders(
+            b,
+            "```chibi\n"
+            "/* first <&>\n"
+            "\tsecond café */\n"
+            "Title :: \"café <&> 🧭\"\n"
+            "Ratio :: 1.5\n"
+            " \t\n"
+            "if (ready) {\n"
+            "\treturn missing + 2  // kept <&>\n"
+            "```\n",
+            "README.md",
+            "<pre><code class=\"language-chibi\"><span "
+            "class=\"chibi-comment\">/* first &lt;&amp;&gt;\n"
+            "\tsecond café */</span>\n"
+            "Title :: <span class=\"chibi-string\">&quot;café &lt;&amp;&gt; "
+            "🧭&quot;</span>\n"
+            "Ratio :: <span class=\"chibi-number\">1.5</span>\n"
+            " \t\n"
+            "<span class=\"chibi-keyword\">if</span> (ready) {\n"
+            "\t<span class=\"chibi-keyword\">return</span> missing + <span "
+            "class=\"chibi-number\">2</span>  <span class=\"chibi-comment\">// "
+            "kept &lt;&amp;&gt;</span>\n"
+            "</code></pre>\n"
+        ));
+        REQUIRE(renders(
+            b,
+            "```chibi\r\n\treturn 1  \r\n```\r\n",
+            "README.md",
+            "<pre><code class=\"language-chibi\">\t<span "
+            "class=\"chibi-keyword\">return</span> "
+            "<span class=\"chibi-number\">1</span>  \r\n</code></pre>\n"
+        ));
+    }
+    return true;
+}
+
+/* Tokenization failures fall back for the whole fence, without leaking raw
+ * HTML or changing the bytes. Publication still validates the original code. */
+TEST_CASE(docs_markdown_keeps_lexical_errors_plain)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(renders(
+            b,
+            "```chibi\n"
+            "return 2\n"
+            "/* <&> café\n"
+            "```\n",
+            "README.md",
+            "<pre><code class=\"language-chibi\">return 2\n"
+            "/* &lt;&amp;&gt; café\n"
+            "</code></pre>\n"
+        ));
+        REQUIRE(renders(
+            b,
+            "```chibi\n"
+            "text := \"first <&>\n"
+            "second café\"\n"
+            "```\n",
+            "README.md",
+            "<pre><code class=\"language-chibi\">text := &quot;first "
+            "&lt;&amp;&gt;\n"
+            "second café&quot;\n"
+            "</code></pre>\n"
+        ));
+        REQUIRE(renders(
+            b,
+            "```chibi\n"
+            "text := \"\\q\"\n"
+            "```\n",
+            "README.md",
+            "<pre><code class=\"language-chibi\">text := &quot;\\q&quot;\n"
+            "</code></pre>\n"
+        ));
+    }
+    return true;
+}
+
+/* Other languages and unlabelled fences remain plain; empty Chibi fences
+ * emit neither an empty span nor text for the tokenizer's EOF. */
+TEST_CASE(docs_markdown_leaves_other_fences_plain)
+{
+    REQUIRE(prepare());
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(renders(
+            b,
+            "```c\n"
+            "return 2 < 3; // café\n"
+            "```\n"
+            "\n"
+            "```\n"
+            "\t<&> 🧭  \n"
+            "```\n"
+            "\n"
+            "```chibi\n"
+            "```\n",
+            "README.md",
+            "<pre><code class=\"language-c\">return 2 &lt; 3; // café\n"
+            "</code></pre>\n"
+            "<pre><code>\t&lt;&amp;&gt; 🧭  \n"
+            "</code></pre>\n"
+            "<pre><code class=\"language-chibi\"></code></pre>\n"
+        ));
     }
     return true;
 }
@@ -445,9 +564,12 @@ TEST_CASE(docs_site_lays_out_navigation)
 TEST_CASE(docs_site_follows_color_scheme)
 {
     REQUIRE(prepare());
-    static const char *const properties[] = { "--text:",  "--muted:", "--page:",
-                                              "--panel:", "--line:",  "--link:",
-                                              "--code:" };
+    static const char *const properties[] = {
+        "--text:",          "--muted:",          "--page:",
+        "--panel:",         "--line:",           "--link:",
+        "--code:",          "--syntax-keyword:", "--syntax-string:",
+        "--syntax-number:", "--syntax-comment:"
+    };
     for (int b = 0; b < 2; b++) {
         char *style = call(b, "project:site", "Style", NULL, 0);
         REQUIRE(style);
@@ -460,6 +582,11 @@ TEST_CASE(docs_site_follows_color_scheme)
             char *redefined = strstr(dark, properties[i]);
             themed = defined && defined < dark && redefined && redefined < rules;
         }
+        themed = themed &&
+                 strstr(style, "pre .chibi-keyword { color: var(--syntax-keyword); }") &&
+                 strstr(style, "pre .chibi-string { color: var(--syntax-string); }") &&
+                 strstr(style, "pre .chibi-number { color: var(--syntax-number); }") &&
+                 strstr(style, "pre .chibi-comment { color: var(--syntax-comment); }");
         free(style);
         REQUIRE(themed);
     }
@@ -540,16 +667,17 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\">pub Area :: (side: "
+                          "class=\"language-chibi\"><span "
+                          "class=\"chibi-keyword\">pub</span> Area :: (side: "
                           "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
                           "area of a square.</p>"
                       ) &&
-                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">pub Sides: int : 4;\n") &&
-                      strstr(html, "pub Shape :: struct { sides: int; }\n") &&
-                      strstr(html, "pub Greeting :: &quot;Hello {}&quot;;\n") &&
+                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\"><span class=\"chibi-keyword\">pub</span> Sides: int : <span class=\"chibi-number\">4</span>;\n") &&
+                      strstr(html, "<span class=\"chibi-keyword\">pub</span> Shape :: <span class=\"chibi-keyword\">struct</span> { sides: int; }\n") &&
+                      strstr(html, "<span class=\"chibi-keyword\">pub</span> Greeting :: <span class=\"chibi-string\">&quot;Hello {}&quot;</span>;\n") &&
                       !strstr(html, "Hidden") && !strstr(html, "Checks") &&
                       !strstr(html, "Also") &&
-                      strstr(html, "pub Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
+                      strstr(html, "<span class=\"chibi-keyword\">pub</span> Vec :: <span class=\"chibi-keyword\">struct</span> {\n    <span class=\"chibi-comment\">// Horizontal.</span>\n    x: int;\n}\n") &&
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
@@ -657,6 +785,9 @@ void test_language_docs_markdown()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(docs_markdown_renders_blocks);
+    RUN_TEST_CASE(docs_markdown_highlights_chibi_fences);
+    RUN_TEST_CASE(docs_markdown_keeps_lexical_errors_plain);
+    RUN_TEST_CASE(docs_markdown_leaves_other_fences_plain);
     RUN_TEST_CASE(docs_markdown_lists_contents);
     RUN_TEST_CASE(docs_markdown_renders_tables);
     RUN_TEST_CASE(docs_markdown_maps_links_to_pages);

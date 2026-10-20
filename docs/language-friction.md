@@ -210,8 +210,9 @@ Constant time needs the representation in
 
 ## Stage one has no maps
 
-Stage one. Stage zero has `Map<K, V>` with literals, `m[k]`, `map_has`,
-`map_remove` and insertion-ordered iteration, but stage one compiles none of
+Stage one. Stage zero has `[K: V]` maps with `["k": v]` and `[:]` literals,
+`m[k]` reading a missing key's zero value, `k in m`, `m.has(k)`, `delete m[k]`,
+`m.delete(k)` and insertion-ordered iteration, but stage one compiles none of
 it. The tokenizer therefore builds Odin's keyword hash table by hand from an
 `int[]` with linear probing (#518), and lookups by name elsewhere in the
 compiler scan parallel arrays.
@@ -232,7 +233,9 @@ after Odin's `..<` and Jai's `for <`. Since #559 stage one compiles the
 range, keyed and reverse forms too, but not `ref` loops, and the compiler's
 own counting loops and `core:strings`' scans are still
 `while (index < n) { ...; index += 1; }`, where a `continue` before the step
-hangs (#503).
+hangs (#503). The stage-one tokenizer has no `..<` token, so a build program
+that the tokenizer corpus reads can't use half-open ranges either; the map
+syntax PR counted positions by hand in `Build.chibi`'s `PrivateSources`.
 
 - Odin has `for i in 0..<n`, `for i in 0..=n`, `for x, i in xs` and
   `#reverse for`; Rust `for i in 0..n` and `(0..n).rev()`; Zig
@@ -536,6 +539,27 @@ states could not be named `events`, `event` or `state`, nor a loop variable
 Suggestion: make declaration-only words contextual, and give build-host
 syntax errors the parser's position and token.
 
+## A build host reads `Build.chibi` with the syntax it was built with
+
+Toolchain. `make build` runs an existing `build/sdk/chibi-build-host`, which
+parses `tools/toolchain/Build.chibi` with the compiler it was built from. When
+the map syntax changed (`[string: string] = [:]` for `Map<string, string> = {}`),
+a host built before the change failed the whole build with only "Unexpected
+syntax". So `Build.chibi` keeps its overrides in parallel arrays, and a build
+program can use new syntax only after every host that will run it has been
+rebuilt. Nothing rebuilds the host when its compiler sources change.
+
+- Go builds its toolchain with an older release (Go 1.22 needs 1.20), and
+  `cmd/dist` keeps to what that release accepts.
+- Rust's bootstrap compiles the standard library with the previous beta and
+  marks code for either compiler with `cfg(bootstrap)`.
+- Zig's `build.zig.zon` names a `minimum_zig_version`, and an older `zig`
+  reports it rather than a parse error.
+
+Suggestion: rebuild the host through stage zero when its compiler sources are
+newer than it, and let a build program declare the language version it needs,
+as Zig does, so an old host names the problem.
+
 ## From the tokenizer port
 
 Porting Odin's `core:odin/tokenizer` to `tools/compiler/source_tokenizer`
@@ -686,3 +710,23 @@ Suggestion: Go and Odin's rule, a comment block directly above a declaration
 documents it, which needs no new syntax; the frontend keeps it on the
 declaration for the presentation and the language server. Leave grouping to a
 later attribute syntax.
+
+## Event payloads have no single typed declaration
+
+Language. An event's payload is declared in three places: the engine's events
+in a C table, a project's events in KDL, and each test file's events in its own
+C catalog. Old handlers could also leave a field untyped. The version 30
+migration therefore needed three type sources and a frozen copy of the engine
+table (#565). Converting the tests' handlers then needed each test catalog's
+names and types, and several disagreed with the engine's `Tick`
+(`DeltaSeconds`, `cells`, `Elapsed`), so the conversion had to set the frozen
+table aside for them (the PR that removed the old handler forms).
+
+- Rust passes a struct such as `struct Tick { dt: f32 }` to a typed handler;
+  Odin can model events as `Event :: union { Tick, … }`; C# derives payloads
+  from `EventArgs`. In each, the payload is a type in source, and tests reuse
+  the production type, so a field rename reaches every use through the type
+  checker.
+
+Suggestion: declare an event's payload as a record in `.chibi` source, which
+the compilers, Studio, migrations and tests then share.

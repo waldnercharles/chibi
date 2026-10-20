@@ -62,6 +62,7 @@ const K = Object.fromEntries(
     "prototype",
     "relationship",
     "pub",
+    "delete",
   ].map((word) => [word, word]),
 );
 
@@ -125,6 +126,8 @@ module.exports = grammar({
     [$.query_parameter_list],
     [$.record_declaration, $._name],
     [$._public_record, $._name],
+    [$.event_declaration, $.builtin_reference],
+    [$._single_type, $._expression],
     [$.argument_list, $.parenthesized_expression],
     [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
@@ -310,7 +313,8 @@ module.exports = grammar({
         field("value", $._expression),
         $._end,
       ),
-    // `on X :: (a: T)` names payload fields; the other form is migrating away.
+    // `on X :: (a: T)` names payload fields; `after X` binds an action's
+    // results.
     handler: ($) =>
       choice(
         seq(
@@ -321,9 +325,8 @@ module.exports = grammar({
           field("body", $.block),
         ),
         seq(
-          field("kind", choice(K.on, K.after)),
+          field("kind", K.after),
           field("name", $._handler_name),
-          optional(seq(K.as, field("alias", $._name))),
           optional(field("parameters", $.parameter_list)),
           field("body", $.block),
         ),
@@ -399,26 +402,33 @@ module.exports = grammar({
     )),
     _single_type: ($) =>
       seq(
-        repeat(
-          field(
-            "trait",
+        choice(
+          seq(
+            repeat(
+              field(
+                "trait",
+                choice(
+                  K.plain,
+                  K.ref,
+                  K.service,
+                  "self",
+                  K.setting,
+                  seq(K.wildcard, "(", $.number, ")"),
+                ),
+              ),
+            ),
             choice(
-              K.plain,
-              K.ref,
-              K.service,
-              "self",
-              K.setting,
-              seq(K.wildcard, "(", $.number, ")"),
+              seq(field("name", choice($.type_name, $.type_binder)),
+                optional(field("arguments", $.type_argument_list))),
+              $.type_application,
             ),
           ),
-        ),
-        choice(
-          seq(field("name", choice($.type_name, $.type_binder)),
-            optional(field("arguments", $.type_argument_list))),
-          $.type_application,
+          field("map", $.map_type),
         ),
         repeat(choice(seq("[", "]"), "?")),
       ),
+    // `[string: int]` maps keys of one type to values of another.
+    map_type: ($) => seq("[", field("key", $.type), ":", field("value", $.type), "]"),
     type_name: ($) => seq($._name, repeat(seq(".", $._name))),
     type_binder: ($) => seq("$", field("name", $._name)),
     type_application: ($) =>
@@ -444,7 +454,10 @@ module.exports = grammar({
         $.yield_statement,
         $.cancel_statement,
         $.label_statement,
+        $.delete_statement,
       ),
+    // `delete m[k]` removes a key from a map.
+    delete_statement: ($) => seq(K.delete, field("target", $.index_expression), $._end),
     local_declaration: ($) =>
       prec.dynamic(2, seq(
         field("name", $._name),
@@ -560,6 +573,7 @@ module.exports = grammar({
         $.unary_expression,
         $.binary_expression,
         $.array_expression,
+        $.map_expression,
         $.struct_expression,
         $.await_expression,
       ),
@@ -663,6 +677,7 @@ module.exports = grammar({
           [P.comparison, "<="],
           [P.comparison, ">"],
           [P.comparison, ">="],
+          [P.comparison, K.in],
           [P.shift, "<<"],
           [P.shift, ">>"],
           [P.sum, "+"],
@@ -680,15 +695,21 @@ module.exports = grammar({
             ),
           ),
         ),
+        prec.left(P.comparison, seq(
+          field("left", $._expression),
+          field("operator", $.not_in),
+          field("right", $._expression),
+        )),
       ),
+    // `k not in m`.
+    not_in: ($) => seq(K.not, K.in),
     array_expression: ($) => seq("[", optional(comma($._expression)), "]"),
+    // `["Ada": 3]`, and `[:]` for an empty map, as Swift writes them.
+    map_expression: ($) => seq("[", choice(":", comma($.map_entry)), "]"),
+    map_entry: ($) => seq(field("key", $._expression), ":", field("value", $._expression)),
     struct_expression: ($) => seq("{", optional(comma($.struct_field)), "}"),
     struct_field: ($) =>
-      seq(choice(
-        field("name", choice($._member_name, $.string)),
-        field("key", $.number),
-        seq("[", field("key", $._expression), "]"),
-      ), ":", field("value", $._expression)),
+      seq(field("name", $._member_name), ":", field("value", $._expression)),
     // Keep the callable path alive beside unary `not` until arguments resolve
     // it; otherwise `not(Value: value)` commits to a parenthesized operand.
     _name: ($) => choice($.identifier,

@@ -1,6 +1,7 @@
 package markdown
 
 import strings "core:strings"
+import tokenizer "project:source_tokenizer"
 
 // Renders the Markdown of one documentation page as HTML. It covers what the
 // public pages use: headings, paragraphs, lists, block quotes, fenced code,
@@ -85,6 +86,64 @@ pub Escape :: (text: string) -> string {
         index += 1;
     }
     return format_text("{}{}", out, From(text, start));
+}
+
+// Token names come from the compiler, not a second keyword list. Its named
+// lexical kinds start with capitals; keywords are the lowercase word names.
+TokenClass :: (name: string) -> string {
+    if (name == "Comment") {
+        return "chibi-comment";
+    }
+    if (name == "String") {
+        return "chibi-string";
+    }
+    if (name == "Integer" || name == "Float") {
+        return "chibi-number";
+    }
+    first := At(name, 0);
+    if (first >= 97 && first <= 122) {
+        return "chibi-keyword";
+    }
+    return "";
+}
+
+// Scan the whole fence so multiline tokens keep their boundaries. Render
+// original byte slices, including gaps, rather than spelling tokens again.
+// Lexical errors are only a presentation fallback: the docs compiler checks
+// the original snippets separately, including whole-package analysis.
+Highlight :: (source: string) -> string {
+    names := tokenizer.KindNames();
+    switch tokenizer.Tokenize(source) {
+        case .Scanned(kinds, starts, ends, rows, columns, errors,
+                      error_offsets, error_rows, error_columns):
+            if (length(errors) > 0) {
+                return Escape(source);
+            }
+            pieces: string[] = [];
+            offset: int = 0;
+            index: int = 0;
+            while (index < length(kinds)) {
+                start := starts[index];
+                end := ends[index];
+                name := names[kinds[index]];
+                index += 1;
+                // EOF and inserted semicolons have no source text.
+                if (end == start) {
+                    continue;
+                }
+                pieces = array_add(pieces, Escape(strings.Slice(source, offset, start - offset)));
+                text := Escape(strings.Slice(source, start, end - start));
+                style := TokenClass(name);
+                if (style != "") {
+                    text = format_text("<span class=\"{}\">{}</span>", style, text);
+                }
+                pieces = array_add(pieces, text);
+                offset = end;
+            }
+            pieces = array_add(pieces, Escape(From(source, offset)));
+            return strings.Join(pieces, "");
+    }
+    return Escape(source);
 }
 
 // A heading's anchor as GitHub writes it: lowercase letters, digits, hyphens
@@ -381,9 +440,16 @@ Block :: (lines: string[], first: int, page: string, sources: string[],
             html = array_add(html, format_text("<pre><code class=\"language-{}\">", Escape(language)));
         }
         index += 1;
+        code: string[] = [];
         while (index < count && !strings.HasPrefix(Trim(lines[index]), "```")) {
-            html = array_add(html, format_text("{}\n", Escape(lines[index])));
+            code = array_add(code, format_text("{}\n", lines[index]));
             index += 1;
+        }
+        source := strings.Join(code, "");
+        if (language == "chibi") {
+            html = array_add(html, Highlight(source));
+        } else {
+            html = array_add(html, Escape(source));
         }
         html = array_add(html, "</code></pre>\n");
         return (html: html, end: index + 1, dropped: dropped);

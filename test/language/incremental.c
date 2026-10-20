@@ -35,9 +35,11 @@ static void setup()
         "Leaf :: library { Value :: () -> number { return 2; } }",
         "Middle :: library { Value :: () -> number { return Leaf.Value() + 1; "
         "} }",
-        "Caller :: behavior { value: retain number = 0; on Tick() { value = "
+        "Caller :: behavior { value: retain number = 0; on Tick :: () { value "
+        "= "
         "Middle.Value(); } }",
-        "Independent :: behavior { value: retain number = 0; on Tick() { value "
+        "Independent :: behavior { value: retain number = 0; on Tick :: () { "
+        "value "
         "= 7; } }"
     };
     for (int i = 0; i < 4; i++) {
@@ -231,7 +233,7 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
         /* Current generations keep no chain of old collections. */
         for (int edit = 0; edit < 12; edit++) {
             char text[160];
-            snprintf(text, sizeof text, "Independent :: behavior { value: retain number = 0; on Tick() { value = %d; } }", edit);
+            snprintf(text, sizeof text, "Independent :: behavior { value: retain number = 0; on Tick :: () { value = %d; } }", edit);
             edits[3].text = text;
             generations[2] = prepare(1, backends[b]);
             REQUIRE(valid(2) && authoring_sources_reused(generations[2]) == 3);
@@ -241,7 +243,7 @@ TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
             REQUIRE(source(1, "Caller")->references == 1);
             REQUIRE(value_is(1, "Independent", edit));
             edits[3].text = "Independent :: behavior { value: retain number = "
-                            "0; on Tick() { value = 7; } }";
+                            "0; on Tick :: () { value = 7; } }";
         }
         discard(1);
     }

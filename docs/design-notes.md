@@ -149,14 +149,12 @@ than the entries above.
 
 ## One way to read the step
 
-A Tick handler can read the step four ways today:
-- `on Tick(dt)` binds it;
-- `event.dt` reads it;
-- `on Tick as tick` names the whole payload, as `tick.dt`;
-- a bare `dt`, as `QuarryCamera` uses it.
-
-All four mean the same thing (`docs/code-language.md` on main, lines
-471-475).
+Resolved for handlers (2026-10-20, #565 and the PR that removed the old
+forms): a Tick handler lists the step's field, `on Tick :: (dt: float s)`. The
+positional list, the `as` alias and `event.dt` no longer parse or analyze. A
+bare `dt` outside that list still reads the native global, as `QuarryCamera`
+does; whether to remove the globals `dt`, `delta` and `delta_time()` is
+undecided.
 
 - Godot passes `delta` to `_process`.
 - Unity reads a global, `Time.deltaTime`.

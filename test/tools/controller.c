@@ -173,8 +173,8 @@ static void setup()
         paths[PROBE],
         "Probe :: behavior {\n"
         "    count := 0\n"
-        "    on Tick { count += Helpers.Twice(1) }\n"
-        "    on Begin { await delay(0.05); count += 100 }\n"
+        "    on Tick :: () { count += Helpers.Twice(1) }\n"
+        "    on Begin :: () { await delay(0.05); count += 100 }\n"
         "}\n"
     );
     write_file(
@@ -344,7 +344,8 @@ TEST_CASE(controller_analysis_and_rename_preview)
 
 TEST_CASE(controller_diagnostics_preserve_source_ranges)
 {
-    const char *broken = "Probe :: behavior { on Tick { missing_call() } }\n";
+    const char
+        *broken = "Probe :: behavior { on Tick :: () { missing_call() } }\n";
     begin("analyze_code", paths[PROBE]);
     yyjson_mut_obj_add_str(request, input, "source", broken);
     send();

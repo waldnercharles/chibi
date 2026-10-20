@@ -219,7 +219,7 @@ TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
     library = module;
     module = NULL;
     REQUIRE(
-        compile_source("Persist :: behavior { count:int=0; on Begin() {count+=1;} on Tick() {PrintString(\"persistent\"); count+=2;} on Add(amount:int) {v := await library_next(); count+=amount+v.amount;} bind self.PersistCounter.value=count; }")
+        compile_source("Persist :: behavior { count:int=0; on Begin :: () {count+=1;} on Tick :: () {PrintString(\"persistent\"); count+=2;} on Add :: (amount: int) {v := await library_next(); count+=amount+v.amount;} bind self.PersistCounter.value=count; }")
     );
     REQUIRE(execution_module_import_count(module) == 1);
     REQUIRE(save("main.prepared"));
@@ -257,13 +257,13 @@ TEST_CASE(prepared_external_closure_generations)
                                             .type = { .storage = PIN_BOOL } };
     catalog = (script_catalog){ .capabilities = variant, .capability_count = 5 };
     const char *leaves[] = {
-        ("Leaf :: behavior { on Add(amount:int) {} Next :: "
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
-        ("Leaf :: behavior { on Add(amount:int) {} Next :: "
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
-        ("Leaf :: behavior { on Add(amount:int) {} Next :: "
+        ("Leaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(2);} }"),
-        ("EventLeaf :: behavior { on Add(amount:bool) {} Next :: "
+        ("EventLeaf :: behavior { on Add :: () {} Next :: "
          "()->(amount:int){return(1);} }"),
     };
     const char *middle[] = {
@@ -273,10 +273,10 @@ TEST_CASE(prepared_external_closure_generations)
         "EventMiddle :: library { Next :: ()->(amount:int){return(1);} }",
     };
     const char *roots[] = {
-        "Closure :: behavior { on Begin {} }",
-        "GoodClosure :: behavior { on Begin {} }",
-        "BadClosure :: behavior { on Begin {} }",
-        "EventClosure :: behavior { on Begin {} }",
+        "Closure :: behavior { on Begin :: () {} }",
+        "GoodClosure :: behavior { on Begin :: () {} }",
+        "BadClosure :: behavior { on Begin :: () {} }",
+        "EventClosure :: behavior { on Begin :: () {} }",
     };
     const char *leaf_files[] = { "leaf.prepared",
                                  NULL,
@@ -342,7 +342,7 @@ TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement)
     REQUIRE(state_native);
     catalog = *native_capabilities_catalog(state_native);
     REQUIRE(
-        compile_source("StatePersist :: behavior { count:int=0; action once=do_once(); action flip=flip_flop(); action pending=retriggerable_delay(Duration:3); action multi=multi_gate(Loop:false,Random:false,Start_Index:0); on Tick(){once();flip();multi();} on Add(amount){pending();} after once.Completed{count+=100;} after flip.A{count+=10;} after flip.B{count+=1;} after multi.Out0{count+=1000;} after multi.Out1{count+=10000;} after pending.Completed{count+=100000;} }")
+        compile_source("StatePersist :: behavior { count:int=0; action once=do_once(); action flip=flip_flop(); action pending=retriggerable_delay(Duration:3); action multi=multi_gate(Loop:false,Random:false,Start_Index:0); on Tick :: () {once();flip();multi();} on Add :: () {pending();} after once.Completed{count+=100;} after flip.A{count+=10;} after flip.B{count+=1;} after multi.Out0{count+=1000;} after multi.Out1{count+=10000;} after pending.Completed{count+=100000;} }")
     );
     REQUIRE(state_id);
     native_capabilities_free(state_native);
@@ -406,7 +406,7 @@ TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema)
     };
     state_id = target_id = 0;
     REQUIRE(
-        compile_source("FieldWatch :: behavior { count:int=0; target:entity=0; on Retarget(destination){target=destination;} on target.PersistCounter.ValueChanged(changed){count+=changed;} }")
+        compile_source("FieldWatch :: behavior { count:int=0; target:entity=0; on Retarget :: (destination: entity){target=destination;} on target.PersistCounter.ValueChanged :: (changed: int){count+=changed;} }")
     );
     REQUIRE(state_id && target_id);
     catalog = (script_catalog){ 0 };
@@ -433,7 +433,7 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
                                 .tick_event = 11 };
     state_id = 0;
     REQUIRE(
-        compile_source("Inspect :: behavior {count:int=0; Work :: ()->(Value:int){count+=1;return count;}on Tick(){last:=Work();count+=last;}}")
+        compile_source("Inspect :: behavior {count:int=0; Work :: ()->(Value:int){count+=1;return count;}on Tick :: () {last:=Work();count+=last;}}")
     );
     REQUIRE(state_id);
     catalog = (script_catalog){ 0 };

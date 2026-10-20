@@ -45,9 +45,11 @@ static void setup()
     static const char *const texts[SOURCE_COUNT] = {
         ORIGINAL,
         "Middle :: library { Value :: () -> u { return Leaf.Value() + 1; } }",
-        "Caller :: behavior { value: retain number = 0; on Tick() { value = "
+        "Caller :: behavior { value: retain number = 0; on Tick :: () { value "
+        "= "
         "Middle.Value(); } }",
-        "Independent :: behavior { value: retain number = 0; on Tick() { value "
+        "Independent :: behavior { value: retain number = 0; on Tick :: () { "
+        "value "
         "= 7; } }"
     };
     for (int i = 0; i < SOURCE_COUNT; i++) {

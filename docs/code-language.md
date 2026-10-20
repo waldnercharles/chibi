@@ -32,10 +32,10 @@ A decimal point or exponent gives a double-precision `number`.
 ```chibi
 Example :: library {
     Run :: () {
-        lives := 3       // int
-        elapsed := 0.0  // number
-        half := 1 / 2   // 0: integer division
-        ratio := 1 / 2.0 // 0.5
+        lives := 3        // int
+        elapsed := 0.0    // number
+        half := 1 / 2     // 0: integer division
+        ratio := 1 / 2.0  // 0.5
         visible := true
         message := "Ready"
     }
@@ -94,9 +94,9 @@ integer type's bounds.
 Example :: library {
     Run :: () {
         value: int = 300
-        checked := byte(value)      // Fails: 300 does not fit in a byte.
-        wrapped := byte(wrap: value) // 44
-        limited := byte(clamp: value) // 255
+        checked := byte(value)        // Fails: 300 does not fit in a byte.
+        wrapped := byte(wrap: value)   // 44
+        limited := byte(clamp: value)  // 255
     }
 }
 ```
@@ -244,9 +244,9 @@ A range with `..<` excludes its upper bound. A range with `..` includes it.
 Example :: library {
     Run :: () {
         score: int = 0
-        for i in 0..<4 { score += i } // 0, 1, 2, 3
-        for i in 1..3 { score += i }  // 1, 2, 3
-        for < i in 0..<4 { score += i } // 3, 2, 1, 0
+        for i in 0..<4 { score += i }    // 0, 1, 2, 3
+        for i in 1..3 { score += i }     // 1, 2, 3
+        for < i in 0..<4 { score += i }  // 3, 2, 1, 0
     }
 }
 ```
@@ -318,19 +318,29 @@ Example :: library {
 }
 ```
 
-A map declares separate key and value types. Check a key before reading it.
-A missing key fails the lookup.
+A map `[K: V]` associates keys of one type with values of another, as Swift
+writes it. `["Player": 10]` is a map literal and `[:]` an empty one; an empty
+literal takes its types from the declaration. Reading a missing key yields the
+value type's zero, as in Odin: `0`, `""`, an empty array or map, a record's
+field defaults, or `nil` for an optional value. Reading adds no key, so
+`counts[name] += 1` counts from zero. A record with a field that has no default
+has no zero value, so reading a missing key of a map of them fails; check the
+key first. Writing through a missing key, as `m[a][b] = v` when `m` lacks
+`a`, also fails; store `m[a]` first.
+
+`k in m`, `k not in m` and `m.has(k)` test for a key. `delete m[k]` and
+`m.delete(k)` remove one, and removing a missing key does nothing.
 
 ```chibi
 Example :: library {
     Run :: () {
-        scores: Map<string, int> = {"Player": 10, "Rival": 20}
+        scores: [string: int] = ["Player": 10, "Rival": 20]
         scores["Player"] = 30
-        score: int = 0
-        if map_has(scores, "Rival") {
-            score = scores["Rival"]
+        scores["Guest"] += 5
+        if "Rival" in scores {
+            delete scores["Rival"]
         }
-        scores = map_remove(scores, "Rival")
+        empty: [string: int] = [:]
     }
 }
 ```
@@ -338,9 +348,15 @@ Example :: library {
 Map iteration visits a snapshot in insertion order. Replacing a value keeps
 the key's position. Map equality compares associations independently of order.
 
+A lookup takes constant time: a map of more than a few entries keeps Odin's
+Robin Hood hash index over its entries. Storing a key and removing one update
+a local map in place, as appending updates a local array, so building a map
+of n keys takes O(n). A removal shifts the later entries down to keep their
+order, so it takes time in proportion to the map.
+
 ```chibi
 Example :: library {
-    Total :: (scores: Map<string, int>) -> int {
+    Total :: (scores: [string: int]) -> int {
         total: int = 0
         for name, points in scores {
             total += points
@@ -393,6 +409,7 @@ Example :: library {
         name: string
         points: int = 0
     }
+
     Run :: () {
         scoreEntry: ScoreEntry = {name: "Player"}
         scoreEntry.points = 10
@@ -411,6 +428,7 @@ Example :: library {
     AttackState :: union {
         Idle | Windup(remaining: number) | Active(damage: int)
     }
+
     Run :: () {
         ready := false
         countdown: number = 0.0
@@ -555,9 +573,11 @@ reads no payload fields writes `()`.
 ```chibi
 Timer :: behavior {
     elapsed: number = 0.0
+
     on Begin :: () {
         elapsed = 0.0
     }
+
     on Tick :: (dt: s) {
         elapsed += dt
     }
@@ -612,8 +632,10 @@ A system runs its body for each matching entity. Its header names the required
 components. `?` makes a component optional. `without` excludes components.
 
 ```chibi
-EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider
-    on Tick :: (dt: s) {
+EmitterControl :: system(
+    emitter: ParticleEmitter,
+    trigger: Aim?
+) without Collider on Tick :: (dt: s) {
     if trigger {
         emitter.Active = trigger.Firing
     }

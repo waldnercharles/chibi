@@ -46,7 +46,8 @@ resources that together pass the player's 4,096 records or 64 MiB, so a valid
 project compiles. It never changes files: a project saved by an earlier build
 fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
 Version 30 rewrites each `on` handler as `on X :: (Field: Type)`, listing the
-payload fields it reads. The migration refuses a handler that it cannot rewrite
+payload fields it reads; the older `on X(a)`, `on X as e` and `on X` forms no
+longer parse. The migration refuses a handler that it cannot rewrite
 exactly, such as one that reads the whole `event` or whose alias an action
 reads; rewrite that handler by hand and migrate again. It does not see events
 that a game's own native table declares, so write those handlers in the named
@@ -729,9 +730,9 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `Gravity3D` sets it. 2D bodies
 fall only when one entity's `Gravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
-handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
-`on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
-and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
+handle `on ContactBegin3D :: (Other: handle<ecs.entity>, Point: struct<CF_V3>)`
+and `on ContactEnd3D :: (Other: handle<ecs.entity>)`, as 2D colliders report
+`on ContactBegin` and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
 renderer draws a body's `Geometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).
 

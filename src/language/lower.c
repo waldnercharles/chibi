@@ -818,10 +818,11 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_STATE_DEMAND:
                     case EXECUTION_INTRINSIC_STATE_TRANSITION:
                     case EXECUTION_INTRINSIC_RETRIGGER_ACTION:
-                    case EXECUTION_INTRINSIC_EVENT_READ:
                     case EXECUTION_INTRINSIC_ARRAY_PUSH:
                     case EXECUTION_INTRINSIC_ARRAY_STORE:
                     case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+                    case EXECUTION_INTRINSIC_MAP_STORE:
+                    case EXECUTION_INTRINSIC_MAP_DELETE:
                         kind = BEHAVIOR_ADDRESS;
                         break;
                     default: break;
@@ -1148,6 +1149,30 @@ static int reference_read(lower *l, int descriptor, script_type type, script_ran
         &descriptor,
         1,
         type,
+        range
+    );
+}
+/* Reads an assignment's target; an absent map key reads its value type's zero. */
+static int target_read(lower *l, int descriptor, int index, script_range range)
+{
+    const script_expression *e = &l->a->expressions[index];
+    if (e->kind != SCRIPT_EXPR_INDEX || !e->argument_count) {
+        return reference_read(l, descriptor, e->type, range);
+    }
+    int absent = e->arguments[0].value;
+    pin_value headers[] = { { .type = BF_POINTER_TYPE }, initial(l, e->type) };
+    int slots[] = {
+        descriptor,
+        convert(l, expression(l, absent), l->a->expressions[absent].type, e->type, range)
+    };
+    return primitive(
+        l,
+        &EXECUTION_reference_read_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        2,
+        e->type,
         range
     );
 }
@@ -4315,16 +4340,30 @@ static int expression_value(lower *l, int index)
             int array = expression(l, e->left);
             script_type collection = l->a->expressions[e->left].type;
             if (collection.container == PIN_CONTAINER_MAP) {
+                /* An absent key reads the value type's zero when it has one. */
                 script_type key = script_catalog_key_type(l->catalog, collection);
-                pin_value headers[] = { initial(l, collection), initial(l, key) };
-                int slots[] = { array, expression(l, e->right) };
+                pin_value headers[] = { initial(l, collection),
+                                        initial(l, key),
+                                        initial(l, e->type) };
+                int slots[] = { array, expression(l, e->right), -1 };
+                int count = 2;
+                if (e->argument_count) {
+                    int absent = e->arguments[0].value;
+                    slots[count++] = convert(
+                        l,
+                        expression(l, absent),
+                        l->a->expressions[absent].type,
+                        e->type,
+                        e->range
+                    );
+                }
                 return primitive(
                     l,
                     &EXECUTION_map_get_call,
                     &EXECUTION_value_access,
                     headers,
                     slots,
-                    2,
+                    count,
                     e->type,
                     e->range
                 );
@@ -4559,33 +4598,11 @@ static int expression_value(lower *l, int index)
                 l->a->symbols[receiver->symbol].kind == SCRIPT_PARAMETER) {
                 int ordinal = (int)e->offset;
                 int source = l->a->symbols[receiver->symbol].function;
-                if (source >= 0 && source != l->payload_function &&
-                    l->a->functions[source].kind == SCRIPT_FUNCTION_HANDLER) {
-                    pin_value headers[] = { { .type = BF_POINTER_TYPE },
-                                            { .type = PIN_U64,
-                                              .u64 = function_id(l->a, source) },
-                                            { .type = PIN_I32, .i = ordinal } };
-                    int slots[] = { value_op(
-                                        l,
-                                        (behavior_function_instruction){
-                                            .op = BF_CONTEXT,
-                                            .type = BF_POINTER_TYPE,
-                                            .target = 1 },
-                                        e->range
-                                    ),
-                                    -1,
-                                    -1 };
-                    return primitive(
-                        l,
-                        &EXECUTION_event_read_call,
-                        &EXECUTION_assignment_access,
-                        headers,
-                        slots,
-                        3,
-                        e->type,
-                        e->range
-                    );
-                }
+                /* Only the handler that receives a payload reads it. */
+                assert(
+                    source < 0 || source == l->payload_function ||
+                    l->a->functions[source].kind != SCRIPT_FUNCTION_HANDLER
+                );
                 if (source == l->payload_function) {
                     ordinal += l->payload_first;
                 }
@@ -5069,9 +5086,10 @@ static bool direct_target(lower *l, const script_expression *e)
            (l->parameters[e->symbol] >= 0 && s->kind != SCRIPT_PARAMETER) ||
            (s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT));
 }
-/* A writable local or result array kept in its own bank. Every store into it
- * snapshots, so the local exclusively owns its items and may grow in place. */
-static bool owned_local_array(lower *l, int expression)
+/* A writable local or result array or map kept in its own bank. Every store
+ * into it snapshots, so the local exclusively owns its items and may grow in
+ * place. */
+static bool owned_local(lower *l, int expression, pin_container container)
 {
     const script_expression *e = &l->a->expressions[expression];
     if (e->kind != SCRIPT_EXPR_SYMBOL || e->symbol < 0) {
@@ -5079,7 +5097,7 @@ static bool owned_local_array(lower *l, int expression)
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
     return s->writable && (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_RESULT) &&
-           s->type.container == PIN_CONTAINER_ARRAY && !s->boxed &&
+           s->type.container == container && !s->boxed &&
            !(s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS |
                               SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL)) &&
            l->variables[e->symbol] < 0 && l->parameters[e->symbol] < 0 &&
@@ -5118,11 +5136,11 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     const script_expression *target = &l->a->expressions[s->expression],
                             *rhs = &l->a->expressions[s->second];
-    bool owned = owned_local_array(l, s->expression);
+    bool owned = owned_local(l, s->expression, PIN_CONTAINER_ARRAY);
     bool push = owned && self_call(l, rhs, target->symbol, "Array Add");
     bool extend = owned && self_call(l, rhs, target->symbol, "Append");
     bool store = target->kind == SCRIPT_EXPR_INDEX &&
-                 owned_local_array(l, target->left);
+                 owned_local(l, target->left, PIN_CONTAINER_ARRAY);
     if (!push && !extend && !store) {
         return false;
     }
@@ -5178,6 +5196,74 @@ static bool in_place_array(lower *l, const script_statement *s)
     }
     return true;
 }
+/* `m[k] = v` and `delete m[k]` on an owned local map update it in place, so
+ * building a map is linear rather than quadratic. */
+static bool in_place_map(lower *l, const script_statement *s)
+{
+    if (s->op != SCRIPT_OP_NONE) {
+        return false;
+    }
+    const script_expression *target = &l->a->expressions[s->expression],
+                            *rhs = &l->a->expressions[s->second];
+    bool store = target->kind == SCRIPT_EXPR_INDEX &&
+                 owned_local(l, target->left, PIN_CONTAINER_MAP);
+    bool remove = rhs->kind == SCRIPT_EXPR_MAP_REMOVE &&
+                  owned_local(l, s->expression, PIN_CONTAINER_MAP) &&
+                  l->a->expressions[rhs->left].kind == SCRIPT_EXPR_SYMBOL &&
+                  l->a->expressions[rhs->left].symbol == target->symbol &&
+                  !(l->a->expressions[rhs->right].effects & SCRIPT_EFFECT_WRITE);
+    if (!store && !remove) {
+        return false;
+    }
+    int symbol = l->a->expressions[store ? target->left : s->expression].symbol;
+    script_type collection = l->a->symbols[symbol].type;
+    script_type key = script_catalog_key_type(l->catalog, collection);
+    script_type item = script_catalog_element_type(l->catalog, collection);
+    int key_expression = store ? target->right : rhs->right;
+    debug_point(l, SCRIPT_RECORD_EXPRESSION, s->expression, target->range);
+    if (remove) {
+        debug_point(l, SCRIPT_RECORD_EXPRESSION, s->second, rhs->range);
+    }
+    pin_value headers[3] = { { .type = BF_POINTER_TYPE },
+                             initial(l, key),
+                             initial(l, item) };
+    int slots[3];
+    slots[1] = convert(
+        l,
+        expression(l, key_expression),
+        l->a->expressions[key_expression].type,
+        key,
+        s->range
+    );
+    if (store) {
+        slots[2] = convert(
+            l,
+            expression(l, s->second),
+            l->a->expressions[s->second].type,
+            item,
+            s->range
+        );
+    }
+    debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, s->range);
+    slots[0] = value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_HOST_SLOT,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = local_address(l, symbol) },
+        s->range
+    );
+    primitive(
+        l,
+        store ? &EXECUTION_map_store_call : &EXECUTION_map_delete_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        store ? 3 : 2,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
+    return true;
+}
 static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
@@ -5222,7 +5308,7 @@ static void assign(lower *l, const script_statement *s)
         store_tuple(l, l->a->expressions[index].symbol, expression(l, s->second), s->second, s->range);
         return;
     }
-    if (in_place_array(l, s)) {
+    if (in_place_array(l, s) || in_place_map(l, s)) {
         return;
     }
     int saved_expression = l->target_expression,
@@ -5239,12 +5325,7 @@ static void assign(lower *l, const script_statement *s)
     l->target_reference = destination;
     l->target_value = !compound ? -1
                     : direct    ? expression(l, index)
-                                : reference_read(
-                                      l,
-                                      destination,
-                                      l->a->expressions[index].type,
-                                      s->range
-                                  );
+                                : target_read(l, destination, index, s->range);
     l->target_cached = compound;
     int value = expression(l, s->second);
     /* Retain the destination for simple writes without replacing RHS reads. */

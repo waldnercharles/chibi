@@ -122,7 +122,8 @@ Component: int : 111;
 Prototype: int : 112;
 Relationship: int : 113;
 Pub: int : 114;
-KindCount: int : 115;
+Delete: int : 115;
+KindCount: int : 116;
 
 // Byte classes.
 SpaceClass: int : 1;
@@ -179,7 +180,7 @@ pub KindNames :: () -> string[] {
             "branch", "return", "reduce", "unordered", "goto", "break", "continue",
             "await", "yield", "cancel", "true", "false", "nil", "null", "plain", "ref",
             "service", "setting", "wildcard", "from", "split", "component",
-            "prototype", "relationship", "pub"];
+            "prototype", "relationship", "pub", "delete"];
 }
 
 pub Tokenize :: (text: string) -> Tokens {

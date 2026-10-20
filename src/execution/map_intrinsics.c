@@ -33,19 +33,20 @@ static const char *make_map(arena *storage, const pin_value *args, int count, pi
     out->ptr = map;
     return NULL;
 }
+/* An absent key reads the optional third argument, the value type's zero. */
 static const char *get_map(arena *storage, const pin_value *args, int count, pin_value *out)
 {
-    assert(count == 2);
-    (void)count;
+    assert(count == 2 || count == 3);
     const pin_map *map = args[0].ptr;
     int index = pin_map_find(map, &args[1]);
-    if (index < 0) {
+    if (index < 0 && count == 2) {
         return "Map key is absent or invalid";
     }
-    if (!result_type(*out, map->entries[index].value)) {
+    const pin_value *value = index < 0 ? &args[2] : &map->entries[index].value;
+    if (!result_type(*out, *value)) {
         return "Map value differs from its declared result type";
     }
-    return pin_value_snapshot_to_arena(storage, out, &map->entries[index].value)
+    return pin_value_snapshot_to_arena(storage, out, value)
              ? "Cannot retain map value"
              : NULL;
 }
@@ -93,8 +94,36 @@ static const char *item_map(arena *storage, const pin_value *args, int count, pi
              : NULL;
 }
 
+/* `m[k] = v` and a removal on a local's own map, in place. */
+static const char *store_map(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 3);
+    (void)count;
+    pin_value *header = (pin_value *)(uintptr_t)args[0].u64;
+    pin_map *map = header->ptr;
+    if (pin_map_store_owned(storage, &map, &args[1], &args[2])) {
+        return "Invalid map key, value, or retained payload";
+    }
+    header->ptr = map;
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+static const char *delete_map(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    assert(count == 2);
+    (void)count;
+    const pin_value *header = (const pin_value *)(uintptr_t)args[0].u64;
+    if (pin_map_delete_owned(storage, header->ptr, &args[1])) {
+        return "Invalid map removal key";
+    }
+    *out = (pin_value){ .type = PIN_BOOL, .b = true };
+    return NULL;
+}
+
 const node_host_call EXECUTION_map_make_call = { .value = make_map };
 const node_host_call EXECUTION_map_get_call = { .value = get_map };
 const node_host_call EXECUTION_map_has_call = { .value = has_map };
 const node_host_call EXECUTION_map_remove_call = { .value = remove_map };
 const node_host_call EXECUTION_map_item_call = { .value = item_map };
+const node_host_call EXECUTION_map_store_call = { .value = store_map };
+const node_host_call EXECUTION_map_delete_call = { .value = delete_map };

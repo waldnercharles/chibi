@@ -282,7 +282,6 @@ bool program_capture_reference(
     pin_value *
 );
 void program_collect_payloads(execution_program *, execution_activation *extra);
-const pin_value *program_event_argument(behavior_function_context *, uint64_t, int);
 static inline bool program_wait_due(const command_wait *wait, double now)
 {
     return wait->timer &&

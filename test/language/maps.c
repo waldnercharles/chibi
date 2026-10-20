@@ -1,6 +1,8 @@
 #include "authoring/source_literal.h"
 #include "backend.h"
+#include "capabilities/catalog_snapshot.h"
 #include "ecs/ecs.h"
+#include "execution/definition.h"
 #include "execution/inspection.h"
 #include "execution/intrinsics.h"
 #include "execution/map_intrinsics.h"
@@ -47,10 +49,10 @@ static void cleanup()
     syntax = NULL;
     world = NULL;
 }
-static bool compile(const char *source, behavior_backend backend)
+static bool compile_in(const char *source, const script_catalog *types, behavior_backend backend)
 {
     syntax = script_parse(source);
-    analysis = script_analyze(syntax, &catalog);
+    analysis = script_analyze(syntax, types);
     if (syntax->diagnostic_count || !analysis->valid) {
         for (int i = 0; i < analysis->diagnostic_count; i++) {
             fprintf(stderr, "map semantic: %s\n", analysis->diagnostics[i].message);
@@ -58,7 +60,7 @@ static bool compile(const char *source, behavior_backend backend)
         return false;
     }
     script_lower_bindings bindings = { 0 };
-    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    execution_module_plan *plan = script_lower(analysis, types, &bindings);
     if (!plan || !plan->valid) {
         for (int i = 0; plan && i < plan->diagnostic_count; i++) {
             fprintf(stderr, "map lower: %s\n", plan->diagnostics[i].message);
@@ -76,6 +78,27 @@ static bool compile(const char *source, behavior_backend backend)
     world = ecs_world_new();
     program = execution_program_new(module, world, NULL);
     return program != NULL;
+}
+static bool compile(const char *source, behavior_backend backend)
+{
+    return compile_in(source, &catalog, backend);
+}
+/* Compiles source against the records library declares, as a project's
+ * catalog would hold them. */
+static bool compile_with_records(const char *library, const char *source, behavior_backend backend)
+{
+    script_syntax *parsed = script_parse(library);
+    script_analysis *checked = script_analyze(parsed, &catalog);
+    script_catalog declared = { .types = checked->types,
+                                .type_count = checked->type_count,
+                                .capabilities = &event,
+                                .capability_count = 1 },
+                   owned;
+    bool valid = !parsed->diagnostic_count && checked->valid &&
+                 script_catalog_snapshot(&storage, &declared, &owned);
+    script_analysis_free(checked);
+    script_syntax_free(parsed);
+    return valid && compile_in(source, &owned, backend);
 }
 static const pin_value *state(execution_instance *instance, const char *name)
 {
@@ -96,14 +119,15 @@ TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order)
 {
     const char *source =
         "Maps :: behavior { result: int = 0; order: int = 0; "
-        "scores: Map<string, int> = {\"Ada\": 1, \"Bea\": 2, \"Ada\": 3}; "
-        "on Run { copy := scores; scores[\"Ada\"] = 10; scores[\"Cid\"] = 4; "
+        "scores: [string: int] = [\"Ada\": 1, \"Bea\": 2, \"Ada\": 3]; "
+        "on Run :: () { copy := scores; scores[\"Ada\"] = 10; scores[\"Cid\"] "
+        "= 4; "
         "for key, value in scores { order = order * 10 + value; result += "
         "value; "
         "scores[\"Later\"] = 100; } "
         "result += copy[\"Ada\"]; "
-        "scores = map_remove(scores, \"Bea\"); scores[\"Bea\"] = 5; "
-        "if map_has(scores, \"Ada\") { result += 1; } } }";
+        "delete scores[\"Bea\"]; scores[\"Bea\"] = 5; "
+        "if \"Ada\" in scores { result += 1; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));
@@ -125,21 +149,138 @@ TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order)
     return true;
 }
 
+/* Odin's Robin Hood index keeps lookups constant time: a few thousand keys,
+ * strings and floats included, all found, in insertion order, after removals
+ * that rebuild the index; 0.0 and -0.0 are one key. */
+TEST_CASE(maps_index_finds_every_key_in_insertion_order)
+{
+    arena_init_collectable(&storage);
+    pin_map *map = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_I32 },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    REQUIRE(map);
+    enum
+    {
+        KEYS = 3000
+    };
+    for (int i = 0; i < KEYS; i++) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &map, &key, &value));
+    }
+    REQUIRE(map->count == KEYS && map->slots);
+    for (int i = 0; i < KEYS; i += 2) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 };
+        REQUIRE(!pin_map_delete_owned(&storage, map, &key));
+    }
+    REQUIRE(map->count == KEYS / 2);
+    for (int i = 0; i < KEYS; i++) {
+        pin_value key = { .type = PIN_I32, .i = i * 7919 };
+        int found = pin_map_find(map, &key);
+        REQUIRE(i % 2 ? found == i / 2 && map->entries[found].value.i == i : found < 0);
+    }
+    pin_value missing = { .type = PIN_I32, .i = -1 };
+    REQUIRE(pin_map_find(map, &missing) < 0);
+    REQUIRE(pin_map_equal(map, pin_map_snapshot_to_arena(&storage, map)));
+
+    pin_map *names = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_STR },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    char text[32];
+    for (int i = 0; i < 200; i++) {
+        snprintf(text, sizeof text, "key %d", i);
+        pin_value key = { .type = PIN_STR, .str = text },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &names, &key, &value));
+    }
+    snprintf(text, sizeof text, "key %d", 137);
+    pin_value named = { .type = PIN_STR, .str = text };
+    REQUIRE(pin_map_find(names, &named) == 137);
+
+    pin_map *floats = pin_map_create(
+        &storage,
+        (pin_value){ .type = PIN_F64 },
+        (pin_value){ .type = PIN_I32 },
+        NULL,
+        0
+    );
+    for (int i = 0; i < 20; i++) {
+        pin_value key = { .type = PIN_F64, .d = i ? i * 0.5 : -0.0 },
+                  value = { .type = PIN_I32, .i = i };
+        REQUIRE(!pin_map_store_owned(&storage, &floats, &key, &value));
+    }
+    pin_value zero = { .type = PIN_F64, .d = 0.0 };
+    REQUIRE(floats->slots && pin_map_find(floats, &zero) == 0);
+    arena_free(&storage);
+    return true;
+}
+/* `m[k] = v` and `delete m[k]` on a local update it in place, so a
+ * few thousand stores stay within a small budget; a copy keeps its values. */
+TEST_CASE(maps_local_updates_in_place)
+{
+    const char *simple = "Maps :: behavior { result: int = 0; on Run :: () { "
+                         "squares: [int: int] = [:]; "
+                         "for i in 0..<4000 { squares[i] = i * i; } "
+                         "copy := squares; "
+                         "for i in 0..<4000 { if i % 2 == 0 { "
+                         "squares.delete(i); } } "
+                         "squares[3] = 0; "
+                         "total := 0; for key, value in squares { total += "
+                         "value % 1000; } "
+                         "if squares.has(4) { total += 1000000; } "
+                         "result = total + copy[3] * 10000000; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    int expected = 9 * 10000000;
+    for (int i = 1; i < 4000; i += 2) {
+        expected += i == 3 ? 0 : (i * i) % 1000;
+    }
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile(simple, backends[b]));
+        bool stores = false, deletes = false;
+        for (int f = 0; f < execution_module_function_count(module); f++) {
+            const behavior_function *body = execution_module_function_at(module, f)
+                                                .body;
+            for (int h = 0; body && h < acount(body->host_calls); h++) {
+                uint64_t id = body->host_calls[h].capability_id;
+                stores |= id == execution_intrinsic_id(&EXECUTION_map_store_call);
+                deletes |= id == execution_intrinsic_id(&EXECUTION_map_delete_call);
+            }
+        }
+        REQUIRE(stores && deletes);
+        execution_instance *instance = attach();
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 2000000) == FLOW_OK);
+        const pin_value *result = state(instance, "result");
+        REQUIRE(result && result->i == expected);
+        cleanup();
+    }
+    return true;
+}
+
 TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays)
 {
     const char *
         source = "Nested :: behavior { result: int = 0; "
-                 "outer: Map<string, Map<string, int>> = {\"inside\": "
-                 "{\"count\": 2}}; "
-                 "rows: Map<string, int[]> = {\"values\": [3, 4]}; "
-                 "empty: Map<int, string> = {}; "
-                 "on Run { inferred: Map = {\"one\": 1}; all := {\"two\": 2}; "
+                 "outer: [string: [string: int]] = [\"inside\": "
+                 "[\"count\": 2]]; "
+                 "rows: [string: int[]] = [\"values\": [3, 4]]; "
+                 "empty: [int: string] = [:]; "
+                 "on Run :: () { inferred := [\"one\": 1]; all := "
+                 "[\"two\": 2]; "
                  "outer[\"inside\"][\"count\"] += 5; rows[\"values\"][1] = 9; "
                  "result = outer[\"inside\"][\"count\"] + rows[\"values\"][1]; "
-                 "if map_has(inferred, \"one\") && map_has(all, \"two\") { "
+                 "if \"one\" in inferred && all.has(\"two\") { "
                  "result += 1; } "
-                 "a: Map<string,int> = {\"a\":1,\"b\":2}; "
-                 "b: Map<string,int> = {\"b\":2,\"a\":1}; "
+                 "a: [string: int] = [\"a\": 1, \"b\": 2]; "
+                 "b: [string: int] = [\"b\": 2, \"a\": 1]; "
                  "if a == b { result += 1; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
@@ -157,15 +298,65 @@ TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays)
     return true;
 }
 
-TEST_CASE(maps_checked_lookup_reports_missing_keys)
+/* An absent key reads the value type's zero, as Odin's maps do: zero, an
+ * empty string or container, or nil. The read adds no key. */
+TEST_CASE(maps_absent_keys_read_zero_values)
 {
-    const char *source = "Missing :: behavior { result: int = 0; values: "
-                         "Map<int,int> = {1: 2}; "
-                         "on Run { result = values[99]; } }";
+    const char *source = "Zero :: behavior { result: int = 0; "
+                         "counts: [string: int] = [\"Ada\": 2]; "
+                         "on Run :: () { names: [int: string] = [:]; rows: "
+                         "[string: int[]] = [:]; "
+                         "nested: [string: [string: int]] = [:]; maybe: [int: "
+                         "int?] = [:]; "
+                         "counts[\"Bea\"] += 3; "
+                         "result = counts[\"Ada\"] * 1000 + counts[\"Bea\"] * "
+                         "100 + counts[\"Cid\"]; "
+                         "if names[1] == \"\" { result += 10000; } "
+                         "for row in rows[\"none\"] { result -= 1; } "
+                         "if nested[\"a\"][\"b\"] == 0 && \"a\" not in nested "
+                         "{ result += 100000; } "
+                         "if maybe[3] == nil { result += 1000000; } "
+                         "if \"Cid\" not in counts && !counts.has(\"Cid\") { "
+                         "result += 10000000; } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));
         execution_instance *instance = attach();
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 10000) == FLOW_OK);
+        const pin_value *result = state(instance, "result");
+        REQUIRE(result && result->i == 11112300);
+        const pin_value *counts = state(instance, "counts");
+        REQUIRE(counts && ((pin_map *)counts->ptr)->count == 2);
+        cleanup();
+    }
+    return true;
+}
+
+/* A record's zero is its field defaults. One with a required field has no
+ * zero value, so reading an absent key of a map of them stays checked. */
+TEST_CASE(maps_absent_record_keys_read_defaults_or_report_missing_keys)
+{
+    const char *library = "Pairs :: library { Pair :: struct { left: int = 4; "
+                          "right: int = 5; } "
+                          "Point :: struct { x: int; } }";
+    const char *defaults = "Zero :: behavior { result: int = 0; on Run :: () { "
+                           "pairs: [int: Pairs.Pair] = [:]; "
+                           "result = pairs[7].left * 10 + pairs[7].right; } }";
+    const char *required = "Missing :: behavior { result: int = 0; "
+                           "points: [int: Pairs.Point] = [1: {x: 2}]; "
+                           "on Run :: () { result = points[1].x; result += "
+                           "points[99].x; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(compile_with_records(library, defaults, backends[b]));
+        execution_instance *instance = attach();
+        REQUIRE(instance);
+        REQUIRE(execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(state(instance, "result") && state(instance, "result")->i == 45);
+        cleanup();
+        REQUIRE(compile_with_records(library, required, backends[b]));
+        instance = attach();
         REQUIRE(instance);
         REQUIRE(
             execution_instance_dispatch(instance, event.id, NULL, 0, 0, 0, 10000) == FLOW_ERR_INVALID_GRAPH
@@ -174,7 +365,7 @@ TEST_CASE(maps_checked_lookup_reports_missing_keys)
         REQUIRE(failure && failure->status == FLOW_ERR_INVALID_GRAPH);
         REQUIRE(failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
         REQUIRE(strstr(failure->message, "Map key is absent"));
-        REQUIRE(state(instance, "result") && state(instance, "result")->i == 0);
+        REQUIRE(state(instance, "result") && state(instance, "result")->i == 2);
         cleanup();
     }
     return true;
@@ -183,14 +374,23 @@ TEST_CASE(maps_checked_lookup_reports_missing_keys)
 TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types)
 {
     const char *invalid[] = {
-        "Bad :: behavior { m := {}; }",
-        "Bad :: behavior { m: Map<int,int> = {\"wrong\": 1}; }",
-        "Bad :: behavior { m: Map<string,int> = {\"wrong\": true}; }",
-        "Bad :: behavior { m: Map<int[],int> = {}; }",
-        "Bad :: behavior { m: Map<int,int> = {}; on Run { key: float = 1; "
+        "Bad :: behavior { m := [:]; }",
+        "Bad :: behavior { m: [int: int] = [\"wrong\": 1]; }",
+        "Bad :: behavior { m: [string: int] = [\"wrong\": true]; }",
+        "Bad :: behavior { m: [int[]: int] = [:]; }",
+        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { key: float = "
+        "1; "
         "m[key] = 2; } }",
-        "Bad :: behavior { m: Map<string,int> = {}; n: Map<string,bool> = {}; "
-        "on Run { m = n; } }",
+        ("Bad :: behavior { m: [string: int] = [:]; n: [string: bool] = [:]; "
+         "on Run :: () { m = n; } }"),
+        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { ok := "
+        "m.delete(1); } }",
+        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { ok := \"a\" in "
+        "m; } }",
+        "Bad :: behavior { m: int = 0; on Run :: () { delete m[1]; } }",
+        "Bad :: behavior { on Run :: () { [1: 2].delete(1); } }",
+        "Bad :: behavior { m: [int: int] = [:]; on Run :: () { ok := m.has(1, "
+        "2); } }",
     };
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
         syntax = script_parse(invalid[i]);
@@ -283,7 +483,7 @@ TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads)
 TEST_CASE(maps_source_literal_round_trips_typed_keys_and_values)
 {
     REQUIRE(
-        compile("Literal :: behavior { values: Map<string,int> = {\"one\":1,\"two\":2}; }", BEHAVIOR_BYTECODE)
+        compile("Literal :: behavior { values: [string: int] = [\"one\": 1, \"two\": 2]; }", BEHAVIOR_BYTECODE)
     );
     execution_instance *instance = attach();
     REQUIRE(instance);
@@ -302,7 +502,7 @@ TEST_CASE(maps_source_literal_round_trips_typed_keys_and_values)
     char *literal = authoring_source_literal(&owned, type, value, error, sizeof error);
     REQUIRE(literal);
     char source[512];
-    snprintf(source, sizeof source, "RoundTrip :: behavior { values: Map<string,int> = %s; }", literal);
+    snprintf(source, sizeof source, "RoundTrip :: behavior { values: [string: int] = %s; }", literal);
     free(literal);
     script_syntax *parsed = script_parse(source);
     script_analysis *checked = script_analyze(parsed, &owned);
@@ -318,11 +518,11 @@ TEST_CASE(maps_retain_nested_task_results_until_the_last_handle_is_removed)
 {
     const char
         *source = "Maps :: behavior { seen: double = 0; "
-                  "jobs: Map<string, Map<string, task<double>>> = {}; "
+                  "jobs: [string: [string: task<double>]] = [:]; "
                   "Work :: () -> double { yield; return 7; } "
-                  "on Run { jobs = {\"outer\": {\"inner\": Work()}}; "
+                  "on Run :: () { jobs = [\"outer\": [\"inner\": Work()]]; "
                   "yield; yield; answer := await jobs[\"outer\"][\"inner\"]; "
-                  "if answer is double value { seen = value; } jobs = {}; } }";
+                  "if answer is double value { seen = value; } jobs = [:]; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));
@@ -366,12 +566,12 @@ static const pin_array *inspection_nested_array(const pin_value *value)
 }
 TEST_CASE(maps_inspection_owns_nested_snapshots_after_mutation_and_program_release)
 {
-    const char *
-        source = "Inspect :: behavior { seen:int=0; "
-                 "values:Map<string,Map<string,int[]>>={group:{values:[1,2]}}; "
-                 "on Run { saved:=values; "
-                 "seen=saved[\"group\"][\"values\"][0]; "
-                 "values[\"group\"][\"values\"][0]=9; } }";
+    const char *source = "Inspect :: behavior { seen:int=0; "
+                         "values: [string: [string: int[]]] = [\"group\": "
+                         "[\"values\": [1, 2]]]; "
+                         "on Run :: () { saved:=values; "
+                         "seen=saved[\"group\"][\"values\"][0]; "
+                         "values[\"group\"][\"values\"][0]=9; } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         REQUIRE(compile(source, backends[b]));
@@ -446,8 +646,11 @@ void test_language_maps()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(maps_intrinsics_reject_incompatible_result_banks);
     RUN_TEST_CASE(maps_preserve_value_copies_and_snapshot_insertion_order);
+    RUN_TEST_CASE(maps_index_finds_every_key_in_insertion_order);
+    RUN_TEST_CASE(maps_local_updates_in_place);
     RUN_TEST_CASE(maps_infer_literals_and_compose_with_nested_maps_and_arrays);
-    RUN_TEST_CASE(maps_checked_lookup_reports_missing_keys);
+    RUN_TEST_CASE(maps_absent_keys_read_zero_values);
+    RUN_TEST_CASE(maps_absent_record_keys_read_defaults_or_report_missing_keys);
     RUN_TEST_CASE(maps_reject_missing_context_and_incompatible_key_value_types);
     RUN_TEST_CASE(maps_own_strings_compare_associations_and_reject_nonfinite_keys);
     RUN_TEST_CASE(maps_wire_preserves_nested_types_and_rejects_truncated_payloads);

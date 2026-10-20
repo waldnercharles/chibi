@@ -166,11 +166,12 @@ static bool compile_field(int field, int form, behavior_backend backend)
     snprintf(
         source,
         sizeof source,
-        "Writes :: behavior { answer: %s = %s; on Tick(value) { %s } }",
+        "Writes :: behavior { answer: %s = %s; on Tick :: (value: %s) { %s } }",
         script_scalar_name(parameter.type.storage),
         field == 0   ? "false"
         : field == 4 ? "\"\""
                      : "0",
+        script_scalar_name(parameter.type.storage),
         statement
     );
     if (form == 3) {

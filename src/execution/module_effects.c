@@ -420,8 +420,10 @@ static bool predicate_host(const behavior_function *f, int pc)
         }
         case EXECUTION_INTRINSIC_ARRAY_PUSH:
         case EXECUTION_INTRINSIC_ARRAY_STORE:
-        case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
-            /* In-place updates write only the function's own local array. */
+        case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+        case EXECUTION_INTRINSIC_MAP_STORE:
+        case EXECUTION_INTRINSIC_MAP_DELETE: {
+            /* In-place updates write only the function's own local collection. */
             origin target = bank_origin(f, pc, host->first, 0, &steps);
             return target.private && target.bank;
         }
@@ -1443,7 +1445,6 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_SNAPSHOT:
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_ACTION_READ:
-        case EXECUTION_INTRINSIC_EVENT_READ:
             for (int j = 0; j < call->result_count; j++) {
                 if (snapshot_storage(f->data_values[call->result_first + j].initial)) {
                     cost_add(c, f, pc, id, 0, allocate_copy, "Value snapshot can allocate and copy managed payload or type metadata");
@@ -1457,6 +1458,10 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
         case EXECUTION_INTRINSIC_ARRAY_STORE:
         case EXECUTION_INTRINSIC_ARRAY_EXTEND:
             cost_add(c, f, pc, id, 0, allocate_copy, "In-place array update can grow storage and copy the item");
+            return;
+        case EXECUTION_INTRINSIC_MAP_STORE:
+        case EXECUTION_INTRINSIC_MAP_DELETE:
+            cost_add(c, f, pc, id, 0, allocate_copy, "In-place map update can grow storage, copy the entry and rebuild the index");
             return;
         case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
             cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE, "Reduction retains a scalar contribution until system publication");
@@ -1865,7 +1870,9 @@ static void share_host(share_flow *s, int pc)
             }
             case EXECUTION_INTRINSIC_ARRAY_PUSH:
             case EXECUTION_INTRINSIC_ARRAY_STORE:
-            case EXECUTION_INTRINSIC_ARRAY_EXTEND: {
+            case EXECUTION_INTRINSIC_ARRAY_EXTEND:
+            case EXECUTION_INTRINSIC_MAP_STORE:
+            case EXECUTION_INTRINSIC_MAP_DELETE: {
                 int target = share_target(s, host->first);
                 s->unsafe |= target < 0;
                 if (target >= 0) {

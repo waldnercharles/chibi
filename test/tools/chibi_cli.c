@@ -662,9 +662,9 @@ TEST_CASE(fmt_formats_each_project)
 
 static const char
     MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
-static const char
-    MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
-                     "  on Tick(dt) {   angle = angle + dt; }\n}\n";
+static const char MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
+                                   "  on Tick :: (dt: float s) {   angle = "
+                                   "angle + dt; }\n}\n";
 
 /* The real compiler's --format --check names the assets that are not
  * canonical and changes nothing; --format rewrites them as their savers
@@ -694,7 +694,8 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick :: (dt: float "
+        "s) {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);
@@ -1046,7 +1047,7 @@ static void site_fixture(const char *relative)
     snprintf(file, sizeof file, "%s/README.md", relative);
     write_file(file, "# Home\n\nRead [the guide](docs/guide.md) and [plans](PLAN.md).\n");
     snprintf(file, sizeof file, "%s/docs/guide.md", relative);
-    write_file(file, "# Guide\n\nBack [home](../README.md).\n");
+    write_file(file, "# Guide\n\nBack [home](../README.md).\n\n```chibi\npackage sample\nValue :: 1\n```\n");
     snprintf(file, sizeof file, "%s/docs/private.md", relative);
     write_file(file, "# Private\n");
     snprintf(file, sizeof file, "%s/docs/site.kdl", relative);
@@ -1075,6 +1076,26 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
         file_has("site/build/docs/guide.html", "<a href=\"guide.html\" aria-current=\"page\">Guide</a>")
     );
     REQUIRE(exists("site/build/docs/style.css") && !exists("site/build/docs/private.html"));
+    char *style = contents("site/build/docs/style.css");
+    const char *dark = strstr(style, "@media (prefers-color-scheme: dark)");
+    const char *categories[] = { "keyword", "string", "number", "comment" };
+    bool palettes = dark != NULL;
+    for (int i = 0; i < 4; i++) {
+        char variable[64], selector[128];
+        snprintf(variable, sizeof variable, "--syntax-%s:", categories[i]);
+        snprintf(
+            selector,
+            sizeof selector,
+            "pre .chibi-%s { color: var(--syntax-%s); }",
+            categories[i],
+            categories[i]
+        );
+        const char *light = strstr(style, variable);
+        palettes = palettes && light && light < dark &&
+                   strstr(dark, variable) && strstr(style, selector);
+    }
+    free(style);
+    REQUIRE(palettes);
     char published[256];
     path(published, "site/build/docs");
     struct stat info;
@@ -1110,11 +1131,48 @@ TEST_CASE(compiler_docs_writes_the_listed_pages)
     site_manifest("site/docs/site.kdl", "docs/guide.md", "guide.html");
     write_file(
         "site/docs/guide.md",
-        "# Guide\n\n```chibi\npackage sample\nDouble :: (n: int) -> int "
-        "{\n"
-        "    return n * 2;\n}\n```\n\n```code\nnot chibi at all\n```\n"
+        "# Guide\n"
+        "\n"
+        "```chibi\n"
+        "package sample\n"
+        "/* first <&>\n"
+        "\tsecond café */\n"
+        "Title :: \"café <&> 🧭\"\n"
+        "Ratio :: 1.5\n"
+        " \t\n"
+        "Double :: (n: int) -> int {\n"
+        "\treturn n * 2  // kept <&>\n"
+        "}\n"
+        "```\n"
+        "\n"
+        "```code\n"
+        "package plain\n"
+        "return 2 < 3\n"
+        "```\n"
     );
     REQUIRE(tool_run(docs, root, output) == 0);
+    /* Exact slices preserve UTF-8, blank lines, tabs, comments and implicit
+     * semicolons while escaping every token and gap as HTML text. */
+    REQUIRE(file_has(
+        "site/build/docs/guide.html",
+        "<pre><code class=\"language-chibi\"><span "
+        "class=\"chibi-keyword\">package</span> sample\n"
+        "<span class=\"chibi-comment\">/* first &lt;&amp;&gt;\n"
+        "\tsecond café */</span>\n"
+        "Title :: <span class=\"chibi-string\">&quot;café &lt;&amp;&gt; "
+        "🧭&quot;</span>\n"
+        "Ratio :: <span class=\"chibi-number\">1.5</span>\n"
+        " \t\n"
+        "Double :: (n: int) -&gt; int {\n"
+        "\t<span class=\"chibi-keyword\">return</span> n * <span "
+        "class=\"chibi-number\">2</span>  <span class=\"chibi-comment\">// "
+        "kept &lt;&amp;&gt;</span>\n"
+        "}\n"
+        "</code></pre>\n"
+    ));
+    REQUIRE(
+        file_has("site/build/docs/guide.html", "<pre><code class=\"language-code\">package plain\nreturn 2 &lt; 3\n</code></pre>\n")
+    );
     /* Package fences share this page's virtual workspace and real core imports. */
     write_file(
         "site/docs/guide.md",
@@ -1210,7 +1268,7 @@ TEST_CASE(compiler_docs_generates_reference_pages)
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("generated/build/docs/packages.html", "Import it as <code>lib:shapes</code>."));
     REQUIRE(
-        file_has("generated/build/docs/packages.html", "pub Sides: int : 4;\n</code></pre>\n<p>Four sides.</p>")
+        file_has("generated/build/docs/packages.html", "<span class=\"chibi-keyword\">pub</span> Sides: int : <span class=\"chibi-number\">4</span>;\n</code></pre>\n<p>Four sides.</p>")
     );
     REQUIRE(
         file_has("generated/build/docs/grammar.html", "<h3 id=\"item\">item</h3>\n<p>One item.</p>")
@@ -1233,6 +1291,11 @@ TEST_CASE(compiler_docs_generates_reference_pages)
         tool_run(docs, root, output) == 1 &&
         file_has("generated.log", "absent is not a readable folder")
     );
+    /* The escaped target exists and contains a real package; rejection must
+     * be containment, not a dangling link or a missing directory. */
+    directory("tests");
+    directory("tests/facts");
+    write_file("tests/facts/Facts.chibi", "package facts\nValue :: 1\n");
     generated_site("../tests", "lib");
     REQUIRE(
         tool_run(docs, root, output) == 1 &&
@@ -1346,6 +1409,25 @@ TEST_CASE(commands_fail_without_the_compiler)
     return true;
 }
 
+/* Compiler-only documentation coverage also runs in a headless SDK build. */
+void test_tool_chibi_docs(const char *binary)
+{
+    strcpy(root, "/tmp/chibi-docs-XXXXXX");
+    assert(mkdtemp(root));
+    char *resolved = realpath(root, NULL);
+    assert(resolved && strlen(resolved) < sizeof root);
+    strcpy(root, resolved);
+    free(resolved);
+    char *program = realpath(binary, NULL);
+    assert(program && strlen(program) < sizeof compiler);
+    strcpy(compiler, program);
+    free(program);
+    path(log_path, "output.log");
+    RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
+    RUN_TEST_CASE(compiler_docs_generates_reference_pages);
+    tool_remove_tree(root);
+}
+
 void test_tool_chibi_cli(const char *binary)
 {
     setup(binary);
@@ -1373,8 +1455,6 @@ void test_tool_chibi_cli(const char *binary)
     RUN_TEST_CASE(compiler_format_rewrites_package_sources);
     RUN_TEST_CASE(web_serves_the_export_until_stopped);
     RUN_TEST_CASE(web_fails_without_leaving_a_folder);
-    RUN_TEST_CASE(compiler_docs_writes_the_listed_pages);
-    RUN_TEST_CASE(compiler_docs_generates_reference_pages);
     RUN_TEST_CASE(doc_runs_the_compiler_docs);
     RUN_TEST_CASE(commands_fail_without_the_compiler);
     tool_remove_tree(root);
@@ -1455,6 +1535,7 @@ TEST_CASE(installed_package_commands_and_docs)
     const char *docs[] = { launcher, "doc", site, NULL };
     REQUIRE(tool_run(docs, root, output) == 0);
     REQUIRE(file_has("site/build/docs/index.html", "<a href=\"guide.html\">the guide</a>"));
+    REQUIRE(file_has("site/build/docs/guide.html", "Value :: <span class=\"chibi-number\">1</span>\n"));
     return true;
 }
 

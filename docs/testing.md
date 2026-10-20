@@ -52,14 +52,22 @@ grammar it lists into a temporary root, and runs `chibi-compile --docs` there,
 which is what `chibi doc` runs. Every `` ```chibi `` example on a published page
 must parse, and each whole package must analyze, so a language change that
 breaks one fails `make test-projects` instead of the next site build. The site
-it writes stays out of the source tree. The Release `--docs` took 0.2–1.0 s on
-an M-series Mac under load; the sanitized one took 5–9 s.
+it writes stays out of the source tree. The same selector checks documentation
+fixtures for rendering, package references, and rejection of invalid original
+snippets. These compiler-only cases need no player or launcher. The Release
+`--docs` took 0.2–1.0 s on an M-series Mac under load; the sanitized one took 5–9 s.
 
-`chibi-cli` runs nineteen launcher cases: each command over a fake sibling
+`chibi-cli` runs seventeen launcher cases: each command over a fake sibling
 compiler and player, the launcher's own `version` and `doctor`, and the real
-`chibi-compile`'s `--check`, `--test`, `--format` and `--docs` on fixture
-projects, package trees and sites. Its two `--docs` cases start the compiler 22
-times, including three fixtures for package imports.
+`chibi-compile`'s `--check`, `--test` and `--format` on fixture projects and
+package trees. Its `doc` case checks forwarding to the compiler; the real
+compiler's documentation cases run under `published-docs`.
+
+`python3 tools/test_policy.py tool language-docs-markdown` checks the authored
+renderer on both bytecode and the compiled backend, including highlighted source
+slices, lexical
+error fallback, escaping, whitespace, UTF-8, and light/dark token colors. Those
+presentation checks are separate from the original-snippet validation above.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and those Release tools, except
@@ -1263,12 +1271,13 @@ embed the installed core file through `Chibi_CORE_SOURCE_DIR`. Build separately;
 independently review before the first run under one shared 60-second deadline.
 This focused route is outside the language aggregate.
 
-`python3 tools/test_policy.py tool language-docs-markdown` selects eleven fixed C
+`python3 tools/test_policy.py tool language-docs-markdown` selects fourteen fixed C
 cases for `chibi doc`'s authored generator: one preparation of the shipped
-`markdown`, `site`, `reference` and `grammar` packages with `core:strings` per
-case, rendering blocks, tables and site links, laying out navigation and
-generating a package reference and a grammar page on bytecode and SLJIT, each
-call under a 2,000,000-instruction budget. There is no filesystem, process, service or
+`markdown`, `site`, `reference`, `grammar` and shared `source_tokenizer` packages
+with `core:strings` per case. They render blocks, tables and site links, lay out
+navigation, generate a package reference and a grammar page, and check highlighted
+source slices and lexical-error fallback on bytecode and SLJIT. Each call stays
+under a 2,000,000-instruction budget. There is no filesystem, process, service or
 GPU work. This focused route is outside the language aggregate.
 
 `python3 tools/test_policy.py tool language-package-tests` selects two fixed C

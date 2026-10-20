@@ -950,11 +950,13 @@ TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries)
                  "BuildFileStamp(\"meta/a\")==stamp) { return 6; } "
                  "return 0; } }";
     static const char *failures[] = {
-        "Meta :: library { Build :: () -> int { BuildListDirectory(\"meta/a\"); "
+        "Meta :: library { Build :: () -> int { "
+        "BuildListDirectory(\"meta/a\"); "
         "return 0; } }",
         "Meta :: library { Build :: () -> int { BuildFileStamp(\"meta/loop\"); "
         "return 0; } }",
-        "Meta :: library { Build :: () -> int { BuildFileKind(\"meta/loop/x\"); "
+        "Meta :: library { Build :: () -> int { "
+        "BuildFileKind(\"meta/loop/x\"); "
         "return 0; } }",
         "Meta :: library { Build :: () -> int { BuildListDirectory(\"many\"); "
         "return 0; } }",

@@ -72,6 +72,27 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     script_analyzer_generic_free(a);
     return out;
 }
+/* `on Tick :: (dt: s)` in a system's header names the fields of the step's
+ * payload that its body reads, as a handler's list does. */
+static void system_step(analyzer *a, TSNode program, int function)
+{
+    TSNode list = script_analyzer_field(program, "payload");
+    if (ts_node_is_null(list)) {
+        return;
+    }
+    TSNode name = script_analyzer_field(program, "event");
+    const script_catalog_capability
+        *tick = script_catalog_capability_by_id(a->catalog, a->catalog->tick_event);
+    char *spelled = script_analyzer_name_copy(a, name);
+    if (!tick || !script_name_matches(tick->name, spelled)) {
+        script_analyzer_diagnostic(a, name, "A system runs on %s", tick ? tick->name : "Tick");
+    }
+    free(spelled);
+    a->out->functions[function].named = true;
+    if (tick) {
+        script_analyzer_named_payload(a, function, list, tick->parameters, tick->parameter_count, tick->name);
+    }
+}
 static script_analysis *analyze(
     const script_syntax *syntax,
     const script_catalog *catalog,
@@ -164,11 +185,13 @@ static script_analysis *analyze(
         }
         if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
             script_analyzer_system_parameters(&a, program);
+            /* A system that names its step's fields reads only those. */
+            bool step = !ts_node_is_null(script_analyzer_field(program, "payload"));
             if (catalog->tick_event) {
                 apush(
                     out->symbols,
                     ((script_symbol){ .id = script_catalog_id("payload", "system.Tick"),
-                                      .name = xstrdup("event"),
+                                      .name = xstrdup(step ? "" : "event"),
                                       .kind = SCRIPT_PARAMETER,
                                       .capability = catalog->tick_event,
                                       .type = { .storage = PIN_STRUCT,
@@ -208,6 +231,7 @@ static script_analysis *analyze(
                 int function = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);
                 out->functions[function].scope = a.scope;
                 out->functions[function].event = catalog->tick_event;
+                system_step(&a, program, function);
                 script_analyzer_callable_definition(&a, function, body);
             }
             script_analyzer_callable_definitions(&a, false);

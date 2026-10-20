@@ -1679,16 +1679,23 @@ semantics.
 ### System headers
 
 Systems declare their required and optional components in the header. Their
-ordinary body runs once per matched entity per tick:
+ordinary body runs once per matched entity per tick. A system names the step
+it reads after its query clauses, as a handler names its payload fields:
 
 ```code
-EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider {
+EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider
+    on Tick :: (dt: s) {
     if (trigger) {
         emitter.Active = trigger.Firing;
     }
-    emitter.Rate += event.dt;
+    emitter.Rate += dt;
 }
 ```
+
+- A system runs on Tick, so the clause names Tick.
+- Only the system's body reads the step. Pass it to the functions that the
+  body calls.
+- A system that names its step cannot read `event`.
 
 ### Required, optional and excluded components
 

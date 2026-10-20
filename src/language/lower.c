@@ -3500,6 +3500,21 @@ static bool sole_output(lower *l, const script_expression *e)
     return function >= 0 && acount(l->a->functions[function].results) == 1 &&
            e->member == l->a->symbols[l->a->functions[function].results[0]].id;
 }
+/* A system runs once per step with no arguments: its step's payload is Tick's
+ * one field, the step the context holds, which a system reads by name. */
+static int system_step(lower *l, const script_symbol *s, script_range range)
+{
+    const script_catalog_capability
+        *tick = script_catalog_capability_by_id(l->catalog, l->catalog->tick_event);
+    if (!tick || tick->parameter_count != 1) {
+        error(l, range, "A system reads only the step, Tick's one payload field");
+        return -1;
+    }
+    int slot = value_op(l, (behavior_function_instruction){ .op = BF_DELTA, .type = PIN_F32 }, range);
+    script_type actual = s->type;
+    actual.storage = PIN_F32;
+    return convert(l, slot, actual, s->type, range);
+}
 static int symbol_value(lower *l, const script_expression *e)
 {
     const script_symbol *s = &l->a->symbols[e->symbol];
@@ -3600,6 +3615,10 @@ static int symbol_value(lower *l, const script_expression *e)
                                              .left = l->variables[e->symbol] },
             e->range
         );
+    }
+    if (s->kind == SCRIPT_PARAMETER && s->function >= 0 &&
+        l->a->functions[s->function].kind == SCRIPT_FUNCTION_SYSTEM) {
+        return system_step(l, s, e->range);
     }
     if (l->parameters[e->symbol] >= 0) {
         if ((s->type.flags & SCRIPT_TYPE_REFERENCE) ||

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FAQ · Chibi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+<p class="site"><a href="index.html">Chibi</a></p>
+<h2>Overview</h2>
+<ul>
+<li><a href="index.html">Chibi</a></li>
+</ul>
+<h2>Learn</h2>
+<ul>
+<li><a href="language.html">The Chibi language</a></li>
+</ul>
+<h2>Testing</h2>
+<ul>
+<li><a href="testing.html">Testing</a></li>
+</ul>
+<h2>Packages</h2>
+<ul>
+<li><a href="packages.html">Core packages</a></li>
+</ul>
+<h2>Examples</h2>
+<ul>
+<li><a href="examples.html">Examples</a></li>
+</ul>
+<h2>FAQ</h2>
+<ul>
+<li><a href="faq.html" aria-current="page">FAQ</a></li>
+</ul>
+<h2>Grammar</h2>
+<ul>
+<li><a href="grammar.html">Grammar</a></li>
+</ul>
+<h2>Toolchain</h2>
+<ul>
+<li><a href="toolchain.html">Toolchain</a></li>
+</ul>
+</nav>
+<main>
+<h1 id="faq">FAQ</h1>
+<h2 id="what-is-chibi">What is Chibi?</h2>
+<p>A C23 scripting language, compiler and runtime for games, with a separate editor, Studio. Games are folders of <code>.chibi</code> source and KDL assets that the <code>chibi</code> command compiles, runs, tests and exports.</p>
+<h2 id="where-do-i-start">Where do I start?</h2>
+<p>Build the SDK, then run one of the projects listed under <a href="examples.html">Examples</a> with <code>chibi run</code>. The <a href="language.html">language guide</a> describes the source, and <a href="toolchain.html">Toolchain</a> every command.</p>
+<h2 id="do-i-need-studio">Do I need Studio?</h2>
+<p>No. Every asset is a text file you can edit directly, and <code>chibi fmt</code> keeps them canonical. Studio edits the same files.</p>
+<h2 id="how-do-i-check-a-project-before-committing">How do I check a project before committing?</h2>
+<p><code>chibi check</code> validates it without writing anything, <code>chibi fmt --check</code> reports assets that are not canonical, and <code>chibi test</code> runs package tests. Each exits nonzero on a problem.</p>
+<h2 id="can-i-ship-to-the-web">Can I ship to the web?</h2>
+<p>Yes. <code>chibi export --web PLAYER</code> writes a static site for any host, and <code>chibi web</code> serves one while you develop.</p>
+<h2 id="why-does-chibi-test-say-expected-package-header">Why does <code>chibi test</code> say &quot;Expected package header&quot;?</h2>
+<p>Its ROOT must hold only package files. Point it at the folder of your packages, not at a game project, whose behaviors and libraries are not packages.</p>
+<h2 id="does-a-slow-test-hang-forever">Does a slow test hang forever?</h2>
+<p>No. Each test stops after 100 million instructions and is reported as failed.</p>
+</main>
+</body>
+</html>

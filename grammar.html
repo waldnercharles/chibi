@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grammar · Chibi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+<p class="site"><a href="index.html">Chibi</a></p>
+<h2>Overview</h2>
+<ul>
+<li><a href="index.html">Chibi</a></li>
+</ul>
+<h2>Learn</h2>
+<ul>
+<li><a href="language.html">The Chibi language</a></li>
+</ul>
+<h2>Testing</h2>
+<ul>
+<li><a href="testing.html">Testing</a></li>
+</ul>
+<h2>Packages</h2>
+<ul>
+<li><a href="packages.html">Core packages</a></li>
+</ul>
+<h2>Examples</h2>
+<ul>
+<li><a href="examples.html">Examples</a></li>
+</ul>
+<h2>FAQ</h2>
+<ul>
+<li><a href="faq.html">FAQ</a></li>
+</ul>
+<h2>Grammar</h2>
+<ul>
+<li><a href="grammar.html" aria-current="page">Grammar</a></li>
+</ul>
+<h2>Toolchain</h2>
+<ul>
+<li><a href="toolchain.html">Toolchain</a></li>
+</ul>
+</nav>
+<main>
+<h1 id="grammar">Grammar</h1>
+<p>The syntax of <code>.chibi</code> source, rule by rule, as the parser defines it. A rule whose name starts with <code>_</code> shapes others without appearing in syntax trees.</p>
+<h3 id="source_file">source_file</h3>
+<pre><code class="language-js">source_file: ($) =&gt;
+  choice(
+    $.behavior, $.library, $.system, $.component,
+    $.prototype_declaration, $.relationship_declaration,
+    seq(field(&quot;package&quot;, $.package_header), repeat(choice(
+      $.import_declaration,
+      $.behavior, $.system, $.component,
+      $.function_declaration, $.constant_declaration,
+      $.state_declaration, $.record_declaration, $.union_declaration,
+      $.macro_declaration,
+    ))),
+  ),
+</code></pre>
+<h3 id="package_header">package_header</h3>
+<pre><code class="language-js">package_header: ($) =&gt; seq(K.package, field(&quot;name&quot;, $.identifier), $._end),
+</code></pre>
+<h3 id="import_declaration">import_declaration</h3>
+<pre><code class="language-js">import_declaration: ($) =&gt; seq(
+  K.import,
+  optional(field(&quot;alias&quot;, $.identifier)),
+  field(&quot;path&quot;, $.string),
+  $._end,
+),
+</code></pre>
+<h3 id="prototype_declaration">prototype_declaration</h3>
+<pre><code class="language-js">prototype_declaration: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.prototype,
+    optional(field(&quot;bases&quot;, $.prototype_bases)),
+    field(&quot;body&quot;, $.prototype_body)),
+</code></pre>
+<h3 id="prototype_bases">prototype_bases</h3>
+<pre><code class="language-js">prototype_bases: ($) =&gt; seq(&quot;(&quot;, comma($._name), &quot;)&quot;),
+</code></pre>
+<h3 id="prototype_body">prototype_body</h3>
+<pre><code class="language-js">prototype_body: ($) =&gt;
+  seq(&quot;{&quot;, repeat(choice($.prototype_component,
+    seq($.struct_field, choice(&quot;,&quot;, $._end)))), &quot;}&quot;),
+</code></pre>
+<h3 id="prototype_component">prototype_component</h3>
+<pre><code class="language-js">prototype_component: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), field(&quot;body&quot;, $.struct_expression)),
+</code></pre>
+<h3 id="relationship_declaration">relationship_declaration</h3>
+<pre><code class="language-js">relationship_declaration: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.relationship,
+    field(&quot;body&quot;, $.struct_expression)),
+</code></pre>
+<h3 id="behavior">behavior</h3>
+<pre><code class="language-js">behavior: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    &quot;::&quot;, K.behavior,
+    field(&quot;body&quot;, $.declaration_body),
+  ),
+</code></pre>
+<h3 id="library">library</h3>
+<pre><code class="language-js">library: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.library, field(&quot;body&quot;, alias($.library_body, $.declaration_body))),
+</code></pre>
+<h3 id="system">system</h3>
+<pre><code class="language-js">system: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    &quot;::&quot;, K.system,
+    field(&quot;parameters&quot;, $.parameter_list),
+    repeat(field(&quot;join&quot;, $.query_join)),
+    optional(field(&quot;without&quot;, $.without_clause)),
+    optional(seq(K.where, field(&quot;where&quot;, $._expression))),
+    field(&quot;body&quot;, $.system_body),
+  ),
+</code></pre>
+<h3 id="component">component</h3>
+<p>A component's fields are data: a type, or a number measured by an optional range and unit.</p>
+<pre><code class="language-js">component: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    &quot;::&quot;, K.component,
+    field(&quot;body&quot;, $.component_body),
+  ),
+</code></pre>
+<h3 id="component_body">component_body</h3>
+<pre><code class="language-js">component_body: ($) =&gt; seq(&quot;{&quot;, repeat($.component_field), &quot;}&quot;),
+</code></pre>
+<h3 id="component_field">component_field</h3>
+<pre><code class="language-js">component_field: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._member_name),
+    &quot;:&quot;,
+    field(&quot;type&quot;, choice($.type, $.measure, $.measured_type)),
+    $._end,
+  ),
+</code></pre>
+<h3 id="measure">measure</h3>
+<p>A lone name is a type; a unit standing alone reads as one and resolves to a measure when no type has its name.</p>
+<pre><code class="language-js">measure: ($) =&gt;
+  choice(
+    seq(field(&quot;range&quot;, $.range_type), optional(field(&quot;unit&quot;, $.unit))),
+    field(&quot;unit&quot;, alias($._compound_unit, $.unit)),
+  ),
+</code></pre>
+<h3 id="range_type">range_type</h3>
+<pre><code class="language-js">range_type: ($) =&gt;
+  seq(field(&quot;min&quot;, $._bound), &quot;..&quot;, field(&quot;max&quot;, $._bound)),
+</code></pre>
+<h3 id="_bound">_bound</h3>
+<pre><code class="language-js">_bound: ($) =&gt; choice($.number, alias($._negative_number, $.unary_expression)),
+</code></pre>
+<h3 id="_negative_number">_negative_number</h3>
+<pre><code class="language-js">_negative_number: ($) =&gt; seq(field(&quot;operator&quot;, &quot;-&quot;), field(&quot;operand&quot;, $.number)),
+</code></pre>
+<h3 id="unit">unit</h3>
+<p>u, s, u/s, u/s^2: unit names exist only here, so they stay free names.</p>
+<pre><code class="language-js">unit: ($) =&gt; seq($._unit_term, repeat(seq(&quot;/&quot;, $._unit_term))),
+</code></pre>
+<h3 id="measured_type">measured_type</h3>
+<pre><code class="language-js">measured_type: ($) =&gt; seq(field(&quot;base&quot;, $.type), field(&quot;unit&quot;, $.unit)),
+</code></pre>
+<h3 id="_signature_type">_signature_type</h3>
+<pre><code class="language-js">_signature_type: ($) =&gt; choice($.type, $.measured_type, alias($._compound_unit, $.unit)),
+</code></pre>
+<h3 id="_compound_unit">_compound_unit</h3>
+<pre><code class="language-js">_compound_unit: ($) =&gt;
+  choice(
+    seq($.identifier, &quot;^&quot;, $.number, repeat(seq(&quot;/&quot;, $._unit_term))),
+    seq($.identifier, repeat1(seq(&quot;/&quot;, $._unit_term))),
+  ),
+</code></pre>
+<h3 id="_unit_term">_unit_term</h3>
+<pre><code class="language-js">_unit_term: ($) =&gt; seq($.identifier, optional(seq(&quot;^&quot;, $.number))),
+</code></pre>
+<h3 id="without_clause">without_clause</h3>
+<pre><code class="language-js">without_clause: ($) =&gt; seq(K.without, comma($.type)),
+</code></pre>
+<h3 id="declaration_body">declaration_body</h3>
+<pre><code class="language-js">declaration_body: ($) =&gt; seq(&quot;{&quot;, repeat($._declaration), &quot;}&quot;),
+</code></pre>
+<h3 id="library_body">library_body</h3>
+<pre><code class="language-js">library_body: ($) =&gt; seq(&quot;{&quot;, repeat(choice($._declaration, $.record_declaration)), &quot;}&quot;),
+</code></pre>
+<h3 id="record_declaration">record_declaration</h3>
+<pre><code class="language-js">record_declaration: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.struct,
+    optional(field(&quot;parameters&quot;, $.parameter_list)),
+    field(&quot;body&quot;, $.record_body), optional(&quot;;&quot;)),
+</code></pre>
+<h3 id="record_body">record_body</h3>
+<pre><code class="language-js">record_body: ($) =&gt; seq(&quot;{&quot;, repeat($.record_field), &quot;}&quot;),
+</code></pre>
+<h3 id="record_field">record_field</h3>
+<pre><code class="language-js">record_field: ($) =&gt;
+  seq(field(&quot;name&quot;, $._member_name), &quot;:&quot;, field(&quot;type&quot;, $.type),
+    optional(seq(&quot;=&quot;, field(&quot;value&quot;, $._expression))), $._end),
+</code></pre>
+<h3 id="system_body">system_body</h3>
+<pre><code class="language-js">system_body: ($) =&gt;
+  seq(&quot;{&quot;, repeat(choice($._common_declaration,
+    alias($._explicit_state_declaration, $.state_declaration), $._statement)), &quot;}&quot;),
+</code></pre>
+<h3 id="_declaration">_declaration</h3>
+<pre><code class="language-js">_declaration: ($) =&gt;
+  choice($.state_declaration, $._common_declaration),
+</code></pre>
+<h3 id="_common_declaration">_common_declaration</h3>
+<pre><code class="language-js">_common_declaration: ($) =&gt;
+  choice(
+    $.action_declaration,
+    $.event_declaration,
+    $.bind_declaration,
+    $.handler,
+    $.function_declaration,
+    $.constant_declaration,
+    $.union_declaration,
+    $.macro_declaration,
+    $.events_declaration,
+    $.entry_declaration,
+    $.exit_declaration,
+    $.query_declaration,
+  ),
+</code></pre>
+<h3 id="state_declaration">state_declaration</h3>
+<p>Behavior/library roots retain implicit declarations. Executable bodies require an explicit retained qualifier; ordinary declarations are locals.</p>
+<pre><code class="language-js">state_declaration: ($) =&gt;
+  prec.dynamic(1, choice($._state_declaration_value, $._explicit_state_declaration)),
+</code></pre>
+<h3 id="_explicit_state_declaration">_explicit_state_declaration</h3>
+<pre><code class="language-js">_explicit_state_declaration: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name), &quot;:&quot;, field(&quot;storage&quot;, K.retain),
+    choice(
+      seq(field(&quot;type&quot;, $.type), optional(seq(&quot;=&quot;, field(&quot;value&quot;, $._expression)))),
+      seq(&quot;=&quot;, field(&quot;value&quot;, $._expression)),
+    ),
+    $._end,
+  ),
+</code></pre>
+<h3 id="_state_declaration_value">_state_declaration_value</h3>
+<pre><code class="language-js">_state_declaration_value: ($) =&gt;
+  seq(
+    choice(
+      seq(field(&quot;name&quot;, $._name), &quot;:=&quot;, field(&quot;value&quot;, $._expression)),
+      seq(
+        field(&quot;name&quot;, $._name),
+        &quot;:&quot;,
+        field(&quot;type&quot;, $.type),
+        optional(seq(&quot;=&quot;, field(&quot;value&quot;, $._expression))),
+      ),
+    ),
+    $._end,
+  ),
+</code></pre>
+<h3 id="action_declaration">action_declaration</h3>
+<pre><code class="language-js">action_declaration: ($) =&gt;
+  seq(optional(K.disabled), K.action, $._computation_declaration),
+</code></pre>
+<h3 id="event_declaration">event_declaration</h3>
+<pre><code class="language-js">event_declaration: ($) =&gt; seq(K.event, $._computation_declaration),
+</code></pre>
+<h3 id="_computation_declaration">_computation_declaration</h3>
+<pre><code class="language-js">_computation_declaration: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    optional(seq(&quot;:&quot;, field(&quot;type&quot;, choice($.type, $.parameter_list)))),
+    &quot;=&quot;,
+    field(&quot;value&quot;, $._expression),
+    $._end,
+  ),
+</code></pre>
+<h3 id="bind_declaration">bind_declaration</h3>
+<pre><code class="language-js">bind_declaration: ($) =&gt;
+  seq(
+    K.bind,
+    field(&quot;target&quot;, $._expression),
+    &quot;=&quot;,
+    field(&quot;value&quot;, $._expression),
+    $._end,
+  ),
+</code></pre>
+<h3 id="handler">handler</h3>
+<pre><code class="language-js">handler: ($) =&gt;
+  seq(
+    field(&quot;kind&quot;, choice(K.on, K.after)),
+    field(&quot;name&quot;, $._handler_name),
+    optional(seq(K.as, field(&quot;alias&quot;, $._name))),
+    optional(field(&quot;parameters&quot;, $.parameter_list)),
+    field(&quot;body&quot;, $.block),
+  ),
+</code></pre>
+<h3 id="_handler_name">_handler_name</h3>
+<pre><code class="language-js">_handler_name: ($) =&gt;
+  choice(
+    $._name,
+    $.builtin_reference,
+    alias(K.entry, $.builtin_reference),
+    alias($._handler_path, $.member_expression),
+  ),
+</code></pre>
+<h3 id="_handler_path">_handler_path</h3>
+<pre><code class="language-js">_handler_path: ($) =&gt;
+  seq(
+    field(&quot;object&quot;, $._handler_name),
+    &quot;.&quot;,
+    field(&quot;member&quot;, $._member_name),
+  ),
+</code></pre>
+<h3 id="attribute">attribute</h3>
+<p><code>@test</code> before a declaration marks it; analysis decides which names exist.</p>
+<pre><code class="language-js">attribute: ($) =&gt; seq(&quot;@&quot;, field(&quot;name&quot;, $.identifier)),
+</code></pre>
+<h3 id="function_declaration">function_declaration</h3>
+<pre><code class="language-js">function_declaration: ($) =&gt;
+  seq(repeat(field(&quot;attribute&quot;, $.attribute)), field(&quot;name&quot;, $._name), &quot;::&quot;,
+    $._callable_signature, optional(&quot;;&quot;)),
+</code></pre>
+<h3 id="constant_declaration">constant_declaration</h3>
+<pre><code class="language-js">constant_declaration: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), choice(&quot;::&quot;, seq(&quot;:&quot;, field(&quot;type&quot;, $.type), &quot;:&quot;)),
+    field(&quot;value&quot;, $._expression), $._end),
+</code></pre>
+<h3 id="union_declaration">union_declaration</h3>
+<pre><code class="language-js">union_declaration: ($) =&gt;
+  seq(field(&quot;name&quot;, $._name), &quot;::&quot;, K.union, &quot;{&quot;,
+    $.union_variant, repeat(seq(&quot;|&quot;, $.union_variant)), optional(&quot;|&quot;), &quot;}&quot;, optional(&quot;;&quot;)),
+</code></pre>
+<h3 id="union_variant">union_variant</h3>
+<pre><code class="language-js">union_variant: ($) =&gt; choice(
+  field(&quot;literal&quot;, $.string),
+  seq(field(&quot;name&quot;, $._name), optional(field(&quot;parameters&quot;, $.parameter_list))),
+),
+</code></pre>
+<h3 id="macro_declaration">macro_declaration</h3>
+<pre><code class="language-js">macro_declaration: ($) =&gt; seq(K.macro, $._callable_declaration),
+</code></pre>
+<h3 id="_callable_declaration">_callable_declaration</h3>
+<pre><code class="language-js">_callable_declaration: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    $._callable_signature,
+  ),
+</code></pre>
+<h3 id="_callable_signature">_callable_signature</h3>
+<pre><code class="language-js">_callable_signature: ($) =&gt;
+  seq(
+    field(&quot;parameters&quot;, $.parameter_list),
+    optional(seq(&quot;-&gt;&quot;, field(&quot;results&quot;, choice($.parameter_list, $._signature_type)))),
+    optional(&quot;=&gt;&quot;), field(&quot;body&quot;, $.callable_body),
+  ),
+</code></pre>
+<h3 id="callable_body">callable_body</h3>
+<pre><code class="language-js">callable_body: ($) =&gt;
+  seq(&quot;{&quot;, repeat(choice($._common_declaration,
+    alias($._explicit_state_declaration, $.state_declaration), $._statement)), &quot;}&quot;),
+</code></pre>
+<h3 id="parameter_list">parameter_list</h3>
+<pre><code class="language-js">parameter_list: ($) =&gt; seq(&quot;(&quot;, optional(comma($.parameter)), &quot;)&quot;),
+</code></pre>
+<h3 id="query_parameter_list">query_parameter_list</h3>
+<pre><code class="language-js">query_parameter_list: ($) =&gt; comma($.parameter),
+</code></pre>
+<h3 id="query_join">query_join</h3>
+<pre><code class="language-js">query_join: ($) =&gt; seq(K.join, choice(
+  field(&quot;parameters&quot;, $.query_parameter_list),
+  field(&quot;generator&quot;, $.query_generator),
+)),
+</code></pre>
+<h3 id="query_generator">query_generator</h3>
+<pre><code class="language-js">query_generator: ($) =&gt; seq(
+  field(&quot;name&quot;, $._name), K.in, field(&quot;source&quot;, $._expression),
+),
+</code></pre>
+<h3 id="parameter">parameter</h3>
+<pre><code class="language-js">parameter: ($) =&gt;
+  seq(
+    optional(field(&quot;comptime&quot;, &quot;$&quot;)),
+    field(&quot;name&quot;, $._name),
+    optional(seq(&quot;:&quot;, field(&quot;type&quot;, $._signature_type))),
+    optional(seq(choice(K.from, K.split), field(&quot;source&quot;, $._expression))),
+    optional(seq(&quot;=&quot;, field(&quot;value&quot;, $._expression))),
+  ),
+</code></pre>
+<h3 id="events_declaration">events_declaration</h3>
+<pre><code class="language-js">events_declaration: ($) =&gt;
+  seq(K.events, field(&quot;name&quot;, $._name), field(&quot;body&quot;, $.declaration_body)),
+</code></pre>
+<h3 id="entry_declaration">entry_declaration</h3>
+<pre><code class="language-js">entry_declaration: ($) =&gt;
+  seq(K.entry, field(&quot;name&quot;, $._name), field(&quot;body&quot;, $.block)),
+</code></pre>
+<h3 id="exit_declaration">exit_declaration</h3>
+<pre><code class="language-js">exit_declaration: ($) =&gt; seq(K.exit, field(&quot;name&quot;, $._name), $._end),
+</code></pre>
+<h3 id="query_declaration">query_declaration</h3>
+<pre><code class="language-js">query_declaration: ($) =&gt;
+  seq(K.query, field(&quot;value&quot;, $._expression), $._end),
+</code></pre>
+<h3 id="type">type</h3>
+<pre><code class="language-js">type: ($) =&gt; choice($._single_type, $.union_type),
+</code></pre>
+<h3 id="union_type">union_type</h3>
+<pre><code class="language-js">union_type: ($) =&gt; prec.left(1, seq(
+  field(&quot;member&quot;, alias($._single_type, $.type)),
+  repeat1(seq(&quot;|&quot;, field(&quot;member&quot;, alias($._single_type, $.type)))),
+)),
+</code></pre>
+<h3 id="_single_type">_single_type</h3>
+<pre><code class="language-js">_single_type: ($) =&gt;
+  seq(
+    repeat(
+      field(
+        &quot;trait&quot;,
+        choice(
+          K.plain,
+          K.ref,
+          K.service,
+          &quot;self&quot;,
+          K.setting,
+          seq(K.wildcard, &quot;(&quot;, $.number, &quot;)&quot;),
+        ),
+      ),
+    ),
+    choice(
+      seq(field(&quot;name&quot;, choice($.type_name, $.type_binder)),
+        optional(field(&quot;arguments&quot;, $.type_argument_list))),
+      $.type_application,
+    ),
+    repeat(choice(seq(&quot;[&quot;, &quot;]&quot;), &quot;?&quot;)),
+  ),
+</code></pre>
+<h3 id="type_name">type_name</h3>
+<pre><code class="language-js">type_name: ($) =&gt; seq($._name, repeat(seq(&quot;.&quot;, $._name))),
+</code></pre>
+<h3 id="type_binder">type_binder</h3>
+<pre><code class="language-js">type_binder: ($) =&gt; seq(&quot;$&quot;, field(&quot;name&quot;, $._name)),
+</code></pre>
+<h3 id="type_application">type_application</h3>
+<pre><code class="language-js">type_application: ($) =&gt;
+  seq(field(&quot;function&quot;, $.type_name), field(&quot;arguments&quot;, $.argument_list)),
+</code></pre>
+<h3 id="type_argument_list">type_argument_list</h3>
+<pre><code class="language-js">type_argument_list: ($) =&gt; seq(&quot;&lt;&quot;, comma($.type), &quot;&gt;&quot;),
+</code></pre>
+<h3 id="block">block</h3>
+<pre><code class="language-js">block: ($) =&gt; seq(&quot;{&quot;, repeat($._statement), &quot;}&quot;),
+</code></pre>
+<h3 id="_statement">_statement</h3>
+<pre><code class="language-js">_statement: ($) =&gt;
+  choice(
+    $.local_declaration,
+    $.assignment,
+    $.reduce_statement,
+    $.expression_statement,
+    $.if_statement,
+    $.while_statement,
+    $.for_statement,
+    $.switch_statement,
+    $.constant_declaration,
+    $.sequence_statement,
+    $.return_statement,
+    $.goto_statement,
+    $.break_statement,
+    $.continue_statement,
+    $.yield_statement,
+    $.cancel_statement,
+    $.label_statement,
+  ),
+</code></pre>
+<h3 id="local_declaration">local_declaration</h3>
+<pre><code class="language-js">local_declaration: ($) =&gt;
+  prec.dynamic(2, seq(
+    field(&quot;name&quot;, $._name),
+    choice(&quot;:=&quot;, seq(&quot;:&quot;, field(&quot;type&quot;, $.type), &quot;=&quot;)),
+    field(&quot;value&quot;, $._expression),
+    $._end,
+  )),
+</code></pre>
+<h3 id="assignment">assignment</h3>
+<pre><code class="language-js">assignment: ($) =&gt;
+  seq(
+    field(&quot;target&quot;, $._expression),
+    field(
+      &quot;operator&quot;,
+      choice(&quot;=&quot;, &quot;+=&quot;, &quot;-=&quot;, &quot;*=&quot;, &quot;/=&quot;, &quot;%=&quot;, &quot;&amp;=&quot;, &quot;|=&quot;, &quot;^=&quot;),
+    ),
+    field(&quot;value&quot;, $._expression),
+    $._end,
+  ),
+</code></pre>
+<h3 id="expression_statement">expression_statement</h3>
+<pre><code class="language-js">expression_statement: ($) =&gt; seq($._expression, $._end),
+</code></pre>
+<h3 id="reduce_statement">reduce_statement</h3>
+<pre><code class="language-js">reduce_statement: ($) =&gt; seq(
+  K.reduce,
+  choice(
+    seq(optional(field(&quot;ordering&quot;, K.unordered)),
+      field(&quot;target&quot;, $._expression), field(&quot;operator&quot;, &quot;+=&quot;),
+      field(&quot;value&quot;, $._expression)),
+    seq(field(&quot;operator&quot;, choice(&quot;min&quot;, &quot;max&quot;)), &quot;(&quot;,
+      field(&quot;target&quot;, $._expression), &quot;,&quot;, field(&quot;value&quot;, $._expression), &quot;)&quot;),
+  ),
+  $._end,
+),
+</code></pre>
+<h3 id="if_statement">if_statement</h3>
+<pre><code class="language-js">if_statement: ($) =&gt;
+  prec.right(
+    seq(
+      K.if,
+      field(&quot;condition&quot;, $._expression),
+      field(&quot;consequence&quot;, $.block),
+      optional(
+        seq(K.else, field(&quot;alternative&quot;, choice($.block, $.if_statement))),
+      ),
+    ),
+  ),
+</code></pre>
+<h3 id="while_statement">while_statement</h3>
+<pre><code class="language-js">while_statement: ($) =&gt;
+  seq(K.while, field(&quot;condition&quot;, $._expression), field(&quot;body&quot;, $.block)),
+</code></pre>
+<h3 id="for_statement">for_statement</h3>
+<pre><code class="language-js">for_statement: ($) =&gt;
+  seq(
+    K.for,
+    choice(
+      $._range_header,
+      $._foreach_header,
+      seq(&quot;(&quot;, choice($._range_header, $._foreach_header), &quot;)&quot;),
+    ),
+    field(&quot;body&quot;, $.block),
+  ),
+</code></pre>
+<h3 id="_range_header">_range_header</h3>
+<pre><code class="language-js">_range_header: ($) =&gt;
+  seq(
+    field(&quot;name&quot;, $._name),
+    K.in,
+    field(&quot;first&quot;, $._expression),
+    &quot;..&quot;,
+    field(&quot;last&quot;, $._expression),
+  ),
+</code></pre>
+<h3 id="_foreach_header">_foreach_header</h3>
+<pre><code class="language-js">_foreach_header: ($) =&gt;
+  seq(optional(seq(field(&quot;key&quot;, $._name), &quot;,&quot;)),
+    field(&quot;name&quot;, $._name),
+    optional(seq(&quot;:&quot;, field(&quot;reference&quot;, K.ref))),
+    K.in, field(&quot;value&quot;, $._expression)),
+</code></pre>
+<h3 id="switch_statement">switch_statement</h3>
+<pre><code class="language-js">switch_statement: ($) =&gt;
+  seq(K.switch, field(&quot;value&quot;, $._expression), &quot;{&quot;, repeat($.switch_arm), &quot;}&quot;),
+</code></pre>
+<h3 id="switch_arm">switch_arm</h3>
+<pre><code class="language-js">switch_arm: ($) =&gt;
+  seq(K.case, optional(field(&quot;value&quot;, choice($.variant_pattern, $._expression))),
+    &quot;:&quot;, field(&quot;body&quot;, choice($.block, alias($._case_statements, $.block)))),
+</code></pre>
+<h3 id="_case_statements">_case_statements</h3>
+<pre><code class="language-js">_case_statements: ($) =&gt; repeat1($._statement),
+</code></pre>
+<h3 id="variant_pattern">variant_pattern</h3>
+<pre><code class="language-js">variant_pattern: ($) =&gt; seq(&quot;.&quot;, field(&quot;name&quot;, $._name),
+  optional(field(&quot;bindings&quot;, $.pattern_bindings))),
+</code></pre>
+<h3 id="pattern_bindings">pattern_bindings</h3>
+<pre><code class="language-js">pattern_bindings: ($) =&gt; seq(&quot;(&quot;, optional(comma($._name)), &quot;)&quot;),
+</code></pre>
+<h3 id="sequence_statement">sequence_statement</h3>
+<pre><code class="language-js">sequence_statement: ($) =&gt;
+  seq(K.sequence, &quot;{&quot;, repeat($.branch_statement), &quot;}&quot;),
+</code></pre>
+<h3 id="branch_statement">branch_statement</h3>
+<pre><code class="language-js">branch_statement: ($) =&gt; seq(K.branch, field(&quot;body&quot;, $.block)),
+</code></pre>
+<h3 id="return_statement">return_statement</h3>
+<pre><code class="language-js">return_statement: ($) =&gt;
+  seq(
+    K.return,
+    optional(seq(&quot;.&quot;, field(&quot;outcome&quot;, $._name))),
+    optional(field(&quot;value&quot;, choice($.argument_list, $._expression))),
+    $._end,
+  ),
+</code></pre>
+<h3 id="goto_statement">goto_statement</h3>
+<pre><code class="language-js">goto_statement: ($) =&gt; seq(K.goto, field(&quot;name&quot;, $._name), $._end),
+</code></pre>
+<h3 id="break_statement">break_statement</h3>
+<pre><code class="language-js">break_statement: ($) =&gt; seq(K.break, $._end),
+</code></pre>
+<h3 id="continue_statement">continue_statement</h3>
+<pre><code class="language-js">continue_statement: ($) =&gt; seq(K.continue, $._end),
+</code></pre>
+<h3 id="yield_statement">yield_statement</h3>
+<pre><code class="language-js">yield_statement: ($) =&gt; seq(K.yield, $._end),
+</code></pre>
+<h3 id="cancel_statement">cancel_statement</h3>
+<pre><code class="language-js">cancel_statement: ($) =&gt; seq(K.cancel, field(&quot;value&quot;, $._expression),
+    optional(seq(K.after, field(&quot;duration&quot;, $._expression))), $._end),
+</code></pre>
+<h3 id="label_statement">label_statement</h3>
+<pre><code class="language-js">label_statement: ($) =&gt; choice(
+  prec.dynamic(2, seq(field(&quot;name&quot;, $._name), &quot;:&quot;, $._automatic_terminator)),
+  seq(field(&quot;name&quot;, $._name), &quot;:&quot;),
+),
+</code></pre>
+<h3 id="_expression">_expression</h3>
+<pre><code class="language-js">_expression: ($) =&gt;
+  choice(
+    $._name,
+    alias(&quot;self&quot;, $.identifier),
+    $.string,
+    $.number,
+    $.boolean,
+    $.nil,
+    $.builtin_reference,
+    $.member_expression,
+    $.index_expression,
+    $.call_expression,
+    $.is_expression,
+    $.as_expression,
+    $.parenthesized_expression,
+    $.unary_expression,
+    $.binary_expression,
+    $.array_expression,
+    $.struct_expression,
+    $.await_expression,
+  ),
+</code></pre>
+<h3 id="builtin_reference">builtin_reference</h3>
+<pre><code class="language-js">builtin_reference: ($) =&gt; choice(K.state, K.event),
+</code></pre>
+<h3 id="member_expression">member_expression</h3>
+<pre><code class="language-js">member_expression: ($) =&gt;
+  prec.left(
+    P.member,
+    seq(
+      field(&quot;object&quot;, $._expression),
+      &quot;.&quot;,
+      field(&quot;member&quot;, $._member_name),
+    ),
+  ),
+</code></pre>
+<h3 id="index_expression">index_expression</h3>
+<pre><code class="language-js">index_expression: ($) =&gt;
+  prec.left(
+    P.member,
+    seq(
+      field(&quot;object&quot;, $._expression),
+      &quot;[&quot;,
+      field(&quot;index&quot;, $._expression),
+      &quot;]&quot;,
+    ),
+  ),
+</code></pre>
+<h3 id="call_expression">call_expression</h3>
+<pre><code class="language-js">call_expression: ($) =&gt;
+  prec.dynamic(1, prec(
+    P.member,
+    seq(
+      field(&quot;function&quot;, $._call_target),
+      optional(field(&quot;type_arguments&quot;, $.type_argument_list)),
+      field(&quot;arguments&quot;, $.argument_list),
+    ),
+  )),
+</code></pre>
+<h3 id="_call_target">_call_target</h3>
+<pre><code class="language-js">_call_target: ($) =&gt; choice(
+  $._name, $.builtin_reference,
+  $.member_expression, $.index_expression, $.call_expression,
+  $.parenthesized_expression,
+),
+</code></pre>
+<h3 id="argument_list">argument_list</h3>
+<pre><code class="language-js">argument_list: ($) =&gt;
+  seq(
+    &quot;(&quot;,
+    optional(
+      comma(choice($.named_argument, $.typed_argument, $._expression)),
+    ),
+    &quot;)&quot;,
+  ),
+</code></pre>
+<h3 id="named_argument">named_argument</h3>
+<pre><code class="language-js">named_argument: ($) =&gt;
+  // A bare identifier after ':' is a value. Type annotations with '=' or
+  // 'from'/'split' remain unambiguous even when the value is also a type name.
+  prec.dynamic(1, seq(field(&quot;name&quot;, $.argument_name), &quot;:&quot;, field(&quot;value&quot;, $._expression))),
+</code></pre>
+<h3 id="typed_argument">typed_argument</h3>
+<pre><code class="language-js">typed_argument: ($) =&gt;
+  prec.dynamic(2, seq(
+    field(&quot;name&quot;, $.argument_name),
+    &quot;:&quot;,
+    field(&quot;type&quot;, $.type),
+    choice(
+      seq(choice(K.from, K.split), field(&quot;source&quot;, $._expression),
+        optional(seq(&quot;=&quot;, field(&quot;value&quot;, $._expression)))),
+      seq(&quot;=&quot;, field(&quot;value&quot;, $._expression)),
+    ),
+  )),
+</code></pre>
+<h3 id="argument_name">argument_name</h3>
+<pre><code class="language-js">argument_name: ($) =&gt; seq($._member_name, repeat(seq(&quot;.&quot;, $._member_name))),
+</code></pre>
+<h3 id="is_expression">is_expression</h3>
+<pre><code class="language-js">is_expression: ($) =&gt; prec.left(P.comparison, seq(
+  field(&quot;value&quot;, $._expression), K.is,
+  choice($._negated_is_pattern, seq(
+    field(&quot;type&quot;, choice($.type, $.variant_pattern)),
+    optional(field(&quot;binding&quot;, $._name)))),
+)),
+</code></pre>
+<h3 id="_negated_is_pattern">_negated_is_pattern</h3>
+<pre><code class="language-js">_negated_is_pattern: ($) =&gt; prec.left(P.member, seq(
+  field(&quot;negated&quot;, K.not),
+  field(&quot;type&quot;, choice($.type, $.variant_pattern)),
+  optional(field(&quot;binding&quot;, $._name)),
+)),
+</code></pre>
+<h3 id="as_expression">as_expression</h3>
+<pre><code class="language-js">as_expression: ($) =&gt; prec.left(P.comparison, seq(
+  field(&quot;value&quot;, $._expression), K.as, field(&quot;type&quot;, $.type),
+)),
+</code></pre>
+<h3 id="parenthesized_expression">parenthesized_expression</h3>
+<pre><code class="language-js">parenthesized_expression: ($) =&gt;
+  seq(&quot;(&quot;, field(&quot;expression&quot;, $._expression), &quot;)&quot;),
+</code></pre>
+<h3 id="await_expression">await_expression</h3>
+<pre><code class="language-js">await_expression: ($) =&gt;
+  prec(P.unary, seq(K.await, field(&quot;value&quot;, $._expression))),
+</code></pre>
+<h3 id="unary_expression">unary_expression</h3>
+<pre><code class="language-js">unary_expression: ($) =&gt;
+  prec(
+    P.unary,
+    seq(
+      field(&quot;operator&quot;, choice(&quot;!&quot;, K.not, &quot;-&quot;, &quot;+&quot;, &quot;~&quot;)),
+      field(&quot;operand&quot;, $._expression),
+    ),
+  ),
+</code></pre>
+<h3 id="binary_expression">binary_expression</h3>
+<pre><code class="language-js">binary_expression: ($) =&gt;
+  choice(
+    ...[
+      [P.or, &quot;||&quot;],
+      [P.or, K.or],
+      [P.and, &quot;&amp;&amp;&quot;],
+      [P.and, K.and],
+      [P.bit_or, &quot;|&quot;],
+      [P.bit_xor, &quot;^&quot;],
+      [P.bit_and, &quot;&amp;&quot;],
+      [P.equality, &quot;==&quot;],
+      [P.equality, &quot;!=&quot;],
+      [P.comparison, &quot;&lt;&quot;],
+      [P.comparison, &quot;&lt;=&quot;],
+      [P.comparison, &quot;&gt;&quot;],
+      [P.comparison, &quot;&gt;=&quot;],
+      [P.shift, &quot;&lt;&lt;&quot;],
+      [P.shift, &quot;&gt;&gt;&quot;],
+      [P.sum, &quot;+&quot;],
+      [P.sum, &quot;-&quot;],
+      [P.product, &quot;*&quot;],
+      [P.product, &quot;/&quot;],
+      [P.product, &quot;%&quot;],
+    ].map(([precedence, operator]) =&gt;
+      prec.left(
+        precedence,
+        seq(
+          field(&quot;left&quot;, $._expression),
+          field(&quot;operator&quot;, operator),
+          field(&quot;right&quot;, $._expression),
+        ),
+      ),
+    ),
+  ),
+</code></pre>
+<h3 id="array_expression">array_expression</h3>
+<pre><code class="language-js">array_expression: ($) =&gt; seq(&quot;[&quot;, optional(comma($._expression)), &quot;]&quot;),
+</code></pre>
+<h3 id="struct_expression">struct_expression</h3>
+<pre><code class="language-js">struct_expression: ($) =&gt; seq(&quot;{&quot;, optional(comma($.struct_field)), &quot;}&quot;),
+</code></pre>
+<h3 id="struct_field">struct_field</h3>
+<pre><code class="language-js">struct_field: ($) =&gt;
+  seq(choice(
+    field(&quot;name&quot;, choice($._member_name, $.string)),
+    field(&quot;key&quot;, $.number),
+    seq(&quot;[&quot;, field(&quot;key&quot;, $._expression), &quot;]&quot;),
+  ), &quot;:&quot;, field(&quot;value&quot;, $._expression)),
+</code></pre>
+<h3 id="_name">_name</h3>
+<p>Keep the callable path alive beside unary <code>not</code> until arguments resolve it; otherwise <code>not(Value: value)</code> commits to a parenthesized operand.</p>
+<pre><code class="language-js">_name: ($) =&gt; choice($.identifier,
+  ...CONTEXTUAL.map((word) =&gt; alias(
+    word === &quot;not&quot; ? prec(P.unary, K[word]) : K[word], $.identifier))),
+</code></pre>
+<h3 id="_member_name">_member_name</h3>
+<pre><code class="language-js">_member_name: ($) =&gt; reserved(&quot;member&quot;, choice(
+  $._name,
+  ...Object.entries(K).filter(([word]) =&gt; !CONTEXTUAL.includes(word))
+    .map(([, rule]) =&gt; alias(rule, $.identifier)),
+)),
+</code></pre>
+<h3 id="identifier">identifier</h3>
+<pre><code class="language-js">identifier: ($) =&gt; /[a-zA-Z_][a-zA-Z0-9_]*/,
+</code></pre>
+<h3 id="number">number</h3>
+<pre><code class="language-js">number: ($) =&gt;
+  /(?:0[xX][0-9a-fA-F]+|[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/,
+</code></pre>
+<h3 id="boolean">boolean</h3>
+<pre><code class="language-js">boolean: ($) =&gt; choice(K.true, K.false),
+</code></pre>
+<h3 id="nil">nil</h3>
+<pre><code class="language-js">nil: ($) =&gt; choice(K.nil, K.null),
+</code></pre>
+<h3 id="string">string</h3>
+<pre><code class="language-js">string: ($) =&gt; token(seq('&quot;', repeat(choice(/[^&quot;\\\n]/, /\\[^\n]/)), '&quot;')),
+</code></pre>
+<h3 id="comment">comment</h3>
+<pre><code class="language-js">comment: ($) =&gt;
+  choice(
+    token(seq(&quot;//&quot;, /[^\n]*/)),
+    token(seq(&quot;/*&quot;, /[^*]*\*+([^/*][^*]*\*+)*/, &quot;/&quot;)),
+  ),
+</code></pre>
+<h3 id="_end">_end</h3>
+<pre><code class="language-js">_end: ($) =&gt; choice(&quot;;&quot;, $._automatic_terminator),
+</code></pre>
+</main>
+</body>
+</html>

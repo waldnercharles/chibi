@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Chibi language · Chibi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+<p class="site"><a href="index.html">Chibi</a></p>
+<h2>Overview</h2>
+<ul>
+<li><a href="index.html">Chibi</a></li>
+</ul>
+<h2>Learn</h2>
+<ul>
+<li><a href="language.html" aria-current="page">The Chibi language</a></li>
+</ul>
+<h2>Testing</h2>
+<ul>
+<li><a href="testing.html">Testing</a></li>
+</ul>
+<h2>Packages</h2>
+<ul>
+<li><a href="packages.html">Core packages</a></li>
+</ul>
+<h2>Examples</h2>
+<ul>
+<li><a href="examples.html">Examples</a></li>
+</ul>
+<h2>FAQ</h2>
+<ul>
+<li><a href="faq.html">FAQ</a></li>
+</ul>
+<h2>Grammar</h2>
+<ul>
+<li><a href="grammar.html">Grammar</a></li>
+</ul>
+<h2>Toolchain</h2>
+<ul>
+<li><a href="toolchain.html">Toolchain</a></li>
+</ul>
+</nav>
+<main>
+<h1 id="asset-and-behavior-source-revision-4">Asset and behavior source, revision 4</h1>
+<p>Executable behavior source uses <code>.chibi</code>. Components, prototypes and relationships also have authored <code>.chibi</code> declarations; scenes and project configuration use KDL. The shared C frontend retains syntax snapshots and resolves typed semantic records. The compiler lowers those records directly into verified execution modules; visual editors consume their authoring projections.</p>
+<h2 id="package-analysis">Package analysis</h2>
+<p>The SDK's <code>script_analyze_package</code> and <code>script_declarations_package</code> accept a <code>script_package_options</code> describing sibling snapshots, native declarations and resolved imports. Siblings have one matching <code>package</code> header. Functions, constants, records and unions share a package scope. Declarations are collected before function bodies, so siblings can refer to one another and functions with declared results can recurse across files.</p>
+<pre><code class="language-code">// arithmetic.chibi
+package sample
+Add :: (value: int) -&gt; int { return value + 2; }
+</code></pre>
+<pre><code class="language-code">// main.chibi
+package sample
+Main :: (value: int) -&gt; int { return Add(value); }
+</code></pre>
+<p>Each input supplies a display path, a stable document key and parsed syntax; the caller supplies a stable package identity. The returned analysis owns its source texts, paths and keys. <code>script_range.document</code> selects the input document, while byte offsets and line/column values stay local to that document. Lowered execution origins retain its display path after the analysis is freed. Exported identities depend on package identity and declaration, not input order or unrelated sibling files. Debug record ordinals and byte offsets are not durable identities.</p>
+<p><code>source_package_snapshot_new</code> in <code>Chibi::source_catalog</code> separately resolves a complete set of source buffers against explicit project and collection roots. It owns parsed documents, groups sibling files, resolves relative and <code>collection:path</code> imports, and retains file-local aliases and blank import edges. Its graph reports missing packages, duplicate bindings and cycles with source locations. Package and document keys use collection-relative paths so relocating an installation preserves their identities. Graph ordering is deterministic for the supplied canonical paths.</p>
+<p>Resolution is lexical and does not read the filesystem or follow symlinks. A disk adapter must provide physically canonical roots and paths when containment is required. Relative imports cannot leave the declaring file's longest matching collection root. Inputs are bounded to 256 files, 512 KiB each and 8 MiB total; the public header records path, nesting and import limits.</p>
+<p><code>authoring_packages_prepare</code> consumes an owned snapshot and prepares dependencies before their importers. A file's named aliases expose only the imported package's functions, types and constants; sibling files do not inherit those aliases. Blank imports retain dependencies without adding names. A self import refers to the current package. Exported signatures, layouts and constant values are owned, and lowered calls link to dependency modules by stable ID. Parameter defaults must be bounded compile-time values; preparation does not execute host calls to evaluate defaults. Existing generic execution limits still apply.</p>
+<p>Preparation returns a separate valid or invalid candidate, with source-local diagnostics. Passing a previous candidate permits exact reuse when source membership/text, native declarations/defaults, backend, nonzero binding generation and direct dependency generations match. Any changed dependency invalidates its transitive importers, including blank import edges. Reused generations and executable modules retain their dependencies independently of previous owners; a failed candidate never changes the previous one.</p>
+<p>Direct semantic callers supply one immutable exports view per imported identity, reusing that view across aliases. Metadata is available by ID for type checking, while only explicit export members are visible through an alias. The shared <code>script_catalog_snapshot</code> helper in <code>Chibi::capabilities</code> owns metadata names and defaults, including union payload defaults.</p>
+<p><code>source_package_snapshot_load</code> supplies a complete explicit package-source forest from disk on Linux and macOS. It canonicalizes root directories, reads bounded regular <code>.chibi</code> files through directory descriptors, and rejects non-hidden descendant symlinks. Hidden descendants are skipped, while explicitly supplied roots are still scanned. Overlapping roots share no collected files; longest-root ownership remains the resolver's rule. Loader failures return a value-owned path/message; source and graph errors retain an invalid snapshot. The loader does not consult the environment or change cwd. Windows filesystem loading remains unsupported; callers can still supply owned buffer snapshots.</p>
+<p>The SDK installs <code>core:strings</code> in <code>share/chibi/core</code>, exposed to CMake consumers as relocatable <code>Chibi_CORE_SOURCE_DIR</code>. Callers pass that root explicitly. Its pure functions use the text and array capability packs. <code>ByteLength</code>, <code>ByteAt</code>, <code>Bytes</code>, <code>Slice</code>, <code>Compare</code>, <code>IsIdentifier</code> and <code>BaseName</code> are the primitives: byte access returns unsigned 0..255 or -1 outside the string; each <code>ByteAt</code> call measures the string, so a loop over a long one is quadratic, and <code>Bytes</code> returns every byte as an <code>int[]</code> in one pass instead; Slice clamps its start/count and owns its result, byte ranges can split UTF-8 sequences, Compare orders unsigned bytes, IsIdentifier checks ASCII identifiers, and BaseName uses slash separators. The rest port Odin's <code>core:strings</code> over bytes: <code>Contains</code>, <code>ContainsAny</code>, <code>HasPrefix</code>, <code>HasSuffix</code>, <code>Index</code>, <code>LastIndex</code>, <code>IndexByte</code>, <code>LastIndexByte</code>, <code>IndexAny</code>, <code>LastIndexAny</code>, <code>Count</code>, <code>TruncateToByte</code>, <code>EqualFold</code>, <code>ToLower</code>, <code>ToUpper</code>, <code>IsAsciiSpace</code>, <code>Trim</code>, <code>TrimLeft</code>, <code>TrimRight</code>, <code>TrimSpace</code>, <code>TrimLeftSpace</code>, <code>TrimRightSpace</code>, <code>TrimPrefix</code>, <code>TrimSuffix</code>, <code>Cut</code>, <code>Split</code>, <code>SplitN</code>, <code>SplitAfter</code>, <code>SplitAfterN</code>, <code>SplitKeeping</code> (Odin's <code>_split</code>), <code>SplitLines</code>, <code>SplitLinesN</code>, <code>SplitLinesAfter</code>, <code>SplitLinesAfterN</code>, <code>SplitLinesKeeping</code>, <code>Fields</code>, <code>Join</code>, <code>Concatenate</code>, <code>Repeat</code>, <code>Replace</code>, <code>ReplaceAll</code>, <code>Remove</code>, <code>RemoveAll</code> and <code>Partition</code>, which returns a <code>Parts</code> record. Where Odin decodes runes, these compare, count and offset bytes: an empty separator splits into bytes, <code>Cut</code> takes byte offsets, cutsets are byte sets, and case and spaces are ASCII. <code>Repeat</code> returns an empty string for a count below 1 where Odin panics, and <code>Replace</code> returns only the string. Compiler packages also use the existing pure generic array capability pack. General authored generic specialization remains a separate language gap; core does not provide an imported generic array-wrapper API.</p>
+<p>Package globals and embedded game roots remain unsupported. Project loading, formatting and editor navigation use their existing single-source entry points. The package APIs do not change the public build command.</p>
+<h3 id="tests-and-attributes">Tests and attributes</h3>
+<p>An attribute is <code>@name</code> before a function declaration, on its own line or the same one. <code>@test</code> is the only attribute; any other name, or <code>@test</code> twice, is a diagnostic. It marks a package-level function that takes no parameters and returns nothing:</p>
+<pre><code class="language-chibi">package scoring
+
+Double :: (points: int) -&gt; int {
+    return points * 2;
+}
+
+@test
+DoublesPoints :: () {
+    expect(Double(3) == 6, &quot;three doubles to six&quot;);
+}
+</code></pre>
+<p>A test passes when it returns. It fails when <code>expect(condition, message)</code> sees a false condition, which fails the call with <code>Expectation failed: message</code> at the <code>expect</code> call's position, or on any other runtime failure, such as an out-of-bounds read or a checked conversion. <code>expect</code> is a core function with an effect, so a function that calls it is not pure and no optimization removes the call. Tests are ordinary functions: they compile into the package like any other and run only when something calls them.</p>
+<p><code>chibi test [ROOT]</code> calls them: it prepares every package below ROOT, runs the tests of those packages in file and line order, and reports each failure at the call where it stopped, with its file, line and column. A test runs alone, without a game: it may call the natives that need none, such as text, array and math functions, and fails when it waits or starts a task, or after 100 million instructions.</p>
+<p>The versioned contract snapshot in the repository, <code>docs/language-contracts/v1.md</code>, pins source evidence, existing C conformance cases and unresolved migration semantics separately at its recorded revision, before the version-25 retained-binding migration. Its source audit is not fresh runtime or cross-backend validation.</p>
+<h2 id="declarative-documents">Declarative documents</h2>
+<p>Project manifests are <code>project.kdl</code>, version 28. Scenes, KDL prototypes, event declarations, models, shapes, materials, fields, shader libraries, scenarios and editor configuration use KDL 2. Behaviors, behavior libraries and systems use readable <code>.chibi</code> source. RML and RCSS remain separate markup formats.</p>
+<pre><code class="language-kdl">version 28
+name &quot;My Game&quot;
+content &quot;content&quot;
+start_scene &quot;scenes/Main.kdl&quot;
+</code></pre>
+<p>KDL documents contain named fields, objects and arrays. Objects use named child fields or properties. <code>(array)</code> keeps arrays distinct from scalars and objects, including empty and one-item arrays; <code>(object)</code> marks an empty object. Boolean and null literals are <code>#true</code>, <code>#false</code> and <code>#null</code>. The shared value codec keeps native numeric and reflected value meanings unchanged.</p>
+<pre><code class="language-kdl">version 1
+name &quot;Main&quot;
+(array)entities {
+    - {
+        name &quot;Ship&quot;
+        prototype &quot;Ship&quot;
+        components {
+            &quot;Projectile&quot; age=0.0 lifetime=2.0
+        }
+    }
+}
+</code></pre>
+<p>Reflected string fields containing shader/material parameter objects or mesh part arrays also use KDL value syntax. Object payloads contain their named fields, such as <code>Radius 25</code>; array payloads use <code>(array)-</code> with values or item nodes. Escape their text when embedding them in another KDL document. These payloads are declarative configuration, not executable behavior source.</p>
+<p>Authored asset declarations use the same name-first headers as executable source: <code>Health :: component { ... }</code>, <code>Enemy :: prototype { ... }</code> and <code>Targets :: relationship { ... }</code>. A composed prototype names ordered bases, such as <code>Elite :: prototype(Enemy, Armored) { ... }</code>. The repository's <code>docs/runtime-authoring.md</code> covers sparse defaults, instance-local links, relationship traits and typed pair edits.</p>
+<h2 id="executable-source">Executable source</h2>
+<p>Semicolons are optional at the end of a line and before a closing brace. Separate multiple statements on one line with semicolons. Parenthesized calls, arrays and struct literals may span lines. An operator at the end or beginning of a line continues the expression.</p>
+<p><code>chibi_ctl --format</code> writes the shortest spelling that analyzes to the same program: it drops semicolons, argument labels before the first skipped parameter, literal arguments equal to their defaults, inferable declaration and argument types, redundant parentheses and casts, handler aliases (the payload is <code>event</code>), empty <code>else</code> blocks, <code>-&gt; ()</code> and <code>return()</code>, and writes <code>return(x)</code> as <code>return x</code>. Each rewrite is kept only when the re-analyzed program is unchanged; source that does not analyze is only re-indented. Parentheses that group <code>&amp;&amp;</code> under <code>||</code>, or one bitwise operator under another, stay. Ranges are written <code>0..n - 1</code>.</p>
+<p>Named call arguments use <code>Value: expression</code>. An explicit argument type includes its value or source, for example <code>Value: float = amount</code> or <code>Source: ref int from count</code>. A bare identifier after <code>:</code> is a value expression.</p>
+<pre><code class="language-code">FreeMotion :: system(position: Transform, velocity: Velocity)
+    without Collider, Body
+{
+    position += velocity * dt
+}
+</code></pre>
+<p>A file under <code>content/components</code> declares one component instead: its fields and their types, ranges and units. Scripts check those units, and the engine fields' units and <code>dt</code>'s seconds. Proven unit mismatches and malformed referenced unit metadata are compile errors. See &quot;Declare components&quot; in <code>runtime-authoring.md</code>.</p>
+<p>A behavior, library or system is a readable program. Its declarations and statements resolve into an owned typed semantic program. Direct lowering produces an immutable verified execution module; backend code and live instances have separate lifetimes. Source does not require graph node, pin or connection records. Library calls resolve against the project catalog; native calls resolve against registered engine capabilities. Unknown names and incompatible types are errors.</p>
+<pre><code class="language-code">Projectile :: behavior {
+    elapsed := 0;
+    lifetime := 3;
+    on Tick(dt) {
+        elapsed += dt;
+        self.Projectile.Age += dt;
+        if (elapsed &gt;= lifetime) {
+            destroy_entity(self);
+        }
+    }
+}
+</code></pre>
+<p>Behavior-root declarations own persistent instance state. <code>elapsed := 0;</code> infers <code>number</code>, backed by double precision, so subsequent assignments can contain fractions. Boolean, string and homogeneous array defaults also infer their type. Empty arrays and nominal values require an explicit type. <code>elapsed: number = 0;</code> spells out the type; native storage types such as <code>float</code> and <code>int64</code> remain available when precision or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.</p>
+<p>An explicit retained binding puts its lifetime after the name and colon:</p>
+<pre><code class="language-code">visits: retain int = 0
+elapsed: retain = 0
+</code></pre>
+<p><code>retain</code> selects private persistent storage belonging to the enclosing behavior attachment or system registration, including inside named functions. Calling a helper does not create another retained owner. All matches of one system share its retained values; a second registration has independent values. Imported library state inherits the consuming owner and keeps its own module namespace. <code>retain = value</code> infers the value's type with the same rules as <code>:=</code>. Behavior and library root declarations such as <code>elapsed := 0</code> are also retained. There is no <code>retain(system)</code> form.</p>
+<p>An ordinary system-body declaration is local to its invocation. Each query match has independent locals, which survive <code>await</code> and <code>yield</code> until the invocation finishes. Use those locals for temporary coroutine progress, components for longer-lived entity state, and retained bindings for private owner-wide state. System-retained values cannot contain task handles; keep those handles local to the invocation instead. Pass system invocation locals to helpers and handlers as parameters; they cannot capture those locals. Formatting may remove an explicit root <code>retain</code> when the analyzed program stays the same; a callable's <code>retain</code> and system ownership remain meaningful.</p>
+<p>Historical project upgrades preserve behavior retention and convert old system-owned <code>shared</code> or <code>retain(system)</code> bindings to plain <code>retain</code>. Old per-match system state cannot be converted by changing its spelling: migration stops with a diagnostic so the author can put durable entity state in components or temporary progress in coroutine locals. The project version remains 26 because no checked-in project uses the affected system declarations. Hand-made projects already at candidate version 26 must review system <code>retain</code> declarations manually and remove any old <code>(system)</code> suffix. Rebuild prepared code after upgrading. The old <code>state</code> and <code>shared</code> prefixes are no longer declaration syntax. The <code>state.name</code> expression still selects a persistent binding when a local shadows its name.</p>
+<p><code>::</code> defines a compile-time constant, function or union type. A constant such as <code>BaseDamage :: 12</code> has no writable instance storage. Its initializer can use literals, other constants and built-in operators, including constant arrays and reflected structs. Ordinary procedures can also run in compile-time contexts when all their inputs and operations are available there. Runtime dependencies are errors. The compiler evaluates these expressions once when it builds the module. <code>:=</code> continues to infer a mutable value: persistent state at program scope, a local inside an executable block.</p>
+<p>The graph derives variable operations from these declarations. Declaring <code>level: entity</code> and assigning <code>level = globals.Level</code> produces a <strong>Set Level</strong> node with one entity-valued <strong>Value</strong> input. It stores the named scene entity in this behavior instance's <code>level</code> variable. The assignment does not change scenes or rewrite the global binding. The same mechanism produces <strong>Set Score</strong> from <code>score = 10</code>; no native node registration or C code is needed.</p>
+<p>In Studio, add a variable in <strong>Members</strong>, then edit its <strong>Name</strong>, <strong>Type</strong> and default in <strong>Properties</strong>. The node chooser offers its <strong>Get</strong> and <strong>Set</strong> operations. Dragging the variable onto the graph creates a Get; Alt-dragging creates a Set. These edits update the same source and use normal undo.</p>
+<p>An authored function is the reusable way to create a custom operation. Its parameters become inputs and its results become outputs. A call uses the same definition wherever it appears. Small pure calls can be folded into their consumer's input without changing the source or the number of evaluations. Use <strong>Open Function</strong> on a call or its folded input to inspect the definition. <strong>Inline Function into Caller</strong> instead replaces a supported call with its body in the source as one undoable edit. The definition remains available for other calls. <strong>Fold into Input</strong> and <strong>Show Input Nodes</strong> only change presentation.</p>
+<p>Adding a standalone variable <strong>Get</strong> creates a named local read, such as <code>levelValue := state.level</code>. Its execution pins show when the read occurs; its output retains that value. Choosing the variable as an existing input's source reads it when that consumer runs. The <code>state</code> qualifier identifies the declared state even when a local parameter has the same name. A newly added <strong>Set</strong> uses a zero default where one can be written, or the variable's current value for types such as entities; edit its Value input to choose the intended source.</p>
+<p>Language declarations, bindings and member names use identifiers. Quotes denote string values, including user-facing text and literal union alternatives. Prototype, component and relationship symbols produce typed reference values:</p>
+<pre><code class="language-code">asset: Prototype = MovementEmitter
+component: Component = Health
+relation: Relationship = Targets
+Forward :: (value: Prototype) -&gt; Prototype { return value }
+emitter := await spawn_prototype(Forward(asset))
+</code></pre>
+<p>The reference category survives locals, parameters and results. A string containing <code>&quot;MovementEmitter&quot;</code> is not a prototype reference, and a component reference cannot be passed where a prototype is required. Missing, ambiguous and wrong-kind symbols are errors. Source member paths use registered component and field spellings; completion supplies the available names.</p>
+<p>Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and reflected structs. Arrays use <code>number[]</code>; collection types include <code>set&lt;int&gt;</code> and <code>Map&lt;string, int&gt;</code>. Literal arrays use <code>[1, 2]</code>; reflected struct literals use <code>{x: 1, y: 2}</code>. Collection natives such as <code>array_add</code> return a new value: write <code>hair = array_add(hair, h)</code>. A pure native called as a statement is an error. Arrays are values, so every store copies; a local or result array therefore owns its items. Appending to it with <code>xs = array_add(xs, x)</code> or <code>xs = append(xs, ys)</code>, or writing <code>xs[i] = x</code>, updates it in place, and building an array that way is linear, as with Odin's dynamic arrays. A write outside the array fails with &quot;Array index out of range&quot;. Other values holding the array keep their copy. Runtime strings cannot contain embedded NUL bytes.</p>
+<p>Explicit scalar conversions call the type: <code>double(value)</code>, <code>float(value)</code> or <code>byte(value)</code>. Most code needs none. A literal takes its expected type, an integer converts implicitly to an integer type that holds every value (<code>byte</code> to <code>int</code>, <code>uint16</code> to <code>uint</code>), and conversions involving <code>number</code>, <code>double</code> or <code>float</code> stay implicit. Only narrowing between integer types needs a conversion:</p>
+<pre><code class="language-code">low := byte(value)          // checked: fails when value does not fit
+bits := byte(wrap: value)   // keeps the low 8 bits: 300 becomes 44
+level := byte(clamp: value) // saturates: 300 becomes 255, -5 becomes 0
+</code></pre>
+<p>A floating literal is the <code>double</code> nearest it, and a <code>float</code> literal the <code>float</code> nearest that <code>double</code>; a literal that overflows, or a nonzero one that underflows to zero or a subnormal, is a compile error. A checked conversion of an integer constant that does not fit is a compile error; a runtime value that does not fit fails the invocation. <code>wrap</code> and <code>clamp</code> apply only between integer types. Floating values convert to integers by truncating toward zero, clamping at the destination bounds and mapping NaN to zero. Mixed integer operands, in arithmetic and comparisons, use the wider type, or <code>int</code> or <code>int64</code> for a signed and unsigned pair: <code>byte + int8</code> is <code>int</code> and <code>int + uint</code> is <code>int64</code>. <code>int64</code> with <code>uint64</code> needs an explicit conversion. Every integer type has every arithmetic and comparison operator, unsigned types comparing as unsigned values. Integer arithmetic wraps on overflow: <code>byte(3) - byte(200)</code> is 59. A constant can declare its type, as in <code>Mask: uint : 0xFF</code>. A conversion to a value's own type, such as <code>entity(get_global_variable(&quot;Player&quot;))</code>, only supplies the type a polymorphic call needs.</p>
+<h3 id="array-storage">Array storage</h3>
+<p>The runtime automatically packs eligible array elements into contiguous fixed-width storage. Eligible types are booleans, signed and unsigned integers, F32/F64 values, enums, handles, and plain fixed-layout records, including vectors. A record is eligible only when every field, including nested records, has a validated fixed layout and needs no managed storage. Strings, names, managed record fields and nested collections use boxed elements. Arrays containing null record elements also stay boxed. Mutable native builders may remain boxed until an owned snapshot is made.</p>
+<p>Packing changes physical storage, not element order, indexing, value types, copy ownership or iteration semantics. Inspection and persistence support both layouts. Maps use separate associative storage; they are not packed arrays.</p>
+<p>The focused numeric-loop check compares boxed and packed inputs for ten numeric types, with 64 elements and 16 trials per representation, through the VM and the available compiled backend, native SLJIT or Wasm. It checks equal results and reports payload bytes and elapsed time. This small workload does not establish a universal speedup.</p>
+<h3 id="maps-and-iteration">Maps and iteration</h3>
+<p>Maps retain separate key and value types. A complete type can be explicit or inferred from a nonempty initializer:</p>
+<pre><code class="language-code">scores: Map&lt;string, int&gt; = {&quot;Ada&quot;: 3, &quot;Bo&quot;: 5}
+inferred: Map = {&quot;Ada&quot;: 3}
+more := {&quot;Ada&quot;: 3}
+empty: Map&lt;string, int&gt; = {}
+scores[&quot;Ada&quot;] = 4
+if map_has(scores, &quot;Bo&quot;) { score := scores[&quot;Bo&quot;] }
+scores = map_remove(scores, &quot;Bo&quot;)
+for name,score in scores { record_score(name, score) }
+</code></pre>
+<p><code>map_has</code> guards a lookup. A missing key fails the lookup; it does not synthesize a zero value. Assignment inserts or replaces a value. Replacement keeps the key's position; removal followed by reinsertion appends it. Iteration takes a snapshot in insertion order. Map equality compares associations independently of order. Dynamic duplicate keys keep the last value at the first position. Keys must be supported finite scalars, strings, names, enums or handles. Nested maps and arrays retain their complete value types. An empty literal needs a concrete contextual type.</p>
+<p>Array iteration binds the item first and the optional zero-based index second. String iteration yields one string per Unicode scalar, not one byte or one grapheme cluster. Both take a value snapshot before entering the loop:</p>
+<pre><code class="language-code">for item,index in items { total += item * index }
+for character in &quot;Aé🐈&quot; { append_character(character) }
+for item: ref in items { item += 1 }
+</code></pre>
+<p>Reference iteration writes through to a mutable owned array binding. Other bindings copied from the array keep their snapshots. The borrowed source cannot be accessed or replaced directly inside the loop; use <code>item</code>. Its body cannot suspend, start tasks, perform opaque host operations or call mutating procedures. <code>break</code> and <code>continue</code> preserve writes already performed. This form rejects temporary arrays, reference parameters, maps, strings and paired item/index bindings. The implementation stores logical references and resolves each write against the source binding; source code never receives a raw element pointer.</p>
+<p>Vector receivers support <code>velocity.norm()</code>, statically resolved to the existing vec2 normalization operation. <code>vec2_norm(velocity)</code> names that operation directly. Neither form introduces object allocation or virtual dispatch. Normalization retains the native operation's zero-vector behavior.</p>
+<p>A declared numeric result or argument type supplies context for an otherwise untyped arithmetic expression, so ordinary arithmetic does not require casts. Typed operands keep their precision: a double operand also gives otherwise untyped literals double precision before any conversion to a float destination. Use <code>double(value)</code> to request that precision explicitly. A decimal point alone does not require double precision.</p>
+<p>Host events infer their registered payload. <code>on Tick(dt) { ... }</code> binds the registered Tick delta to <code>dt</code>; <code>on Tick { ... }</code> needs no explicit payload list. <code>event.dt</code> also reads that payload, independently of the general frame clock. A handler may name its entire payload with <code>on Tick as tick { ... }</code>. Event payload members are read-only unless their reflected signature supplies a reference.</p>
+<p>A behavior, library or system has an implicit invocation owner, <code>self: entity</code>. Library calls use their caller's owner. Component paths read the owner or another entity handle and follow reflected members:</p>
+<pre><code class="language-code">Emitter :: behavior {
+    on Tick {
+        self.ParticleEmitter.Active = true;
+        self.ParticleEmitter.Rate += event.dt;
+        parent := self.ParticleEmitter.Parent;
+        health := parent.Health.Current;
+    }
+}
+</code></pre>
+<p>These paths lower to registered component accessors. They do not need binding strings, casts or a dynamic property interpreter. Assignment and compound assignment target a writable reflected component field on the exact addressed entity. Reads can traverse nested reflected structs; assigning a nested struct subfield is currently rejected. Component and field names that cannot be resolved produce source diagnostics. Prototype membership improves completion ranking; it does not guarantee that a component is present on a live entity. A component path used as a condition tests presence instead: <code>if self.Dash</code>, <code>!self.Dash</code>, <code>self.Dash == nil</code> and <code>&amp;&amp;</code>/<code>||</code> operands ask whether the entity has the component, so <code>if self.Dash &amp;&amp; self.Dash.remaining &gt; 0</code> reads the field only when it exists. <code>chibi_ctl --format</code> spells reflected accessor calls as paths: <code>get_dash().Value</code> becomes <code>self.Dash</code>, <code>has_dash()</code> in a condition becomes <code>self.Dash</code>, and a statement <code>set_dash_remaining(v)</code> becomes <code>self.Dash.remaining = v</code>. It also spells supported state reads as <code>state.x</code> and operator functions such as <code>add(a, b)</code> and <code>less(a, b)</code> as operators. Each rewrite is kept only when the program analyzes the same. Awaiting a component accessor does not wait.</p>
+<p>Ordinary blocks support assignments, compound assignments, <code>if</code>/<code>else</code>, <code>switch</code>, <code>while</code>, <code>for i in first..last</code> with inclusive bounds, <code>for item in array</code>, <code>break</code>, <code>continue</code> and calls. An ordinary call invokes its native entry and then continues with the following statement, including entries that emit no outcome. <code>await</code> follows one native <code>Then</code> or <code>Completed</code> outcome instead; a suspended capability resumes that continuation when its native wait completes. Waiting suspends that behavior continuation; the engine thread keeps processing other work. Calls without one conventional completion produce a diagnostic when awaited. Native sequence branches use <code>sequence { branch { ... } branch { ... } }</code> and run in their native order. Labels and <code>goto</code> express shared or irreducible control flow when structured blocks cannot describe it.</p>
+<p>A typed local's type must begin on the same line as its declaration colon: <code>item: Package = {value: 7};</code>. A complete <code>name: Type = value</code> takes precedence over a label followed by an assignment. Put a label's plain assignment on the following line to distinguish the two:</p>
+<pre><code class="language-code">ordinary:
+result = result + 1;
+</code></pre>
+<p>Same-line labels before other statement forms, such as <code>finish: goto finish;</code> or <code>compound: result += 1;</code>, remain valid. Inferred <code>:=</code> locals and persistent system-root declarations retain their existing meaning.</p>
+<p>A <code>switch</code> evaluates its value once and executes the matching case. Cases never fall through, so they do not need <code>break</code>. <code>case:</code> is the default. The switch keeps its outer braces; braces around each case body are optional:</p>
+<pre><code class="language-code">switch level {
+    case 1:
+        damage = 10
+    case 2: {
+        damage = 20
+    }
+    case:
+        damage = 30
+}
+</code></pre>
+<p>Project version 28 reads parameters by name. A callable reads its parameter <code>X</code> as <code>X</code>. The version 27 spelling <code>entry.X</code> migrates to <code>X</code>; when <code>X</code> is not a parameter, <code>entry</code> meant the callable's only parameter <code>p</code>, so a bare <code>entry</code> migrates to <code>p</code> and <code>entry.x</code> to <code>p.x</code>. The migration refuses a read that a local, constant, loop, handler or pattern binding of the same name would capture; rename that binding first.</p>
+<p>A handler without a parameter list binds its payload's names. A bare read of one that is also a parameter of the function around the handler is an error, since the payload would hide the function's parameter; list the payload's parameters, as in <code>after spawned(made) { ... }</code>, to give them other names.</p>
+<p>Project version 24 migrates existing <code>function</code> declarations and <code>match</code> statements to these forms. Those old keywords are no longer runtime syntax. Version 26 removes the named <code>fn</code>, <code>pure</code> and <code>foreach</code> spellings. Current reserved words include <code>union</code>, <code>switch</code>, <code>is</code>, <code>and</code>, <code>or</code>, and <code>where</code>. If a version 23 project uses one as an identifier, rename it and its references before migrating; the migration does not rename identifiers automatically.</p>
+<p>An unawaited call continues before its native completes, so using its data result is an error. An awaited call with one data result can declare a block-scoped result:</p>
+<pre><code class="language-code">on Begin {
+    emitter := await spawn_prototype(MovementEmitter);
+        emitter.ParticleEmitter.Parent = self;
+}
+</code></pre>
+<p>The name becomes available after completion and remains inside its lexical block. Capturing a shared action instance is rejected because later invocations could replace its output. Scopes with explicit labels cannot declare awaited results, because a jump could bypass their initialization. An ordinary block declaration such as <code>x := calculation;</code> evaluates once at that execution point using a native Snapshot node. Later reads use the captured value.</p>
+<h3 id="unions-and-patterns">Unions and patterns</h3>
+<p>Named tagged unions declare alternatives with optional owned payload fields. Literal unions restrict a value to the listed strings. Type alternatives use <code>|</code>.</p>
+<pre><code class="language-code">AttackState :: union { Idle | Windup(remaining: number) | Active(damage: number) }
+Status :: union { &quot;Yes&quot; | &quot;No&quot; }
+
+phase := AttackState.Windup(0.3)
+switch phase {
+    case .Idle: ready = true
+    case .Windup(remaining): countdown = remaining
+    case .Active(damage): health -= damage
+}
+
+result: number | Cancelled = 0
+if result is number num_result {
+    total += num_result
+}
+extracted := result as number
+if extracted {
+    total += extracted
+}
+</code></pre>
+<p><code>is</code> and <code>is not</code> test types or union alternatives without converting values. Matching branches narrow the original symbol; the opposite branch removes the tested alternatives. A terminating branch also permits the surviving path to keep its proof. Assignment or calls that may change the value invalidate that proof. Pattern bindings belong to the matching arm or positive condition. Switches over finite unions must cover every alternative or include <code>case:</code>. Union declarations require a value, and union function results must be initialized on every return path. Guard an optional union before switching over it.</p>
+<p><code>as T</code> safely extracts <code>T?</code>: a mismatch is <code>nil</code>, and a match preserves zero, false, and empty text as present values. It does not perform numeric conversion. An optional condition tests presence; inside that branch the value has type <code>T</code>.</p>
+<p>Union values retain immutable snapshots of their payloads in execution-owned storage. Trivial payload fields live inline in the tagged record; creating that record uses arena storage. <code>Cancelled</code> is a shared payload-free singleton. Union values can be local values, parameters, results and behavior state. ECS component fields currently reject unions because ECS storage does not own their managed payloads. Recursive owned union payload types are rejected; use task or entity identities for references to independently owned work or entities.</p>
+<h3 id="tasks">Tasks</h3>
+<p>A function waits when its body contains a retained <code>await</code> or <code>yield</code>. Compiler-proven synchronous component awaits do not make it wait. Calling such a function without <code>await</code> starts a task: it runs inside the call until its first suspension, then runs beside the caller and returns a task handle. Awaiting a call gives its result directly. Awaiting a <code>task&lt;T&gt;</code> handle gives <code>T | Cancelled</code>. The successful alternative contains the original result, including zero, false, and empty strings. <code>Cancelled</code> is a distinct singleton, never a default result. It is reserved for cancellation and cannot appear in a task's successful result type. <code>Cancelled</code> is also a semantic builtin: a bare declaration cannot reuse its name. Qualified names such as <code>Outcome.Cancelled</code> and component fields named <code>Cancelled</code> remain legal; this restriction does not make it a grammar keyword.</p>
+<pre><code class="language-code">Turret :: behavior {
+    pulse: task
+    ready: bool = false
+
+    Charge :: (time: double) -&gt; (power: double) {
+        await delay(time)
+        yield
+        return(time * 2)
+    }
+
+    on Begin {
+        pulse = Charge(1)
+        cancel pulse after 2
+        result := await pulse
+        if result is Cancelled {
+            ready = false
+        } else {
+            ready = result &gt; 0
+        }
+    }
+}
+</code></pre>
+<ul>
+<li><code>yield</code> resumes on the next update.</li>
+<li><code>cancel t</code> stops a running task and the tasks it started. Awaiters receive <code>Cancelled</code> and can continue; cancelling the awaited target does not by itself cancel the awaiting caller.</li>
+<li><code>cancel t after n</code> schedules cancellation without waiting. Its deadline is the task's original start time plus <code>n</code>, measured in the same game-clock seconds as <code>delay</code>. The start time is recorded before the task's initial synchronous work. Negative or NaN durations count as zero; positive infinity sets no finite deadline. Repeated deadlines keep the earliest. An overdue pending task stops at a safe point; already performed effects remain. Completion removes the deadline, and cancelling a completed task leaves its successful result intact.</li>
+<li>A completed result remains available while a live handle or waiter can observe it within its owner. Copied handles name the same task. Awaited values have their own snapshots and remain valid after the task handle is dropped. Locals stop retaining results when their scope exits, including <code>break</code>, <code>continue</code>, and jumps to an enclosing scope; references held by other tasks keep their values.</li>
+<li>Dropping the last handle does not cancel a running task. Unobserved completed results are reclaimed at owner safe points, so repeated fire-and-forget work does not accumulate results each frame. Collection visits live frames, typed value banks, state, captured locals, and nested result values; task-slot storage is reused up to the owner's peak number of simultaneously retained tasks. Collection indexes live tasks once, then resolves each handle in logarithmic time; chains of task results are visited iteratively. Primitive collections are skipped because their elements cannot contain task handles.</li>
+<li>A task is true while it is running, so <code>if t</code> and <code>if !t</code> test it. An unassigned <code>task</code> state names no task; awaiting it yields <code>Cancelled</code>.</li>
+<li>Handles remain bound to the entity or system registration that started them; copying a handle to another owner does not grant that owner access to the task. Tasks stop when their owner is removed. A running task never blocks its owner's events and ticks.</li>
+<li>Calls into a library start tasks in the same way, such as <code>Store.Work()</code>.</li>
+<li>An explicit <code>task&lt;T&gt;</code> annotation declares the successful result type. A <code>task</code> state infers its successful result from the functions assigned to it. A state holding different function signatures, or a plain <code>task</code> parameter, can be awaited only for completion.</li>
+<li>Multiple function results form the successful tuple alternative. Narrow away cancellation before accessing fields: <code>r := await t; if r is not Cancelled { use(r.b) }</code>.</li>
+<li>Tasks retain references to state, components, and locals. A captured local is shared with its caller while the caller runs and remains alive after it returns. Each declaration creates a new local, including declarations inside loops.</li>
+</ul>
+<p>The runtime retains call frames and captured locals across supported native waits and cancels owned invocations when their entity or system registration is removed.</p>
+<p>Native calls use their registered source names. Named arguments follow <code>name: expression</code>; ordinary statement calls may use positional arguments. Explicit types are needed for polymorphic values that reflection cannot infer. Multiple results use named projections, such as <code>nearest.Entity</code>. No result is selected by guessing the first output.</p>
+<p>A local declared inside an executable block evaluates its initializer at that statement and retains the value for that activation:</p>
+<pre><code class="language-code">nearest := find_nearest_entity(Owner: self, Radius: 500)
+</code></pre>
+<p>A computation that should be recomputed is written where it is used or as a function. Assignments belong in executable blocks. Stateful capabilities shared by several paths have one named action instance. Methods invoke its named entries, and handlers consume its named outcomes. The instance keeps its state across method calls and events. An invocation runs any emitted outcome handler before its next statement. Action completion handlers use <code>after action.Outcome</code>, or <code>after action</code> for a single conventional completion. <code>on</code> handles events. For example, opening a gate and entering it can occur in the same handler:</p>
+<pre><code class="language-code">SharedGate :: behavior {
+    visits: retain int = 0;
+    action latch = gate();
+    on Tick() { latch.open(); latch.enter(); }
+    after latch.Exit { visits += 1; }
+}
+</code></pre>
+<p>A named function uses <code>Name :: (parameters) -&gt; result_type { body }</code>. An optional <code>=&gt;</code> can precede its brace body:</p>
+<pre><code class="language-code">DamageFor :: (level: int) -&gt; number { return level * 2 }
+OtherDamage :: (level: int) -&gt; number =&gt; { return level * 2 }
+</code></pre>
+<p>A single result may be named with <code>-&gt; (Damage: number)</code>, and multiple results retain that parenthesized form. Anonymous function values and closures are not supported by the current callable model.</p>
+<p>Function parameters and results can carry the same erased dimensional units as component fields:</p>
+<pre><code class="language-code">Distance :: (speed: u/s, elapsed: s) -&gt; u {
+    return speed * elapsed
+}
+ChargeRate :: (charge: number charge, elapsed: s) -&gt; number charge/s {
+    return charge / elapsed
+}
+</code></pre>
+<p>Known standalone unit names and compound units use <code>number</code> storage. An explicit numeric storage type can precede the unit, as in <code>float u/s</code> or <code>number charge</code>. Unknown bare type names remain errors; use the explicit form for a custom single dimension. Units are checked at calls, defaults, returns and reference writes, including named multiple results and imported signatures. Native callable metadata can supply the same contract. Incompatible known dimensions are compile errors, and unit-only signature edits invalidate affected compiled callers. Unannotated parameters/results remain dimensionally unknown; this does not infer unit-polymorphic signatures or permit cyclic library publication. Numeric inference and runtime representation stay unchanged.</p>
+<p>Functions declare data parameters and results. Ordinary functions infer their execution continuation and effects. Purity is inferred through local and imported calls, including recursion, writes and suspension. Starting a task is an effect. Query filters additionally reject reads of retained or per-invocation values, even through an imported helper. Calls use the function name directly. Qualification selects an external library, such as <code>MovementActions.ApplyForce(force)</code>. Reference parameters use <code>ref</code>; a call passes a writable value directly, such as <code>Nudge(self.Velocity)</code>, and the function writes through it. There is no address-of operator. Other parameters are copies and can change without changing the caller. All authored functions use the shared call-depth budget of 64. Source metadata cannot override that limit or declare a custom owner type. Descriptions belong in comments rather than executable metadata declarations. Qualification has no import aliases or visibility syntax of its own.</p>
+<p>Argument-bound type parameters preserve generic relationships, for example <code>Identity :: (item: $T) -&gt; T { return item }</code>. Later uses of <code>T</code> must match the bound type. <code>$N: int</code> binds a compile-time value argument. A function gives its results with <code>return x</code>, or <code>return(a, b)</code> in signature order. A bare <code>return</code> gives each result's current value.</p>
+<p>A function without <code>-&gt;</code> infers its results from its first <code>return</code>: <code>return x</code> gives one result named <code>Result</code> with the type of <code>x</code>, and <code>return(Hit: h, Distance: d)</code> gives one result per label. Later returns must match. A function that never returns a value has no results. Recursive functions, and functions that call each other in a cycle, declare their results.</p>
+<h3 id="compile-time-values-and-constructed-types">Compile-time values and constructed types</h3>
+<p><code>$T</code> binds a type from a runtime argument; <code>$N: int</code> binds a value that must be known at compilation. Specialization keeps concrete storage types and reuses the same instantiation for identical bindings:</p>
+<pre><code class="language-code">Identity :: (value: $T) -&gt; T { return value }
+Scale :: (value: $T, $N: int) -&gt; T { return value * N }
+Factorial :: (n: int) -&gt; int {
+    if n &lt;= 1 { return 1 }
+    return n * Factorial(n - 1)
+}
+Size :: Factorial(5)
+</code></pre>
+<p>An ordinary procedure runs in a compile-time context when its inputs and body are available there. It needs no <code>pure</code> or <code>comptime</code> marker. Runtime storage, host effects and unsupported operations cannot enter that evaluation. The evaluator supports scalar and type values, authored calls, local variables, assignment, <code>if</code> and <code>while</code>. Arrays, <code>for</code> loops, closures and native calls are not supported in compile-time execution. Each evaluation has a 65,536-step budget and a 128-call depth limit, separate from the runtime call-depth limit of 64. Expression and statement nesting are each limited to 256 levels.</p>
+<p>Qualified library calls also specialize generic functions and construct types, for example <code>Units.Quantity(double, 1, -1)</code>. Specializations are materialized in the defining library, with that library's source ranges and lexical bindings; their bodies are not copied into the caller's analysis. Nested imported requests resolve before executable generations are published. A failed specialization does not publish a callable generation. Body edits rebuild dependent runtime callers; changed compile-time results or constructed layouts invalidate cached analysis as semantic catalog changes.</p>
+<p>Libraries can construct record types from compile-time type and value parameters. For example, dimensions can live in type arguments while the runtime value stores only the numeric payload:</p>
+<pre><code class="language-chibi">Units :: library {
+    Quantity :: struct($DataType: Type, $Length: int, $Time: int) {
+        amount: DataType
+    }
+    ProductType :: (A: Type, B: Type) -&gt; Type {
+        return Quantity(A.DataType, A.Length + B.Length, A.Time + B.Time)
+    }
+    Multiply :: (a: $A, b: $B) -&gt; ProductType(A, B) {
+        result: ProductType(A, B) = {amount: a.amount * b.amount}
+        return result
+    }
+}
+</code></pre>
+<p><code>Quantity(double, 1, -1)</code> multiplied by <code>Quantity(double, 0, 1)</code> produces <code>Quantity(double, 1, 0)</code>. The resulting record stores one double; dimension exponents are compile-time metadata. The procedure constructs the return type using ordinary type operations. This is separate from the existing erased unit annotations on native/component fields described above.</p>
+<p>When several graph calls share a pure generated expression body, formatting emits one ordinary pure function and calls it from each original site. Typed functions also preserve expressions whose internal precision or capture types would be lost in a shorter formula. An action with a consumed data result can use an ordinary function to retain its result type. The operations, parameters, results and input references remain executable code. Editing that function now owns its body; the old generated formula no longer regenerates it automatically. A generated action may mark its caller capture as writable even though its function entry takes a value snapshot and its body writes a named state directly. The ordinary function preserves that value parameter and concrete state write; the generated caller-only reference flag is no longer retained.</p>
+<p>Macros declare semantic entry and exit paths:</p>
+<pre><code class="language-code">macro Choose(flag: bool) -&gt; () {
+    exit Accepted;
+    exit Rejected;
+    entry Enter {
+        if (flag) { return.Accepted(); }
+        else { return.Rejected(); }
+    }
+}
+</code></pre>
+<p>Additional event scopes use <code>events ScopeName { ... }</code>. Disabled actions are explicit source declarations, such as <code>disabled action gate = multi_gate();</code>. Disabling behavior is executable source semantics.</p>
+<p>Systems declare their required and optional components in the header. Their ordinary body runs once per matched entity per tick:</p>
+<pre><code class="language-code">EmitterControl :: system(emitter: ParticleEmitter, trigger: Aim?) without Collider {
+    if (trigger) {
+        emitter.Active = trigger.Firing;
+    }
+    emitter.Rate += event.dt;
+}
+</code></pre>
+<p>Required parameters determine query membership. <code>?</code> makes a component optional; <code>without</code> excludes the listed components. Optional members require a presence guard. <code>if (trigger)</code>, <code>if (!trigger)</code>, <code>trigger != nil</code> and <code>trigger == nil</code> select the branch in which the component is present. Reading an optional member outside that branch is a compile error. An <code>await</code> invalidates the presence proof: guard the component again before using it after suspension. Presence checks lower to native Has Component operations, rather than testing the component's value. A component cannot appear in both the parameter list and <code>without</code>, including an optional parameter.</p>
+<p>An explicit query declaration also supports <code>all</code>, <code>any</code>, <code>not</code> and <code>has</code>, such as <code>query all(has(Transform), not(has(Collider)));</code>. When both a header and an explicit query are present, the query intersects the header's required and excluded components. A parameterless system must write <code>()</code>; its body still has an implicit Tick, including an empty body. Systems without declared membership use the runtime's inferred component query.</p>
+<p>The header form <code>Move :: system(position: Transform, velocity: Velocity) where not Frozen { ... }</code> supports Boolean membership filters and relationship-sourced bindings. <code>join aim: Targets.Transform?</code> groups a binding that follows an exclusive relationship; the existing comma-separated binding has the same meaning. <code>team: Team from ancestor(ChildOf)</code> selects the nearest matching ancestor. Sources also accept <code>from self</code> and <code>from Targets</code>. Header filters can test <code>self.Frozen</code>, <code>Targets.Frozen</code> or <code>ancestor(ChildOf).Frozen</code>; <code>has(Targets)</code> tests relationship existence without repeating the root's body. Access is inferred from the body.</p>
+<h3 id="shared-target-reductions">Shared-target reductions</h3>
+<p>A synchronous system can contribute to a numeric component field without reading and writing the destination immediately:</p>
+<pre><code class="language-chibi">Damage :: system(projectile: Projectile) {
+    reduce projectile.Target.Health.Damage += projectile.Damage
+}
+</code></pre>
+<pre><code class="language-chibi">Closest :: system(candidate: Candidate) {
+    reduce min(candidate.Target.Threat.Distance, candidate.Distance)
+}
+</code></pre>
+<p>The destination must be a writable numeric ECS component field. Contributions are evaluated when the statement runs, then published after the system batch finishes and before the next dependent system prepares its query. A producer cannot ordinarily read or write a component it reduces; this includes reachable helpers, bindings and value/change filters. Component-presence tests are allowed. The restriction lets separate systems calculate contributions to shared targets concurrently. Eligible reduction rows can also execute on workers with private contributions merged in row order. The runtime requires sufficient rows/workers, streaming execution and verified reduction-only effects; ordinary writes, observation, inspection or profiling retain the serial fallback. See <code>execution_program_run_system_parallel</code> in <code>src/execution/program.c</code> and its caller in <code>src/runtime/behaviors/source.c</code>.</p>
+<p>Ordinary <code>reduce</code> replays contributions in stable system/query order, including integer wrapping at the destination width, clamping each bounded-field update, and normal floating-point rounding. Min/max use the existing comparison-and-select rules: the incoming value wins ties and unordered NaN comparisons. Units are checked as for assignment. A failed system discards its contributions; earlier successful systems stay published, and later peers' contributions are discarded. This is not a rollback of ordinary writes. Debug pauses retain the unfinished reduction dispatch and resume it before dependent work proceeds. Reloading a paused system cancels its unfinished log. A scheduling change while paused restarts the current system phase with fresh dispatches, including systems already run in that phase; completed earlier engine phases stay complete. Scene reset and engine teardown also cancel held dispatches.</p>
+<p>Opt in to regrouped sums when the changed numeric behavior is acceptable:</p>
+<pre><code class="language-chibi">Damage :: system(projectile: Projectile) {
+    reduce unordered projectile.Target.Health.Damage += projectile.Damage
+}
+</code></pre>
+<p><code>unordered</code> combines contributions per target within each system, then adds the subtotal to the field. This reduces log entries and publication work when many rows share targets. It can change floating-point rounding, NaNs and signed zero, so use ordinary reductions for calculations that need the default reproducible order. Integer addition still wraps at its declared width. Unordered sums require fields without a stored range contract; clamping once would differ from clamping each update. A producer cannot mix unordered sums with ordered reductions on the same component. Min/max remain ordered. Publication occurs once per aggregated target field, so its write-revision count differs from the ordered form.</p>
+<p>Reduction logs and prepared query rows use temporary memory proportional to the work. Idle buffers have bounded retention; the retention limit does not limit valid query size. Reductions avoid conflicting direct writes, but do not guarantee a speedup: small workloads can cost more to collect and publish than a serial ordinary update.</p>
+<h3 id="state-lifetime-and-live-reload">State lifetime and live reload</h3>
+<p>State belongs to a behavior instance and persists across event executions and suspension. Task, entity and array state needs no default; it starts empty. A nonrestart publication preserves matching state by stable variable identity, sharedness, scalar storage, container and nominal type name. New or nonmatching state starts from its new default; removed state disappears. A changed default does not replace a matched value unless explicitly restarted. This state matcher does not compare reflected layout hashes; installed-schema preflight is a separate check, not a promise of arbitrary reflected-layout migration. Publication occurs outside active dispatch, cancels the old continuations and tasks, and replaces the program; it does not wait for suspended work to finish. Invalid drafts retain the applied source/runtime generation.</p>
+<p>Explicit system <code>retain</code> belongs to the registration, persists across completed invocations and survives having no query matches. Removing or re-adding a match does not reset it. Imported library retention follows the same owner. Ordinary system-body declarations are invocation-local: each complete query tuple has independent local variables and suspended work, but no private retained bindings. Removing a structural tuple cancels that work and discards its locals; a new match starts a fresh invocation. Entity generations participate in tuple identity. Suspended system executions resume their continuation rather than starting a second invocation for that tuple. A completed invocation may start again on a later eligible update. A value predicate becoming false does not itself cancel already suspended work; check changing gameplay conditions inside the coroutine. System publication uses the same matching-state replacement path. Query-managed rows are retained only when the query generator shape matches; later membership refresh still releases rows that no longer match. In the preview caller, <code>preview_sources_stage</code> sets restart only for the explicitly requested <code>restart_path</code>; dependent replacements preserve matching state. Explicit restart resets retained state for the owner. Components keep their independent ECS lifetime and are not reset merely because a system query stops matching. These rules come from <code>src/authoring/preview_source_publish.c</code> and <code>src/execution/program.c</code>, not the retired native application-DLL reload mechanism.</p>
+<h3 id="named-scene-entities">Named scene entities</h3>
+<p>The built-in <code>globals</code> namespace exposes entities named by authored <code>GlobalBinding</code> components. It is available in behaviors, libraries and systems:</p>
+<pre><code class="language-chibi">CameraFollow :: behavior {
+    player: entity
+    on Begin {
+        player = globals.Player
+    }
+    on Tick {
+        self.Transform = player.Transform
+    }
+}
+</code></pre>
+<p>Names are discovered from the project's prototypes and scenes before Play. <code>globals.Player</code> has type <code>entity</code>; it needs no string lookup or cast. Completion after <code>globals.</code> lists the declared names, and an unknown name is a source error. Definition, references and rename connect a member to its authored bindings. A name may be reused in different scenes; two entities cannot publish the same name in one running scene.</p>
+<p>Each read resolves the binding in the current scene. A declared name absent from that scene is a runtime error. Assigning the result to a behavior variable, as above, captures that handle rather than maintaining a live binding; it does not retarget the variable when the scene changes.</p>
+<p>Namespace members are read-only references: assign to an entity's writable component, such as <code>globals.Player.Transform</code>, rather than to <code>globals.Player</code>. The namespace itself is not a value. These bindings do not declare shared scalar variables or persistent save data.</p>
+<h3 id="input-actions">Input actions</h3>
+<p>A project's input map, <code>content/input.kdl</code>, names each action, the Control labels that hold it, and whether it also holds the Aim of input owners:</p>
+<pre><code class="language-kdl">Boost {
+    (array)sources &quot;Shift&quot; &quot;Pad Left Shoulder&quot;
+}
+Fire {
+    (array)sources &quot;Mouse Left&quot; &quot;Pad Right Trigger&quot;
+    firing #true
+}
+</code></pre>
+<p>A map holds at most 256 actions. Each action is an event that entities with Input receive when one of its sources goes down, so an action cannot take the name of a host event such as <code>Tick</code>, and no other global may be named <code>input</code>. A project event may share an action's name; pressing the action raises it. Scripts read an action through the <code>input</code> global: <code>input.Boost.held</code> is true while any of its sources is down, and <code>input.Boost.pressed</code> is true for the one fixed step after one went down, even for a tap released before that step. Action names are typed members, so <code>input.Bost.held</code> is a compile error, and completion after <code>input.</code> lists the map's actions. A pause or focus change keeps held actions, so resuming with the same controls held presses nothing again.</p>
+<p>Migrating a version 15 project moves its ActionBinding components into the map, leaving out disabled and retained ones. Which action a script's <code>ActionBinding</code> or <code>PressedChanged</code> meant depended on its entity, so a script that still uses one stops the migration until it is rewritten with <code>input.&lt;Action&gt;</code>. So does an existing <code>content/input.kdl</code> that is not an input map, until it is fixed or moved.</p>
+<h3 id="maintained-ecs-relationships">Maintained ECS relationships</h3>
+<p>A root-level <code>bind</code> maintains a writable component field from a deterministic value expression:</p>
+<pre><code class="language-code">LinkedEmitter :: behavior {
+    bind self.ParticleEmitter.Active = input.Boost.held;
+}
+</code></pre>
+<p>Bindings are retained relationships, not declaration-time snapshots. The runtime maintains them at deterministic safe points around input, behavior execution, structural command commits and system phases. It resolves current entities and components again at each safe point, including when a parent handle changes. An unavailable source makes an available destination zero or null; an unavailable destination remains dormant until it exists again. Initial subscription and retargeting establish the current event baseline without inventing a transition. Component writes are observed at maintenance points. Behavior callbacks may suspend using normal behavior continuations.</p>
+<p>A system maintains relationships for its matched entities. While an entity's system invocation is active or suspended, relationship values and subscription baselines still update, but change callbacks are dropped without accumulating a backlog. A suspended change callback becomes that entity's single system invocation; Tick does not run concurrently with it. These callbacks use the existing coroutine runtime and do not introduce a separate scheduler. Losing query membership removes that entity's registrations along with its retained state. Reactive declarations belong to behavior or system roots, not callable libraries or nested function bodies.</p>
+<p>A binding expression cannot assign, suspend, use randomness or invoke a capability with side effects. These checks include named computations and callable bodies. Within an asset, duplicate binding destinations and dependency cycles are rejected, and bindings run in dependency order. At each world maintenance epoch, ownership checks also reject identical or overlapping destination fields across behavior and system managers for the same entity generation. Cross-asset dependency cycles are not analyzed globally. Unchanged destination values are not written. The compiler and execution runtime implement the relationship; <code>.chibi.meta</code> cannot provide it. The authoring graph projects the resolved binding and its editable value and target. Compiler-generated maintenance work is not an independent editable graph operation.</p>
+<h3 id="authoring-metadata-and-reconciliation">Authoring metadata and reconciliation</h3>
+<p>Project manifests use version 28. Executable files contain no generated identity annotations or embedded authoring footer. Optional <code>&lt;asset&gt;.chibi.meta</code> JSON stores identities, layout, comments, watches and breakpoint settings. It cannot supply executable values or connections. Deleting it leaves the code independently compilable and loses only presentation/debug identity.</p>
+<p>Disk metadata is bound to exact source bytes. Stale metadata is ignored. Matching ambiguity during an edit does not invalidate executable code; uncertain identities are replaced, and runtime state compatibility decides whether a restart is required.</p>
+<p>Source collections retain syntax, resolved facts, diagnostics and executable modules for each generation. Graph views retain a presentation of those facts. Graph edits produce source edits followed by analysis and preparation; source edits refresh the projection. Invalid drafts preserve the applied generation. Highlighting, completion, diagnostics, hover, definition, references, rename and call hierarchy consume shared semantic APIs outside Studio. Their UI availability and verification are recorded in <code>docs/authoring-navigation.md</code>.</p>
+<p>Completion shows source-style signatures and prioritizes names in scope, receiver members and values compatible with the current argument. Regular and Vim editing preserve indentation on new lines and indent inside brace blocks.</p>
+<p>A connected input can retain a binding or literal for later disconnection:</p>
+<pre><code class="language-text">reroute_data(In: fallback(driver, binding: component(&quot;Movement&quot;), default: {speed: 0}));
+</code></pre>
+<p><code>fallback</code> preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The <code>binding</code> and <code>default</code> clauses are optional, but at least one must be present. A binding with a retained default can use <code>fallback(binding: speed, default: 0)</code>; a binding must be writable. Defaults must be compatible literals.</p>
+<h3 id="automatic-performance-diagnostics">Automatic performance diagnostics</h3>
+<p>Ordinary code needs no <code>hot</code> or <code>noalloc</code> annotation. Successful source preparation exposes nonfatal <code>authoring_source.performance</code> diagnostics for allocation, copying, and values retained beyond their producing expression or frame. The shared <code>behavior_function_costs</code> API analyzes finalized normal instructions and follows linked callees, including library bodies. <code>execution_module_costs</code> also includes entry points, binding bodies, and imports. Evidence retains the originating function, instruction, capability, and source location.</p>
+<p>“Proven” means the generated body contains the identified operation; a conditional branch may never execute it. An allocation is a dynamic storage request, which an arena or pool may satisfy without a fresh heap allocation. Scalar moves do not count as managed copies. “Possible” covers nullable payloads, cache misses, runtime callbacks, and native code without a verified cost contract. Pure native functions are not assumed allocation-free. Folded constants and scalar arithmetic carry no such body costs. These summaries do not estimate elapsed time, operation counts, or algorithmic complexity, and exclude backend compilation and initial activation setup. Analysis is bounded to 1,024 definitions/modules and 200,000 instructions; exceeding a budget returns conservative possible costs and an incomplete summary.</p>
+<p>Normal native, Wasm and bytecode bodies omit source watch and pause operations. Native and Wasm inspection code is compiled on first use and cached for the retained definition. Concurrent native first-use inspection can execute bytecode until compilation publishes the complete code and resume map. Pauses and watches preserve the canonical instruction locations. Detaching inspection after a debug pause keeps that saved continuation canonical until its next real wait or completion, preserving values while temporarily forgoing optimization of that continuation.</p>
+<p>Normal VM and compiled bodies also remove construction, snapshots and tag/payload operations for nonescaping unions of plain scalars, including nested unions and aliases whose incoming values agree at forward control-flow joins. Isolated native calls with only plain scalar inputs and outputs preserve unrelated virtual values; the calls, side effects and errors still execute. Different values merged at a join, backedges, managed payloads, escaped values, authored calls, context callbacks and suspension retain their owning representation. Analysis has a bounded scratch budget and conservatively retains allocations when it cannot prove safety. Inspection retains the canonical operations. Numeric interval analysis removes proven redundant clamps and tests, and can compare original integers when widening them to <code>number</code> was exact. It preserves floating-point rounding, NaN and signed-zero behavior; <code>n := 0</code> still infers <code>number</code>. Generic component reads do not acquire range proofs from metadata alone.</p>
+<p>Read-only plain-array traversals can borrow their existing storage during a synchronous invocation, including loops that update unrelated scalar state. The compiler rejects borrowing when addresses escape, collection storage can change, raw header or pointer identity is observed, an opaque helper runs, or execution can suspend. Runtime guards check the actual array and element headers and exclude overlap with writable context, state, result, host-value, saved activation and VM scratch banks. Matching arrays avoid snapshot allocations and element copies; checking their headers still takes linear time. Other inputs retain the canonical deep copy and its errors, including mixed element headers supplied by native callers. Debug inspection retains owned snapshots, and prepared modules recompute the proof instead of trusting saved optimization flags. Purity alone does not establish that a helper cannot mutate an aliased collection.</p>
+<p>The same proof follows synchronous authored helper chains. Eligible array parameters become internal call-scoped read-only views automatically; no new parameter syntax or author annotation is required. The callee cannot mutate, return, retain, expose collection identity, start tasks, or suspend with a view. Unsupported or recursive call chains keep owning copies. Runtime checks cover actual argument headers, ancestor scratch and bound library state, and recognize only the engine's exact safe callbacks. Custom callbacks and debugging keep snapshots. Generated C conservatively retains caller snapshots around helper calls, while its shared call driver can still borrow verified helper arguments. These restrictions govern when the optimization applies; ordinary array helpers retain their existing value semantics when it cannot apply.</p>
+<p>A call passes all of its arguments without copying them, records, strings and unions included, when the callee and every function it can reach leave storage they did not allocate untouched. Each loaded definition is checked once: nothing may write through a value derived from an argument, state or context, update such a value in place, or write through a reference to it, and the definition may not store state, send commands, start tasks or suspend. Natives must declare pure or world-read access. Copying a parameter into a local and changing the local is allowed, and so is assigning fields of the helper's own records, text from its arguments included: strings are immutable, so storing the caller's text leaves the storage the helper's own. Only reading such bytes back as an address, which no lowering emits, makes the helper copy. A helper that reads a table therefore costs the same however large the table is. Debugging keeps the copies.</p>
+<p>Preview source preparation reuses unchanged analysis and executable generations through <code>authoring_sources_prepare_incremental</code>. Exact source identity/text, semantic catalog metadata/defaults, backend and native binding generation must match. Editing a library body rebuilds its transitive callers. Generations own their data independently of older collections; declaration discovery and parsing still run. Default comparison evidence is capped at 1 MiB and depth 64; unsupported defaults, managed struct pointers or padding can conservatively prevent reuse. Custom binding providers must supply a nonzero immutable generation to opt into reuse. This is an in-process cache, with no persistent artifacts.</p>
+<p>World-owned strings use a hash table with exact text comparison and stable allocations until world teardown. A null input interns as an empty string. Lookup has expected constant probe count at a bounded load factor; adversarial collisions can still require a linear scan. This structural improvement and the removed instrumentation work are not a measured speedup claim.</p>
+</main>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testing · Chibi</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+<p class="site"><a href="index.html">Chibi</a></p>
+<h2>Overview</h2>
+<ul>
+<li><a href="index.html">Chibi</a></li>
+</ul>
+<h2>Learn</h2>
+<ul>
+<li><a href="language.html">The Chibi language</a></li>
+</ul>
+<h2>Testing</h2>
+<ul>
+<li><a href="testing.html" aria-current="page">Testing</a></li>
+</ul>
+<h2>Packages</h2>
+<ul>
+<li><a href="packages.html">Core packages</a></li>
+</ul>
+<h2>Examples</h2>
+<ul>
+<li><a href="examples.html">Examples</a></li>
+</ul>
+<h2>FAQ</h2>
+<ul>
+<li><a href="faq.html">FAQ</a></li>
+</ul>
+<h2>Grammar</h2>
+<ul>
+<li><a href="grammar.html">Grammar</a></li>
+</ul>
+<h2>Toolchain</h2>
+<ul>
+<li><a href="toolchain.html">Toolchain</a></li>
+</ul>
+</nav>
+<main>
+<h1 id="testing">Testing</h1>
+<p>Tests are Chibi functions. Mark a package-level function that takes and returns nothing with <code>@test</code>, and check what it computes with <code>expect</code>:</p>
+<pre><code class="language-chibi">package scoring
+
+Double :: (points: int) -&gt; int {
+    return points * 2;
+}
+
+@test
+DoublesPoints :: () {
+    expect(Double(3) == 6, &quot;three doubles to six&quot;);
+}
+</code></pre>
+<p><code>expect(condition, message)</code> does nothing when the condition holds. When it does not, the test fails with <code>Expectation failed: message</code> at the position of the <code>expect</code> call, even inside a function the test calls.</p>
+<h2 id="running-tests">Running tests</h2>
+<p><code>chibi test [ROOT]</code> prepares every package below ROOT, the working directory by default, and runs each test alone:</p>
+<pre><code class="language-text">PASS scoring.DoublesPoints
+FAIL scoring.HalvesPoints
+  /work/scoring/Scoring.chibi:14:5: Expectation failed: four halves to two
+2 tests, 1 failed
+</code></pre>
+<p>It exits 0 when every test passes and 1 when one fails or a package is invalid, so it fits a pre-commit hook or CI.</p>
+<h2 id="what-a-test-can-do">What a test can do</h2>
+<p>A test runs without a game. Its packages may call the functions that need no running game: core, text, arrays, vectors, math and value operations. A package that calls anything else, such as audio or entities, does not compile for <code>chibi test</code>, which reports where.</p>
+<p>A test also fails:</p>
+<ul>
+<li>on any runtime failure, such as reading past the end of an array;</li>
+<li>when it waits, with <code>await</code> or <code>yield</code>, or starts a task, because nothing would resume it;</li>
+<li>after 100 million instructions, so a loop that never ends still stops.</li>
+</ul>
+<h2 id="where-tests-live">Where tests live</h2>
+<p>ROOT holds only package files, each starting with <code>package NAME</code>, and tests sit beside the code they check. A game project's behaviors and libraries are not packages, so they hold no tests yet.</p>
+</main>
+</body>
+</html>

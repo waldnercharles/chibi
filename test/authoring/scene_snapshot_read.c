@@ -22,14 +22,14 @@
 #define READ_NAME "Snapshot Read Specimen"
 #define READ_ERROR "Scene snapshot is not current"
 #define DISPATCH_BUDGET 1000
-static const char SOURCE
-    [] = "SceneReadSpecimen :: behavior {"
-         "ids:entity[]=[]; parents:int[]=[]; names:string[]=[];"
-         "observed:entity=0; parent:int=-1; text:string=\"\"; "
-         "completed:bool=false;"
-         "on Read { result:=snapshot_read_specimen(); ids=result.Entities;"
-         "parents=result.Parents; names=result.Names; completed=true; }"
-         "on Inspect { observed=ids[1]; parent=parents[1]; text=names[1]; } }";
+static const char SOURCE[] =
+    "SceneReadSpecimen :: behavior {"
+    "ids:entity[]=[]; parents:int[]=[]; names:string[]=[];"
+    "observed:entity=0; parent:int=-1; text:string=\"\"; "
+    "completed:bool=false;"
+    "on Read :: () { result:=snapshot_read_specimen(); ids=result.Entities;"
+    "parents=result.Parents; names=result.Names; completed=true; }"
+    "on Inspect :: () { observed=ids[1]; parent=parents[1]; text=names[1]; } }";
 static const behavior_backend BACKENDS[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
 static const uint64_t IDENTITIES[] = {
     UINT64_C(0x8000000100000007),

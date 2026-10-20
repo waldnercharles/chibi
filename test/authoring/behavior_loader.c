@@ -120,7 +120,7 @@ TEST_CASE(sources_load_into_both_worlds_or_neither)
         "Counter",
         "Counter :: behavior {\n"
         "    steps := 0\n"
-        "    on Tick {\n"
+        "    on Tick :: () {\n"
         "        steps += 1\n"
         "    }\n"
         "}\n"

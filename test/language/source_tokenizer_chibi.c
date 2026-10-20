@@ -498,7 +498,7 @@ static const struct
       "}\n" },
     { "label",
       "B :: behavior {\n"
-      "    on Begin {\n"
+      "    on Begin :: () {\n"
       "        top:\n"
       "        goto top\n"
       "    }\n"
@@ -512,7 +512,7 @@ static const struct
       "}\n" },
     { "comments",
       "B :: behavior {\n"
-      "    on Begin {\n"
+      "    on Begin :: () {\n"
       "        a := 1 /* first\n"
       "        */ b := 2\n"
       "        c := a // note\n"
@@ -527,7 +527,7 @@ static const struct
       "}\n" },
     { "generics",
       "B :: behavior {\n"
-      "    on Begin {\n"
+      "    on Begin :: () {\n"
       "        x := f<A, g<B>>(1 >> 2, 3 << 4)\n"
       "    }\n"
       "}\n" },
@@ -555,7 +555,7 @@ static const struct
       "}\n" },
     { "jumps",
       "B :: behavior {\n"
-      "    on Begin {\n"
+      "    on Begin :: () {\n"
       "        if x {\n"
       "            return\n"
       "        }\n"

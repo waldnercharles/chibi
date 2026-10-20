@@ -115,12 +115,13 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
         "Convert :: (input:%s)->(Value:%s) {return "
         "AliasConvert(input);} "
         "Nested :: (input:%s)->(Value:%s) {return Convert(input);} "
-        "on Pulse(input) {output=%s;} }",
+        "on Pulse :: (input:%s) {output=%s;} }",
         types[to].name,
         types[from].name,
         types[to].name,
         types[from].name,
         types[to].name,
+        types[from].name,
         nested ? "Nested(input)" : "input"
     );
     alias_source = authoring_source_prepare_document(
@@ -195,8 +196,10 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     snprintf(
         text,
         sizeof text,
-        "AliasCase :: behavior {output:%s=null;on Pulse(input){output=input;}}",
-        types[to].name
+        "AliasCase :: behavior {output:%s=null;on Pulse :: "
+        "(input:%s){output=input;}}",
+        types[to].name,
+        types[from].name
     );
     alias_source = authoring_source_prepare_document(
         "AliasCase.chibi",

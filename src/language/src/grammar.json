@@ -1714,17 +1714,8 @@
               "type": "FIELD",
               "name": "kind",
               "content": {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "STRING",
-                    "value": "on"
-                  },
-                  {
-                    "type": "STRING",
-                    "value": "after"
-                  }
-                ]
+                "type": "STRING",
+                "value": "after"
               }
             },
             {
@@ -1734,31 +1725,6 @@
                 "type": "SYMBOL",
                 "name": "_handler_name"
               }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": "as"
-                    },
-                    {
-                      "type": "FIELD",
-                      "name": "alias",
-                      "content": {
-                        "type": "SYMBOL",
-                        "name": "_name"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
             },
             {
               "type": "CHOICE",

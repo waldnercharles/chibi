@@ -310,7 +310,8 @@ module.exports = grammar({
         field("value", $._expression),
         $._end,
       ),
-    // `on X :: (a: T)` names payload fields; the other form is migrating away.
+    // `on X :: (a: T)` names payload fields; `after X` binds an action's
+    // results.
     handler: ($) =>
       choice(
         seq(
@@ -321,9 +322,8 @@ module.exports = grammar({
           field("body", $.block),
         ),
         seq(
-          field("kind", choice(K.on, K.after)),
+          field("kind", K.after),
           field("name", $._handler_name),
-          optional(seq(K.as, field("alias", $._name))),
           optional(field("parameters", $.parameter_list)),
           field("body", $.block),
         ),

@@ -231,7 +231,8 @@ TEST_CASE(rename_cross_file_callable_parameters_results_and_program)
     const char *sources[] = {
         "Utils :: library { Pair :: (amount:int)->(first:int,second:int){ "
         "return(amount,amount+1); } }",
-        "App :: behavior { on Tick { Split:=99; answer:=Utils.Pair(amount:2); "
+        "App :: behavior { on Tick :: () { Split:=99; "
+        "answer:=Utils.Pair(amount:2); "
         "total:=answer.first; } }",
     };
     REQUIRE(project(sources, 2));
@@ -276,7 +277,8 @@ TEST_CASE(rename_preserves_quoted_names_and_escapes)
     const char *sources[] = {
         "Odd_Library :: library { quoted_fn :: (arg:int)->(output:int){ "
         "return(arg); } }",
-        "App :: behavior { on Tick { answer:=Odd_Library.quoted_fn(3); } }",
+        "App :: behavior { on Tick :: () { answer:=Odd_Library.quoted_fn(3); } "
+        "}",
     };
     REQUIRE(project(sources, 2));
     const authoring_reference *function = at(0, "quoted_fn ::");
@@ -294,7 +296,7 @@ TEST_CASE(rename_preserves_quoted_names_and_escapes)
 TEST_CASE(navigation_tracks_native_field_access_roles)
 {
     const char *sources[] = { "Fields :: behavior { p:Position={x:1,y:2}; on "
-                              "Tick { p.x=3; total:=p.y; } }" };
+                              "Tick :: () { p.x=3; total:=p.y; } }" };
     REQUIRE(project(sources, 1));
     const authoring_reference *write = at(0, "x=3"), *read = at(0, "y;");
     REQUIRE(write && read);
@@ -318,8 +320,7 @@ TEST_CASE(rename_rejects_collisions_and_invalid_project_drafts)
     REQUIRE(function && program);
     REQUIRE(!plan_rename(function->target, "G"));
     REQUIRE(!plan_rename(program->target, "Other"));
-    const char *invalid[] = { sources[0],
-                              "Broken :: behavior { on Tick { missing(); } }" };
+    const char *invalid[] = { sources[0], "Broken :: behavior { on Tick :: () { missing(); } }" };
     REQUIRE(!project(invalid, 2));
     function = at(0, "F ::");
     REQUIRE(function);
@@ -331,7 +332,7 @@ TEST_CASE(rename_rejects_collisions_and_invalid_project_drafts)
 TEST_CASE(rename_rejects_capture_before_hoisted_declaration)
 {
     const char *sources[] = {
-        "Forward :: behavior { early:=hostValue; later:=1; on Tick { "
+        "Forward :: behavior { early:=hostValue; later:=1; on Tick :: () { "
         "total:=later; } }",
     };
     REQUIRE(project(sources, 1));
@@ -345,11 +346,11 @@ TEST_CASE(rename_rejects_capture_before_hoisted_declaration)
 TEST_CASE(rename_groups_event_alias_handlers)
 {
     const char *sources[] = {
-        "Events :: behavior { event pulse=Tick; on pulse { count:=1; } }",
+        "Events :: behavior { event pulse=Tick; on pulse :: () { count:=1; } }",
     };
     REQUIRE(project(sources, 1));
     const authoring_reference *declaration = at(0, "pulse=Tick"),
-                              *handler = at(0, "pulse {");
+                              *handler = at(0, "pulse ::");
     REQUIRE(declaration && handler);
     REQUIRE(authoring_target_equal(declaration->target, handler->target));
     REQUIRE(plan_rename(declaration->target, "changed"));
@@ -419,7 +420,7 @@ TEST_CASE(intelligence_signatures_and_semantic_highlights)
     const char *sources[] = {
         "Math :: library { Twice :: (input:int)->(answer:int) { "
         "answer=input*2; return(answer); } }",
-        "App :: behavior { score:=0; on Tick { score=Math.Twice(3); } }"
+        "App :: behavior { score:=0; on Tick :: () { score=Math.Twice(3); } }"
     };
     REQUIRE(project(sources, 2));
     int cursor = (int)(strstr(documents[1].syntax->text, "Twice") -
@@ -496,7 +497,7 @@ TEST_CASE(library_signatures_infer_results_from_returns)
     const char *sources[] = {
         "Math :: library { Twice :: (input:int) { return input * 2 } Both :: "
         "(input:int) { return(Low: Twice(input), High: input * 4) } }",
-        "App :: behavior { score:=0; on Tick { score=Math.Twice(3) + "
+        "App :: behavior { score:=0; on Tick :: () { score=Math.Twice(3) + "
         "Math.Both(1).High; } }"
     };
     REQUIRE(project(sources, 2));
@@ -508,7 +509,7 @@ TEST_CASE(library_signatures_infer_results_from_returns)
     const char *qualified[] = {
         "Math :: library { Twice :: (input:int) { return input * 2 } }",
         "App :: behavior { score:=0; A :: (x:int) { return Math.Twice(x) } "
-        "Twice :: (x:int) { return A(x) } on Tick { score=Twice(3); } }"
+        "Twice :: (x:int) { return A(x) } on Tick :: () { score=Twice(3); } }"
     };
     REQUIRE(project(qualified, 2));
     return true;
@@ -542,7 +543,7 @@ TEST_CASE(rename_implicit_results_cannot_edit_return_type_or_expression)
 TEST_CASE(intelligence_recovers_reflected_members_and_rejects_comments)
 {
     const char *sources[] = {
-        "Fields :: behavior { p:Position={x:1,y:2}; on Tick { p. } }"
+        "Fields :: behavior { p:Position={x:1,y:2}; on Tick :: () { p. } }"
     };
     REQUIRE(!project(sources, 1));
     int cursor = (int)(strstr(documents[0].syntax->text, "p. }") -
@@ -553,8 +554,10 @@ TEST_CASE(intelligence_recovers_reflected_members_and_rejects_comments)
     REQUIRE(x && y && completions.count == 2);
     REQUIRE(x->target.kind == AUTHORING_FIELD && x->target.id == 20 && x->target.owner == 10);
     REQUIRE(!strcmp(x->detail, "x: int"));
-    const char *comment[] = { "Comments :: behavior { on Tick { // hostValue\n"
-                              " } }" };
+    const char *comment[] = {
+        "Comments :: behavior { on Tick :: () { // hostValue\n"
+        " } }"
+    };
     REQUIRE(project(comment, 1));
     cursor = (int)(strstr(documents[0].syntax->text, "hostValue") -
                    documents[0].syntax->text) +
@@ -588,7 +591,7 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
 {
     const char *ranked[] = {
         "Suggestions :: behavior { target:int=0; velocity_global:int=0; "
-        "vel:int=0; vel_boolean:bool=false; on Tick { velocity:int=1; "
+        "vel:int=0; vel_boolean:bool=false; on Tick :: () { velocity:int=1; "
         "very_eventful_loop:int=2; target=vel; } }"
     };
     REQUIRE(project(ranked, 1));
@@ -603,9 +606,9 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
     REQUIRE(!strcmp(completions.items[3].label, "very_eventful_loop"));
     REQUIRE(!completion("vel_boolean"));
     const char *drafts[] = {
-        "Draft :: behavior { score:int=0; on Tick { score=sco",
-        "Draft :: behavior { score:int=0; on Tick { score=",
-        "Draft :: behavior { score:int=0; on Tick { score=score+sco",
+        "Draft :: behavior { score:int=0; on Tick :: () { score=sco",
+        "Draft :: behavior { score:int=0; on Tick :: () { score=",
+        "Draft :: behavior { score:int=0; on Tick :: () { score=score+sco",
     };
     for (int i = 0; i < 3; i++) {
         const char *source[] = { drafts[i] };
@@ -626,7 +629,7 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
     }
     const char *qualified[] = {
         "Shared :: library { Multiply :: (x:int)->(answer:int){return(x);} }",
-        "Names :: behavior { on Tick { chosen:=Shared.Mul; } }"
+        "Names :: behavior { on Tick :: () { chosen:=Shared.Mul; } }"
     };
     REQUIRE(!project(qualified, 2));
     cursor = (int)(strstr(documents[1].syntax->text, "Shared.Mul") -
@@ -644,7 +647,7 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
     );
     const char *shadowed[] = {
         qualified[0],
-        "Names :: behavior { on Tick { Shared:=1; chosen:=Shared.Mul; } }"
+        "Names :: behavior { on Tick :: () { Shared:=1; chosen:=Shared.Mul; } }"
     };
     REQUIRE(!project(shadowed, 2));
     cursor = (int)(strstr(documents[1].syntax->text, "Shared.Mul") -
@@ -692,16 +695,18 @@ TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context)
           .completion_outcome = -1 },
     };
     const char *drafts[] = {
-        "Effects :: behavior { on Tick { Create(MovementEmitter); } }",
-        "Effects :: behavior { on Tick { Create(MovmentEmitter); } }",
-        "Effects :: behavior { on Tick { Create(Move",
-        "Effects :: behavior { on Tick { Create(",
-        "Effects :: behavior { on Tick { Create(Prototype: MovementEmitter); } "
+        "Effects :: behavior { on Tick :: () { Create(MovementEmitter); } }",
+        "Effects :: behavior { on Tick :: () { Create(MovmentEmitter); } }",
+        "Effects :: behavior { on Tick :: () { Create(Move",
+        "Effects :: behavior { on Tick :: () { Create(",
+        "Effects :: behavior { on Tick :: () { Create(Prototype: "
+        "MovementEmitter); } "
         "}",
-        "Effects :: behavior { on Tick { Create(Prototype: MovementEmitter); } "
+        "Effects :: behavior { on Tick :: () { Create(Prototype: "
+        "MovementEmitter); } "
         "}",
-        "Effects :: behavior { on Tick { Configure(Count: 1, Prototype: "
-        "MovementEmitter); } }",
+        ("Effects :: behavior { on Tick :: () { Configure(Count: 1, Prototype: "
+         "MovementEmitter); } }"),
     };
     for (int i = 0; i < 7; i++) {
         cleanup();
@@ -848,7 +853,7 @@ static bool external_project()
     document_count = 1;
     documents[0] = (authoring_document){
         .path = "behaviors/Consumer.chibi",
-        .syntax = script_parse("Consumer :: behavior { p:Position={x:1,y:2}; label:=\"Spark\"; event pulse=Pulse; on pulse { Spawn(Spark); Has(Position); } }")
+        .syntax = script_parse("Consumer :: behavior { p:Position={x:1,y:2}; label:=\"Spark\"; event pulse=Pulse; on pulse :: () { Spawn(Spark); Has(Position); } }")
     };
     documents[0].analysis = script_analyze_document(
         documents[0].syntax,
@@ -900,7 +905,7 @@ TEST_CASE(navigation_resolves_external_definitions_and_selected_references)
                      event->target
                  )
     );
-    const authoring_reference *handler = at(0, "pulse {");
+    const authoring_reference *handler = at(0, "pulse ::");
     REQUIRE(handler && authoring_target_equal(handler->target, alias->target));
     int count = 0;
     highlights = authoring_source_highlights(navigation, 0, &count);
@@ -972,7 +977,7 @@ TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity)
     REQUIRE(plan->count == 2);
     free(edited);
     edited = authoring_rename_document(plan, 0, documents[0].syntax->text, error, sizeof error);
-    REQUIRE(edited && strstr(edited, "event pulse=Advance; on pulse {"));
+    REQUIRE(edited && strstr(edited, "event pulse=Advance; on pulse :: () {"));
     const authoring_reference *component = at(0, "Position);");
     REQUIRE(component && !plan_rename(component->target, "MovedPosition"));
     return true;
@@ -1029,7 +1034,8 @@ TEST_CASE(navigation_follows_prototype_names_into_spawn)
         "Effects :: library { Launch :: (kind:Prototype){ empty:=\"\"; "
         "Spawn(kind); } Burst "
         ":: (kind:Prototype=Ember){ Launch(kind:kind); } }",
-        "App :: behavior { label:=\"Spark\"; aim:Prototype=Spark; on Tick { "
+        "App :: behavior { label:=\"Spark\"; aim:Prototype=Spark; on Tick :: "
+        "() { "
         "pick:=Spark; Spawn(pick); aim=Ember; Spawn(aim); "
         "Effects.Burst(kind:Spark); miss:=\"Nothing\"; } }",
     };
@@ -1058,7 +1064,7 @@ TEST_CASE(prototype_reference_flow_reports_typed_alias_origins_without_duplicate
 {
     const char *sources[] = {
         "Effects :: library { Launch :: (kind:Prototype){ Spawn(kind); } }",
-        "App :: behavior { text:=\"Spark\"; on Tick { target:=Spark; "
+        "App :: behavior { text:=\"Spark\"; on Tick :: () { target:=Spark; "
         "alias:=target; Effects.Launch(alias); } }",
     };
     REQUIRE(spawn_project(sources, 2));
@@ -1087,7 +1093,7 @@ TEST_CASE(prototype_rename_skips_omitted_defaults)
     const char *sources[] = {
         "Effects :: library { Burst :: (kind:Prototype=Spark){ Spawn(kind); } "
         "}",
-        "App :: behavior { on Tick { Effects.Burst(); } }",
+        "App :: behavior { on Tick :: () { Effects.Burst(); } }",
     };
     REQUIRE(spawn_project(sources, 2));
     const authoring_reference *spark = at(0, "Spark){");
@@ -1144,7 +1150,7 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
     document_count = 1;
     documents[0] = (authoring_document){
         .path = "behaviors/Consumer.chibi",
-        .syntax = script_parse("Consumer :: behavior { on Pulse {} }")
+        .syntax = script_parse("Consumer :: behavior { on Pulse :: () {} }")
     };
     documents[0].analysis = script_analyze_document(
         documents[0].syntax,
@@ -1153,7 +1159,7 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
     );
     REQUIRE(documents[0].analysis->valid);
     navigation = authoring_navigation_new_project(documents, 1, &catalog, &definition, 1, rml_references, 3);
-    const authoring_reference *event = at(0, "Pulse {}");
+    const authoring_reference *event = at(0, "Pulse ::");
     REQUIRE(event && event->target.kind == AUTHORING_CALLABLE && event->target.id == 401);
     REQUIRE(authoring_navigation_document_count(navigation) == 3);
     REQUIRE(authoring_navigation_document_kind(navigation, 2) == SOURCE_TEXT_RML);
@@ -1197,7 +1203,7 @@ static bool input_map_project()
 {
     static const char source[] = "Jumper :: behavior {\n"
                                  "    held: bool = false;\n"
-                                 "    on Jump {\n"
+                                 "    on Jump :: () {\n"
                                  "        held = input.Jump.held;\n"
                                  "        held = input.jump.pressed;\n"
                                  "    }\n"
@@ -1270,7 +1276,7 @@ TEST_CASE(navigation_connects_input_actions_to_the_input_map)
         use->target.id == script_catalog_id("event", "Jump")
     );
     REQUIRE(use->location.range.end - use->location.range.start == 4);
-    const authoring_reference *handler = at(0, "Jump {"),
+    const authoring_reference *handler = at(0, "Jump ::"),
                               *other = at(0, "jump.pressed");
     REQUIRE(handler && authoring_target_equal(handler->target, use->target));
     REQUIRE(other && authoring_target_equal(other->target, use->target));
@@ -1300,7 +1306,7 @@ TEST_CASE(rename_input_action_edits_the_input_map_and_scripts)
                       edited,
                       "Jumper :: behavior {\n"
                       "    held: bool = false;\n"
-                      "    on Leap {\n"
+                      "    on Leap :: () {\n"
                       "        held = input.Leap.held;\n"
                       "        held = input.Leap.pressed;\n"
                       "    }\n"
@@ -1379,7 +1385,7 @@ static bool scene_globals_project()
           .range = { 24, 32, 2, 10, 0 } },
     };
     const char *sources[] = {
-        "App :: behavior { on Tick { level:=globals.Level; "
+        "App :: behavior { on Tick :: () { level:=globals.Level; "
         "other:=globals.level; label:=\"Level\"; } }"
     };
     base_catalog();
@@ -1687,7 +1693,7 @@ TEST_CASE(intelligence_templates_hide_specializations_and_preserve_owned_definit
     const char *root = "/__chibi_generic_navigation__";
     const source_catalog_edit edits[] = {
         { .path = "/__chibi_generic_navigation__/libraries/Tools.chibi", .text = "Tools :: library { // Multiplies by a compile-time factor.\nScale :: (value:$T,$N:int)->T { return value*N } }" },
-        { .path = "/__chibi_generic_navigation__/behaviors/App.chibi", .text = "App :: behavior { on Tick { result:=Tools.Scale(int(3),2); } }" },
+        { .path = "/__chibi_generic_navigation__/behaviors/App.chibi", .text = "App :: behavior { on Tick :: () { result:=Tools.Scale(int(3),2); } }" },
     };
     input_catalog = source_catalog_replaced(root, &catalog, edits, 2);
     REQUIRE(!source_catalog_diagnostic_count(input_catalog));

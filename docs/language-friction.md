@@ -686,3 +686,23 @@ Suggestion: Go and Odin's rule, a comment block directly above a declaration
 documents it, which needs no new syntax; the frontend keeps it on the
 declaration for the presentation and the language server. Leave grouping to a
 later attribute syntax.
+
+## Event payloads have no single typed declaration
+
+Language. An event's payload is declared in three places: the engine's events
+in a C table, a project's events in KDL, and each test file's events in its own
+C catalog. Old handlers could also leave a field untyped. The version 30
+migration therefore needed three type sources and a frozen copy of the engine
+table (#565). Converting the tests' handlers then needed each test catalog's
+names and types, and several disagreed with the engine's `Tick`
+(`DeltaSeconds`, `cells`, `Elapsed`), so the conversion had to set the frozen
+table aside for them (the PR that removed the old handler forms).
+
+- Rust passes a struct such as `struct Tick { dt: f32 }` to a typed handler;
+  Odin can model events as `Event :: union { Tick, … }`; C# derives payloads
+  from `EventArgs`. In each, the payload is a type in source, and tests reuse
+  the production type, so a field rename reaches every use through the type
+  checker.
+
+Suggestion: declare an event's payload as a record in `.chibi` source, which
+the compilers, Studio, migrations and tests then share.

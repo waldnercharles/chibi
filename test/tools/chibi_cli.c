@@ -662,9 +662,9 @@ TEST_CASE(fmt_formats_each_project)
 
 static const char
     MESSY_SCENE[] = "version 1\nname   \"Start\"\n(array)entities\n";
-static const char
-    MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
-                     "  on Tick(dt) {   angle = angle + dt; }\n}\n";
+static const char MESSY_SOURCE[] = "Spin :: behavior {\n  angle: float = 0.0;\n"
+                                   "  on Tick :: (dt: float s) {   angle = "
+                                   "angle + dt; }\n}\n";
 
 /* The real compiler's --format --check names the assets that are not
  * canonical and changes nothing; --format rewrites them as their savers
@@ -694,7 +694,8 @@ TEST_CASE(compiler_format_rewrites_noncanonical_assets)
     REQUIRE(file_is("messy/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities\n"));
     REQUIRE(file_is(
         "messy/content/behaviors/Spin.chibi",
-        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick {\n"
+        "Spin :: behavior {\n    angle: float = 0.0\n    on Tick :: (dt: float "
+        "s) {\n"
         "        angle = angle + dt\n    }\n}\n"
     ));
     REQUIRE(tool_run(check, root, output) == 0);

@@ -1,5 +1,7 @@
 #include "host/build_host_internal.h"
 #include "host/build_io.h"
+#include "support/array.h"
+#include "support/sha256.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -161,6 +163,100 @@ static const char *build_report(void *service, const pin_value *arguments, pin_v
     results[0].i = 0;
     return NULL;
 }
+static const char *build_file_kind(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    const char *kind;
+    const char *failure = build_io_kind(host->root, arguments[0].str, &kind);
+    return failure ? failure : string_result(host, results, kind);
+}
+static const char *build_file_stamp(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char stamp[BUILD_IO_STAMP_SIZE];
+    const char *failure = build_io_stamp(host->root, arguments[0].str, stamp);
+    return failure ? failure : string_result(host, results, stamp);
+}
+static const char *build_list_directory(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char **names;
+    const char *failure = build_io_list(
+        host->root,
+        arguments[0].str,
+        host->deadline,
+        host->options->cancelled,
+        &names
+    );
+    if (failure) {
+        return failure;
+    }
+    pin_array *array = build_values_array(&host->values, acount(names));
+    failure = array ? NULL : host->values.error;
+    for (int i = 0; !failure && i < acount(names); i++) {
+        char *name = build_values_text(&host->values, names[i], strlen(names[i]));
+        failure = name ? NULL : host->values.error;
+        array->items[i] = (pin_value){ .type = PIN_STR, .str = name };
+    }
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+    results[0].ptr = array;
+    return failure;
+}
+static const char *build_copy_file(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(2);
+    results[0].b = build_io_copy(
+        host->root,
+        arguments[0].str,
+        arguments[1].str,
+        host->deadline,
+        host->options->cancelled
+    );
+    return NULL;
+}
+static const char *build_rename(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(2);
+    results[0].b = build_io_rename(host->root, arguments[0].str, arguments[1].str);
+    return NULL;
+}
+static const char *build_remove(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    results[0].b = build_io_remove(host->root, arguments[0].str);
+    return NULL;
+}
+static const char *build_hash_file(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char digest[65];
+    const char *failure = build_io_hash(
+        host->root,
+        arguments[0].str,
+        host->deadline,
+        host->options->cancelled,
+        digest
+    );
+    return failure ? failure : string_result(host, results, digest);
+}
+static const char *build_hash_text(void *service, const pin_value *arguments, pin_value *results)
+{
+    READY_HOST();
+    STRING_ARGUMENTS(1);
+    char digest[65];
+    sha256_hex(arguments[0].str, strlen(arguments[0].str), digest);
+    return string_result(host, results, digest);
+}
 #define VALUE_CALLBACK(NAME)                                                                       \
     static const char *value_##NAME(void *service, const pin_value *arguments, pin_value *results) \
     {                                                                                              \
@@ -197,6 +293,12 @@ static const script_catalog_parameter join_parameters[] = {
 static const script_catalog_parameter concat_parameters[] = {
     { .name = "left", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
     { .name = "right", .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY } },
+};
+static const script_catalog_parameter path_parameter = { .name = "path",
+                                                         .type = { .storage = PIN_STR } };
+static const script_catalog_parameter move_parameters[] = {
+    { .name = "source", .type = { .storage = PIN_STR } },
+    { .name = "destination", .type = { .storage = PIN_STR } },
 };
 static const script_catalog_parameter text_result = { .name = "value",
                                                       .type = { .storage = PIN_STR } };
@@ -241,6 +343,16 @@ static const script_catalog_capability capabilities[] = {
     BUILD_CAPABILITY(921, "BuildTrim", &text_parameter, 1, text_result),
     BUILD_CAPABILITY(922, "BuildConcat", concat_parameters, 2, array_result),
     BUILD_CAPABILITY(923, "BuildLength", &array_parameter, 1, int_result),
+    BUILD_CAPABILITY(924, "RunBuildProbe", &array_parameter, 1, int_result),
+    BUILD_CAPABILITY(925, "BuildEnvironmentNames", NULL, 0, array_result),
+    BUILD_CAPABILITY(926, "BuildFileKind", &path_parameter, 1, text_result),
+    BUILD_CAPABILITY(927, "BuildFileStamp", &path_parameter, 1, text_result),
+    BUILD_CAPABILITY(928, "BuildListDirectory", &path_parameter, 1, array_result),
+    BUILD_CAPABILITY(929, "BuildCopyFile", move_parameters, 2, bool_result),
+    BUILD_CAPABILITY(930, "BuildRename", move_parameters, 2, bool_result),
+    BUILD_CAPABILITY(931, "BuildRemove", &path_parameter, 1, bool_result),
+    BUILD_CAPABILITY(932, "BuildHashFile", &path_parameter, 1, text_result),
+    BUILD_CAPABILITY(933, "BuildHashText", &text_parameter, 1, text_result),
 };
 #undef BUILD_CAPABILITY
 static const script_catalog catalog = { .capabilities = capabilities,
@@ -274,6 +386,16 @@ static const node_host_call calls[] = {
     BUILD_CALL(value_trim),
     BUILD_CALL(value_concat),
     BUILD_CALL(value_length),
+    BUILD_CALL(build_host_run_probe),
+    BUILD_CALL(build_host_environment_names),
+    BUILD_CALL(build_file_kind),
+    BUILD_CALL(build_file_stamp),
+    BUILD_CALL(build_list_directory),
+    BUILD_CALL(build_copy_file),
+    BUILD_CALL(build_rename),
+    BUILD_CALL(build_remove),
+    BUILD_CALL(build_hash_file),
+    BUILD_CALL(build_hash_text),
 };
 #undef BUILD_CALL
 bool build_host_resolve(void *, uint64_t id, script_lower_host *out)

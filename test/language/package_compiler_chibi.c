@@ -46,6 +46,7 @@ static const char PACKAGE[] = "project:package_compiler";
 enum
 {
     CALLS = 10,
+    SAMPLE_INPUTS = 4,
     ARGUMENTS = 12,
     /* Compile's debug flag, then the six that describe the target. */
     DEBUG_ARGUMENT = 5,
@@ -69,15 +70,15 @@ typedef enum
     TYPE_SAMPLES,
     IMPORT_SAMPLES
 } sample_group;
-/* `source` is package facts; `library` is package lib when present, and
- * `core` adds core:strings. An `updates` sample's `Build(count)` updates a
+/* `source` is package facts, and `more` another file of it when present;
+ * `library` is package lib when present, and `core` adds core:strings. An `updates` sample's `Build(count)` updates a
  * local array in place: doubling its count at most doubles the values it
  * copies, where copying the array on each update would quadruple them. A
  * `boxed` sample's Boxed functions read only arrays that are never packed,
  * and its Packed functions arrays that may be. */
 typedef struct
 {
-    const char *name, *source, *library;
+    const char *name, *source, *more, *library;
     sample_group group;
     bool core, updates, boxed;
     sample_call calls[CALLS];
@@ -492,6 +493,9 @@ static const sample samples[] = {
                  { "Measure", "[\"zebra\"]", "[551]" },
                  { "Echo", "[{\"x\":1,\"y\":2}]", "[{\"x\":1,\"y\":2}]" },
                  { "Points", "[3]", "[[{\"x\":3,\"y\":3}]]" } } },
+    /* Package and imported constants. `lib.Scaled(2)` takes a default that
+     * stage zero reads from lib's catalog, at the call; `Triple(2)` one that
+     * the package's other file declares, whose occurrence is that file's. */
     { .name = "constants",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -506,16 +510,21 @@ static const sample samples[] = {
                 "    if (lib.Low < 0 && lib.High > 0) { return lib.High + "
                 "lib.Low; }\n"
                 "    return 0;\n}\n"
-                "Scale :: () -> int { return lib.Scaled(2); }",
+                "Scale :: () -> int { return lib.Scaled(2); }\n"
+                "Tripled :: () -> int { return Triple(2); }",
+      .more = "package facts\nTriple :: (n: int, by: int = 3) -> int { return "
+              "n * by; }\n",
       .library = "package lib\n"
                  "pub Step: int : 100;\n"
                  "pub Low: int : -2147483648;\n"
                  "pub High: int : 2147483647;\n"
-                 "pub Scaled :: (n: int) -> int { return n * Step; }",
+                 "pub Scaled :: (n: int, by: int = 1) -> int { return n * "
+                 "Step * by; }",
       .calls = { { "Sum", "[3]", "[148]" },
                  { "Hidden", "[]", "[1]" },
                  { "Limits", "[]", "[-1]" },
-                 { "Scale", "[]", "[200]" } } },
+                 { "Scale", "[]", "[200]" },
+                 { "Tripled", "[]", "[6]" } } },
     { .name = "patterns",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"
@@ -1444,12 +1453,17 @@ static bool prepare()
 }
 /* The sample's files: package facts, then lib and core:strings when it
  * uses them. */
-static int sample_inputs(const sample *s, source_package_input inputs[3])
+static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INPUTS])
 {
     int count = 0;
     inputs[count++] = (source_package_input){ "facts/Main.chibi",
                                               s->source,
                                               strlen(s->source) };
+    if (s->more) {
+        inputs[count++] = (source_package_input){ "facts/More.chibi",
+                                                  s->more,
+                                                  strlen(s->more) };
+    }
     if (s->library) {
         inputs[count++] = (source_package_input){ "lib/Lib.chibi",
                                                   s->library,
@@ -1734,7 +1748,7 @@ static bool same_watches(const execution_module *expected, const execution_modul
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
 {
-    source_package_input inputs[3];
+    source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
     compiler_fixture_free(&oracle);
     /* The natives the stage-one target links. */
@@ -2150,7 +2164,7 @@ static bool run_samples(sample_group group, int b)
         if (s->group != group) {
             continue;
         }
-        source_package_input inputs[3];
+        source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value out;
         REQUIRE(compile(b, inputs, count, COMPILE_BUDGET, &out));
@@ -2229,7 +2243,7 @@ TEST_CASE(package_compiler_omits_debug_info)
         while (strcmp(s->name, names[n])) {
             s++;
         }
-        source_package_input inputs[3];
+        source_package_input inputs[SAMPLE_INPUTS];
         int count = sample_inputs(s, inputs);
         pin_value args[ARGUMENTS], out;
         REQUIRE(arguments(1, inputs, count, args));
@@ -2392,7 +2406,7 @@ static bool stage_two_literals()
  * bytes, since its Result as JSON outgrows the host's projection limits. */
 static bool stage_two_sample(const sample *s)
 {
-    source_package_input inputs[3];
+    source_package_input inputs[SAMPLE_INPUTS];
     int count = sample_inputs(s, inputs);
     pin_value args[ARGUMENTS], out;
     REQUIRE(arguments(1, inputs, count, args));

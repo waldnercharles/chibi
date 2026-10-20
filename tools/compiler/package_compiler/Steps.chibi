@@ -1393,8 +1393,12 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         omitted := count;
         while (omitted < callables[item.a].count) {
             param := params[callables[item.a].first + omitted];
-            code = array_add(code, OccurrenceCode(ops, ExpressionRecord, param.default_occurrence,
-                                                  forest[Field(forest, forest[param.node].parent, "value")]));
+            if (callables[item.a].package == package) {
+                code = array_add(code, OccurrenceCode(ops, ExpressionRecord, param.default_occurrence,
+                                                      forest[Field(forest, forest[param.node].parent, "value")]));
+            } else {
+                code = array_add(code, ExpressionCode(ops, forest[Field(forest, item.node, "arguments")]));
+            }
             omitted += 1;
         }
     }
@@ -1474,8 +1478,14 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             constant.text = param.default_text;
             constant.has_text = param.storage == TextStorage;
             code = array_add(code, constant);
-            code = array_add(code, ScalarWatch(ops, at.slot + length(slots) - 1, param.storage, 0, true,
-                                               forest[Field(forest, forest[param.node].parent, "value")]));
+            if (called.package == package) {
+                code = array_add(code, DefaultWatch(ops, at.slot + length(slots) - 1, param.storage,
+                                                    param.default_occurrence,
+                                                    forest[Field(forest, forest[param.node].parent, "value")]));
+            } else {
+                code = array_add(code, DefaultWatch(ops, at.slot + length(slots) - 1, param.storage, uint64(0),
+                                                    forest[Field(forest, item.node, "arguments")]));
+            }
             arguments = array_add(arguments, Typed(at.slot + length(slots) - 1, param.storage, 0, -1));
         }
     }

@@ -1070,7 +1070,8 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
     starts := resize([int(0)], length(packages));
     lengths := resize([int(0)], length(packages));
     for (package in order) {
-        switch Assemble(forest, documents, package, package_names, package_ids, fingerprints,
+        switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
+                        package_ids, fingerprints,
                         Reachable(edges, length(packages), package), links, callables, params, types, members, constants,
                         natives, ports, identities, ops, target, abi, Game.Package) {
             case .Rejected(diagnostic):
@@ -1161,7 +1162,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
     }
     return used;
 }
-Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int,
+Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
              members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
@@ -1272,6 +1273,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     // Debugger points count each document's bytes that are not whitespace.
     solid: int[] = [];
     solid_document: int = -1;
+    // A symbol the source declares nowhere spans the package's first
+    // document, as stage zero gives it that document's unset range.
+    first_solid := SolidOffsets(documents[first_document].text);
+    undeclared := OccurrenceIn(DocumentHash(documents[first_document].key), SymbolRecord, 0,
+                               first_solid[length(first_solid) - 1]);
     index := first_own;
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
@@ -1293,7 +1299,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
                            types, members, used, natives, ports, identities, aggregates, record_makes, make_fields,
                            append(Aliases(links, callable.document), behaving), documents[callable.document].key, solid,
-                           meaning, index, ops, target);
+                           undeclared, meaning, index, ops, target);
         switch tables {
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);

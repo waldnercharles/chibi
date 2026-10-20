@@ -314,8 +314,9 @@ symbol at its entry.
 A point's occurrence is `script_occurrence` of its record's source range, so
 it is the one Studio's breakpoints find; a completion point's record is the
 function, and a symbol point's is the name's declaration. A symbol the source
-declares nowhere, such as `self` or an unnamed result, spans its document, as
-stage zero clamps the unset range; another package's constant is declared
+declares nowhere, such as `self` or an unnamed result, spans its package's
+first document, since stage zero's unset range names document 0 and clamps to
+its length; another package's constant is declared
 where this package first uses it. A point's position is where it is placed.
 Each point is a `SOURCE_POINT` instruction, which suspends, so each
 invocation's and point's target is its order among them, as the runtime

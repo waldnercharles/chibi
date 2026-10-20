@@ -434,11 +434,12 @@ Expression :: (kind: string) -> bool {
            kind == "array_expression" || kind == "call_expression" || kind == "unary_expression" ||
            kind == "binary_expression" || kind == "is_expression";
 }
-// The occurrence of the symbol the node `declared` declares. One the source
-// declares nowhere spans the document, as stage zero clamps its unset range.
-SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: uint64, solid: int[], declared: int) -> uint64 {
+// The occurrence of the symbol the node `declared` declares, or `undeclared`
+// for one the source declares nowhere.
+SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: uint64, solid: int[], undeclared: uint64,
+                     declared: int) -> uint64 {
     if (declared < 0) {
-        return OccurrenceIn(document, SymbolRecord, 0, solid[length(solid) - 1]);
+        return undeclared;
     }
     return OccurrenceIn(document, SymbolRecord, solid[forest[declared].start], solid[forest[declared].end]);
 }
@@ -468,6 +469,17 @@ ScalarWatch :: (ops: Ops, slot: int, storage: int, ordinal: int, output: bool, n
     code := Instruction(ops.source_watch, storage, flag, slot, ordinal, Pending, node);
     code.value_storage = storage;
     return code;
+}
+// The output watch of slot `slot`, holding a default of `storage` that a call
+// omits, at `node`. The default of a function in the same package is its own
+// expression, with that occurrence. Stage zero reads another package's default
+// from that package's catalog as a constant at the call's arguments. Its
+// occurrence is 0 and is resolved in the caller's document.
+DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: uint64, node: snapshot.SnapshotNode) -> Code {
+    return {op: ops.source_watch, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: occurrence, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end,
+            line: node.row + 1, column: node.column + 1};
 }
 // The watch of the number literal at `node` once slot `slot` holds it as
 // `storage`; an element of an array of literals has none.
@@ -1176,7 +1188,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
-             solid: int[], meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
+             solid: int[], undeclared: uint64, meaning: uint64, function: int, ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
@@ -2034,7 +2046,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 point_meaning = meaning;
                 point_kind = FunctionRecord;
             } else if (placed.left == SymbolPoint) {
-                occurrence = SymbolOccurrence(forest, document_hash, solid, placed.right);
+                occurrence = SymbolOccurrence(forest, document_hash, solid, undeclared, placed.right);
                 point_kind = SymbolRecord;
             } else if (placed.left == OccurrencePoint) {
                 occurrence = placed.payload;
@@ -2056,8 +2068,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             suspension += 1;
         } else if (op == ops.source_watch) {
             placed := code[at_point];
-            watch: SourceWatch = {occurrence: OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start],
-                                                           solid[placed.end]),
+            // A default of another document carries its occurrence.
+            occurrence := placed.payload;
+            if (occurrence == 0) {
+                occurrence = OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
+            }
+            watch: SourceWatch = {occurrence: occurrence,
                                   start: placed.start, end: placed.end, line: placed.line, column: placed.column,
                                   storage: placed.value_storage, container: placed.value_container,
                                   record: placed.value_record, ordinal: placed.right, output: placed.output == 1,

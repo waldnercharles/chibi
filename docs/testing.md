@@ -1885,6 +1885,10 @@ takes about 6 s.
     bodies, contacts and events, and UI text. Frame N is the world after N
     steps, so input keyed at step K first shows in frame K + 1.
 - **Cases.**
+  - Assembling each story from the modules of its own artifact, with
+    `authoring_project_assemble`, writes that artifact again byte for byte.
+    A source without its module, or a module of no source, is refused. This
+    is the assembly a stage-one route uses for modules stage one compiled.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.

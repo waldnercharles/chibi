@@ -1015,8 +1015,13 @@ FILE`. It then compares the two artifacts of each story:
 `test/tools/GameEquivalence.chibi` orchestrates and compares in the build
 host. C reads and plays the artifact. Both compilers are stage zero until
 stage one compiles behaviors. Stage one then needs a route that puts its
-modules into a game artifact, because project preparation still assembles
-the scenes, events and resources. See `docs/testing.md#game-equivalence`.
+modules into a game artifact. Project preparation is now split for it:
+`authoring_project_assemble` writes the artifact from the project's
+declarations, scenes, prototypes and resources plus supplied prepared
+modules, one per executable source by module ID. Assembling each story from
+its own artifact's modules reproduces that artifact byte for byte. Still to
+come: the route itself, a Chibi program per the owner's decision, which runs
+stage one and then this assembly through a narrow binding. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

@@ -8101,6 +8101,29 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
     REQUIRE(!rmdir(root));
     return true;
 }
+/* An upgrade that fails after its steps wrote, for example in finalization,
+ * leaves scripts at the current version under an older manifest. Its rerun
+ * starts at that version, and every step leaves those scripts alone. */
+TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated)
+{
+    const char *current = "Lead :: behavior {\n    on Tick :: (dt: float s) "
+                          "{\n    }\n}\n";
+    char root[] = "/tmp/chibi-rerun-XXXXXX", path[300], error[256] = { 0 };
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/Lead.chibi", root);
+    write_whole(path, current);
+    for (int from = 23; from < CHIBI_PROJECT_VERSION; from++) {
+        if (chibi_project_migrate_content(root, NULL, from, error, sizeof error)) {
+            fprintf(stderr, "step %d: %s\n", from, error);
+        }
+        REQUIRE(!error[0]);
+        const char *text = read_whole(path);
+        REQUIRE(text && !strcmp(text, current));
+    }
+    REQUIRE(!unlink(path));
+    REQUIRE(!rmdir(root));
+    return true;
+}
 TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
 {
     const char *source = "Moves :: library {\n"
@@ -9520,6 +9543,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
+    RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

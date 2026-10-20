@@ -7,8 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
-<p class="site"><a href="index.html">Chibi</a></p>
+<header class="bar">
+<a class="site" href="index.html">Chibi</a>
+<nav aria-label="Sections">
+<a href="index.html">Overview</a>
+<a href="language.html">Learn</a>
+<a href="testing.html">Testing</a>
+<a href="packages.html">Packages</a>
+<a href="examples.html" aria-current="true">Examples</a>
+<a href="faq.html">FAQ</a>
+<a href="grammar.html">Grammar</a>
+<a href="toolchain.html">Toolchain</a>
+</nav>
+</header>
+<div class="page">
+<nav class="pages" aria-label="Pages">
 <h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
@@ -44,8 +57,8 @@
 </nav>
 <main>
 <h1 id="examples">Examples</h1>
-<p>Chibi keeps no separate example projects. Studio and these docs teach the engine, and every project to learn from is checked in beside the code it exercises, so it migrates and is tested with the engine.</p>
-<p>Open any of them in Studio:</p>
+<p>Chibi has no separate example projects. Studio and these documents teach the engine. Each project that you can learn from is checked in beside the code that it uses. Thus each project migrates with the engine, and the engine tests it.</p>
+<p>To open one of the projects in Studio, run this command:</p>
 <pre><code class="language-sh">make studio-run STUDIO_SOURCE=/absolute/path/to/chibi-studio PROJECT_ROOT=test/fixtures/feature-coverage
 </code></pre>
 <table>
@@ -53,19 +66,27 @@
 <tr><th>To see</th><th>Open</th></tr>
 </thead>
 <tbody>
-<tr><td>Every reflected component, native function and event in a running scene</td><td><code>test/fixtures/feature-coverage</code>: one scene per area (Audio, Entities, Flow, Input, Materials, Particles, Physics2D, Physics3D, Rendering3D, Rhythm, Save, Tilemap, Ui and more). Its <code>coverage-gaps.txt</code> lists what no scene uses yet, with reasons.</td></tr>
-<tr><td>A small playable game: movement, live terrain cuts, save and load, a HUD</td><td><code>test/fixtures/terrain-lab</code></td></tr>
+<tr><td>Each reflected component, native function and event in a running scene</td><td><code>test/fixtures/feature-coverage</code>. It has one scene for each area, for example Audio, Entities, Flow, Input, Materials, Particles, Physics2D, Physics3D, Rendering3D, Rhythm, Save, Tilemap and Ui. Its <code>coverage-gaps.txt</code> lists the items that no scene uses yet, with the reasons.</td></tr>
+<tr><td>A small game that you can play: movement, live terrain cuts, save and load, and a HUD</td><td><code>test/fixtures/terrain-lab</code></td></tr>
 <tr><td>3D rooms and shapes</td><td><code>test/fixtures/scene3d</code></td></tr>
 <tr><td>2.5D HRC lighting</td><td><code>test/fixtures/courtyard</code></td></tr>
 <tr><td>Sprite frames</td><td><code>test/fixtures/sprites</code></td></tr>
-<tr><td>A large authored project: RmlUi documents, behaviors, virtual lists</td><td>Studio's own <code>projects/studio</code> in <a href="https://github.com/waldnercharles/chibi-studio">chibi-studio</a>; <code>projects/starter</code> is what a new project starts from</td></tr>
-<tr><td>One UI widget by itself, with a log of its actions</td><td>Studio's Canvas: open a ui asset</td></tr>
+<tr><td>A large authored project: RmlUi documents, behaviors and virtual lists</td><td>The <code>projects/studio</code> project of Studio, in <a href="https://github.com/waldnercharles/chibi-studio">chibi-studio</a>. A new project starts from <code>projects/starter</code>.</td></tr>
+<tr><td>One UI widget alone, with a log of its actions</td><td>The Canvas of Studio. Open a ui asset.</td></tr>
 </tbody>
 </table>
-<p>Start a project with the controller's <code>new_project</code> operation, which writes <code>project.kdl</code> and an empty start scene. Publish a game's browser player and <code>/dev/</code> editor with the game web workflow, copied into the game repository as <code>.github/workflows/web.yml</code>.</p>
+<p>To start a project, use the <code>new_project</code> operation of the controller. It writes <code>project.kdl</code> and an empty start scene.</p>
+<p>To publish the browser player and the <code>/dev/</code> editor of a game, use the game web workflow. Copy it into the game repository as <code>.github/workflows/web.yml</code>.</p>
 <p>No checked-in project saves a declarative model yet.</p>
 <h2 id="retired-repositories">Retired repositories</h2>
-<p>On 2026-10-17 the separate example and game repositories were retired and archived. Their Terrain Lab moved here as <code>test/fixtures/terrain-lab</code>; nothing else from them is migrated, and no engine check reads them.</p>
+<p>On 2026-10-17, the separate example and game repositories were retired and archived. Their Terrain Lab moved to this repository as <code>test/fixtures/terrain-lab</code>. Nothing else from them was migrated. No engine check reads them.</p>
+<nav class="contents" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#retired-repositories">Retired repositories</a></li>
+</ul>
+</nav>
 </main>
+</div>
 </body>
 </html>

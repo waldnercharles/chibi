@@ -7,8 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
-<p class="site"><a href="index.html">Chibi</a></p>
+<header class="bar">
+<a class="site" href="index.html">Chibi</a>
+<nav aria-label="Sections">
+<a href="index.html" aria-current="true">Overview</a>
+<a href="language.html">Learn</a>
+<a href="testing.html">Testing</a>
+<a href="packages.html">Packages</a>
+<a href="examples.html">Examples</a>
+<a href="faq.html">FAQ</a>
+<a href="grammar.html">Grammar</a>
+<a href="toolchain.html">Toolchain</a>
+</nav>
+</header>
+<div class="page">
+<nav class="pages" aria-label="Pages">
 <h2>Overview</h2>
 <ul>
 <li><a href="index.html" aria-current="page">Chibi</a></li>
@@ -44,51 +57,164 @@
 </nav>
 <main>
 <h1 id="chibi">Chibi</h1>
-<p>A C23 scripting/compiler/runtime SDK with a separate Studio authoring application.</p>
-<p>Start with the <a href="language.html">language reference</a> and the <a href="toolchain.html">toolchain guide</a>. To see a feature working, open one of the projects listed in <a href="examples.html">examples</a> in Studio. Studio also runs in the browser at <a href="https://waldnercharles.github.io/chibi-studio/">waldnercharles.github.io/chibi-studio</a>, built from the latest engine release.</p>
-<p>Native product packages provide an installed compiler SDK, a separate Studio application, and a deployed player. Game repositories own authored content; the player consumes prepared artifacts and their declared resources.</p>
+<p>Chibi is a C23 SDK for scripting, compilation and runtime. Studio is a separate application for authoring.</p>
+<p>Start with the <a href="language.html">language reference</a> and the <a href="toolchain.html">toolchain guide</a>. To see a feature work, open one of the projects in <a href="examples.html">examples</a> in Studio.</p>
+<p>Studio also runs in the browser at <a href="https://waldnercharles.github.io/chibi-studio/">waldnercharles.github.io/chibi-studio</a>. That version is built from the latest engine release.</p>
+<h2 id="products">Products</h2>
+<p>The native product packages supply three items:</p>
+<ul>
+<li>an installed compiler SDK</li>
+<li>a separate Studio application</li>
+<li>a deployed player</li>
+</ul>
+<p>Game repositories own the authored content. The player reads prepared artifacts and the resources that they declare.</p>
 <pre><code class="language-sh">make package-sdk       # native compiler + desktop authoring SDK in dist/sdk
 make package-player    # compiler-free player deployment in dist/chibi-player-&lt;os&gt;-&lt;arch&gt;
 dist/sdk/bin/chibi-compile --project-root /absolute/game --output /absolute/output/game.chibip
 /installed/player/bin/chibi-player /absolute/output/game.chibip --resource-root /absolute/output
 </code></pre>
-<p>To play a game while developing it, put <code>chibi</code> on your <code>PATH</code> and run <code>chibi run</code> from the game's directory or with the game's directory or <code>project.kdl</code>:</p>
+<h2 id="play-a-game-while-you-develop-it">Play a game while you develop it</h2>
+<ol>
+<li>Put <code>chibi</code> on your <code>PATH</code>.</li>
+<li>Run <code>chibi run</code> in the directory of the game. Alternatively, give the game directory or its <code>project.kdl</code> to <code>chibi run</code>.</li>
+</ol>
 <pre><code class="language-sh">make build
 ln -sf &quot;$PWD/build/sdk/chibi&quot; ~/.local/bin/chibi
 chibi run ~/games/neon-swarm        # or: cd ~/games/neon-swarm &amp;&amp; chibi run
 </code></pre>
-<p><code>chibi run</code> prepares the project into <code>.chibi/build/game.chibip</code> when the project's files or the compiler changed since the last run, then starts <code>chibi-player</code> beside it. Options after <code>--</code> go to the player. Studio's <code>chibi-dev</code> opens a project the same way.</p>
-<p>To use <code>chibi</code> and Studio in any project without a checkout's build folders, install the SDK, then Studio from its checkout:</p>
+<p><code>chibi run</code> prepares the project into <code>.chibi/build/game.chibip</code> if the files of the project or the compiler changed since the last run. Then it starts <code>chibi-player</code> beside it.</p>
+<p>The options after <code>--</code> go to the player. The <code>chibi-dev</code> command of Studio opens a project in the same way.</p>
+<h2 id="install-the-sdk-and-studio">Install the SDK and Studio</h2>
+<p>You can use <code>chibi</code> and Studio in any project without the build folders of a checkout. Install the SDK, then install Studio from its checkout:</p>
 <pre><code class="language-sh">make install                    # into ~/.local; PREFIX=/elsewhere to change it
 make -C ../chibi-studio install # the same PREFIX
 cd ~/games/neon-swarm &amp;&amp; chibi-dev
 </code></pre>
-<p><code>make install</code> builds a Release SDK in its own build folder and installs <code>chibi</code>, <code>chibi-compile</code> and <code>chibi-player</code> into <code>PREFIX/bin</code>, their shaders and licenses into <code>PREFIX/share/chibi</code>, and the libraries, headers and CMake package that Studio and other consumers build against. Add <code>PREFIX/bin</code> to <code>PATH</code> if it is not there already; macOS does not include <code>~/.local/bin</code>. The executables find their resources relative to themselves. To uninstall, delete the files CMake lists in <code>build-install-sdk/install_manifest.txt</code> and <code>PREFIX/share/chibi/engine.json</code>. On Windows, which has no make wrappers, run the target's commands directly.</p>
-<p><code>chibi version</code> prints the SDK version, the build ID of a packaged SDK such as <code>make install</code> installs (<code>unpackaged</code> for a build tree or a plain <code>cmake --install</code>), the compiler it runs, the project format and each prepared artifact format by name. It reads them from <code>share/chibi/engine.json</code>, which configuring generates and SDK packaging completes with the build ID.</p>
-<p><code>chibi doctor</code> checks, without changing anything, that the SDK's identity document is valid, that its compiler and player run their <code>--help</code> (on Windows, that they exist), whether it was built for this platform, and whether it has the native SLJIT backend. <code>chibi doctor --web PLAYER</code> also checks a browser player folder and the <code>node</code> that runs its compiler. Each line says supported, unavailable or broken, and the command fails only when something it checked is broken.</p>
-<p><code>chibi check [PROJECT]</code> parses, resolves and validates a project as <code>chibi build</code> does, with the same compiler, but migrates and writes nothing. An older project fails with the command that migrates it. It exits 0 for a valid project and nonzero otherwise, so it suits a pre-commit hook or a project's CI.</p>
-<p><code>chibi test [ROOT]</code> runs the <code>@test</code> functions (see <a href="language.html#tests-and-attributes">the language guide</a>) of every package below ROOT, the working directory by default. ROOT is their <code>project:</code> collection and holds only package files, so a game project's behaviors and libraries are not tests; imports of <code>core:</code> use the SDK's collection. It prints <code>PASS</code> or <code>FAIL</code> with each test's package and name, where a failed test stopped, and a count, and fails when a test fails or a package is invalid. Each test runs alone on the native backend, or the bytecode interpreter without one, for at most 100 million instructions. It may call the natives that need no running game: core, text, arrays, vectors, math and value operations. A test that waits or starts a task fails.</p>
-<p><code>chibi fmt [--check] [PATH...]</code> rewrites each project's authored assets, or the project at or above the working directory, as their own savers write them: behaviors, libraries, systems and component sources, and the KDL scenes, prototypes, graphs, editor documents, scenarios and input map. UI markup is kept as written. A PATH that is a folder without a <code>project.kdl</code> has the package sources below it formatted instead, the files <code>chibi test</code> reads; each must start with <code>package NAME</code>, or nothing is written. With <code>--check</code> it writes nothing, names each file that is not canonical and fails when there is one. Like <code>check</code>, it neither migrates an older project nor formats one. <code>chibi_ctl --format</code> runs the same formatter.</p>
-<p>To ship a game, export it with an installed SDK's <code>chibi</code>:</p>
+<p><code>make install</code> builds a Release SDK in its own build folder. Then it installs these items:</p>
+<ul>
+<li><code>chibi</code>, <code>chibi-compile</code> and <code>chibi-player</code> into <code>PREFIX/bin</code></li>
+<li>their shaders and licenses into <code>PREFIX/share/chibi</code></li>
+<li>the libraries, headers and CMake package that Studio and other consumers build against</li>
+</ul>
+<p>If <code>PREFIX/bin</code> is not on <code>PATH</code>, add it. macOS does not include <code>~/.local/bin</code>. The executables find their resources relative to their own location.</p>
+<p>To uninstall, delete these files:</p>
+<ul>
+<li>the files that CMake lists in <code>build-install-sdk/install_manifest.txt</code></li>
+<li><code>PREFIX/share/chibi/engine.json</code></li>
+</ul>
+<p>Windows has no make wrappers. On Windows, run the commands of the target directly.</p>
+<h2 id="commands">Commands</h2>
+<h3 id="chibi-version">chibi version</h3>
+<p><code>chibi version</code> prints these items:</p>
+<ul>
+<li>the SDK version</li>
+<li>the build ID of a packaged SDK, such as the SDK that <code>make install</code> installs (<code>unpackaged</code> for a build tree or a plain <code>cmake --install</code>)</li>
+<li>the compiler that it runs</li>
+<li>the project format</li>
+<li>each prepared artifact format, by name</li>
+</ul>
+<p>It reads them from <code>share/chibi/engine.json</code>. Configuration generates this file. SDK packaging adds the build ID to it.</p>
+<h3 id="chibi-doctor">chibi doctor</h3>
+<p><code>chibi doctor</code> checks these items and changes nothing:</p>
+<ul>
+<li>The identity document of the SDK is valid.</li>
+<li>The compiler and the player run their <code>--help</code>. On Windows, it checks only that they exist.</li>
+<li>The SDK was built for this platform.</li>
+<li>The SDK has the native SLJIT backend.</li>
+</ul>
+<p><code>chibi doctor --web PLAYER</code> also checks a browser player folder and the <code>node</code> that runs its compiler.</p>
+<p>Each line says supported, unavailable or broken. The command fails only when an item that it checked is broken.</p>
+<h3 id="chibi-check">chibi check</h3>
+<p><code>chibi check [PROJECT]</code> parses, resolves and validates a project in the same way as <code>chibi build</code>. It uses the same compiler. But it does not migrate or write anything.</p>
+<p>An older project fails, and the message gives the command that migrates it. The exit status is 0 for a valid project and nonzero for a project that is not valid. Thus you can use the command in a pre-commit hook or in the CI of a project.</p>
+<h3 id="chibi-test">chibi test</h3>
+<p><code>chibi test [ROOT]</code> runs the <code>@test</code> functions of each package below ROOT. Refer to <a href="language.html#tests-and-attributes">the language guide</a>.</p>
+<ul>
+<li>ROOT is the working directory by default.</li>
+<li>ROOT is the <code>project:</code> collection of the packages. It contains only package files. Thus the behaviors and libraries of a game project are not tests.</li>
+<li>Imports of <code>core:</code> use the collection of the SDK.</li>
+</ul>
+<p>For each test, the command prints <code>PASS</code> or <code>FAIL</code> with the package and the name. For a failed test, it prints where the test stopped. At the end, it prints a count. The command fails when a test fails or a package is not valid.</p>
+<p>Each test runs alone for a maximum of 100 million instructions. It runs on the native backend. Without a native backend, it runs on the bytecode interpreter.</p>
+<p>A test can call the natives that do not need a running game: core, text, arrays, vectors, math and value operations. A test that waits or starts a task fails.</p>
+<h3 id="chibi-fmt">chibi fmt</h3>
+<p><code>chibi fmt [--check] [PATH...]</code> rewrites the authored assets of each project in the form that their savers write. Without a PATH, it uses the project in or above the working directory. It rewrites these assets:</p>
+<ul>
+<li>behaviors, libraries, systems and component sources</li>
+<li>the KDL scenes, prototypes, graphs, editor documents, scenarios and input map</li>
+</ul>
+<p>The command keeps UI markup as it is.</p>
+<p>A PATH can be a folder without a <code>project.kdl</code>. In that case, the command formats the package sources below it. These are the files that <code>chibi test</code> reads. Each file must start with <code>package NAME</code>. If a file does not, the command writes nothing.</p>
+<p>With <code>--check</code>, the command writes nothing. It names each file that is not canonical and fails if there is one.</p>
+<p>Like <code>check</code>, the command does not migrate or format an older project. <code>chibi_ctl --format</code> runs the same formatter.</p>
+<h2 id="export-a-game">Export a game</h2>
+<p>To ship a game, use the <code>chibi</code> of an installed SDK to export it:</p>
 <pre><code class="language-sh">dist/sdk/bin/chibi export ~/games/neon-swarm --output ~/builds/NeonSwarm
 ~/builds/NeonSwarm/&quot;Neon Swarm&quot;     # runs the exported game
 </code></pre>
-<p>The folder holds the player, named after the project, and <code>data/</code> with the compiled game and its resources. <code>data/engine/</code> holds the shaders, licenses and engine identity. Exporting again replaces an earlier export, including files added to it. The exporter recognizes its own output by the empty <code>.chibi-export</code> it writes beside the compiled game; any other existing folder is left alone. <code>--archive</code> also writes <code>NeonSwarm.tar.gz</code> (<code>NeonSwarm.app.tar.gz</code> on macOS).</p>
-<p>On macOS the export is an app, <code>NeonSwarm.app</code>, with an <code>Info.plist</code>, the project icon as an <code>.icns</code>, and an ad hoc signature. Its icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels. Elsewhere the folder also holds a desktop entry, <code>neon-swarm.desktop</code>, which runs <code>Neon Swarm</code> from <code>PATH</code> with the <code>neon-swarm</code> theme icon. To install it, symlink the folder's executable into a directory on <code>PATH</code>, put the project icon in your icon theme as <code>neon-swarm.png</code>, and the entry in <code>~/.local/share/applications</code>.</p>
-<p>On Windows the folder holds <code>Neon Swarm.exe</code> beside <code>data/</code>, with the project icon, which must be a square PNG of at most 256 pixels, in the executable's resources. The SDK and its dependencies link the release C runtime statically in every configuration, so the folder runs without the Visual C++ redistributable.</p>
-<p>For browsers, export a static site with the browser player, which <code>make package-web-player</code> builds with Emscripten into <code>dist/web-player</code>:</p>
+<p>The output folder contains these items:</p>
+<ul>
+<li>the player, with the name of the project</li>
+<li><code>data/</code>, with the compiled game and its resources</li>
+<li><code>data/engine/</code>, with the shaders, licenses and engine identity</li>
+</ul>
+<p>When you export again, the new export replaces the earlier export. This includes the files that you added to it.</p>
+<p>The exporter writes an empty <code>.chibi-export</code> file beside the compiled game. It uses this file to identify its own output. It does not change a different folder that exists.</p>
+<p><code>--archive</code> also writes <code>NeonSwarm.tar.gz</code> (<code>NeonSwarm.app.tar.gz</code> on macOS).</p>
+<h3 id="macos">macOS</h3>
+<p>The export is an app, <code>NeonSwarm.app</code>. The app has an <code>Info.plist</code>, the project icon as an <code>.icns</code>, and an ad hoc signature. The icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels.</p>
+<h3 id="linux-and-other-platforms">Linux and other platforms</h3>
+<p>On platforms other than macOS and Windows, the folder also contains a desktop entry, <code>neon-swarm.desktop</code>. The entry runs <code>Neon Swarm</code> from <code>PATH</code> with the <code>neon-swarm</code> theme icon.</p>
+<p>To install the export:</p>
+<ol>
+<li>Make a symlink to the executable of the folder in a directory on <code>PATH</code>.</li>
+<li>Put the project icon in your icon theme as <code>neon-swarm.png</code>.</li>
+<li>Put the entry in <code>~/.local/share/applications</code>.</li>
+</ol>
+<h3 id="windows">Windows</h3>
+<p>The folder contains <code>Neon Swarm.exe</code> beside <code>data/</code>. The project icon is in the resources of the executable. The icon must be a square PNG of a maximum of 256 pixels.</p>
+<p>The SDK and its dependencies link the release C runtime statically in all configurations. Thus the folder runs without the Visual C++ redistributable.</p>
+<h3 id="browsers">Browsers</h3>
+<p>Export a static site with the browser player. <code>make package-web-player</code> uses Emscripten to build the browser player into <code>dist/web-player</code>:</p>
 <pre><code class="language-sh">make package-web-player
 dist/sdk/bin/chibi export ~/games/neon-swarm --web dist/web-player --output ~/builds/neon-swarm-web
 python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:8000
 </code></pre>
-<p><code>chibi doc [ROOT]</code> writes the documentation site that <code>ROOT/docs/site.kdl</code> lists into <code>ROOT/build/docs</code>, with ROOT the working directory by default. The manifest names every published page, so nothing else under <code>docs/</code> reaches the site, and links to unpublished files keep only their text; each such link is reported as <code>SOURCE:LINE: link to TARGET is not published; written as text</code> without failing the build. A page is a Markdown <code>source</code>, the generated reference of the <code>packages</code> in a folder with their import <code>collection</code>, or the generated rules of a Tree-sitter <code>grammar</code>. Every example fenced as <code>chibi</code> must parse, and a whole package must also analyze, or the build fails at the example's line. <code>--serve</code> then serves the site at <code>http://127.0.0.1:8000/</code> until Ctrl+C (<code>--port</code> as for <code>web</code>). In this checkout, <code>build/sdk/chibi doc --serve</code> previews the engine's own documentation.</p>
-<p>While developing, <code>chibi web</code> does both: it exports the site into a temporary folder of its own and serves it like a static host at <code>http://127.0.0.1:8000/</code> until Ctrl+C, then removes the folder. <code>--port</code> picks another port, 0 any free one. It serves only on this computer, and not yet on Windows.</p>
+<p>The site contains these items:</p>
+<ul>
+<li><code>index.html</code>, with the title of the project</li>
+<li>the <code>chibi-player.js</code> and <code>chibi-player.wasm</code> of the player</li>
+<li>the same <code>data/</code> folder, which <code>files.json</code> lists</li>
+</ul>
+<p>The page fetches those files before the game starts. Thus it needs a web server. A <code>file://</code> URL does not work.</p>
+<p>Any static host works. A game repository can publish on GitHub Pages with the game web workflow. This workflow builds the site from published engine and editor packages.</p>
+<h2 id="serve-a-browser-build">Serve a browser build</h2>
+<p>While you develop, <code>chibi web</code> does the export and the serving:</p>
+<ol>
+<li>It exports the site into a temporary folder of its own.</li>
+<li>It serves the folder like a static host at <code>http://127.0.0.1:8000/</code> until you press Ctrl+C.</li>
+<li>It deletes the folder.</li>
+</ol>
 <pre><code class="language-sh">dist/sdk/bin/chibi web ~/games/neon-swarm --player dist/web-player
 </code></pre>
-<p>The site holds <code>index.html</code>, titled with the project's title, the player's <code>chibi-player.js</code> and <code>chibi-player.wasm</code>, and the same <code>data/</code> folder, which <code>files.json</code> lists. The page fetches those files before the game starts, so it needs a web server rather than a <code>file://</code> URL. Any static host works; a game repository can publish on GitHub Pages with the game web workflow, which builds the site from published engine and editor packages.</p>
-<p>Both SDK product builds prepare a standalone host reflection tool. <code>SDK_PREFIX</code>, <code>RUNTIME_SDK_PREFIX</code>, and <code>PLAYER_OUTPUT</code> select their outputs. Packaging leaves registered games untouched; <code>make update-game-runtime</code> explicitly verifies and installs the player package. Studio is built and packaged separately against a pinned installed SDK.</p>
+<p><code>--port</code> selects a different port. Port 0 selects any free port. The command serves only on this computer. It does not operate on Windows yet.</p>
+<h2 id="documentation-site">Documentation site</h2>
+<p><code>chibi doc [ROOT]</code> writes the documentation site that <code>ROOT/docs/site.kdl</code> lists into <code>ROOT/build/docs</code>. ROOT is the working directory by default.</p>
+<p>The manifest names each published page. Thus no other file in <code>docs/</code> goes into the site. A page is one of these:</p>
+<ul>
+<li>a Markdown <code>source</code></li>
+<li>the generated reference of the <code>packages</code> in a folder, with their import <code>collection</code></li>
+<li>the generated rules of a Tree-sitter <code>grammar</code></li>
+</ul>
+<p>A link to a file that is not published keeps only its text. The command reports each such link as <code>SOURCE:LINE: link to TARGET is not published; written as text</code>. This report does not make the build fail.</p>
+<p>Each example that has the <code>chibi</code> fence must parse. An example that is a full package must also analyze. If not, the build fails at the line of the example.</p>
+<p><code>--serve</code> then serves the site at <code>http://127.0.0.1:8000/</code> until you press Ctrl+C. <code>--port</code> operates as for <code>web</code>. In this checkout, <code>build/sdk/chibi doc --serve</code> shows a preview of the documentation of the engine.</p>
+<h2 id="sdk-product-builds">SDK product builds</h2>
+<p>The two SDK product builds prepare a standalone host reflection tool. <code>SDK_PREFIX</code>, <code>RUNTIME_SDK_PREFIX</code> and <code>PLAYER_OUTPUT</code> select their outputs.</p>
+<p>Packaging does not change registered games. <code>make update-game-runtime</code> verifies and installs the player package. You must run it explicitly.</p>
+<p>Studio is built and packaged separately against a pinned installed SDK.</p>
 <h2 id="development">Development</h2>
-<p>The engine checkout builds the compiler, player, controller and package-consumer checks. Studio builds in its separate repository against an installed SDK.</p>
+<p>The engine checkout builds the compiler, the player, the controller and the package-consumer checks. Studio builds in its separate repository against an installed SDK.</p>
 <pre><code class="language-sh">make build             # sanitizer-enabled compiler/player/controller development build
 make build-debug       # plain Debug products
 make build-release     # Release products
@@ -103,23 +229,74 @@ make prepare-project PROJECT_ROOT=/absolute/game ARTIFACT=/absolute/output/game.
 make player-run ARTIFACT=/absolute/output/game.chibip RESOURCE_ROOT=/absolute/resources
 make controller-run PROJECT_ROOT=/absolute/game
 </code></pre>
-<p><code>STUDIO_SOURCE</code> defaults to the <code>chibi-studio</code> checkout beside the engine's. <code>studio-build</code> uses Ninja and <code>STUDIO_CMAKE_FLAGS</code> (Debug by default). <code>studio-dev</code> restores <code>STUDIO_CHECKPOINT</code>, defaulting to the Studio build's <code>workspace.json</code>. Source edits remain owned by the game; native changes require rebuilding the owning SDK or Studio product and restarting. Studio's SDK is an explicit pin: its convenience build never adds the engine checkout to include paths or silently rebuilds that installed SDK. Package Studio in a separate Release build with the SDK manifest captured at configuration.</p>
-<p><code>BUILD_TARGET</code> selects root CMake products. Defaults are <code>chibi-compile</code>, <code>chibi-player</code>, and <code>chibi_ctl</code>; the controller is in <code>build/bin</code>, compiler and player in <code>build/sdk</code>. <code>make controller-build</code> builds only the authoring tool. <code>make help</code> lists supported wrappers. The old combined <code>chibi</code> application and root Studio launch targets are retired.</p>
-<p>Native builds need CMake, Ninja for Studio, a C23 compiler, and libclang for reflection. CMake pins dependencies. <code>NATIVE_TOOLCHAIN_FLAGS</code>, <code>LIBCLANG_ROOT</code>, and <code>JOBS</code> select the toolchain, matching reflection installation, and compile parallelism. Builds print phase summaries with full logs in <code>.chibi/logs</code>; <code>VERBOSE=1</code> streams output. SDK product builds use a standalone reflection tool.</p>
-<p>Windows builds use the LLVM installer's clang, which targets the Microsoft C runtime and finds Visual Studio's Windows SDK, with CMake and Ninja. The make wrappers need a POSIX shell, so configure directly:</p>
+<h3 id="studio-builds">Studio builds</h3>
+<table>
+<thead>
+<tr><th>Variable or target</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>STUDIO_SOURCE</code></td><td>The default is the <code>chibi-studio</code> checkout beside the engine checkout.</td></tr>
+<tr><td><code>studio-build</code></td><td>Uses Ninja and <code>STUDIO_CMAKE_FLAGS</code>. The default build type is Debug.</td></tr>
+<tr><td><code>studio-dev</code></td><td>Restores <code>STUDIO_CHECKPOINT</code>. The default is the <code>workspace.json</code> of the Studio build.</td></tr>
+</tbody>
+</table>
+<p>The game owns the source edits. A native change needs a new build of the SDK or Studio product that owns it, and a restart.</p>
+<p>The SDK of Studio is an explicit pin. The convenience build of Studio never adds the engine checkout to the include paths. It never rebuilds that installed SDK silently.</p>
+<p>Package Studio in a separate Release build. That build records the SDK manifest at configuration.</p>
+<h3 id="build-targets">Build targets</h3>
+<p><code>BUILD_TARGET</code> selects root CMake products. The defaults are <code>chibi-compile</code>, <code>chibi-player</code> and <code>chibi_ctl</code>.</p>
+<ul>
+<li>The controller is in <code>build/bin</code>.</li>
+<li>The compiler and the player are in <code>build/sdk</code>.</li>
+<li><code>make controller-build</code> builds only the authoring tool.</li>
+<li><code>make help</code> lists the supported wrappers.</li>
+</ul>
+<p>The old combined <code>chibi</code> application and the root Studio launch targets are retired.</p>
+<h3 id="requirements">Requirements</h3>
+<p>Native builds need CMake, Ninja for Studio, a C23 compiler and libclang for reflection. CMake pins the dependencies. These variables select the build:</p>
+<ul>
+<li><code>NATIVE_TOOLCHAIN_FLAGS</code> selects the toolchain.</li>
+<li><code>LIBCLANG_ROOT</code> selects the reflection installation that matches it.</li>
+<li><code>JOBS</code> selects the compile parallelism.</li>
+</ul>
+<p>Builds print phase summaries. The full logs are in <code>.chibi/logs</code>. <code>VERBOSE=1</code> streams the output. SDK product builds use a standalone reflection tool.</p>
+<h3 id="windows-builds">Windows builds</h3>
+<p>Windows builds use the clang of the LLVM installer, with CMake and Ninja. This clang targets the Microsoft C runtime and finds the Windows SDK of Visual Studio.</p>
+<p>The make wrappers need a POSIX shell. Thus you must configure directly:</p>
 <pre><code class="language-sh">cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF \
     -DLIBCLANG_ROOT=&quot;C:/Program Files/LLVM&quot;
 cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
 </code></pre>
-<p>Reflection loads <code>libclang.dll</code>, so LLVM's <code>bin</code> folder must be on <code>PATH</code>. C sources that link <code>Chibi::support</code> get the POSIX calls the Microsoft runtime lacks from <code>src/support/win32</code>. The C tests still need POSIX, so Windows builds skip them. Executables embed <code>src/host/windows/chibi.manifest</code>, which makes the runtime's file names UTF-8; installed consumers add <code>share/chibi/windows/chibi.rc</code> to theirs.</p>
+<ul>
+<li>Reflection loads <code>libclang.dll</code>. Thus the <code>bin</code> folder of LLVM must be on <code>PATH</code>.</li>
+<li>The Microsoft runtime does not have some POSIX calls. C sources that link <code>Chibi::support</code> get these calls from <code>src/support/win32</code>.</li>
+<li>The C tests still need POSIX. Thus Windows builds skip them.</li>
+<li>Executables embed <code>src/host/windows/chibi.manifest</code>. This manifest makes the file names of the runtime UTF-8. Installed consumers add <code>share/chibi/windows/chibi.rc</code> to their executables.</li>
+</ul>
 <h2 id="browser-studio">Browser Studio</h2>
-<p>Browser Studio uses an installed Emscripten SDK containing the same owning compiler/runtime/renderer packages. That SDK is library-only; native command line products are built separately.</p>
+<p>Browser Studio uses an installed Emscripten SDK. This SDK contains the same compiler, runtime and renderer packages that own those parts. It contains only libraries. The native command line products are built separately.</p>
 <pre><code class="language-sh">make web STUDIO_SOURCE=/absolute/chibi-studio
 make web-threads STUDIO_SOURCE=/absolute/chibi-studio WEB_WORKERS=4
 </code></pre>
-<p>These recipes configure/package the web SDK, build the external <code>chibi-studio</code> consumer, and install its HTML/JS/WASM/data into <code>WEB_OUTPUT</code>. Serial and threaded profiles use separate default build and install directories. The threaded SDK exports its worker ABI; Studio consumes it rather than overriding it. <code>WEB_PROJECTS</code> supplies an explicit semicolon-separated list of sample folders; Studio owns its empty starter and authored UI. No engine repository games are implicitly shipped.</p>
-<p><code>make web-serve</code> and <code>make web-threads-serve</code> use the external static server with isolation headers. It serves the installed browser bundle without mounting game source from disk. Browser publication is implemented: the engine's release workflow supplies versioned packages, <a href="https://github.com/waldnercharles/chibi-studio#automatic-browser-distribution">Studio</a> publishes the serial editor archive, and the game web workflow hosts a game's player and revision-specific <code>/dev/</code> workspace. Successful publication does not establish edit/save/reload, input or export acceptance in a browser; the <a href="https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md">serial browser report</a> records those interactions on named revisions, and threaded browser acceptance remains separate. Publication belongs to those workflows; the engine has no local publisher.</p>
+<p>These recipes do these steps:</p>
+<ol>
+<li>Configure and package the web SDK.</li>
+<li>Build the external <code>chibi-studio</code> consumer.</li>
+<li>Install its HTML, JS, WASM and data into <code>WEB_OUTPUT</code>.</li>
+</ol>
+<p>The serial and threaded profiles use separate default build and install directories. The threaded SDK exports its worker ABI. Studio uses this ABI and does not override it.</p>
+<p><code>WEB_PROJECTS</code> supplies an explicit list of sample folders, separated by semicolons. Studio owns its empty starter and its authored UI. The build does not ship the games of the engine repository implicitly.</p>
+<p><code>make web-serve</code> and <code>make web-threads-serve</code> use the external static server with isolation headers. It serves the installed browser bundle. It does not mount game source from disk.</p>
+<h3 id="publication">Publication</h3>
+<p>Browser publication is implemented:</p>
+<ul>
+<li>The release workflow of the engine supplies versioned packages.</li>
+<li><a href="https://github.com/waldnercharles/chibi-studio#automatic-browser-distribution">Studio</a> publishes the serial editor archive.</li>
+<li>The game web workflow hosts the player of a game and a <code>/dev/</code> workspace for each revision.</li>
+</ul>
+<p>A successful publication does not prove that edit, save, reload, input or export operate correctly in a browser. The <a href="https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/BROWSER.md">serial browser report</a> records those interactions on named revisions. Threaded browser acceptance is separate.</p>
+<p>Publication belongs to those workflows. The engine has no local publisher.</p>
 <h2 id="checks-and-authoring">Checks and authoring</h2>
 <pre><code class="language-sh">make test              # six pure C execution-policy checks
 make test-tools        # C tooling/process cases under one shared deadline
@@ -131,33 +308,78 @@ make test-list
 make format
 make check-format
 </code></pre>
-<p>Every test command has a hard 60-second deadline. Full/unmeasured suites remain quarantined; the retired <code>test_suite</code> wrappers reject rather than reconstructing old aggregates. Builds/configuration are timed separately. Public consumer checks and GPU routes run only with an admitted selector; use the policy inventory for current coverage. A passing package check establishes integrity, not rendered acceptance.</p>
-<p>Author behaviors, libraries, and systems in <code>.chibi</code>; declarative assets use KDL. Studio projections and optional layout metadata do not replace executable source. Shared navigation, refactoring and inspection ship in SDK authoring packages and are consumed by Studio and the controller. Format authored content with <code>chibi fmt</code> and validate it with <code>chibi check</code>; the controller offers the same operations.</p>
+<h3 id="test-deadlines">Test deadlines</h3>
+<p>Each test command has a hard deadline of 60 seconds.</p>
+<ul>
+<li>Full suites and suites that are not measured stay in quarantine.</li>
+<li>The retired <code>test_suite</code> wrappers reject a request. They do not build the old aggregates again.</li>
+<li>Builds and configuration have separate times.</li>
+<li>Public consumer checks and GPU routes run only with an admitted selector.</li>
+</ul>
+<p>For the current coverage, use the policy inventory. A package check that passes proves integrity. It does not prove rendered acceptance.</p>
+<h3 id="authoring">Authoring</h3>
+<p>Author behaviors, libraries and systems in <code>.chibi</code>. Declarative assets use KDL. Studio projections and optional layout metadata do not replace executable source.</p>
+<p>Shared navigation, refactoring and inspection ship in SDK authoring packages. Studio and the controller use them.</p>
+<p>Format authored content with <code>chibi fmt</code>. Validate it with <code>chibi check</code>. The controller supplies the same operations.</p>
 <h2 id="code-map">Code map</h2>
 <table>
 <thead>
 <tr><th>Location</th><th>Responsibility</th></tr>
 </thead>
 <tbody>
-<tr><td><code>sdk</code></td><td>Independently built and installed target/header contracts</td></tr>
+<tr><td><code>sdk</code></td><td>Target and header contracts that are built and installed independently</td></tr>
 <tr><td><code>src/language</code></td><td>Owned syntax snapshots, semantic analysis and direct source lowering</td></tr>
 <tr><td><code>src/execution</code></td><td>Executable IR, VM/SLJIT/C backends, prepared modules and instances</td></tr>
 <tr><td><code>src/capabilities</code></td><td>Shared typed native signatures, stable identities and effects</td></tr>
-<tr><td><code>src/authoring</code></td><td>Preparation, source navigation/refactoring and presentation adapters</td></tr>
-<tr><td><code>src/runtime</code></td><td>ECS-backed behavior, system, scene and optional native capabilities</td></tr>
+<tr><td><code>src/authoring</code></td><td>Preparation, source navigation and refactoring, and presentation adapters</td></tr>
+<tr><td><code>src/runtime</code></td><td>Behavior, system and scene support on the ECS, and optional native capabilities</td></tr>
 <tr><td><code>src/ecs</code></td><td>Entity storage, reflected component layout and queries</td></tr>
 <tr><td><code>src/types</code></td><td>Reflected values, catalogs, ownership and portable wire records</td></tr>
 <tr><td><code>src/assets</code></td><td>Authored declarative documents and preparation adapters</td></tr>
-<tr><td><code>src/graph</code></td><td>Authoring graph model, catalog and shader/model compilation</td></tr>
-<tr><td><code>src/render</code></td><td>Prepared scene/resource rendering and inspection</td></tr>
-<tr><td><code>src/host</code></td><td>Separate compiler and player entrypoints</td></tr>
-<tr><td><code>tools/chibi_ctl</code></td><td>Controller consuming public owning packages</td></tr>
+<tr><td><code>src/graph</code></td><td>Authoring graph model, catalog, and shader and model compilation</td></tr>
+<tr><td><code>src/render</code></td><td>Rendering and inspection of prepared scenes and resources</td></tr>
+<tr><td><code>src/host</code></td><td>Separate compiler and player entry points</td></tr>
+<tr><td><code>tools/chibi_ctl</code></td><td>Controller that uses the public owning packages</td></tr>
 <tr><td><code>tools/reflect</code></td><td>Standalone native reflection generator</td></tr>
 <tr><td><code>test</code></td><td>Bounded package consumers and focused fixture content</td></tr>
 <tr><td>separate <code>chibi-studio</code> repository</td><td>Editor, application loop, UI, text bridge and browser host</td></tr>
 </tbody>
 </table>
-<p>Public headers are owned by their installed targets. Private headers stay with the owning implementation; consumers never add the engine <code>src</code> root.</p>
+<p>The installed targets own the public headers. Private headers stay with the implementation that owns them. Consumers never add the <code>src</code> root of the engine.</p>
+<nav class="contents" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#products">Products</a></li>
+<li><a href="#play-a-game-while-you-develop-it">Play a game while you develop it</a></li>
+<li><a href="#install-the-sdk-and-studio">Install the SDK and Studio</a></li>
+<li><a href="#commands">Commands</a></li>
+<li class="sub"><a href="#chibi-version">chibi version</a></li>
+<li class="sub"><a href="#chibi-doctor">chibi doctor</a></li>
+<li class="sub"><a href="#chibi-check">chibi check</a></li>
+<li class="sub"><a href="#chibi-test">chibi test</a></li>
+<li class="sub"><a href="#chibi-fmt">chibi fmt</a></li>
+<li><a href="#export-a-game">Export a game</a></li>
+<li class="sub"><a href="#macos">macOS</a></li>
+<li class="sub"><a href="#linux-and-other-platforms">Linux and other platforms</a></li>
+<li class="sub"><a href="#windows">Windows</a></li>
+<li class="sub"><a href="#browsers">Browsers</a></li>
+<li><a href="#serve-a-browser-build">Serve a browser build</a></li>
+<li><a href="#documentation-site">Documentation site</a></li>
+<li><a href="#sdk-product-builds">SDK product builds</a></li>
+<li><a href="#development">Development</a></li>
+<li class="sub"><a href="#studio-builds">Studio builds</a></li>
+<li class="sub"><a href="#build-targets">Build targets</a></li>
+<li class="sub"><a href="#requirements">Requirements</a></li>
+<li class="sub"><a href="#windows-builds">Windows builds</a></li>
+<li><a href="#browser-studio">Browser Studio</a></li>
+<li class="sub"><a href="#publication">Publication</a></li>
+<li><a href="#checks-and-authoring">Checks and authoring</a></li>
+<li class="sub"><a href="#test-deadlines">Test deadlines</a></li>
+<li class="sub"><a href="#authoring">Authoring</a></li>
+<li><a href="#code-map">Code map</a></li>
+</ul>
+</nav>
 </main>
+</div>
 </body>
 </html>

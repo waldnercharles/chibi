@@ -7,8 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
-<p class="site"><a href="index.html">Chibi</a></p>
+<header class="bar">
+<a class="site" href="index.html">Chibi</a>
+<nav aria-label="Sections">
+<a href="index.html">Overview</a>
+<a href="language.html">Learn</a>
+<a href="testing.html">Testing</a>
+<a href="packages.html">Packages</a>
+<a href="examples.html">Examples</a>
+<a href="faq.html">FAQ</a>
+<a href="grammar.html">Grammar</a>
+<a href="toolchain.html" aria-current="true">Toolchain</a>
+</nav>
+</header>
+<div class="page">
+<nav class="pages" aria-label="Pages">
 <h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
@@ -44,25 +57,31 @@
 </nav>
 <main>
 <h1 id="toolchain">Toolchain</h1>
-<p><code>chibi</code> is the one command a Chibi project needs. It runs from an installed SDK, <code>PREFIX/bin/chibi</code>, or from a checkout's build, <code>build/sdk/chibi</code>, and finds the compiler, the player and the engine files beside itself.</p>
+<p><code>chibi</code> is the one command that a Chibi project needs. You can run it from an installed SDK, as <code>PREFIX/bin/chibi</code>. You can also run it from the build of a checkout, as <code>build/sdk/chibi</code>. It finds the compiler, the player and the engine files beside itself.</p>
 <table>
 <thead>
 <tr><th>Command</th><th>What it does</th></tr>
 </thead>
 <tbody>
-<tr><td><code>chibi version</code></td><td>Prints the SDK version, build, compiler, project format and artifact formats.</td></tr>
-<tr><td><code>chibi doctor [--web PLAYER]</code></td><td>Reports whether the SDK, compiler, player, platform, native backend and, with <code>--web</code>, browser export are supported, unavailable or broken. It changes nothing.</td></tr>
-<tr><td><code>chibi build [PROJECT]</code></td><td>Compiles the project into <code>.chibi/build/game.chibip</code> without starting the player.</td></tr>
-<tr><td><code>chibi check [PROJECT]</code></td><td>Parses, resolves and validates the project as <code>build</code> does, but migrates and writes nothing.</td></tr>
-<tr><td><code>chibi fmt [--check] [PATH...]</code></td><td>Rewrites a project's sources and KDL assets, or the package sources of a folder without a <code>project.kdl</code>, in their canonical form; <code>--check</code> only reports what would change.</td></tr>
+<tr><td><code>chibi version</code></td><td>Prints the SDK version, the build, the compiler, the project format and the artifact formats.</td></tr>
+<tr><td><code>chibi doctor [--web PLAYER]</code></td><td>Reports the status of the SDK, the compiler, the player, the platform and the native backend. With <code>--web</code>, it also reports the status of browser export. Each status is supported, unavailable or broken. The command changes nothing.</td></tr>
+<tr><td><code>chibi build [PROJECT]</code></td><td>Compiles the project into <code>.chibi/build/game.chibip</code>. It does not start the player.</td></tr>
+<tr><td><code>chibi check [PROJECT]</code></td><td>Parses, resolves and validates the project in the same way as <code>build</code>. It does not migrate or write anything.</td></tr>
+<tr><td><code>chibi fmt [--check] [PATH...]</code></td><td>Rewrites the sources and KDL assets of a project in their canonical form. For a folder without a <code>project.kdl</code>, it formats the package sources. With <code>--check</code>, it only reports the changes that it would make.</td></tr>
 <tr><td><code>chibi test [ROOT]</code></td><td>Runs the <code>@test</code> functions of the packages below ROOT.</td></tr>
-<tr><td><code>chibi run [PROJECT] [--] [PLAYER OPTIONS]</code></td><td>Builds the project when it changed, then plays it.</td></tr>
-<tr><td><code>chibi export [PROJECT] --output DIR</code></td><td>Assembles a game to ship: a macOS app, a Windows folder with an <code>.exe</code>, or a Linux folder with a desktop entry. <code>--web PLAYER</code> writes a static site instead.</td></tr>
-<tr><td><code>chibi web [PROJECT] --player PLAYER</code></td><td>Exports the browser site into a temporary folder and serves it on <code>http://127.0.0.1:8000/</code> until Ctrl+C.</td></tr>
-<tr><td><code>chibi doc [ROOT] [--serve]</code></td><td>Writes the documentation site that <code>ROOT/docs/site.kdl</code> lists into <code>ROOT/build/docs</code>, and with <code>--serve</code> serves it.</td></tr>
+<tr><td><code>chibi run [PROJECT] [--] [PLAYER OPTIONS]</code></td><td>Builds the project if it changed, then plays it.</td></tr>
+<tr><td><code>chibi export [PROJECT] --output DIR</code></td><td>Assembles a game that you can ship. On macOS, the result is an app. On Windows, it is a folder with an <code>.exe</code>. On Linux, it is a folder with a desktop entry. With <code>--web PLAYER</code>, the command writes a static site instead.</td></tr>
+<tr><td><code>chibi web [PROJECT] --player PLAYER</code></td><td>Exports the browser site into a temporary folder. Then it serves the site on <code>http://127.0.0.1:8000/</code> until you press Ctrl+C.</td></tr>
+<tr><td><code>chibi doc [ROOT] [--serve]</code></td><td>Writes the documentation site that <code>ROOT/docs/site.kdl</code> lists into <code>ROOT/build/docs</code>. With <code>--serve</code>, it also serves the site.</td></tr>
 </tbody>
 </table>
-<p>PROJECT is a project directory or its <code>project.kdl</code>. Without one, <code>chibi</code> uses the nearest <code>project.kdl</code> at or above the working directory. Each command prints its usage with <code>--help</code> and exits 0 when it succeeds. It exits 2 when it cannot start, such as for an unknown option or a missing or older project, and another nonzero status when its work fails.</p>
+<p>PROJECT is a project directory or its <code>project.kdl</code>. If you do not give a PROJECT, <code>chibi</code> uses the nearest <code>project.kdl</code> in or above the working directory.</p>
+<p>Each command prints its usage when you give <code>--help</code>. The exit status tells you the result:</p>
+<ul>
+<li>0: the command succeeded.</li>
+<li>2: the command could not start. Examples are an unknown option, a missing project and an older project.</li>
+<li>A different nonzero status: the work of the command failed.</li>
+</ul>
 <h2 id="a-project">A project</h2>
 <p>A project is a folder with a <code>project.kdl</code> manifest and a <code>content</code> folder:</p>
 <pre><code class="language-kdl">version 25
@@ -70,13 +89,32 @@ name &quot;My Game&quot;
 content &quot;content&quot;
 start_scene &quot;scenes/Main.kdl&quot;
 </code></pre>
-<p>Behaviors, libraries and systems are <code>.chibi</code> source; scenes, prototypes, materials and the rest are KDL. <code>chibi fmt</code> keeps both canonical, and <code>chibi check</code> is a quick gate for a pre-commit hook or CI.</p>
+<p>Behaviors, libraries and systems are <code>.chibi</code> source. Scenes, prototypes, materials and the other assets are KDL. <code>chibi fmt</code> keeps both kinds canonical. <code>chibi check</code> is a quick gate for a pre-commit hook or for CI.</p>
 <h2 id="packages">Packages</h2>
-<p>Packages are folders of <code>.chibi</code> files that start with <code>package NAME</code>. They import other packages of the same tree as <code>project:NAME</code> and the SDK's collection as <code>core:NAME</code>. <code>chibi test</code> runs their tests; see <a href="testing.html">Testing</a>. <code>chibi fmt FOLDER</code> formats them.</p>
+<p>A package is a folder of <code>.chibi</code> files that start with <code>package NAME</code>. A package imports other packages of the same tree as <code>project:NAME</code>. It imports the collection of the SDK as <code>core:NAME</code>. <code>chibi test</code> runs the tests of the packages. Refer to <a href="testing.html">Testing</a>. <code>chibi fmt FOLDER</code> formats the packages.</p>
 <h2 id="browsers">Browsers</h2>
-<p>The browser player is built separately with <code>make package-web-player</code>. Pass its folder to <code>chibi export --web</code> for a static site to host anywhere, or to <code>chibi web</code> while developing. <code>chibi doctor --web PLAYER</code> checks the folder and the <code>node</code> that runs its compiler.</p>
+<p><code>make package-web-player</code> builds the browser player separately. Use its folder in these ways:</p>
+<ul>
+<li>Give it to <code>chibi export --web</code> to make a static site that you can host anywhere.</li>
+<li>Give it to <code>chibi web</code> while you develop.</li>
+</ul>
+<p><code>chibi doctor --web PLAYER</code> checks the folder and the <code>node</code> that runs its compiler.</p>
 <h2 id="platforms">Platforms</h2>
-<p>Linux and macOS support every command. On Windows, <code>chibi web</code> does not serve yet, and <code>chibi test</code> and <code>chibi doc</code> cannot read package sources yet.</p>
+<p>Linux and macOS support all commands. On Windows, these limits apply:</p>
+<ul>
+<li><code>chibi web</code> does not serve yet.</li>
+<li><code>chibi test</code> and <code>chibi doc</code> cannot read package sources yet.</li>
+</ul>
+<nav class="contents" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#a-project">A project</a></li>
+<li><a href="#packages">Packages</a></li>
+<li><a href="#browsers">Browsers</a></li>
+<li><a href="#platforms">Platforms</a></li>
+</ul>
+</nav>
 </main>
+</div>
 </body>
 </html>

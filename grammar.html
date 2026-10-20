@@ -7,8 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
-<p class="site"><a href="index.html">Chibi</a></p>
+<header class="bar">
+<a class="site" href="index.html">Chibi</a>
+<nav aria-label="Sections">
+<a href="index.html">Overview</a>
+<a href="language.html">Learn</a>
+<a href="testing.html">Testing</a>
+<a href="packages.html">Packages</a>
+<a href="examples.html">Examples</a>
+<a href="faq.html">FAQ</a>
+<a href="grammar.html" aria-current="true">Grammar</a>
+<a href="toolchain.html">Toolchain</a>
+</nav>
+</header>
+<div class="page">
+<nav class="pages" aria-label="Pages">
 <h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
@@ -618,6 +631,7 @@
     alias(&quot;self&quot;, $.identifier),
     $.string,
     $.number,
+    $.character,
     $.boolean,
     $.nil,
     $.builtin_reference,
@@ -827,6 +841,10 @@
 <h3 id="string">string</h3>
 <pre><code class="language-js">string: ($) =&gt; token(seq('&quot;', repeat(choice(/[^&quot;\\\n]/, /\\[^\n]/)), '&quot;')),
 </code></pre>
+<h3 id="character">character</h3>
+<p>One character: semantic analysis rejects an empty or longer body.</p>
+<pre><code class="language-js">character: ($) =&gt; token(seq(&quot;'&quot;, repeat(choice(/[^'\\\n]/, /\\[^\n]/)), &quot;'&quot;)),
+</code></pre>
 <h3 id="comment">comment</h3>
 <pre><code class="language-js">comment: ($) =&gt;
   choice(
@@ -837,6 +855,134 @@
 <h3 id="_end">_end</h3>
 <pre><code class="language-js">_end: ($) =&gt; choice(&quot;;&quot;, $._automatic_terminator),
 </code></pre>
+<nav class="contents" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li class="sub"><a href="#source_file">source_file</a></li>
+<li class="sub"><a href="#package_header">package_header</a></li>
+<li class="sub"><a href="#import_declaration">import_declaration</a></li>
+<li class="sub"><a href="#prototype_declaration">prototype_declaration</a></li>
+<li class="sub"><a href="#prototype_bases">prototype_bases</a></li>
+<li class="sub"><a href="#prototype_body">prototype_body</a></li>
+<li class="sub"><a href="#prototype_component">prototype_component</a></li>
+<li class="sub"><a href="#relationship_declaration">relationship_declaration</a></li>
+<li class="sub"><a href="#behavior">behavior</a></li>
+<li class="sub"><a href="#library">library</a></li>
+<li class="sub"><a href="#system">system</a></li>
+<li class="sub"><a href="#component">component</a></li>
+<li class="sub"><a href="#component_body">component_body</a></li>
+<li class="sub"><a href="#component_field">component_field</a></li>
+<li class="sub"><a href="#measure">measure</a></li>
+<li class="sub"><a href="#range_type">range_type</a></li>
+<li class="sub"><a href="#_bound">_bound</a></li>
+<li class="sub"><a href="#_negative_number">_negative_number</a></li>
+<li class="sub"><a href="#unit">unit</a></li>
+<li class="sub"><a href="#measured_type">measured_type</a></li>
+<li class="sub"><a href="#_signature_type">_signature_type</a></li>
+<li class="sub"><a href="#_compound_unit">_compound_unit</a></li>
+<li class="sub"><a href="#_unit_term">_unit_term</a></li>
+<li class="sub"><a href="#without_clause">without_clause</a></li>
+<li class="sub"><a href="#declaration_body">declaration_body</a></li>
+<li class="sub"><a href="#library_body">library_body</a></li>
+<li class="sub"><a href="#record_declaration">record_declaration</a></li>
+<li class="sub"><a href="#record_body">record_body</a></li>
+<li class="sub"><a href="#record_field">record_field</a></li>
+<li class="sub"><a href="#system_body">system_body</a></li>
+<li class="sub"><a href="#_declaration">_declaration</a></li>
+<li class="sub"><a href="#_common_declaration">_common_declaration</a></li>
+<li class="sub"><a href="#state_declaration">state_declaration</a></li>
+<li class="sub"><a href="#_explicit_state_declaration">_explicit_state_declaration</a></li>
+<li class="sub"><a href="#_state_declaration_value">_state_declaration_value</a></li>
+<li class="sub"><a href="#action_declaration">action_declaration</a></li>
+<li class="sub"><a href="#event_declaration">event_declaration</a></li>
+<li class="sub"><a href="#_computation_declaration">_computation_declaration</a></li>
+<li class="sub"><a href="#bind_declaration">bind_declaration</a></li>
+<li class="sub"><a href="#handler">handler</a></li>
+<li class="sub"><a href="#_handler_name">_handler_name</a></li>
+<li class="sub"><a href="#_handler_path">_handler_path</a></li>
+<li class="sub"><a href="#attribute">attribute</a></li>
+<li class="sub"><a href="#function_declaration">function_declaration</a></li>
+<li class="sub"><a href="#constant_declaration">constant_declaration</a></li>
+<li class="sub"><a href="#union_declaration">union_declaration</a></li>
+<li class="sub"><a href="#union_variant">union_variant</a></li>
+<li class="sub"><a href="#macro_declaration">macro_declaration</a></li>
+<li class="sub"><a href="#_callable_declaration">_callable_declaration</a></li>
+<li class="sub"><a href="#_callable_signature">_callable_signature</a></li>
+<li class="sub"><a href="#callable_body">callable_body</a></li>
+<li class="sub"><a href="#parameter_list">parameter_list</a></li>
+<li class="sub"><a href="#query_parameter_list">query_parameter_list</a></li>
+<li class="sub"><a href="#query_join">query_join</a></li>
+<li class="sub"><a href="#query_generator">query_generator</a></li>
+<li class="sub"><a href="#parameter">parameter</a></li>
+<li class="sub"><a href="#events_declaration">events_declaration</a></li>
+<li class="sub"><a href="#entry_declaration">entry_declaration</a></li>
+<li class="sub"><a href="#exit_declaration">exit_declaration</a></li>
+<li class="sub"><a href="#query_declaration">query_declaration</a></li>
+<li class="sub"><a href="#type">type</a></li>
+<li class="sub"><a href="#union_type">union_type</a></li>
+<li class="sub"><a href="#_single_type">_single_type</a></li>
+<li class="sub"><a href="#type_name">type_name</a></li>
+<li class="sub"><a href="#type_binder">type_binder</a></li>
+<li class="sub"><a href="#type_application">type_application</a></li>
+<li class="sub"><a href="#type_argument_list">type_argument_list</a></li>
+<li class="sub"><a href="#block">block</a></li>
+<li class="sub"><a href="#_statement">_statement</a></li>
+<li class="sub"><a href="#local_declaration">local_declaration</a></li>
+<li class="sub"><a href="#assignment">assignment</a></li>
+<li class="sub"><a href="#expression_statement">expression_statement</a></li>
+<li class="sub"><a href="#reduce_statement">reduce_statement</a></li>
+<li class="sub"><a href="#if_statement">if_statement</a></li>
+<li class="sub"><a href="#while_statement">while_statement</a></li>
+<li class="sub"><a href="#for_statement">for_statement</a></li>
+<li class="sub"><a href="#_range_header">_range_header</a></li>
+<li class="sub"><a href="#_foreach_header">_foreach_header</a></li>
+<li class="sub"><a href="#switch_statement">switch_statement</a></li>
+<li class="sub"><a href="#switch_arm">switch_arm</a></li>
+<li class="sub"><a href="#_case_statements">_case_statements</a></li>
+<li class="sub"><a href="#variant_pattern">variant_pattern</a></li>
+<li class="sub"><a href="#pattern_bindings">pattern_bindings</a></li>
+<li class="sub"><a href="#sequence_statement">sequence_statement</a></li>
+<li class="sub"><a href="#branch_statement">branch_statement</a></li>
+<li class="sub"><a href="#return_statement">return_statement</a></li>
+<li class="sub"><a href="#goto_statement">goto_statement</a></li>
+<li class="sub"><a href="#break_statement">break_statement</a></li>
+<li class="sub"><a href="#continue_statement">continue_statement</a></li>
+<li class="sub"><a href="#yield_statement">yield_statement</a></li>
+<li class="sub"><a href="#cancel_statement">cancel_statement</a></li>
+<li class="sub"><a href="#label_statement">label_statement</a></li>
+<li class="sub"><a href="#_expression">_expression</a></li>
+<li class="sub"><a href="#builtin_reference">builtin_reference</a></li>
+<li class="sub"><a href="#member_expression">member_expression</a></li>
+<li class="sub"><a href="#index_expression">index_expression</a></li>
+<li class="sub"><a href="#call_expression">call_expression</a></li>
+<li class="sub"><a href="#_call_target">_call_target</a></li>
+<li class="sub"><a href="#argument_list">argument_list</a></li>
+<li class="sub"><a href="#named_argument">named_argument</a></li>
+<li class="sub"><a href="#typed_argument">typed_argument</a></li>
+<li class="sub"><a href="#argument_name">argument_name</a></li>
+<li class="sub"><a href="#is_expression">is_expression</a></li>
+<li class="sub"><a href="#_negated_is_pattern">_negated_is_pattern</a></li>
+<li class="sub"><a href="#as_expression">as_expression</a></li>
+<li class="sub"><a href="#parenthesized_expression">parenthesized_expression</a></li>
+<li class="sub"><a href="#await_expression">await_expression</a></li>
+<li class="sub"><a href="#unary_expression">unary_expression</a></li>
+<li class="sub"><a href="#binary_expression">binary_expression</a></li>
+<li class="sub"><a href="#array_expression">array_expression</a></li>
+<li class="sub"><a href="#struct_expression">struct_expression</a></li>
+<li class="sub"><a href="#struct_field">struct_field</a></li>
+<li class="sub"><a href="#_name">_name</a></li>
+<li class="sub"><a href="#_member_name">_member_name</a></li>
+<li class="sub"><a href="#identifier">identifier</a></li>
+<li class="sub"><a href="#number">number</a></li>
+<li class="sub"><a href="#boolean">boolean</a></li>
+<li class="sub"><a href="#nil">nil</a></li>
+<li class="sub"><a href="#string">string</a></li>
+<li class="sub"><a href="#character">character</a></li>
+<li class="sub"><a href="#comment">comment</a></li>
+<li class="sub"><a href="#_end">_end</a></li>
+</ul>
+</nav>
 </main>
+</div>
 </body>
 </html>

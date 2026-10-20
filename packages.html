@@ -7,8 +7,21 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<nav>
-<p class="site"><a href="index.html">Chibi</a></p>
+<header class="bar">
+<a class="site" href="index.html">Chibi</a>
+<nav aria-label="Sections">
+<a href="index.html">Overview</a>
+<a href="language.html">Learn</a>
+<a href="testing.html">Testing</a>
+<a href="packages.html" aria-current="true">Packages</a>
+<a href="examples.html">Examples</a>
+<a href="faq.html">FAQ</a>
+<a href="grammar.html">Grammar</a>
+<a href="toolchain.html">Toolchain</a>
+</nav>
+</header>
+<div class="page">
+<nav class="pages" aria-label="Pages">
 <h2>Overview</h2>
 <ul>
 <li><a href="index.html">Chibi</a></li>
@@ -227,6 +240,65 @@
 <pre><code class="language-chibi">Partition :: (str: string, sep: string) -&gt; Parts
 </code></pre>
 <p>The text before the first sep, sep and the text after it; when sep is absent, head is all of str and the others are empty.</p>
+<nav class="contents" aria-label="On this page">
+<p>On this page</p>
+<ul>
+<li><a href="#strings">strings</a></li>
+<li class="sub"><a href="#bytelength">ByteLength</a></li>
+<li class="sub"><a href="#byteat">ByteAt</a></li>
+<li class="sub"><a href="#bytes">Bytes</a></li>
+<li class="sub"><a href="#slice">Slice</a></li>
+<li class="sub"><a href="#compare">Compare</a></li>
+<li class="sub"><a href="#isidentifier">IsIdentifier</a></li>
+<li class="sub"><a href="#basename">BaseName</a></li>
+<li class="sub"><a href="#contains">Contains</a></li>
+<li class="sub"><a href="#containsany">ContainsAny</a></li>
+<li class="sub"><a href="#hasprefix">HasPrefix</a></li>
+<li class="sub"><a href="#hassuffix">HasSuffix</a></li>
+<li class="sub"><a href="#indexbyte">IndexByte</a></li>
+<li class="sub"><a href="#lastindexbyte">LastIndexByte</a></li>
+<li class="sub"><a href="#index">Index</a></li>
+<li class="sub"><a href="#lastindex">LastIndex</a></li>
+<li class="sub"><a href="#indexany">IndexAny</a></li>
+<li class="sub"><a href="#lastindexany">LastIndexAny</a></li>
+<li class="sub"><a href="#count">Count</a></li>
+<li class="sub"><a href="#truncatetobyte">TruncateToByte</a></li>
+<li class="sub"><a href="#equalfold">EqualFold</a></li>
+<li class="sub"><a href="#tolower">ToLower</a></li>
+<li class="sub"><a href="#toupper">ToUpper</a></li>
+<li class="sub"><a href="#isasciispace">IsAsciiSpace</a></li>
+<li class="sub"><a href="#trimleft">TrimLeft</a></li>
+<li class="sub"><a href="#trimright">TrimRight</a></li>
+<li class="sub"><a href="#trim">Trim</a></li>
+<li class="sub"><a href="#trimleftspace">TrimLeftSpace</a></li>
+<li class="sub"><a href="#trimrightspace">TrimRightSpace</a></li>
+<li class="sub"><a href="#trimspace">TrimSpace</a></li>
+<li class="sub"><a href="#trimprefix">TrimPrefix</a></li>
+<li class="sub"><a href="#trimsuffix">TrimSuffix</a></li>
+<li class="sub"><a href="#cut">Cut</a></li>
+<li class="sub"><a href="#splitkeeping">SplitKeeping</a></li>
+<li class="sub"><a href="#split">Split</a></li>
+<li class="sub"><a href="#splitn">SplitN</a></li>
+<li class="sub"><a href="#splitafter">SplitAfter</a></li>
+<li class="sub"><a href="#splitaftern">SplitAfterN</a></li>
+<li class="sub"><a href="#splitlineskeeping">SplitLinesKeeping</a></li>
+<li class="sub"><a href="#splitlines">SplitLines</a></li>
+<li class="sub"><a href="#splitlinesn">SplitLinesN</a></li>
+<li class="sub"><a href="#splitlinesafter">SplitLinesAfter</a></li>
+<li class="sub"><a href="#splitlinesaftern">SplitLinesAfterN</a></li>
+<li class="sub"><a href="#fields">Fields</a></li>
+<li class="sub"><a href="#join">Join</a></li>
+<li class="sub"><a href="#concatenate">Concatenate</a></li>
+<li class="sub"><a href="#repeat">Repeat</a></li>
+<li class="sub"><a href="#replace">Replace</a></li>
+<li class="sub"><a href="#replaceall">ReplaceAll</a></li>
+<li class="sub"><a href="#remove">Remove</a></li>
+<li class="sub"><a href="#removeall">RemoveAll</a></li>
+<li class="sub"><a href="#parts">Parts</a></li>
+<li class="sub"><a href="#partition">Partition</a></li>
+</ul>
+</nav>
 </main>
+</div>
 </body>
 </html>

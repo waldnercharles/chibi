@@ -72,6 +72,29 @@ static script_analysis *finish_analysis(analyzer *a, bool declarations, bool com
     script_analyzer_generic_free(a);
     return out;
 }
+/* `on Tick :: (dt: s)` in a system's header names the fields of the step's
+ * payload that its body reads, as a handler's list does. */
+static void system_step(analyzer *a, TSNode program, int function)
+{
+    TSNode list = script_analyzer_field(program, "payload");
+    if (ts_node_is_null(list)) {
+        return;
+    }
+    TSNode name = script_analyzer_field(program, "event");
+    const script_catalog_capability
+        *tick = script_catalog_capability_by_id(a->catalog, a->catalog->tick_event);
+    char *spelled = script_analyzer_name_copy(a, name);
+    if (!tick || !script_name_matches(tick->name, spelled)) {
+        script_analyzer_diagnostic(a, name, "A system runs on %s", tick ? tick->name : "Tick");
+    } else if (tick->parameter_count != 1) {
+        script_analyzer_diagnostic(a, name, "A system reads only the step, %s's one payload field", tick->name);
+    } else if (!script_analyzer_named_count(list)) {
+        script_analyzer_diagnostic(a, list, "List the step's fields the system reads, or leave out the clause");
+    } else {
+        script_analyzer_named_payload(a, function, list, tick->parameters, tick->parameter_count, tick->name);
+    }
+    free(spelled);
+}
 static script_analysis *analyze(
     const script_syntax *syntax,
     const script_catalog *catalog,
@@ -162,23 +185,15 @@ static script_analysis *analyze(
             self = acount(out->symbols) - 1;
             out->owner_symbol = self;
         }
+        int system = -1;
         if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
             script_analyzer_system_parameters(&a, program);
-            if (catalog->tick_event) {
-                apush(
-                    out->symbols,
-                    ((script_symbol){ .id = script_catalog_id("payload", "system.Tick"),
-                                      .name = xstrdup("event"),
-                                      .kind = SCRIPT_PARAMETER,
-                                      .capability = catalog->tick_event,
-                                      .type = { .storage = PIN_STRUCT,
-                                                .nominal = catalog->tick_event,
-                                                .flags = SCRIPT_TYPE_RESULTS },
-                                      .scope = a.scope,
-                                      .initializer = -1,
-                                      .function = -1,
-                                      .declaration = { .start = -1, .end = -1 } })
-                );
+            /* The step binds before any declaration reads it. */
+            if (!declarations) {
+                system = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);
+                out->functions[system].scope = a.scope;
+                out->functions[system].event = catalog->tick_event;
+                system_step(&a, program, system);
             }
         }
         script_analyzer_declaration_pass(&a, body);
@@ -204,16 +219,15 @@ static script_analysis *analyze(
                 script_analyzer_resolve_initializer(&a, a.initializers[j].symbol);
             }
             script_analyzer_definition_pass(&a, body);
-            if (out->kind == SCRIPT_PROGRAM_SYSTEM) {
-                int function = script_analyzer_function_new(&a, body, SCRIPT_FUNCTION_SYSTEM, -1);
-                out->functions[function].scope = a.scope;
-                out->functions[function].event = catalog->tick_event;
-                script_analyzer_callable_definition(&a, function, body);
+            if (system >= 0) {
+                script_analyzer_callable_definition(&a, system, body);
             }
             script_analyzer_callable_definitions(&a, false);
             TSNode where = script_analyzer_field(program, "where");
             if (out->kind == SCRIPT_PROGRAM_SYSTEM && !ts_node_is_null(where)) {
+                a.query = true;
                 out->query_filter = script_analyzer_query_expression(&a, where);
+                a.query = false;
                 script_analyzer_query_intersect(&a, out->query_filter);
             }
         }

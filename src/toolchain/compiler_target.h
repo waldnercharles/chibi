@@ -19,7 +19,9 @@ char *compiler_target_json(const script_catalog *, size_t *length);
  *   not internal, a namespace or a union, with its ID, layout hash, storage,
  *   size, component ID (0 for none) and range of fields, then each field's
  *   name, storage, byte offset and whether it is writable;
- * - the entity type's ID.
+ * - the entity type's ID;
+ * - each native that combines numbers, and records of them field by field,
+ *   for a binary operator: its index among the natives and the operator.
  * Malloc-owned; release with free(). */
 char *compiler_behavior_input_json(
     const script_catalog *,

@@ -519,16 +519,19 @@ enum
 {
     INPUT_IDENTITIES = 0,
     INPUT_SOURCES,
+    INPUT_NATIVES = 5,
     INPUT_EVENTS = 8,
     INPUT_EVENT_FIELDS,
     INPUT_TYPES,
     INPUT_TYPE_FIELDS,
     INPUT_ENTITY,
+    INPUT_OPERATORS,
     INPUT_ARGUMENTS
 };
 /* Whether the exported input holds the story's behavior and lists the type
  * requirements and events of the module stage zero prepared for it, in
- * order, as a stage-one module must. */
+ * order, as a stage-one module must, and the binary operators of the natives
+ * stage zero calls for records, + among them. */
 static bool target_matches(yyjson_val *root, const execution_module *module, const char *source)
 {
     const execution_module_plan *plan = &module->plan;
@@ -582,6 +585,18 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
         }
     }
     REQUIRE(yyjson_get_uint(yyjson_arr_get(root, INPUT_ENTITY)) == plan->owner_type);
+    yyjson_val *natives = yyjson_arr_get(root, INPUT_NATIVES);
+    yyjson_val *operators = yyjson_arr_get(root, INPUT_OPERATORS);
+    bool add = false;
+    for (size_t i = 0; i < yyjson_arr_size(operators); i++) {
+        yyjson_val *row = yyjson_arr_get(operators, i);
+        yyjson_val *native = yyjson_arr_get(natives, yyjson_get_uint(yyjson_obj_get(row, "native")));
+        REQUIRE(native && yyjson_get_int(yyjson_obj_get(native, "parameters")) == 2);
+        REQUIRE(yyjson_get_int(yyjson_obj_get(native, "results")) == 1);
+        add |= !strcmp(yyjson_get_str(yyjson_obj_get(row, "operator")), "+") &&
+               !strcmp(yyjson_get_str(yyjson_obj_get(native, "name")), "add");
+    }
+    REQUIRE(add);
     return true;
 }
 /* chibi-compile --stage-one-input exports stage one's input for a story: its
@@ -673,23 +688,28 @@ TEST_CASE(stories_assemble_from_their_own_modules)
     }
     return true;
 }
-/* Stage one's route rebuilds Counter as stage zero does: it recovers stage one
- * from the bootstrap artifact and the compiler sources, compiles the story's
- * behavior with it, and has chibi-compile assemble the artifact from that
- * module. Recovery takes one or two compiles of the compiler the first time
- * its sources change, and none once its closure is kept. */
-TEST_CASE(stage_one_rebuilds_counter_as_stage_zero_does)
+/* Stage one's route rebuilds Counter and Motion as stage zero does: it
+ * recovers stage one from the bootstrap artifact and the compiler sources,
+ * compiles each story's behavior with it, and has chibi-compile assemble the
+ * artifact from that module. Recovery takes one or two compiles of the
+ * compiler the first time its sources change, and none once its closure is
+ * kept. */
+TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does)
 {
-    char folder[128], project[4096], scenario[4096], route[4096];
+    char folder[128], route[4096];
+    char counter[4096], counter_scenario[4096], motion[4096], motion_scenario[4096];
     path(folder, sizeof folder, "stage-one");
-    story_path(project, sizeof project, "Counter", "");
-    story_path(scenario, sizeof scenario, "Counter", SCENARIO);
+    story_path(counter, sizeof counter, "Counter", "");
+    story_path(counter_scenario, sizeof counter_scenario, "Counter", SCENARIO);
+    story_path(motion, sizeof motion, "Motion", "");
+    story_path(motion_scenario, sizeof motion_scenario, "Motion", SCENARIO);
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
-    const char *arguments[] = { build_host_path, reference_path, route,
-                                observer_path,   folder,         project,
-                                scenario };
-    REQUIRE(harness("Rebuild", arguments, 7) == 0);
-    REQUIRE(log_has("the candidate matches the reference in Counter"));
+    const char *arguments[] = {
+        build_host_path, reference_path,   route,  observer_path,  folder,
+        counter,         counter_scenario, motion, motion_scenario
+    };
+    REQUIRE(harness("Rebuild", arguments, 9) == 0);
+    REQUIRE(log_has("the candidate matches the reference in Counter, Motion"));
     return true;
 }
 static void prepare_scratch()
@@ -716,7 +736,7 @@ void test_tool_game_equivalence_stage_one(
     setenv("CHIBI_COMPILE", reference, 1);
     setenv("CHIBI_STAGE_ONE_HOST", stage_one_host, 1);
     prepare_scratch();
-    RUN_TEST_CASE(stage_one_rebuilds_counter_as_stage_zero_does);
+    RUN_TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does);
     tool_remove_tree(scratch);
 }
 void test_tool_game_equivalence(

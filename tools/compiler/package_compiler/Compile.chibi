@@ -790,16 +790,18 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     game_fields: GameEventField[] = [];
     owner_type: uint64 = 0;
     behaving: Name[] = [];
+    aggregates: NumericOperator[] = [];
     switch game {
         case .Package:
             owner_type = 0;
-        case .Behavior(declared_states, handlers, declared_events, payloads, entity):
+        case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators):
             kept_states = declared_states;
             handled = handlers;
             game_events = declared_events;
             game_fields = payloads;
             owner_type = entity;
             behaving = BehaviorNames(declared_states);
+            aggregates = operators;
     }
     wide: uint64[] = [0];
     values: writer.Value[] = [];
@@ -877,7 +879,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-                           types, members, constants, natives, ports, identities,
+                           types, members, constants, natives, ports, identities, aggregates,
                            append(Aliases(links, callable.document), behaving), index, ops, target);
         switch tables {
             case .Failed(diagnostic):
@@ -1050,11 +1052,11 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          result_count: invocation.result_count, task: false};
                     calls = array_add(calls, call);
                 }
-                // No definitions; then the components the body writes through
-                // references, each once, and each write.
+                // No definitions; then the components the body reads or
+                // writes through references, each once, and each write.
                 spans = array_add(spans, Range(0, 0));
-                written := WrittenComponents(body_cells, body_hosts);
-                reached := Distinct(written);
+                written := ComponentsOf(body_cells, body_hosts, true);
+                reached := Distinct(ComponentsOf(body_cells, body_hosts, false));
                 spans = array_add(spans, Range(length(components), length(reached)));
                 for (component_id in reached) {
                     reached_row: writer.Component = {id: length(wide), binding: false};
@@ -1089,7 +1091,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                                                               forest[callable.node].start, HandlerFunction)));
                     wide = array_add(wide, handled_event.id);
                     wide = array_add(wide, handled_event.abi);
-                    wide = array_add(wide, uint64(Effects(ops, body_code, length(written) != 0)));
+                    wide = array_add(wide, uint64(Effects(ops, body_code, length(reached) != 0, length(written) != 0)));
                     row: writer.Entry = {id: length(wide) - 4, kind: HandlerFunction, entry_name: "", has_entry: false,
                                          event_id: length(wide) - 3, event_abi: length(wide) - 2,
                                          event_name: handled_event.name, has_event_name: true, continuation_wait: false,

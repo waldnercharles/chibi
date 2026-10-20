@@ -1037,19 +1037,22 @@ declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
 its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-input FILE` exports stage one's input for a
 project: its executable sources, Compile's six target arguments, then the
-catalog's events, the type requirements stage zero lists, and the entity
-type. Stage
+catalog's events, the type requirements stage zero lists, the entity type,
+and the natives that combine records for binary operators. Stage
 one's `CompileBehavior` compiles Counter's behavior asset: retained state, an
 event handler, `self` and a component field write through the reference
-intrinsics, with the writer's state, event and component tables. Its module
-has stage zero's identities and plays as stage zero's does
+intrinsics, with the writer's state, event and component tables. It compiles
+Motion's drift, `self.Transform += self.Velocity * dt`: component reads
+through references, records combined by the game's `*` and `+` natives, and
+the sum written back through the reference it read. Its modules have stage
+zero's identities and play as stage zero's do
 (`docs/package-compiler.md#behaviors`). Stage one's route,
-`tools/toolchain/StageOne.chibi`, rebuilds Counter as stage zero does: it
-recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
-the exported input, and assembles the artifact with `chibi-compile
---modules` (`make test-stage-one`). Next: Motion,
-Controls, Results and Follow, in the stories' order, each added to that
-selector as stage one compiles it. See `docs/testing.md#game-equivalence`.
+`tools/toolchain/StageOne.chibi`, rebuilds Counter and Motion as stage zero
+does: it recovers stage one from the bootstrap artifact, runs
+`CompileBehaviors` on the exported input, and assembles the artifact with
+`chibi-compile --modules` (`make test-stage-one`). Next: Controls, Results
+and Follow, in the stories' order, each added to that selector as stage one
+compiles it. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

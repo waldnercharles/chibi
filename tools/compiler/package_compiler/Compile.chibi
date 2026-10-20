@@ -154,7 +154,8 @@ TypeDecl :: struct {
 }
 // A record field, with its byte offset, or a variant's payload field. A
 // native type's field may be read-only, a constant whose value is its name,
-// or read by natives[read] when that is not -1.
+// or read by natives[read] when that is not -1, with `read_key` instead of
+// the value when that is not "".
 TypeMember :: struct {
     name: string;
     storage: int;
@@ -164,6 +165,7 @@ TypeMember :: struct {
     writable: bool;
     constant: bool;
     read: int;
+    read_key: string;
 }
 Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
@@ -195,6 +197,8 @@ RecordDecl: int : 0;
 UnionDecl: int : 1;
 VariantDecl: int : 2;
 NativeDecl: int : 3;
+// A game namespace, such as SceneGlobals: a native type no module requires.
+NamespaceDecl: int : 4;
 // Symbol kinds in package-symbol IDs.
 FunctionKind: int : 1;
 TypeKind: int : 13;
@@ -510,7 +514,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                         width := FieldSize(storage, target);
                         size = AlignTo(size, width);
                         field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
-                                             writable: true, constant: false, read: -1};
+                                             writable: true, constant: false, read: -1, read_key: ""};
                         members = array_add(members, field);
                         size += width;
                         if (width > alignment) {
@@ -551,7 +555,7 @@ DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document
                             }
                             field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
                                                  storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
-                                                 writable: true, constant: false, read: -1};
+                                                 writable: true, constant: false, read: -1, read_key: ""};
                             members = array_add(members, field);
                             parameter = NextMember(forest, parameter);
                         }
@@ -688,8 +692,8 @@ ScalarValue :: (storage: int, wide: int) -> writer.Value {
             wide: wide, text: "", has_text: false, present: false, first: 0, count: 0};
 }
 // The header of an absent value of a type. A record names its layout; an
-// array of records, like a record, names its type. A native type's header
-// lists no fields.
+// array of records, like a record, names its type, and so does a handle of a
+// game type, such as an entity. A native type's header lists no fields.
 Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts: int[]) -> writer.Value {
     if (container != 0) {
         value := ScalarValue(storage, 0);
@@ -700,6 +704,12 @@ Header :: (storage: int, container: int, record: int, types: TypeDecl[], layouts
             value.authored = types[record].kind != NativeDecl;
         }
         return value;
+    }
+    if (storage == HandleStorage && record >= 0) {
+        handle := ScalarValue(storage, 0);
+        handle.type_name = types[record].type_name;
+        handle.has_type_name = true;
+        return handle;
     }
     if (storage != StructStorage) {
         return ScalarValue(storage, 0);
@@ -837,10 +847,13 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     owner_type: uint64 = 0;
     behaving: Name[] = [];
     aggregates: NumericOperator[] = [];
+    record_makes: NativeMake[] = [];
+    make_fields: int[] = [];
     switch game {
         case .Package:
             owner_type = 0;
-        case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators, globals):
+        case .Behavior(declared_states, handlers, declared_events, payloads, entity, operators, globals, makes,
+                       made_fields):
             kept_states = declared_states;
             handled = handlers;
             game_events = declared_events;
@@ -848,6 +861,8 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             owner_type = entity;
             behaving = BehaviorNames(declared_states, globals);
             aggregates = operators;
+            record_makes = makes;
+            make_fields = made_fields;
     }
     wide: uint64[] = [0];
     values: writer.Value[] = [];
@@ -925,7 +940,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     while (index < length(callables) && callables[index].package == package) {
         callable := callables[index];
         tables := EmitBody(forest, documents[callable.document].text, callable.document, callables, params,
-                           types, members, constants, natives, ports, identities, aggregates,
+                           types, members, constants, natives, ports, identities, aggregates, record_makes, make_fields,
                            append(Aliases(links, callable.document), behaving), index, ops, target);
         switch tables {
             case .Failed(diagnostic):

@@ -247,13 +247,13 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             } else if (whole >= 0) {
                 // `self.C op= v` combines the owner's component with the value
                 // and writes the result through the reference it read.
-                if (operator == "") {
-                    return Fail(forest, item.node, document, "assigning a whole component is not supported yet");
-                }
                 write := Resume(item.node, ComponentAssignPhase, at.slot + ComponentReferenceSlot, whole);
+                if (operator == "") {
+                    return ComponentMakeStep(code, types, whole, [Visit(value), write], ops, target, at, node);
+                }
                 combine := Resume(item.node, CombinePhase, 0, 0);
-                return ComponentReadStep(code, types, whole, true, [Visit(value), combine, write], ops, target, at,
-                                         node);
+                return ComponentReadStep(code, types, whole, true, -1, [Visit(value), combine, write], ops, target,
+                                         at, node);
             } else if (owned >= 0) {
                 // `self.C.f = v` on a component of the owner.
                 member := Text(forest, text, Field(forest, destination, "member"));
@@ -406,9 +406,9 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
             }
             if (operator != "") {
                 op := BinaryOp(ops, operator);
-                if (op < 0 || Comparison(ops, op) || !Integer(binding.storage) || binding.container != 0 ||
+                if (op < 0 || Comparison(ops, op) || !Numeric(binding.storage) || binding.container != 0 ||
                     !Single(result, binding.storage)) {
-                    return Fail(forest, item.node, document, "compound assignment needs integer operands of its type");
+                    return Fail(forest, item.node, document, "compound assignment needs number operands of its type");
                 }
                 if (!Computes(ops, op, binding.storage)) {
                     return Fail(forest, item.node, document, "unsupported arithmetic type");
@@ -463,7 +463,7 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
         return ComponentWriteStep(forest, text, document, members[item.b], values[top - 1], item, ops, target, at,
                                   node);
     } else if (item.phase == ComponentAssignPhase) {
-        return ComponentAssignStep(values[top - 1], item, ops, target, at, node);
+        return ComponentAssignStep(forest, document, types, values[top - 1], item, ops, target, at, node);
     } else if (item.phase == ReturnsPhase) {
         return ResultsStep(forest, document, params, callable, values, top, item, ops, at, node);
     } else if (item.phase == RetainedPhase) {
@@ -765,6 +765,27 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         code = array_add(code, load);
         produced = Typed(at.slot + 1, UnionStorage, 0, sum_type);
     } else if (item.phase == 0 && kind == "member_expression" &&
+               KeyedMember(forest, text, types, members, names, item.node) >= 0) {
+        // A global's keyed field, such as a scene binding, a native reads by
+        // its key.
+        field := members[KeyedMember(forest, text, types, members, names, item.node)];
+        key: Value = {slot: at.slot, storage: ports[natives[field.read].first].storage, container: 0, record: -1};
+        constant := ConstantCode(ops, key.storage, 0, at.slot, node);
+        constant.text = field.read_key;
+        constant.has_text = true;
+        shifted: Bases = {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
+                          call: at.call};
+        switch NativeReadStep(key, field, ops, target, shifted, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(read_code, read_slots, read_locals, read_cells, read_hosts, read_roots, read_calls,
+                          read_bound, read_next, read_popped, read_value, read_retain, read_marks):
+                read := Typed(read_value.slot, read_value.storage, 0, field.record);
+                return Step.Emitted(append([constant], read_code), append([ValueLocal(key.storage)], read_slots),
+                                    read_locals, read_cells, read_hosts, read_roots, read_calls, read_bound,
+                                    read_next, 0, read, NoValue(), read_marks);
+        }
+    } else if (item.phase == 0 && kind == "member_expression" &&
                ConstantMember(forest, text, types, members, names, item.node) >= 0) {
         // A constant member of a global, such as an input action, is its name.
         field := members[ConstantMember(forest, text, types, members, names, item.node)];
@@ -776,8 +797,8 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         produced = Typed(at.slot, field.storage, 0, field.record);
     } else if (item.phase == 0 && kind == "member_expression" &&
                SelfComponent(forest, text, types, names, item.node) >= 0) {
-        return ComponentReadStep([], types, SelfComponent(forest, text, types, names, item.node), false, [], ops,
-                                 target, at, node);
+        return ComponentReadStep([], types, SelfComponent(forest, text, types, names, item.node), false, -1, [],
+                                 ops, target, at, node);
     } else if (item.phase == 0) {
         next = array_add(next, Visit(Field(forest, item.node, "object")));
         if (kind == "index_expression") {
@@ -830,6 +851,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             code = CellRead(result.storage, object.slot + index, ops, target, at.slot, node);
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
                                 Typed(at.slot + 1, result.storage, 0, -1), NoValue(), marks);
+        }
+        if (Single(object, HandleStorage) && Component(types, member) >= 0) {
+            // A component of another entity, read as the owner's is.
+            return ComponentReadStep([], types, Component(types, member), false, object.slot, [], ops, target, at,
+                                     node);
         }
         found: int = -1;
         if (Single(object, StructStorage) ||
@@ -1044,8 +1070,8 @@ LiteralStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, ty
 // the one type its arguments give them.
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
              params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
-             names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops, target: Target,
-             at: Bases) -> Step {
+             makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
+             item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
     code: Code[] = [];
     slots: Slot[] = [];
@@ -1153,21 +1179,26 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (native < 0) {
                 return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name));
             }
-            called := natives[native];
-            // A result takes a known or inferred type, never each value's own.
-            supported := true;
-            port := called.first;
-            while (port < called.first + called.parameters + called.results) {
-                if (ports[port].storage == UnsupportedPort ||
-                    (port >= called.first + called.parameters && ports[port].storage == AnyPort)) {
-                    supported = false;
+            if (Overloaded(natives, callee_name)) {
+                // Each argument's own type picks the overload.
+                argument := FirstMember(forest, Field(forest, item.node, "arguments"));
+                count: int = 0;
+                while (argument >= 0) {
+                    next = array_add(next, Visit(argument));
+                    count += 1;
+                    argument = NextMember(forest, argument);
                 }
-                port += 1;
+                choose := Resume(item.node, 1, -1, count);
+                choose.c = 4;
+                next = array_add(next, choose);
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(),
+                                    NoValue(), marks);
             }
-            if (!supported) {
+            make := FindMake(makes, native);
+            if (make < 0 && !Supported(ports, natives[native])) {
                 return Fail(forest, callee, document, format_text("native '{}' is not supported yet", callee_name));
             }
-            expected_count = called.parameters;
+            expected_count = natives[native].parameters;
         }
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
@@ -1197,6 +1228,10 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         if (native >= 0) {
             finish.a = native;
             finish.c = 1;
+        }
+        if (native >= 0 && FindMake(makes, native) >= 0) {
+            finish.a = FindMake(makes, native);
+            finish.c = 5;
         }
         next = array_add(next, finish);
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 0, NoValue(), NoValue(), marks);
@@ -1293,18 +1328,34 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count,
                             Typed(at.slot + count + 1, UnionStorage, 0, variant.parent), NoValue(), marks);
     }
-    linked := item.c == 1;
+    chosen := item.a;
+    if (item.c == 4) {
+        // An overloaded native: the one whose parameters take the arguments.
+        callee := Field(forest, item.node, "function");
+        chosen = Overload(natives, ports, Text(forest, text, callee), values, first, count);
+        if (chosen < 0) {
+            return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
+        }
+        if (!Supported(ports, natives[chosen])) {
+            return Fail(forest, callee, document, "this overload is not supported yet");
+        }
+    }
+    if (item.c == 5) {
+        return MakeStep(forest, document, types, members, makes[item.a], make_fields, values, first, count, item.node,
+                        ops, target, at, node);
+    }
+    linked := item.c == 1 || item.c == 4;
     inferred := NoValue();
     first_port: int = 0;
     if (linked) {
-        first_port = natives[item.a].first;
+        first_port = natives[chosen].first;
     }
     index: int = 0;
     while (index < count) {
         argument := values[first + index];
         expected := NoValue();
         if (linked) {
-            port := ports[NativePort(natives[item.a], index)];
+            port := ports[NativePort(natives[chosen], index)];
             expected = Typed(-1, port.storage, port.container, -1);
             if (port.storage == AnyPort && argument.storage > 0) {
                 expected = argument;
@@ -1331,9 +1382,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     }
     result := Typed(-1, -1, 0, -1);
     result_count: int = 0;
-    if (linked && natives[item.a].results > 1) {
+    if (linked && natives[chosen].results > 1) {
         // Several results land in cells a local or `.name` reads.
-        called := natives[item.a];
+        called := natives[chosen];
         at_result: int = 0;
         while (at_result < called.results) {
             port := ports[called.first + called.parameters + at_result];
@@ -1346,9 +1397,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             at_result += 1;
         }
         result_count = called.results;
-        result = Typed(at.cell + count, ResultsStorage, 0, item.a);
-    } else if (linked && natives[item.a].results == 1) {
-        port := ports[first_port + natives[item.a].parameters];
+        result = Typed(at.cell + count, ResultsStorage, 0, chosen);
+    } else if (linked && natives[chosen].results == 1) {
+        port := ports[first_port + natives[chosen].parameters];
         result = Typed(-1, port.storage, port.container, -1);
         if (port.storage == 0) {
             if (inferred.storage == 0) {
@@ -1392,7 +1443,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         index += 1;
     }
     if (linked) {
-        host: Host = {intrinsic: 0, linked: item.a, first: at.cell, result_first: at.cell + count,
+        host: Host = {intrinsic: 0, linked: chosen, first: at.cell, result_first: at.cell + count,
                       result_count: result_count, written: false};
         hosts = array_add(hosts, host);
         code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
@@ -1857,6 +1908,32 @@ SelfComponent :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl
     }
     return component;
 }
+// The field `g.F` names on the global `g` that a native reads by its key, as
+// an index into `members`; -1 for any other node.
+KeyedMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                names: Name[], node: int) -> int {
+    global := Field(forest, node, "object");
+    if (!Is(forest, global, "identifier")) {
+        return -1;
+    }
+    found := Lookup(names, Text(forest, text, global));
+    if (found < 0 || names[found].place != GlobalPlace || names[found].record < 0) {
+        return -1;
+    }
+    field := FindField(types, members, names[found].record, Text(forest, text, Field(forest, node, "member")));
+    if (field < 0 || members[field].read < 0 || members[field].read_key == "") {
+        return -1;
+    }
+    return field;
+}
+// The component type `name` names, -1 for none.
+Component :: (types: TypeDecl[], name: string) -> int {
+    found := FindNativeType(types, name);
+    if (found < 0 || types[found].component == 0) {
+        return -1;
+    }
+    return found;
+}
 // The constant field `g.F` names on the global `g`, as an index into
 // `members`; -1 for any other node.
 ConstantMember :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
@@ -1980,12 +2057,17 @@ ReferenceWriteCode :: (ops: Ops, target: Target, first: int, reference: int, val
     return array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
 }
 // The context and the owner into the cells of a make from `first`, through
-// the four OwnerSlots from `slot`.
-OwnerCode :: (ops: Ops, target: Target, first: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
-    code: Code[] = [Instruction(ops.context, target.pointer_storage, slot, 0, 0, 1, node),
-                    Instruction(ops.owner, HandleStorage, slot + 1, 0, 0, 0, node)];
+// the four OwnerSlots from `slot`. The owner is the entity in slot `entity`,
+// or the behavior's own when that is -1.
+OwnerCode :: (ops: Ops, target: Target, first: int, entity: int, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    owner := entity;
+    code: Code[] = [Instruction(ops.context, target.pointer_storage, slot, 0, 0, 1, node)];
+    if (owner < 0) {
+        owner = slot + 1;
+        code = array_add(code, Instruction(ops.owner, HandleStorage, owner, 0, 0, 0, node));
+    }
     code = append(code, CellWrite(target.pointer_storage, slot, first, ops, target, slot + 2, node));
-    return append(code, CellWrite(HandleStorage, slot + 1, first + 5, ops, target, slot + 3, node));
+    return append(code, CellWrite(HandleStorage, owner, first + 5, ops, target, slot + 3, node));
 }
 OwnerSlots :: (target: Target) -> Slot[] {
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
@@ -2009,7 +2091,7 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
     first := at.cell;
     declared := members[field];
     cells := ReferenceCells(target, component, ComponentFacts(types[component]), declared);
-    code := OwnerCode(ops, target, first, at.slot, node);
+    code := OwnerCode(ops, target, first, -1, at.slot, node);
     code = append(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
     slots := append(OwnerSlots(target), FieldReferenceSlots(target));
     reference := at.slot + length(slots) - 1;
@@ -2041,11 +2123,12 @@ ComponentReferenceStep :: (before: Code[], types: TypeDecl[], members: TypeMembe
 // Where ComponentReadStep leaves the make's reference, from its first slot.
 ComponentReferenceSlot: int : 5;
 // `self.C`: the owner's component types[component], read through a reference
-// into a record of its own, as stage zero reads it, after `before`. A
+// into a record of its own, as stage zero reads it, after `before`; `e.C`
+// reads the component of the entity in slot `entity`, which it pops. A
 // compound assignment writes through the reference, so its make is `written`,
 // and schedules `next`.
-ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written: bool, next: Work[], ops: Ops,
-                      target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written: bool, entity: int, next: Work[],
+                      ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
     locals: Slot[] = [];
     calls: Invocation[] = [];
     bound: Name[] = [];
@@ -2058,20 +2141,61 @@ ComponentReadStep :: (before: Code[], types: TypeDecl[], component: int, written
                   written: written};
     copy: Host = {intrinsic: ReferenceReadIntrinsic, linked: -1, first: first + 10, result_first: first + 11,
                   result_count: 1, written: false};
-    code := OwnerCode(ops, target, first, at.slot, node);
+    code := OwnerCode(ops, target, first, entity, at.slot, node);
     code = append(code, ReferenceCode(ops, target, first, first + 11, at.host, at.slot + 4, node));
     address: Slot = {storage: target.pointer_storage, kind: AddressKind};
     reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
     slots := append(OwnerSlots(target), [address, reference, address, address, address]);
     value := at.slot + length(slots) - 1;
     roots: Root[] = [{slot: value, storage: StructStorage, container: 0, record: component}];
-    return Step.Emitted(append(before, code), slots, locals, cells, [make, copy], roots, calls, bound, next, 0,
+    popped: int = 0;
+    if (entity >= 0) {
+        popped = 1;
+    }
+    return Step.Emitted(append(before, code), slots, locals, cells, [make, copy], roots, calls, bound, next, popped,
                         Typed(value, StructStorage, 0, component), NoValue(), marks);
 }
-// The write of `self.C op= v`: the combined record, of the component's type,
-// through the reference at slot item.a.
-ComponentAssignStep :: (value: Value, item: Work, ops: Ops, target: Target, at: Bases,
-                        node: snapshot.SnapshotNode) -> Step {
+// `self.C = v`: the reference to the owner's component types[component],
+// made to be written through, after `before`; `next` writes the value.
+ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: Work[], ops: Ops, target: Target,
+                      at: Bases, node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    roots: Root[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    marks: int[] = [];
+    first := at.cell;
+    make: Host = {intrinsic: ReferenceMakeIntrinsic, linked: -1, first: first, result_first: first + 9, result_count: 1,
+                  written: true};
+    code := OwnerCode(ops, target, first, -1, at.slot, node);
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code = append(code, CellRead(target.pointer_storage, first + 9, ops, target, at.slot + 4, node));
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    reference: Slot = {storage: target.pointer_storage, kind: ReferenceKind};
+    slots := append(OwnerSlots(target), [address, reference]);
+    cells := MakeCells(target, component, ComponentFacts(types[component]));
+    return Step.Emitted(append(before, code), slots, locals, cells, [make], roots, calls, bound, next, 0, NoValue(),
+                        NoValue(), marks);
+}
+// The type a native type stands for, as stage zero's canonical type: its
+// underlying type, followed to the end.
+Canonical :: (types: TypeDecl[], record: int) -> int {
+    at := record;
+    steps: int = 0;
+    while (types[at].kind == NativeDecl && types[at].parent >= 0 && steps < length(types)) {
+        at = types[at].parent;
+        steps += 1;
+    }
+    return at;
+}
+// The write of `self.C = v` and `self.C op= v`: the record, of a type that
+// stands for the same one as the component's, types[item.b], through the
+// reference at slot item.a.
+ComponentAssignStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], value: Value, item: Work,
+                        ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if (!Single(value, StructStorage) || Canonical(types, value.record) != Canonical(types, item.b)) {
+        return Fail(forest, item.node, document, "assigned value differs from its component");
+    }
     locals: Slot[] = [];
     roots: Root[] = [];
     calls: Invocation[] = [];
@@ -2436,13 +2560,131 @@ NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, a
     next: Work[] = [];
     marks: int[] = [];
     arguments: Value[] = [object];
-    read: Cell = {storage: field.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    read: Cell = {storage: field.storage, container: 0, record: field.record, constant: 0, variant: -1,
+                  kind: ValueKind};
     host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
                   written: false};
     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
     return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
                         bound, next, 1, Typed(at.slot + 2, field.storage, 0, -1), NoValue(), marks);
+}
+// Whether the compiler passes each of a native's ports: a result takes a
+// known or inferred type, never each value's own.
+Supported :: (ports: Port[], called: Native) -> bool {
+    port := called.first;
+    while (port < called.first + called.parameters + called.results) {
+        if (ports[port].storage == UnsupportedPort ||
+            (port >= called.first + called.parameters && ports[port].storage == AnyPort)) {
+            return false;
+        }
+        port += 1;
+    }
+    return true;
+}
+// Whether several natives have the exact name `name`.
+Overloaded :: (natives: Native[], name: string) -> bool {
+    count: int = 0;
+    for (candidate in natives) {
+        if (candidate.name == name) {
+            count += 1;
+        }
+    }
+    return count > 1;
+}
+// The one native named `name` whose parameters each take the argument of
+// `values[first, first + count)` in its position; -1 for none or several.
+Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], first: int, count: int) -> int {
+    found: int = -1;
+    index: int = 0;
+    while (index < length(natives)) {
+        candidate := natives[index];
+        takes := candidate.name == name && candidate.parameters == count;
+        at: int = 0;
+        while (takes && at < count) {
+            port := ports[candidate.first + at];
+            value := values[first + at];
+            takes = port.storage != UnsupportedPort &&
+                    (port.storage <= 0 || (port.storage == value.storage && port.container == value.container));
+            at += 1;
+        }
+        if (takes && found >= 0) {
+            return -1;
+        }
+        if (takes) {
+            found = index;
+        }
+        index += 1;
+    }
+    return found;
+}
+// The record make of natives[native], -1 for none.
+FindMake :: (makes: NativeMake[], native: int) -> int {
+    index: int = 0;
+    while (index < length(makes)) {
+        if (makes[index].native == native) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// A native that makes a record of its arguments, such as `vec2(x, y)`, as
+// stage zero lowers it: a struct literal of the fields they give, in order.
+MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], members: TypeMember[], make: NativeMake,
+             make_fields: int[], values: Value[], first: int, count: int, call: int, ops: Ops, target: Target,
+             at: Bases, node: snapshot.SnapshotNode) -> Step {
+    locals: Slot[] = [];
+    calls: Invocation[] = [];
+    bound: Name[] = [];
+    next: Work[] = [];
+    marks: int[] = [];
+    code: Code[] = [];
+    slots: Slot[] = [];
+    record := make.record;
+    if (record < 0) {
+        return Fail(forest, call, document, "the native makes a record this compiler does not see");
+    }
+    header: Cell = {storage: StructStorage, container: 0, record: record, constant: 0, variant: -1, kind: ValueKind};
+    cells: Cell[] = [header];
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    index: int = 0;
+    while (index < count) {
+        position := make_fields[make.first + index];
+        if (position < 0) {
+            return Fail(forest, call, document, "a native's argument gives no field of its record");
+        }
+        field := members[types[record].first + position];
+        value := values[first + index];
+        if (value.container == 0 && Converts(value.storage, field.storage)) {
+            code = append(code, NumberCode(ops, value.storage, field.storage, value.slot, at.slot + length(slots),
+                                           node));
+            slots = append(slots, NumberSlots(value.storage, field.storage));
+            value = Typed(at.slot + length(slots) - 1, field.storage, 0, -1);
+        }
+        if (!SameType(field.storage, 0, -1, value)) {
+            return Fail(forest, call, document, "argument differs from its parameter type");
+        }
+        offset: Cell = {storage: WordStorage, container: 0, record: -1, constant: uint64(field.offset), variant: -1,
+                        kind: ValueKind};
+        content: Cell = {storage: value.storage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+        cells = append(cells, [offset, content]);
+        slots = array_add(slots, address);
+        code = append(code, CellWrite(SlotStorage(value.storage, 0, target), value.slot, at.cell + length(cells) - 1,
+                                      ops, target, at.slot + length(slots) - 1, node));
+        index += 1;
+    }
+    cells = array_add(cells, header);
+    host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                  result_count: 1, written: false};
+    code = array_add(code, Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code = append(code, CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target,
+                                 at.slot + length(slots), node));
+    slots = append(slots, [address, address]);
+    made := at.slot + length(slots) - 1;
+    roots: Root[] = [{slot: made, storage: StructStorage, container: 0, record: record}];
+    return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, count,
+                        Typed(made, StructStorage, 0, record), NoValue(), marks);
 }
 // The cells of a native call: one for each argument, then its result.
 CallCells :: (arguments: Value[], result: Cell) -> Cell[] {

@@ -233,6 +233,10 @@ Expect :: (node: int, storage: int, container: int, record: int) -> Work {
 Resume :: (node: int, phase: int, a: int, b: int) -> Work {
     return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1};
 }
+// Bases for a step whose code stands alone, such as a state's initial value.
+NoBases :: () -> Bases {
+    return {pc: 0, slot: 0, local: 0, cell: 0, host: 0, call: 0};
+}
 NoValue :: () -> Value {
     return {slot: -1, storage: 0, container: 0, record: -1};
 }
@@ -525,7 +529,7 @@ FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: strin
         if (members[at].name == name) {
             return at;
         }
-        if (types[record].kind == NativeDecl && NameMatches(members[at].name, name)) {
+        if (types[record].kind >= NativeDecl && NameMatches(members[at].name, name)) {
             if (found != -1) {
                 found = -2;
             } else {
@@ -812,7 +816,8 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
              constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
-             operators: NumericOperator[], aliases: Name[], function: int, ops: Ops, target: Target) -> Body {
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], function: int,
+             ops: Ops, target: Target) -> Body {
     callable := callables[function];
     declaration := forest[callable.node];
     slots: Slot[] = [];
@@ -1229,8 +1234,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, item, ops, target, at);
         } else if (kind == "call_expression") {
-            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, names,
-                            callable.package, values, value_top, item, ops, target, at);
+            step = CallStep(forest, text, document, callables, params, types, members, natives, ports, makes,
+                            make_fields, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "unary_expression" || kind == "binary_expression") {
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (kind == "function_declaration") {

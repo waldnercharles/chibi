@@ -138,7 +138,7 @@ a cyclic dependency there, while stage one reads the parameter.
 names: string[], natives: Native[], ports: Port[], native_ids: uint64[],
 game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
 type_fields: GameField[], entity: uint64, operators: NumericOperator[],
-globals: GameGlobal[]) -> Result`
+globals: GameGlobal[], makes: NativeMake[], make_fields: int[]) -> Result`
 compiles one behavior asset (`Behavior.chibi`) to `Compiled(module, bytes)`,
 whose bytes are one prepared module of the game the arguments describe, or to
 `Rejected(diagnostic)`. `identity` names the source as the project does, such
@@ -151,16 +151,20 @@ IDs stage zero gives them from it:
 
 The game arguments are flat tables, since records hold no arrays:
 - each event, with its ID, its ABI and a range of payload fields;
-- each type the game links, with its ID, layout, storage and size, its
+- each type the game links, with whether modules require it (a namespace
+  such as `SceneGlobals` is listed but not required), the type it stands for
+  (as `Transform` stands for `CF_V2`), its ID, layout, storage and size, its
   component ID when it is a component, and a range of fields with their
   storage, offsets, whether they are writable, their type as an index into
   these types, whether one is a constant whose value is its name, such as an
-  input action, and the native that reads one, such as an action's
-  `pressed`;
+  input action, the native that reads one, such as an action's `pressed`,
+  and the key it reads with, such as a scene binding's name;
 - the entity type that owns behaviors;
 - each native that combines numbers, and records of them field by field, for
   a binary operator, as an index into the natives;
-- each global the game binds, with its storage and type.
+- each global the game binds, with its storage and type;
+- each native that makes a record of its arguments, such as `vec2`, with the
+  record's type and, for each argument, the record field it gives.
 
 As in stage zero, the module lists every type as a requirement, and lists the
 events its handlers take. `CompileBehaviors` takes the identities and sources
@@ -173,8 +177,9 @@ against (`docs/testing.md#game-equivalence`). Events, components and the
 fields of game types match their names as the catalog matches them: exactly,
 else loosely, ignoring case, spaces, underscores and hyphens.
 
-A behavior may hold integer states with literal initial values, member
-procedures, and `on` handlers of the game's events with scalar payloads. A
+A behavior may hold integer and floating states with literal initial values,
+member procedures, and `on` handlers of the game's events with scalar
+payloads. A
 member procedure is a function the behavior's handlers call; stage zero
 names it `symbol:<identity>:1:<Name>:callable`. A handler takes the
 event's payload; a parameter names the field in its position. A handler body
@@ -198,8 +203,15 @@ record's record field, such as `self.Input.Move`, is the address inside it.
 compare, and an untyped literal takes the other operand's floating type. A
 global's constant field, such as `input.Jump`, is its name, and a field a
 native reads, such as `input.Jump.pressed`, is a call of that native on the
-value. `after` handlers, `self.C = v` and reading a global itself are not
-supported yet.
+value; a field a native reads by key, such as the scene binding
+`globals.Leader`, is a call of that native on the key. `e.C` reads the
+component of the entity `e` as `self.C` reads the owner's. `self.C = v`
+writes a record whose type stands for the same one as the component's, as
+stage zero assigns `CF_V2` to `Transform`. Among natives sharing a name, such
+as the `float` and `double` `cos`, each argument's own type picks the one
+whose parameters take them. A native that makes a record, such as
+`vec2(x, y)`, is a struct literal of the fields its arguments give. `after`
+handlers and reading a global itself are not supported yet.
 
 A handler's function lists the components it reads or writes, and one write
 for each component it writes through a reference, where stage zero lists two,
@@ -319,7 +331,7 @@ Until stage one matched the array natives by capability identity, every update
 copied the whole array, and the stage-two compiler grew past 4 GB compiling the
 compiler's sources.
 
-`tool language-package-compiler-chibi-behaviors` compiles ten behaviors on
+`tool language-package-compiler-chibi-behaviors` compiles twelve behaviors on
 both compiler backends against a game the test declares: a `Spot` component
 of three floats, one read-only; the entity type; a `Tick` event with a
 `DeltaSeconds` payload; and `self` and a `pace` global. The behaviors are:
@@ -330,6 +342,8 @@ of three floats, one read-only; the entity type; a `Tick` event with a
 - a negative float literal written to a field;
 - a component field read into another field;
 - a field's compound assignment;
+- a whole component written with its own value;
+- a floating state's compound assignment, written to a field;
 - Results' fold: member procedures, named results, `int(value)` and
   integers mixed with floats;
 - float division, subtraction, comparison and `*=`;
@@ -339,7 +353,7 @@ Each module must declare stage zero's module, owner type, requirements,
 services, states, events and payload fields, and handlers, with the same IDs,
 ABIs, kinds and effects. Then stage one's module, read back through a linker,
 and stage zero's each play five ticks on an owner of their own, and the
-`Spot` and the states must match after every tick. Eight sources must be
+`Spot` and the states must match after every tick. Seven sources must be
 rejected with their exact messages. With a project's path as its identity,
 Counter's module, state and handler must take stage zero's IDs. A second
 case fails when any of stage one's functions, other than `Compile`,

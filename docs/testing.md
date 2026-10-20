@@ -1886,8 +1886,8 @@ takes about 6 s.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
   --output FILE`, as `chibi-compile` does, or a build program whose `Compile`
   entry takes them. `CHIBI_REFERENCE_COMPILER` and `CHIBI_CANDIDATE_COMPILER`
-  select them. Both default to `build/sdk/chibi-compile`, since stage one
-  compiles only Counter so far.
+  select them. Both default to `build/sdk/chibi-compile`;
+  `game-equivalence-stage-one` takes stage one's route as the candidate.
 - **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
   `chibi-build-host`. Its `Rebuild` entry compiles each story with each
   compiler and plays them, and `Diff` compares two traces.
@@ -1900,7 +1900,9 @@ takes about 6 s.
     each module's name and ID (`--native` checks that function);
   - one line per fixed step, from frame 0 (after Begin) to the scenario's
     last frame: hashes of the ECS world, saved state, materials, physics
-    bodies, contacts and events, and UI text. Frame N is the world after N
+    bodies, contacts and events, and UI text. The ECS hash reads a string
+    field by its text, not its address, since the two compilers allocate
+    differently (`ecs_world_hash_reads_strings_by_text`). Frame N is the world after N
     steps, so input keyed at step K first shows in frame K + 1.
 - **Cases.**
   - Assembling each story from the modules of its own artifact, with
@@ -1916,8 +1918,10 @@ takes about 6 s.
     requirements of the module stage zero writes (all 112, in order: ID,
     layout, storage, size and name), and the module's events (ID, ABI and
     payload fields) and entity type, that the operators that combine
-    records hold `+` as the native `add`, and that the globals hold `self` of
-    the owner's type.
+    records hold `+` as the native `add`, that the globals hold `self` of
+    the owner's type, and that the record makes hold `vec2` making a `CF_V2`
+    of its `x` and `y`. Only the types modules require are compared;
+    namespaces such as `SceneGlobals` are listed too.
   - Both compilers rebuild every story to the same trace.
   - A variant of Motion whose drift is doubled is named in Motion at frame 1,
     with both lines, and its declarations still match.
@@ -1926,8 +1930,7 @@ takes about 6 s.
     unless every story played.
 
 `make test-stage-one` runs `tool game-equivalence-stage-one`. It rebuilds
-Counter, Motion, Controls and Results with `chibi-compile` and with stage
-one's route,
+every story with `chibi-compile` and with stage one's route,
 `tools/toolchain/StageOne.chibi`, and compares them as above. The route:
 1. recovers stage one from the bootstrap artifact and the compiler sources
    with a Release `chibi-compiler-host --bootstrap ... --recover FILE`, and

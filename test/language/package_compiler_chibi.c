@@ -2079,6 +2079,11 @@ static const behavior_sample behavior_samples[] = {
     { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
     { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
     { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Swap", "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "Turn",
+      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick(dt) {\n        "
+      "angle += dt * 2\n"
+      "        self.Spot.x = angle\n    }\n}\n" },
     { "Fold",
       "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
       "{\n"
@@ -2115,12 +2120,9 @@ static const behavior_rejection behavior_rejections[] = {
       "Assignment requires a writable value" },
     { "Named :: behavior {\n    label: string = \"\"\n    on Tick {\n    "
       "}\n}\n",
-      "state needs an integer type" },
+      "state needs a number type" },
     { "Extra :: behavior {\n    on Tick(dt, more) {\n    }\n}\n",
       "the event has no such parameter" },
-    { "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    "
-      "}\n}\n",
-      "assigning a whole component is not supported yet" },
     { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
       "operator does not apply to these operands" },
     { "Pace :: behavior {\n    on Tick {\n        self.Spot.x = pace\n    "
@@ -2134,7 +2136,7 @@ enum
     TICK = 11,
     OWNER = 30,
     ENTITY = 700,
-    BEHAVIOR_ARGUMENTS = 15,
+    BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
 typedef struct
@@ -2264,7 +2266,7 @@ static int type_index(const script_catalog *catalog, uint64_t id)
 }
 /* CompileBehavior's game arguments, as the game target exports them: each
  * event and its payload fields, each type and its fields, the entity type,
- * no operators that combine records, and the globals. */
+ * no operators that combine records, the globals, and no record makes. */
 static bool game_arguments(int b, pin_value *out)
 {
     script_catalog catalog = game_catalog();
@@ -2291,6 +2293,8 @@ static bool game_arguments(int b, pin_value *out)
     for (int i = 0; i < catalog.type_count; i++) {
         const script_catalog_type *t = &catalog.types[i];
         pin_value type = row(b, "GameType");
+        REQUIRE(put_value(&type, "required", flag(true)));
+        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
         REQUIRE(put_value(&type, "name", text(t->name)));
         REQUIRE(put_value(&type, "id", u64(t->id)));
         REQUIRE(put_value(&type, "layout", u64(t->layout)));
@@ -2309,6 +2313,7 @@ static bool game_arguments(int b, pin_value *out)
             REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
             REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
             REQUIRE(put(&field, "read", -1));
+            REQUIRE(put_value(&field, "read_key", text("")));
             apush(fields, field);
         }
     }
@@ -2333,6 +2338,8 @@ static bool game_arguments(int b, pin_value *out)
         apush(globals, global);
     }
     out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
+    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
+    out[8] = rows(NULL, 0, PIN_I32, NULL);
     afree(declared);
     afree(payloads);
     afree(types);

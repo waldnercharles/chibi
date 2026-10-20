@@ -840,9 +840,10 @@ packing (quadratic for slices of large arrays), a formatter that could not read
 prototype links, and compile-time conversions missing two runtime checks. The `imports` sample moved
 to its own selector because it compiles all 605 lines of `core:strings`.
 The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
-#512 rebuilt the checked-in bootstrap artifact from it. Next action: M5 step
-4, following `docs/design-notes.md`: gate each stage-one feature on a
-purpose-made example before rebuilding a whole game.
+#512 rebuilt the checked-in bootstrap artifact from it. M5 step 4 followed
+`docs/design-notes.md`, gating each stage-one feature on a purpose-made
+story; stage one rebuilds all five as stage zero does since 2026-10-20.
+Next action: debugger points and watches in stage one's modules.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1016,7 +1017,8 @@ milestone: a complete stage one that rebuilds a checked game (step 4; Terrain
 Lab's behaviors need behaviors, events, state, doubles, vectors, named
 arguments and results, and effectful natives).
 
-Step 4's gate exists since 2026-10-19; stage one does not yet pass it. At
+Step 4's gate exists since 2026-10-19, and stage one passes it since
+2026-10-20. At
 the owner's direction (2026-10-20) it gates on purpose-made stories in
 `test/stories`, one feature each, rather than on a playable game; playable
 examples such as Terrain Lab are to live outside the engine repository. The
@@ -1049,14 +1051,18 @@ pilot: a field's compound assignment through its reference, `float`
 arithmetic, a record field inside a game record, and `input.Jump.pressed`,
 an input action's name read by the game's native. It compiles Results' fold:
 member procedures, named results and conversions between integers and
-floats. Its modules have stage
+floats. It compiles Follow's lead and trail: a floating state, natives chosen
+among overloads by argument type, `vec2` as the record it makes, a record
+written over a whole component, `globals.Leader` read by key, and the
+leader's component. Its modules have stage
 zero's identities and play as stage zero's do
 (`docs/package-compiler.md#behaviors`). Stage one's route,
-`tools/toolchain/StageOne.chibi`, rebuilds Counter, Motion, Controls and
-Results as stage zero does: it recovers stage one from the bootstrap
-artifact, runs `CompileBehaviors` on the exported input, and assembles the
-artifact with `chibi-compile --modules` (`make test-stage-one`). Next:
-Follow, added to that selector once stage one compiles it. See `docs/testing.md#game-equivalence`.
+`tools/toolchain/StageOne.chibi`, rebuilds every story as stage zero does: it
+recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
+the exported input, and assembles the artifact with `chibi-compile
+--modules` (`make test-stage-one`). Stage one passes step 4's gate since
+2026-10-20. Next: debugger points and watches, then the sequence on every
+supported host configuration before stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

@@ -167,6 +167,29 @@ static const sample samples[] = {
                  { "Same", "[\"x\",\"y\"]", "[false]" },
                  { "Differ", "[\"x\",\"y\"]", "[true]" },
                  { "Quoted", "[]", "[\"a\\\"bA\"]" } } },
+    /* An integer switch tests its arms in order and runs the default arm
+     * after them all, wherever it is written. */
+    { .name = "integer switch",
+      .source = "package facts\n"
+                "Kind :: (c: int) -> int {\n"
+                "    switch c {\n"
+                "        case 61: return 1;\n"
+                "        case: return 0;\n"
+                "        case -62: return 2;\n"
+                "    }\n"
+                "}\n"
+                "Spaces :: (xs: int[]) -> int {\n"
+                "    total: int = 0;\n"
+                "    for x in xs {\n"
+                "        b := byte(x);\n"
+                "        switch b { case 32: total += 1; case 10: total += "
+                "100; }\n"
+                "    }\n"
+                "    return total;\n}\n",
+      .calls = { { "Kind", "[61]", "[1]" },
+                 { "Kind", "[-62]", "[2]" },
+                 { "Kind", "[7]", "[0]" },
+                 { "Spaces", "[[32,10,32,5]]", "[102]" } } },
     /* Range loops count as stage zero's do: inclusive and half-open,
      * forward and reversed, ending at a bound without wrapping; `for x, i`
      * names an array's item and its index, and `for <` walks it backwards. */
@@ -819,12 +842,18 @@ static const sample samples[] = {
       .message = "argument differs from its parameter type",
       .line = 2,
       .column = 35 },
-    { .name = "switch scalar",
+    { .name = "switch scalar pattern",
       .source = "package facts\nU :: union { A | B }\nOne :: (n: int) "
                 "-> int { switch n { case .A: return 1; } return 0; }",
-      .message = "switch needs a union value",
+      .message = "an integer switch's arms need values",
       .line = 3,
-      .column = 33 },
+      .column = 42 },
+    { .name = "switch string",
+      .source = "package facts\nOne :: (s: string) -> int { switch s { "
+                "case \"a\": return 1; } return 0; }",
+      .message = "switch needs a union or integer value",
+      .line = 2,
+      .column = 36 },
     { .name = "unknown variant",
       .source = "package facts\nU :: union { A | B }\nOne :: () -> U { "
                 "return U.C; }",

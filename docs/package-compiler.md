@@ -94,7 +94,9 @@ import:
   field, and `switch` over a union with `case .V:`, `case .V(a, b):` binding
   every payload field, and a default `case:`. Bindings are immutable. As in
   stage zero, a switch without a default arm must cover every variant, and a
-  repeated variant or default arm is rejected;
+  repeated variant or default arm is rejected. A `switch` over an integer
+  compares it with one value per arm, `case 61:`, in order, and runs the
+  default arm after them all, wherever it is written;
 - `value is .V` and `value is not .V`, and `value is .V(a, b)` binding the
   payload in an if or while condition, alone or joined by `&&`, as stage zero
   allows bindings. They last through the consequence or loop body, not the

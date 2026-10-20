@@ -317,16 +317,18 @@ fast paths otherwise cover.
 ## Test
 
 Three selectors compile 86 samples on both compiler backends, each under its
-own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-19):
+own 60 s ceiling (macOS arm64, Debug + ASan/UBSan, 2026-10-20, load average
+about 15 from other sessions):
 
 - `tool language-package-compiler-chibi`: scalars, control flow, records,
-  arrays, strings and natives, and every rejection (10,581 assertions in
-  28.2 s);
+  arrays, strings and natives, and every rejection (10,859 assertions in
+  38.6 s);
 - `tool language-package-compiler-chibi-types`: unions, constants, patterns,
-  scopes, integer types, inferred arrays and element reads (3,197 assertions in
-  24.6 s);
+  scopes, integer types, inferred arrays and element reads (3,374 assertions in
+  38.1 s);
 - `tool language-package-compiler-chibi-imports`: the imports sample, which
-  compiles all of `core:strings` (1,990 assertions in 35.7 s).
+  compiles all of `core:strings` (1,995 assertions in 51.5 s; 35.7 s on a quiet
+  machine before points).
 
 A sample is package `facts`, optionally with a `lib` package and
 `core:strings`. Every accepted closure loads in a fresh runtime host and runs
@@ -370,13 +372,13 @@ and stage zero's each play five ticks on an owner of their own, and the
 `Spot` and the states must match after every tick. Seven sources must be
 rejected with their exact messages. With a project's path as its identity,
 Counter's module, state and handler must take stage zero's IDs. The second
-selector checks those two (4,316 and 5,715 assertions in 29.5 s and 29.9 s
+selector checks those two (4,316 and 5,715 assertions in 23.4 s and 28.9 s
 under load). `tool language-package-compiler-chibi-sharing` fails when any of
 stage one's functions, other than `Compile`,
 `CompileClosure`, `CompileBehavior`, `CompileBehaviors`, `Declare` and
 `DeclarePackage`, copies
 its arguments on each call: one such function, through its callers, takes
-stage one compiling itself past its ceiling (11 assertions in 28.0 s; see
+stage one compiling itself past its ceiling (11 assertions in 22.9 s; see
 `docs/language-friction.md`).
 
 `tool language-package-compiler-chibi-literals` checks stage zero's build of

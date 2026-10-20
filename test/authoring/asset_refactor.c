@@ -90,7 +90,7 @@ TEST_CASE(prototype_children_follow_a_rename)
         reference_index_add_prototype(index, i, loaded);
         prototype_free(loaded);
     }
-    refactor_project project = { index, texts, &registry, NULL };
+    refactor_project project = { index, texts, &registry };
     refactor_plan plan = { 0 };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = BARREL };
     bool renamed = refactor_rename(&project, symbol, "Cannon", &plan, error, sizeof error) ==
@@ -320,7 +320,7 @@ TEST_CASE(qualified_shader_bindings_follow_library_and_function_renames)
     const char *texts[] = { particle_library_text,
                             particle_prototype_text,
                             particle_scene_text };
-    refactor_project project = { particle_index, texts, &particle_registry, NULL };
+    refactor_project project = { particle_index, texts, &particle_registry };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = 0 };
     char error[256] = { 0 };
     REQUIRE(
@@ -350,7 +350,7 @@ TEST_CASE(qualified_shader_bindings_reject_stale_refactors)
                             "name \"Cloud\"\ncomponents {\n    Shader "
                             "material=\"RainParticles.Other\"\n}\n",
                             particle_scene_text };
-    refactor_project project = { particle_index, texts, &particle_registry, NULL };
+    refactor_project project = { particle_index, texts, &particle_registry };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = 0 };
     char error[256] = { 0 };
     REQUIRE(

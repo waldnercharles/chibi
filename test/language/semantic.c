@@ -746,7 +746,7 @@ TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
         "Bad :: system(p: Position ) where ReadState() { enabled: retain = "
         "true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool "
         "{ return enabled; } }",
-        "Bad :: system(p: Position ) where event.dt > 0 {}",
+        "Bad :: system(p: Position ) where dt > 0 on Tick :: (dt: double) {}",
     };
     for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         cleanup();
@@ -1655,7 +1655,7 @@ TEST_CASE(language_units_check_empty_struct_defaults)
 {
     measure("copy: Body = null; body = copy;\n");
     REQUIRE(analysis->valid);
-    parse("Reset :: system(p: Position ) { if true { copy := event; copy = null; } }");
+    parse("Reset :: behavior { on Tick { if true { copy := event; copy = null; } } }");
     REQUIRE(!analysis->valid && diagnostic("Incompatible result tuple shape"));
     return true;
 }

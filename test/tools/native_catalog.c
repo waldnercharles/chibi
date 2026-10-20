@@ -7,14 +7,13 @@
 #ifdef CHIBI_TEST_PREPARATION
 #include "authoring/language_catalog.h"
 #include "authoring/project_open.h"
-#include "authoring/source_metadata.h"
 #include "support/file_io.h"
 static authoring_language_catalog *language;
 static char migration_root[256], migration_content[288], migration_behaviors[320];
-static char migration_manifest[288], migration_source[352], migration_sidecar[368];
+static char migration_manifest[288], migration_source[352];
 static char migration_incomplete[352];
 static char migration_canonical[352];
-static char *migration_text, *migration_metadata, *migration_reopened;
+static char *migration_text, *migration_reopened;
 #endif
 
 #include <math.h>
@@ -33,11 +32,9 @@ static void cleanup()
     authoring_language_catalog_free(language);
     language = NULL;
     free(migration_text);
-    free(migration_metadata);
     free(migration_reopened);
-    migration_text = migration_metadata = migration_reopened = NULL;
+    migration_text = migration_reopened = NULL;
     if (migration_root[0]) {
-        unlink(migration_sidecar);
         unlink(migration_source);
         unlink(migration_incomplete);
         unlink(migration_canonical);
@@ -488,7 +485,7 @@ static bool write_migration_fixture(const char *path, const char *text)
     return okay;
 }
 
-TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_retryably)
+TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
 {
     test_native_catalog_enable();
     char error[512] = { 0 };
@@ -507,7 +504,6 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_re
     snprintf(migration_behaviors, sizeof migration_behaviors, "%s/behaviors", migration_content);
     snprintf(migration_manifest, sizeof migration_manifest, "%s/project.kdl", migration_root);
     snprintf(migration_source, sizeof migration_source, "%s/Demo.chibi", migration_behaviors);
-    snprintf(migration_sidecar, sizeof migration_sidecar, "%s.meta", migration_source);
     snprintf(migration_incomplete, sizeof migration_incomplete, "%s/Incomplete.chibi", migration_behaviors);
     snprintf(migration_canonical, sizeof migration_canonical, "%s/Canonical.chibi", migration_behaviors);
     REQUIRE(!mkdir(migration_content, 0700));
@@ -535,36 +531,19 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_re
         *input = "Demo :: behavior { on Tick { e := Self()\n"
                  "x := get_transform().Value.x\nset_transform_x(x, self) } }\n";
     REQUIRE(write_migration_fixture(migration_source, input));
-    char json[256];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":817,\"kind\":"
-        "\"node\"}],"
-        "\"note\":\"retained\"}",
-        (size_t)(strstr(input, "Self()") - input)
-    );
-    migration_metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(migration_metadata);
-    REQUIRE(write_migration_fixture(migration_sidecar, migration_metadata));
-    free(migration_metadata);
-    migration_metadata = NULL;
     int steps = authoring_project_migrate(migration_root, native, error, sizeof error);
     if (steps < 0) {
         fprintf(stderr, "native project migration: %s\n", error);
     }
     REQUIRE(steps == CHIBI_PROJECT_VERSION - 25);
     migration_text = file_read_text(migration_source);
-    migration_metadata = file_read_text(migration_sidecar);
-    REQUIRE(migration_text && migration_metadata);
+    REQUIRE(migration_text);
     REQUIRE(strstr(migration_text, "e := self"));
     REQUIRE(strstr(migration_text, "self.Transform.x"));
     REQUIRE(
         !strstr(migration_text, "Self()") && !strstr(migration_text, "get_transform") &&
         !strstr(migration_text, "set_transform")
     );
-    REQUIRE(authoring_source_metadata_matches(migration_metadata, migration_text));
-    REQUIRE(strstr(migration_metadata, "\"id\":817") && strstr(migration_metadata, "retained"));
     migration_reopened = file_read_text(migration_manifest);
     char version[32];
     snprintf(version, sizeof version, "version %d", CHIBI_PROJECT_VERSION);
@@ -577,9 +556,6 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_re
     chibi_project_free(&project);
     migration_reopened = file_read_text(migration_source);
     REQUIRE(migration_reopened && !strcmp(migration_text, migration_reopened));
-    free(migration_reopened);
-    migration_reopened = file_read_text(migration_sidecar);
-    REQUIRE(migration_reopened && !strcmp(migration_metadata, migration_reopened));
     free(migration_reopened);
     migration_reopened = file_read_text(migration_incomplete);
     REQUIRE(migration_reopened && !strcmp(incomplete, migration_reopened));
@@ -600,7 +576,7 @@ void test_tool_native_catalog()
     RUN_TEST_CASE(language_catalog_identity_lookup_keeps_namespaces_zero_and_order);
     RUN_TEST_CASE(language_catalog_retains_and_validates_merged_relationships);
     RUN_TEST_CASE(language_catalog_preserves_owned_template_and_specialization_metadata);
-    RUN_TEST_CASE(native_project_migration_finalizes_generated_accessors_and_metadata_retryably);
+    RUN_TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably);
 #endif
     pu_clear_setup();
 }

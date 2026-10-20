@@ -1,5 +1,4 @@
 #include "authoring/source_format.h"
-#include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -10,7 +9,6 @@
 
 static script_syntax *source, *formatted;
 static char *text, *again;
-static char *metadata, *remapped;
 static authoring_format_map edit_map;
 static script_analysis *state_before, *state_after;
 
@@ -23,12 +21,9 @@ static void cleanup()
     script_syntax_free(formatted);
     free(text);
     free(again);
-    free(metadata);
-    free(remapped);
     authoring_format_map_free(&edit_map);
     source = formatted = NULL;
     text = again = NULL;
-    metadata = remapped = NULL;
 }
 
 static bool format(const char *input)
@@ -128,6 +123,8 @@ TEST_CASE(source_format_keeps_named_payload_fields)
 {
     REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
     REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
+    REQUIRE(format("Motion :: system(p: Position) on Tick ::(dt:s) {\np.x += dt\n}\n"));
+    REQUIRE(strstr(text, "system(p: Position) on Tick :: (dt: s) {"));
     return true;
 }
 TEST_CASE(source_format_spaces_typed_constant_colons)
@@ -749,96 +746,6 @@ TEST_CASE(source_format_incomplete_source_is_unchanged)
         !edit_map.edits && !edit_map.count && !edit_map.source_size && !edit_map.formatted_size
     );
     REQUIRE(!strcmp(source->text, nested));
-    return true;
-}
-
-TEST_CASE(source_metadata_preserves_bound_identities)
-{
-    const char *input = "// exact comment\nDemo :: behavior{count:=1;on "
-                        "Tick{count+=2;}}";
-    REQUIRE(format(input));
-    char json[256];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"}],"
-        "\"nodes\":[{\"id\":41,\"position\":[2,3]}]}",
-        (size_t)(strstr(input, "count+=") - input)
-    );
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    REQUIRE(authoring_source_metadata_matches(metadata, input));
-    remapped = authoring_source_metadata_remap(metadata, source, formatted);
-    REQUIRE(remapped);
-    REQUIRE(authoring_source_metadata_matches(remapped, text));
-    REQUIRE(!authoring_source_metadata_matches(remapped, input));
-    char anchor[64];
-    snprintf(anchor, sizeof anchor, "\"start\":%zu", (size_t)(strstr(text, "count +=") - text));
-    REQUIRE(strstr(remapped, anchor));
-    REQUIRE(strstr(remapped, "\"id\":41"));
-    REQUIRE(strstr(remapped, "\"position\":[2,3]"));
-    return true;
-}
-
-TEST_CASE(source_metadata_rejects_stale_or_changed_tokens)
-{
-    const char *input = "Demo :: behavior{count:=1;}";
-    source = script_parse(input);
-    formatted = script_parse("Demo :: behavior { count := 2; }");
-    const char *json = "{\"version\":2,\"anchors\":[{\"start\":17,\"id\":41,"
-                       "\"kind\":\"value\"}]}";
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    REQUIRE(!authoring_source_metadata_remap(metadata, source, formatted));
-    REQUIRE(!authoring_source_metadata_remap(metadata, formatted, formatted));
-    REQUIRE(!authoring_source_metadata_bind("[]", input));
-    script_syntax_free(formatted);
-    formatted = script_parse("Demo :: behavior { count := 1; }");
-    free(metadata);
-    metadata = authoring_source_metadata_bind("{\"version\":2,\"anchors\":[{\"start\":1,\"id\":41,\"kind\":\"value\"}]}", input);
-    REQUIRE(metadata);
-    REQUIRE(!authoring_source_metadata_remap(metadata, source, formatted));
-    return true;
-}
-
-TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors)
-{
-    const char *
-        input = "Repeated :: behavior{count:int=0;on Tick{count+=1;count+=1;}}";
-    REQUIRE(format(input));
-    REQUIRE(!strcmp(text, again));
-    const char *first = strstr(input, "count+=1");
-    REQUIRE(first);
-    const char *second = strstr(first + 1, "count+=1");
-    REQUIRE(second && first != second);
-    char json[384];
-    snprintf(
-        json,
-        sizeof json,
-        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":41,\"kind\":"
-        "\"node\"},"
-        "{\"start\":%zu,\"id\":42,\"kind\":\"node\"}],"
-        "\"nodes\":[{\"id\":41,\"position\":[2,3]},{\"id\":42,\"position\":[5,"
-        "7]}]}",
-        (size_t)(first - input),
-        (size_t)(second - input)
-    );
-    metadata = authoring_source_metadata_bind(json, input);
-    REQUIRE(metadata);
-    remapped = authoring_source_metadata_remap(metadata, source, formatted);
-    REQUIRE(remapped && authoring_source_metadata_matches(remapped, text));
-    first = strstr(text, "count += 1");
-    REQUIRE(first);
-    second = strstr(first + 1, "count += 1");
-    REQUIRE(second && first != second);
-    char first_anchor[80], second_anchor[80];
-    snprintf(first_anchor, sizeof first_anchor, "\"start\":%zu,\"id\":41", (size_t)(first - text));
-    snprintf(second_anchor, sizeof second_anchor, "\"start\":%zu,\"id\":42", (size_t)(second - text));
-    REQUIRE(strstr(remapped, first_anchor));
-    REQUIRE(strstr(remapped, second_anchor));
-    REQUIRE(strstr(remapped, "\"id\":41,\"position\":[2,3]"));
-    REQUIRE(strstr(remapped, "\"id\":42,\"position\":[5,7]"));
     return true;
 }
 
@@ -1486,16 +1393,11 @@ TEST_CASE(source_migration_normalizes_generated_calls_and_library_owner)
     again = authoring_source_minimize(input, &native, "Demo");
     REQUIRE(again && !strcmp(again, input));
     char error[256];
-    int *positions = NULL;
-    text = authoring_source_migrate_generated_mapped(input, &native, "Demo", &positions, error, sizeof error);
+    text = authoring_source_migrate_generated(input, &native, "Demo", error, sizeof error);
     if (!text) {
         fprintf(stderr, "migration: %s\n", error);
     }
     REQUIRE(text);
-    REQUIRE(positions && positions[strlen(input)] == (int)strlen(text));
-    REQUIRE(!strncmp(text + positions[strstr(input, "Self()") - input], "self", 4));
-    REQUIRE(!strncmp(text + positions[strstr(input, "F ::") - input], "F ::", 4));
-    free(positions);
     REQUIRE(strstr(text, "e := self") && strstr(text, "self.Velocity.x"));
     REQUIRE(strstr(text, "self.Velocity != nil"));
     REQUIRE(
@@ -1791,9 +1693,6 @@ void test_language_format()
     RUN_TEST_CASE(source_format_query_header_words);
     RUN_TEST_CASE(source_format_query_generators_and_value_filters);
     RUN_TEST_CASE(source_format_incomplete_source_is_unchanged);
-    RUN_TEST_CASE(source_metadata_preserves_bound_identities);
-    RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);
-    RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
     RUN_TEST_CASE(source_minimize_treats_character_literals_as_literals);

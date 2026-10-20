@@ -356,8 +356,10 @@ bytecode selector also compares each module with stage zero's:
   constants, patterns, scopes, integer types, inferred arrays and element
   reads (1,811 and 1,574 assertions in 37.2 s and 30.7 s);
 - `tool language-package-compiler-chibi-imports` and `-imports-compiled`: the
-  imports sample, which compiles all of `core:strings` (1,018 and 988
-  assertions in 51.9 s and 34.5 s).
+  imports sample, which compiles all of `core:strings`. Under sanitizers the
+  bytecode selector came within a few seconds of its ceiling, so both run an
+  unsanitized Release `test_language`, as the bootstrap check does (1,018 and
+  988 assertions in 4.3 s and 3.4 s).
 
 Expression and symbol points made the compiler about 20% slower on this
 sample: 18.2 s to 21.9 s of CPU time to compile it on the bytecode backend.

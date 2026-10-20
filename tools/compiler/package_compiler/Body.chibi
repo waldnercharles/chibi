@@ -1145,13 +1145,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         }
         index += 1;
     }
-    // The function's point, its statements' and its completions', as stage
-    // zero places them.
     // A record or array result is a symbol the function stores before it
     // starts.
     if (callable.results == 0 && (callable.result == StructStorage || callable.result_container != 0)) {
         code = array_add(code, SymbolCode(ops, -1, declaration));
     }
+    // The function's point; the body places the others as stage zero does.
     points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
     code = array_add(code, PointCode(ops, 0, declaration));
     // Named results are locals from `named` on, zero until the body sets them.

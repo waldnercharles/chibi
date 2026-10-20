@@ -737,11 +737,14 @@ TOOLS = {
     'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-sharing'],
     # The same case over the imports sample, which compiles all of
-    # core:strings, split off so it keeps its own shared60s.
-    'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+    # core:strings. Stage one compiling it on the bytecode backend under
+    # sanitizers came within a few seconds of the ceiling once it placed
+    # every point, so both imports selectors run an unsanitized Release
+    # test_language, as the bootstrap check does. shared60s.
+    'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                '--package-compiler-chibi-imports'],
     # The imports sample compiled by the compiler running on SLJIT. shared60s.
-    'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+    'language-package-compiler-chibi-imports-compiled': [str(ROOT / os.environ.get('CHIBI_RELEASE_LANGUAGE_BUILD_DIR', 'build-release/test/language') / 'test_language'),
                                                         '--package-compiler-chibi-imports-compiled'],
     # Stage one compiles the compiler's complete sources to a closure, stage
     # two, which the compiler host loads and runs to compile them to the same

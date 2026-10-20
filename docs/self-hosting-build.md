@@ -121,11 +121,17 @@ loaded CMake files, new configuration files, dependency inputs and compiler/tool
 identities. It is written atomically only after successful configuration. Build
 targets and parallelism do not invalidate configuration.
 
+The program also decides whether immutable dependency packages may serve a
+configuration: a `FETCHCONTENT_*` definition, a set `CHIBI_SJLIT_SOURCE_DIR` or a
+`FETCHCONTENT_SOURCE_DIR_*` outside the build's `_deps` selects private sources
+and declines them. Definitions replace cached values, and a missing source counts
+as private.
+
 Three installed Python helpers remain transitional dependencies:
-`configure_inputs.py` retains the existing read-only signature, compiler SDK and
-dependency-override probes; `dependency_package.py` and `fetchcontent_cache.py`
-retain dependency acquisition and cache ownership. Their replacement and removal
-gates remain in the toolchain inventory. CMake still owns the stage-zero graph.
+`configure_inputs.py` retains the read-only signature and compiler SDK probes;
+`dependency_package.py` and `fetchcontent_cache.py` retain dependency acquisition
+and cache ownership. Their replacement and removal gates remain in the toolchain
+inventory. CMake still owns the stage-zero graph.
 
 The private primitives expose exact arguments, platform and root paths,
 executable lookup, bounded regular-text reads, atomic writes, directory creation,

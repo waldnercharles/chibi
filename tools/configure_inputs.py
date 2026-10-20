@@ -22,41 +22,6 @@ def cache_values(build: Path) -> dict[str, str]:
     return values
 
 
-def definitions(arguments: list[str]):
-    split = False
-    for argument in arguments:
-        if split:
-            argument = "-D" + argument
-            split = False
-        elif argument == "-D":
-            split = True
-            continue
-        match = re.fullmatch(r"-D([^:=]+)(?::[^=]+)?=(.*)", argument)
-        if match:
-            yield match.groups()
-    if split:
-        raise ValueError("-D requires a definition")
-
-
-def package_enabled(build: Path, arguments: list[str]) -> bool:
-    values = cache_values(build) if (build / "CMakeCache.txt").is_file() else {}
-    private = False
-    for name, value in definitions(arguments):
-        if name.startswith("FETCHCONTENT_"):
-            private = True
-        if name.startswith("FETCHCONTENT_SOURCE_DIR_") or name == "CHIBI_SJLIT_SOURCE_DIR":
-            values[name] = value
-    for name, value in values.items():
-        if not value:
-            continue
-        if name == "CHIBI_SJLIT_SOURCE_DIR":
-            private = True
-        elif name.startswith("FETCHCONTENT_SOURCE_DIR_"):
-            if not Path(value).resolve().is_relative_to(build / "_deps"):
-                private = True
-    return not private
-
-
 def compiler_sdk(compiler: str) -> str:
     try:
         command = [compiler] if Path(compiler).is_file() else shlex.split(compiler)
@@ -192,10 +157,8 @@ def main(arguments: list[str]) -> int:
             sdk = compiler_sdk(arguments[1])
             if sdk:
                 print(sdk)
-        elif arguments and arguments[0] == "package-enabled" and len(arguments) >= 3:
-            print(int(package_enabled(Path(arguments[1]).resolve(), cmake_arguments(arguments, 2))))
         else:
-            raise ValueError("expected signature, compiler-sdk or package-enabled")
+            raise ValueError("expected signature or compiler-sdk")
     except (OSError, UnicodeError, ValueError, subprocess.CalledProcessError) as error:
         print(f"configure inputs: {error}", file=sys.stderr)
         return 1

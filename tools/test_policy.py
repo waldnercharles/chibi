@@ -226,17 +226,17 @@ TOOLS = {
     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
-    # Nineteen finite CLI cases: launcher calls over fake sibling compiler,
+    # Seventeen finite CLI cases: launcher calls over fake sibling compiler,
     # player, node and browser player; the Release launcher's version and doctor;
-    # its real chibi-compile's --check, --test, --format and --docs on tiny
-    # projects, package trees and sites; loopback serving for web and doc,
-    # started and stopped in-process. No network. About 6-8 s Release, 22-26 s
-    # sanitized, mostly the --docs cases.
+    # its real chibi-compile's --check, --test and --format on tiny projects and
+    # package trees; loopback serving for web and doc, started and stopped
+    # in-process. No external network. Compiler docs cases run in published-docs.
     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
-    # One case: the Release chibi-compile's --docs builds the repository's published
-    # site from copies of the pages docs/site.kdl lists, in a temporary root. One
-    # compiler child (about a second) and a few copies; no network or GPU.
+    # Three cases: the Release chibi-compile's --docs builds the published site
+    # from copied inputs, then checks fixed Markdown/reference fixtures and
+    # rejection of invalid original snippets. Twenty-three compiler starts;
+    # temporary roots and copies, no network or GPU.
     'published-docs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                        '--published-docs', str(ROOT / os.environ.get('CHIBI_COMPILE', 'build-release/sdk/chibi-compile'))],
     # The packaged SDK's launcher in place (make package-sdk first): three cases,
@@ -910,9 +910,9 @@ TOOLS = {
     # separate build and one shared60s execution deadline.
     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--package-core'],
-    # Six C cases rendering fixed Markdown, navigation, a package reference and a
-    # grammar with the shipped site generator on two backends; 2,000,000-instruction
-    # budget per call; no files/processes.
+    # Fourteen C cases rendering fixed Markdown, highlighting, navigation, a package
+    # reference and grammar with the shipped generator and tokenizer on two backends;
+    # 2,000,000-instruction budget per call; no files/processes.
     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                '--docs-markdown'],
     # Two C cases, eight tests in two project packages per backend; one test

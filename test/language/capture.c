@@ -4,6 +4,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -330,6 +331,22 @@ TEST_CASE(capture_element_writes_keep_the_item_type)
     REQUIRE(!strcmp(((const pin_array *)box.kept.ptr)->items[0].str, "second"));
     return true;
 }
+/* A union is a box a copy walks by its own contents, so a union root whose
+ * header names no declaration still reads and takes another union. */
+TEST_CASE(capture_union_references_read_and_write)
+{
+    arena unions = { 0 };
+    pin_value payload = { .type = PIN_F64, .d = 3 }, first, second, read;
+    REQUIRE(!pin_union_value(&unions, 7, &payload, 1, &first));
+    REQUIRE(!pin_union_value(&unions, 9, NULL, 0, &second));
+    REQUIRE(begin(first));
+    REQUIRE(read_value(root_reference, (pin_value){ .type = PIN_UNION }, NULL, &read));
+    REQUIRE(((const pin_union *)read.ptr)->tag == 7);
+    REQUIRE(write_value(root_reference, second, true));
+    REQUIRE(((const pin_union *)box.kept.ptr)->tag == 9);
+    arena_free(&unions);
+    return true;
+}
 void test_language_capture()
 {
     pu_setup(NULL, cleanup);
@@ -338,5 +355,6 @@ void test_language_capture()
     RUN_TEST_CASE(capture_nested_scalar_writes_retain_only_current_managed_root);
     RUN_TEST_CASE(capture_references_refuse_another_type);
     RUN_TEST_CASE(capture_element_writes_keep_the_item_type);
+    RUN_TEST_CASE(capture_union_references_read_and_write);
     pu_clear_setup();
 }

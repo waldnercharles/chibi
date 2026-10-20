@@ -608,14 +608,19 @@ static int snapshot_reference_root(
     return pin_struct_snapshot_fields(storage, layout, out->ptr);
 }
 /* Whether two headers describe the same storage: the same type and
- * container and, for records and unions, the same declaration. Names of
- * scalar types do not change their storage. */
+ * container and, for records, the same declaration, whose layout a copy
+ * follows. A union is a box a copy walks by its own contents, so two union
+ * headers differ only when both name their declarations. Names of scalar
+ * types do not change their storage. */
 static bool same_storage(pin_value a, pin_value b)
 {
     if (a.type != b.type || a.container != b.container) {
         return false;
     }
-    if (a.type != PIN_STRUCT && a.type != PIN_UNION) {
+    if (a.type == PIN_UNION) {
+        return !a.record || !b.record || pin_record_same(a.record, b.record);
+    }
+    if (a.type != PIN_STRUCT) {
         return true;
     }
     if (a.record || b.record) {

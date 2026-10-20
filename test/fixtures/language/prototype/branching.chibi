@@ -4,7 +4,7 @@ Branching :: behavior {
     active := true
     intensity := 0.0
 
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         if !paused && active {
             elapsed += dt
         }

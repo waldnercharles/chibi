@@ -1,8 +1,8 @@
 ProjectileHit :: behavior {
-    on ContactBegin {
-        damage_material(event.Other, event.Point + self.Velocity.norm() * 0.5, 4.0, 1.0, 0, self)
-        if !is_pierceable_material_fragment(event.Other) {
-            await send_event<Damage>(event.Other, self.Projectile.Damage, self)
+    on ContactBegin :: (Other: handle<ecs.entity>, Point: struct<CF_V2>) {
+        damage_material(Other, Point + self.Velocity.norm() * 0.5, 4.0, 1.0, 0, self)
+        if !is_pierceable_material_fragment(Other) {
+            await send_event<Damage>(Other, self.Projectile.Damage, self)
             destroy_entity(self)
         }
     }

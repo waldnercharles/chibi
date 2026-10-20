@@ -1,16 +1,16 @@
 PhysicsProbe :: behavior {
-    on Tick(dt) {
+    on Tick :: () {
         hit := raycast(self.Transform, self.Transform + vec2(200, 0), 1, self, false)
         if hit.Found {
             self.Velocity = self.Velocity * 0.5
         }
         apply_force(self, vec2(0, self.Body.mass * 10))
     }
-    on ContactBegin {
+    on ContactBegin :: () {
         touching := get_contact_entities(self, 1)
         apply_impulse(self, vec2(0, self.Body.mass * 20))
     }
-    on ContactEnd {
+    on ContactEnd :: (Other: handle<ecs.entity>) {
         left := Other
     }
 }

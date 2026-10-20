@@ -113,4 +113,18 @@ int chibi_migrate_entry(const char *source, char **migrated, char *error, size_t
  * current grammar rejects the result. */
 int chibi_migrate_after_entry(const char *source, char **migrated, char *error, size_t error_size);
 
+/* Version 30 handlers name the payload fields they read, as
+ * `on Tick :: (dt: float s)`: see chibi_migrate29_handlers. `declarations`
+ * are the project's event declaration documents. Returns -1 with `error`
+ * set when a handler cannot be rewritten or the current grammar rejects the
+ * result. */
+int chibi_migrate_handlers(
+    const char *source,
+    const char *const *declarations,
+    int declaration_count,
+    char **migrated,
+    char *error,
+    size_t error_size
+);
+
 #endif

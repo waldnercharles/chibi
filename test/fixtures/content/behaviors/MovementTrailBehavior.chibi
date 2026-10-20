@@ -1,10 +1,10 @@
 MovementTrailBehavior :: behavior {
     Particle_Carry: float = 0.0
-    on Input {
-        if Is_Stationary(event.Direction) {
+    on Input :: (Direction: struct<CF_V2>) {
+        if Is_Stationary(Direction) {
             Particle_Carry = 0.0
         } else {
-            await Emit_Movement_Trail(event.Direction)
+            await Emit_Movement_Trail(Direction)
         }
     }
     Emit_Movement_Trail :: (Direction: struct<CF_V2> = null) {

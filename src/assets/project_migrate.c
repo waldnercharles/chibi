@@ -1,7 +1,9 @@
 #include "assets/project_migrate.h"
 
+#include "assets/project.h"
 #include "language/syntax.h"
 #include "project_migrate26.h"
+#include "project_migrate29.h"
 #include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -30,6 +32,7 @@ const TSLanguage *tree_sitter_chibi_project25();
 const TSLanguage *tree_sitter_chibi_project26();
 const TSLanguage *tree_sitter_chibi_project27();
 const TSLanguage *tree_sitter_chibi_project28();
+const TSLanguage *tree_sitter_chibi_project29();
 
 void *tree_sitter_chibi_external_scanner_create();
 void tree_sitter_chibi_external_scanner_destroy(void *);
@@ -70,7 +73,8 @@ script_syntax *chibi_migrate_parse(const char *text, int version)
         : version == 25 ? tree_sitter_chibi_project25()
         : version == 26 ? tree_sitter_chibi_project26()
         : version == 27 ? tree_sitter_chibi_project27()
-                        : tree_sitter_chibi_project28()
+        : version == 28 ? tree_sitter_chibi_project28()
+                        : tree_sitter_chibi_project29()
     );
     assert(compatible);
     (void)compatible;
@@ -131,6 +135,35 @@ static script_syntax *parse27(const char *text)
 static script_syntax *parse28(const char *text)
 {
     return chibi_migrate_parse(text, 28);
+}
+static script_syntax *parse29(const char *text)
+{
+    return chibi_migrate_parse(text, 29);
+}
+/* Whether text parses with the grammar of project `version`, from 23 on. */
+static bool valid_at(const char *text, int version)
+{
+    script_syntax *syntax = version < CHIBI_PROJECT_VERSION
+                              ? chibi_migrate_parse(text, version)
+                              : script_parse(text);
+    bool valid = !syntax->diagnostic_count;
+    script_syntax_free(syntax);
+    return valid;
+}
+/* Whether later steps already migrated text past version `from + 1`. An
+ * upgrade that fails after its steps wrote leaves sources ahead of the
+ * manifest, and its rerun starts again at the manifest's version. */
+static bool migrated_ahead(const char *text, int from)
+{
+    if (valid_at(text, from) || valid_at(text, from + 1)) {
+        return false;
+    }
+    for (int version = from + 2; version <= CHIBI_PROJECT_VERSION; version++) {
+        if (valid_at(text, version)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 typedef struct
@@ -3934,20 +3967,7 @@ int chibi_migrate_retention(const char *source, char **migrated, char *error, si
     script_syntax *syntax = parse24(source);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
-        syntax = parse25(source);
-        bool valid = !syntax->diagnostic_count;
-        script_syntax_free(syntax);
-        if (!valid) {
-            syntax = parse26(source);
-            valid = !syntax->diagnostic_count;
-            script_syntax_free(syntax);
-        }
-        if (!valid) {
-            syntax = parse27(source);
-            valid = !syntax->diagnostic_count;
-            script_syntax_free(syntax);
-        }
-        if (valid) {
+        if (valid_at(source, 25)) {
             return 0;
         }
         snprintf(error, size, "Cannot migrate invalid version 24 source");
@@ -5064,6 +5084,7 @@ static int accept_migrated(
     const char *text = result ? result : source;
     script_syntax *check = version == 27 ? parse27(text)
                          : version == 28 ? parse28(text)
+                         : version == 29 ? parse29(text)
                                          : script_parse(text);
     if (check->diagnostic_count) {
         const script_diagnostic *diagnostic = &check->diagnostics[0];
@@ -5843,6 +5864,11 @@ static int after_entry_rewrite(const char *source, entry_body_rewrite *rewrite, 
     script_syntax *syntax = parse28(source);
     if (syntax->diagnostic_count) {
         script_syntax_free(syntax);
+        /* A rerun after an interrupted step finds sources already migrated,
+         * which the version 29 grammar reads. */
+        if (valid_at(source, 29)) {
+            return 0;
+        }
         snprintf(error, size, "Cannot migrate invalid version 28 source");
         return -1;
     }
@@ -5910,6 +5936,62 @@ static char **migrate_after_entry(char **sources, char **paths, int count, char 
     return migrated;
 }
 
+int chibi_migrate_handlers(
+    const char *source,
+    const char *const *declarations,
+    int declaration_count,
+    char **migrated,
+    char *error,
+    size_t size
+)
+{
+    char *result = NULL;
+    *migrated = NULL;
+    if (chibi_migrate29_handlers(source, declarations, declaration_count, &result, error, size)) {
+        return -1;
+    }
+    return result
+             ? accept_migrated(source, result, "Handler", 30, migrated, error, size)
+             : 0;
+}
+static char **migrate_handlers(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    const char **declarations = NULL;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], DECLARATIVE_ASSET_EXTENSION)) {
+            apush(declarations, sources[i]);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (has_suffix(paths[i], ".chibi") &&
+            chibi_migrate_handlers(sources[i], declarations, acount(declarations), &migrated[i], error, size)) {
+            char *message = xstrdup(error);
+            snprintf(error, size, "%s: %s", paths[i], message);
+            free(message);
+        }
+    }
+    afree(declarations);
+    return migrated;
+}
+
+/* Removes the scripts later steps migrated past version `from + 1` from the
+ * step's inputs; returns the remaining count. */
+static int skip_migrated_ahead(char **paths, char **sources, int count, int from)
+{
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi") && migrated_ahead(sources[i], from)) {
+            free(paths[i]);
+            free(sources[i]);
+            continue;
+        }
+        paths[kept] = paths[i];
+        sources[kept++] = sources[i];
+    }
+    asetlen(paths, kept);
+    return kept;
+}
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -5938,6 +6020,10 @@ int chibi_project_migrate_content(
      * versions 23 and 26 also rewrite scripts. */
     if (!status && (from == 15 || from == 17 || from == 22 || from == 25)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
+    }
+    /* Version 30 types handler payloads from the project's event declarations. */
+    if (!status && from == 29) {
+        status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
      * content, so add it unless the scan found it. */
@@ -5974,6 +6060,11 @@ int chibi_project_migrate_content(
             snprintf(error, error_size, "Cannot read source %s", paths[i]);
             status = -1;
         }
+    }
+    /* Steps from version 23 on read scripts at their own version or the
+     * next; they leave alone scripts that later steps migrated further. */
+    if (!status && from >= 23) {
+        count = skip_migrated_ahead(paths, sources, count, from);
     }
     char **migrated = NULL;
     if (!status) {
@@ -6074,6 +6165,11 @@ int chibi_project_migrate_content(
             case 28:
                 error[0] = '\0';
                 migrated = migrate_after_entry(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 29:
+                error[0] = '\0';
+                migrated = migrate_handlers(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

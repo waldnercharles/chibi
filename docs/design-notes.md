@@ -30,8 +30,8 @@ targets.
   names the payload fields it reads, in any order and any subset, each with
   its type, and `on Begin :: () { }` takes none. Systems declare the step the
   same way, and `event` goes. Tick's payload is `dt` in seconds (#551).
-  Handlers can use the new form now; a project-format migration will remove
-  the old forms. Declarations name-first, `Tick :: event (dt: s)`, may follow.
+  Project version 30 migrates every handler to the new form; a later change
+  removes the old forms from the language. Declarations name-first, `Tick :: event (dt: s)`, may follow.
   See "One way to read the step".
 
 The remaining entries are proposals.

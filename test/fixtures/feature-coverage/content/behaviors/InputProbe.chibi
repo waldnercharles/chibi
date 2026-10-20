@@ -1,5 +1,5 @@
 InputProbe :: behavior {
-    on Input {
+    on Input :: (Direction: struct<CF_V2>) {
         pointer := get_pointer_ray()
         if pointer.Active {
             self.Aim.direction = vec2(pointer.Direction.x, pointer.Direction.z)

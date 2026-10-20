@@ -1,4 +1,4 @@
-version 29
+version 30
 name "Results story"
 content "content"
 start_scene "scenes/Main.kdl"

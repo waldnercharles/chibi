@@ -2,7 +2,7 @@
 Lead :: behavior {
     angle: float = 0
 
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         angle += dt * 2
         self.Transform = vec2(cos(angle), sin(angle)) * 40
     }

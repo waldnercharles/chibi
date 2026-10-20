@@ -1,6 +1,6 @@
 SceneProbe :: behavior {
     steps := 0
-    on Tick {
+    on Tick :: () {
         steps += 1
         if steps == 2 {
             if current_scene() == "Flow" {

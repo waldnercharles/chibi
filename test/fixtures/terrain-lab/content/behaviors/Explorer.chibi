@@ -13,7 +13,7 @@ Explorer :: behavior {
     storageAction := 0
     digCount := 0
 
-    on Begin {
+    on Begin :: () {
         terrain = globals.Terrain
         Present()
     }
@@ -100,7 +100,7 @@ Explorer :: behavior {
         globals.DigTarget.Transform = DigPoint()
     }
 
-    on Tick {
+    on Tick :: () {
         PollStorage()
         horizontal := self.Input.Move.x
         if abs(horizontal) > 0.1 {

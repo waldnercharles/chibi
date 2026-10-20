@@ -6,7 +6,7 @@ Weapon :: behavior {
     }
     elapsed: float = 0.125
     action elapsed_dt = AdvanceElapsed(elapsed, delta)
-    on Tick {
+    on Tick :: () {
         if self.Aim.Manual {
             elapsed_dt()
         } else {

@@ -463,6 +463,41 @@ static const sample samples[] = {
                  { "Twice", "[]", "[-10000000000]" },
                  { "Negative", "[-1]", "[true]" },
                  { "Pick", "[5]", "[5000000035]" } } },
+    { .name = "wide records",
+      .group = TYPE_SAMPLES,
+      .source = "package facts\n"
+                "Entry :: struct { flag: bool; id: uint64; small: byte; "
+                "count: int; delta: int64; name: string; }\n"
+                "Make :: (n: int) -> Entry {\n"
+                "    e: Entry = {flag: n > 0, id: uint64(n) * 1000000007, "
+                "small: byte(wrap: n), count: n, delta: int64(n) - "
+                "5000000000, name: \"e\"};\n"
+                "    return e;\n}\n"
+                "Mix :: (e: Entry) -> uint64 { return (e.id ^ "
+                "uint64(e.small)) + uint64(e.count); }\n"
+                "Bump :: (e: Entry) -> Entry {\n"
+                "    out := e;\n    out.id += 1;\n    out.small = 7;\n"
+                "    out.delta *= 2;\n    return out;\n}\n"
+                "Total :: (n: int) -> int64 {\n"
+                "    es: Entry[] = [];\n    i: int = 0;\n"
+                "    while (i < n) { es = array_add(es, Make(i)); i += 1; }\n"
+                "    total: int64 = 0;\n"
+                "    for (e in es) { total += e.delta + int64(e.small); }\n"
+                "    return total;\n}",
+      .calls = { { "Make",
+                   "[3]",
+                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
+                   "\"delta\":-4999999997,\"name\":\"e\"}]" },
+                 { "Mix",
+                   "[{\"flag\":true,\"id\":3000000021,\"small\":3,\"count\":3,"
+                   "\"delta\":-4999999997,\"name\":\"e\"}]",
+                   "[3000000025]" },
+                 { "Bump",
+                   "[{\"flag\":false,\"id\":18446744073709551614,\"small\":200,"
+                   "\"count\":-1,\"delta\":-4999999997,\"name\":\"x\"}]",
+                   "[{\"flag\":false,\"id\":18446744073709551615,\"small\":7,"
+                   "\"count\":-1,\"delta\":-9999999994,\"name\":\"x\"}]" },
+                 { "Total", "[3]", "[-14999999994]" } } },
     { .name = "inferred arrays",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"

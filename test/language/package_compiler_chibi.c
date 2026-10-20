@@ -2646,14 +2646,17 @@ typedef struct
 } behavior_rejection;
 static const behavior_rejection behavior_rejections[] = {
     { "Late :: behavior {\n    after Tick {\n    }\n}\n",
-      "only `on Event` handlers are supported yet" },
-    { "Jump :: behavior {\n    on Jump :: () {\n    }\n}\n", "Unknown event 'Jump'" },
+      "only `on Event` handlers are supported yet",
+      false },
+    { "Jump :: behavior {\n    on Jump :: () {\n    }\n}\n", "Unknown event 'Jump'", false },
     { "Fixed :: behavior {\n    on Tick :: () {\n        self.Spot.w = 1\n    "
       "}\n}\n",
-      "Assignment requires a writable value" },
+      "Assignment requires a writable value",
+      false },
     { "Named :: behavior {\n    label: string = \"\"\n    on Tick :: () {\n    "
       "}\n}\n",
-      "state needs a number type" },
+      "state needs a number type",
+      false },
     { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
       "{\n    }\n}\n",
       "Tick has no payload field 'more'",
@@ -2666,11 +2669,13 @@ static const behavior_rejection behavior_rejections[] = {
       true },
     { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
       "}\n}\n",
-      "operator does not apply to these operands" },
+      "operator does not apply to these operands",
+      false },
     { "Pace :: behavior {\n    on Tick :: () {\n        self.Spot.x = pace\n   "
       " "
       "}\n}\n",
-      "reading the global 'pace' is not supported yet" },
+      "reading the global 'pace' is not supported yet",
+      false },
 };
 enum
 {

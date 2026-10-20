@@ -1,4 +1,4 @@
-version 28
+version 29
 name "Runtime contracts"
 content "content"
 start_scene "scenes/Start.kdl"

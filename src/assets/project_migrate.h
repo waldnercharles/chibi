@@ -89,7 +89,7 @@ int chibi_migrate_syntax(const char *source, char **migrated, char *error, size_
  * handle<ecs.entity> becomes entity(v). Sets `migrated` to an owned copy,
  * or NULL when the source has no casts. Returns -1 with `error` set for a
  * cast to a type with no name spelling outside a constant declaration, or a
- * result the current grammar rejects. */
+ * result the version 27 grammar rejects. */
 int chibi_migrate_conversions(const char *source, char **migrated, char *error, size_t error_size);
 
 /* Version 28 reads parameters by name: `entry.X` of a parameter X becomes
@@ -98,8 +98,19 @@ int chibi_migrate_conversions(const char *source, char **migrated, char *error, 
  * stays. Sets `migrated` to an owned copy, or NULL when the source reads no
  * parameter through entry. Returns -1 with `error` set when entry names no
  * parameter, when a local, constant, loop, handler or pattern binding of the
- * parameter's name would capture the rewritten read, or when the current
+ * parameter's name would capture the rewritten read, or when the version 28
  * grammar rejects the result. */
 int chibi_migrate_entry(const char *source, char **migrated, char *error, size_t error_size);
+
+/* Version 29 runs a function's own body: the statements of an `after entry`
+ * handler in a function move after the function's own statements, before the
+ * handlers that follow, which is when they ran. Macros keep theirs. Sets
+ * `migrated` to an owned copy, or NULL when no function has one. Returns -1
+ * with `error` set when the handler names its payload or reads `event`,
+ * declares a name the function also uses, or reads a parameter the
+ * function's statements assign or pass to a callable declaring a `ref`
+ * parameter; when a one-line function holds other statements; or when the
+ * current grammar rejects the result. */
+int chibi_migrate_after_entry(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

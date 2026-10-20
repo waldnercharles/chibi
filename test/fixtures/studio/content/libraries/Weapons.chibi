@@ -1,8 +1,6 @@
 Weapons :: library {
     Ignore_Shooter :: (Shooter: handle<ecs.entity> = 0, Projectile: handle<ecs.entity> = 0) {
-        after entry {
-            Projectile.Collider.ignore_entity = Shooter
-            return
-        }
+        Projectile.Collider.ignore_entity = Shooter
+        return
     }
 }

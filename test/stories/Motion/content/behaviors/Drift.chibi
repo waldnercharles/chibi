@@ -1,6 +1,6 @@
 // Vector arithmetic scaled by the step's duration.
 Drift :: behavior {
-    on Tick(dt) {
+    on Tick :: (dt: float s) {
         self.Transform += self.Velocity * dt
     }
 }

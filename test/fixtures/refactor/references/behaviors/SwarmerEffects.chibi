@@ -1,5 +1,5 @@
 SwarmerEffects :: behavior {
-    on Begin {
+    on Begin :: () {
         WeaponActions.Spawn_Prototype_At(SpawnEmitter, self.Transform)
     }
 }

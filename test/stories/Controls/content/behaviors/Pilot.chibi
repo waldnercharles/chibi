@@ -2,7 +2,7 @@
 Pilot :: behavior {
     jumps: int = 0
 
-    on Tick {
+    on Tick :: () {
         self.Transform.x += self.Input.Move.x
         if input.Jump.pressed {
             jumps += 1

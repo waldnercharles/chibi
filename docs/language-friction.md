@@ -51,6 +51,12 @@ which int cannot hold" for `count * 0.5` and "convert with int(value)" for
 a floating value stored in an integer. Stage one still rejects an untyped
 local such as `i := 0`, though its type is now settled.
 
+The stage-zero formatter widens the gap. `chibi_ctl --format` rewrites
+behavior state `steps: int = 0` as `steps := 0`, which stage one rejects with
+"state needs a number type". The Counter and Controls stories therefore keep
+their declarations as written (#565). gofmt and rustfmt never remove a type
+annotation.
+
 Suggestion: stage one accepts untyped locals typed by spelling, then the
 compiler and `core:strings` drop their `i: int = 0` declarations.
 

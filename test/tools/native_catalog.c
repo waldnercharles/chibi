@@ -557,11 +557,22 @@ TEST_CASE(native_project_migration_finalizes_generated_accessors_retryably)
     migration_reopened = file_read_text(migration_source);
     REQUIRE(migration_reopened && !strcmp(migration_text, migration_reopened));
     free(migration_reopened);
+    /* Version 30 names every handler's payload, even an empty one. */
     migration_reopened = file_read_text(migration_incomplete);
-    REQUIRE(migration_reopened && !strcmp(incomplete, migration_reopened));
+    REQUIRE(
+        migration_reopened &&
+        !strcmp("Incomplete :: behavior { on MissingEvent :: () {} }\n", migration_reopened)
+    );
     free(migration_reopened);
     migration_reopened = file_read_text(migration_canonical);
-    REQUIRE(migration_reopened && !strcmp(canonical, migration_reopened));
+    REQUIRE(
+        migration_reopened &&
+        !strcmp(
+            "Canonical :: behavior {\n    count: retain int = "
+            "1\n    on Tick :: () { count = count + 1 }\n}\n",
+            migration_reopened
+        )
+    );
     return true;
 }
 #endif

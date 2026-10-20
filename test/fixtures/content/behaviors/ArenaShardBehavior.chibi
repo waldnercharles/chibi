@@ -9,7 +9,7 @@ ArenaShardBehavior :: behavior {
     Lift: float = 0.0
     Birth_Scale: float = 1.0
     action age_2 = set_variable<Age>(Age + delta_time())
-    on Tick {
+    on Tick :: () {
         age_2()
     }
     after age_2 {
@@ -19,7 +19,7 @@ ArenaShardBehavior :: behavior {
             await Advance_Shard_Motion(delta_time(), age_2.Value)
         }
     }
-    on Begin {
+    on Begin :: () {
         await Initialize_Shard(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
     Age_Phase :: (Age: float = 0.0, Delta: float = 0.0) -> (Result: float = 0.0) {

@@ -2,7 +2,7 @@
 // +/-30-degree pitch and roll sweeps; no gameplay input.
 MeshSurfaceSweep01 :: behavior {
     elapsed: retain float = 0.0
-    on Tick {
+    on Tick :: () {
         elapsed += double(delta)
         self.Orientation.Radians = double(elapsed) * 0.5235987756
         self.VisualTransform.Pitch = 0.5235987756 * sin(double(elapsed) * 0.7853981634)

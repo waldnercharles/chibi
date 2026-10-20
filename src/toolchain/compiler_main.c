@@ -169,7 +169,7 @@ static int usage()
         "--backend bytecode|sljit --budget N [--timeout-ms N] [--batch | "
         "--output-artifact FILE]\n"
         "       chibi-compiler-host --bootstrap DIR --compiler DIR --core DIR "
-        "[--published | --seed DIR [--revision TEXT]]\n"
+        "[--seed DIR [--revision TEXT]]\n"
     );
     return 1;
 }
@@ -201,10 +201,6 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--batch") && !batch) {
             batch = true;
-            continue;
-        }
-        if (!strcmp(argv[i], "--published") && !boot.published) {
-            boot.published = true;
             continue;
         }
         if (i + 1 == argc) {
@@ -251,12 +247,11 @@ int main(int argc, char **argv)
             return usage();
         }
     }
-    if (boot.folder || boot.compiler || boot.core || boot.seed ||
-        boot.revision || boot.published) {
+    if (boot.folder || boot.compiler || boot.core || boot.seed || boot.revision) {
         bool alone = !artifact && !input && !output_artifact && !entry && !budget &&
                      !timeout && backend == BEHAVIOR_UNAVAILABLE && !batch;
         bool complete = boot.folder && boot.compiler && boot.core &&
-                        (boot.seed ? !boot.published : !boot.revision);
+                        (boot.seed || !boot.revision);
         return alone && complete ? bootstrap(&boot) : usage();
     }
     if (!artifact || !input || !entry || !budget ||

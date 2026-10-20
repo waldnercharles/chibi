@@ -1,0 +1,5 @@
+scene "Main"
+frames 40
+(array)keys {
+    - frame=0
+}

@@ -124,6 +124,7 @@ NATIVE = {
     ('--terrain-storage-commands',): 'Bounded controller save/load commands in fresh children on a tiny terrain fixture under one shared60s deadline; no GPU.',
     ('--terrain-playable',): 'Authored terrain-lab controls and restart restore in VM and SLJIT fresh children under one shared60s deadline; no GPU.',
     ('--terrain-checkpoint',): 'Bounded finite and streamed terrain snapshots, malformed input refusal and one fresh-process restore child under shared60s; no GPU.',
+    ('--game-equivalence',): 'The test/stories projects rebuilt by a reference and a candidate compiler (both chibi-compile until stage one compiles them), each artifact played on the CPU under its Story.kdl and the traces compared by test/tools/GameEquivalence.chibi; 3 cases, about 20 children, no GPU.',
     ('--terrain-playable-render',): 'One installed player child, four hidden 640x360 frames with bounded PNG readback under shared60s; compilation occurs before the test.',
     ('--surface-transport',): 'One hidden 64x64 draw of twelve mesh/SDF actors, two bounded texture readbacks checking absorption/filter and opacity; shared60s.',
     ('--material-terrain-seams',): 'Reviewed hidden 64x64 app: six terrain readbacks covering shared edge contours, borders, LOD and checkpoint restore, under one shared60s deadline.',
@@ -251,28 +252,26 @@ TOOLS = {
                          '--compiler-artifact',
                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
-    # Eight cases: the compiler host's bootstrap mode refuses bad options, a
+    # Seven cases: the compiler host's bootstrap mode refuses bad options, a
     # missing or invalid bootstrap.kdl, other formats, versions older than the
     # minimum, a closure its manifest does not record (four SHA-256 vectors),
-    # a missing source, a package that gained a file, another target, a
-    # manifest other than the published one bootstrap.kdl pins and a seed
-    # whose sources are not on disk, all before any compile runs. About
-    # twenty-five host children on tiny folders, and one compiler-artifact
-    # producer.
+    # a missing source, a package that gained a file, another target and a
+    # seed whose sources are not on disk, all before any compile runs. About
+    # twenty host children on tiny folders, and one compiler-artifact producer.
     'compiler-bootstrap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                            '--compiler-bootstrap',
                            str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                            str(ROOT / os.environ.get('CHIBI_COMPILER_HOST', 'build/sdk/chibi-compiler-host'))],
     # One case: git-archives HEAD's tools/compiler and packages/core and has an
-    # unsanitized Release compiler host recover the compiler from the artifact
-    # make bootstrap-artifact wrote: one compile, or two when the sources
-    # changed since it, about 7 s or 14 s on macOS arm64 (make test-recovery).
+    # unsanitized Release compiler host recover the compiler from the checked-in
+    # artifact: one compile, or two when the sources changed since it, about
+    # 11 s or 26 s on macOS arm64 (make test-recovery).
     'bootstrap-recovery': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                            '--bootstrap-recovery',
                            str(ROOT / os.environ.get('CHIBI_RELEASE_COMPILER_HOST', 'build-release/sdk/chibi-compiler-host')),
-                           str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'build-release/bootstrap'))],
-    # Six fixed orchestration cases: 38 API invocations on both backends, one CLI,
-    # ten tiny Git roots, controlled CMake workers and Make routing; no engine builds.
+                           str(ROOT / os.environ.get('CHIBI_BOOTSTRAP_ARTIFACT', 'tools/compiler/bootstrap'))],
+    # Seven fixed orchestration cases: 50 API invocations on both backends, one CLI,
+    # twelve tiny Git roots, controlled CMake workers and Make routing; no engine builds.
     'build-toolchain': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                         '--build-toolchain',
                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'policy_worker'),
@@ -462,6 +461,10 @@ TOOLS = {
     'terrain-storage-commands': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-storage-commands', str(ROOT / os.environ.get('CHIBI_CTL', 'build/bin/chibi_ctl'))],
     'terrain-playable': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable', str(ROOT / 'test/fixtures/terrain-lab')],
     'surface-transport': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--surface-transport'],
+    'game-equivalence': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--game-equivalence',
+        str(ROOT / os.environ.get('CHIBI_BUILD_HOST', 'build/sdk/chibi-build-host')),
+        str(ROOT / os.environ.get('CHIBI_REFERENCE_COMPILER', 'build/sdk/chibi-compile')),
+        str(ROOT / os.environ.get('CHIBI_CANDIDATE_COMPILER', 'build/sdk/chibi-compile'))],
     'terrain-playable-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--terrain-playable-render',
         str(ROOT / os.environ.get('CHIBI_TERRAIN_PLAYER', 'dist/sdk/bin/chibi-player')),
         os.environ.get('CHIBI_TERRAIN_ARTIFACT', ''), os.environ.get('CHIBI_TERRAIN_RESOURCES', ''),
@@ -611,6 +614,14 @@ TOOLS = {
     # Independently review the exact workload before first run; no aggregate.
     'language-syntax-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                               '--syntax-chibi'],
+    # Three cases: every .chibi file below packages/, test/ and tools/ (about
+    # 140, under 1MiB, each <=128KiB) read at run time and tokenized once on
+    # SLJIT against Tree-sitter's leaves and terminators; seventeen fixed sources and
+    # ten hand-written token/error cases on bytecode and SLJIT. Calls capped at
+    # 64 steps per byte. One owner per backend prepares Tokenizer.chibi. No
+    # children, services or GPU; separate build/shared60s, outside the aggregate.
+    'language-source-tokenizer-chibi': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                        '--source-tokenizer-chibi'],
     # Existing11 extraction cases/32 attempts,32 independent raw parses and
     # 64 Extract invocations across2backends (including nested Diagnose work),
     # each capped at1m instructions. Two reused owners prepare3actualsources
@@ -689,6 +700,11 @@ TOOLS = {
     # integer types, split off so each selector keeps its own shared60s.
     'language-package-compiler-chibi-types': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                              '--package-compiler-chibi-types'],
+    # The stage-one compiler's reading of floating literals against stage
+    # zero's: listed spellings on both backends, long and generated ones on
+    # the compiled one. shared60s.
+    'language-package-compiler-chibi-literals': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                                '--package-compiler-chibi-literals'],
     # The same case over the imports sample, which compiles all of
     # core:strings, split off so it keeps its own shared60s.
     'language-package-compiler-chibi-imports': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),

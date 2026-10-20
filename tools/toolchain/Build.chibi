@@ -38,6 +38,62 @@ ToolchainBuild :: library {
         }
         return "";
     }
+    Contains :: (text: string, part: string) -> bool {
+        return BuildBefore(text, part) != text;
+    }
+    SourceOverride :: (name: string) -> bool {
+        return BuildStartsWith(name, "FETCHCONTENT_SOURCE_DIR_") || name == "CHIBI_SJLIT_SOURCE_DIR";
+    }
+    // A set SLJIT source is private, and so is a FetchContent source outside
+    // BUILD/_deps. A missing source counts as private; CMake rejects it anyway.
+    PrivateSource :: (build: string, name: string, value: string) -> bool {
+        if (value == "") {
+            return false;
+        }
+        if (name == "CHIBI_SJLIT_SOURCE_DIR") {
+            return true;
+        }
+        source := BuildResolvePath(value);
+        dependencies := Join([BuildResolvePath(build), "/_deps"]);
+        return source != dependencies && !BuildStartsWith(source, Join([dependencies, "/"]));
+    }
+    // Whether a definition or the build's cache selects private dependency
+    // sources, which immutable dependency packages cannot serve. Any
+    // FETCHCONTENT_* definition does; for source overrides a definition
+    // replaces the cached value. Entries follow CMake's NAME[:TYPE]=VALUE form.
+    PrivateSources :: (build: string, arguments: string[]) -> bool {
+        overrides: Map<string, string> = {};
+        for (line in BuildLines(BuildReadFile(Join([build, "/CMakeCache.txt"])))) {
+            name := BuildBefore(line, ":");
+            typed := BuildAfter(line, ":");
+            if (SourceOverride(name) && !Contains(name, "=") && !Contains(name, "#") &&
+                Contains(typed, "=") && BuildBefore(typed, "=") != "") {
+                overrides[name] = BuildAfter(typed, "=");
+            }
+        }
+        for (argument in Normalize(arguments)) {
+            definition := BuildAfter(argument, "-D");
+            head := BuildBefore(definition, "=");
+            name := BuildBefore(head, ":");
+            value := BuildAfter(definition, "=");
+            if (!BuildStartsWith(argument, "-D") || !Contains(definition, "=") || name == "" ||
+                (head != name && BuildAfter(head, ":") == "") || Contains(value, "\n")) {
+                continue;
+            }
+            if (BuildStartsWith(name, "FETCHCONTENT_")) {
+                return true;
+            }
+            if (SourceOverride(name)) {
+                overrides[name] = value;
+            }
+        }
+        for (name, value in overrides) {
+            if (PrivateSource(build, name, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
     NativeArguments :: (build: string, arguments: string[]) -> string[] {
         cachePath := Join([build, "/CMakeCache.txt"]);
         cache := BuildReadFile(cachePath);
@@ -147,13 +203,15 @@ ToolchainBuild :: library {
         packageEnabled := BuildEnvironment("CHIBI_DEPENDENCY_PACKAGES");
         package: string = "";
         if (packageEnabled == "" || packageEnabled == "1") {
-            status := RunBuildStep(BuildConcat([
-                "python3", Helper("configure_inputs.py"), "package-enabled", build, "--"
-            ], selected));
-            if (status != 0) {
-                return status;
+            normalized := Normalize(selected);
+            if (BuildLength(normalized) > 0 && normalized[BuildLength(normalized) - 1] == "-D") {
+                BuildReport("-D requires a definition");
+                return 1;
             }
-            packageEnabled = BuildTrim(BuildLastStdout());
+            packageEnabled = "1";
+            if (PrivateSources(build, selected)) {
+                packageEnabled = "0";
+            }
         }
         if (packageEnabled == "1") {
             status := RunBuildStep(BuildConcat([

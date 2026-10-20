@@ -23,6 +23,9 @@
 #include "types/value_document.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <float.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1167,12 +1170,12 @@ static bool get(const pin_value *row, const char *name, pin_value *out)
     pin_read_field(row->ptr, field, out);
     return true;
 }
-static uint64_t tag(int b, const char *variant)
+static uint64_t variant_tag(int b, const char *union_name, const char *variant)
 {
     const authoring_package *owner = compiler_fixture_package(&fixture, b, PACKAGE);
     const script_catalog_type *type = script_catalog_type_by_id(
         owner->exports->metadata,
-        compiler_fixture_export(&fixture, b, PACKAGE, "Result")
+        compiler_fixture_export(&fixture, b, PACKAGE, union_name)
     );
     for (int i = 0; type && i < type->variant_count; i++) {
         if (!strcmp(type->variants[i].name, variant)) {
@@ -1180,6 +1183,10 @@ static uint64_t tag(int b, const char *variant)
         }
     }
     return 0;
+}
+static uint64_t tag(int b, const char *variant)
+{
+    return variant_tag(b, "Result", variant);
 }
 static bool prepare()
 {
@@ -1471,6 +1478,203 @@ static bool reads_boxed(const unsigned char *bytes, size_t length)
     REQUIRE(boxed == 4 && packed == 1 && !wrong);
     return true;
 }
+/* Literals whose binary64 and binary32 readings LiteralBits must agree on:
+ * exact and halfway values, the ends of both ranges, long and hexadecimal
+ * spellings. */
+static const char *const literal_spellings[] = {
+    "0",
+    "0.0",
+    "000",
+    "1",
+    "007.5",
+    "0.5",
+    "0.1",
+    "0.2",
+    "0.3",
+    "0.001",
+    "384.0",
+    "1e10",
+    "1e22",
+    "1e23",
+    "3.14159265358979323846264338327950288",
+    "123456789012345678901234567890",
+    "9007199254740992",
+    "9007199254740993",
+    "9007199254740995",
+    "18446744073709551615",
+    "1.00000000000000011102230246251565404236316680908203125",
+    "1.00000000000000011102230246251565404236316680908203124",
+    "1.00000000000000011102230246251565404236316680908203126",
+    "1.000000059604644775390625",
+    "1.000000059604644775390624",
+    "1.7976931348623157e308",
+    "1.7976931348623158e308",
+    "1.7976931348623159e308",
+    "1e308",
+    "1e309",
+    "2.2250738585072014e-308",
+    "2.2250738585072011e-308",
+    "2.2250738585072012e-308",
+    "2.2250738585072013e-308",
+    "1.000000178813934326171875",
+    "4.9e-324",
+    "1e-400",
+    "3.4028234663852886e38",
+    "3.4028235e38",
+    "3.4028235677973366e38",
+    "3.4028236e38",
+    "1.17549435e-38",
+    "1.4e-45",
+    "1e-46",
+    "1e-30",
+    "0x0",
+    "0x1F",
+    "0x10000000000001",
+    "0x1FFFFFFFFFFFFF",
+    "0x20000000000001",
+    "0x8000000000000000",
+    "0xFFFFFFFFFFFFFFFF",
+    "1e0",
+    "1E+2",
+    "25e-1",
+    "0.000000000000000000001",
+    "100000000000000000000000000000000000000000000000000",
+    "1.5e300",
+    "6.02214076e23",
+};
+/* Whether a literal's significant digits are nonzero. */
+static bool digits_nonzero(const char *text)
+{
+    text += *text == '-';
+    bool hexadecimal = text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    for (const char *at = hexadecimal ? text + 2 : text; *at; at++) {
+        if (!hexadecimal && (*at == 'e' || *at == 'E')) {
+            return false;
+        }
+        if (*at != '0' && *at != '.') {
+            return true;
+        }
+    }
+    return false;
+}
+/* The reading LiteralBits implements, which is stage zero's where long double
+ * is double: the binary64 nearest the literal and the binary32 nearest that;
+ * a nonzero literal whose binary64 is infinite, zero or subnormal is out of
+ * range. */
+static void literal_reading(const char *text, bool *finite, uint64_t *wide, bool *fits, uint64_t *narrow)
+{
+    char *end;
+    double value = strtod(text, &end);
+    *finite = !*end && isfinite(value) && !(value != 0 && fabs(value) < DBL_MIN) &&
+              !(value == 0 && digits_nonzero(text));
+    memcpy(wide, &value, sizeof *wide);
+    *fits = fabs(value) <= FLT_MAX;
+    float single = (float)value;
+    uint32_t bits;
+    memcpy(&bits, &single, sizeof bits);
+    *narrow = bits;
+}
+static bool literal_agrees(int b, const char *spelling, bool negative)
+{
+    char text[2100];
+    snprintf(text, sizeof text, "%s%s", negative ? "-" : "", spelling);
+    bool finite, fits;
+    uint64_t wide, narrow;
+    literal_reading(text, &finite, &wide, &fits, &narrow);
+    pin_value args[] = { (pin_value){ .type = PIN_STR, .str = spelling },
+                         (pin_value){ .type = PIN_BOOL, .b = negative } };
+    pin_value out;
+    REQUIRE(
+        compiler_fixture_call(&fixture, b, PACKAGE, "LiteralBits", args, 2, COMPILE_BUDGET, &detached, &out)
+    );
+    const pin_union *value = out.ptr;
+    bool read = value->tag == variant_tag(b, "FloatBits", "Finite");
+    bool same = read == finite;
+    if (same && read) {
+        same = value->values[0].u64 == wide && value->values[1].b == fits &&
+               (!fits || value->values[2].u64 == narrow);
+    }
+    if (!same) {
+        fprintf(
+            stderr,
+            "package compiler literal %s: expected %d %016llx %d %08llx, read "
+            "%d %016llx %d %08llx\n",
+            text,
+            finite,
+            (unsigned long long)wide,
+            fits,
+            (unsigned long long)narrow,
+            read,
+            read ? (unsigned long long)value->values[0].u64 : 0ull,
+            read && value->values[1].b,
+            read ? (unsigned long long)value->values[2].u64 : 0ull
+        );
+    }
+    arena_free(&detached);
+    return same;
+}
+/* Spellings longer than the listed ones: the exact decimals of binary64
+ * values that are binary32 ties, and 800 digits followed by one that decides
+ * the rounding, or by an exponent that moves the point back. */
+static int long_spellings(char spellings[][2048], int capacity)
+{
+    static const double ties[] = { 0x3p-150, 0x5p-150, 0x1.000001p0, 0x1.000003p0, 0x1.fffffe8p127 };
+    int count = 0;
+    for (int i = 0; i < (int)(sizeof ties / sizeof *ties) && count < capacity; i++) {
+        snprintf(spellings[count++], sizeof spellings[0], "%.200e", ties[i]);
+    }
+    char *sticky = spellings[count++];
+    int length = snprintf(sticky, sizeof spellings[0], "%s", "1.00000000000000011102230246251565404236316680908203125");
+    for (int i = 0; i < 800; i++) {
+        sticky[length++] = '0';
+    }
+    sticky[length++] = '1';
+    sticky[length] = 0;
+    char *shifted = spellings[count++];
+    shifted[0] = '1';
+    for (int i = 1; i <= 800; i++) {
+        shifted[i] = '0';
+    }
+    snprintf(shifted + 801, sizeof spellings[0] - 801, "%s", "e-800");
+    return count;
+}
+/* LiteralBits reads number literals of floating types by that reading:
+ * the listed spellings on both compiler backends, with both signs on the
+ * compiled one, and there also the long spellings and generated ones across
+ * the binary64 range. */
+static bool literals_agree()
+{
+    static char spellings[8][2048];
+    int long_count = long_spellings(spellings, 8);
+    for (int i = 0; i < (int)(sizeof literal_spellings / sizeof *literal_spellings);
+         i++) {
+        REQUIRE(literal_agrees(0, literal_spellings[i], false));
+        REQUIRE(literal_agrees(1, literal_spellings[i], false));
+        REQUIRE(literal_agrees(1, literal_spellings[i], true));
+    }
+    for (int i = 0; i < long_count; i++) {
+        REQUIRE(literal_agrees(1, spellings[i], false));
+    }
+    uint32_t state = 12345;
+    for (int i = 0; i < 120; i++) {
+        char spelling[96];
+        int length = 0;
+        state = state * 1103515245u + 12345u;
+        int digits = 1 + (int)(state >> 16) % 19;
+        for (int d = 0; d < digits; d++) {
+            state = state * 1103515245u + 12345u;
+            spelling[length++] = (char)('0' + (state >> 16) % 10);
+            if (d == digits / 2 && d + 1 < digits && (state & 1)) {
+                spelling[length++] = '.';
+            }
+        }
+        state = state * 1103515245u + 12345u;
+        int exponent = (int)((state >> 8) % 640) - 330;
+        length += snprintf(spelling + length, sizeof spelling - (size_t)length, "e%d", exponent);
+        REQUIRE(literal_agrees(1, spelling, false));
+    }
+    return true;
+}
 static bool run_samples(sample_group group)
 {
     REQUIRE(prepare());
@@ -1619,6 +1823,46 @@ static bool write_seed(const unsigned char *stage_two, size_t length, const char
 /* Stage two, loaded in `host`, compiles every sample as stage one does: its
  * Compile result projects to the same JSON, the same closure or the same
  * rejection. */
+/* Stage two reads the listed floating literals as stage one does: each
+ * LiteralBits result projects to the same JSON. */
+static bool stage_two_literals()
+{
+    uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:LiteralBits:callable");
+    for (int i = 0; i < (int)(sizeof literal_spellings / sizeof *literal_spellings);
+         i++) {
+        for (int sign = 0; sign < 2; sign++) {
+            pin_value args[] = { text(literal_spellings[i]),
+                                 (pin_value){ .type = PIN_BOOL, .b = sign } },
+                      out;
+            REQUIRE(
+                compiler_fixture_call(&fixture, 1, PACKAGE, "LiteralBits", args, 2, COMPILE_BUDGET, &detached, &out)
+            );
+            size_t length, expected_length;
+            char *json = document_json(args, 2, &length);
+            char *expected = document_json(&out, 1, &expected_length);
+            arena_free(&detached);
+            bool called = compiler_host_invoke(host, entry, json, length, COMPILE_BUDGET, &result);
+            bool same = called && result.flow_status == FLOW_OK &&
+                        result.length == expected_length &&
+                        !memcmp(result.json, expected, expected_length);
+            if (!same) {
+                fprintf(
+                    stderr,
+                    "package compiler stage two literal %s%s: %s\n",
+                    sign ? "-" : "",
+                    literal_spellings[i],
+                    called ? result.json : result.diagnostic
+                );
+            }
+            free(json);
+            free(expected);
+            free(result.json);
+            result = (compiler_host_result){ 0 };
+            REQUIRE(same);
+        }
+    }
+    return true;
+}
 static bool stage_two_samples()
 {
     uint64_t entry = script_catalog_id("package-symbol", "project:package_compiler:1:Compile:callable");
@@ -1656,7 +1900,8 @@ static bool stage_two_samples()
 }
 /* Stage zero prepares stage one, which compiles its own packages to a closure:
  * stage two. Stage two, loaded by the compiler host, compiles the same
- * packages to the same bytes, and every sample as stage one does. */
+ * packages to the same bytes, every sample as stage one does, and reads the
+ * listed floating literals as stage one does. */
 TEST_CASE(package_compiler_compiles_itself)
 {
     REQUIRE(prepare());
@@ -1745,7 +1990,12 @@ TEST_CASE(package_compiler_compiles_itself)
     free(json);
     REQUIRE(same);
     REQUIRE(seeded);
-    return stage_two_samples();
+    return stage_two_samples() && stage_two_literals();
+}
+TEST_CASE(package_compiler_reads_float_literals)
+{
+    REQUIRE(prepare());
+    return literals_agree();
 }
 void test_language_package_compiler_chibi()
 {
@@ -1769,5 +2019,11 @@ void test_language_package_compiler_chibi_bootstrap()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_itself);
+    pu_clear_setup();
+}
+void test_language_package_compiler_chibi_literals()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_reads_float_literals);
     pu_clear_setup();
 }

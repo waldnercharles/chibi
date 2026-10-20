@@ -184,6 +184,13 @@ int test_terrain_playable_child(
     const char *phase
 );
 void test_tool_material_bake(const char *controller);
+int test_tool_game_observe(const char *trace, const char *const *stories, int count);
+void test_tool_game_equivalence(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *candidate
+);
 #endif
 #ifdef CHIBI_TEST_PREVIEW_COMPONENTS
 void test_preview_components();
@@ -792,6 +799,25 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
+        return 2;
+#endif
+    }
+    if ((argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
+        (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+        tool_init();
+#ifdef CHIBI_TEST_SOURCE_RUNTIME
+        source_runtime_active = true;
+#endif
+        if (!strcmp(argv[1], "--game-observe")) {
+            return test_tool_game_observe(argv[2], (const char *const *)argv + 3, (argc - 3) / 2);
+        }
+        pu_display_time(true);
+        test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
         return 2;
 #endif
     }

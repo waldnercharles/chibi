@@ -151,7 +151,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 | D | UI documents | `documents/ui_buffer.*`, the UI cases in `scene_tabs.c` and `studio_shell.c`, `studio_code.c`, Assets ▸ New |
 | E | UI Inspector | `studio/studio_inspect.c`, the Inspector section of `studio_sources.c`, `rmlui/kit_inspect.c`, and `projects/studio`'s Inspector assets and scene entity. Its tree is a `List` of TreeRows over a window of every element, with no row limit (I1) |
 | F | Settings | `studio_prefs.c`, `studio_settings.c`, the settings section of `studio_sources.c`, the Settings and widget assets |
-| G | Trackpad pinch | Pinch handling in `studio_host.c`, `studio_scene.c` and the graph's zoom; `tools/web_shell.html` |
+| G | Trackpad pinch | Pinch handling in `studio_host.c`, `studio_scene.c` and the graph's zoom; `web/web_shell.html` |
 | K | UI wiring | Asset pickers in `studio_properties.c`, the Scene's UI errors, UI events in the behavior Add menu, the Canvas preview in `studio_canvas.c` |
 
 ### Wave 2

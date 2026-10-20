@@ -281,9 +281,15 @@ static int compiler_driver(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    /* Emulate an earlier private host which does not recognize this query. */
+    /* Emulate earlier private hosts: the M1 host does not recognize this
+     * query, and one named for protocol 2 answers it but lacks today's
+     * capabilities. */
     if (argc == 2 && !strcmp(argv[1], "--protocol-version")) {
-        return 2;
+        if (!strstr(argv[0], "protocol-2")) {
+            return 2;
+        }
+        puts("2");
+        return 0;
     }
     /* xcrun prints the SDK named by xcrun-sdk in the working directory. */
     if (argc == 2 && !strcmp(argv[1], "--show-sdk-path")) {

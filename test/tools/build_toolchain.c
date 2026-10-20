@@ -526,16 +526,19 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         selected
     );
     tool_write(overrides, recipes);
-    char old[1024], current[1024], missing[1024];
+    char old[1024], previous[1024], current[1024], missing[1024];
     path(old, root, "old host");
+    path(previous, root, "protocol-2 host");
     path(current, root, "current host");
     path(missing, root, "missing host");
     assert(!symlink(worker_path, old));
+    assert(!symlink(worker_path, previous));
     assert(!symlink(host_path, current));
     char recursive_make[4096];
     snprintf(recursive_make, sizeof recursive_make, "MAKE=make -f '%s' -f '%s'", makefile, overrides);
-    const char *hosts[] = { missing, old, current };
-    for (int i = 0; i < 3; i++) {
+    /* A protocol-2 host answers the query but cannot prepare today's program. */
+    const char *hosts[] = { missing, old, previous, current };
+    for (int i = 0; i < 4; i++) {
         char host_option[1200];
         snprintf(host_option, sizeof host_option, "BUILD_HOST=%s", hosts[i]);
         const char *arguments[] = {
@@ -546,7 +549,7 @@ TEST_CASE(make_recovers_missing_or_old_hosts_and_selects_current_protocol)
         };
         REQUIRE(!tool_run(arguments, source, log));
         char *choice = tool_read(selected);
-        bool correct = choice && !strcmp(choice, i == 2 ? "authored\n" : "recovery\n");
+        bool correct = choice && !strcmp(choice, i == 3 ? "authored\n" : "recovery\n");
         free(choice);
         REQUIRE(correct);
         REQUIRE(!unlink(selected));

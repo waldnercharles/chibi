@@ -236,7 +236,7 @@ loops with range loops, and stage one compiles `ref` loops.
 
 ## Stage one has no constant arrays
 
-Stage one. Since #CONSTPR stage one folds constant integer expressions, in
+Stage one. Since #564 stage one folds constant integer expressions, in
 any order and across imports, but stage zero also folds constant arrays and
 calls whose body runs at compile time, `while` loops included. A lookup
 table is therefore a local array built on every call: `PowerStep` in

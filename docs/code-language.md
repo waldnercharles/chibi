@@ -305,7 +305,7 @@ source audit of the snapshot is not fresh runtime or cross-backend validation.
 
 Chibi uses these document formats:
 
-- Project manifests are `project.kdl` files at version 28.
+- Project manifests are `project.kdl` files at version 29.
 - Scenes, KDL prototypes, event declarations, models, shapes, materials,
   fields, shader libraries, scenarios and editor configuration use KDL 2.
 - Behaviors, behavior libraries and systems use readable `.chibi` source.
@@ -314,7 +314,7 @@ Chibi uses these document formats:
 This example is a project manifest:
 
 ```kdl
-version 28
+version 29
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -1047,6 +1047,28 @@ parameter.
 
 To give the payload's parameters other names, list them, as in
 `after spawned(made) { ... }`.
+
+### Function bodies
+
+Project version 29 runs the statements of a function when it is called. A
+function cannot have an `after entry` handler. Macros keep their `after entry`
+handlers.
+
+The migration from version 28 moves the statements of each `after entry`
+handler in a function. They go after the function's own statements and before
+the handlers that follow them.
+
+The handler read the arguments as the caller passed them. Thus the migration
+refuses these cases:
+
+- The handler reads a parameter that the function's statements assign.
+- The handler reads a parameter that the function's statements pass to a
+  function or macro with a `ref` parameter.
+- The handler reads `event` or names its payload.
+- The handler declares a name that the function also uses.
+- The function is on one line and has other statements.
+
+Rewrite these cases by hand before you migrate.
 
 ### Keyword migrations
 
@@ -2053,7 +2075,7 @@ graph operation.
 
 ### Metadata files
 
-Project manifests use version 28. Executable files contain no generated
+Project manifests use version 29. Executable files contain no generated
 identity annotations or embedded authoring footer.
 
 Optional `<asset>.chibi.meta` JSON stores:

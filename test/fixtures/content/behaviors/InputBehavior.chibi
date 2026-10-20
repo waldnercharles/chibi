@@ -19,17 +19,15 @@ InputBehavior :: behavior {
         await Face_Direction(input.Direction)
     }
     Face_Direction :: (Direction: struct<CF_V2> = null) {
-        after entry {
-            if self.Orientation {
-                if 0.0 >= abs(Direction.x) + abs(Direction.y) {
-                    return
-                } else {
-                    self.Orientation = DirectionMath.Direction_Orientation(Direction.x, Direction.y)
-                    return
-                }
+        if self.Orientation {
+            if 0.0 >= abs(Direction.x) + abs(Direction.y) {
+                return
             } else {
+                self.Orientation = DirectionMath.Direction_Orientation(Direction.x, Direction.y)
                 return
             }
+        } else {
+            return
         }
     }
 }

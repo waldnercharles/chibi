@@ -8034,6 +8034,63 @@ TEST_CASE(program_version_29_handlers_migrate_to_named_payloads)
     REQUIRE(!rmdir(root));
     return true;
 }
+/* Version 31 reads the frame step only through a Tick handler's list or a
+ * system's step clause. */
+TEST_CASE(program_version_30_step_globals_move_into_tick_lists)
+{
+    const struct
+    {
+        const char *source, *expected;
+    } cases[] = {
+        { "B :: behavior { x: float = 0; on Tick :: () { x += dt } }", "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: () { x += delta + "
+          "delta_time() } }",
+          "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt + "
+          "dt } }" },
+        { "B :: behavior { x: float = 0; on Tick :: (dt: float s) { x += dt } "
+          "}",
+          NULL },
+        { "S :: system(p: Position) { p.x += dt }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        { "S :: system(p: Position) on Tick :: () { p.x += delta }",
+          "S :: system(p: Position) on Tick :: (dt: float s) { p.x += dt }" },
+        /* A parameter, local or state of that name reads no global. */
+        { "L :: library { F :: (dt: float) -> float { return dt } }", NULL },
+        { "B :: behavior { on Begin :: () { delta := 1; x := delta } }", NULL },
+        { "B :: behavior { dt: float = 0; on Begin :: () { dt = 1 } }", NULL },
+        { "B :: behavior { x: float = 0; on Tick :: () { other.dt = 1; F(dt: "
+          "1) } }",
+          NULL },
+    };
+    char error[256], *migrated = NULL;
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        if (chibi_migrate_step_globals(cases[i].source, &migrated, error, sizeof error)) {
+            fprintf(stderr, "case %zu: %s\n", i, error);
+        }
+        bool same = cases[i].expected
+                      ? migrated && !strcmp(migrated, cases[i].expected)
+                      : !migrated;
+        if (!same) {
+            fprintf(stderr, "case %zu: %s\n", i, migrated ? migrated : "(unchanged)");
+        }
+        REQUIRE(same);
+        free(migrated);
+        migrated = NULL;
+    }
+    const char *refused[] = {
+        "B :: behavior { x: float = 0; F :: () { x += dt } }",
+        "B :: behavior { x: float = 0; action go = Go(delta); on Tick :: () { "
+        "go() } }",
+        "B :: behavior { x: float = 0; on Begin :: () { x = delta_time() } }",
+        "B :: behavior { x: float = 0; action go = Go(); on Tick :: () { go() "
+        "} after go { x += dt } }",
+    };
+    for (size_t i = 0; i < sizeof refused / sizeof *refused; i++) {
+        REQUIRE(chibi_migrate_step_globals(refused[i], &migrated, error, sizeof error) < 0);
+        REQUIRE(!migrated && strstr(error, "outside a Tick handler or system"));
+    }
+    return true;
+}
 /* An upgrade that fails after its steps wrote, for example in finalization,
  * leaves scripts at the current version under an older manifest. Its rerun
  * starts at that version, and every step leaves those scripts alone. */
@@ -9421,6 +9478,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_27_entry_reads_migrate_to_parameter_names);
     RUN_TEST_CASE(program_version_28_after_entry_moves_into_function_bodies);
     RUN_TEST_CASE(program_version_29_handlers_migrate_to_named_payloads);
+    RUN_TEST_CASE(program_version_30_step_globals_move_into_tick_lists);
     RUN_TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);

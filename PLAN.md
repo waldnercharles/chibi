@@ -771,9 +771,12 @@ from its own `web/` and `test/tools/web_storage.c` already reads that copy.
 So are the retired one-off probes: `tools/hrc_sparse_sweep.c`, built by
 nothing since its September HRC study (its research note says how to recover
 it from Git), and `tools/compare_neon_frames.mjs` with `tools/png-check.mjs`,
-a frame diff for a game no longer in this repository. Replace now: the
-`compiler-sdk` and `package-enabled` probes of `tools/configure_inputs.py`,
-moving into `Build.chibi`. Waiting on a decision: `.github/scripts/` (the M5 owner
+a frame diff for a game no longer in this repository. `Build.chibi` now decides
+whether private dependency sources decline immutable packages, which was
+`configure_inputs.py package-enabled`; the `build-toolchain` cases passed
+unchanged against both implementations. Its `compiler-sdk` probe cannot follow
+yet: Apple clang's `cc -###` prints 4,147 bytes and a build step's output is
+capped at 4 KiB. Waiting on a decision: `.github/scripts/` (the M5 owner
 confirms its hosted runs are finished), the CUT61 analysis scripts (owner
 review of the stale record), and game runtime installation (whether the
 `update-game-runtime` workflow outlived the retired game repositories).

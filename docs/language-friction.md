@@ -342,3 +342,42 @@ prepared modules in Chibi.
 
 Suggestion: `BuildReadBytes(path) -> byte[]` for build programs, so tools can
 read prepared formats in Chibi.
+
+## Build programs have their own string vocabulary
+
+`tools/toolchain/Build.chibi` cannot import `core:strings` or any other
+package. It has only the build host's natives (`BuildBefore`, `BuildAfter`,
+`BuildStartsWith`, `BuildTrim`, `BuildLines`, `BuildJoin`), with no length,
+index, contains or split. Moving `configure_inputs.py package-enabled` into it
+meant writing `Contains` as `BuildBefore(text, part) != text` and parsing
+`NAME[:TYPE]=VALUE` with nested before/after calls.
+
+- Zig's `build.zig` is ordinary Zig: the whole standard library
+  (`std.mem.indexOf`, `std.StringHashMap`) plus the `std.Build` API.
+- Cargo's `build.rs` is an ordinary Rust program with `std`
+  (`str::split_once`, `HashMap`).
+- Go's `go generate` runs ordinary Go programs. Odin has no build scripts;
+  its tools are ordinary programs that import `core:strings`. Jai's build is
+  a metaprogram written in the full language with its modules.
+- MSBuild tasks are ordinary C#, and Rake tasks are ordinary Ruby.
+
+Suggestion: run build programs as ordinary Chibi packages that import the
+`core:` collections, with process and file access in one build-only
+capability package, instead of a separate string vocabulary.
+
+## Ordinary nouns are reserved, and the build host doesn't say where
+
+A local named `entry` in `Build.chibi` failed with only "Unexpected syntax".
+`entry` is a keyword, as are `exit`, `query` and `where`, and the build host's
+diagnostic names no file, line, column or token. Finding it took bisecting the
+file. #420 already made `join` contextual and dropped `domain`.
+
+- Rust, Go, Odin, Zig, C#, TypeScript and Python report file, line and
+  column; Rust and Python also name the token (Rust: "expected identifier,
+  found keyword").
+- C# keeps `where`, `join` and `select` contextual: they are keywords only
+  inside a query expression. TypeScript does the same with `type` and `from`.
+- Go's 25 keywords include none of these. Odin's include only `where`.
+
+Suggestion: make declaration-only words contextual, and give build-host
+syntax errors the parser's position and token.

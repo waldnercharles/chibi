@@ -762,12 +762,14 @@ is the recovery path.
 On 2026-10-19 the owner asked to start removing project-owned C, C++, Python,
 CMake, Make and shell wherever Chibi can own the work, and to do no work in C
 or stage zero that Chibi can do. The removal inventory in
-`docs/toolchain-inventory.md` now classifies every such file. Delete now: the
-in-tree browser editor's leftovers (`tools/configure_web.sh`,
-`tools/web_compiler.sh`, the root `CHIBI_COLLAB_URL` and the `tools/web_*`
-and collaboration-client copies Studio now owns) and the retired one-off
-probes (`tools/hrc_sparse_sweep.c`, `tools/compare_neon_frames.mjs`,
-`tools/png-check.mjs`). Replace now: the `compiler-sdk` and
+`docs/toolchain-inventory.md` now classifies every such file. The in-tree
+browser editor's leftovers are gone: `tools/configure_web.sh`,
+`tools/web_compiler.sh`, the root `CHIBI_COLLAB_URL` and the copies of
+`tools/web_*` and the collaboration client. Nothing had called them since
+Studio took over the browser build on 2026-10-08 (`aff61c28f`); Studio builds
+from its own `web/` and `test/tools/web_storage.c` already reads that copy.
+Delete now: the retired one-off probes (`tools/hrc_sparse_sweep.c`,
+`tools/compare_neon_frames.mjs`, `tools/png-check.mjs`). Replace now: the `compiler-sdk` and
 `package-enabled` probes of `tools/configure_inputs.py`, moving into
 `Build.chibi`. Waiting on a decision: `.github/scripts/` (the M5 owner
 confirms its hosted runs are finished), the CUT61 analysis scripts (owner

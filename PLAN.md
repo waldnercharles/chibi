@@ -843,7 +843,9 @@ The integration landed on `main` as #516 (`a9dc954bd`) on 2026-10-20, and
 #512 rebuilt the checked-in bootstrap artifact from it. M5 step 4 followed
 `docs/design-notes.md`, gating each stage-one feature on a purpose-made
 story; stage one rebuilds all five as stage zero does since 2026-10-20.
-Next action: debugger points and watches in stage one's modules.
+Since 2026-10-20 stage one's functions also have stage zero's function,
+statement and completion points (`docs/package-compiler.md#output`).
+Next action: expression and symbol points and watches in stage one's modules.
 
 Prior toolchain checkpoint: 2026-10-18, PR #445 transport integration
 over `c828177eb9d5cd8df52b5ec8f73516a9ea4cb5fb` (PR #444), verified locally.
@@ -1061,10 +1063,12 @@ zero's identities and play as stage zero's do
 recovers stage one from the bootstrap artifact, runs `CompileBehaviors` on
 the exported input, and assembles the artifact with `chibi-compile
 --modules` (`make test-stage-one`). Stage one passes step 4's gate since
-2026-10-20. Next: debugger points and watches, then the sequence on every
+2026-10-20, and its functions have stage zero's function, statement and
+completion points. Next: expression and symbol points and watches, then the
+sequence on every
 supported host configuration before stage one becomes the normal compiler. See `docs/testing.md#game-equivalence`.
-Debugger points and watches are deferred until before stage one becomes the
-normal compiler.
+Expression and symbol points and watches are deferred until before stage one
+becomes the normal compiler.
 
 Two runtime gaps surfaced on the way. Argument sharing rejected every function
 that assigned a field of its own record, because the analysis ignored the

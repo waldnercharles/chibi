@@ -1024,9 +1024,17 @@ modules into a game artifact. Project preparation is now split for it:
 `authoring_project_assemble` writes the artifact from the project's
 declarations, scenes, prototypes and resources plus supplied prepared
 modules, one per executable source by module ID. Assembling each story from
-its own artifact's modules reproduces that artifact byte for byte. Still to
-come: the route itself, a Chibi program per the owner's decision, which runs
-stage one and then this assembly through a narrow binding. See `docs/testing.md#game-equivalence`.
+its own artifact's modules reproduces that artifact byte for byte. `chibi-compile --stage-one-target FILE` exports the game target a
+behavior links against: Compile's six target arguments, then the catalog's
+events, the type requirements stage zero lists, and the entity type. Next,
+in order:
+1. Stage one compiles a behavior asset, Counter first: retained state, an
+   event handler, `self` and a component field write through the reference
+   intrinsics, with the writer's state, event and component tables.
+2. The route: a Chibi program that runs stage one on a story with that
+   target, then this assembly through a narrow binding, as game-equivalence's
+   candidate.
+3. Motion, Controls, Results and Follow, in the stories' order. See `docs/testing.md#game-equivalence`.
 Debugger points and watches are deferred until before stage one becomes the
 normal compiler.
 

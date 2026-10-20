@@ -2,6 +2,8 @@
 #include "authoring/graph_catalog.h"
 #include "authoring/project_compile.h"
 #include "authoring/project_prepare.h"
+#include "execution/module_internal.h"
+#include "execution/prepared.h"
 #include "host/native_default.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
@@ -20,6 +22,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 #define FNV_BASIS UINT64_C(14695981039346656037)
 #define FNV_PRIME UINT64_C(1099511628211)
@@ -507,6 +510,118 @@ static bool assembles_from_its_own_modules(const char *story)
     REQUIRE(same && missing && extra && !refused.data);
     return true;
 }
+/* Whether the exported target lists the type requirements and events of a
+ * module stage zero prepared, in order, as a stage-one module must. */
+static bool target_matches(yyjson_val *root, const execution_module *module)
+{
+    const execution_module_plan *plan = &module->plan;
+    yyjson_val *types = yyjson_obj_get(root, "types");
+    REQUIRE(yyjson_arr_size(types) == (size_t)plan->type_count);
+    for (int i = 0; i < plan->type_count; i++) {
+        yyjson_val *type = yyjson_arr_get(types, (size_t)i);
+        const execution_type_requirement *expected = &plan->types[i];
+        REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "id")) == expected->id);
+        REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "layout")) == expected->layout);
+        REQUIRE(yyjson_get_int(yyjson_obj_get(type, "storage")) == (int)expected->storage);
+        REQUIRE(yyjson_get_uint(yyjson_obj_get(type, "size")) == expected->size);
+        REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(type, "name")), expected->name));
+    }
+    yyjson_val *events = yyjson_obj_get(root, "events");
+    for (int i = 0; i < plan->event_count; i++) {
+        const execution_module_event_declaration *expected = &plan->events[i];
+        yyjson_val *event = NULL;
+        for (size_t j = 0; !event && j < yyjson_arr_size(events); j++) {
+            yyjson_val *candidate = yyjson_arr_get(events, j);
+            event = yyjson_get_uint(yyjson_obj_get(candidate, "id")) == expected->id
+                      ? candidate
+                      : NULL;
+        }
+        REQUIRE(event);
+        REQUIRE(yyjson_get_uint(yyjson_obj_get(event, "abi")) == expected->abi);
+        REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(event, "name")), expected->name));
+        yyjson_val *fields = yyjson_obj_get(event, "fields");
+        REQUIRE(yyjson_arr_size(fields) == (size_t)expected->field_count);
+        for (int j = 0; j < expected->field_count; j++) {
+            yyjson_val *field = yyjson_arr_get(fields, (size_t)j);
+            yyjson_val *type = yyjson_obj_get(field, "type");
+            REQUIRE(!strcmp(
+                yyjson_get_str(yyjson_obj_get(field, "name")),
+                expected->fields[j].name
+            ));
+            REQUIRE(
+                yyjson_get_int(yyjson_obj_get(type, "storage")) ==
+                (int)expected->fields[j].initial.type
+            );
+            REQUIRE(
+                yyjson_get_uint(yyjson_obj_get(type, "nominal")) ==
+                expected->fields[j].nominal
+            );
+        }
+    }
+    REQUIRE(yyjson_get_uint(yyjson_obj_get(root, "entity")) == plan->owner_type);
+    return true;
+}
+/* chibi-compile --stage-one-target exports what each story's behavior links
+ * against: the same type requirements, events and entity type that stage zero
+ * writes into the behavior's module. */
+TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require)
+{
+    char project[4096], target[4096], error[512] = { 0 };
+    story_path(project, sizeof project, "Counter", "");
+    path(target, sizeof target, "counter-target.json");
+    const char *argv[] = { reference_path,       "--project-root", project,
+                           "--stage-one-target", target,           NULL };
+    REQUIRE(tool_run(argv, scratch, log_path) == 0);
+    yyjson_doc *doc = yyjson_read_file(target, 0, NULL, NULL);
+    REQUIRE(doc);
+    authoring_application application;
+    REQUIRE(authoring_application_begin(&application, error, sizeof error));
+    authoring_project_options options = { .project = project,
+                                          .native = application.native,
+                                          .components = { REGISTRY_COMPONENTS,
+                                                          REGISTRY_COMPONENT_COUNT },
+                                          .modules = WORLD_MODULES_ALL,
+                                          .read_only = true };
+    authoring_project_artifact artifact = { 0 };
+    arena names = { 0 };
+    package_module *modules = NULL;
+    size_t first, end;
+    bool prepared = authoring_project_prepare(&options, &artifact, error, sizeof error) &&
+                    player_prepared_modules(
+                        artifact.data,
+                        artifact.size,
+                        &names,
+                        &modules,
+                        &first,
+                        &end,
+                        error,
+                        sizeof error
+                    ) &&
+                    acount(modules) == 1;
+    native_prepared_context context = { .native = application.native };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    execution_module *module = prepared ? execution_prepared_read(
+                                              modules[0].data,
+                                              modules[0].length,
+                                              &linker,
+                                              BEHAVIOR_BYTECODE,
+                                              error,
+                                              sizeof error
+                                          )
+                                        : NULL;
+    if (!module) {
+        fprintf(stderr, "stage-one target: %s\n", error);
+    }
+    bool matches = module && target_matches(yyjson_doc_get_root(doc), module);
+    execution_module_free(module);
+    afree(modules);
+    arena_free(&names);
+    authoring_project_artifact_free(&artifact);
+    authoring_application_end(&application);
+    yyjson_doc_free(doc);
+    REQUIRE(matches);
+    return true;
+}
 TEST_CASE(stories_assemble_from_their_own_modules)
 {
     for (int i = 0; i < STORY_COUNT; i++) {
@@ -534,6 +649,7 @@ void test_tool_game_equivalence(
     free(resolved);
     path(log_path, sizeof log_path, "harness.log");
     RUN_TEST_CASE(stories_assemble_from_their_own_modules);
+    RUN_TEST_CASE(stage_one_target_lists_what_stage_zero_modules_require);
     RUN_TEST_CASE(stories_play_alike_under_both_compilers);
     RUN_TEST_CASE(a_changed_behavior_is_named_at_its_first_frame);
     RUN_TEST_CASE(declarations_and_missing_traces_are_refused);

@@ -873,9 +873,9 @@ TOOLS = {
     # First measurement requires independent review; separate build, shared60s.
     'language-package-resolution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                     '--package-resolution'],
-    # Twelve fixed import/preparation cases: 59 preparations, 210 parses,
-    # 113 imports, <=189 package visits before reuse, 48 calls with budget2000,
-    # one pure catalog snapshot and one extra parse/nine semantic-only analyses.
+    # Thirteen fixed import/preparation cases: 67 preparations, 226 parses,
+    # 121 imports, <=205 package visits before reuse, 50 calls with budget2000,
+    # one pure catalog snapshot and one extra parse/ten semantic-only analyses.
     # At most five files<1KiB and four live owners.
     # No filesystem/process/GPU; separate build and one shared60s production
     # execution deadline.

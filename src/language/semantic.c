@@ -294,6 +294,25 @@ static bool package_declaration(TSNode node)
            script_analyzer_is(node, "record_declaration") ||
            script_analyzer_is(node, "union_declaration");
 }
+/* Marks the declarations that `pub` exports to importing packages. */
+static void mark_public(analyzer *a, TSNode root)
+{
+    for (uint32_t i = 0; i < script_analyzer_named_count(root); i++) {
+        TSNode node = ts_node_named_child(root, i);
+        if (ts_node_is_null(script_analyzer_field(node, "visibility"))) {
+            continue;
+        }
+        script_range name = script_analyzer_range(a, script_analyzer_field(node, "name"));
+        for (int j = 0; j < acount(a->out->symbols); j++) {
+            script_symbol *symbol = &a->out->symbols[j];
+            if (symbol->scope == a->package_scope &&
+                symbol->declaration.document == name.document &&
+                symbol->declaration.start == name.start) {
+                symbol->pub = true;
+            }
+        }
+    }
+}
 static script_analysis *analyze_package(const script_package_options *options, bool declarations)
 {
     assert(options);
@@ -432,6 +451,9 @@ static script_analysis *analyze_package(const script_package_options *options, b
             &a,
             ts_tree_root_node(documents[i].syntax->tree)
         );
+    }
+    for (int i = 0; i < count; i++) {
+        mark_public(&a, ts_tree_root_node(documents[i].syntax->tree));
     }
     script_analyzer_package_imports_check(&a, true);
     /* Record defaults can name any sibling constant. Register every value

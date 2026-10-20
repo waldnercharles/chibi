@@ -129,7 +129,8 @@ static bool reports(int backend, const char *markdown, const char *page, const c
 }
 
 /* Headings carry GitHub's anchors; paragraphs join their lines; text is
- * escaped; fenced code keeps its lines and names its language. */
+ * escaped; fenced code keeps its lines and names its language. Lines lose
+ * their spaces, tabs and carriage returns at either end. */
 TEST_CASE(docs_markdown_renders_blocks)
 {
     REQUIRE(prepare());
@@ -154,6 +155,9 @@ TEST_CASE(docs_markdown_renders_blocks)
             "<ol>\n<li>first</li>\n<li><em>second</em></li>\n</ol>\n"
             "<blockquote><p>quoted text</p></blockquote>\n"
         ));
+        REQUIRE(
+            renders(b, "# Title\t\r\n\r\n\tOne \t\r\ntwo\r\n", "README.md", "<h1 id=\"title\">Title</h1>\n<p>One two</p>\n")
+        );
     }
     return true;
 }
@@ -395,35 +399,34 @@ TEST_CASE(docs_site_keeps_navigation_in_reach)
 }
 
 /* The package reference lists each package once, with its import path, and
- * each top-level declaration's signature, up to its body, with the comment
- * written right above it. */
+ * each pub declaration's signature, up to its body, with the comment written
+ * right above it. */
 TEST_CASE(docs_reference_lists_declarations)
 {
     REQUIRE(prepare());
     static const char *const paths[] = { "shapes/A.chibi", "shapes/B.chibi" };
-    static const char *const files[] = {
-        "package shapes",
-        "",
-        "// The area of a square.",
-        "Area :: (side: int,",
-        "                 scale: int) -> int {",
-        "    return side * side;",
-        "}",
-        "package shapes",
-        "Sides: int : 4;",
-        "// Not attached.",
-        "",
-        "Shape :: struct { sides: int; }",
-        "Greeting :: \"Hello {}\";",
-        "@test",
-        "Checks :: () {",
-        "}",
-        "@test Also :: () {}",
-        "Vec :: struct {",
-        "    // Horizontal.",
-        "    x: int;",
-        "}"
-    };
+    static const char *const files[] = { "package shapes",
+                                         "",
+                                         "// The area of a square.",
+                                         "pub Area :: (side: int,",
+                                         "             scale: int) -> int {",
+                                         "    return side * side;",
+                                         "}",
+                                         "package shapes",
+                                         "pub Sides: int : 4;",
+                                         "// Not attached.",
+                                         "",
+                                         "pub Shape :: struct { sides: int; }",
+                                         "pub Greeting :: \"Hello {}\";",
+                                         "Hidden :: 3;",
+                                         "@test",
+                                         "Checks :: () {",
+                                         "}",
+                                         "@test Also :: () {}",
+                                         "pub Vec :: struct {",
+                                         "    // Horizontal.",
+                                         "    x: int;",
+                                         "}" };
     for (int b = 0; b < 2; b++) {
         pin_value starts = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY };
         pin_array *offsets = pin_array_snapshot_allocate(&input, PIN_I32, NULL, 2);
@@ -432,7 +435,7 @@ TEST_CASE(docs_reference_lists_declarations)
         starts.ptr = offsets;
         static const char *const none[] = { "README.md" };
         pin_value arguments[] = { text("core"),     strings(paths, 2),
-                                  starts,           strings(files, 21),
+                                  starts,           strings(files, 22),
                                   text("packages"), strings(none, 1),
                                   strings(none, 1) };
         char *html = call(b, "project:reference", "Render", arguments, 7);
@@ -442,15 +445,16 @@ TEST_CASE(docs_reference_lists_declarations)
                       strstr(
                           html,
                           "<h3 id=\"area\">Area</h3>\n<pre><code "
-                          "class=\"language-chibi\">Area :: (side: "
+                          "class=\"language-chibi\">pub Area :: (side: "
                           "int, scale: int) -&gt; int\n</code></pre>\n<p>The "
                           "area of a square.</p>"
                       ) &&
-                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">Sides: int : 4;\n") &&
-                      strstr(html, "Shape :: struct { sides: int; }\n") &&
-                      strstr(html, "Greeting :: &quot;Hello {}&quot;;\n") &&
-                      !strstr(html, "Checks") && !strstr(html, "Also") &&
-                      strstr(html, "Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
+                      strstr(html, "<h3 id=\"sides\">Sides</h3>\n<pre><code class=\"language-chibi\">pub Sides: int : 4;\n") &&
+                      strstr(html, "pub Shape :: struct { sides: int; }\n") &&
+                      strstr(html, "pub Greeting :: &quot;Hello {}&quot;;\n") &&
+                      !strstr(html, "Hidden") && !strstr(html, "Checks") &&
+                      !strstr(html, "Also") &&
+                      strstr(html, "pub Vec :: struct {\n    // Horizontal.\n    x: int;\n}\n") &&
                       !strstr(html, "Not attached") &&
                       !strstr(strstr(html, "<h2") + 3, "<h2");
         if (!listed && html) {
@@ -512,12 +516,12 @@ TEST_CASE(docs_generated_pages_report_unpublished_links)
         "// Not [attached](a.md).",
         "",
         "// The [area](area.md).",
-        "Area :: () -> int {",
+        "pub Area :: () -> int {",
         "    return 1;",
         "}",
         "package shapes",
         "// Four [sides](PLAN.md#sides), as [Area](#area).",
-        "Sides: int : 4;"
+        "pub Sides: int : 4;"
     };
     static const char *const grammar[] = {
         "  rules: {",

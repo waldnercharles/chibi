@@ -4,7 +4,7 @@
 #include <string.h>
 
 static const event_field TICK_PAYLOAD[] = {
-    { .name = "DeltaSeconds", .type = PIN_F32, .type_name = "float" },
+    { .name = "dt", .type = PIN_F32, .type_name = "float", .unit = "s" },
 };
 static const event_field INPUT_PAYLOAD[] = {
     { .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" },
@@ -23,8 +23,8 @@ const host_event_desc HOST_EVENTS[HOST_EVENT_COUNT] = {
     [HOST_EVENT_TICK] = { .name = "Tick",
                           .keywords = "update frame every loop delta "
                                       "time",
-                          .description = "Runs every frame; DeltaSeconds "
-                                         "is the time since the last "
+                          .description = "Runs every frame; dt is the "
+                                         "time in seconds since the last "
                                          "one.",
                           .payload = TICK_PAYLOAD,
                           .payload_count = 1 },

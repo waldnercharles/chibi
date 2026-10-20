@@ -15,7 +15,7 @@ import strings "core:strings"
 // Facts of the runtime this compiler targets, which Chibi cannot see: pointer
 // width, the byte offsets of a value header's and an array's members, and the
 // failure kinds a host call and a failed assertion report.
-Target :: struct {
+pub Target :: struct {
     pointer_storage: int;
     pointer_size: int;
     value_size: int;
@@ -117,7 +117,7 @@ Param :: struct {
 // results); its ID and ABI are identities[2 * index] and [2 * index + 1]. A
 // variadic native's last parameter takes any number of arguments, none
 // included.
-Native :: struct {
+pub Native :: struct {
     name: string;
     first: int;
     parameters: int;
@@ -127,7 +127,7 @@ Native :: struct {
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; AnyPort takes each argument's own type, and
 // UnsupportedPort is a type this compiler cannot pass.
-Port :: struct {
+pub Port :: struct {
     name: string;
     storage: int;
     container: int;
@@ -168,7 +168,7 @@ TypeMember :: struct {
     read: int;
     read_key: string;
 }
-Result :: union {
+pub Result :: union {
     Rejected(diagnostic: syntax.Diagnostic) | Compiled(module: uint64, bytes: byte[])
 }
 // A package constant: an integer literal of an integer type, its 64 bits,
@@ -407,9 +407,9 @@ InputFailure :: (document: int, message: string) -> Result {
 
 // Every record, union and function of each package, dependencies first, so
 // a package's declarations follow those of every package it imports.
-Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
-            files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
-            target: Target) -> Declarations {
+pub Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                files_of: int[], order: int[], imports: snapshot.ResolvedImport[], links: graph.Binding[],
+                target: Target) -> Declarations {
     callables: Callable[] = [];
     params: Param[] = [];
     types: TypeDecl[] = [];
@@ -443,10 +443,10 @@ Declare :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pac
 // Adds package `package`'s records, unions, functions and constants, in file
 // and source order. Types come first, so any signature or payload may name any
 // type.
-DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
-                   package: int, package_name: string, links: graph.Binding[], target: Target,
-                   callables: Callable[], params: Param[], types: TypeDecl[],
-                   members: TypeMember[], constants: ConstDecl[]) -> Declarations {
+pub DeclarePackage :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], files: int[],
+                       package: int, package_name: string, links: graph.Binding[], target: Target,
+                       callables: Callable[], params: Param[], types: TypeDecl[],
+                       members: TypeMember[], constants: ConstDecl[]) -> Declarations {
     for (file in files) {
         text := documents[file].text;
         member := FirstMember(forest, documents[file].syntax_root);
@@ -1263,9 +1263,9 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
 // and imports resolve against. `abi` is the target's prepared header ABI,
 // `names` its instruction names in ordinal order, and `natives` the native
 // functions it links.
-Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-            sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
-            identities: uint64[]) -> Result {
+pub Compile :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                sources: string[], target: Target, abi: uint64, names: string[], natives: Native[], ports: Port[],
+                identities: uint64[]) -> Result {
     ops := ResolveOps(names);
     complete := length(identities) == 2 * length(natives);
     for (native_row in natives) {
@@ -1319,9 +1319,9 @@ Compile :: (project: string, collection_names: string[], collection_paths: strin
 }
 // Compile's closure, for a host that takes one byte[] result; empty when
 // Compile rejects the input, whose diagnostic Compile returns.
-CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
-                   sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
-                   ports: Port[], identities: uint64[]) -> byte[] {
+pub CompileClosure :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                       sources: string[], target: Target, abi: uint64, names: string[], natives: Native[],
+                       ports: Port[], identities: uint64[]) -> byte[] {
     switch Compile(project, collection_names, collection_paths, paths, sources, target, abi, names, natives, ports,
                    identities) {
         case .Rejected(diagnostic):

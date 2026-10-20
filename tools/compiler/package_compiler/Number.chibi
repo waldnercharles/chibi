@@ -19,7 +19,7 @@ Decimal :: union {
 // A literal's bit patterns, or OutOfRange for one that must be finite but is
 // not: overflow, and underflow to zero or a subnormal.
 // `float_fits` is false when the value exceeds the largest binary32.
-FloatBits :: union {
+pub FloatBits :: union {
     Finite(double_bits: uint64, float_fits: bool, float_bits: uint64) | OutOfRange
 }
 
@@ -453,7 +453,7 @@ DecimalBits :: (digits: int[], count: int, point: int, trunc: bool, negative: bo
 
 // The bit patterns of the number literal `spelling`, negated when
 // `negative`.
-LiteralBits :: (spelling: string, negative: bool) -> FloatBits {
+pub LiteralBits :: (spelling: string, negative: bool) -> FloatBits {
     size := strings.ByteLength(spelling);
     hexadecimal := size > 2 && strings.ByteAt(spelling, 0) == 48 &&
                    (strings.ByteAt(spelling, 1) == 120 || strings.ByteAt(spelling, 1) == 88);

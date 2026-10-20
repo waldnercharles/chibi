@@ -202,9 +202,9 @@ Evaluate :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[
 // F32/F64, and integer operations produce integer storage (possibly wider or
 // narrower than operands). Arbitrary cross-family C union byte interpretations
 // are not an input format for this compiler component.
-Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
-         arguments: ir.Argument[], literals: scalar.Value[],
-         expression: int, expected_storage: int) -> scalar.Result {
+pub Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+             arguments: ir.Argument[], literals: scalar.Value[],
+             expression: int, expected_storage: int) -> scalar.Result {
     checked := proof.Check(expressions, types, symbols, arguments,
                            {expression: expression, steps: 65536, scalar: true, has_steps: true});
     switch checked {

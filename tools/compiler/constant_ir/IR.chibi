@@ -5,13 +5,13 @@ package constant_ir
 // obey the same invariants as the analyzer's owned expression graph.
 // Scalar folding also requires type-correct operator result families and
 // literal storage. Admissibility does not validate arbitrary hand-built IR.
-Type :: struct {
+pub Type :: struct {
     storage: int;
     container: int;
     flags: int;
     has_nominal: bool;
 }
-Expression :: struct {
+pub Expression :: struct {
     kind: int;
     op: int;
     type: int;
@@ -24,29 +24,29 @@ Expression :: struct {
     effects: int;
     conversion: int; // Cast range policy: 0 exact, 1 wrap, 2 clamp.
 }
-Symbol :: struct {
+pub Symbol :: struct {
     kind: int;
     initializer: int;
 }
-Argument :: struct {
+pub Argument :: struct {
     value: int;
 }
 
 // Enum and bit-mask values retain the existing semantic and value ABI.
-Constant: int : 1;
-SymbolReference: int : 2;
-Unary: int : 3;
-Binary: int : 4;
-Cast: int : 5;
-Member: int : 7;
-Index: int : 9;
-Array: int : 10;
-Record: int : 14;
-Nil: int : 15;
-Union: int : 22;
-ConstantSymbol: int : 14;
-Single: int : 0;
-Boolean: int : 1;
-String: int : 13;
-Untyped: int : 16;
-Literal: int : 1024;
+pub Constant: int : 1;
+pub SymbolReference: int : 2;
+pub Unary: int : 3;
+pub Binary: int : 4;
+pub Cast: int : 5;
+pub Member: int : 7;
+pub Index: int : 9;
+pub Array: int : 10;
+pub Record: int : 14;
+pub Nil: int : 15;
+pub Union: int : 22;
+pub ConstantSymbol: int : 14;
+pub Single: int : 0;
+pub Boolean: int : 1;
+pub String: int : 13;
+pub Untyped: int : 16;
+pub Literal: int : 1024;

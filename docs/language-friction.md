@@ -342,3 +342,91 @@ prepared modules in Chibi.
 
 Suggestion: `BuildReadBytes(path) -> byte[]` for build programs, so tools can
 read prepared formats in Chibi.
+
+## From the tokenizer port
+
+Porting Odin's `core:odin/tokenizer` to `tools/compiler/source_tokenizer` hit
+these. Where an entry above already covers the need, the tokenizer's example is
+listed here with a pointer to it.
+
+### Several results
+
+`Scan` returns a token's kind, end and error as a `Lexeme` record. Stage zero
+already compiles named results,
+`Pair :: (x: int) -> (kind: int, end: int) { return (x, x + 1); }`, read as
+`Pair(3).kind`, but stage one does not. See
+[Authored functions return one value](#authored-functions-return-one-value).
+
+### Character literals
+
+Bytes are compared by code throughout, `c == 34` for `'"'`. See
+[No character literals](#no-character-literals).
+
+### Tables built per call
+
+`Tokenize` builds its byte-class, keyword and terminator tables on every call.
+See [Stage one constants are literals only](#stage-one-constants-are-literals-only).
+
+### Hashing in a wrapping `u32`
+
+Odin's keyword hash is FNV-1a in a wrapping `u32`; the port keeps it in
+`uint64` and masks each step with `& 0xFFFFFFFF`. See
+[No narrow unsigned types or wrapping arithmetic](#no-narrow-unsigned-types-or-wrapping-arithmetic).
+
+### No enumerations
+
+The tokenizer's 114 token kinds are numbered constants, `Ident: int : 3;`
+through `Relationship: int : 113;`, and `KindNames` returns their spellings in
+the same order by hand. A set of kinds, such as those that can end a statement,
+is a `bool[]` filled from a list.
+
+- Odin has `enum` with implicit values, enumerated arrays such as
+  `[Token_Kind]string`, `bit_set[Flag]` and `fmt`'s names for values; Zig
+  `enum` with `@tagName`; Rust enums with discriminants; C enums, often with
+  X-macros for the names; C# `Enum.GetName`; TypeScript numeric enums with
+  reverse mapping; Python `enum.Enum`.
+
+Suggestion: Odin's `enum`, enumerated arrays and `bit_set`, with a name for
+each value.
+
+### Stage one switches only on union variants
+
+Stage zero compiles `switch c { case 61: ... }`, but stage one matches only
+`.Variant` arms, so the tokenizer's operator table is a chain of
+`if (c == 61) { return Eq; }`.
+
+- Odin switches on any integer or rune with ranges, `case 'a'..='z', '_':`;
+  C and C++ `switch` on integers; Rust `match` with `b'a'..=b'z'`; Zig
+  `switch` with `'a'...'z'`; C# relational patterns, `>= 'a' and <= 'z'`.
+
+Suggestion: stage one compiles integer `switch`, then Odin's ranges.
+
+### A `while (true)` loop does not end a function
+
+`while (true) { ... return x; }` as a function's last statement is rejected
+with "Union result 'Result' requires a value on every return path", so the
+tokenizer's loop breaks out to a return after it.
+
+- Odin's checker counts `for {}` without a `break` as terminating; Go's spec
+  does the same for a `for` with no condition and no `break`; Rust's `loop`
+  has type `!`; Zig and C# also treat code after `while (true)` without a
+  `break` as unreachable.
+
+Suggestion: a `while (true)` with no `break` ends the function, as in Odin.
+
+### Calls and record snapshots are costly
+
+Profiling the tokenizer showed record validation at the top: storing a record
+in a local snapshots it, and each snapshot checks the record by rehashing its
+type's layout (`pin_record_valid`, `type_layout_hash`); each call also prepares
+an activation. Inlining the hot loops, reading byte classes from a table and
+returning records only for rare tokens took the corpus run from 28 to 4
+seconds on SLJIT in a sanitizer build. The bytecode backend is about eight
+times slower still.
+
+- Odin, C, Zig and Rust return small structs in registers or a result
+  location and inline small procedures; C# returns structs by value; none
+  hashes a type's layout at run time.
+
+Suggestion: an implementation change rather than a language one: hash each
+record type's layout once, and inline small pure functions.

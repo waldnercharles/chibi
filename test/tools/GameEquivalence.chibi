@@ -1,15 +1,15 @@
-library GameEquivalence {
+GameEquivalence :: library {
     // Rebuilds one game with a reference and a candidate compiler and compares
     // what the two artifacts declare and how they play. A compiler is any
     // program that takes --project-root ROOT --output FILE, as chibi-compile
     // does. The observer plays an artifact under a scenario and writes a
     // trace: its declarations, then one line per fixed step.
-    Join :: fn(parts: string[]) -> string {
+    Join :: (parts: string[]) -> string {
         return BuildJoin(parts, "");
     }
     // Compiles project with compiler into NAME.chibip and plays it into
     // NAME.trace.
-    Play :: fn(compiler: string, observer: string, project: string, scenario: string, name: string) -> bool {
+    Play :: (compiler: string, observer: string, project: string, scenario: string, name: string) -> bool {
         artifact := Join([name, ".chibip"]);
         if (RunBuildStep([compiler, "--project-root", project, "--output", artifact]) != 0) {
             BuildReport(Join([compiler, " cannot compile ", project]));
@@ -22,7 +22,7 @@ library GameEquivalence {
         return true;
     }
     // A trace's lines, or none when path holds no trace.
-    Trace :: fn(path: string) -> string[] {
+    Trace :: (path: string) -> string[] {
         if (!BuildFileExists(path)) {
             return [];
         }
@@ -32,17 +32,17 @@ library GameEquivalence {
         }
         return lines;
     }
-    Differs :: fn(summary: string, reference: string, candidate: string) -> int {
+    Differs :: (summary: string, reference: string, candidate: string) -> int {
         BuildReport(Join([summary, "\n  reference: ", reference, "\n  candidate: ", candidate]));
         return 1;
     }
     // The frame number a trace line names.
-    Frame :: fn(line: string) -> string {
+    Frame :: (line: string) -> string {
         return BuildBefore(BuildAfter(line, "frame "), " ");
     }
     // 0 when the traces match line for line, 1 with the first line that
     // differs, 2 when either is not a trace or neither holds a frame.
-    Compare :: fn(referencePath: string, candidatePath: string) -> int {
+    Compare :: (referencePath: string, candidatePath: string) -> int {
         reference := Trace(referencePath);
         candidate := Trace(candidatePath);
         if (BuildLength(reference) == 0) {
@@ -83,7 +83,7 @@ library GameEquivalence {
     }
     // Arguments: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER. The
     // artifacts and traces are written to FOLDER.
-    Rebuild :: fn() -> int {
+    Rebuild :: () -> int {
         arguments := BuildArguments();
         if (BuildLength(arguments) != 6) {
             BuildReport("usage: REFERENCE CANDIDATE OBSERVER PROJECT SCENARIO FOLDER");
@@ -100,7 +100,7 @@ library GameEquivalence {
         return Compare(Join([reference, ".trace"]), Join([candidate, ".trace"]));
     }
     // Arguments: REFERENCE_TRACE CANDIDATE_TRACE.
-    Diff :: fn() -> int {
+    Diff :: () -> int {
         arguments := BuildArguments();
         if (BuildLength(arguments) != 2) {
             BuildReport("usage: REFERENCE_TRACE CANDIDATE_TRACE");

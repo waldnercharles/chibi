@@ -368,6 +368,17 @@ with Odin's dynamic arrays. A write outside the array fails with "Array index ou
 of range". Other values holding the array keep their copy.
 Runtime strings cannot contain embedded NUL bytes.
 
+A character literal, such as `'a'`, `'\n'` or `'🐈'`, holds exactly one
+Unicode scalar and takes the escapes a string literal takes, plus `\'`. Like an
+untyped integer, it takes an integer type from context when its value fits:
+`ByteAt(path, i) == '/'` compares ints, and `c: byte = 'é'` holds 233.
+Otherwise it is a `char`: one Unicode scalar in 32 bits, as Odin's `rune` and
+Rust's `char` are. A `char` has integer arithmetic and comparisons, so
+`digit - '0'` is a `char`, and it converts implicitly to `int`, `uint`, `int64`
+and `uint64`, where `c + n` with an `int` `n` is an `int`. `char(n)` converts
+an integer back; it fails the call with "Value does not fit in char" when `n`
+is not a Unicode scalar, as does `char` arithmetic whose result is not one.
+
 Explicit scalar conversions call the type: `double(value)`, `float(value)` or
 `byte(value)`. Most code needs none. A literal takes its expected type, an
 integer converts implicitly to an integer type that holds every value (`byte` to

@@ -686,6 +686,19 @@ TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals)
     }
     return true;
 }
+/* Inlining spells a char parameter as char. */
+TEST_CASE(source_inline_spells_char_parameters)
+{
+    REQUIRE(
+        project("Edit :: behavior { count:int=0; Next :: (letter:char)->(code:int) { return letter+1; } on Tick { count=Next('a'); } }")
+    );
+    const source_presentation_origin *call = find(SOURCE_PRESENTATION_EXPRESSION, "Next('a')");
+    REQUIRE(call);
+    REQUIRE(edit(request(AUTHORING_EDIT_INLINE_CALL, call)));
+    REQUIRE(inspect_result());
+    REQUIRE(strstr(result.text, "letter: char = ('a');"));
+    return true;
+}
 TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return)
 {
     REQUIRE(
@@ -1289,6 +1302,7 @@ void test_source_edit()
     RUN_TEST_CASE(source_selection_transactions_preserve_names_and_comments);
     RUN_TEST_CASE(source_optional_arguments_and_typed_values_are_checked_atomically);
     RUN_TEST_CASE(source_extraction_preserves_ref_inputs_and_escaping_locals);
+    RUN_TEST_CASE(source_inline_spells_char_parameters);
     RUN_TEST_CASE(source_inline_renames_resolved_locals_and_preserves_early_return);
     RUN_TEST_CASE(source_signatures_and_bindings_preserve_resolved_body_and_scope);
     RUN_TEST_CASE(source_layout_rebase_survives_new_document_identity_and_rejects_nonrename_edits);

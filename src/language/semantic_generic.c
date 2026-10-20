@@ -538,7 +538,9 @@ static char *specialization_name(analyzer *a, generic_template definition, compi
             const script_catalog_type
                 *type = script_catalog_type_by_id(a->catalog, value.type.nominal);
             spelling = type ? (type->source_name ? type->source_name : type->name)
-                            : scalar_name(value.type.storage);
+                     : script_type_char(value.type)
+                         ? "char"
+                         : scalar_name(value.type.storage);
         } else if (behavior_scalar_string(value.value.type)) {
             const char *text = value.value.str ? value.value.str : "";
             quoted = xmalloc(strlen(text) * 6 + 3);

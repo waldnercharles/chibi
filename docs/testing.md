@@ -1857,34 +1857,40 @@ the checked-in `tools/compiler/bootstrap` within 50 s. Set `CHIBI_RELEASE_COMPIL
 ## Game equivalence
 
 `python3 tools/test_policy.py tool game-equivalence` is the gate for PLAN.md
-M5 step 4. It rebuilds Terrain Lab with a reference and a candidate compiler
-and compares what the two artifacts declare and how they play. It is a
-standalone selector, not part of any group, and takes about 7 s.
+M5 step 4. It rebuilds the stories in `test/stories` with a reference and a
+candidate compiler, and compares what the two artifacts of each story declare
+and how they play. It is a standalone selector, not part of any group, and
+takes about 6 s.
 
+- **Stories.** Each story is a small project that shows one feature, played
+  by its `content/scenarios/Story.kdl`. `test/stories/README.md` lists them in
+  the order stage one reaches them. Each compiles alone, so stage one can
+  pass one story before it compiles another.
 - **Compilers.** A compiler is any program that takes `--project-root ROOT
   --output FILE`, as `chibi-compile` does. `CHIBI_REFERENCE_COMPILER` and
   `CHIBI_CANDIDATE_COMPILER` select them. Both default to
-  `build/sdk/chibi-compile` until stage one compiles games.
+  `build/sdk/chibi-compile` until stage one compiles stories.
 - **Orchestration.** `test/tools/GameEquivalence.chibi` runs in
-  `chibi-build-host`. Its `Rebuild` entry compiles the project with each
-  compiler and plays each artifact, and `Diff` compares two traces.
-- **Observer.** `test_tools --game-observe ARTIFACT SCENARIO TRACE` reads the
-  artifact on the CPU and replays the authored
-  `content/scenarios/Dig.kdl` from the start scene. It writes a trace:
-  - first, what the artifact declares apart from its code: a digest of every
-    byte outside its module records, located by `player_prepared_modules`,
-    then each module's name and ID (`--native` checks that function);
-  - then one line per fixed step, from frame 0 (after Begin) to the
-    scenario's last frame: hashes of the ECS world, saved state, materials,
-    physics bodies, contacts and events, and UI text. Frame N is the world
-    after N steps, so input keyed at step K first shows in frame K + 1.
+  `chibi-build-host`. Its `Rebuild` entry compiles each story with each
+  compiler and plays them, and `Diff` compares two traces.
+- **Observer.** `test_tools --game-observe TRACE ARTIFACT SCENARIO...` reads
+  each artifact on the CPU and replays its scenario from the scenario's
+  scene. For each story, the trace holds:
+  - a `play NAME` line, NAME being the artifact's file name;
+  - what the artifact declares apart from its code: a digest of every byte
+    outside its module records, located by `player_prepared_modules`, then
+    each module's name and ID (`--native` checks that function);
+  - one line per fixed step, from frame 0 (after Begin) to the scenario's
+    last frame: hashes of the ECS world, saved state, materials, physics
+    bodies, contacts and events, and UI text. Frame N is the world after N
+    steps, so input keyed at step K first shows in frame K + 1.
 - **Cases.**
-  - Both compilers rebuild Terrain Lab to the same trace through frame 90.
-  - A variant whose jump is weaker is named at frame 21, with both lines,
-    and its declarations still match.
-  - Differing declarations are named. A missing trace, or traces with no
-    frames, are refused rather than matching each other; the observer removes
-    the trace of an artifact it could not play.
+  - Both compilers rebuild every story to the same trace.
+  - A variant of Motion whose drift is doubled is named in Motion at frame 1,
+    with both lines, and its declarations still match.
+  - Differing declarations are named. A missing trace, or a story with no
+    frames, is refused rather than matched; the observer removes the trace
+    unless every story played.
 
 ## Compiler artifact runtime checks
 

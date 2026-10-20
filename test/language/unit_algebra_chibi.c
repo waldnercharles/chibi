@@ -264,7 +264,7 @@ static bool pack(int b, script_unit value, pin_value *out)
                              .ptr = array } };
     const script_catalog_variant *tag = variant(b, "Unit", "Value");
     REQUIRE(tag && tag->field_count == 2);
-    REQUIRE(!pin_union_value(&input, tag->tag, fields, 2, out));
+    REQUIRE(!compiler_fixture_union(&input, tag->tag, fields, 2, out));
     return true;
 }
 static bool call(int b, const char *name, pin_value *args, int count, pin_value *out)
@@ -399,7 +399,7 @@ TEST_CASE(unit_algebra_parse_matches)
             );
             if (i == 23) {
                 saved = oracle;
-                REQUIRE(!pin_value_snapshot_to_arena(&retained[b][0], &kept[b][0], &result));
+                REQUIRE(!compiler_fixture_snapshot(&retained[b][0], &kept[b][0], &result));
                 REQUIRE(owned(&retained[b][0], &kept[b][0], 0));
             }
         }
@@ -483,7 +483,7 @@ TEST_CASE(unit_algebra_format_matches)
             );
             if (i == 5) {
                 memcpy(saved_text, oracle, strlen(oracle) + 1);
-                REQUIRE(!pin_value_snapshot_to_arena(&retained[b][1], &kept[b][1], &result));
+                REQUIRE(!compiler_fixture_snapshot(&retained[b][1], &kept[b][1], &result));
                 REQUIRE(owned(&retained[b][1], &kept[b][1], 0));
             }
         }

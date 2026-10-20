@@ -161,6 +161,7 @@ struct execution_program
     arena service_names;
     eval_component_reader reader;
     state_value *shared;
+    bool registration_state; /* Inherited by libraries before state initialization. */
     execution_instance **instances;
     execution_instance **row_table;
     int *change_queries;

@@ -4,6 +4,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_package_prepare.h"
 #include "runtime/native_definitions.h"
+#include "types/array.h"
 #include "types/record.h"
 
 /* Test-only mechanics shared by authored compiler differentials. Inputs use
@@ -25,6 +26,13 @@ typedef struct
     int parent, first_child, next_sibling;
 } compiler_fixture_node;
 
+/* pin_value_snapshot_to_arena that boxes every packed array, as call results
+ * are, so differentials read items whatever the runtime packed. */
+int compiler_fixture_snapshot(arena *, pin_value *out, const pin_value *value);
+/* Boxes every packed array reachable from value in place, allocating in storage. */
+void compiler_fixture_box(arena *, const pin_value *);
+/* pin_union_value with boxed payload arrays, for inputs the tests read back. */
+int compiler_fixture_union(arena *, uint64_t tag, const pin_value *, int count, pin_value *out);
 bool compiler_fixture_prepare(compiler_fixture *, const source_package_input *, int count);
 /* Additional private primitives are opt-in; ordinary fixtures keep their catalog. */
 bool compiler_fixture_prepare_packs(

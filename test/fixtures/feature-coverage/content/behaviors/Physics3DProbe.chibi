@@ -1,4 +1,4 @@
-behavior Physics3DProbe {
+Physics3DProbe :: behavior {
     on Tick(dt) {
         place := self.GlobalTransform3D.position
         below := raycast_3d(place, place - vec3(0, 320, 0), 1, self, false)

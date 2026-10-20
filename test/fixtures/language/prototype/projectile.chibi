@@ -1,4 +1,4 @@
-behavior Projectile {
+Projectile :: behavior {
     elapsed := 0
     lifetime := 3
 

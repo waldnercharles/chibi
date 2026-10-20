@@ -406,7 +406,7 @@ static bool environment(int b, const script_unit_analysis_facts *facts, pin_valu
         compiler_fixture_export(&fixture, b, PACKAGE, "Environment")
     );
     REQUIRE(type && type->variant_count == 1 && !strcmp(type->variants[0].name, "Tables"));
-    REQUIRE(!pin_union_value(&input, type->variants[0].tag, a, 15, out));
+    REQUIRE(!compiler_fixture_union(&input, type->variants[0].tag, a, 15, out));
     return true;
 }
 static bool get(const pin_value *value, const char *name, pin_value *out)
@@ -656,7 +656,7 @@ static bool compare(const script_unit_analysis_facts *facts, int retain, script_
         arena_free(&input);
         REQUIRE(owned(&detached, &result, 0) && result_value(&result, tag, &expected));
         if (retain >= 0) {
-            REQUIRE(!pin_value_snapshot_to_arena(&saved_storage[b], &saved[b][retain], &result));
+            REQUIRE(!compiler_fixture_snapshot(&saved_storage[b], &saved[b][retain], &result));
             saved_tag[b] = tag;
         }
     }
@@ -1194,11 +1194,11 @@ TEST_CASE(unit_analysis_actual_analyzer_facts_match)
 {
     REQUIRE(prepared);
     const char *sources[] = {
-        "library M { Run :: fn(x: u, dt: s) -> u { return x + dt; } }",
-        "library M { Run :: fn(x: u, dt: s) -> u { value := x; value *= dt; "
+        "M :: library { Run :: (x: u, dt: s) -> u { return x + dt; } }",
+        "M :: library { Run :: (x: u, dt: s) -> u { value := x; value *= dt; "
         "return value; } }",
-        "library M { Run :: fn(x: s) -> number { return Sum(x, x); } }",
-        "library M { Run :: fn(x: s) -> s { row: Row = {Value: x}; return "
+        "M :: library { Run :: (x: s) -> number { return Sum(x, x); } }",
+        "M :: library { Run :: (x: s) -> s { row: Row = {Value: x}; return "
         "row.Value; } }"
     };
     for (int c = 0; c < 4; c++) {

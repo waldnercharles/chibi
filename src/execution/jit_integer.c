@@ -305,21 +305,24 @@ static void arithmetic(
     struct sljit_compiler *c = m->compiler;
     pin_type type = m->function->slots[i->left];
     int flags = behavior_scalar_size(type) == 8 ? 0 : SLJIT_32;
+    bool signed_type = behavior_scalar_signed(type);
     if (i->op == BF_ADD || i->op == BF_SUB || i->op == BF_MUL) {
-        int left = m->registers[i->left], right = m->registers[i->right];
+        load(m, i->left, SLJIT_R0);
+        load(m, i->right, SLJIT_R1);
         sljit_emit_op2(
             c,
             (i->op == BF_ADD   ? SLJIT_ADD
              : i->op == BF_SUB ? SLJIT_SUB
                                : SLJIT_MUL) |
                 flags,
-            dest,
-            offset,
-            left ? left : SLJIT_MEM1(SLJIT_SP),
-            left ? 0 : i->left * sizeof(double),
-            right ? right : SLJIT_MEM1(SLJIT_SP),
-            right ? 0 : i->right * sizeof(double)
+            SLJIT_R0,
+            0,
+            SLJIT_R0,
+            0,
+            SLJIT_R1,
+            0
         );
+        sljit_emit_op1(c, behavior_jit_integer_move(type), dest, offset, SLJIT_R0, 0);
         return;
     }
     load(m, i->left, SLJIT_R0);
@@ -328,23 +331,37 @@ static void arithmetic(
     }
     if (i->op == BF_DIV || i->op == BF_MOD) {
         struct sljit_jump *zero = sljit_emit_cmp(c, SLJIT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, 0);
-        struct sljit_jump *
-            valid = sljit_emit_cmp(c, SLJIT_NOT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, -1);
+        struct sljit_jump
+            *valid = signed_type
+                       ? sljit_emit_cmp(c, SLJIT_NOT_EQUAL | flags, SLJIT_R1, 0, SLJIT_IMM, -1)
+                       : sljit_emit_jump(c, SLJIT_JUMP);
         /* SLJIT negates compare immediates, which INT64_MIN cannot survive. */
-        static const sljit_sw minimum = INT64_MIN;
-        struct sljit_jump *not_min = sljit_emit_cmp(
-            c,
-            SLJIT_NOT_EQUAL | flags,
-            SLJIT_R0,
-            0,
-            type == PIN_I32 ? SLJIT_IMM : SLJIT_MEM0(),
-            type == PIN_I32 ? INT32_MIN : (sljit_sw)&minimum
-        );
+        static const sljit_sw wide_minimum = INT64_MIN;
+        bool wide = behavior_scalar_minimum(type) == INT64_MIN;
+        struct sljit_jump *not_min = signed_type
+                                       ? sljit_emit_cmp(
+                                             c,
+                                             SLJIT_NOT_EQUAL | flags,
+                                             SLJIT_R0,
+                                             0,
+                                             wide ? SLJIT_MEM0() : SLJIT_IMM,
+                                             wide ? (sljit_sw)&wide_minimum
+                                                  : (sljit_sw)behavior_scalar_minimum(type)
+                                         )
+                                       : NULL;
         bind(c, zero);
         behavior_jit_failure(m, i, BEHAVIOR_FUNCTION_DATA);
         bind(c, valid);
-        bind(c, not_min);
-        sljit_emit_op0(c, (i->op == BF_MOD || i->target >= 0 ? SLJIT_DIVMOD_SW : SLJIT_DIV_SW) | flags);
+        if (not_min) {
+            bind(c, not_min);
+        }
+        bool modulo = i->op == BF_MOD || i->target >= 0;
+        sljit_emit_op0(
+            c,
+            (signed_type ? (modulo ? SLJIT_DIVMOD_SW : SLJIT_DIV_SW)
+                         : (modulo ? SLJIT_DIVMOD_UW : SLJIT_DIV_UW)) |
+                flags
+        );
         if (i->target >= 0) {
             /* The secondary definition currently spills; the GP interval
              * allocator assigns the primary result independently. */
@@ -361,11 +378,14 @@ static void arithmetic(
         return;
     }
     if (i->op == BF_FLAGS || (i->op >= BF_LT && i->op <= BF_NE)) {
-        int condition = i->op == BF_FLAGS
-                          ? SLJIT_NOT_ZERO
-                          : (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
+        int condition = i->op == BF_FLAGS ? SLJIT_NOT_ZERO
+                      : signed_type
+                          ? (int[]){ SLJIT_SIG_LESS,    SLJIT_SIG_LESS_EQUAL,
                                      SLJIT_SIG_GREATER, SLJIT_SIG_GREATER_EQUAL,
-                                     SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[i->op - BF_LT];
+                                     SLJIT_EQUAL,       SLJIT_NOT_EQUAL }[i->op - BF_LT]
+                          : (int[]){ SLJIT_LESS,    SLJIT_LESS_EQUAL,
+                                     SLJIT_GREATER, SLJIT_GREATER_EQUAL,
+                                     SLJIT_EQUAL,   SLJIT_NOT_EQUAL }[i->op - BF_LT];
         int set = condition == SLJIT_EQUAL || condition == SLJIT_NOT_EQUAL
                     ? SLJIT_SET_Z
                     : SLJIT_SET(condition & ~1);
@@ -377,7 +397,9 @@ static void arithmetic(
         struct sljit_jump *positive = i->op == BF_ABS
                                         ? sljit_emit_cmp(
                                               c,
-                                              SLJIT_SIG_GREATER_EQUAL | flags,
+                                              (signed_type ? SLJIT_SIG_GREATER_EQUAL
+                                                           : SLJIT_GREATER_EQUAL) |
+                                                  flags,
                                               SLJIT_R0,
                                               0,
                                               SLJIT_IMM,
@@ -392,7 +414,9 @@ static void arithmetic(
         assert(i->op == BF_MIN || i->op == BF_MAX);
         struct sljit_jump *left = sljit_emit_cmp(
             c,
-            (i->op == BF_MIN ? SLJIT_SIG_LESS : SLJIT_SIG_GREATER) | flags,
+            (signed_type ? (i->op == BF_MIN ? SLJIT_SIG_LESS : SLJIT_SIG_GREATER)
+                         : (i->op == BF_MIN ? SLJIT_LESS : SLJIT_GREATER)) |
+                flags,
             SLJIT_R0,
             0,
             SLJIT_R1,

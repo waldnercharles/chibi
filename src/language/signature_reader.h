@@ -6,12 +6,21 @@
 
 #include <tree_sitter/api.h>
 
+/* A type the analyzer evaluated at compile time before reading: a
+ * type_application node, or the dotted name of a generic type's member. */
+typedef struct
+{
+    uint32_t start, end; /* The node's byte range in the read document. */
+    script_type type;
+} script_signature_generic;
 typedef struct
 {
     script_named_facts named;
     const script_function *functions;
     int function_count;
     size_t pointer_size;
+    const script_signature_generic *generics;
+    int generic_count;
 } script_signature_facts;
 typedef struct
 {

@@ -153,22 +153,20 @@ static bool compile_field(int field, int form, behavior_backend backend)
                                      .global_count = 1,
                                      .entity_type = ENTITY_TYPE };
     char source[512], statement[256];
-    if (form == 0) {
-        snprintf(statement, sizeof statement, "answer = set_field(value);");
-    } else {
+    {
         snprintf(
             statement,
             sizeof statement,
             "self.CheckedWrite.%s %s value; answer = self.CheckedWrite.%s;",
             fields[field].name,
-            form == 1 ? "=" : "+=",
+            form == 2 ? "+=" : "=",
             fields[field].name
         );
     }
     snprintf(
         source,
         sizeof source,
-        "behavior Writes { answer: %s = %s; on Tick(value) { %s } }",
+        "Writes :: behavior { answer: %s = %s; on Tick(value) { %s } }",
         script_scalar_name(parameter.type.storage),
         field == 0   ? "false"
         : field == 4 ? "\"\""
@@ -179,10 +177,12 @@ static bool compile_field(int field, int form, behavior_backend backend)
         snprintf(
             source,
             sizeof source,
-            "library Writes { Run :: (value: %s) -> %s { return "
-            "set_field(value); } }",
+            "Writes :: library { Run :: (value: %s) -> %s { "
+            "self.CheckedWrite.%s = value; return self.CheckedWrite.%s; } }",
             script_scalar_name(parameter.type.storage),
-            script_scalar_name(parameter.type.storage)
+            script_scalar_name(parameter.type.storage),
+            fields[field].name,
+            fields[field].name
         );
     }
     syntax = script_parse(source);

@@ -31,13 +31,13 @@ UnitText :: union {
     Unit(value: string, diagnostics: syntax.Diagnostic[])
 }
 
-Empty :: pure fn(environment: Environment, value: named.Value) -> Reading {
+Empty :: (environment: Environment, value: named.Value) -> Reading {
     diagnostics: syntax.Diagnostic[] = [];
     uses: named.Use[] = [];
     publications: constructors.Plan[] = [];
     return Reading.Read(value, false, "", environment, diagnostics, uses, publications);
 }
-Field :: pure fn(tree: Tree, node: int, name: string) -> int {
+Field :: (tree: Tree, node: int, name: string) -> int {
     if (node < 0) {
         return -1;
     }
@@ -53,7 +53,7 @@ Field :: pure fn(tree: Tree, node: int, name: string) -> int {
             return -1;
     }
 }
-Kind :: pure fn(tree: Tree, node: int, name: string) -> bool {
+Kind :: (tree: Tree, node: int, name: string) -> bool {
     if (node < 0) {
         return false;
     }
@@ -62,7 +62,7 @@ Kind :: pure fn(tree: Tree, node: int, name: string) -> bool {
             return nodes[node].kind == name;
     }
 }
-Text :: pure fn(tree: Tree, node: int) -> string {
+Text :: (tree: Tree, node: int) -> string {
     if (node < 0) {
         return "";
     }
@@ -71,7 +71,7 @@ Text :: pure fn(tree: Tree, node: int) -> string {
             return strings.Slice(text, nodes[node].start, nodes[node].end - nodes[node].start);
     }
 }
-Request :: pure fn(tree: Tree, node: int, scope: int, document: int, text: string) -> named.Request {
+Request :: (tree: Tree, node: int, scope: int, document: int, text: string) -> named.Request {
     if (node < 0) {
         request: named.Request = {text: text, scope: scope, start: 0, end: 0, line: 1, column: 1, document: 0};
         return request;
@@ -83,13 +83,13 @@ Request :: pure fn(tree: Tree, node: int, scope: int, document: int, text: strin
             return request;
     }
 }
-Diagnostic :: pure fn(tree: Tree, node: int, document: int, message: string) -> syntax.Diagnostic {
+Diagnostic :: (tree: Tree, node: int, document: int, message: string) -> syntax.Diagnostic {
     request := Request(tree, node, -1, document, "");
     diagnostic: syntax.Diagnostic = {start: request.start, end: request.end, line: request.line,
                                      column: request.column, document: request.document, message: strings.Slice(message, 0, 191)};
     return diagnostic;
 }
-Name :: pure fn(tree: Tree, node: int, document: int) -> Decoded {
+Name :: (tree: Tree, node: int, document: int) -> Decoded {
     diagnostics: syntax.Diagnostic[] = [];
     raw := Text(tree, node);
     if (strings.ByteAt(raw, 0) != 34) {
@@ -102,7 +102,7 @@ Name :: pure fn(tree: Tree, node: int, document: int) -> Decoded {
     }
     return Decoded.Name(decoded.value, diagnostics);
 }
-AddType :: pure fn(types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
+AddType :: (types: named.Type[], ids: uint64[], value: named.Value) -> Indexed {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             slot := length(ids);
@@ -118,7 +118,7 @@ AddType :: pure fn(types: named.Type[], ids: uint64[], value: named.Value) -> In
 // Extend both name lookup and constructor views immediately. Full payload
 // metadata is retained by each typed plan's original-row selections; the ABI
 // materializes these plans in the same order before retiring input owners.
-Publish :: pure fn(environment: Environment, plan: constructors.Plan) -> Environment {
+Publish :: (environment: Environment, plan: constructors.Plan) -> Environment {
     switch plan {
         case .Constructed(value, publish, id, name, definition, size, internal, variants, field_rows, output_ids, diagnostics):
             if (!publish) {
@@ -175,7 +175,7 @@ Publish :: pure fn(environment: Environment, plan: constructors.Plan) -> Environ
             }
     }
 }
-AddUse :: pure fn(environment: Environment, use: named.TypeUse) -> Environment {
+AddUse :: (environment: Environment, use: named.TypeUse) -> Environment {
     switch use {
         case .Absent:
             return environment;
@@ -197,7 +197,7 @@ AddUse :: pure fn(environment: Environment, use: named.TypeUse) -> Environment {
             }
     }
 }
-Resolve :: pure fn(environment: Environment, result: named.Resolution) -> Reading {
+Resolve :: (environment: Environment, result: named.Resolution) -> Reading {
     switch result {
         case .Resolved(storage, container, flags, nominal, parameter, use, diagnostics):
             updated := AddUse(environment, use);
@@ -221,17 +221,17 @@ Resolve :: pure fn(environment: Environment, result: named.Resolution) -> Readin
                                 diagnostics, uses, publications);
     }
 }
-Prefix :: pure fn(reading: Reading, prefix: syntax.Diagnostic[]) -> Reading {
+Prefix :: (reading: Reading, prefix: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             combined := prefix;
-            foreach (item in diagnostics) {
+            for (item in diagnostics) {
                 combined = array_add(combined, item);
             }
             return Reading.Read(value, has_unit, unit, environment, combined, uses, publications);
     }
 }
-Merge :: pure fn(earlier: Reading, later: Reading) -> Reading {
+Merge :: (earlier: Reading, later: Reading) -> Reading {
     switch earlier {
         case .Read(old_value, old_has_unit, old_unit, old_environment, old_diagnostics, old_uses, old_publications):
             switch later {
@@ -239,33 +239,33 @@ Merge :: pure fn(earlier: Reading, later: Reading) -> Reading {
                     all_diagnostics := old_diagnostics;
                     all_uses := old_uses;
                     all_publications := old_publications;
-                    foreach (item in diagnostics) {
+                    for (item in diagnostics) {
                         all_diagnostics = array_add(all_diagnostics, item);
                     }
-                    foreach (item in uses) {
+                    for (item in uses) {
                         all_uses = array_add(all_uses, item);
                     }
-                    foreach (item in publications) {
+                    for (item in publications) {
                         all_publications = array_add(all_publications, item);
                     }
                     return Reading.Read(value, has_unit, unit, environment, all_diagnostics, all_uses, all_publications);
             }
     }
 }
-Replace :: pure fn(reading: Reading, value: named.Value) -> Reading {
+Replace :: (reading: Reading, value: named.Value) -> Reading {
     switch reading {
         case .Read(old_value, has_unit, unit, environment, diagnostics, uses, publications):
             return Reading.Read(value, has_unit, unit, environment, diagnostics, uses, publications);
     }
 }
-Construct :: pure fn(reading: Reading, plan: constructors.Plan) -> Reading {
+Construct :: (reading: Reading, plan: constructors.Plan) -> Reading {
     switch reading {
         case .Read(old_value, has_unit, unit, environment, old_diagnostics, uses, old_publications):
             switch plan {
                 case .Constructed(value, publish, id, name, definition, size, internal, variants, fields, ids, diagnostics):
                     all_diagnostics := old_diagnostics;
                     publications := old_publications;
-                    foreach (item in diagnostics) {
+                    for (item in diagnostics) {
                         all_diagnostics = array_add(all_diagnostics, item);
                     }
                     if (publish) {
@@ -275,7 +275,7 @@ Construct :: pure fn(reading: Reading, plan: constructors.Plan) -> Reading {
             }
     }
 }
-Modifiers :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
+Modifiers :: (reading: Reading, tree: Tree, node: int) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             switch value {
@@ -326,21 +326,26 @@ Work :: struct {
     member_start: int;
     name: string;
 }
-WorkValue :: pure fn(node: int, kind: int, child: int, member_start: int, name: string) -> Work {
+WorkValue :: (node: int, kind: int, child: int, member_start: int, name: string) -> Work {
     row: Work = {node: node, kind: kind, child: child, member_start: member_start, name: name};
     return row;
 }
-AppendDiagnostics :: pure fn(reading: Reading, added: syntax.Diagnostic[]) -> Reading {
+AppendDiagnostics :: (reading: Reading, added: syntax.Diagnostic[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             combined := diagnostics;
-            foreach (item in added) {
+            for (item in added) {
                 combined = array_add(combined, item);
             }
             return Reading.Read(value, has_unit, unit, environment, combined, uses, publications);
     }
 }
-Wrap :: pure fn(reading: Reading, tree: Tree, node: int, name: string) -> Reading {
+Wrap :: (reading: Reading, tree: Tree, node: int, name: string, document: int) -> Reading {
+    if (name == "map") {
+        errors: syntax.Diagnostic[] = [];
+        errors = array_add(errors, Diagnostic(tree, node, document, "Use Map<K, V> for associative maps"));
+        reading = AppendDiagnostics(reading, errors);
+    }
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             switch value {
@@ -364,7 +369,7 @@ Wrap :: pure fn(reading: Reading, tree: Tree, node: int, name: string) -> Readin
             }
     }
 }
-FinishTask :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
+FinishTask :: (reading: Reading, tree: Tree, node: int) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             switch environment {
@@ -380,7 +385,7 @@ FinishTask :: pure fn(reading: Reading, tree: Tree, node: int) -> Reading {
             }
     }
 }
-FinishUnion :: pure fn(reading: Reading, members: named.Value[]) -> Reading {
+FinishUnion :: (reading: Reading, members: named.Value[]) -> Reading {
     switch reading {
         case .Read(value, has_unit, unit, environment, diagnostics, uses, publications):
             switch environment {
@@ -390,7 +395,7 @@ FinishUnion :: pure fn(reading: Reading, members: named.Value[]) -> Reading {
                             rows := types;
                             pool := ids;
                             indices: int[] = [];
-                            foreach (item in members) {
+                            for (item in members) {
                                 switch AddType(rows, pool, item) {
                                     case .Added(new_rows, new_pool, type_index):
                                         rows = new_rows;
@@ -404,7 +409,7 @@ FinishUnion :: pure fn(reading: Reading, members: named.Value[]) -> Reading {
             }
     }
 }
-NextMember :: pure fn(tree: Tree, first: int) -> int {
+NextMember :: (tree: Tree, first: int) -> int {
     switch tree {
         case .Raw(nodes, fields, named_flags, extra_flags, source):
             child := first;
@@ -417,7 +422,7 @@ NextMember :: pure fn(tree: Tree, first: int) -> int {
             return -1;
     }
 }
-Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
+Type :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
     reading := Empty(environment, named.Builtin("invalid"));
     frames: Work[] = [];
     members: named.Value[] = [];
@@ -438,7 +443,7 @@ Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, doc
                         continue;
                     }
                     if (work.kind == 2) {
-                        reading = Wrap(reading, tree, work.node, work.name);
+                        reading = Wrap(reading, tree, work.node, work.name, document);
                         continue;
                     }
                     switch reading {
@@ -522,7 +527,7 @@ Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, doc
                                         if (argument < 0) {
                                             errors: syntax.Diagnostic[] = [];
                                             errors = array_add(errors, Diagnostic(tree, position, document, format_text("Type '{}' requires a type argument", name)));
-                                            reading = Wrap(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, name);
+                                            reading = Wrap(Replace(AppendDiagnostics(reading, errors), named.Builtin("invalid")), tree, position, name, document);
                                             ready = true;
                                             continue;
                                         }
@@ -566,23 +571,23 @@ Type :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, doc
     }
     return reading;
 }
-Shorthand :: pure fn(name: string) -> bool {
+Shorthand :: (name: string) -> bool {
     names: string[] = ["u", "px", "m", "s", "ms", "rad", "deg", "Hz", "fps", "bpm", "EV", "dB", "kg", "N"];
-    foreach (item in names) {
+    for (item in names) {
         if (item == name) {
             return true;
         }
     }
     return false;
 }
-Numeric :: pure fn(value: named.Value) -> bool {
+Numeric :: (value: named.Value) -> bool {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             return container == 0 && (nominal == 0 || (flags & 32) != 0) &&
                    storage >= 2 && storage <= 11 && (flags & 75) == 0;
     }
 }
-ReadUnit :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, document: int) -> UnitText {
+ReadUnit :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> UnitText {
     value := "";
     diagnostics: syntax.Diagnostic[] = [];
     if (node >= 0) {
@@ -618,20 +623,20 @@ ReadUnit :: pure fn(environment: Environment, tree: Tree, node: int, scope: int,
     }
     return UnitText.Unit(value, diagnostics);
 }
-WithUnit :: pure fn(reading: Reading, tree: Tree, node: int, scope: int, document: int) -> Reading {
+WithUnit :: (reading: Reading, tree: Tree, node: int, scope: int, document: int) -> Reading {
     switch reading {
         case .Read(value, old_has_unit, old_unit, environment, diagnostics, uses, publications):
             switch ReadUnit(environment, tree, node, scope, document) {
                 case .Unit(unit, errors):
                     all_diagnostics := diagnostics;
-                    foreach (item in errors) {
+                    for (item in errors) {
                         all_diagnostics = array_add(all_diagnostics, item);
                     }
                     return Reading.Read(value, true, unit, environment, all_diagnostics, uses, publications);
             }
     }
 }
-Signature :: pure fn(environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
+Signature :: (environment: Environment, tree: Tree, node: int, scope: int, document: int) -> Reading {
     if (Kind(tree, node, "unit")) {
         return WithUnit(Empty(environment, named.Builtin("number")), tree, node, scope, document);
     }

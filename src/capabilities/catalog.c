@@ -157,8 +157,44 @@ const char *script_scalar_name(pin_type storage)
     };
     return storage >= PIN_FLOW && storage <= PIN_UNION ? names[storage] : "error";
 }
+const char *script_reference_type_name(script_reference_kind kind)
+{
+    switch (kind) {
+        case SCRIPT_REFERENCE_PROTOTYPE: return "Prototype";
+        case SCRIPT_REFERENCE_COMPONENT: return "Component";
+        case SCRIPT_REFERENCE_RELATIONSHIP: return "Relationship";
+        case SCRIPT_REFERENCE_NONE: return NULL;
+    }
+    return NULL;
+}
+script_type script_reference_type(script_reference_kind kind)
+{
+    const char *name = script_reference_type_name(kind);
+    assert(name);
+    return (script_type){ .storage = kind == SCRIPT_REFERENCE_RELATIONSHIP ? PIN_U64 : PIN_NAME,
+                          .nominal = script_catalog_id("symbol-type", name) };
+}
+script_reference_kind script_reference_kind_for_type(script_type type)
+{
+    if (!type.nominal || type.container != PIN_CONTAINER_SINGLE) {
+        return SCRIPT_REFERENCE_NONE;
+    }
+    for (int kind = SCRIPT_REFERENCE_PROTOTYPE; kind <= SCRIPT_REFERENCE_RELATIONSHIP;
+         kind++) {
+        if (type.nominal == script_reference_type((script_reference_kind)kind).nominal) {
+            return (script_reference_kind)kind;
+        }
+    }
+    return SCRIPT_REFERENCE_NONE;
+}
 script_type script_builtin_type(const char *name)
 {
+    for (int kind = SCRIPT_REFERENCE_PROTOTYPE; kind <= SCRIPT_REFERENCE_RELATIONSHIP;
+         kind++) {
+        if (!strcmp(name, script_reference_type_name((script_reference_kind)kind))) {
+            return script_reference_type((script_reference_kind)kind);
+        }
+    }
     if (!strcmp(name, "Cancelled")) {
         return script_cancelled_type();
     }
@@ -193,11 +229,28 @@ bool script_type_equal(script_type a, script_type b)
                (a.flags & SCRIPT_TYPE_OPTIONAL) == (b.flags & SCRIPT_TYPE_OPTIONAL);
     }
     return a.storage == b.storage && a.container == b.container &&
-           a.nominal == b.nominal &&
+           a.collection == b.collection && a.nominal == b.nominal &&
            (!(a.flags & SCRIPT_TYPE_LITERAL) ||
             !(b.flags & SCRIPT_TYPE_LITERAL) || a.parameter == b.parameter) &&
            (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS)) ==
                (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
+}
+script_type script_catalog_element_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *descriptor = script_catalog_type_by_id(catalog, type.collection);
+    if (descriptor) {
+        return descriptor->element_type;
+    }
+    type.container = PIN_CONTAINER_SINGLE;
+    type.collection = 0;
+    return type;
+}
+script_type script_catalog_key_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *descriptor = script_catalog_type_by_id(catalog, type.collection);
+    return descriptor && descriptor->container == PIN_CONTAINER_MAP
+             ? descriptor->key_type
+             : (script_type){ .flags = SCRIPT_TYPE_ERROR };
 }
 bool script_type_numeric(script_type type)
 {
@@ -216,6 +269,16 @@ bool script_type_assignable(script_type expected, script_type actual)
 {
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) {
         return true;
+    }
+    if (script_reference_kind_for_type(expected) != SCRIPT_REFERENCE_NONE ||
+        script_reference_kind_for_type(actual) != SCRIPT_REFERENCE_NONE) {
+        if ((actual.flags & SCRIPT_TYPE_OPTIONAL) &&
+            !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+            return false;
+        }
+        expected.flags &= ~SCRIPT_TYPE_OPTIONAL;
+        actual.flags &= ~SCRIPT_TYPE_OPTIONAL;
+        return script_type_equal(expected, actual);
     }
     if (expected.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
         expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
@@ -340,7 +403,7 @@ uint64_t script_type_tag(script_type type)
     if (type.flags & SCRIPT_TYPE_LITERAL) {
         return type.parameter;
     }
-    char name[96];
+    char name[128];
     snprintf(
         name,
         sizeof name,
@@ -351,6 +414,15 @@ uint64_t script_type_tag(script_type type)
         (unsigned long long)(type.flags & SCRIPT_TYPE_TASK ? type.parameter : 0),
         type.flags & (SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK | SCRIPT_TYPE_OPTIONAL)
     );
+    if (type.collection) {
+        size_t length = strlen(name);
+        snprintf(
+            name + length,
+            sizeof name - length,
+            ":%llu",
+            (unsigned long long)type.collection
+        );
+    }
     return script_catalog_id("union-type", name);
 }
 
@@ -384,6 +456,23 @@ static uint64_t abi_type_shape(
     hash = abi_word(hash, type.nominal);
     hash = abi_word(hash, type.parameter);
     hash = abi_word(hash, type.flags);
+    hash = abi_word(hash, type.collection);
+    if (type.collection && depth < 64) {
+        const script_catalog_type *collection = script_catalog_type_by_id(catalog, type.collection);
+        if (collection) {
+            hash = abi_word(hash, collection->container);
+            for (int i = 0; i < depth; i++) {
+                if (parents[i] == type.collection) {
+                    return hash;
+                }
+            }
+            parents[depth++] = type.collection;
+            if (collection->container == PIN_CONTAINER_MAP) {
+                hash = abi_type_shape(hash, catalog, collection->key_type, parents, depth);
+            }
+            hash = abi_type_shape(hash, catalog, collection->element_type, parents, depth);
+        }
+    }
     if ((type.flags & SCRIPT_TYPE_TASK) && type.parameter && depth < 64) {
         const script_catalog_type *result = script_catalog_type_by_id(catalog, type.parameter);
         if (result) {

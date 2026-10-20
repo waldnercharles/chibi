@@ -281,7 +281,7 @@ static bool pack(int b, const script_constructor_facts *facts, int symbol_count,
     }
     const script_catalog_variant *form = variant(b, PACKAGE, "Environment", "Tables");
     REQUIRE(form && form->field_count == 8);
-    REQUIRE(!pin_union_value(&input, form->tag, tables, 8, &values[0]));
+    REQUIRE(!compiler_fixture_union(&input, form->tag, tables, 8, &values[0]));
     if (q.op == UNION) {
         values[1] = array(PIN_I32, q.count);
         REQUIRE(values[1].ptr);
@@ -545,7 +545,7 @@ static bool compare(
             plan_value(&result, form->tag, typed->tag, &expected)
         );
         if (retain) {
-            REQUIRE(!pin_value_snapshot_to_arena(&retained[b], &kept[b], &result));
+            REQUIRE(!compiler_fixture_snapshot(&retained[b], &kept[b], &result));
             kept_tags[b] = form->tag;
             kept_value_tags[b] = typed->tag;
         }
@@ -853,11 +853,12 @@ TEST_CASE(type_constructor_actual_analyzer_facts_match)
 {
     REQUIRE(prepared);
     static const char *sources[] = {
-        "library Facts { Run :: fn(value: int | number) -> int { return 0; } }",
-        "library Facts { Run :: fn(pending: task<number>) {} }",
-        "library Facts { Work :: fn() -> (Count: int, Message: string) { "
-        "yield; return(3, \"ok\"); } Run :: fn() { pending := Work(); } }",
-        "library Facts { Run :: fn(pending: task<number>) -> number { result "
+        "Facts :: library { Run :: (value: int | number) -> int { return 0; } "
+        "}",
+        "Facts :: library { Run :: (pending: task<number>) {} }",
+        "Facts :: library { Work :: () -> (Count: int, Message: string) { "
+        "yield; return(3, \"ok\"); } Run :: () { pending := Work(); } }",
+        "Facts :: library { Run :: (pending: task<number>) -> number { result "
         ":= await pending; if result is not Cancelled { return result; } "
         "return 0; } }",
     };

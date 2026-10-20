@@ -42,7 +42,7 @@ Result :: union {
 
 // Field names align with raw nodes and describe each node's edge from its
 // parent. Package headers and imports use direct visible field edges.
-FindField :: pure fn(nodes: syntax.Node[], fields: string[], node: int, name: string) -> int {
+FindField :: (nodes: syntax.Node[], fields: string[], node: int, name: string) -> int {
     child := nodes[node].first_child;
     while (child >= 0) {
         if (fields[child] == name) {
@@ -53,8 +53,8 @@ FindField :: pure fn(nodes: syntax.Node[], fields: string[], node: int, name: st
     return -1;
 }
 
-Extract :: pure fn(nodes: syntax.Node[], fields: string[], text: string,
-                   root: int, file: int, path: string, directory: string) -> Result {
+Extract :: (nodes: syntax.Node[], fields: string[], text: string,
+            root: int, file: int, path: string, directory: string) -> Result {
     diagnostics := syntax.Diagnose(nodes, root);
     if (length(diagnostics) > 0) {
         return Result.Rejected(diagnostics[0]);

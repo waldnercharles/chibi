@@ -1,5 +1,6 @@
 #include "authoring/source_intelligence.h"
 
+#include "authoring/source_literal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -19,6 +20,7 @@ static bool kind(TSNode node, const char *name)
 {
     return !ts_node_is_null(node) && !strcmp(ts_node_type(node), name);
 }
+static TSNode field(TSNode node, const char *name);
 static const script_symbol *symbol(const authoring_navigation *index, authoring_target target)
 {
     for (int d = 0; d < authoring_navigation_document_count(index); d++) {
@@ -88,6 +90,9 @@ static const char *lexical(TSNode n, const char *text)
         return "tok-number";
     }
     if (kind(n, "identifier")) {
+        if (kind(ts_node_parent(n), "type_binder")) {
+            return "tok-type";
+        }
         return "tok-ident";
     }
     if (!ts_node_is_named(n) && isalpha((unsigned char)text[ts_node_start_byte(n)])) {
@@ -95,23 +100,22 @@ static const char *lexical(TSNode n, const char *text)
     }
     return NULL;
 }
-authoring_highlight *authoring_source_highlights(const authoring_navigation *index, int document, int *count)
+authoring_highlight *authoring_source_syntax_highlights(const script_syntax *syntax, int *count)
 {
-    assert(index && count);
-    const authoring_document *doc = authoring_navigation_document_at(index, document);
+    assert(count);
     *count = 0;
-    if (!doc->syntax) {
+    if (!syntax) {
         return NULL;
     }
     authoring_highlight *items = NULL;
-    TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(doc->syntax->tree));
+    TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(syntax->tree));
     for (;;) {
         if (ts_tree_cursor_goto_first_child(&cursor)) {
             continue;
         }
         TSNode n = ts_tree_cursor_current_node(&cursor);
         if (ts_node_end_byte(n) > ts_node_start_byte(n)) {
-            const char *cls = lexical(n, doc->syntax->text);
+            const char *cls = lexical(n, syntax->text);
             if (cls) {
                 apush(items, ((authoring_highlight){ script_node_range(n), cls }));
             }
@@ -124,19 +128,6 @@ authoring_highlight *authoring_source_highlights(const authoring_navigation *ind
     }
 scanned:
     ts_tree_cursor_delete(&cursor);
-    for (int r = 0; r < authoring_navigation_reference_count(index); r++) {
-        const authoring_reference *ref = authoring_navigation_reference_at(index, r);
-        if (ref->location.document != document) {
-            continue;
-        }
-        script_range range = ref->location.range;
-        for (int i = 0; i < acount(items); i++) {
-            if (items[i].range.start >= range.start &&
-                items[i].range.end <= range.end) {
-                items[i].cls = highlight(index, ref->target);
-            }
-        }
-    }
     *count = acount(items);
     authoring_highlight *out = xmalloc((size_t)(*count + 1) * sizeof *out);
     if (*count) {
@@ -144,6 +135,26 @@ scanned:
     }
     afree(items);
     return out;
+}
+authoring_highlight *authoring_source_highlights(const authoring_navigation *index, int document, int *count)
+{
+    assert(index && count);
+    const authoring_document *doc = authoring_navigation_document_at(index, document);
+    authoring_highlight *items = authoring_source_syntax_highlights(doc->syntax, count);
+    for (int r = 0; r < authoring_navigation_reference_count(index); r++) {
+        const authoring_reference *ref = authoring_navigation_reference_at(index, r);
+        if (ref->location.document != document) {
+            continue;
+        }
+        script_range range = ref->location.range;
+        for (int i = 0; i < *count; i++) {
+            if (items[i].range.start >= range.start &&
+                items[i].range.end <= range.end) {
+                items[i].cls = highlight(index, ref->target);
+            }
+        }
+    }
+    return items;
 }
 static void append(char **out, const char *text)
 {
@@ -166,16 +177,48 @@ static void append(char **out, const char *text)
 }
 static void type_text(char **out, const script_catalog *catalog, script_type type)
 {
+    if (type.flags & SCRIPT_TYPE_REFERENCE) {
+        append(out, "ref ");
+        type.flags &= ~SCRIPT_TYPE_REFERENCE;
+    }
+    if (type.container == PIN_CONTAINER_MAP) {
+        append(out, "Map<");
+        type_text(out, catalog, script_catalog_key_type(catalog, type));
+        append(out, ", ");
+        type_text(out, catalog, script_catalog_element_type(catalog, type));
+        append(out, ">");
+        if (type.flags & SCRIPT_TYPE_OPTIONAL) {
+            append(out, "?");
+        }
+        return;
+    }
+    if (type.container == PIN_CONTAINER_ARRAY && type.collection) {
+        type_text(out, catalog, script_catalog_element_type(catalog, type));
+        append(out, "[]");
+        if (type.flags & SCRIPT_TYPE_OPTIONAL) {
+            append(out, "?");
+        }
+        return;
+    }
     const script_catalog_type *named = script_catalog_type_by_id(catalog, type.nominal);
-    append(out, named ? named->name : script_scalar_name(type.storage));
+    script_reference_kind reference = script_reference_kind_for_type(type);
+    if (reference != SCRIPT_REFERENCE_NONE) {
+        append(out, script_reference_type_name(reference));
+    } else if (named && named->source_name && strchr(named->source_name, '(')) {
+        append(out, named->source_name);
+    } else if (named) {
+        const char *name = named->source_name ? named->source_name : named->name;
+        char *spelling = authoring_source_identifier(name, NULL, 0);
+        append(out, spelling ? spelling : name);
+        free(spelling);
+    } else {
+        append(out, script_scalar_name(type.storage));
+    }
     if (type.container == PIN_CONTAINER_ARRAY) {
         append(out, "[]");
     }
     if (type.container == PIN_CONTAINER_SET) {
         append(out, " set");
-    }
-    if (type.container == PIN_CONTAINER_MAP) {
-        append(out, " map");
     }
     if (type.flags & SCRIPT_TYPE_OPTIONAL) {
         append(out, "?");
@@ -254,14 +297,134 @@ static char *signature(const script_catalog *catalog, const script_catalog_capab
     }
     return finish_text(out);
 }
+static bool specialization(const script_catalog *catalog, uint64_t id)
+{
+    for (int i = 0; i < catalog->specialization_count; i++) {
+        if (catalog->specializations[i].id == id) {
+            return true;
+        }
+    }
+    return false;
+}
+static char *template_signature(const script_catalog *catalog, const script_catalog_template *definition)
+{
+    char *out = NULL;
+    append(&out, definition->name);
+    append(&out, "(");
+    for (int i = 0; i < definition->parameter_count; i++) {
+        const script_template_parameter *parameter = &definition->parameters[i];
+        if (i) {
+            append(&out, ", ");
+        }
+        if (parameter->comptime) {
+            append(&out, "$");
+        }
+        append(&out, parameter->name);
+        append(&out, ": ");
+        if (parameter->type_value) {
+            append(&out, "Type");
+        } else if (parameter->binder) {
+            if (parameter->type.flags & SCRIPT_TYPE_REFERENCE) {
+                append(&out, "ref ");
+            }
+            append(&out, parameter->binds_type ? "$" : "");
+            append(&out, parameter->binder);
+            if (parameter->type.container == PIN_CONTAINER_ARRAY) {
+                append(&out, "[]");
+            }
+            if (parameter->type.flags & SCRIPT_TYPE_OPTIONAL) {
+                append(&out, "?");
+            }
+        } else {
+            type_text(&out, catalog, parameter->type);
+        }
+    }
+    append(&out, ")");
+    if (definition->kind == SCRIPT_TEMPLATE_RECORD) {
+        append(&out, " :: struct");
+    } else if (definition->kind == SCRIPT_TEMPLATE_TYPE_FUNCTION) {
+        append(&out, " -> Type");
+    }
+    return finish_text(out);
+}
+static char *template_detail(const authoring_navigation *index, const script_catalog_template *definition)
+{
+    char *signature = template_signature(authoring_navigation_catalog(index), definition);
+    const authoring_reference *location = authoring_navigation_definition(
+        index,
+        (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD ? AUTHORING_TYPE
+                                                                       : AUTHORING_CALLABLE,
+                            -1,
+                            definition->id,
+                            0 }
+    );
+    for (int d = 0; d < authoring_navigation_document_count(index); d++) {
+        const authoring_document *document = authoring_navigation_document_at(index, d);
+        bool owner = location
+                       ? location->location.document == d
+                       : document->analysis && definition->owner &&
+                             !strcmp(document->analysis->identity, definition->owner);
+        if (!owner || definition->start < 0 || definition->end <= definition->start) {
+            continue;
+        }
+        script_syntax *parsed = document->syntax
+                                  ? NULL
+                                  : script_parse(
+                                        authoring_navigation_document_text(index, d)
+                                    );
+        const script_syntax *syntax = document->syntax ? document->syntax : parsed;
+        TSNode root = ts_tree_root_node(syntax->tree);
+        TSNode declaration = ts_node_named_descendant_for_byte_range(
+            root,
+            (uint32_t)definition->start,
+            (uint32_t)definition->end
+        );
+        TSNode comment = ts_node_prev_named_sibling(declaration);
+        if (kind(comment, "comment")) {
+            char *out = NULL;
+            append(&out, signature);
+            append(&out, "\n");
+            script_range range = script_node_range(comment);
+            int size = range.end - range.start;
+            if (size <= MAX_DETAIL) {
+                char *text = xmalloc((size_t)size + 1);
+                memcpy(text, syntax->text + range.start, (size_t)size);
+                text[size] = 0;
+                append(&out, text);
+                free(text);
+            }
+            script_syntax_free(parsed);
+            free(signature);
+            return finish_text(out);
+        }
+        script_syntax_free(parsed);
+    }
+    return signature;
+}
 static char *symbol_detail(const authoring_navigation *index, authoring_target target)
 {
     const script_catalog *catalog = authoring_navigation_catalog(index);
+    const script_catalog_template
+        *definition = authoring_navigation_template(index, target.id);
+    if (definition) {
+        return template_detail(index, definition);
+    }
     const script_symbol *s = symbol(index, target);
     if (!s) {
         return NULL;
     }
     if (s->kind != SCRIPT_FUNCTION && s->kind != SCRIPT_MACRO) {
+        if (s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE) {
+            char *out = NULL;
+            append(&out, s->name);
+            append(&out, ": retain ");
+            type_text(&out, catalog, s->type);
+            if (s->unit) {
+                append(&out, " ");
+                append(&out, s->unit);
+            }
+            return finish_text(out);
+        }
         return declaration(catalog, s->name, s->type, s->unit);
     }
     for (int d = 0; d < authoring_navigation_document_count(index); d++) {
@@ -313,20 +476,67 @@ static char *symbol_detail(const authoring_navigation *index, authoring_target t
     }
     return declaration(catalog, s->name, s->type, s->unit);
 }
+static char *node_text(const authoring_document *doc, TSNode node)
+{
+    script_range range = script_node_range(node);
+    char *text = xmalloc((size_t)(range.end - range.start) + 1);
+    memcpy(text, doc->syntax->text + range.start, (size_t)(range.end - range.start));
+    text[range.end - range.start] = 0;
+    return text;
+}
+static char *syntax_hover(const authoring_document *doc, int offset)
+{
+    if (!doc->syntax || offset < 0 || offset >= (int)strlen(doc->syntax->text)) {
+        return NULL;
+    }
+    TSNode node = ts_node_descendant_for_byte_range(
+        ts_tree_root_node(doc->syntax->tree),
+        (uint32_t)offset,
+        (uint32_t)offset
+    );
+    for (TSNode p = node; !ts_node_is_null(p); p = ts_node_parent(p)) {
+        const char *suffix = kind(p, "type_binder")
+                               ? ": Type (inferred from argument)"
+                           : kind(p, "prototype_declaration") ? " :: prototype"
+                           : kind(p, "relationship_declaration")
+                               ? " :: relationship"
+                           : kind(p, "record_declaration") ? " :: struct"
+                                                           : NULL;
+        if (!suffix) {
+            continue;
+        }
+        TSNode name = field(p, "name");
+        if (offset < (int)ts_node_start_byte(name) ||
+            offset >= (int)ts_node_end_byte(name)) {
+            continue;
+        }
+        char *spelling = node_text(doc, name), *out = NULL;
+        append(&out, spelling);
+        append(&out, suffix);
+        free(spelling);
+        return finish_text(out);
+    }
+    return NULL;
+}
 char *authoring_source_hover(const authoring_navigation *index, int document, int offset)
 {
     const authoring_reference *ref = authoring_navigation_at(index, document, offset);
     if (!ref) {
-        return NULL;
+        return syntax_hover(authoring_navigation_document_at(index, document), offset);
     }
     const script_catalog *catalog = authoring_navigation_catalog(index);
+    const script_catalog_template
+        *definition = authoring_navigation_template(index, ref->target.id);
+    if (definition) {
+        return template_detail(index, definition);
+    }
     if (ref->target.kind == AUTHORING_PROTOTYPE) {
         const script_catalog_capability
             *cap = script_catalog_capability_by_id(catalog, ref->target.id);
         if (cap && cap->kind == SCRIPT_CAPABILITY_PROTOTYPE) {
             char *out = NULL;
-            append(&out, "prototype ");
             append(&out, cap->name);
+            append(&out, " :: prototype");
             return finish_text(out);
         }
     }
@@ -446,19 +656,26 @@ static void offer(
     script_type type
 )
 {
-    if (out->count == MAX_ITEMS || match_score(label, word, length) < 0) {
+    if (out->count == MAX_ITEMS) {
+        return;
+    }
+    char *spelling = kind == AUTHORING_COMPLETE_TYPE && strchr(insert, '(')
+                       ? xstrdup(insert)
+                       : authoring_source_identifier(insert, NULL, 0);
+    if (!spelling || match_score(spelling, word, length) < 0) {
+        free(spelling);
         return;
     }
     for (int i = 0; i < out->count; i++) {
-        if (!strcmp(out->items[i].label, label)) {
+        if (!strcmp(out->items[i].label, spelling)) {
+            free(spelling);
             return;
         }
     }
+    (void)label;
     apush(
         out->items,
-        ((
-            authoring_completion
-        ){ target, xstrdup(label), xstrdup(detail), xstrdup(insert), kind, type })
+        ((authoring_completion){ target, xstrdup(spelling), xstrdup(detail), spelling, kind, type })
     );
     out->count = acount(out->items);
 }
@@ -735,9 +952,40 @@ static bool library_members(
             break;
         }
     }
+    bool template_library = false;
+    size_t receiver_length = strlen(receiver);
+    for (int i = 0; i < catalog->template_count; i++) {
+        const script_catalog_template *definition = &catalog->templates[i];
+        if (strncmp(definition->name, receiver, receiver_length) ||
+            definition->name[receiver_length] != '.') {
+            continue;
+        }
+        template_library = true;
+        const char *name = definition->name + receiver_length + 1;
+        char *detail = template_detail(index, definition);
+        offer(
+            out,
+            word,
+            length,
+            name,
+            detail,
+            name,
+            definition->kind == SCRIPT_TEMPLATE_RECORD ? AUTHORING_COMPLETE_TYPE
+                                                       : AUTHORING_COMPLETE_CALLABLE,
+            (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD
+                                    ? AUTHORING_TYPE
+                                    : AUTHORING_CALLABLE,
+                                -1,
+                                definition->id,
+                                0 },
+            (script_type){ 0 }
+        );
+        free(detail);
+    }
     free(receiver);
     if (!library) {
-        return false;
+        rank_completions(out, word, length);
+        return template_library;
     }
     for (int i = 0; i < library->symbol_count; i++) {
         const script_symbol *s = &library->symbols[i];
@@ -746,6 +994,9 @@ static bool library_members(
             continue;
         }
         uint64_t id = s->capability ? s->capability : s->id;
+        if (specialization(catalog, id) || authoring_navigation_template(index, id)) {
+            continue;
+        }
         const script_catalog_capability *cap = script_catalog_capability_by_id(catalog, id);
         if (!cap) {
             continue;
@@ -764,6 +1015,135 @@ static bool library_members(
         );
         free(detail);
     }
+    for (int i = 0; i < catalog->template_count; i++) {
+        const script_catalog_template *definition = &catalog->templates[i];
+        if (!definition->owner || !library->identity ||
+            strcmp(definition->owner, library->identity)) {
+            continue;
+        }
+        const char *name = strrchr(definition->name, '.');
+        name = name ? name + 1 : definition->name;
+        char *detail = template_detail(index, definition);
+        offer(
+            out,
+            word,
+            length,
+            name,
+            detail,
+            name,
+            definition->kind == SCRIPT_TEMPLATE_RECORD ? AUTHORING_COMPLETE_TYPE
+                                                       : AUTHORING_COMPLETE_CALLABLE,
+            (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD
+                                    ? AUTHORING_TYPE
+                                    : AUTHORING_CALLABLE,
+                                -1,
+                                definition->id,
+                                0 },
+            (script_type){ 0 }
+        );
+        free(detail);
+    }
+    rank_completions(out, word, length);
+    return true;
+}
+
+static bool asset_completions(
+    const authoring_document *doc,
+    const script_catalog *catalog,
+    TSNode node,
+    const char *word,
+    int length,
+    authoring_completions *out
+)
+{
+    TSNode component = { 0 };
+    bool prototype = false, bases = false, relationship = false;
+    for (TSNode p = node; !ts_node_is_null(p); p = ts_node_parent(p)) {
+        if (kind(p, "prototype_component")) {
+            component = p;
+        }
+        bases |= kind(p, "prototype_bases");
+        prototype |= kind(p, "prototype_declaration");
+        relationship |= kind(p, "relationship_declaration");
+    }
+    if (!prototype && !relationship) {
+        return false;
+    }
+    if (relationship) {
+        const char *properties[] = { "exclusive", "acyclic", "traversable", "on_delete_target" };
+        for (int i = 0; i < (int)(sizeof properties / sizeof *properties); i++) {
+            offer(
+                out,
+                word,
+                length,
+                properties[i],
+                "relationship property",
+                properties[i],
+                AUTHORING_COMPLETE_VARIABLE,
+                (authoring_target){ 0 },
+                (script_type){ 0 }
+            );
+        }
+    } else if (!ts_node_is_null(component)) {
+        char *name = node_text(doc, field(component, "name"));
+        int found = script_catalog_find_type(catalog, name);
+        free(name);
+        if (found >= 0) {
+            const script_catalog_type *type = &catalog->types[found];
+            for (int i = 0; i < type->field_count; i++) {
+                const script_catalog_field *f = &type->fields[i];
+                char *detail = declaration(catalog, f->name, f->type, f->unit);
+                offer(
+                    out,
+                    word,
+                    length,
+                    f->name,
+                    detail,
+                    f->name,
+                    AUTHORING_COMPLETE_FIELD,
+                    (authoring_target){ AUTHORING_FIELD, -1, f->id, type->id },
+                    f->type
+                );
+                free(detail);
+            }
+        }
+    } else if (bases) {
+        for (int i = 0; i < catalog->capability_count; i++) {
+            const script_catalog_capability *cap = &catalog->capabilities[i];
+            if (cap->kind == SCRIPT_CAPABILITY_PROTOTYPE) {
+                offer(
+                    out,
+                    word,
+                    length,
+                    cap->name,
+                    "prototype",
+                    cap->name,
+                    AUTHORING_COMPLETE_VARIABLE,
+                    (authoring_target){ AUTHORING_PROTOTYPE, -1, cap->id, 0 },
+                    (script_type){ 0 }
+                );
+            }
+        }
+    } else {
+        for (int i = 0; i < catalog->type_count; i++) {
+            const script_catalog_type *type = &catalog->types[i];
+            if (!type->component || type->internal) {
+                continue;
+            }
+            const char *name = type->source_name ? type->source_name : type->name;
+            offer(
+                out,
+                word,
+                length,
+                name,
+                "component defaults",
+                name,
+                AUTHORING_COMPLETE_TYPE,
+                (authoring_target){ AUTHORING_TYPE, -1, type->id, 0 },
+                type->type
+            );
+        }
+    }
     rank_completions(out, word, length);
     return true;
 }
@@ -779,7 +1159,7 @@ void authoring_source_complete(
     *out = (authoring_completions){ 0 };
     const authoring_document *doc = authoring_navigation_document_at(index, document);
     const script_analysis *a = doc->analysis;
-    if (!doc->syntax || !a) {
+    if (!doc->syntax) {
         return;
     }
     const script_catalog *catalog = authoring_navigation_catalog(index);
@@ -817,10 +1197,14 @@ void authoring_source_complete(
     if (kind(previous, "comment") || kind(node, "comment") || kind(node, "string")) {
         return;
     }
+    if (asset_completions(doc, catalog, node, word, length, out) || !a) {
+        return;
+    }
     bool member = prior > 0 && doc->syntax->text[prior - 1] == '.';
     bool types = false, events = kind(previous, "on") || kind(previous, "after");
     for (TSNode p = node; !ts_node_is_null(p); p = ts_node_parent(p)) {
-        types |= kind(p, "type");
+        types |= kind(p, "type") || kind(p, "type_binder") ||
+                 kind(p, "type_application");
         if (kind(p, "handler")) {
             TSNode name = field(p, "name");
             events |= !ts_node_is_null(name) && offset <= (int)ts_node_end_byte(name);
@@ -835,8 +1219,8 @@ void authoring_source_complete(
                 continue;
             }
             char *detail = NULL;
-            append(&detail, "prototype ");
             append(&detail, cap->name);
+            append(&detail, " :: prototype");
             detail = finish_text(detail);
             offer(
                 out,
@@ -872,7 +1256,7 @@ void authoring_source_complete(
         if (receiver.storage == PIN_HANDLE && receiver.nominal == catalog->entity_type) {
             for (int i = 0; i < catalog->type_count; i++) {
                 const script_catalog_type *t = &catalog->types[i];
-                if (t->internal || !t->component) {
+                if (t->internal || specialization(catalog, t->id) || !t->component) {
                     continue;
                 }
                 const char *name = t->source_name ? t->source_name : t->name;
@@ -913,6 +1297,10 @@ void authoring_source_complete(
         }
         for (int i = 0; i < catalog->capability_count; i++) {
             const script_catalog_capability *c = &catalog->capabilities[i];
+            if (specialization(catalog, c->id) ||
+                authoring_navigation_template(index, c->id)) {
+                continue;
+            }
             if (!receiver.nominal || !c->method_name ||
                 script_catalog_canonical_type(catalog, (script_type){ .nominal = c->receiver })
                         .nominal !=
@@ -944,6 +1332,9 @@ void authoring_source_complete(
              scope = a->scopes[scope].parent) {
             for (int i = 0; i < a->symbol_count; i++) {
                 const script_symbol *s = &a->symbols[i];
+                if (specialization(catalog, s->capability ? s->capability : s->id)) {
+                    continue;
+                }
                 if (s->scope != scope || visible_symbol(a, offset, s->name) != s) {
                     continue;
                 }
@@ -982,6 +1373,21 @@ void authoring_source_complete(
         }
     }
     if (types) {
+        const char *names[] = { "Map",       "Type",      "number",
+                                "Prototype", "Component", "Relationship" };
+        for (int i = 0; i < (int)(sizeof names / sizeof *names); i++) {
+            offer(
+                out,
+                word,
+                length,
+                names[i],
+                "language type",
+                names[i],
+                AUTHORING_COMPLETE_TYPE,
+                (authoring_target){ 0 },
+                script_builtin_type(names[i])
+            );
+        }
         for (int i = PIN_BOOL; i <= PIN_ENUM; i++) {
             const char *name = script_scalar_name((pin_type)i);
             script_type type = script_builtin_type(name);
@@ -991,7 +1397,7 @@ void authoring_source_complete(
     if (!events) {
         for (int i = 0; i < catalog->type_count; i++) {
             const script_catalog_type *t = &catalog->types[i];
-            if (t->internal) {
+            if (t->internal || specialization(catalog, t->id)) {
                 continue;
             }
             const char *name = t->source_name ? t->source_name : t->name;
@@ -1011,6 +1417,10 @@ void authoring_source_complete(
     if (!types) {
         for (int i = 0; i < catalog->capability_count; i++) {
             const script_catalog_capability *c = &catalog->capabilities[i];
+            if (specialization(catalog, c->id) ||
+                authoring_navigation_template(index, c->id)) {
+                continue;
+            }
             if (c->kind == SCRIPT_CAPABILITY_PROTOTYPE ||
                 (events && c->kind != SCRIPT_CAPABILITY_EVENT) ||
                 (!events && c->kind == SCRIPT_CAPABILITY_EVENT)) {
@@ -1038,6 +1448,34 @@ void authoring_source_complete(
                 c->kind == SCRIPT_CAPABILITY_EVENT ? AUTHORING_COMPLETE_EVENT
                                                    : AUTHORING_COMPLETE_CALLABLE,
                 (authoring_target){ AUTHORING_CALLABLE, -1, c->id, 0 },
+                (script_type){ 0 }
+            );
+            free(detail);
+        }
+    }
+    if (!events) {
+        for (int i = 0; i < catalog->template_count; i++) {
+            const script_catalog_template *definition = &catalog->templates[i];
+            if (types && definition->kind != SCRIPT_TEMPLATE_RECORD &&
+                definition->kind != SCRIPT_TEMPLATE_TYPE_FUNCTION) {
+                continue;
+            }
+            char *detail = template_detail(index, definition);
+            offer(
+                out,
+                word,
+                length,
+                definition->name,
+                detail,
+                definition->name,
+                definition->kind == SCRIPT_TEMPLATE_RECORD ? AUTHORING_COMPLETE_TYPE
+                                                           : AUTHORING_COMPLETE_CALLABLE,
+                (authoring_target){ definition->kind == SCRIPT_TEMPLATE_RECORD
+                                        ? AUTHORING_TYPE
+                                        : AUTHORING_CALLABLE,
+                                    -1,
+                                    definition->id,
+                                    0 },
                 (script_type){ 0 }
             );
             free(detail);

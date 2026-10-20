@@ -8,6 +8,7 @@
 #include "authoring/component_declarations.h"
 #include "authoring/component_presentation.h"
 #include "authoring/language_catalog.h"
+#include "authoring/source_asset.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_format.h"
 #include "authoring/source_metadata.h"
@@ -38,6 +39,7 @@ typedef enum
     FORMAT_SOURCE,
     FORMAT_GRAPH,
     FORMAT_PROTOTYPE,
+    FORMAT_RELATIONSHIP,
     FORMAT_SCENE,
     FORMAT_EDITOR,
     FORMAT_SCENARIO,
@@ -58,7 +60,8 @@ static const asset_family FAMILIES[] = {
     { "fields", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
     { "shader-libraries", DECLARATIVE_ASSET_EXTENSION, FORMAT_GRAPH },
     { "systems", CODE_ASSET_EXTENSION, FORMAT_SOURCE },
-    { "prototypes", DECLARATIVE_ASSET_EXTENSION, FORMAT_PROTOTYPE },
+    { "prototypes", CODE_ASSET_EXTENSION, FORMAT_PROTOTYPE },
+    { "relationships", CODE_ASSET_EXTENSION, FORMAT_RELATIONSHIP },
     { "scenes", DECLARATIVE_ASSET_EXTENSION, FORMAT_SCENE },
     { "editor", DECLARATIVE_ASSET_EXTENSION, FORMAT_EDITOR },
     { "scenarios", DECLARATIVE_ASSET_EXTENSION, FORMAT_SCENARIO },
@@ -75,6 +78,8 @@ typedef struct
     source_catalog *sources;
     /* Prototypes by the names they declare, read when one is first included. */
     char **names, **texts;
+    /* The project's relationships, which prototype links name. */
+    ecs_relationship_desc **relationships;
     bool prototypes_read, prototypes_valid;
     char prototypes_error[256];
 } formatter;
@@ -160,12 +165,9 @@ static char *canonical_source(
             identity = entry->identity;
         }
     }
-    char *minimal = identity
-                      ? authoring_source_minimize(text, source_catalog_view(f->sources), identity)
-                      : xstrdup(text);
-    script_syntax *shortened = script_parse(minimal);
-    free(minimal);
-    char *saved = authoring_source_format(shortened, error, size);
+    char *saved = identity
+                    ? authoring_source_canonical(text, source_catalog_view(f->sources), identity, error, size)
+                    : authoring_source_format(source, error, size);
     if (saved) {
         size_t length = strlen(path) + sizeof ".meta";
         char *sidecar_path = xmalloc(length);
@@ -183,7 +185,6 @@ static char *canonical_source(
         }
         free(sidecar);
     }
-    script_syntax_free(shortened);
     script_syntax_free(source);
     return saved;
 }
@@ -227,6 +228,25 @@ static bool folder_files(const char *folder, const char *extension, char ***name
     return true;
 }
 
+/* Prototypes are code or declarative files; every other family has one
+ * extension. The names stay sorted together. */
+static bool family_files(const asset_family *family, const char *folder, char ***names)
+{
+    if (!folder_files(folder, family->extension, names)) {
+        return false;
+    }
+    if (family->kind != FORMAT_PROTOTYPE) {
+        return true;
+    }
+    return folder_files(folder, DECLARATIVE_ASSET_EXTENSION, names);
+}
+
+static bool code_path(const char *path)
+{
+    size_t length = strlen(path), suffix = strlen(CODE_ASSET_EXTENSION);
+    return length > suffix && !strcmp(path + length - suffix, CODE_ASSET_EXTENSION);
+}
+
 static void free_names(char **names)
 {
     for (int i = 0; i < acount(names); i++) {
@@ -241,14 +261,17 @@ static bool read_prototypes(formatter *f, char *error, size_t size)
 {
     char *folder = join(f->content, "prototypes");
     char **files = NULL;
-    bool valid = folder_files(folder, DECLARATIVE_ASSET_EXTENSION, &files);
+    const asset_family prototypes = { "prototypes", CODE_ASSET_EXTENSION, FORMAT_PROTOTYPE };
+    bool valid = family_files(&prototypes, folder, &files);
     if (!valid) {
         snprintf(error, size, "could not read %s", folder);
     }
     for (int i = 0; valid && i < acount(files); i++) {
         char *path = join(folder, files[i]);
         char *text = file_read_text(path);
-        av_doc *document = text ? av_doc_read(text, error, size) : NULL;
+        av_doc *document = text
+                             ? authoring_prototype_document_read(text, NULL, error, size)
+                             : NULL;
         const char *name = document
                              ? av_get_str(av_obj_get(av_doc_root(document), "name"))
                              : NULL;
@@ -288,6 +311,14 @@ static const char *include_prototype(const char *name, void *user)
     return NULL;
 }
 
+static char *format_text(const char *text, char *error, size_t size)
+{
+    script_syntax *syntax = script_parse(text);
+    char *saved = authoring_source_format(syntax, error, size);
+    script_syntax_free(syntax);
+    return saved;
+}
+
 static char *canonical_graph(const char *text, char *error, size_t size)
 {
     behavior_asset *asset = behavior_asset_load(text);
@@ -309,7 +340,7 @@ static char *canonical_graph(const char *text, char *error, size_t size)
 
 /* It must resolve, but saves as authored: its own content, naming its
  * includes and children's prototypes. */
-static char *canonical_prototype(formatter *f, const char *text, char *error, size_t size)
+static char *canonical_prototype(formatter *f, const char *text, const char *path, char *error, size_t size)
 {
     if (!f->prototypes_read) {
         f->prototypes_valid = read_prototypes(f, f->prototypes_error, sizeof f->prototypes_error);
@@ -320,15 +351,22 @@ static char *canonical_prototype(formatter *f, const char *text, char *error, si
         return NULL;
     }
     ecs_component_catalog components = project_components();
-    prototype_registry registry = { .components = components.components,
-                                    .component_count = components.component_count,
-                                    .include = include_prototype,
-                                    .include_user = f };
+    prototype_registry registry = {
+        .components = components.components,
+        .component_count = components.component_count,
+        .include = include_prototype,
+        .include_user = f,
+        .relationships = (const ecs_relationship_desc *const *)f->relationships,
+        .relationship_count = acount(f->relationships),
+        .decode = authoring_prototype_document_read
+    };
     prototype *resolved = prototype_load(text, &registry, error, size);
     prototype *authored = resolved
                             ? prototype_load_authored(text, &registry, error, size)
                             : NULL;
-    char *saved = authored ? prototype_save(authored) : NULL;
+    char *saved = !authored       ? NULL
+                : code_path(path) ? format_text(text, error, size)
+                                  : prototype_save(authored);
     prototype_free(authored);
     prototype_free(resolved);
     return saved;
@@ -350,7 +388,17 @@ static char *canonical_asset(
         case FORMAT_SOURCE:
             return canonical_source(f, text, path, metadata, error, size);
         case FORMAT_GRAPH: return canonical_graph(text, error, size);
-        case FORMAT_PROTOTYPE: return canonical_prototype(f, text, error, size);
+        case FORMAT_PROTOTYPE:
+            return canonical_prototype(f, text, path, error, size);
+        case FORMAT_RELATIONSHIP: {
+            ecs_relationship_desc
+                *relationship = authoring_relationship_source_read(text, error, size);
+            if (!relationship) {
+                return NULL;
+            }
+            authoring_relationship_source_free(relationship);
+            return format_text(text, error, size);
+        }
         case FORMAT_SCENE: {
             scene_document *scene = scene_document_load(text, error, size);
             char *saved = scene ? scene_document_save(scene, project_components())
@@ -384,7 +432,7 @@ static int format_asset(formatter *f, const asset_entry *entry)
     char *canonical = text
                         ? canonical_asset(f, entry->family, text, path, &metadata, error, sizeof error)
                         : NULL;
-    if (canonical && entry->family->kind != FORMAT_SOURCE) {
+    if (canonical && !code_path(path)) {
         char *disk = asset_text_to_disk(canonical, error, sizeof error);
         free(canonical);
         canonical = disk;
@@ -522,7 +570,7 @@ static bool list_assets(const formatter *f, asset_entry **out, char *error, size
         char *folder = join(f->content, family->folder);
         int status = real_folder(folder, error, size);
         char **names = NULL;
-        if (status > 0 && !folder_files(folder, family->extension, &names)) {
+        if (status > 0 && !family_files(family, folder, &names)) {
             snprintf(error, size, "could not read %s", folder);
             status = -1;
         }
@@ -561,6 +609,7 @@ int authoring_project_format(const char *root, native_capabilities *native, bool
             error,
             sizeof error
         ) ||
+        !authoring_relationship_declarations_load(f.content, &f.relationships, error, sizeof error) ||
         !list_assets(&f, &entries, error, sizeof error)) {
         fprintf(stderr, "format: %s\n", error);
         goto done;
@@ -598,6 +647,10 @@ done:
     }
     afree(f.names);
     afree(f.texts);
+    for (int i = 0; i < acount(f.relationships); i++) {
+        authoring_relationship_source_free(f.relationships[i]);
+    }
+    afree(f.relationships);
     declared_components_free(declared);
     free(f.content);
     return differing;

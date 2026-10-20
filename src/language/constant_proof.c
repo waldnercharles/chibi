@@ -67,6 +67,7 @@ static bool compile_time_value(
                     compile_time_value(analysis, proofs, generation, value->right, depth + 1, steps, scalar);
             break;
         case SCRIPT_EXPR_ARRAY:
+        case SCRIPT_EXPR_MAP:
         case SCRIPT_EXPR_STRUCT:
         case SCRIPT_EXPR_UNION:
             valid = true;

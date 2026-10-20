@@ -3,6 +3,7 @@
 #include "assets/call_hierarchy.h"
 #include "assets/prototype.h"
 #include "assets/reference_adapters.h"
+#include "authoring/source_references.h"
 #include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/authoring/local_edit.h"
@@ -116,6 +117,41 @@ TEST_CASE(reference_assets_keep_identity_by_path_and_key)
     REQUIRE(reference_index_asset_at(refs, scratch)->path);
     reference_index_clear(refs);
     REQUIRE(reference_index_asset_count(refs) == 0 && reference_index_count(refs) == 0);
+    return true;
+}
+
+TEST_CASE(reference_relationship_sources_resolve_their_declared_asset_identity)
+{
+    const script_catalog_relationship relationship = { .id = 17, .name = "Targets" };
+    const script_catalog catalog = { .relationships = &relationship,
+                                     .relationship_count = 1 };
+    const char *text = "Use :: behavior { relation: Relationship = Targets; }";
+    script_syntax *syntax = script_parse(text);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    const authoring_document document = { "content/behaviors/Use.chibi", syntax, analysis };
+    const source_catalog_definition definition = {
+        .id = 17,
+        .name = "Targets",
+        .path = "content/relationships/DifferentFileName.chibi",
+        .text = "Targets :: relationship {}",
+        .range = { 0, 7 },
+        .text_kind = SOURCE_TEXT_CHIBI,
+        .relationship = true
+    };
+    authoring_navigation *
+        navigation = authoring_navigation_new_declarations(&document, 1, &catalog, &definition, 1);
+    refs = reference_index_new();
+    authoring_source_references_add(refs, navigation);
+    int asset = reference_index_find_name(refs, REFERENCE_ASSET_RELATIONSHIP, "Targets");
+    REQUIRE(asset >= 0);
+    REQUIRE(!strcmp(reference_index_asset_at(refs, asset)->path, definition.path));
+    REQUIRE(reference_index_find_name(refs, REFERENCE_ASSET_EVENT, "Targets") < 0);
+    reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = asset };
+    REQUIRE(reference_index_count_uses(refs, symbol, REFERENCE_USES) == 1);
+    authoring_navigation_free(navigation);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
     return true;
 }
 
@@ -451,6 +487,7 @@ void test_reference_index()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(reference_assets_keep_identity_by_path_and_key);
+    RUN_TEST_CASE(reference_relationship_sources_resolve_their_declared_asset_identity);
     RUN_TEST_CASE(reference_graphs_index_every_kind_of_symbol);
     RUN_TEST_CASE(reference_documents_index_prototypes_objects_and_ui);
     RUN_TEST_CASE(reference_calls_climb_handlers_and_detect_cycles);

@@ -90,6 +90,7 @@ endfunction()
 add_library(chibi_support STATIC
     "${CHIBI_SDK_ROOT}/src/support/arena.c"
     "${CHIBI_SDK_ROOT}/src/support/file_io.c"
+    "${CHIBI_SDK_ROOT}/src/support/text_edit.c"
     "${CHIBI_SDK_ROOT}/src/support/xalloc.c"
     "${CHIBI_SDK_ROOT}/src/support/rcss_map.c")
 add_library(Chibi::support ALIAS chibi_support)
@@ -102,7 +103,7 @@ if(CHIBI_WEB_THREADS)
         "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}" -sPTHREAD_POOL_SIZE_STRICT=2
         -sALLOW_MEMORY_GROWTH=1)
 endif()
-set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h
+set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h support/text_edit.h
     support/enum.h support/cos_sin.h support/file_io.h support/math.h)
 if(WIN32)
     # C sources that use the SDK get the POSIX calls the Microsoft runtime lacks.
@@ -125,6 +126,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/type.c"
     "${CHIBI_SDK_ROOT}/src/types/catalog.c"
     "${CHIBI_SDK_ROOT}/src/types/array.c"
+    "${CHIBI_SDK_ROOT}/src/types/map.c"
     "${CHIBI_SDK_ROOT}/src/types/record.c"
     "${CHIBI_SDK_ROOT}/src/types/copy.c"
     "${CHIBI_SDK_ROOT}/src/types/trace.c"
@@ -134,7 +136,7 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/record.h types/catalog.h types/copy.h types/array.h types/map.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
 configure_file("${CHIBI_SDK_ROOT}/src/types/array_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/types/types/array_internal.h" COPYONLY)
 configure_file("${CHIBI_SDK_ROOT}/src/types/copy_internal.h"
@@ -163,6 +165,7 @@ target_link_libraries(chibi_value_document PUBLIC chibi_types chibi_asset_values
 
 add_library(chibi_capabilities STATIC "${CHIBI_SDK_ROOT}/src/capabilities/catalog.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/catalog_snapshot.c"
+    "${CHIBI_SDK_ROOT}/src/capabilities/catalog_values.c"
     "${CHIBI_SDK_ROOT}/src/capabilities/definition.c")
 add_library(Chibi::capabilities ALIAS chibi_capabilities)
 set_target_properties(chibi_capabilities PROPERTIES EXPORT_NAME capabilities)
@@ -459,11 +462,17 @@ if(CHIBI_SDK_BUILD_COMPILER)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate26.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c")
     target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
     set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c" PROPERTIES COMPILE_OPTIONS "-w")
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser24.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser25.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser26.c"
+        PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)

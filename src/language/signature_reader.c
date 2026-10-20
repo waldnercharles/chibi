@@ -145,10 +145,100 @@ static script_type publish(reader *r, script_constructor_plan plan)
     }
     return plan.type;
 }
+static script_type type(reader *, TSNode);
+static const script_signature_generic *generic(reader *r, TSNode node)
+{
+    for (int i = 0; i < r->facts.generic_count; i++) {
+        const script_signature_generic *found = &r->facts.generics[i];
+        if (found->start == ts_node_start_byte(node) &&
+            found->end == ts_node_end_byte(node)) {
+            return found;
+        }
+    }
+    return NULL;
+}
+static script_type collection(reader *r, pin_container container, script_type key, script_type value)
+{
+    script_catalog_type definition = script_constructor_collection(
+        r->storage,
+        container,
+        key,
+        value,
+        r->facts.pointer_size
+    );
+    (void)named(r);
+    if (!script_catalog_type_by_id(&r->catalog, definition.id)) {
+        apush(r->types, definition);
+        apush(r->own, definition);
+    }
+    return definition.type;
+}
+/* Applies `ref`, `?` and each `[]` in order; an array of collections names
+ * its element collection. */
+static script_type traits(reader *r, TSNode node, script_type out)
+{
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        const char *token = text(r, ts_node_child(node, i));
+        if (!strcmp(token, "ref")) {
+            out.flags |= SCRIPT_TYPE_REFERENCE;
+        } else if (!strcmp(token, "?")) {
+            out.flags |= SCRIPT_TYPE_OPTIONAL;
+        } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
+            if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
+                out = collection(r, PIN_CONTAINER_ARRAY, (script_type){ 0 }, out);
+            }
+            out.container = PIN_CONTAINER_ARRAY;
+        }
+    }
+    (void)named(r);
+    const script_catalog_type *definition = script_catalog_type_by_id(&r->catalog, out.nominal);
+    if ((out.flags & SCRIPT_TYPE_OPTIONAL) && (!definition || !definition->component)) {
+        out.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
+    }
+    return out;
+}
+static script_type application(reader *r, TSNode node)
+{
+    const script_signature_generic *found = generic(r, node);
+    if (!found) {
+        diagnostic(r, node, "Type expression must construct a compile-time type");
+        return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+    }
+    return found->type;
+}
+static script_type map(reader *r, TSNode node, TSNode arguments)
+{
+    int count = ts_node_is_null(arguments) ? 0 : (int)ts_node_named_child_count(arguments);
+    if (!count) {
+        return (script_type){ .storage = PIN_UNION,
+                              .container = PIN_CONTAINER_MAP,
+                              .flags = SCRIPT_TYPE_UNTYPED };
+    }
+    if (count != 2) {
+        diagnostic(r, node, "Map requires key and value types");
+        return (script_type){ .flags = SCRIPT_TYPE_ERROR };
+    }
+    script_type key = type(r, ts_node_named_child(arguments, 0));
+    script_type value = type(r, ts_node_named_child(arguments, 1));
+    bool supported = key.container == PIN_CONTAINER_SINGLE &&
+                     !(key.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK |
+                                    SCRIPT_TYPE_UNION)) &&
+                     (key.storage == PIN_BOOL ||
+                      (key.storage >= PIN_I8 && key.storage <= PIN_F64) ||
+                      key.storage == PIN_STR || key.storage == PIN_NAME ||
+                      key.storage == PIN_ENUM || key.storage == PIN_HANDLE);
+    if (!supported) {
+        diagnostic(r, node, "Unsupported Map key type");
+    }
+    return collection(r, PIN_CONTAINER_MAP, key, value);
+}
 static script_type type(reader *r, TSNode node)
 {
     if (ts_node_is_null(node)) {
         return (script_type){ .flags = SCRIPT_TYPE_UNTYPED };
+    }
+    if (is(node, "type_application")) {
+        return application(r, node);
     }
     if (is(node, "type")) {
         for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
@@ -156,15 +246,24 @@ static script_type type(reader *r, TSNode node)
             if (is(child, "union_type")) {
                 return type(r, child);
             }
+            if (is(child, "type_application")) {
+                return traits(r, node, application(r, child));
+            }
         }
         TSNode name_node = field(node, "name"), arguments = field(node, "arguments");
+        if (is(name_node, "type_binder")) {
+            name_node = field(name_node, "name");
+        }
         const char *value = name(r, name_node);
-        bool collection = !strcmp(value, "array") || !strcmp(value, "set") ||
-                          !strcmp(value, "map");
+        bool collected = !strcmp(value, "array") || !strcmp(value, "set") ||
+                         !strcmp(value, "map");
         bool nominal = !strcmp(value, "struct") || !strcmp(value, "enum") ||
                        !strcmp(value, "handle");
         script_type out;
-        if (!strcmp(value, "task") && !ts_node_is_null(arguments)) {
+        const script_signature_generic *member = generic(r, name_node);
+        if (!strcmp(value, "Map")) {
+            out = map(r, node, arguments);
+        } else if (!strcmp(value, "task") && !ts_node_is_null(arguments)) {
             if (ts_node_named_child_count(arguments) != 1) {
                 diagnostic(r, node, "task requires one result type");
                 out = (script_type){ .flags = SCRIPT_TYPE_ERROR };
@@ -173,7 +272,7 @@ static script_type type(reader *r, TSNode node)
                 script_constructor_facts facts = constructors(r);
                 out = publish(r, script_constructor_task(r->storage, &facts, result, 0));
             }
-        } else if (collection || nominal) {
+        } else if (collected || nominal) {
             TSNode argument = ts_node_is_null(arguments)
                                 ? (TSNode){ 0 }
                                 : ts_node_named_child(arguments, 0);
@@ -183,20 +282,26 @@ static script_type type(reader *r, TSNode node)
             } else {
                 out = type(r, argument);
             }
-            if (collection) {
-                out.container = !strcmp(value, "set") ? PIN_CONTAINER_SET
-                              : !strcmp(value, "map") ? PIN_CONTAINER_MAP
-                                                      : PIN_CONTAINER_ARRAY;
+            if (collected) {
+                pin_container container = !strcmp(value, "set") ? PIN_CONTAINER_SET
+                                        : !strcmp(value, "map")
+                                            ? PIN_CONTAINER_MAP
+                                            : PIN_CONTAINER_ARRAY;
+                if (!strcmp(value, "map")) {
+                    diagnostic(r, node, "Use Map<K, V> for associative maps");
+                }
+                if (out.collection || out.container != PIN_CONTAINER_SINGLE) {
+                    out = collection(r, container, (script_type){ 0 }, out);
+                }
+                out.container = container;
             } else if (!strcmp(value, "enum")) {
                 out.storage = PIN_ENUM;
             } else if (!strcmp(value, "handle")) {
                 out.storage = PIN_HANDLE;
             }
+        } else if (member) {
+            out = member->type;
         } else {
-            const char **tokens = NULL;
-            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
-                apush(tokens, text(r, ts_node_child(node, i)));
-            }
             script_named_facts facts = named(r);
             out = resolution(
                 r,
@@ -204,30 +309,12 @@ static script_type type(reader *r, TSNode node)
                     &facts,
                     (script_named_request){ r->scope, range(r, name_node) },
                     value,
-                    tokens,
-                    acount(tokens)
+                    NULL,
+                    0
                 )
             );
-            afree(tokens);
-            return out;
         }
-        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
-            const char *token = text(r, ts_node_child(node, i));
-            if (!strcmp(token, "ref")) {
-                out.flags |= SCRIPT_TYPE_REFERENCE;
-            } else if (!strcmp(token, "?")) {
-                out.flags |= SCRIPT_TYPE_OPTIONAL;
-            } else if (!strcmp(token, "[") || !strcmp(token, "[]")) {
-                out.container = PIN_CONTAINER_ARRAY;
-            }
-        }
-        (void)named(r);
-        const script_catalog_type *definition = script_catalog_type_by_id(&r->catalog, out.nominal);
-        if ((out.flags & SCRIPT_TYPE_OPTIONAL) &&
-            (!definition || !definition->component)) {
-            out.flags |= SCRIPT_TYPE_BOXED_OPTIONAL;
-        }
-        return out;
+        return traits(r, node, out);
     }
     if (is(node, "union_type")) {
         script_type *members = NULL;

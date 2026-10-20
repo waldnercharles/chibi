@@ -3,17 +3,17 @@
 /* Fixed inputs shared by retained syntax assertions and the authored diagnostic
  * differential. The separate manifest-backed corpus keeps its original bounds. */
 const syntax_corpus_case syntax_corpus_cases[SYNTAX_CORPUS_CASE_COUNT] = {
-    { "missing-separator", "behavior Broken { first := 1 second := 2 }", false },
-    { "reserved-name", "behavior Broken { true := 1 }", false },
-    { "missing-initializer", "behavior Broken { on Begin { value := ; } }", false },
-    { "unclosed-blocks", "behavior Broken { on Begin { if true { }", false },
-    { "missing-body", "library Broken { MissingBody :: fn() -> () }", false },
-    { "obsolete-reference", "behavior Broken { on Begin { nudge(&speed) } }", false },
-    { "recovery-after-error", "behavior Broken { broken := ; later := 7 }", false },
-    { "utf8-before-edit", "behavior Edit {\n// café\ncount := 1\n}\n", true },
-    { "error-edit-base", "behavior Edit { first := 1; later := 2 }", true },
+    { "missing-separator", "Broken :: behavior { first := 1 second := 2 }", false },
+    { "reserved-name", "Broken :: behavior { true := 1 }", false },
+    { "missing-initializer", "Broken :: behavior { on Begin { value := ; } }", false },
+    { "unclosed-blocks", "Broken :: behavior { on Begin { if true { }", false },
+    { "missing-body", "Broken :: library { MissingBody :: () -> () }", false },
+    { "obsolete-reference", "Broken :: behavior { on Begin { nudge(&speed) } }", false },
+    { "recovery-after-error", "Broken :: behavior { broken := ; later := 7 }", false },
+    { "utf8-before-edit", "Edit :: behavior {\n// café\ncount := 1\n}\n", true },
+    { "error-edit-base", "Edit :: behavior { first := 1; later := 2 }", true },
     { "precedence-continuations",
-      "behavior Expressions {\n"
+      "Expressions :: behavior {\n"
       "product := 1 + 2 * 3\n"
       "difference := 9 - 3 - 1\n"
       "vector := {x: 1, y: 2}\n"
@@ -27,15 +27,15 @@ const syntax_corpus_case syntax_corpus_cases[SYNTAX_CORPUS_CASE_COUNT] = {
       "}\n}",
       true },
     { "typed-named-calls",
-      "behavior Calls { on Begin {\n"
-      "await set_variable<\"flash\">(Value: bool = true);\n"
+      "Calls :: behavior { on Begin {\n"
+      "await set_variable<flash>(Value: bool = true);\n"
       "consume(Owner: other, Position: target.Position, Label: \"text\");\n"
-      "consume(Value: convert<\"to_vec\">(component(\"Transform\")));\n"
+      "consume(Value: convert<to_vec>(component(Transform)));\n"
       "} }",
       true },
-    { "error-with-descendants", "behavior Broken { on Begin { value := (1 + ); } @ }", false },
+    { "error-with-descendants", "Broken :: behavior { on Begin { value := (1 + ); } @ }", false },
     { "crlf-utf8-before-error",
-      "behavior Broken {\r\n label := \"é\"; on Begin { value := ; }\r\n}",
+      "Broken :: behavior {\r\n label := \"é\"; on Begin { value := ; }\r\n}",
       false },
     { "missing-package-terminator", "package app import \"x\"\n", false },
 };
@@ -43,14 +43,14 @@ const syntax_corpus_case syntax_corpus_cases[SYNTAX_CORPUS_CASE_COUNT] = {
 const syntax_corpus_edit syntax_corpus_edits[SYNTAX_CORPUS_EDIT_COUNT] = {
     { "utf8-newline",
       SYNTAX_CORPUS_UTF8,
-      sizeof("behavior Edit {\n// caf") - 1,
-      sizeof("behavior Edit {\n// café") - 1,
+      sizeof("Edit :: behavior {\n// caf") - 1,
+      sizeof("Edit :: behavior {\n// café") - 1,
       "π\n// extra",
-      "behavior Edit {\n// cafπ\n// extra\ncount := 1\n}\n" },
+      "Edit :: behavior {\n// cafπ\n// extra\ncount := 1\n}\n" },
     { "remove-initializer",
       SYNTAX_CORPUS_DELETE,
-      sizeof("behavior Edit { first := ") - 1,
-      sizeof("behavior Edit { first := 1") - 1,
+      sizeof("Edit :: behavior { first := ") - 1,
+      sizeof("Edit :: behavior { first := 1") - 1,
       "",
-      "behavior Edit { first := ; later := 2 }" },
+      "Edit :: behavior { first := ; later := 2 }" },
 };

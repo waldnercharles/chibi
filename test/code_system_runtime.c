@@ -200,17 +200,16 @@ static bool persistent_wait_membership(behavior_backend backend)
         ecs_world_create_entity(f.world);
     }
     ecs_entity a = health(&f), b = health(&f);
-    REQUIRE(prepare(
-        &f,
-        "system Counters(health:Health) { state count:double=0; shared "
-        "total:double=0; "
-        "count+=1; total+=1; await delay(Duration:1); count+=10; total+=10; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "Counters :: system(health:Health) { total:retain double=0; health.Current+=1; saved:=health.Current; total+=1; await delay(Duration:1); health.Current=saved+10; total+=10; }", backend)
+    );
     REQUIRE(tick(&f, 0));
     REQUIRE(instance(&f, a) && instance(&f, b));
     REQUIRE(execution_instance_pending(instance(&f, a)) == 1);
-    REQUIRE(state(&f, a, "count") == 1 && state(&f, b, "count") == 1);
+    REQUIRE(
+        Health_get_const(f.world, a)->current == 1 &&
+        Health_get_const(f.world, b)->current == 1
+    );
     REQUIRE(state(&f, b, "total") == 2);
     REQUIRE(tick(&f, .25));
     REQUIRE(state(&f, b, "total") == 2);
@@ -220,17 +219,18 @@ static bool persistent_wait_membership(behavior_backend backend)
     REQUIRE(!instance(&f, a));
     REQUIRE(!Health_add(f.world, a, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
+    Health_get(f.world, a)->current = 0;
     REQUIRE(tick(&f, .75));
-    REQUIRE(state(&f, a, "count") == 1 && state(&f, b, "total") == 3);
+    REQUIRE(Health_get_const(f.world, a)->current == 1 && state(&f, b, "total") == 3);
     REQUIRE(execution_program_pump(f.program, 1.1, .1, 10000) >= 0);
-    REQUIRE(state(&f, b, "count") == 11 && state(&f, b, "total") == 13);
+    REQUIRE(Health_get_const(f.world, b)->current == 11 && state(&f, b, "total") == 13);
     REQUIRE(tick(&f, 1.2));
-    REQUIRE(state(&f, b, "count") == 12);
+    REQUIRE(Health_get_const(f.world, b)->current == 12);
     REQUIRE(!ecs_world_destroy_entity(f.world, a));
     ecs_entity replacement = health(&f);
     REQUIRE(replacement.slot == a.slot && replacement.generation != a.generation);
     REQUIRE(tick(&f, 1.3));
-    REQUIRE(!instance(&f, a) && state(&f, replacement, "count") == 1);
+    REQUIRE(!instance(&f, a) && Health_get_const(f.world, replacement)->current == 1);
     fixture_free(&f);
     return true;
 }
@@ -270,13 +270,9 @@ static bool host_spawn_resume(behavior_backend backend)
     system_fixture f = fixture_new();
     REQUIRE(register_child(&f));
     ecs_entity owner = health(&f);
-    REQUIRE(prepare(
-        &f,
-        "system Spawner(health:Health) { state completed:double=0; shared "
-        "total:double=0; "
-        "await spawn(Prototype:\"Child\"); completed+=1; total+=1; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "Spawner :: system(health:Health) { completed:retain double=0; total:retain double=0; await spawn_prototype(Prototype:Child); completed+=1; total+=1; }", backend)
+    );
     REQUIRE(tick(&f, 0));
     REQUIRE(execution_instance_pending(instance(&f, owner)) == 1);
     REQUIRE(state(&f, owner, "completed") == 0);
@@ -303,10 +299,10 @@ static bool nested_spawn_outlives_frame(behavior_backend backend)
     REQUIRE(register_child(&f));
     REQUIRE(prepare(
         &f,
-        "behavior Spawner {\n"
+        "Spawner :: behavior {\n"
         "    made := 0.0\n"
-        "    Make :: fn() {\n"
-        "        await spawn(Child)\n"
+        "    Make :: () {\n"
+        "        await spawn_prototype(Child)\n"
         "        made += 1\n"
         "    }\n"
         "    on Begin {\n"
@@ -332,12 +328,9 @@ static bool live_component_resume(behavior_backend backend)
     system_fixture f = fixture_new();
     ecs_entity owner = health(&f);
     Health_get(f.world, owner)->current = 2;
-    REQUIRE(prepare(
-        &f,
-        "system ReadHealth(health:Health) { state observed:double=0; "
-        "await delay(Duration:1); observed=health.Current; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "ReadHealth :: system(health:Health) { observed:retain double=0; await delay(Duration:1); observed=health.Current; }", backend)
+    );
     REQUIRE(tick(&f, 0));
     Health_get(f.world, owner)->current = 7;
     REQUIRE(tick(&f, 1.1));
@@ -347,11 +340,9 @@ static bool live_component_resume(behavior_backend backend)
 }
 static bool optional_membership_roundtrip(behavior_backend backend)
 {
-    const char
-        *text = "system Optional(health:Health, trigger:Aim?) "
-                "without Collider { "
-                "if trigger { if trigger.Firing { health.Current+=7; } } "
-                "else { health.Current+=2; } }";
+    const char *text = "Optional :: system(health:Health, trigger:Aim?) "
+                       "without Collider { if trigger { if trigger.Firing { "
+                       "health.Current+=7; } } else { health.Current+=2; } }";
     script_syntax *syntax = script_parse(text);
     char error[256];
     char *saved = authoring_source_format(syntax, error, sizeof error);
@@ -392,13 +383,9 @@ static bool any_query_membership(behavior_backend backend)
     REQUIRE(!Aim_add(f.world, collider, 0));
     REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(
-        &f,
-        "system AnyQuery(health:Health) { "
-        "query any(has(Collider), not(has(Aim))); "
-        "health.Current+=1; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "AnyQuery :: system(health:Health) { query any(has(Collider), not(has(Aim))); health.Current+=1; }", backend)
+    );
     REQUIRE(tick(&f, 0));
     REQUIRE(instance(&f, bare) && !instance(&f, aimed) && instance(&f, collider));
     REQUIRE(Health_get_const(f.world, bare)->current == 1);
@@ -413,13 +400,9 @@ static bool empty_any_query(behavior_backend backend)
     ecs_entity bare = health(&f), collider = health(&f);
     REQUIRE(!Collider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(
-        &f,
-        "system EmptyAny(health:Health) { "
-        "query any(has(Collider), any()); "
-        "health.Current+=1; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "EmptyAny :: system(health:Health) { query any(has(Collider), any()); health.Current+=1; }", backend)
+    );
     REQUIRE(tick(&f, 0));
     REQUIRE(!instance(&f, bare) && instance(&f, collider));
     fixture_free(&f);
@@ -431,7 +414,7 @@ static bool reactive_checkpoint(behavior_backend backend)
     ecs_entity owner = ecs_world_create_entity(f.world);
     REQUIRE(!Aim_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(&f, "system Watch(aim:Aim) { bind aim.Manual=!aim.Firing; }", backend));
+    REQUIRE(prepare(&f, "Watch :: system(aim:Aim) { bind aim.Manual=!aim.Firing; }", backend));
     REQUIRE(tick(&f, 0));
     REQUIRE(Aim_get(f.world, owner)->manual);
     Aim_get(f.world, owner)->firing = true;
@@ -455,12 +438,9 @@ static bool synchronous_batch_path(behavior_backend backend)
     REQUIRE(!Movement_add(f.world, owner, 0));
     REQUIRE(!Input_add(f.world, owner, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
-    REQUIRE(prepare(
-        &f,
-        "system Movement(position:Transform, movement:Movement, input:Input) { "
-        "position.X+=input.Move.X*movement.Speed*dt; }",
-        backend
-    ));
+    REQUIRE(
+        prepare(&f, "Movement :: system(position:Transform, movement:Movement, input:Input) { position.X+=input.Move.X*movement.Speed*dt; }", backend)
+    );
     Input_get(f.world, owner)->move.x = 2;
     Movement_get(f.world, owner)->speed = 3;
     REQUIRE(tick(&f, 0));
@@ -655,7 +635,7 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         input_source = authoring_source_prepare_document(
             "Input.chibi",
             "systems/Input.chibi",
-            "system InputWatch(controls:Input){ state pulses:double=0; on "
+            "InputWatch :: system(controls:Input){ pulses:retain double=0; on "
             "Pulse{pulses+=1;} }",
             authoring_language_catalog_view(input_catalog),
             &bindings,
@@ -696,7 +676,8 @@ static uint64_t query_state_id(system_fixture *f, const char *name)
 {
     for (int i = 0; i < f->source->analysis->symbol_count; i++) {
         const script_symbol *symbol = &f->source->analysis->symbols[i];
-        if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, name)) {
+        if ((symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE) &&
+            !strcmp(symbol->name, name)) {
             return symbol->id;
         }
     }
@@ -722,7 +703,7 @@ static ecs_entity aim_target(system_fixture *f, ecs_entity owner, bool firing)
     Aim_get(f->world, target)->firing = firing;
     return target;
 }
-TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
+TEST_CASE(source_query_tuple_locals_wait_shared_reload_and_generation)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int backend = 0; backend < 2; backend++) {
@@ -732,16 +713,16 @@ TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
                    second = aim_target(&f, owner, false);
         REQUIRE(prepare(
             &f,
-            "system Rows query h:Health join target in self.Targets join a:Aim "
-            "from target { "
-            "state starts:double=0; starts+=1; await delay(Duration:1); "
-            "if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
+            "Rows :: system( h:Health) join target in self.Targets join a:Aim "
+            "from target { starts:retain double=0; starts+=1; progress:=1; "
+            "if a.Firing { progress=10; } await delay(Duration:1); "
+            "h.Current+=progress; }",
             backends[backend]
         ));
         REQUIRE(tick(&f, 0));
         REQUIRE(query_row(&f, owner, first) != query_row(&f, owner, second));
-        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 1);
-        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 2);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 2);
         REQUIRE(!execution_instance_set_state(
             query_row(&f, owner, first),
             query_state_id(&f, "starts"),
@@ -749,10 +730,11 @@ TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
         ));
         REQUIRE(!execution_program_replace(f.program, f.source->module, false));
         REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 7);
-        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 7);
         REQUIRE(tick(&f, .1));
-        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 8);
-        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 2);
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 9);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 9);
+        Aim_get(f.world, second)->firing = true;
         REQUIRE(!ecs_world_destroy_entity(f.world, first));
         REQUIRE(tick(&f, .2));
         REQUIRE(!query_row(&f, owner, first));
@@ -762,7 +744,7 @@ TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
             replacement.slot == first.slot && replacement.generation != first.generation
         );
         REQUIRE(tick(&f, .3));
-        REQUIRE(row_number(&f, query_row(&f, owner, replacement), "starts") == 1);
+        REQUIRE(row_number(&f, query_row(&f, owner, replacement), "starts") == 10);
         REQUIRE(tick(&f, 1.2));
         REQUIRE(Health_get_const(f.world, owner)->current == 1);
         execution_program_detach(f.program, ecs_entity_to_u64(owner));
@@ -779,9 +761,8 @@ TEST_CASE(source_query_changed_consumers_preserve_busy_writes)
         ecs_entity owner = health(&f);
         REQUIRE(prepare(
             &f,
-            "system Changed query h:Health where changed(h) { state "
-            "calls:double=0; "
-            "calls+=1; await delay(Duration:1); }",
+            "Changed :: system( h:Health) where changed(h) { calls:retain "
+            "double=0; calls+=1; await delay(Duration:1); }",
             backends[backend]
         ));
         REQUIRE(tick(&f, 0));
@@ -833,11 +814,10 @@ TEST_CASE(source_query_changed_provider_and_pure_helper)
         REQUIRE(!ecs_world_apply_commands(f.world));
         REQUIRE(prepare(
             &f,
-            "system Providers query h:Health, a:Aim, base:Health from "
-            "ancestor(ChildOf) "
-            "where changed(base) and Accept(h) { state calls:double=0; "
-            "calls+=1; "
-            "Accept :: (value:Health)->bool { return value.Current>=0; } }",
+            "Providers :: system( h:Health, a:Aim, base:Health from "
+            "ancestor(ChildOf)) where changed(base) and Accept(h) { "
+            "calls:retain double=0; calls+=1; Accept :: (value:Health)->bool { "
+            "return value.Current>=0; } }",
             backends[backend]
         ));
         REQUIRE(tick(&f, 0));
@@ -861,13 +841,9 @@ TEST_CASE(source_query_value_snapshot_streams_without_instances)
         for (int i = 0; i < 32; i++) {
             aim_target(&f, owner, true);
         }
-        REQUIRE(prepare(
-            &f,
-            "system Stream query h:Health join target in self.Targets join "
-            "a:Aim from target "
-            "where h.Current==0 and a.Firing { h.Current+=1; }",
-            backends[backend]
-        ));
+        REQUIRE(
+            prepare(&f, "Stream :: system( h:Health) join target in self.Targets join a:Aim from target where h.Current==0 and a.Firing { h.Current+=1; }", backends[backend])
+        );
         REQUIRE(!execution_program_prepare_system(f.program, 0, .1, 10000));
         execution_memory_usage memory = execution_program_memory_usage(f.program);
         int run = execution_program_run_system(f.program);
@@ -894,7 +870,7 @@ TEST_CASE(source_query_filters_gate_both_binding_paths)
         REQUIRE(!ecs_world_apply_commands(f.world));
         Health_get(f.world, owner)->current = 1;
         REQUIRE(
-            prepare(&f, "system Gate query h:Health, a:Aim where h.Current>0 or has(Disabled) { bind a.Manual=!a.Firing; }", backends[backend])
+            prepare(&f, "Gate :: system( h:Health, a:Aim) where h.Current>0 or has(Disabled) { bind a.Manual=!a.Firing; }", backends[backend])
         );
         REQUIRE(tick(&f, 0));
         REQUIRE(Aim_get_const(f.world, owner)->manual);
@@ -930,12 +906,10 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
         }
         REQUIRE(prepare(
             &f,
-            "system Chains query h:Health join middle in self.Targets join "
-            "target in middle.Targets "
-            "join a:Aim from target { state ticks:double=0; state "
-            "pulses:double=0; "
-            "on Begin { pulses+=1; } ticks+=1; if a.Firing { h.Current+=10; } "
-            "else { h.Current+=1; } }",
+            "Chains :: system( h:Health) join middle in self.Targets join "
+            "target in middle.Targets join a:Aim from target { ticks:retain "
+            "double=0; pulses:retain double=0; on Begin { pulses+=1; } "
+            "ticks+=1; if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
             backends[backend]
         ));
         query_debugger = execution_program_inspector(f.program);
@@ -947,8 +921,8 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
             variables[i][0] = ecs_entity_to_u64(middle[i]);
             variables[i][1] = ecs_entity_to_u64(leaf[i]);
             rows[i] = execution_program_row(f.program, ecs_entity_to_u64(owner), variables[i], 2);
-            REQUIRE(row_number(&f, rows[i], "ticks") == 1);
-            REQUIRE(row_number(&f, rows[i], "pulses") == 1);
+            REQUIRE(row_number(&f, rows[i], "ticks") == 2);
+            REQUIRE(row_number(&f, rows[i], "pulses") == 2);
         }
         REQUIRE(Health_get_const(f.world, owner)->current == 11);
         bool watched[2] = { false, false };
@@ -966,15 +940,15 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
             begin &&
             !execution_program_dispatch(f.program, begin, ecs_entity_to_u64(owner), NULL, 0, .1, .1, 10000)
         );
-        REQUIRE(row_number(&f, rows[0], "pulses") == 2);
-        REQUIRE(row_number(&f, rows[1], "pulses") == 2);
+        REQUIRE(row_number(&f, rows[0], "pulses") == 4);
+        REQUIRE(row_number(&f, rows[1], "pulses") == 4);
         REQUIRE(
             !ecs_world_record_remove_pair(f.world, middle[0], query_targets.id, leaf[0], 0)
         );
         REQUIRE(!ecs_world_apply_commands(f.world));
         REQUIRE(tick(&f, .2));
         REQUIRE(!execution_program_row(f.program, ecs_entity_to_u64(owner), variables[0], 2));
-        REQUIRE(row_number(&f, rows[1], "ticks") == 2);
+        REQUIRE(row_number(&f, rows[1], "ticks") == 3);
         execution_debug_cursor cursor;
         REQUIRE(
             execution_inspector_owner_cursor(query_debugger, ecs_entity_to_u64(owner), &cursor)
@@ -993,7 +967,7 @@ TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
 void test_code_query_rows()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(source_query_tuple_state_wait_reload_and_generation);
+    RUN_TEST_CASE(source_query_tuple_locals_wait_shared_reload_and_generation);
     RUN_TEST_CASE(source_query_changed_consumers_preserve_busy_writes);
     RUN_TEST_CASE(source_query_changed_provider_and_pure_helper);
     RUN_TEST_CASE(source_query_value_snapshot_streams_without_instances);

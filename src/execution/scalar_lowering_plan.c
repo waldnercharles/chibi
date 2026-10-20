@@ -25,7 +25,7 @@ static const behavior_function_op operations[] = {
 };
 _Static_assert(sizeof operations / sizeof *operations == SCALAR_LOWERING_OPCODES, "scalar lowering wire opcodes changed");
 _Static_assert(PIN_BOOL == 1 && PIN_I32 == 6 && PIN_U32 == 7 && PIN_U64 == 9, "scalar lowering storage schema changed");
-_Static_assert(EXECUTION_PREPARED_VERSION == 15, "review scalar lowering target schema");
+_Static_assert(EXECUTION_PREPARED_VERSION == 18, "review scalar lowering target schema");
 behavior_function_op scalar_lowering_opcode(int wire)
 {
     assert(wire >= 0 && wire < SCALAR_LOWERING_OPCODES);
@@ -68,11 +68,12 @@ static bool array(const pin_value *value, pin_type type, int limit, const pin_ar
         return false;
     }
     const pin_array *a = value->ptr;
-    if (a && (a->count < 0 || a->count > limit || (a->count && !a->items))) {
+    if (a && (!pin_array_valid(a) || a->count > limit)) {
         return false;
     }
     for (int i = 0; a && i < a->count; i++) {
-        if (a->items[i].type != type || a->items[i].container != PIN_CONTAINER_SINGLE) {
+        pin_value item = pin_array_get(a, i);
+        if (item.type != type || item.container != PIN_CONTAINER_SINGLE) {
             return false;
         }
     }
@@ -82,6 +83,11 @@ static bool array(const pin_value *value, pin_type type, int limit, const pin_ar
 static int count(const pin_array *a)
 {
     return a ? a->count : 0;
+}
+static const pin_value *item(const pin_array *a, int index, pin_value *out)
+{
+    *out = pin_array_get(a, index);
+    return out;
 }
 static bool path_valid(const char *text)
 {
@@ -387,26 +393,27 @@ bool scalar_lowering_decode(
         count(a[5]) != code_count) {
         return fail(error, size, "scalar plan table lengths disagree");
     }
-    pin_value defaults[2], headers[2], initials[LIMIT];
+    pin_value defaults[2], headers[2], initials[LIMIT], row;
     pin_type slots[LIMIT];
     behavior_value_kind kinds[LIMIT];
     behavior_function_instruction code[LIMIT];
     behavior_function_source origins[LIMIT];
     for (int n = 0; n < variables; n++) {
-        if (!a[0]->items[n].u64 || (n && a[0]->items[n].u64 == a[0]->items[0].u64) ||
-            !literal(&a[1]->items[n], &defaults[n])) {
+        if (!pin_array_get(a[0], n).u64 ||
+            (n && pin_array_get(a[0], n).u64 == pin_array_get(a[0], 0).u64) ||
+            !literal(item(a[1], n, &row), &defaults[n])) {
             return fail(error, size, "invalid scalar plan variable signature");
         }
     }
     for (int n = 0; n < results; n++) {
-        if (!literal(&a[2]->items[n], &headers[n]) || headers[n].i) {
+        if (!literal(item(a[2], n, &row), &headers[n]) || headers[n].i) {
             return fail(error, size, "invalid scalar plan result signature");
         }
     }
     for (int n = 0; n < slot_count; n++) {
         int type, kind;
-        if (!integer(&a[3]->items[n], "storage", &type) ||
-            !integer(&a[3]->items[n], "kind", &kind) ||
+        if (!integer(item(a[3], n, &row), "storage", &type) ||
+            !integer(item(a[3], n, &row), "kind", &kind) ||
             (!scalar(type) && type != BF_POINTER_TYPE) ||
             (kind != BEHAVIOR_VALUE && kind != BEHAVIOR_ADDRESS)) {
             return fail(error, size, "invalid scalar plan slot");
@@ -416,9 +423,9 @@ bool scalar_lowering_decode(
     }
     for (int n = 0; n < local_count; n++) {
         int kind;
-        if (!literal(&a[4]->items[n], &initials[n]) ||
+        if (!literal(item(a[4], n, &row), &initials[n]) ||
             initials[n].type != PIN_BOOL || initials[n].b ||
-            !integer(&a[4]->items[n], "kind", &kind) || kind != BEHAVIOR_VALUE) {
+            !integer(item(a[4], n, &row), "kind", &kind) || kind != BEHAVIOR_VALUE) {
             return fail(error, size, "invalid scalar plan local");
         }
     }
@@ -426,17 +433,17 @@ bool scalar_lowering_decode(
         int doc;
         behavior_function_source *s = &origins[n];
         *s = (behavior_function_source){ .parent = -1 };
-        if (!instruction(&a[7]->items[n], &code[n]) ||
-            !integer(&a[5]->items[n], "start", &s->start) ||
-            !integer(&a[5]->items[n], "end", &s->end) ||
-            !integer(&a[5]->items[n], "line", &s->line) ||
-            !integer(&a[5]->items[n], "column", &s->column) ||
-            !integer(&a[5]->items[n], "document", &doc) ||
-            !in(doc, count(a[6])) || s->start < 0 || s->end < s->start ||
-            s->line < 0 || s->column < 0 || !path_valid(a[6]->items[doc].str)) {
+        if (!instruction(item(a[7], n, &row), &code[n]) ||
+            !integer(item(a[5], n, &row), "start", &s->start) ||
+            !integer(item(a[5], n, &row), "end", &s->end) ||
+            !integer(item(a[5], n, &row), "line", &s->line) ||
+            !integer(item(a[5], n, &row), "column", &s->column) ||
+            !integer(item(a[5], n, &row), "document", &doc) || !in(doc, count(a[6])) ||
+            s->start < 0 || s->end < s->start || s->line < 0 || s->column < 0 ||
+            !path_valid(pin_array_get(a[6], doc).str)) {
             return fail(error, size, "invalid scalar plan instruction or origin");
         }
-        s->asset_name = a[6]->items[doc].str;
+        s->asset_name = pin_array_get(a[6], doc).str;
     }
     if (!references(code, code_count, slots, kinds, slot_count, local_count, defaults, variables, headers, results)) {
         return fail(error, size, "invalid scalar plan references or provenance");
@@ -446,7 +453,7 @@ bool scalar_lowering_decode(
     holder.variable_count = variables;
     behavior_function_builder_signature(holder.builder, NULL, 0, headers, results, defaults, variables);
     for (int n = 0; n < variables; n++) {
-        holder.variable_ids[n] = a[0]->items[n].u64;
+        holder.variable_ids[n] = pin_array_get(a[0], n).u64;
     }
     for (int n = 0; n < slot_count; n++) {
         behavior_function_builder_slot(holder.builder, slots[n]);

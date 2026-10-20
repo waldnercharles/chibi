@@ -408,8 +408,7 @@ bool chibi_build_invoke(const chibi_build_options *options, chibi_build_result *
             strcmp(source->analysis->symbols[function->symbol].name, options->entry)) {
             continue;
         }
-        if (entry_id || function->parameter_count ||
-            function->type_parameter_count || function->result_count != 1 ||
+        if (entry_id || function->parameter_count || function->result_count != 1 ||
             source->analysis->symbols[function->results[0]].type.storage != PIN_I32 ||
             source->analysis->symbols[function->results[0]].type.container !=
                 PIN_CONTAINER_SINGLE) {

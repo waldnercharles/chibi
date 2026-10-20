@@ -15,6 +15,7 @@ void test_language_syntax();
 void test_language_inferred_string_arrays(bool repro);
 void test_language_outliner_projection();
 void test_language_row_array();
+void test_language_packed();
 void test_language_runtime_attribution();
 void test_language_record_values();
 void test_language_record_publication(bool repro);
@@ -32,7 +33,15 @@ void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_wasm();
 void test_language_semantic();
+void test_language_effects();
+void test_language_maps();
+void test_language_iteration();
+void test_language_generic();
+void test_language_source_assets();
+void test_language_source_prototype_edits();
+void test_language_symbol_references();
 void test_language_program();
+void test_language_retention();
 void test_language_capture();
 void test_language_query_program();
 void test_language_query_boundary();
@@ -161,6 +170,8 @@ int main(int argc, char **argv)
                                   !strcmp(argv[1], "--package-compiler-chibi");
     bool package_compiler_chibi_types = argc == 2 &&
                                         !strcmp(argv[1], "--package-compiler-chibi-types");
+    bool package_compiler_chibi_imports = argc == 2 &&
+                                          !strcmp(argv[1], "--package-compiler-chibi-imports");
     bool package_compiler_chibi_bootstrap = argc == 2 &&
                                             !strcmp(argv[1], "--package-compiler-chibi-bootstrap");
     bool scalar_lowering_chibi = argc == 2 &&
@@ -215,6 +226,8 @@ int main(int argc, char **argv)
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
     bool field_runtime = argc == 2 && !strcmp(argv[1], "--field-runtime");
     bool prototype = argc == 2 && !strcmp(argv[1], "--prototype-document");
+    bool source_prototype_edits = argc == 2 &&
+                                  !strcmp(argv[1], "--source-prototype-edits");
     bool model_runtime = argc == 2 && !strcmp(argv[1], "--model-runtime");
     bool graph_authoring = argc == 2 && !strcmp(argv[1], "--graph-authoring");
     bool graph_model = argc == 2 && !strcmp(argv[1], "--graph-model");
@@ -234,19 +247,20 @@ int main(int argc, char **argv)
          !syntax_chibi && !package_syntax && !package_syntax_chibi &&
          !package_paths_chibi && !package_routes_chibi && !package_snapshot_chibi &&
          !constant_proof_chibi && !constant_scalar_chibi && !scalar_lowering_chibi &&
-         !bounded_compiler_chibi && !prepared_writer_chibi && !package_compiler_chibi &&
-         !package_compiler_chibi_types && !package_compiler_chibi_bootstrap &&
+         !bounded_compiler_chibi && !prepared_writer_chibi &&
+         !package_compiler_chibi && !package_compiler_chibi_types &&
+         !package_compiler_chibi_imports && !package_compiler_chibi_bootstrap &&
          !lexical_binding_chibi && !nominal_binding_chibi && !named_binding_chibi &&
-         !type_constructors_chibi && !type_relations_chibi &&
-         !unit_algebra_chibi && !signature_reader_chibi && !snapshot_reader_chibi &&
-         !callable_headers_chibi && !unit_analysis_chibi && !unit_analysis_zero_id &&
-         !unit_analysis_deep && !union_members_chibi && !effect_analysis_chibi &&
-         !record_members_chibi && !package_execution && !package_resolution &&
-         !package_imports && !package_files && !package_core && !package_tests &&
-         !docs_markdown && !component_write && !component_write_layout &&
-         !scalarize && !borrow && !reductions && !binding_schedule &&
-         !activation_cache && !headless && !build_workflow && !navigation &&
-         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !type_constructors_chibi && !type_relations_chibi && !unit_algebra_chibi &&
+         !signature_reader_chibi && !snapshot_reader_chibi && !callable_headers_chibi &&
+         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+         !package_execution && !package_resolution && !package_imports &&
+         !package_files && !package_core && !package_tests && !docs_markdown &&
+         !component_write && !component_write_layout && !scalarize && !borrow &&
+         !reductions && !binding_schedule && !activation_cache && !headless &&
+         !build_workflow && !navigation && !publication && !field_runtime &&
+         !prototype && !source_prototype_edits && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
@@ -261,7 +275,8 @@ int main(int argc, char **argv)
             "--constant-proof-chibi | --constant-scalar-chibi | "
             "--scalar-lowering-chibi | --bounded-compiler-chibi | "
             "--prepared-writer-chibi | --package-compiler-chibi | "
-            "--package-compiler-chibi-types | "
+            "--package-compiler-chibi-types | --package-compiler-chibi-imports "
+            "| "
             "--package-compiler-chibi-bootstrap | "
             "--lexical-binding-chibi | --nominal-binding-chibi | "
             "--named-binding-chibi | "
@@ -287,7 +302,8 @@ int main(int argc, char **argv)
             "--headless | --build-workflow | "
             "--navigation | "
             "--publication | "
-            "--field-runtime | --prototype-document | --ui-authoring | "
+            "--field-runtime | --prototype-document | --source-prototype-edits "
+            "| --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | --runtime-attribution | --record-values | "
             "--record-semantic | --record-document | --record-services | "
@@ -310,6 +326,7 @@ int main(int argc, char **argv)
         test_language_outliner_projection();
     } else if (row_array) {
         test_language_row_array();
+        test_language_packed();
     } else if (record_compatibility) {
         test_language_record_compatibility();
 #ifdef CHIBI_TEST_RECORD_SERVICES
@@ -368,8 +385,18 @@ int main(int argc, char **argv)
         test_language_text_format();
     } else if (ui_authoring) {
         test_ui_authoring();
+    } else if (source_prototype_edits) {
+#ifdef CHIBI_TEST_SOURCE_ASSETS
+        test_language_source_prototype_edits();
+#else
+        fprintf(stderr, "source-prototype-edits requires CHIBI_TEST_SOURCE_ASSETS\n");
+        return 1;
+#endif
     } else if (prototype) {
         test_prototype_document();
+#ifdef CHIBI_TEST_SOURCE_ASSETS
+        test_language_source_assets();
+#endif
     } else if (field_runtime) {
         test_field_runtime();
     } else if (navigation) {
@@ -394,6 +421,9 @@ int main(int argc, char **argv)
     } else if (query_program) {
         test_language_query_program();
         test_language_query_boundary();
+        test_language_maps();
+        test_language_iteration();
+        test_language_generic();
     } else if (modules) {
         test_language_modules();
     } else if (incremental) {
@@ -422,6 +452,8 @@ int main(int argc, char **argv)
         test_language_package_compiler_chibi();
     } else if (package_compiler_chibi_types) {
         test_language_package_compiler_chibi_types();
+    } else if (package_compiler_chibi_imports) {
+        test_language_package_compiler_chibi_imports();
     } else if (package_compiler_chibi_bootstrap) {
         test_language_package_compiler_chibi_bootstrap();
     } else if (scalar_lowering_chibi) {
@@ -488,10 +520,13 @@ int main(int argc, char **argv)
         test_language_scalarize();
     } else if (program) {
         test_language_program();
+        test_language_retention();
         test_language_capture();
         test_language_query_boundary();
     } else if (semantic) {
         test_language_semantic();
+        test_language_effects();
+        test_language_symbol_references();
     } else if (execution) {
         test_language_execution();
     } else {

@@ -1,0 +1,24 @@
+RelationshipProbe :: behavior {
+    targets: handle<ecs.entity>[] = []
+    on Begin {
+        for target in self.Targets {
+            targets = array_add(targets, target)
+        }
+        for target in targets {
+            if has_pair(self, Targets, target) {
+                remove_pair(self, Targets, target)
+            }
+        }
+    }
+    on Tick {
+        waiting: handle<ecs.entity>[] = []
+        for target in targets {
+            if has_pair(self, Targets, target) {
+                waiting = array_add(waiting, target)
+            } else {
+                add_pair(self, Targets, target)
+            }
+        }
+        targets = waiting
+    }
+}

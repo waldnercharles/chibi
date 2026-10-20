@@ -2,11 +2,104 @@
 
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/map.h"
 #include "types/record.h"
 #include "types/type.h"
 #include "types/union.h"
 
 #include <string.h>
+
+#define DOCUMENT_MAX_VALUES 1000000
+#define DOCUMENT_MAX_DEPTH 64
+
+typedef struct
+{
+    int values;
+} document_writer;
+
+static av_value *shape(av_doc *doc, const pin_value *value)
+{
+    if (value->type < PIN_BOOL || value->type > PIN_UNION ||
+        value->container < PIN_CONTAINER_SINGLE || value->container > PIN_CONTAINER_MAP ||
+        (value->record &&
+         (!pin_record_valid(value->record) || value->type != PIN_STRUCT))) {
+        return NULL;
+    }
+    static const char *containers[] = { "value", "array", "set", "map" };
+    av_value *out = av_obj(doc);
+    av_obj_add_str(doc, out, "storage", pin_type_name(value->type));
+    av_obj_add_str(doc, out, "container", containers[value->container]);
+    if (value->type_name) {
+        av_obj_add_str(doc, out, "name", value->type_name);
+    }
+    if (value->record) {
+        av_obj_add_uint(doc, out, "record_id", value->record->id);
+        av_obj_add_uint(doc, out, "record_layout", value->record->layout);
+    }
+    return out;
+}
+
+static av_value *project(
+    av_doc *,
+    const pin_value *,
+    pin_type,
+    const char *,
+    const pin_record *,
+    document_writer *,
+    int
+);
+
+static av_value *map_document(av_doc *doc, const pin_map *map, document_writer *writer, int depth)
+{
+    if (!map) {
+        return av_null(doc);
+    }
+    if (map->count < 0 || map->count > DOCUMENT_MAX_VALUES / 2 ||
+        (map->count && !map->entries) || !pin_map_key_supported(map->key_type)) {
+        return NULL;
+    }
+    av_value *keys = shape(doc, &map->key_type),
+             *values = shape(doc, &map->value_type);
+    if (!keys || !values) {
+        return NULL;
+    }
+    av_value *out = av_obj(doc), *entries = av_arr(doc);
+    av_obj_set(doc, out, "key_type", keys);
+    av_obj_set(doc, out, "value_type", values);
+    av_obj_set(doc, out, "entries", entries);
+    for (int i = 0; i < map->count; i++) {
+        const pin_map_entry *entry = &map->entries[i];
+        if (!pin_map_entry_valid(map, &entry->key, &entry->value)) {
+            return NULL;
+        }
+        av_value *key = project(
+            doc,
+            &entry->key,
+            entry->key.type,
+            entry->key.type_name,
+            map->key_type.record,
+            writer,
+            depth + 1
+        );
+        av_value *value = project(
+            doc,
+            &entry->value,
+            entry->value.type,
+            entry->value.type_name,
+            map->value_type.record,
+            writer,
+            depth + 1
+        );
+        if (!key || !value) {
+            return NULL;
+        }
+        av_value *pair = av_arr(doc);
+        av_arr_append(pair, key);
+        av_arr_append(pair, value);
+        av_arr_append(entries, pair);
+    }
+    return out;
+}
 
 static bool record_header(const pin_value *value, const pin_record *validated)
 {
@@ -19,8 +112,22 @@ static bool record_header(const pin_value *value, const pin_record *validated)
 }
 /* NULL means invalid input. A valid document null is a distinct av_value. Build
  * each whole subtree before exposing it through the caller's destination key. */
-static av_value *project(av_doc *doc, const pin_value *v, pin_type t, const char *type_name, const pin_record *validated)
+static av_value *project(
+    av_doc *doc,
+    const pin_value *v,
+    pin_type t,
+    const char *type_name,
+    const pin_record *validated,
+    document_writer *writer,
+    int depth
+)
 {
+    if (depth >= DOCUMENT_MAX_DEPTH || ++writer->values > DOCUMENT_MAX_VALUES) {
+        return NULL;
+    }
+    if (v->container == PIN_CONTAINER_MAP) {
+        return map_document(doc, v->ptr, writer, depth);
+    }
     if (v->record && (!record_header(v, validated) || t != v->type ||
                       !type_name || strcmp(type_name, v->type_name))) {
         return NULL;
@@ -31,8 +138,7 @@ static av_value *project(av_doc *doc, const pin_value *v, pin_type t, const char
         if (!items) {
             return array;
         }
-        if (items->count < 0 || items->capacity < items->count ||
-            (items->count && !items->items)) {
+        if (!pin_array_valid(items)) {
             return NULL;
         }
         if (items->record || v->record) {
@@ -44,21 +150,46 @@ static av_value *project(av_doc *doc, const pin_value *v, pin_type t, const char
                 return NULL;
             }
         }
+        av_value *result = array;
+        bool nested = items->count &&
+                      pin_array_get(items, 0).container != PIN_CONTAINER_SINGLE;
+        pin_value element_shape = nested ? pin_array_get(items, 0) : (pin_value){ 0 };
+        if (nested) {
+            av_value *element_type = shape(doc, &element_shape);
+            if (!element_type) {
+                return NULL;
+            }
+            result = av_obj(doc);
+            av_obj_set(doc, result, "element_type", element_type);
+            av_obj_set(doc, result, "items", array);
+        }
         for (int i = 0; i < items->count; i++) {
-            const pin_value *item = &items->items[i];
-            if ((v->record || item->record) &&
+            pin_value element = pin_array_get(items, i);
+            const pin_value *item = &element;
+            if (nested && (item->type != element_shape.type ||
+                           item->container != element_shape.container ||
+                           strcmp(
+                               item->type_name ? item->type_name : "",
+                               element_shape.type_name ? element_shape.type_name : ""
+                           ) ||
+                           !pin_record_same(item->record, element_shape.record))) {
+                return NULL;
+            }
+            bool nested_descriptor = nested && !v->record && v->type_name &&
+                                     !strncmp(v->type_name, "__collection_", 13);
+            if (!nested_descriptor && (v->record || item->record) &&
                 (!v->record || !item->record || !record_header(item, v->record) ||
                  item->container != PIN_CONTAINER_SINGLE ||
                  !pin_record_same(item->record, v->record))) {
                 return NULL;
             }
-            av_value *child = project(doc, item, item->type, item->type_name, v->record);
+            av_value *child = project(doc, item, item->type, item->type_name, v->record, writer, depth + 1);
             if (!child) {
                 return NULL;
             }
             av_arr_append(array, child);
         }
-        return array;
+        return result;
     }
     av_value *value = NULL;
     switch (t) {
@@ -88,7 +219,15 @@ static av_value *project(av_doc *doc, const pin_value *v, pin_type t, const char
                     for (int i = 0; i < type->field_count; i++) {
                         pin_value field;
                         pin_read_field(v->ptr, &type->fields[i], &field);
-                        av_value *child = project(doc, &field, field.type, field.type_name, NULL);
+                        av_value *child = project(
+                            doc,
+                            &field,
+                            field.type,
+                            field.type_name,
+                            NULL,
+                            writer,
+                            depth + 1
+                        );
                         if (!child) {
                             return NULL;
                         }
@@ -117,7 +256,7 @@ static av_value *project(av_doc *doc, const pin_value *v, pin_type t, const char
             av_value *payload = av_arr(doc);
             for (int i = 0; i < tagged->count; i++) {
                 const pin_value *item = &tagged->values[i];
-                av_value *child = project(doc, item, item->type, item->type_name, NULL);
+                av_value *child = project(doc, item, item->type, item->type_name, NULL, writer, depth + 1);
                 if (!child) {
                     return NULL;
                 }
@@ -139,12 +278,14 @@ void pin_value_write_document(
     const pin_value *v
 )
 {
-    av_value *value = project(doc, v, type, type_name, NULL);
+    document_writer writer = { 0 };
+    av_value *value = project(doc, v, type, type_name, NULL, &writer, 0);
     if (value) {
         av_obj_set(doc, obj, key, value);
     }
 }
 av_value *pin_value_to_document(av_doc *doc, const pin_value *value)
 {
-    return project(doc, value, value->type, value->type_name, NULL);
+    document_writer writer = { 0 };
+    return project(doc, value, value->type, value->type_name, NULL, &writer, 0);
 }

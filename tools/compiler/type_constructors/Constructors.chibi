@@ -65,7 +65,7 @@ Plan :: union {
                 variants: Variant[], fields: Field[], ids: uint64[], diagnostics: syntax.Diagnostic[])
 }
 
-Tag :: pure fn(value: named.Value) -> uint64 {
+Tag :: (value: named.Value) -> uint64 {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             if ((flags & 512) != 0) {
@@ -83,7 +83,7 @@ Tag :: pure fn(value: named.Value) -> uint64 {
             return binding.ID("union-type", format_text("{}:{}:{}:{}:{}", storage, container, nominal_id, result, flags & 74));
     }
 }
-FindDefinition :: pure fn(environment: Environment, id: uint64) -> int {
+FindDefinition :: (environment: Environment, id: uint64) -> int {
     switch environment {
         case .Tables(types, ids, definitions, variants, capabilities, functions, symbols, results):
             index: int = 0;
@@ -96,8 +96,8 @@ FindDefinition :: pure fn(environment: Environment, id: uint64) -> int {
             return -1;
     }
 }
-Select :: pure fn(selection: Selections, value: named.Value, catalog_type: int, variant: int,
-                  member: int, tag: uint64) -> Selections {
+Select :: (selection: Selections, value: named.Value, catalog_type: int, variant: int,
+           member: int, tag: uint64) -> Selections {
     switch selection {
         case .Selected(payload_rows, payload_ids):
             rows := payload_rows;
@@ -123,7 +123,7 @@ Select :: pure fn(selection: Selections, value: named.Value, catalog_type: int, 
             }
     }
 }
-SelectMember :: pure fn(environment: Environment, selection: Selections, value: named.Value, member: int) -> Selections {
+SelectMember :: (environment: Environment, selection: Selections, value: named.Value, member: int) -> Selections {
     switch value {
         case .Typed(storage, container, flags, nominal, parameter):
             nested: int = -1;
@@ -151,7 +151,7 @@ SelectMember :: pure fn(environment: Environment, selection: Selections, value: 
 }
 // Compare the first differing bit from most to least significant. This stays
 // within the bootstrap executor's supported unsigned bit operations.
-TagAfter :: pure fn(left: uint64, right: uint64) -> bool {
+TagAfter :: (left: uint64, right: uint64) -> bool {
     mask: uint64 = 1 << 63;
     while (mask != 0) {
         left_bit := left & mask;
@@ -163,8 +163,8 @@ TagAfter :: pure fn(left: uint64, right: uint64) -> bool {
     }
     return false;
 }
-FinishUnion :: pure fn(environment: Environment, selection: Selections, pointer_size: int,
-                       diagnostics: syntax.Diagnostic[]) -> Plan {
+FinishUnion :: (environment: Environment, selection: Selections, pointer_size: int,
+                diagnostics: syntax.Diagnostic[]) -> Plan {
     fields: Field[] = [];
     switch selection {
         case .Selected(payload_rows, payload_ids):
@@ -199,7 +199,7 @@ FinishUnion :: pure fn(environment: Environment, selection: Selections, pointer_
                                     pointer_size, true, rows, fields, ids, diagnostics);
     }
 }
-Union :: pure fn(environment: Environment, members: int[], pointer_size: int) -> Plan {
+Union :: (environment: Environment, members: int[], pointer_size: int) -> Plan {
     rows: Variant[] = [];
     ids: uint64[] = [];
     selection := Selections.Selected(rows, ids);
@@ -214,7 +214,7 @@ Union :: pure fn(environment: Environment, members: int[], pointer_size: int) ->
     diagnostics: syntax.Diagnostic[] = [];
     return FinishUnion(environment, selection, pointer_size, diagnostics);
 }
-Task :: pure fn(environment: Environment, result: int, function: uint64) -> Plan {
+Task :: (environment: Environment, result: int, function: uint64) -> Plan {
     fields: Field[] = [];
     variants: Variant[] = [];
     outputIDs: uint64[] = [];
@@ -269,7 +269,7 @@ Task :: pure fn(environment: Environment, result: int, function: uint64) -> Plan
                                     0, true, variants, fields, outputIDs, diagnostics);
     }
 }
-Await :: pure fn(environment: Environment, success: int, request: Request) -> Plan {
+Await :: (environment: Environment, success: int, request: Request) -> Plan {
     diagnostics: syntax.Diagnostic[] = [];
     rows: Variant[] = [];
     outputIDs: uint64[] = [];

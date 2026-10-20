@@ -939,10 +939,7 @@ TEST_CASE(query_binding_authored_join_lowers_without_host_banks)
                                      .globals = &owner,
                                      .global_count = 1,
                                      .entity_type = 700 };
-    binding_syntax = script_parse(
-        "system Direct query root:Position join entity in self.Targets "
-        "where entity != self { if entity == self {} }"
-    );
+    binding_syntax = script_parse("Direct :: system( root:Position) join entity in self.Targets where entity != self { if entity == self {} }");
     binding_analysis = script_analyze(binding_syntax, &catalog);
     REQUIRE(binding_analysis && binding_analysis->valid);
     plan = script_lower(binding_analysis, &catalog, &(script_lower_bindings){ .global = binding_global });

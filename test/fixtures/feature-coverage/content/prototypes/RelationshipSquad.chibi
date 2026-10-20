@@ -1,0 +1,9 @@
+RelationshipSquad :: prototype {
+    Health {
+        current: 10,
+        maximum: 10
+    }
+    behaviors: [RelationshipProbe]
+    children: [{name: "enemy", prototype: RelationshipTarget}]
+    links: {Targets: child.enemy}
+}

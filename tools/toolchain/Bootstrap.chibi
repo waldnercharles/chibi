@@ -1,13 +1,13 @@
-library CompilerBootstrap {
+CompilerBootstrap :: library {
     // The text between name=" and the next quote in text, or "".
-    Property :: fn(text: string, name: string) -> string {
+    Property :: (text: string, name: string) -> string {
         return BuildBefore(BuildAfter(text, BuildJoin([name, "=\""], "")), "\"");
     }
     // Recovers the compiler from the published bootstrap artifact that
     // tools/compiler/bootstrap.kdl pins. Arguments: the compiler host and the
     // folder to download the artifact into. The host checks the manifest
     // against the pin before it recovers anything.
-    Recover :: fn() -> int {
+    Recover :: () -> int {
         arguments := BuildArguments();
         if (BuildLength(arguments) != 2) {
             BuildReport("usage: COMPILER_HOST FOLDER");

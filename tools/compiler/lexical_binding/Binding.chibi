@@ -64,7 +64,7 @@ ResultKind: int : 7;
 LocalKind: int : 8;
 ActionKind: int : 9;
 
-FindName :: pure fn(environment: Environment, scope: int, name: string) -> int {
+FindName :: (environment: Environment, scope: int, name: string) -> int {
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
             current := scope;
@@ -83,7 +83,7 @@ FindName :: pure fn(environment: Environment, scope: int, name: string) -> int {
             return -1;
     }
 }
-FindStorage :: pure fn(environment: Environment, scope: int, name: string, kind: int) -> int {
+FindStorage :: (environment: Environment, scope: int, name: string, kind: int) -> int {
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
             current := scope;
@@ -102,7 +102,7 @@ FindStorage :: pure fn(environment: Environment, scope: int, name: string, kind:
             return -1;
     }
 }
-FindCallable :: pure fn(environment: Environment, scope: int, name: string) -> int {
+FindCallable :: (environment: Environment, scope: int, name: string) -> int {
     found := FindName(environment, scope, name);
     switch environment {
         case .Tables(scopes, symbols, functions, ids, keys):
@@ -125,12 +125,12 @@ FindCallable :: pure fn(environment: Environment, scope: int, name: string) -> i
             return -1;
     }
 }
-Diagnostic :: pure fn(request: Request, message: string) -> syntax.Diagnostic {
+Diagnostic :: (request: Request, message: string) -> syntax.Diagnostic {
     return {start: request.start, end: request.end, line: request.line,
             column: request.column, document: request.document,
             message: strings.Slice(message, 0, 191)};
 }
-Previous :: pure fn(symbol: Symbol, message: string) -> syntax.Diagnostic {
+Previous :: (symbol: Symbol, message: string) -> syntax.Diagnostic {
     return {start: symbol.start, end: symbol.end, line: symbol.line,
             column: symbol.column, document: symbol.document,
             message: strings.Slice(message, 0, 191)};
@@ -138,7 +138,7 @@ Previous :: pure fn(symbol: Symbol, message: string) -> syntax.Diagnostic {
 
 // The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
 // one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
-ID :: pure fn(prefix: string, name: string) -> uint64 {
+ID :: (prefix: string, name: string) -> uint64 {
     hash: uint64 = 14695981039346656037;
     prime: uint64 = 1099511628211;
     index: int = 0;
@@ -159,7 +159,7 @@ ID :: pure fn(prefix: string, name: string) -> uint64 {
     }
     return hash;
 }
-SymbolID :: pure fn(environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {
+SymbolID :: (environment: Environment, context: Context, request: Request, result_parameter: bool) -> uint64 {
     suffix := "";
     if (request.kind == FunctionKind || request.kind == MacroKind) {
         suffix = ":callable";
@@ -195,7 +195,7 @@ SymbolID :: pure fn(environment: Environment, context: Context, request: Request
 
 // Admission reports diagnostics in source order and still permits appending
 // reserved Cancelled when no duplicate exists, matching the current analyzer.
-Declare :: pure fn(environment: Environment, context: Context, request: Request) -> Declaration {
+Declare :: (environment: Environment, context: Context, request: Request) -> Declaration {
     diagnostics: syntax.Diagnostic[] = [];
     if (request.name == "Cancelled") {
         diagnostics = array_add(diagnostics, Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));

@@ -5,6 +5,7 @@
 #include "runtime/behaviors/source.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 #include "types/record.h"
 
 #include <assert.h>
@@ -13,17 +14,18 @@
 #include <string.h>
 #include <unistd.h>
 
-/* Five fixed cases. VM/SLJIT preparation and publication, no authored execution.
+/* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
  * The repro selector runs only the VM half of the real publication case. */
 #define FIELDS                                                                 \
     "label: string = \"saved\"; count: int = 7; enabled: bool = true;"
 static const char
-    record_source[] = "library CatalogRows { Flags :: struct { " FIELDS " } }";
+    record_source[] = "CatalogRows :: library { Flags :: struct { " FIELDS
+                      " } }";
 static const char
-    library_source[] = "library CatalogRows { Flags :: struct { " FIELDS
+    library_source[] = "CatalogRows :: library { Flags :: struct { " FIELDS
                        " } Choice :: union { Off | On }; Make :: () -> Flags { "
                        "return {}; } }";
-static const char consumer_source[] = "behavior CatalogConsumer { "
+static const char consumer_source[] = "CatalogConsumer :: behavior { "
                                       "on Pulse { flags := CatalogRows.Make(); "
                                       "flags.count = 8; } }";
 static const script_catalog_capability pulse = { .id = 10,
@@ -35,6 +37,7 @@ static const script_catalog empty;
 static const script_lower_bindings bindings;
 static char root[512];
 static bool reproduce;
+static bool project_types;
 static source_catalog *snapshot;
 static authoring_sources *sources;
 static ecs_world *world;
@@ -89,6 +92,10 @@ static void clear()
 static void cleanup()
 {
     clear();
+    if (project_types) {
+        type_catalog_set_project(NULL);
+        project_types = false;
+    }
     if (root[0]) {
         assert(!rmdir(root));
         root[0] = 0;
@@ -241,7 +248,7 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
 TEST_CASE(record_catalog_conflicts_reject_before_function_creation)
 {
     REQUIRE(parse_record());
-    for (int change = 0; change < 29; change++) {
+    for (int change = 0; change < 31; change++) {
         script_catalog_type types[2] = { copied.types[0], copied.types[0] };
         script_catalog_field fields[3];
         memcpy(fields, copied.types[0].fields, sizeof fields);
@@ -287,8 +294,52 @@ TEST_CASE(record_catalog_conflicts_reject_before_function_creation)
                 checked.types = own;
                 checked.type_count = 2;
                 break;
+            case 29: types[0].type.collection = 1; break;
+            case 30: fields[0].type.collection = 1; break;
         }
         plan = script_lower(&checked, &input, &bindings);
+        REQUIRE(!plan->valid && plan->diagnostic_count == 1);
+        REQUIRE(strstr(plan->diagnostics[0].message, "Conflicting authored record declaration"));
+        REQUIRE(!plan->type_count && !plan->function_count);
+        execution_module_plan_free(plan);
+        plan = NULL;
+    }
+    return true;
+}
+TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values)
+{
+    static const char source
+        [] = "Defaults :: library { Row :: struct { "
+             "flag: bool = true; i8: int8 = -1; u8: byte = 2; "
+             "i16: int16 = -3; u16: uint16 = 4; i32: int = -5; u32: uint = 6; "
+             "i64: int64 = -7; u64: uint64 = 18446744073709551615; "
+             "f32: float = -0.0; f64: double = -0.0; "
+             "key: name = \"saved\"; label: string = \"saved\"; } }";
+    syntax = script_parse(source);
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze_document(syntax, &empty, "libraries/Defaults.chibi");
+    REQUIRE(analysis->valid && analysis->type_count == 1);
+    REQUIRE(analysis->types[0].field_count == 13);
+    const script_catalog input = { .types = analysis->types, .type_count = 1 };
+    REQUIRE(script_catalog_snapshot(&catalog_storage, &input, &copied));
+    plan = script_lower(analysis, &copied, &bindings);
+    REQUIRE(plan->valid && plan->type_count == 1);
+    execution_module_plan_free(plan);
+    plan = NULL;
+    for (int changed = 0; changed < 13; changed++) {
+        script_catalog_field fields[13];
+        memcpy(fields, copied.types[0].fields, sizeof fields);
+        fields[changed].default_value = (pin_value){
+            .type = fields[changed].type.storage
+        };
+        if (fields[changed].type.storage == PIN_NAME ||
+            fields[changed].type.storage == PIN_STR) {
+            fields[changed].default_value.str = "changed";
+        }
+        script_catalog_type type = copied.types[0];
+        type.fields = fields;
+        const script_catalog stale = { .types = &type, .type_count = 1 };
+        plan = script_lower(analysis, &stale, &bindings);
         REQUIRE(!plan->valid && plan->diagnostic_count == 1);
         REQUIRE(strstr(plan->diagnostics[0].message, "Conflicting authored record declaration"));
         REQUIRE(!plan->type_count && !plan->function_count);
@@ -321,6 +372,44 @@ TEST_CASE(record_qualified_foreign_identity_stays_distinct)
     );
     REQUIRE(!strcmp(plan->types[0].name, "Foreign.Flags"));
     REQUIRE(!strcmp(plan->types[1].name, "CatalogRows.Flags"));
+    return true;
+}
+TEST_CASE(record_native_nested_field_keeps_its_nominal_layout)
+{
+    static const type_field field = { .name = "value",
+                                      .type = PIN_F32,
+                                      .size = sizeof(float) };
+    static const type_desc nested = { .name = "PublicationNative",
+                                      .size = sizeof(float),
+                                      .fields = &field,
+                                      .field_count = 1 };
+    static const type_desc *const types[] = { &nested };
+    static const type_catalog_pack pack = { .types = types, .type_count = 1 };
+    static const script_catalog_type native_type = {
+        .id = 51,
+        .name = "PublicationNative",
+        .type = { .storage = PIN_STRUCT, .nominal = 51 },
+        .size = sizeof(float)
+    };
+    const script_catalog catalog = { .types = &native_type, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    project_types = true;
+    syntax = script_parse("Nested :: library { Row :: struct { value: PublicationNative; } }");
+    REQUIRE(!syntax->diagnostic_count);
+    analysis = script_analyze_document(syntax, &catalog, "libraries/Nested.chibi");
+    REQUIRE(analysis->valid && analysis->type_count == 1);
+    plan = script_lower(analysis, &catalog, &bindings);
+    REQUIRE(plan->valid && plan->type_count == 2);
+    const pin_record *record = plan->types[1].record;
+    REQUIRE(record && pin_record_valid(record));
+    REQUIRE(record->layout == analysis->types[0].layout);
+    REQUIRE(record->type.size == analysis->types[0].size);
+    clear_analysis();
+    REQUIRE(record->type.field_count == 1);
+    REQUIRE(record->type.fields[0].type == PIN_STRUCT);
+    REQUIRE(record->type.fields[0].type_name);
+    REQUIRE(!strcmp(record->type.fields[0].type_name, nested.name));
+    REQUIRE(record->type.fields[0].type_name != nested.name);
     return true;
 }
 TEST_CASE(record_prepared_duplicate_identity_and_name_remain_rejected)
@@ -371,7 +460,9 @@ void test_language_record_publication(bool repro)
     if (!reproduce) {
         RUN_TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape);
         RUN_TEST_CASE(record_catalog_conflicts_reject_before_function_creation);
+        RUN_TEST_CASE(record_scalar_defaults_merge_and_reject_changed_values);
         RUN_TEST_CASE(record_qualified_foreign_identity_stays_distinct);
+        RUN_TEST_CASE(record_native_nested_field_keeps_its_nominal_layout);
         RUN_TEST_CASE(record_prepared_duplicate_identity_and_name_remain_rejected);
     }
     pu_clear_setup();

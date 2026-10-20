@@ -3,8 +3,8 @@
 
 #include "authoring/source_navigation.h"
 
-/* A string constant that reaches a prototype parameter, such as Spawn
- * Prototype's, names that prototype just as a direct reference does. */
+/* A value origin that reaches a Prototype parameter, including typed symbolic
+ * references passed through locals or authored parameters. */
 typedef struct
 {
     int document;
@@ -15,8 +15,8 @@ typedef struct
 /* Follows values into prototype parameters through locals, state, authored
  * function parameters and their defaults, across documents. The pass is
  * flow-insensitive: any value assigned to a symbol may reach each read of it.
- * Direct references are already uses of their analysis and are not repeated;
- * constants that name no prototype are not names. Returns an owned array
+ * Typed references carry catalog IDs; textual origins are resolved by name.
+ * Constants that name no prototype are omitted. Returns an owned array
  * (support/array.h) the caller frees with afree. */
 authoring_prototype_name *authoring_prototype_names(
     const authoring_document *,

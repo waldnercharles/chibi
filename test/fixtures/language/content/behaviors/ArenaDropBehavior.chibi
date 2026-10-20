@@ -1,68 +1,68 @@
-behavior "ArenaDropBehavior" {
-    owner "ecs.entity";
+ArenaDropBehavior :: behavior {
+
     on Begin as begin() {
-        if (double(component("Pickup", "state")) == 3) {
-            await "Spawn Surface Pulse"(Prototype: "ArenaDeathPulse", Position: component("Transform"));
-            await "Emit Source Frame"(Position: component("Transform"), Appearance: component("Geometry3D"), Material: component("Shader"), Orientation: component("Orientation"), Visual: component("VisualTransform"));
-            await set_entity_geometry3_d(Entity: engine["Self"](), Value: {
+        if (double(self.Pickup.state) == 3) {
+            await Spawn_Surface_Pulse(Prototype: ArenaDeathPulse, Position: self.Transform);
+            await Emit_Source_Frame(Position: self.Transform, Appearance: self.Geometry3D, Material: self.Shader, Orientation: self.Orientation, Visual: self.VisualTransform);
+            self.Geometry3D = {
                 primitive: 9,
                 width: 5.0,
                 depth: 5.0,
                 height: 0.1,
                 elevation: 5.0
-            });
-            await set_entity_shader(Entity: engine["Self"](), Value: {
+            };
+            self.Shader = {
                 material: "ArenaExperience",
                 shape: "",
                 parameters: "",
                 bounds_x: 0.0,
                 bounds_y: 0.0
-            });
-            await set_orientation_radians(Value: 0.0, Target: 0);
-            await set_component(Component: "VisualTransform", Entity: 0, Value.pitch: float = 0.0, Value.roll: float = 0.0, Value.scale: float = 1.0);
-            set_pickup_state(Value: 0, Target: 0);
+            };
+            self.Orientation.radians = 0.0;
+            await set_component(Component: VisualTransform, Entity: 0, Value.pitch: float = 0.0, Value.roll: float = 0.0, Value.scale: float = 1.0);
+            self.Pickup.state = 0;
         } else {
         }
     }
-    "Emit Source Frame" :: fn(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null) -> () {
-        depth_limit 64;
+    Emit_Source_Frame :: (Position: struct<Transform> = null, Appearance: struct<Geometry3D> = null, Material: struct<Shader> = null, Orientation: struct<Orientation> = null, Visual: struct<VisualTransform> = null) -> () {
+
         action forloop = for_loop(FirstIndex: 0, LastIndex: int(subtract(A: plain int = primitive_part(Appearance: entry.Appearance, Index: 0).Count, B: plain int = 1)));
         after entry {
             forloop();
         }
         after forloop.Body {
             Appearance := entry.Appearance
-            await "Spawn Source Beam"(Position: entry.Position, Appearance: Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part(Appearance: Appearance, Index: forloop.Index).Center, "Center Y": primitive_part(Appearance: Appearance, Index: forloop.Index).Elevation, Width: primitive_part(Appearance: Appearance, Index: forloop.Index).Width, Height: primitive_part(Appearance: Appearance, Index: forloop.Index).Height, Depth: primitive_part(Appearance: Appearance, Index: forloop.Index).Depth, Primitive: primitive_part(Appearance: Appearance, Index: forloop.Index).Primitive);
+            await Spawn_Source_Beam(Position: entry.Position, Appearance: Appearance, Material: entry.Material, Orientation: entry.Orientation, Visual: entry.Visual, Center: primitive_part(Appearance: Appearance, Index: forloop.Index).Center, Center_Y: primitive_part(Appearance: Appearance, Index: forloop.Index).Elevation, Width: primitive_part(Appearance: Appearance, Index: forloop.Index).Width, Height: primitive_part(Appearance: Appearance, Index: forloop.Index).Height, Depth: primitive_part(Appearance: Appearance, Index: forloop.Index).Depth, Primitive: primitive_part(Appearance: Appearance, Index: forloop.Index).Primitive);
         }
         after forloop.Completed {
             return ();
         }
     }
-    "Spawn Surface Pulse" :: fn(Prototype: name = "ArenaHitPulse", Position: struct<"Transform"> = null) -> () {
-        depth_limit 64;
-        action spawn_prototype = engine["Spawn Prototype"](Prototype: entry.Prototype);
+    Spawn_Surface_Pulse :: (Prototype: Prototype = ArenaHitPulse, Position: struct<Transform> = null) -> () {
+
+        action spawn_prototype_action = spawn_prototype(Prototype: entry.Prototype);
         after entry {
-            spawn_prototype();
+            spawn_prototype_action();
         }
-        after spawn_prototype {
-            await set_entity_transform(Entity: spawn_prototype.Entity, Value: entry.Position);
+        after spawn_prototype_action {
+            spawn_prototype_action.Entity.Transform = entry.Position;
             return ();
         }
     }
-    "Spawn Source Beam" :: fn(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null, Center: struct<"CF_V2"> = null, "Center Y": float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
-        depth_limit 64;
-        action spawn_prototype = engine["Spawn Prototype"](Prototype: "ArenaEnemyShard");
+    Spawn_Source_Beam :: (Position: struct<Transform> = null, Appearance: struct<Geometry3D> = null, Material: struct<Shader> = null, Orientation: struct<Orientation> = null, Visual: struct<VisualTransform> = null, Center: struct<CF_V2> = null, Center_Y: float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
+
+        action spawn_prototype_action = spawn_prototype(Prototype: ArenaEnemyShard);
         after entry {
-            spawn_prototype();
+            spawn_prototype_action();
         }
-        after spawn_prototype {
-            await set_component(Component: "Transform", Entity: spawn_prototype.Entity, Value.x: float = double(add(A: plain double = entry.Position.x, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry."Center Y", Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x)), Value.y: float = double(add(A: plain double = entry.Position.y, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry."Center Y", Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y)));
-            await set_component(Component: "Geometry3D", Entity: spawn_prototype.Entity, Value.primitive: int = entry.Primitive, Value.width: float = entry.Width, Value.depth: float = entry.Depth, Value.height: float = entry.Height, Value.elevation: float = double(add(A: plain double = entry.Appearance.elevation, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry."Center Y", Heading: entry.Orientation.radians, Visual: entry.Visual).Elevation)));
-            await set_component(Component: "Velocity", Entity: spawn_prototype.Entity, Value.x: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry."Center Y", Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x, B: plain double = 5.0)), Value.y: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry."Center Y", Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y, B: plain double = 5.0)));
-            Shard := spawn_prototype.Entity
-            await set_entity_shader(Entity: Shard, Value: entry.Material);
-            await set_entity_orientation(Entity: Shard, Value: entry.Orientation);
-            await set_entity_visual_transform(Entity: Shard, Value: entry.Visual);
+        after spawn_prototype_action {
+            await set_component(Component: Transform, Entity: spawn_prototype_action.Entity, Value.x: float = double(add(A: plain double = entry.Position.x, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x)), Value.y: float = double(add(A: plain double = entry.Position.y, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y)));
+            await set_component(Component: Geometry3D, Entity: spawn_prototype_action.Entity, Value.primitive: int = entry.Primitive, Value.width: float = entry.Width, Value.depth: float = entry.Depth, Value.height: float = entry.Height, Value.elevation: float = double(add(A: plain double = entry.Appearance.elevation, B: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Elevation)));
+            await set_component(Component: Velocity, Entity: spawn_prototype_action.Entity, Value.x: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.x, B: plain double = 5.0)), Value.y: float = double(multiply(A: plain double = transform_visual_offset(Offset: entry.Center, Elevation: entry.Center_Y, Heading: entry.Orientation.radians, Visual: entry.Visual).Offset.y, B: plain double = 5.0)));
+            Shard := spawn_prototype_action.Entity
+            Shard.Shader = entry.Material;
+            Shard.Orientation = entry.Orientation;
+            Shard.VisualTransform = entry.Visual;
             return ();
         }
     }

@@ -1,5 +1,6 @@
 #include "assets/new_asset.h"
 
+#include "language/syntax.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <errno.h>
@@ -71,7 +72,21 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
     errno = 0;
     REQUIRE(!new_asset_create(content, NEW_ASSET_PROTOTYPE, "1Block", error, sizeof error));
     REQUIRE(errno == EINVAL);
-    snprintf(expected_path, sizeof expected_path, "%s/prototypes/1Block.kdl", content);
+    snprintf(expected_path, sizeof expected_path, "%s/prototypes/1Block.chibi", content);
+    REQUIRE(access(expected_path, F_OK) != 0);
+
+    snprintf(expected_path, sizeof expected_path, "%s/prototypes", content);
+    REQUIRE(!mkdir(expected_path, 0755));
+    snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.kdl", content);
+    FILE *legacy = fopen(expected_path, "wb");
+    REQUIRE(legacy);
+    REQUIRE(fputs("name \"Existing\"\n", legacy) >= 0);
+    REQUIRE(!fclose(legacy));
+    errno = 0;
+    REQUIRE(!new_asset_create(content, NEW_ASSET_PROTOTYPE, "Existing", error, sizeof error));
+    REQUIRE(errno == EEXIST && strstr(error, "Existing.kdl already exists"));
+    REQUIRE(!strcmp(read_text(expected_path), "name \"Existing\"\n"));
+    snprintf(expected_path, sizeof expected_path, "%s/prototypes/Existing.chibi", content);
     REQUIRE(access(expected_path, F_OK) != 0);
 
     /* A file where the folder belongs is a storage failure, not a bad name. */
@@ -104,9 +119,37 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
     return true;
 }
 
+TEST_CASE(new_asset_source_templates_use_canonical_identifiers_and_headers)
+{
+    const new_asset_kind kinds[] = { NEW_ASSET_BEHAVIOR,
+                                     NEW_ASSET_LIBRARY,
+                                     NEW_ASSET_SYSTEM,
+                                     NEW_ASSET_PROTOTYPE,
+                                     NEW_ASSET_RELATIONSHIP };
+    const char *headers[] = { "Sample :: behavior",
+                              "Sample :: library",
+                              "Sample :: system()",
+                              "Sample :: prototype",
+                              "Sample :: relationship" };
+    for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
+        char *text = new_asset_text(kinds[i], "Sample");
+        REQUIRE(text && strstr(text, headers[i]) == text);
+        script_syntax *syntax = script_parse(text);
+        REQUIRE(syntax && !syntax->diagnostic_count);
+        script_syntax_free(syntax);
+        free(text);
+        REQUIRE(!new_asset_text(kinds[i], "Two Words"));
+        REQUIRE(!new_asset_text(kinds[i], "Two-Words"));
+        REQUIRE(!new_asset_text(kinds[i], "Nested.Name"));
+        REQUIRE(!new_asset_text(kinds[i], "if"));
+    }
+    return true;
+}
+
 void test_new_asset()
 {
     pu_setup(NULL, remove_tree);
     RUN_TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder);
+    RUN_TEST_CASE(new_asset_source_templates_use_canonical_identifiers_and_headers);
     pu_clear_setup();
 }

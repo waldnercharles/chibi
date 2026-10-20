@@ -20,20 +20,20 @@ Invalid: int : 3;
 MaxPower: int : 2147483647;
 MaxTerms: int : 8;
 
-Empty :: pure fn(kind: int) -> Unit {
+Empty :: (kind: int) -> Unit {
     terms: Term[] = [];
     return Unit.Value(kind, terms);
 }
-Letter :: pure fn(byte: int) -> bool {
+Letter :: (byte: int) -> bool {
     return (byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) || byte == 95;
 }
-Digit :: pure fn(byte: int) -> bool {
+Digit :: (byte: int) -> bool {
     return byte >= 48 && byte <= 57;
 }
-Starts :: pure fn(value: string, at: int, prefix: string) -> bool {
+Starts :: (value: string, at: int, prefix: string) -> bool {
     return text.Slice(value, at, text.ByteLength(prefix)) == prefix;
 }
-Find :: pure fn(terms: Term[], name: string) -> int {
+Find :: (terms: Term[], name: string) -> int {
     index: int = 0;
     while (index < length(terms)) {
         if (terms[index].name == name) {
@@ -43,7 +43,7 @@ Find :: pure fn(terms: Term[], name: string) -> int {
     }
     return index;
 }
-MultiplyTerm :: pure fn(value: Unit, term: Term) -> ProductResult {
+MultiplyTerm :: (value: Unit, term: Term) -> ProductResult {
     switch value {
         case .Value(kind, inputTerms):
             terms := inputTerms;
@@ -71,7 +71,7 @@ MultiplyTerm :: pure fn(value: Unit, term: Term) -> ProductResult {
 }
 
 // Presence keeps a missing annotation distinct from an empty malformed one.
-Parse :: pure fn(present: bool, value: string) -> Unit {
+Parse :: (present: bool, value: string) -> Unit {
     if (!present) {
         return Empty(Unknown);
     }
@@ -158,7 +158,7 @@ Parse :: pure fn(present: bool, value: string) -> Unit {
     return result;
 }
 
-Same :: pure fn(left: Unit, right: Unit) -> bool {
+Same :: (left: Unit, right: Unit) -> bool {
     switch left {
         case .Value(leftKind, a):
             switch right {
@@ -166,7 +166,7 @@ Same :: pure fn(left: Unit, right: Unit) -> bool {
                     if (length(a) != length(b)) {
                         return false;
                     }
-                    foreach (term in a) {
+                    for (term in a) {
                         index := Find(b, term.name);
                         if (index == length(b) || term.power != b[index].power) {
                             return false;
@@ -176,7 +176,7 @@ Same :: pure fn(left: Unit, right: Unit) -> bool {
             }
     }
 }
-Product :: pure fn(left: Unit, right: Unit, sign: int) -> ProductResult {
+Product :: (left: Unit, right: Unit, sign: int) -> ProductResult {
     switch left {
         case .Value(leftKind, a):
             switch right {
@@ -188,7 +188,7 @@ Product :: pure fn(left: Unit, right: Unit, sign: int) -> ProductResult {
                         return ProductResult.Product(Empty(Unknown), false);
                     }
                     result := left;
-                    foreach (term in b) {
+                    for (term in b) {
                         scaled: Term = {name: term.name, power: term.power * sign};
                         switch MultiplyTerm(result, scaled) {
                             case .Product(next, overflow):
@@ -203,11 +203,11 @@ Product :: pure fn(left: Unit, right: Unit, sign: int) -> ProductResult {
     }
 }
 
-Append :: pure fn(value: string, part: string, size: int) -> string {
+Append :: (value: string, part: string, size: int) -> string {
     remaining := size - 1 - text.ByteLength(value);
     return format_text("{}{}", value, text.Slice(part, 0, remaining));
 }
-AppendTerm :: pure fn(value: string, term: Term, size: int) -> string {
+AppendTerm :: (value: string, term: Term, size: int) -> string {
     power := term.power;
     if (power < 0) {
         power = -power;
@@ -225,7 +225,7 @@ AppendTerm :: pure fn(value: string, term: Term, size: int) -> string {
     }
     return result;
 }
-WholeCharacters :: pure fn(value: string) -> string {
+WholeCharacters :: (value: string) -> string {
     end := text.ByteLength(value);
     lead := end;
     while (lead > 0 && (text.ByteAt(value, lead - 1) & 192) == 128) {
@@ -249,7 +249,7 @@ WholeCharacters :: pure fn(value: string) -> string {
     return value;
 }
 // size is positive and includes the trailing NUL in the C representation.
-Format :: pure fn(value: Unit, size: int) -> string {
+Format :: (value: Unit, size: int) -> string {
     switch value {
         case .Value(kind, terms):
             if (kind != Known) {
@@ -257,7 +257,7 @@ Format :: pure fn(value: Unit, size: int) -> string {
             }
             result := "";
             numerator := false;
-            foreach (term in terms) {
+            for (term in terms) {
                 if (term.power > 0) {
                     if (numerator) {
                         result = Append(result, "·", size);
@@ -269,7 +269,7 @@ Format :: pure fn(value: Unit, size: int) -> string {
             if (!numerator) {
                 result = Append(result, "1", size);
             }
-            foreach (term in terms) {
+            for (term in terms) {
                 if (term.power < 0) {
                     result = Append(result, "/", size);
                     result = AppendTerm(result, term, size);

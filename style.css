@@ -4,10 +4,10 @@
 }
 body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--text); background: var(--page); }
 a { color: var(--link); }
-.bar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 2rem; min-height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }
+.bar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 2rem; height: 3.5rem; padding: 0 1.5rem; box-sizing: border-box; background: var(--bar); }
 .bar a { color: var(--bar-text); text-decoration: none; }
-.bar .site { font-weight: 700; font-size: 1.3rem; }
-.bar nav { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; }
+.bar .site { flex: none; font-weight: 700; font-size: 1.3rem; }
+.bar nav { display: flex; gap: 1.2rem; min-width: 0; padding: 0.3rem 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
 .bar a[aria-current] { text-decoration: underline; text-underline-offset: 0.3em; }
 .page { display: flex; max-width: 84rem; margin: 0 auto; padding-right: 15rem; box-sizing: border-box; }
 .pages { width: 14rem; flex: none; position: sticky; top: 3.5rem; align-self: flex-start; max-height: calc(100vh - 3.5rem); overflow-y: auto; padding: 1.5rem 1rem; box-sizing: border-box; }
@@ -32,4 +32,4 @@ th, td { border: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left
 th { background: var(--panel); }
 blockquote { margin: 0; padding-left: 1rem; border-left: 3px solid var(--line); color: var(--muted); }
 @media (max-width: 64rem) { .page { padding-right: 0; } .contents { display: none; } }
-@media (max-width: 48rem) { .page { display: block; } .pages { display: none; } .bar { padding: 0.6rem 1rem; } main { padding: 1rem; } }
+@media (max-width: 48rem) { .bar { gap: 1rem; padding: 0 1rem; } .page { flex-direction: column; } .pages { order: 1; width: auto; position: static; align-self: stretch; max-height: none; border-top: 1px solid var(--line); } main { padding: 1rem; } }

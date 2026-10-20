@@ -736,7 +736,7 @@ TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
                                               .name = "Run",
                                               .kind = SCRIPT_CAPABILITY_EVENT };
     const script_catalog catalog = { .capabilities = &event, .capability_count = 1 };
-    syntax = script_parse("Borrow :: behavior { values: double[]=[]; total: double=0; on Run { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
+    syntax = script_parse("Borrow :: behavior { values: double[]=[]; total: double=0; on Run :: () { sum:=0.0; for value in values { sum+=value; } total+=sum; } }");
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(analysis && analysis->valid);

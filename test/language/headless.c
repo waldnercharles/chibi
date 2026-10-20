@@ -102,12 +102,13 @@ static bool compile(behavior_backend backend)
         .tick_event = 11,
     };
     print_abi = script_catalog_capability_abi(&catalog, &events[3]);
-    const char *text = "Headless :: behavior { count: retain int = 0;\n"
-                       "on Begin() { count = count + 1; }\n"
-                       "on Tick() { PrintString(\"headless tick\"); count = "
-                       "count + 2; }\n"
-                       "on Bump(amount: int) { count = count + amount; }\n"
-                       "bind self.HeadlessCounter.value = count; }\n";
+    const char
+        *text = "Headless :: behavior { count: retain int = 0;\n"
+                "on Begin :: () { count = count + 1; }\n"
+                "on Tick :: () { PrintString(\"headless tick\"); count = "
+                "count + 2; }\n"
+                "on Bump :: (amount: int) { count = count + amount; }\n"
+                "bind self.HeadlessCounter.value = count; }\n";
     const script_lower_bindings bindings = { .global = resolve_owner,
                                              .host = resolve_host };
     source = authoring_source_prepare("Headless.chibi", text, &catalog, &bindings, backend);

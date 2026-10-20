@@ -780,8 +780,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             a->out->functions[symbol.function].kind == SCRIPT_FUNCTION_SYSTEM) {
             script_analyzer_diagnostic(a, node, "Read the step in the system's body, and pass it to what it calls");
         }
-        if ((symbol.type.flags & SCRIPT_TYPE_RESULTS) && symbol.kind == SCRIPT_PARAMETER &&
-            symbol.function >= 0 && a->out->functions[symbol.function].named) {
+        if ((symbol.type.flags & SCRIPT_TYPE_RESULTS) &&
+            symbol.kind == SCRIPT_PARAMETER && symbol.function >= 0 &&
+            a->out->functions[symbol.function].kind == SCRIPT_FUNCTION_HANDLER) {
             script_analyzer_diagnostic(a, node, "This handler reads its payload by the field names it lists; list the field instead");
         }
         if (hides_parameter(a, &symbol)) {

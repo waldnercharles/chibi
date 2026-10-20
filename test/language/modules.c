@@ -169,11 +169,9 @@ TEST_CASE(modules_scroll_update_matches_inline_local_and_qualified_helpers)
     static const input inputs[] = {
         { "libraries/z/Scroll.chibi", "Scroll :: library { " STEP " }" },
         { "libraries/a/Other.chibi", "Other :: library { Step :: (offset: number, cells: number, advance: number, most: number) -> number { return -100; } }" },
-        { "behaviors/Inline.chibi", "Inline :: behavior { offset: number = 0; on Tick(cells) { offset += cells * 2; if offset < 0 { offset = 0; } if offset > 6 { offset = 6; } } }" },
-        { "behaviors/Local.chibi",
-          "Local :: behavior { offset: number = 0; " STEP
-          "on Tick(cells) { offset = Step(offset, cells, 2, 6); } }" },
-        { "behaviors/Imported.chibi", "Imported :: behavior { offset: number = 0; on Tick(cells) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
+        { "behaviors/Inline.chibi", "Inline :: behavior { offset: number = 0; on Tick :: (cells: double) { offset += cells * 2; if offset < 0 { offset = 0; } if offset > 6 { offset = 6; } } }" },
+        { "behaviors/Local.chibi", "Local :: behavior { offset: number = 0; " STEP "on Tick :: (cells: double) { offset = Step(offset, cells, 2, 6); } }" },
+        { "behaviors/Imported.chibi", "Imported :: behavior { offset: number = 0; on Tick :: (cells: double) { offset = Scroll.Step(offset, cells, 2, 6); } }" }
     };
     static const double amounts[] = { 1, 4, -1, -20 };
     static const double expected[] = { 2, 6, 4, 0 };
@@ -212,7 +210,7 @@ TEST_CASE(modules_unqualified_same_spelled_helpers_are_ambiguous)
         { "libraries/Left.chibi", "Left :: library { Step :: () -> number { return 1; } }" },
         { "libraries/Right.chibi",
           "Right :: library { Step :: () -> number { return 2; } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Step(); } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -230,7 +228,7 @@ TEST_CASE(modules_duplicate_qualified_helpers_cannot_publish_by_path_order)
         { "libraries/First.chibi", "Same :: library { Step :: () -> number { return 1; } }" },
         { "libraries/Second.chibi",
           "Same :: library { Step :: () -> number { return 2; } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Same.Step(); } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Same.Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -258,7 +256,7 @@ TEST_CASE(modules_cross_library_cycles_reject_callers_without_generations)
           "Left :: library { Step :: () -> number { return Right.Step(); } }" },
         { "libraries/Right.chibi",
           "Right :: library { Step :: () -> number { return Left.Step(); } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Left.Step(); } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Left.Step(); } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 3, order, BEHAVIOR_BYTECODE);
@@ -278,7 +276,7 @@ TEST_CASE(modules_library_state_is_not_an_exported_value)
 {
     static const input inputs[] = {
         { "libraries/Store.chibi", "Store :: library { secret: number = 11; Read :: () -> number { return secret; } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Store.secret; } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Store.secret; } }" }
     };
     for (int order = 0; order < 2; order++) {
         prepare(0, inputs, 2, order, BEHAVIOR_BYTECODE);
@@ -301,7 +299,7 @@ TEST_CASE(modules_independent_catalogs_do_not_supply_missing_or_other_bodies)
     const input inputs[] = {
         { "libraries/Store.chibi",
           "Store :: library { Read :: () -> number { return 3; } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Store.Read(); } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Store.Read(); } }" }
     };
     input other[2] = { inputs[0], inputs[1] };
     other[0].text = "Store :: library { Read :: () -> number { return 7; } }";
@@ -330,7 +328,7 @@ TEST_CASE(modules_nested_same_spelled_helpers_stay_in_lexical_scope)
 {
     static const input inputs[] = {
         { "libraries/Scoped.chibi", "Scoped :: library { First :: () { Helper :: () -> number { return 2; } return Helper(); } Second :: () { Helper :: () -> number { return 3; } return Helper(); } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Scoped.First() * 10 + Scoped.Second(); } }" }
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Scoped.First() * 10 + Scoped.Second(); } }" }
     };
     static const double amounts[] = { 0 }, expected[] = { 23 };
     for (int b = 0; b < 2; b++) {
@@ -389,7 +387,7 @@ static const input generic_inputs[] = {
       "Scale :: (value: $T, $N: int) -> T { Factor :: Units.Factorial(4); "
       "return Units.Identity(value) * N + Factor } }" },
     { "behaviors/Caller.chibi",
-      "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+      "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) { "
       "speed: Units.Quantity(double, 1, -1) = {amount: 6}; "
       "time: Units.Quantity(double, 0, 1) = {amount: 2}; "
       "distance := Operations.Multiply(speed, time); "
@@ -408,7 +406,8 @@ TEST_CASE(modules_imported_scalar_templates_resolve_nested_calls_without_record_
           "Factor :: Numbers.Factorial(4); "
           "return Numbers.Identity(value) * N + Factor } }" },
         { "behaviors/Caller.chibi",
-          "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+          "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) "
+          "{ "
           "offset = Operations.Scale(cells, 2) } }" },
     };
     static const double amounts[] = { 2 }, expected[] = { 28 };
@@ -428,7 +427,7 @@ TEST_CASE(modules_empty_compile_bindings_materialize)
           "Flags :: library { Enabled :: () -> bool { return true } }" },
         { "behaviors/Caller.chibi",
           "Caller :: behavior { Value :: Flags.Enabled(); offset:number=0; "
-          "on Tick(cells) { if Value { offset=cells } } }" },
+          "on Tick :: (cells: double) { if Value { offset=cells } } }" },
     };
     static const double amounts[] = { 2 }, expected[] = { 2 };
     for (int backend = 0; backend < 2; backend++) {
@@ -471,7 +470,8 @@ TEST_CASE(modules_imported_float_compile_values_survive_dedupe_and_cache_reuse)
           "Operations :: library { Scale :: (value: $T, $Gain: double) -> T { "
           "Offset :: Numbers.Double(Gain); return value * Gain + Offset } }" },
         { "behaviors/Caller.chibi",
-          "Caller :: behavior { offset: number = 0; on Tick(cells) { "
+          "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) "
+          "{ "
           "offset = Operations.Scale(cells, 1.5) + "
           "Operations.Scale(cells, 1.5) } }" },
     };
@@ -497,7 +497,7 @@ TEST_CASE(modules_float_specialization_metadata_compares_exact_ieee_bits)
 {
     char path[256];
     snprintf(path, sizeof path, "%s/behaviors/Caller.chibi", root);
-    const source_catalog_edit edit = { .path = path, .text = "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = cells } }" };
+    const source_catalog_edit edit = { .path = path, .text = "Caller :: behavior { offset: number = 0; on Tick :: (cells: double) { offset = cells } }" };
     const uint64_t doubles[] = { UINT64_C(0),
                                  UINT64_C(0x8000000000000000),
                                  UINT64_C(0x7ff8000000000001),
@@ -678,7 +678,7 @@ TEST_CASE(modules_failed_imported_requests_publish_no_concrete_generation)
     static const input inputs[] = {
         { "libraries/Bad.chibi",
           "Bad :: library { Broken :: (value: $T) -> int { return true } }" },
-        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick(cells) { offset = Bad.Broken(int(1)) } }" },
+        { "behaviors/Caller.chibi", "Caller :: behavior { offset: number = 0; on Tick :: () { offset = Bad.Broken(int(1)) } }" },
     };
     for (int backend = 0; backend < 2; backend++) {
         prepare(0, inputs, 2, false, backends[backend]);
@@ -706,7 +706,7 @@ TEST_CASE(modules_retained_library_state_inherits_consuming_owner)
     const input inputs[] = {
         { "libraries/Store.chibi", "Store :: library { value:int=0; Next::()->int { calls:retain int=0; value+=1; calls+=1; return value+calls; } }" },
         { "systems/Counter.chibi", "Counter :: system() { observed:retain int=0; observed=Store.Next(); }" },
-        { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick(cells) { observed=Store.Next(); } }" },
+        { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick :: () { observed=Store.Next(); } }" },
     };
     for (int backend = 0; backend < 2; backend++) {
         prepare(0, inputs, 3, false, backends[backend]);
@@ -778,7 +778,7 @@ TEST_CASE(modules_systems_reject_task_state_in_imported_libraries)
         const input inputs[] = {
             { "libraries/Store.chibi", library },
             { "systems/Counter.chibi", "Counter :: system() { observed:retain int=0; observed=Store.Read(); }" },
-            { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick(cells) { observed=Store.Read(); } }" },
+            { "behaviors/Reader.chibi", "Reader :: behavior { observed:int=0; on Tick :: () { observed=Store.Read(); } }" },
         };
         prepare(0, inputs, 3, false, BEHAVIOR_BYTECODE);
         if (!source(0, "Store")->valid || !source(0, "Reader")->valid) {

@@ -2407,23 +2407,24 @@ static const char COUNTER[] = "// Behavior state that survives between steps, "
                               "Counter :: behavior {\n"
                               "    steps: int = 0\n"
                               "\n"
-                              "    on Tick {\n"
+                              "    on Tick :: () {\n"
                               "        steps += 1\n"
                               "        self.Spot.x = steps\n"
                               "    }\n"
                               "}\n";
 static const behavior_sample behavior_samples[] = {
     { "Counter", COUNTER },
-    { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick {\n        steps = 7\n    }\n}\n" },
-    { "Glide", "Glide :: behavior {\n    on Tick(dt) {\n        self.Spot.y = dt\n    }\n}\n" },
-    { "Mark", "Mark :: behavior {\n    on tick {\n        self.Spot.x = 3\n    }\n}\n" },
-    { "Sink", "Sink :: behavior {\n    on Tick {\n        self.Spot.y = -2.5\n    }\n}\n" },
-    { "Copy", "Copy :: behavior {\n    on Tick {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
-    { "Grow", "Grow :: behavior {\n    on Tick {\n        self.Spot.x += 1\n    }\n}\n" },
-    { "Swap", "Swap :: behavior {\n    on Tick {\n        self.Spot = self.Spot\n    }\n}\n" },
+    { "Store", "Store :: behavior {\n    steps: int = 4\n    on Tick :: () {\n        steps = 7\n    }\n}\n" },
+    { "Glide", "Glide :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        self.Spot.y = DeltaSeconds\n    }\n}\n" },
+    { "Mark", "Mark :: behavior {\n    on tick :: () {\n        self.Spot.x = 3\n    }\n}\n" },
+    { "Sink", "Sink :: behavior {\n    on Tick :: () {\n        self.Spot.y = -2.5\n    }\n}\n" },
+    { "Copy", "Copy :: behavior {\n    on Tick :: () {\n        self.Spot.x = self.Spot.w\n    }\n}\n" },
+    { "Grow", "Grow :: behavior {\n    on Tick :: () {\n        self.Spot.x += 1\n    }\n}\n" },
+    { "Swap", "Swap :: behavior {\n    on Tick :: () {\n        self.Spot = self.Spot\n    }\n}\n" },
     { "Turn",
-      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick(dt) {\n        "
-      "angle += dt * 2\n"
+      "Turn :: behavior {\n    angle: float = 0.5\n    on Tick :: "
+      "(DeltaSeconds: float) {\n        "
+      "angle += DeltaSeconds * 2\n"
       "        self.Spot.x = angle\n    }\n}\n" },
     { "Fold",
       "Fold :: behavior {\n    Wrap :: (value: float, limit: float) -> float "
@@ -2433,17 +2434,19 @@ static const behavior_sample behavior_samples[] = {
       "    Split :: (value: float) -> (whole: int, rest: float) {\n        "
       "whole = int(value)\n"
       "        rest = value - whole\n        return (whole, rest)\n    }\n    "
-      "on Tick {\n"
+      "on Tick :: () {\n"
       "        self.Spot.x = Wrap(self.Spot.x + 7, 20)\n        parts := "
       "Split(self.Spot.x)\n"
       "        self.Spot.y = parts.whole * 2 + parts.rest\n    }\n}\n" },
     { "Halve",
-      "Halve :: behavior {\n    on Tick(dt) {\n        self.Spot.y = "
-      "self.Spot.w / 2 - dt\n"
+      "Halve :: behavior {\n    on Tick :: (DeltaSeconds: float) {\n        "
+      "self.Spot.y = "
+      "self.Spot.w / 2 - DeltaSeconds\n"
       "        if self.Spot.w > 3 {\n            self.Spot.x *= 2.5\n        "
       "}\n    }\n}\n" },
     { "Pair",
-      "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick {\n     "
+      "Pair :: behavior {\n    a: int = 2\n    b: int = 5\n    on Tick :: () "
+      "{\n     "
       "   a *= 2\n"
       "        b = a - 1\n        self.Spot.x = b\n        self.Spot.y = a\n   "
       " }\n}\n" },
@@ -2456,17 +2459,21 @@ typedef struct
 static const behavior_rejection behavior_rejections[] = {
     { "Late :: behavior {\n    after Tick {\n    }\n}\n",
       "only `on Event` handlers are supported yet" },
-    { "Jump :: behavior {\n    on Jump {\n    }\n}\n", "Unknown event 'Jump'" },
-    { "Fixed :: behavior {\n    on Tick {\n        self.Spot.w = 1\n    }\n}\n",
+    { "Jump :: behavior {\n    on Jump :: () {\n    }\n}\n", "Unknown event 'Jump'" },
+    { "Fixed :: behavior {\n    on Tick :: () {\n        self.Spot.w = 1\n    "
+      "}\n}\n",
       "Assignment requires a writable value" },
-    { "Named :: behavior {\n    label: string = \"\"\n    on Tick {\n    "
+    { "Named :: behavior {\n    label: string = \"\"\n    on Tick :: () {\n    "
       "}\n}\n",
       "state needs a number type" },
-    { "Extra :: behavior {\n    on Tick(dt, more) {\n    }\n}\n",
+    { "Extra :: behavior {\n    on Tick :: (DeltaSeconds: float, more: float) "
+      "{\n    }\n}\n",
       "the event has no such parameter" },
-    { "Scale :: behavior {\n    on Tick {\n        self.Spot *= 2\n    }\n}\n",
+    { "Scale :: behavior {\n    on Tick :: () {\n        self.Spot *= 2\n    "
+      "}\n}\n",
       "operator does not apply to these operands" },
-    { "Pace :: behavior {\n    on Tick {\n        self.Spot.x = pace\n    "
+    { "Pace :: behavior {\n    on Tick :: () {\n        self.Spot.x = pace\n   "
+      " "
       "}\n}\n",
       "reading the global 'pace' is not supported yet" },
 };

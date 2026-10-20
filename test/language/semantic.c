@@ -99,14 +99,14 @@ static const script_diagnostic *diagnostic(const char *message)
 }
 TEST_CASE(language_shadowing_resolves_nearest_declaration)
 {
-    const char *source = "Scope :: behavior {\nsample := 1;\non Tick(sample) { "
-                         "copy: float = sample; }\n}";
+    const char *source = "Scope :: behavior {\ndt := 1;\non Tick :: (dt: "
+                         "float s) { copy: float = dt; }\n}";
     parse(source);
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     int parameter = -1, state = -1;
     for (int i = 0; i < analysis->symbol_count; i++) {
-        if (!strcmp(analysis->symbols[i].name, "sample")) {
+        if (!strcmp(analysis->symbols[i].name, "dt")) {
             if (analysis->symbols[i].kind == SCRIPT_PARAMETER) {
                 parameter = i;
             }
@@ -116,7 +116,7 @@ TEST_CASE(language_shadowing_resolves_nearest_declaration)
         }
     }
     REQUIRE(parameter >= 0 && state >= 0 && parameter != state);
-    const script_use *use = script_use_at(analysis, (int)(strstr(source, "= sample") - source) + 2);
+    const script_use *use = script_use_at(analysis, (int)(strstr(source, "= dt") - source) + 2);
     REQUIRE(use && use->symbol == parameter);
     /* An integer literal is an int unless its context says otherwise. */
     REQUIRE(analysis->symbols[state].type.storage == PIN_I32);
@@ -308,7 +308,7 @@ TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments)
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("Pass system invocation locals as parameters across callable boundaries"));
-    parse("Motion :: system() { step := 1; on Tick { step += 1; } }");
+    parse("Motion :: system() { step := 1; on Tick :: () { step += 1; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     REQUIRE(diagnostic("Pass system invocation locals as parameters across callable boundaries"));
@@ -378,7 +378,7 @@ TEST_CASE(language_reductions_require_system_component_fields)
         REQUIRE(syntax->diagnostic_count == 0);
         REQUIRE(!analysis->valid);
     }
-    parse("Motion :: behavior { on Tick { reduce self.Position.x += 1; } }");
+    parse("Motion :: behavior { on Tick :: () { reduce self.Position.x += 1; } }");
     REQUIRE(diagnostic("Reduction requires a synchronous system body"));
     parse("Motion :: system(position: Position) { Update :: () { reduce position.x += 1; } Update(); }");
     REQUIRE(diagnostic("Reduction requires a synchronous system body"));
@@ -778,7 +778,7 @@ TEST_CASE(language_derived_component_is_read_only)
     parse("Follow :: system(placement: Placement) { placement.x = 1; }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
-    parse("Follow :: behavior { on Tick(dt) { self.Placement.y = dt; } }");
+    parse("Follow :: behavior { on Tick :: (dt: float s) { self.Placement.y = dt; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
     return true;
@@ -1022,7 +1022,7 @@ TEST_CASE(language_functions_with_results_must_return)
         "L :: library { F :: (n: int) -> int { while (true) { switch n { case "
         "1: break; case: return 1; } } } }",
         "L :: library { F :: (n: int) { if n > 0 { return 1; } } }",
-        "Run :: behavior { F :: () -> int { on Begin { } } }",
+        "Run :: behavior { F :: () -> int { on Begin :: () { } } }",
     };
     for (size_t i = 0; i < sizeof missing / sizeof *missing; i++) {
         parse(missing[i]);
@@ -1318,7 +1318,7 @@ TEST_CASE(language_inferred_return_of_several_results_is_rejected)
 TEST_CASE(language_invalid_source_retains_bounded_diagnostics)
 {
     const char *sources[] = {
-        "Broken :: behavior { on Tick { sample := ; }",
+        "Broken :: behavior { on Tick :: () { sample := ; }",
         "Broken :: behavior { value: struct<\"Position\"> = null; }",
         "Broken :: behavior { value: struct; }",
     };
@@ -1655,7 +1655,7 @@ TEST_CASE(language_units_check_empty_struct_defaults)
 {
     measure("copy: Body = null; body = copy;\n");
     REQUIRE(analysis->valid);
-    parse("Reset :: behavior { on Tick { if true { copy := event; copy = null; } } }");
+    parse("Reset :: behavior { Pair :: () -> (a: int, b: int) { return (1, 2) } on Tick :: () { if true { copy := Pair(); copy = null; } } }");
     REQUIRE(!analysis->valid && diagnostic("Incompatible result tuple shape"));
     return true;
 }
@@ -1899,7 +1899,7 @@ TEST_CASE(language_units_follow_native_signatures_and_task_results)
     native.capabilities = &event;
     native.tick_event = event.id;
     cleanup();
-    syntax = script_parse("M :: behavior { on Tick(elapsed) { self.Body.x = elapsed; } }");
+    syntax = script_parse("M :: behavior { on Tick :: (Elapsed: double) { self.Body.x = Elapsed; } }");
     analysis = script_analyze(syntax, &native);
     REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
     measured_source(

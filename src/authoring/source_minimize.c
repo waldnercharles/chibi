@@ -51,8 +51,8 @@ static int end(TSNode node)
     return (int)ts_node_end_byte(node);
 }
 
-/* Equivalence ignores source positions, the spelling of payload aliases and
- * reference markers, which lower to the same reads. */
+/* Equivalence ignores source positions and reference markers, which lower to
+ * the same reads. */
 /* An original analysis, a rewritten one and the catalog both resolve. */
 typedef struct
 {
@@ -97,9 +97,9 @@ static bool same_symbol(const pair *p, int i, int j)
     bool parameter = x->kind == SCRIPT_PARAMETER;
     return x->kind == y->kind && same_type(x->type, y->type) &&
            x->capability == y->capability &&
-           (parameter || x->function == y->function) && x->writable == y->writable &&
-           x->disabled == y->disabled && x->outcome == y->outcome &&
-           ((payload(x) && payload(y)) || same_text(x->name, y->name));
+           (parameter || x->function == y->function) &&
+           x->writable == y->writable && x->disabled == y->disabled &&
+           x->outcome == y->outcome && same_text(x->name, y->name);
 }
 /* Arguments evaluate in source order, so a rewrite must keep their order as
  * well as their parameters. */
@@ -456,7 +456,7 @@ static bool same_function(const pair *p, const script_function *x, const script_
            same_symbols(p, x->results, y->results, x->result_count) &&
            same_statement(p, x->body, y->body);
 }
-/* Declared symbols in order, without payload aggregates and their aliases. */
+/* Declared symbols in order, without payload aggregates. */
 static int next_declared(const script_analysis *a, int i)
 {
     while (i < a->symbol_count && payload(&a->symbols[i])) {
@@ -659,52 +659,14 @@ static void labels(collector *c, TSNode list)
         }
     }
 }
-static int symbol_declared_at(const script_analysis *a, TSNode node)
-{
-    for (int i = 0; i < a->symbol_count; i++) {
-        if (a->symbols[i].declaration.start == start(node) &&
-            a->symbols[i].declaration.end == end(node)) {
-            return i;
-        }
-    }
-    return -1;
-}
-/* `on Event as alias` reads the payload as `event`. */
-static void handler_alias(collector *c, TSNode handler)
-{
-    TSNode name = field(handler, "name"), alias = field(handler, "alias");
-    int symbol = symbol_declared_at(c->analysis, alias);
-    if (symbol < 0) {
-        return;
-    }
-    rewrite r = { 0 };
-    edit(&r, end(name), end(alias), "");
-    for (int i = 0; i < c->analysis->use_count; i++) {
-        const script_use *use = &c->analysis->uses[i];
-        if (use->symbol == symbol && use->range.start != start(alias)) {
-            edit(&r, use->range.start, use->range.end, "event");
-        }
-    }
-    apush(c->rewrites, r);
-}
 static void handler(collector *c, TSNode node)
 {
     TSNode parameters = field(node, "parameters");
     /* `on X :: (a: T)` names the payload fields it reads, with their types. */
-    if (!ts_node_is_null(field(node, "binding"))) {
+    if (!ts_node_is_null(field(node, "binding")) || ts_node_is_null(parameters)) {
         return;
     }
-    if (!ts_node_is_null(field(node, "alias"))) {
-        handler_alias(c, node);
-    }
-    if (ts_node_is_null(parameters)) {
-        return;
-    }
-    TSNode before = field(node, "alias");
-    if (ts_node_is_null(before)) {
-        before = field(node, "name");
-    }
-    add(c, end(before), end(parameters), "");
+    add(c, end(field(node, "name")), end(parameters), "");
     /* Payload parameters take their registered types and defaults. */
     for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
         TSNode parameter = ts_node_named_child(parameters, i);

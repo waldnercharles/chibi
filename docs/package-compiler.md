@@ -318,8 +318,25 @@ where this package first uses it. A point's position is where it is placed.
 Each point is a `SOURCE_POINT` instruction, which suspends, so each
 invocation's and point's target is its order among them, as the runtime
 numbers suspensions; an imported module's fingerprint covers those bytes.
-Watches are not emitted yet; they must be before stage one becomes the normal
-compiler.
+
+Each function also has stage zero's watches, which Studio shows a paused
+function's values with. A watch is a `SOURCE_WATCH` of the slot that holds a
+value, with its expression as origin and its type's header as initial value:
+- an output watch on each value an expression produces, `self` included, and on
+  each number literal once its use gives it a type, except an array of
+  literals;
+- a call's inputs, one per argument with the argument's own type, defaults
+  included (a default also has an output watch); a struct literal's, numbered
+  by each field's place in the record; and a call with several results has
+  an output watch for each, numbered;
+- a compound assignment watches the value it stores at its target, and one on
+  a name or an element also the value it reads there;
+- a `switch` arm watches the subject it reads again and its pattern's test;
+- `xs = array_add(xs, x)` watches the array as its argument and as the call's
+  first input, the item as its second, and the array it leaves as the call's
+  output.
+
+A behavior's handles are its entities, so their watches name the entity type.
 
 `Number.chibi` reads number literals of floating types as stage zero does:
 the binary64 nearest the literal, and the binary32 nearest that binary64. A

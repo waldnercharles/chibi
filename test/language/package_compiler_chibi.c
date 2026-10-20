@@ -1656,6 +1656,75 @@ static bool same_points(const execution_module *expected, const execution_module
     }
     return true;
 }
+static bool same_watch(const behavior_source_watch *x, const behavior_source_watch *y)
+{
+    const char *a = x->initial.type_name ? x->initial.type_name : "",
+               *b = y->initial.type_name ? y->initial.type_name : "";
+    return x->origin.kind == y->origin.kind &&
+           x->origin.occurrence == y->origin.occurrence &&
+           x->origin.start == y->origin.start && x->origin.end == y->origin.end &&
+           x->origin.line == y->origin.line && x->origin.column == y->origin.column &&
+           x->initial.type == y->initial.type &&
+           x->initial.container == y->initial.container && !strcmp(a, b) &&
+           x->ordinal == y->ordinal && x->output == y->output &&
+           x->reference == y->reference;
+}
+static void print_watches(const char *compiler, const behavior_function *f)
+{
+    for (int k = 0; k < acount(f->source_watches); k++) {
+        const behavior_source_watch *w = &f->source_watches[k];
+        fprintf(
+            stderr,
+            "  %s watch at %d..%d occurrence %016llx type %d container %d name "
+            "%s ordinal %d output %d "
+            "reference %d\n",
+            compiler,
+            w->origin.start,
+            w->origin.end,
+            (unsigned long long)w->origin.occurrence,
+            w->initial.type,
+            w->initial.container,
+            w->initial.type_name ? w->initial.type_name : "-",
+            w->ordinal,
+            w->output,
+            w->reference
+        );
+    }
+}
+/* Each function of stage one's module has stage zero's watches, as many of
+ * each, in any order. */
+static bool same_watches(const execution_module *expected, const execution_module *actual)
+{
+    REQUIRE(expected->plan.function_count == actual->plan.function_count);
+    bool all_alike = true;
+    for (int i = 0; i < expected->plan.function_count; i++) {
+        const behavior_function *x = expected->plan.functions[i].body,
+                                *y = actual->plan.functions[i].body;
+        int count = acount(y->source_watches);
+        bool *used = xcalloc((size_t)count + 1, sizeof *used);
+        bool alike = count == acount(x->source_watches);
+        for (int j = 0; alike && j < acount(x->source_watches); j++) {
+            int found = -1;
+            for (int k = 0; found < 0 && k < count; k++) {
+                found = !used[k] && same_watch(&x->source_watches[j], &y->source_watches[k])
+                          ? k
+                          : -1;
+            }
+            alike = found >= 0;
+            if (alike) {
+                used[found] = true;
+            }
+        }
+        free(used);
+        if (!alike) {
+            fprintf(stderr, "WATCHES %d\n", i);
+            print_watches("stage zero", x);
+            print_watches("stage one", y);
+            all_alike = false;
+        }
+    }
+    return all_alike;
+}
 /* Stage zero's closure of the same packages, whose calls must give the same
  * results. */
 static bool oracle_closure(const sample *s, unsigned char **closure, size_t *length)
@@ -2051,7 +2120,8 @@ static bool points_like_oracle(const unsigned char *bytes, size_t length)
                          ? candidate
                          : NULL;
         }
-        alike = expected && same_points(expected, module);
+        alike = expected && same_points(expected, module) &&
+                same_watches(expected, module);
     }
     package_collection_free(packages);
     native_capabilities_free(native);
@@ -2926,7 +2996,8 @@ static bool behaves_alike(int b, const behavior_sample *sample)
     bool same = expected &&
                 stage_one_behavior(b, sample->name, sample->source, &actual) &&
                 same_declarations(expected, actual) &&
-                same_points(expected, actual) && plays_alike(expected, actual);
+                same_points(expected, actual) &&
+                same_watches(expected, actual) && plays_alike(expected, actual);
     if (!same) {
         fprintf(stderr, "behavior %s differs on backend %d\n", sample->name, b);
     }

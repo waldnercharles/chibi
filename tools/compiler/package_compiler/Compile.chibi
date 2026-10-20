@@ -79,6 +79,7 @@ Ops :: struct {
     owner: int;
     convert: int;
     source_point: int;
+    source_watch: int;
 }
 // A type: a storage code, whether it is an array, and for records, unions and
 // arrays of them the index of their declaration in `types`.
@@ -260,7 +261,7 @@ ResolveOps :: (names: string[]) -> Ops {
             gt: Ordinal(names, "GT"), ge: Ordinal(names, "GE"), eq: Ordinal(names, "EQ"), ne: Ordinal(names, "NE"),
             cast: Ordinal(names, "CAST"), select: Ordinal(names, "SELECT"), variable: Ordinal(names, "VARIABLE"),
             store: Ordinal(names, "STORE"), owner: Ordinal(names, "OWNER"), convert: Ordinal(names, "CONVERT"),
-            source_point: Ordinal(names, "SOURCE_POINT")};
+            source_point: Ordinal(names, "SOURCE_POINT"), source_watch: Ordinal(names, "SOURCE_WATCH")};
 }
 // Whether the target names every instruction this compiler emits.
 Complete :: (ops: Ops) -> bool {
@@ -269,7 +270,8 @@ Complete :: (ops: Ops) -> bool {
                    ops.invoke, ops.guard, ops.check, ops.branch_if, ops.jump, ops.finish,
                    ops.end, ops.add, ops.sub, ops.mul, ops.div, ops.mod, ops.neg, ops.bit_and, ops.bit_or,
                    ops.bit_xor, ops.bit_not, ops.shl, ops.shr, ops.lt, ops.le, ops.gt, ops.ge, ops.eq, ops.ne, ops.cast,
-                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point];
+                   ops.select, ops.variable, ops.store, ops.owner, ops.convert, ops.source_point,
+                   ops.source_watch];
     for (op in used) {
         if (op < 0) {
             return false;
@@ -348,6 +350,17 @@ Aliases :: (links: graph.Binding[], file: int) -> Name[] {
         }
     }
     return aliases;
+}
+// The index of the type whose ID is `id`, -1 when none.
+TypeWithId :: (types: TypeDecl[], id: uint64) -> int {
+    index: int = 0;
+    while (index < length(types)) {
+        if (types[index].id == id) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
 }
 // The variant `name` of union types[of], -1 when none.
 FindVariant :: (types: TypeDecl[], of: int, name: string) -> int {
@@ -1246,6 +1259,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
     imported: int[] = [];
     imports: writer.Import[] = [];
     points: writer.Point[] = [];
+    watches: writer.Watch[] = [];
     // Debugger points count each document's bytes that are not whitespace.
     solid: int[] = [];
     solid_document: int = -1;
@@ -1275,7 +1289,7 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
             case .Failed(diagnostic):
                 return Result.Rejected(diagnostic);
             case .Emitted(body_slots, body_locals, body_cells, body_code, body_calls, body_hosts, body_roots,
-                          body_points):
+                          body_points, body_watches):
                 base := length(spans);
                 // Argument defaults and kinds.
                 spans = array_add(spans, Range(length(values), callable.count));
@@ -1476,6 +1490,26 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
                                          completion: point.completion};
                     points = array_add(points, row);
                 }
+                // Each watch's origin is a point of its own, past the
+                // function's points, and its initial value the type's header.
+                spans = array_add(spans, Range(length(watches), length(body_watches)));
+                for (watched in body_watches) {
+                    wide = array_add(wide, watched.occurrence);
+                    wide = array_add(wide, uint64(0));
+                    origin: writer.Point = {occurrence: length(wide) - 2, meaning: length(wide) - 1,
+                                            start: watched.start, end: watched.end, line: watched.line,
+                                            column: watched.column, kind: ExpressionRecord, completion: false};
+                    points = array_add(points, origin);
+                    // A behavior's handles are its entities.
+                    watched_record := watched.record;
+                    if (watched.storage == HandleStorage && watched_record < 0 && owner_type != 0) {
+                        watched_record = TypeWithId(types, owner_type);
+                    }
+                    values = array_add(values, Header(watched.storage, watched.container, watched_record, types, layouts));
+                    row: writer.Watch = {origin: length(points) - 1, initial: length(values) - 1,
+                                         ordinal: watched.ordinal, output: watched.output, reference: watched.reference};
+                    watches = array_add(watches, row);
+                }
                 while (length(spans) < base + writer.Tables) {
                     spans = array_add(spans, Range(0, 0));
                 }
@@ -1558,7 +1592,6 @@ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], pa
         states = array_add(states, row);
     }
     layouts_table: writer.ResultLayout[] = [];
-    watches: writer.Watch[] = [];
     return Result.Compiled(module, writer.Write(writer.Module.Tables(module, owner_type, abi, wide, values, ints, requirements,
                                                                      fields, event_declarations, event_fields, imports, functions, spans, roots, instructions,
                                                                      locals, parameters, frames, sources, layouts_table, data, hosts, calls,

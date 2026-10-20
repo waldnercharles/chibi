@@ -333,7 +333,8 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
             at: int = 0;
             while (at < game_events[found].count) {
                 payload := event_fields[game_events[found].first + at];
-                param: Param = {name: payload.name, storage: payload.storage, container: 0, record: -1};
+                param: Param = {name: payload.name, storage: payload.storage, container: 0, record: -1,
+                                has_default: false, default_bits: 0, default_text: ""};
                 if (parameter >= 0) {
                     param.name = Text(forest, source, Field(forest, parameter, "name"));
                     parameter = NextMember(forest, parameter);

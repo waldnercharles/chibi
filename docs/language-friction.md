@@ -367,18 +367,6 @@ Suggestion: stage one compiles `ref` parameters of locals, then
 `core:strings` gains Odin's iterators. Consider marking reference
 arguments at the call site.
 
-### Stage one has no default parameter values
-
-Stage one. Odin's `cut(s, rune_offset := 0, rune_length := 0)` is
-`Cut(s, offset, count)` with every argument required. Stage zero already
-compiles `Add :: (a: int, b: int = 10) -> int` and `Add(1)`.
-
-- Odin, C#, C++, Python, TypeScript and Ruby default trailing parameters;
-  Rust and Zig don't.
-
-Suggestion: stage one compiles the constant defaults stage zero accepts; low
-priority.
-
 ### Library growth spends the compiler tests' budgets
 
 Toolchain. At #503 the 16 KB package prepared to an 837 KB module, about 52
